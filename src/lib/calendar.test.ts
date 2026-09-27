@@ -80,6 +80,34 @@ describe('calendario de lo que viene', () => {
     ]);
   });
 
+  it('otros deportes: sus eventos con su tipo y su hora, sin prácticas del horario ni «voy»', () => {
+    const items = upcomingCalendar(
+      [
+        feed('padel', [
+          { id: 'am', type: 'americano' as BowlingEvent['type'], name: '', date: '2026-09-30', startTime: '19:30:00', rsvp: { p1: true } },
+          { id: 'cj', type: 'cajas' as BowlingEvent['type'], name: 'Cajas de octubre', date: '2026-10-01' },
+        ]),
+        feed('golf', [{ id: 'r1', type: 'ronda' as BowlingEvent['type'], name: '', date: '2026-10-03', startTime: '08:00:00' }]),
+        feed('nado', [{ id: 'n1', type: 'encuentro' as BowlingEvent['type'], name: 'Copa Delfín', date: '2026-10-04' }]),
+      ],
+      [
+        // El horario de la liga (lo pide el formulario en todos los deportes) no inventa prácticas.
+        { ...league('padel', 'Pádel Club', 'Martes y jueves · 7:00 pm'), sport: 'padel' },
+        { ...league('golf', 'Golf del Club', 'Sábado · 8:00 am'), sport: 'golf' },
+        { ...league('nado', 'Natación', ''), sport: 'swimming' },
+      ],
+      '2026-09-28',
+      7,
+    );
+    expect(items.map((i) => [i.date, i.name, i.type, i.sport, i.time, i.eventId, i.going])).toEqual([
+      ['2026-09-30', 'Americano', 'americano', 'padel', '7:30 pm', 'am', false],
+      ['2026-10-01', 'Cajas de octubre', 'cajas', 'padel', '7:00 pm', 'cj', false],
+      ['2026-10-03', 'Ronda', 'ronda', 'golf', '8:00 am', 'r1', false],
+      ['2026-10-04', 'Copa Delfín', 'encuentro', 'swimming', null, 'n1', false],
+    ]);
+    expect(items.some((i) => i.name === 'Práctica')).toBe(false);
+  });
+
   it('las semanas empiezan el lunes', () => {
     expect(weekStart('2026-10-01')).toBe('2026-09-28');
     expect(weekStart('2026-09-28')).toBe('2026-09-28');

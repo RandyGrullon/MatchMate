@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEMO_COURSE, DEMO_PARS } from '../../../sports/golf/demo';
 import type { GolfCardDoc, GolfRoundDoc, GolfRoundFull } from '../../../lib/data/golf';
 import {
+  canWriteCard,
+  dropUnsent,
   emptyLog,
   groupHolesDone,
   groupOrder,
@@ -64,6 +66,7 @@ const card = (id: string, eventId: string, playerId: string, strokes: (number | 
   pickedUp: strokes.map(() => false),
   signed: false,
   signedAt: null,
+  scoredAt: null,
   dq: false,
   ...extra,
 });
@@ -138,6 +141,42 @@ describe('de la base al motor', () => {
     expect(meritEvents({ rounds: [r1, r2, suelta], cards }, light, (id) => id !== 's').map((e) => e.id)).toEqual(['t']);
   });
 
+  it('torneo: quien no jugó una ronda ya cerrada no sale con puesto ni gana el orden de mérito', () => {
+    const comp = { format: 'stroke' as const, basis: 'gross' as const, allowance: 100 };
+    const r1 = round('r1', { tournamentId: 't', roundNo: 1, closed: true, competition: comp });
+    const r2 = round('r2', { tournamentId: 't', roundNo: 2, closed: true, competition: comp });
+    // A: −1 y +1 (E en las dos). B: −2 en la ronda 1 y no se inscribió en la 2.
+    const cards = [
+      card('1a', 'r1', 'a', pars((i) => (i === 0 ? -1 : 0))),
+      card('2a', 'r2', 'a', pars((i) => (i === 0 ? 1 : 0))),
+      card('1b', 'r1', 'b', pars((i) => (i < 2 ? -1 : 0))),
+    ];
+    const board = tournamentBoard([r1, r2], cards, comp);
+    expect(board.map((x) => [x.id, x.rank, x.unfinished])).toEqual([
+      ['a', 1, false],
+      ['b', null, true],
+    ]);
+    const light: GolfRoundDoc[] = [r1, r2].map(({ course: _c, ...x }) => x);
+    const events = meritEvents({ rounds: [r1, r2], cards }, light);
+    expect(events[0].rows).toEqual([
+      { id: 'a', rank: 1 },
+      { id: 'b', rank: null },
+    ]);
+    expect(seasonMerit(events, [25, 20]).map((m) => [m.id, m.points])).toEqual([
+      ['a', 25],
+      ['b', 0],
+    ]);
+    // Con la ronda 2 todavía abierta, B sigue en el leaderboard con lo que lleva (−2 en 18 hoyos).
+    const live = tournamentBoard([r1, { ...r2, closed: false }], cards, comp);
+    expect(live.map((x) => [x.id, x.rank, x.toPar, x.unfinished])).toEqual([
+      ['b', 1, -2, false],
+      ['a', 2, 0, false],
+    ]);
+    // Tarjeta de la ronda cerrada sin terminar: tampoco tiene puesto.
+    const half = [...cards, card('2b', 'r2', 'b', [...pars().slice(0, 9), ...Array(9).fill(null)])];
+    expect(tournamentBoard([r1, r2], half, comp).find((x) => x.id === 'b')).toMatchObject({ rank: null, unfinished: true });
+  });
+
   it('estadísticas: solo tarjetas firmadas o de rondas cerradas, sin descalificar', () => {
     const rs = [round('x', { closed: true }), round('y'), round('z')];
     const cards = [
@@ -203,6 +242,41 @@ describe('lo anotado en el teléfono', () => {
     // Lo que no se ha enviado se queda aunque el servidor (o su copia vieja) ya tenga ese valor.
     const unsent = setHole(emptyLog('e'), 'c1', 0, { s: 5, p: null, u: false });
     expect(reconcile(unsent, [server], 0)).toBe(unsent);
+  });
+
+  it('va por cuenta: otra cuenta en el mismo teléfono no ve ni manda lo anotado', () => {
+    writeLog(setHole(emptyLog('e', 'u1'), 'c1', 0, { s: 5, p: null, u: false }));
+    expect(readLog('e', 'u1').holes.c1).toBeDefined();
+    expect(readLog('e', 'u1').uid).toBe('u1');
+    expect(readLog('e', 'u2').holes).toEqual({});
+    expect(unsentPatches(readLog('e', 'u2'))).toEqual([]);
+  });
+
+  it('solo las tarjetas que la cuenta puede escribir; lo rechazado sale del teléfono; lo firmado no se queda', () => {
+    const mine = { ...c1, groupNo: 1 };
+    const mate = { ...c2, groupNo: 1 };
+    const other = card('c3', 'e', 'c', Array(18).fill(null), { groupNo: 2 });
+    const player = { isAdmin: false, staff: false, myCard: mine };
+    expect([mine, mate, other].map((c) => canWriteCard(c, player))).toEqual([true, true, false]);
+    expect(canWriteCard({ ...mate, signed: true }, player)).toBe(false);
+    expect(canWriteCard(other, { isAdmin: false, staff: false, myCard: { id: 'c1', groupNo: null } })).toBe(false);
+    expect(canWriteCard({ ...other, signed: true }, { isAdmin: false, staff: true, myCard: null })).toBe(false);
+    expect(canWriteCard({ ...other, signed: true }, { isAdmin: true, staff: true, myCard: null })).toBe(true);
+    let log = emptyLog('e', 'u1');
+    for (const id of ['c1', 'c2', 'c3']) log = setHole(log, id, 0, { s: 5, p: null, u: false });
+    const can = (id: string) => canWriteCard([mine, mate, other].find((c) => c.id === id)!, player);
+    expect(unsentPatches(log, can).map((p) => p.cardId)).toEqual(['c1', 'c2']);
+    expect(unsentCount(log, can)).toBe(2);
+    // Rechazada para siempre: salen los hoyos de ese envío que no se cambiaron después.
+    const sent = unsentPatches(log).find((p) => p.cardId === 'c2')!;
+    log = setHole(log, 'c2', 1, { s: 4, p: null, u: false });
+    log = dropUnsent(log, sent);
+    expect(log.holes.c2).toEqual({ '1': { s: 4, p: null, u: false } });
+    expect(dropUnsent(log, sent)).toBe(log);
+    // Tarjeta firmada en el servidor: lo del teléfono no se queda (quien no es admin ya no la cambia).
+    const signed = { ...c2, signed: true };
+    expect(reconcile(log, [c1, signed], 0, (c) => !c.signed).holes.c2).toBeUndefined();
+    expect(reconcile(log, [c1, signed], 0).holes.c2).toBeDefined();
   });
 
   it('el grupo avanza al próximo hoyo sin anotar, en su orden de juego, y publica cada 3', () => {

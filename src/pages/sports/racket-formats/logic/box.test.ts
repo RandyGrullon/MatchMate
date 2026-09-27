@@ -45,6 +45,26 @@ describe('configuración de la liga por cajas', () => {
     expect(openMonth(c)?.n).toBe(1);
     expect(openMonth({ ...c, months: [{ ...c.months[0], closed: true }] })).toBeNull();
   });
+
+  it('meses viejos archivados por la base (tope de events.config): sin cajas ni movidas, y se conservan al guardar', () => {
+    // Así los deja save_box_month: los viejos solo con número y nombre; los cerrados de antes, sin cajas.
+    const c = parseBoxConfig({
+      months: [
+        { n: 1, label: 'Octubre 2026', closed: true, archived: true },
+        { n: 2, label: 'Noviembre 2026', closed: true, moves: [{ id: 'a', from: 1, to: 0, move: 'sube' }] },
+        { n: 3, label: 'Diciembre 2026', boxes: [['a', 'b']], closed: false },
+      ],
+      round: 3,
+    });
+    expect(c.months.map((m) => [m.n, m.archived ?? false, m.boxes.length, m.moves.length])).toEqual([
+      [1, true, 0, 0],
+      [2, false, 0, 1],
+      [3, false, 1, 0],
+    ]);
+    expect(openMonth(c)?.n).toBe(3);
+    expect(parseBoxConfig(boxConfigJson(c))).toEqual(c);
+    expect(parseBoxConfig({ months: [{ n: 1, archived: 'si' }] }).months[0]).not.toHaveProperty('archived');
+  });
 });
 
 describe('meses', () => {

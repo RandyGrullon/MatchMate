@@ -266,6 +266,63 @@ describe('la escalera se mueve con el resultado', () => {
     expect(await order(c.ev)).toEqual([c.p.pedro, c.p.ana, c.p.otra, c.p.luis, c.p.nuevo]);
   });
 
+  it('orden de los bloqueos: las RPC de partidos, el trigger y el cron bloquean el evento de la escalera primero', async () => {
+    // Con varias conexiones (Supabase), el cron y confirm_result/set_walkover/void_match movían los puestos sin el
+    // bloqueo del evento que usan las RPC de la escalera (23505 o deadlock). PGlite tiene una sola conexión: se
+    // revisa que cada camino deje bloqueada la fila del evento (su xmax deja de ser 0).
+    const c = await club();
+    const locked = async (ev: string) => (await db.admin<{ l: boolean }>(`select xmax::text <> '0' as l from public.events where id = $1`, [ev]))[0].l;
+    // Una escalera con su reto abierto que nada ha bloqueado todavía: en modo réplica no corren los triggers ni las
+    // revisiones de llaves foráneas (que bloquean la fila del evento al insertar lo que la apunta).
+    const bare = async (type = 'escalera') => {
+      const ev = randomUUID();
+      const mid = randomUUID();
+      const ch = randomUUID();
+      await db.admin(`set session_replication_role = replica`);
+      try {
+        await db.admin(`insert into public.events (id, league_id, type, name, date) values ($1, $2, $3, 'Sin tocar', '2026-10-01')`, [ev, c.lid, type]);
+        await db.admin(`insert into public.matches (id, league_id, event_id, stage, format) values ($1, $2, $3, 'Reto', 'sets')`, [mid, c.lid, ev]);
+        if (type === 'escalera')
+          await db.admin(
+            `insert into public.ladder_challenges (id, league_id, event_id, challenger, challenged, challenger_pos, challenged_pos, match_id, accept_by, play_by)
+             values ($1, $2, $3, $4, $5, 5, 4, $6, now() + interval '3 days', now() + interval '7 days')`,
+            [ch, c.lid, ev, c.p.luis, c.p.nuevo, mid],
+          );
+      } finally {
+        await db.admin(`set session_replication_role = origin`);
+      }
+      expect(await locked(ev)).toBe(false);
+      return { ev, mid, ch };
+    };
+
+    // match_for_update (lo usan todas las RPC de partidos): el evento antes que el partido.
+    const a = await bare();
+    await db.admin(`select private.match_for_update($1)`, [a.mid]);
+    expect(await locked(a.ev)).toBe(true);
+    await fails(db.admin(`select private.match_for_update($1)`, [randomUUID()]), 'no_existe');
+
+    // El cron, aunque no haya nada vencido.
+    const b = await bare();
+    expect(await db.admin<{ n: number }>('select private.ladder_expire_all() as n')).toEqual([{ n: 0 }]);
+    expect(await locked(b.ev)).toBe(true);
+
+    // El trigger, si algún camino cambia el partido sin bloquear antes el evento.
+    const t = await bare();
+    await db.admin(`update public.matches set status = 'void' where id = $1`, [t.mid]);
+    expect(await locked(t.ev)).toBe(true);
+    expect(await challenge(t.ch)).toMatchObject({ status: 'cancelled' });
+
+    // Un partido que no es de una escalera no bloquea su evento.
+    const l = await bare('liga');
+    await db.admin(`select private.match_for_update($1)`, [l.mid]);
+    expect(await locked(l.ev)).toBe(false);
+
+    // Y todo sigue igual por las RPC: gana el retador por W.O. y toma el puesto.
+    const id = await db.rpc<string>(w.u.luis, 'create_challenge', { p_event: c.ev, p_challenged: c.p.nuevo });
+    await db.rpc(w.u.sofi, 'set_walkover', { p_match: (await challenge(id)).match_id, p_absent: 2 });
+    expect(await order(c.ev)).toEqual([c.p.pedro, c.p.ana, c.p.otra, c.p.luis, c.p.nuevo]);
+  });
+
   it('sync_ladder: con sesión y viendo la liga', async () => {
     const c = await club({ visibility: 'private' });
     await fails(db.rpc(w.u.otro, 'sync_ladder', { p_event: c.ev }), 'no_existe');

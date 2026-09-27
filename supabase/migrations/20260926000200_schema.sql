@@ -161,7 +161,9 @@ create table public.events (
   announcement text not null default '' check (char_length(announcement) <= 1000),
   -- Inscritos (lo mantiene un trigger en entries).
   player_count integer not null default 0,
-  config jsonb not null default '{}' check (jsonb_typeof(config) = 'object' and pg_column_size(config) < 8192),
+  -- Hasta 32 KB (sin comprimir), lo mismo que revisan los triggers de cada deporte: la liga por cajas guarda sus
+  -- meses aquí (save_box_month archiva los viejos para no pasarse).
+  config jsonb not null default '{}' check (jsonb_typeof(config) = 'object' and pg_column_size(config) < 32768),
   created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { tryParse } from '../../../../components/match';
 import { scheduleStats } from '../../../../sports/formats';
-import { nightRounds } from '../../racket/logic/night';
+import { nightRounds, type NightRound } from '../../racket/logic/night';
 import { pts } from '../../racket/logic/testMatch';
 import {
   DEFAULT_GAME,
@@ -97,6 +97,34 @@ describe('rondas', () => {
     // Cada uno de A descansó una vez.
     expect([...rested.values()].every((n) => n === 1)).toBe(true);
     expect(() => mixedRound(['a1'], B, { round: 1, courts: 1, seed: 's' })).toThrow('al menos 2');
+  });
+
+  it('mixto 5 + 5 en 2 canchas: descansa la pareja de quienes menos han descansado (nadie repite descanso)', () => {
+    // Antes descansaban los que más habían descansado: el mismo jugador se sentaba las 5 rondas.
+    const A = P(5, 'a');
+    const B = P(5, 'b');
+    for (let s = 0; s < 40; s++) {
+      const cfg = newSocialConfig({ players: [...A, ...B], courts: ['C1', 'C2'], rounds: 10, mixed: A, seed: `semilla-${s}` });
+      const rounds: NightRound[] = [];
+      const rested = new Map([...A, ...B].map((p) => [p, 0]));
+      for (let r = 1; r <= 10; r++) {
+        const next = nextSocialRound({ ...cfg, round: r - 1 }, rounds);
+        expect(next.ok).toBe(true);
+        if (!next.ok) return;
+        expect(next.social.matches).toHaveLength(2);
+        expect(next.social.rests).toHaveLength(2);
+        for (const m of next.social.matches) for (const [x, y] of [m.side1, m.side2]) expect(A.includes(x) !== A.includes(y)).toBe(true);
+        for (const p of next.social.rests) rested.set(p, rested.get(p)! + 1);
+        rounds.push({ round: r, matches: [], rests: next.social.rests, done: true, started: true, pending: 0 });
+        // En cada grupo, los descansos nunca se separan en más de 1.
+        for (const g of [A, B]) {
+          const n = g.map((p) => rested.get(p)!);
+          expect(Math.max(...n) - Math.min(...n)).toBeLessThanOrEqual(1);
+        }
+        // A las 5 rondas cada uno descansó exactamente una vez; a las 10, dos.
+        if (r % 5 === 0) expect([...rested.values()].every((k) => k === r / 5)).toBe(true);
+      }
+    }
   });
 
   it('nextSocialRound en mixto: pide 2 de cada grupo; rehacer con otro sorteo', () => {

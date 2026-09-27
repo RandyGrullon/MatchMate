@@ -1,3 +1,4 @@
+import { leagueSport } from '../sports/registry';
 import { toIsoDate } from './format';
 import { formatTime, parseSchedule } from './schedule';
 import type { LeagueFeed } from './data';
@@ -39,12 +40,16 @@ export interface LiveGame {
   info: LiveInfo;
 }
 
-/** Eventos en juego ahora en las ligas de la cuenta (los que empiezan antes, primero). */
+/**
+ * Eventos en juego ahora en las ligas de la cuenta (los que empiezan antes, primero). Solo las del boliche:
+ * la tarjeta es de anotar tus juegos de la práctica o del torneo; los partidos de los otros deportes se
+ * siguen en sus propias pantallas.
+ */
 export function liveGames(feeds: LeagueFeed[], leagues: League[], now: Date): LiveGame[] {
   const out: LiveGame[] = [];
   for (const feed of feeds) {
     const league = leagues.find((l) => l.id === feed.lid);
-    if (!league) continue;
+    if (!league || leagueSport(league) !== 'bowling') continue;
     for (const event of feed.events) {
       const info = liveInfo(event, league, now);
       if (info.live) out.push({ feed, league, event, info });

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getBackend } from './backend';
 import type { AuthEvent, Session } from './backend/types';
+import { touchSeenDaily } from './data/admin';
 import { invalidate, queryClient, rpc, select, setDataUser } from './data/client';
 import { keys, tags } from './data/keys';
 import { toProfile, type ProfileRow } from './data/rows';
@@ -106,6 +107,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.loading) hideSplash();
   }, [state.loading]);
+
+  // «Está usando la app» (activos por día en la consola del superadmin): una vez al día por teléfono y cuenta,
+  // también si la app queda abierta y vuelve a primer plano otro día. Sin esperar y sin mostrar errores.
+  const hasProfile = !!uid && profile.data != null;
+  useEffect(() => {
+    if (!uid || !hasProfile) return;
+    const run = () => void touchSeenDaily(uid);
+    run();
+    if (typeof document === 'undefined') return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [uid, hasProfile]);
 
   return <Ctx.Provider value={state}>{children}</Ctx.Provider>;
 }

@@ -12,7 +12,10 @@
 --   (1–20), putts y «recogió» (un hoyo recogido va con golpes null, nunca con 0), firma y descalificación.
 --
 -- Quién escribe la tarjeta (golf_save_hole_scores): el admin o un anotador de la liga, o un inscrito del
--- MISMO grupo en ese evento (así cada grupo anota en un solo teléfono). Firmar: el jugador o el admin.
+-- MISMO grupo en ese evento (así cada grupo anota en un solo teléfono). Firmar: el jugador o el admin (la
+-- firma puede llevar los hoyos tal como se revisaron: no depende del orden de la cola).
+-- Desde el primer golpe o «recogió» (golf_cards.scored_at, que no se borra aunque se vacíe la tarjeta) el
+-- jugador ya no cambia su salida ni su Index ni se sale: solo el admin.
 -- Las fórmulas del WHS son las de src/sports/golf/course.ts (las pruebas comparan las dos).
 --
 -- Tiempo real (se reutilizan los avisos que la app ya escucha):
@@ -101,6 +104,9 @@ create table public.golf_cards (
   status text not null default 'abierta' check (status in ('abierta', 'firmada')),
   signed_at timestamptz,
   signed_by uuid references public.profiles (id) on delete set null,
+  -- Cuándo se anotó el primer golpe o «recogió». No se borra aunque después se vacíen los hoyos: desde ahí el
+  -- jugador ya no cambia su salida ni su Index (congelado) ni se sale de la ronda (el admin sí).
+  scored_at timestamptz,
   -- Descalificado por el comité (p. ej. tarjeta sin firmar).
   dq boolean not null default false,
   created_at timestamptz not null default now(),
@@ -441,6 +447,60 @@ language sql stable security definer set search_path = '' as $$
               then (p.attrs -> 'golf' ->> 'index')::double precision end
     from public.players p where p.id = p_player
 $$;
+
+-- Guarda en la tarjeta (quien llama ya la bloqueó y revisó el permiso) los hoyos que manda:
+-- [{i, s, p, u}] como en golf_save_hole_scores; solo cambia esos hoyos. Con algún golpe o «recogió» queda
+-- scored_at (la primera vez; no se borra). Devuelve cuántos hoyos guardó. Si algo no sirve: 'invalido'.
+create function private.golf_write_holes(p_card uuid, p_holes jsonb, p_n integer) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  c public.golf_cards;
+  h jsonb;
+  i integer;
+  s integer;
+  p integer;
+  u boolean;
+  v_strokes smallint[];
+  v_putts smallint[];
+  v_picked boolean[];
+  v_scored boolean := false;
+  v_count integer := 0;
+begin
+  select * into c from public.golf_cards k where k.id = p_card;
+  if c.id is null or jsonb_typeof(p_holes) is distinct from 'array' or jsonb_array_length(p_holes) > p_n then
+    perform private.fail('invalido');
+  end if;
+  v_strokes := c.strokes;
+  v_putts := c.putts;
+  v_picked := c.picked_up;
+  for h in select value from jsonb_array_elements(p_holes) loop
+    if jsonb_typeof(h) <> 'object' then
+      perform private.fail('invalido');
+    end if;
+    i := private.golf_int(h -> 'i', 0, p_n - 1) + 1;
+    s := case when jsonb_typeof(h -> 's') is distinct from 'null' and h ? 's' then private.golf_int(h -> 's', 1, 20) end;
+    p := case when jsonb_typeof(h -> 'p') is distinct from 'null' and h ? 'p' then private.golf_int(h -> 'p', 0, 10) end;
+    if h ? 'u' and jsonb_typeof(h -> 'u') not in ('boolean', 'null') then
+      perform private.fail('invalido');
+    end if;
+    u := coalesce((h ->> 'u')::boolean, false);
+    if (u and (s is not null or p is not null)) or (p is not null and s is not null and p >= s) then
+      perform private.fail('invalido');
+    end if;
+    v_strokes[i] := s;
+    v_putts[i] := p;
+    v_picked[i] := u;
+    v_scored := v_scored or s is not null or u;
+    v_count := v_count + 1;
+  end loop;
+  update public.golf_cards k set
+    strokes = v_strokes,
+    putts = v_putts,
+    picked_up = v_picked,
+    scored_at = coalesce(k.scored_at, case when v_scored or private.golf_started(v_strokes, v_picked) then now() end)
+  where k.id = p_card;
+  return v_count;
+end $$;
 
 -- =====================================================================
 -- Triggers (valen para todos, también service_role)
@@ -879,7 +939,8 @@ begin
   where r.event_id = p_event
   returning * into v;
   if v_copy is not null or p_patch ? 'nine' then
-    -- Campo u hoyos nuevos: tarjetas vacías del tamaño nuevo y, si su salida ya no existe, la primera.
+    -- Campo u hoyos nuevos: tarjetas vacías del tamaño nuevo (como recién inscritas, también scored_at) y, si
+    -- su salida ya no existe, la primera.
     n := private.golf_round_holes(v.course, v.nine);
     update public.golf_cards c set
       tee_id = case when exists (select 1 from jsonb_array_elements(v.course -> 'tees') x where x ->> 'id' = c.tee_id)
@@ -888,7 +949,7 @@ begin
       putts = array_fill(null::smallint, array[n]),
       picked_up = array_fill(false, array[n]),
       start_hole = private.golf_first_hole(v.course, v.nine),
-      status = 'abierta', signed_at = null, signed_by = null
+      status = 'abierta', signed_at = null, signed_by = null, scored_at = null
     where c.event_id = p_event;
   end if;
   perform private.golf_refresh_hcp(p_event);
@@ -916,7 +977,8 @@ end $$;
 
 -- Inscribe al jugador (p_player null = el mío; otro: solo el admin) con su salida y su Index, que queda
 -- congelado en la tarjeta. p_tee null = la primera salida del campo; p_index null = el de su perfil.
--- Si ya estaba: cambia la salida o el Index (el jugador, solo antes de anotar; el admin, siempre).
+-- Si ya estaba: cambia la salida o el Index (el jugador, solo si nunca se anotó nada en su tarjeta, aunque
+-- después se haya vaciado: scored_at; el admin, siempre).
 create function public.golf_register(p_event uuid, p_player uuid default null, p_tee text default null, p_index double precision default null)
 returns uuid
 language plpgsql security definer set search_path = '' as $$
@@ -966,7 +1028,8 @@ begin
             array_fill(null::smallint, array[n]), array_fill(null::smallint, array[n]), array_fill(false, array[n]))
     returning id into v_id;
   else
-    if not v_admin and (v_card.status = 'firmada' or private.golf_started(v_card.strokes, v_card.picked_up)) then
+    if not v_admin and (v_card.status = 'firmada' or v_card.scored_at is not null
+                        or private.golf_started(v_card.strokes, v_card.picked_up)) then
       perform private.fail('cerrado');
     end if;
     update public.golf_cards set
@@ -1012,7 +1075,7 @@ begin
   return v_count;
 end $$;
 
--- Saca la tarjeta: el jugador la suya (sin anotar nada todavía) o el admin.
+-- Saca la tarjeta: el jugador la suya (si nunca se anotó nada en ella: scored_at) o el admin.
 create function public.golf_unregister(p_card uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1020,7 +1083,7 @@ declare
   v_admin boolean;
 begin
   perform private.require_uid();
-  select * into c from public.golf_cards x where x.id = p_card;
+  select * into c from public.golf_cards x where x.id = p_card for update;
   if c.id is null then
     perform private.fail('no_existe');
   end if;
@@ -1031,7 +1094,7 @@ begin
   if (select r.status from public.golf_rounds r where r.event_id = c.event_id) <> 'abierta' then
     perform private.fail('cerrado');
   end if;
-  if not v_admin and (c.status = 'firmada' or private.golf_started(c.strokes, c.picked_up)) then
+  if not v_admin and (c.status = 'firmada' or c.scored_at is not null or private.golf_started(c.strokes, c.picked_up)) then
     perform private.fail('cerrado');
   end if;
   delete from public.golf_cards where id = p_card;
@@ -1086,6 +1149,7 @@ end $$;
 -- u = recogió (entonces s y p van null). Solo cambia los hoyos que manda.
 -- Quién: admin o anotador de la liga (cualquier tarjeta); un inscrito, la suya y las de su mismo grupo.
 -- Una tarjeta firmada solo la cambia el admin. Ronda cerrada: 'cerrado'. Devuelve cuántos hoyos guardó.
+-- Todo o nada: la app manda una llamada por tarjeta (una tarjeta rechazada no frena las demás).
 create function public.golf_save_hole_scores(p_op_id uuid, p_event uuid, p_cards jsonb) returns integer
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1096,15 +1160,7 @@ declare
   v_mine public.golf_cards;
   c public.golf_cards;
   x jsonb;
-  h jsonb;
   n integer;
-  i integer;
-  s integer;
-  p integer;
-  u boolean;
-  v_strokes smallint[];
-  v_putts smallint[];
-  v_picked boolean[];
   v_count integer := 0;
 begin
   perform private.require_uid();
@@ -1145,43 +1201,23 @@ begin
     if c.status = 'firmada' and not v_admin then
       perform private.fail('cerrado');
     end if;
-    if jsonb_typeof(x -> 'holes') is distinct from 'array' or jsonb_array_length(x -> 'holes') > n then
-      perform private.fail('invalido');
-    end if;
-    v_strokes := c.strokes;
-    v_putts := c.putts;
-    v_picked := c.picked_up;
-    for h in select value from jsonb_array_elements(x -> 'holes') loop
-      if jsonb_typeof(h) <> 'object' then
-        perform private.fail('invalido');
-      end if;
-      i := private.golf_int(h -> 'i', 0, n - 1) + 1;
-      s := case when jsonb_typeof(h -> 's') is distinct from 'null' and h ? 's' then private.golf_int(h -> 's', 1, 20) end;
-      p := case when jsonb_typeof(h -> 'p') is distinct from 'null' and h ? 'p' then private.golf_int(h -> 'p', 0, 10) end;
-      if h ? 'u' and jsonb_typeof(h -> 'u') not in ('boolean', 'null') then
-        perform private.fail('invalido');
-      end if;
-      u := coalesce((h ->> 'u')::boolean, false);
-      if (u and (s is not null or p is not null)) or (p is not null and s is not null and p >= s) then
-        perform private.fail('invalido');
-      end if;
-      v_strokes[i] := s;
-      v_putts[i] := p;
-      v_picked[i] := u;
-      v_count := v_count + 1;
-    end loop;
-    update public.golf_cards set strokes = v_strokes, putts = v_putts, picked_up = v_picked where id = c.id;
+    v_count := v_count + private.golf_write_holes(c.id, x -> 'holes', n);
   end loop;
   perform private.op_end(p_op_id, to_jsonb(v_count));
   return v_count;
 end $$;
 
 -- Firma la tarjeta (completa: cada hoyo con golpes o «recogió»): el jugador o el admin.
--- p_signed = false la vuelve a abrir (solo el admin).
-create function public.golf_sign_card(p_card uuid, p_signed boolean default true, p_op_id uuid default null) returns void
+-- p_holes (opcional): los hoyos tal como los revisó quien firma, [{i, s, p, u}] como en golf_save_hole_scores.
+-- Se guardan justo antes de firmar (si la tarjeta todavía no está firmada), así la firma no depende de que
+-- los hoyos lleguen antes por la cola del teléfono.
+-- p_signed = false la vuelve a abrir (solo el admin; p_holes no se usa).
+create function public.golf_sign_card(p_card uuid, p_signed boolean default true, p_op_id uuid default null, p_holes jsonb default null)
+returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   c public.golf_cards;
+  v_round public.golf_rounds;
   v_admin boolean;
   v_own boolean;
 begin
@@ -1202,11 +1238,16 @@ begin
   elsif not v_admin then
     perform private.deny();
   end if;
-  if (select r.status from public.golf_rounds r where r.event_id = c.event_id) <> 'abierta' then
+  select * into v_round from public.golf_rounds r where r.event_id = c.event_id;
+  if v_round.status <> 'abierta' then
     perform private.fail('cerrado');
   end if;
   if coalesce(p_signed, true) then
     if c.status <> 'firmada' then
+      if p_holes is not null and jsonb_typeof(p_holes) <> 'null' then
+        perform private.golf_write_holes(c.id, p_holes, private.golf_round_holes(v_round.course, v_round.nine));
+        select * into c from public.golf_cards x where x.id = p_card;
+      end if;
       if exists (select 1 from generate_series(1, cardinality(c.strokes)) i where c.strokes[i] is null and not c.picked_up[i]) then
         perform private.fail('invalido');
       end if;

@@ -70,6 +70,7 @@ const card = (id: string, playerId: string, played: number, extra: Partial<GolfC
   pickedUp: DEMO_PARS.map(() => false),
   signed: false,
   signedAt: null,
+  scoredAt: null,
   dq: false,
   ...extra,
 });
@@ -188,6 +189,16 @@ describe('pantallas del golf', () => {
     const out = text(render(h(tab.Component), `/l/${lid}/admin?tab=campos`, 'admin'));
     expect(out).toContain(DEMO_COURSE.name);
     expect(out).toContain('Formato de la liga');
+  });
+});
+
+describe('colores del golf', () => {
+  it('eagle: el texto sobre el dorado sigue el tema, no blanco fijo (en oscuro el dorado es claro)', async () => {
+    const { HoleScore } = await import('./bits');
+    const html = renderToString(h(HoleScore, { strokes: 2, par: 4 }));
+    expect(html).toContain('bg-gold');
+    expect(html).not.toContain('text-white');
+    expect(html).toContain('var(--on-gold,#0d0f15)');
   });
 });
 

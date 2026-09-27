@@ -4,10 +4,13 @@ import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { AppShell } from '../components/Shell';
 import { Avatar } from '../components/Avatar';
-import { GlobalStats } from '../components/GlobalStats';
+import { ProfileStats } from '../components/GlobalStats';
 import { Card, Empty, Loading, StatsSkeleton } from '../components/ui';
 
-/** Perfil global: tus números sumando todas tus ligas y torneos (cada liga tiene además su propio perfil). */
+/**
+ * Perfil global: tus números del boliche sumando todas sus ligas y torneos, y tus ligas de los otros deportes
+ * (cada liga tiene además su propio perfil, con los números de su deporte).
+ */
 export default function ProfilePage() {
   const auth = useAuth();
   const memberships = useMyMemberships(auth.user?.uid);
@@ -51,13 +54,14 @@ export default function ProfilePage() {
           </Link>
         </Card>
 
-        <section className="flex flex-col gap-3">
-          <div>
+        {memberships.loading || leagues.loading ? (
+          <section className="flex flex-col gap-3">
             <h2 className="text-lg font-bold tracking-tight">Mis estadísticas</h2>
-            <p className="text-sm text-muted">Todas tus ligas y torneos juntos. Solo cuentan los juegos que ya cuentan en cada liga.</p>
-          </div>
-          {memberships.loading || leagues.loading ? <StatsSkeleton /> : <GlobalStats memberships={memberships.data} leagues={leagues.data} />}
-        </section>
+            <StatsSkeleton />
+          </section>
+        ) : (
+          <ProfileStats memberships={memberships.data} leagues={leagues.data} />
+        )}
       </div>
     </AppShell>
   );

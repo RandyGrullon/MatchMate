@@ -40,6 +40,11 @@ export interface BoxMonth {
   closed: boolean;
   /** Quién subió y quién bajó al cerrar el mes. */
   moves: BoxMove[];
+  /**
+   * Mes viejo archivado por la base (save_box_month) para que events.config no pase de su tope: ya no guarda sus
+   * cajas ni quién subió y quién bajó.
+   */
+  archived?: boolean;
 }
 
 export interface BoxConfig {
@@ -99,6 +104,7 @@ export function parseBoxConfig(raw: unknown): BoxConfig {
     boxes: (Array.isArray(m.boxes) ? m.boxes : []).map((b) => strList(b, 12)).filter((b) => b.length > 0),
     closed: m.closed === true,
     moves: (Array.isArray(m.moves) ? m.moves : []).map(parseMove).filter((x): x is BoxMove => !!x),
+    ...(m.archived === true ? { archived: true } : {}),
   }));
   return {
     v: 1,

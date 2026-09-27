@@ -143,6 +143,14 @@ export function textOn(hex: string): '#000000' | '#ffffff' {
   return lum > 0.4 ? '#000000' : '#ffffff';
 }
 
+/**
+ * Letra sobre el verde de estado (--ok) sólido: nunca blanco fijo, porque en oscuro el verde (y el ámbar) se aclaran.
+ * Usa --on-ok si el tema la define; si no, el fondo de la página (casi blanco en claro y con sol, casi negro en
+ * oscuro), como la letra del lado B del modo cancha (--court-b-fg). En clases de Tailwind:
+ * `text-[color:var(--on-ok,var(--bg))]` (y `--on-warn` sobre el ámbar).
+ */
+export const ON_OK = 'var(--on-ok, var(--bg))';
+
 /** Dorsal para mostrar: «#7» o «–». */
 export const jerseyText = (n: number | null | undefined) => (n == null ? '–' : `#${n}`);
 

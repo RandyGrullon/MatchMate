@@ -32,6 +32,8 @@ export interface Publisher {
   /** Deja de publicar (otro anotador tomó el control, el partido se cerró). */
   pause(): void;
   resume(): void;
+  /** Se cambió de lista (se tomó la del servidor): `sentSeq` pasa a ser el que el servidor ya tiene de la nueva. */
+  reset(sentSeq: number): void;
   dispose(): void;
   /** Última `seq` mandada. */
   readonly sentSeq: number;
@@ -108,6 +110,10 @@ export function createPublisher<P>(o: PublisherOptions<P>): Publisher {
     resume() {
       if (disposed) return;
       paused = false;
+    },
+    reset(seq) {
+      clear();
+      sentSeq = seq;
     },
     dispose() {
       disposed = true;

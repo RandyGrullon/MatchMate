@@ -277,7 +277,7 @@ describe('publicar el marcador', () => {
   it('otro teléfono con otra cuenta: no pisa, se entera de quién anota; publicación vieja: no pisa', async () => {
     const x = await padel();
     const id = await oneMatch(x);
-    await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 5, p_state: STATE, p_score: SCORE });
+    await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 5, p_state: { ...STATE, seq: 5 }, p_score: SCORE });
     // Nadie tenía el turno: publicar lo toma (anotó sin señal y luego llegó).
     expect((await matchRow(id)).scorer_id).toBe(w.u.luis);
     expect(await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 9, p_state: {}, p_score: null })).toMatchObject({
@@ -290,7 +290,7 @@ describe('publicar el marcador', () => {
       reason: 'stale',
       seq: 5,
     });
-    expect(await matchRow(id)).toMatchObject({ seq: 5, state: STATE });
+    expect(await matchRow(id)).toMatchObject({ seq: 5, state: { ...STATE, seq: 5 } });
     await fails(db.rpc(mia, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 6, p_state: {}, p_score: null }), DENIED);
     await fails(db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 6, p_state: [1], p_score: null }), 'invalido');
     await fails(db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 6, p_state: {}, p_score: { sides: [1, -1] } }), 'invalido');
@@ -301,6 +301,119 @@ describe('publicar el marcador', () => {
       ok: false,
       reason: 'cerrado',
       status: 'confirmed',
+    });
+  });
+
+  it('seq con tope y el mismo que el del estado: nadie deja a los demás siempre «viejos»', async () => {
+    const x = await padel();
+    const id = await oneMatch(x);
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    const pub = (who: string, seq: number, state: Record<string, unknown>) =>
+      db.rpc(who, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: seq, p_state: state, p_score: SCORE });
+    await fails(pub(w.u.luis, 2147483647, { v: 1, seq: 2147483647 }), 'invalido');
+    await fails(pub(w.u.luis, 10001, { v: 1, seq: 10001 }), 'invalido');
+    // El seq del estado (lo que toma el que sigue) tiene que ser el que se publica.
+    await fails(pub(w.u.luis, 3, { v: 1, seq: 2147483647 }), 'invalido');
+    await fails(pub(w.u.luis, 3, { v: 1, seq: '3' }), 'invalido');
+    expect(await matchRow(id)).toMatchObject({ seq: 0, status: 'scheduled' });
+    expect(await pub(w.u.luis, 3, { v: 1, seq: 3 })).toMatchObject({ ok: true, seq: 3 });
+    expect(await pub(w.u.luis, 10003, { v: 1, seq: 10003 })).toMatchObject({ ok: true, seq: 10003 });
+    // Terminar y suspender: el mismo tope.
+    await fails(db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1, p_seq: 2147483647 }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1, p_seq: 10004, p_state: { v: 1, seq: 9 } }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'suspend_match', { p_match: id, p_seq: 2147483647 }), 'invalido');
+    // Suelta el turno: quien sigue publica desde el número del partido (no queda bloqueado).
+    await db.rpc(w.u.luis, 'release_scorer', { p_match: id });
+    expect(await db.rpc(w.u.otra, 'claim_scorer', { p_match: id })).toMatchObject({ ok: true, seq: 10003, state: { seq: 10003 } });
+    expect(await pub(w.u.otra, 10004, { v: 1, seq: 10004 })).toMatchObject({ ok: true, seq: 10004 });
+  });
+
+  it('suspendido: publicar lo mismo que ya estaba solo renueva el turno (no lo pone en vivo); algo nuevo sí', async () => {
+    const x = await padel();
+    const id = await oneMatch(x);
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 4, p_state: { ...STATE, seq: 4 }, p_score: SCORE });
+    await db.rpc(w.u.luis, 'suspend_match', { p_match: id, p_seq: 4, p_state: { ...STATE, seq: 4 }, p_score: SCORE });
+    // Otra abre la cancha (toma el turno) y sale sin anotar: su teléfono manda lo que ya había.
+    expect(await db.rpc(w.u.otra, 'claim_scorer', { p_match: id })).toMatchObject({ ok: true, status: 'suspended', seq: 4 });
+    expect(
+      await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 4, p_state: { ...STATE, seq: 4 }, p_score: SCORE }),
+    ).toMatchObject({ ok: true, status: 'suspended', seq: 4 });
+    expect(await matchRow(id)).toMatchObject({ status: 'suspended', seq: 4 });
+    // Con una jugada nueva, sí se retoma.
+    expect(
+      await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 5, p_state: { ...STATE, seq: 5 }, p_score: SCORE }),
+    ).toMatchObject({ ok: true, status: 'live', seq: 5 });
+  });
+
+  it('suspendido por el admin: lo que llega de la cola sin haber pedido el turno no lo toma ni lo pone en vivo', async () => {
+    const x = await padel();
+    const id = await oneMatch(x);
+    const st = (seq: number) => ({ v: 1, seq, config: {}, base: null, log: [], at: 0, origin: 'tel-luis' });
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 3, p_state: st(3), p_score: SCORE });
+    // Lluvia: el admin toma el control y suspende (el turno queda libre).
+    await db.rpc(w.u.sofi, 'claim_scorer', { p_match: id, p_force: true });
+    await db.rpc(w.u.sofi, 'suspend_match', { p_match: id, p_note: 'Lluvia' });
+    // La siguiente publicación del teléfono de luis (no se enteró), y la de otro teléfono sin señal: no.
+    expect(await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 4, p_state: st(4), p_score: SCORE })).toMatchObject({
+      ok: false,
+      reason: 'lease',
+      status: 'suspended',
+      scorer_id: null,
+    });
+    expect(await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 1, p_state: { v: 1, seq: 1 }, p_score: null })).toMatchObject({
+      ok: false,
+      reason: 'lease',
+    });
+    expect(await matchRow(id)).toMatchObject({ status: 'suspended', scorer_id: null, seq: 3, state: st(3) });
+    // Retomar es pedir el turno: después sí.
+    expect(await db.rpc(w.u.luis, 'claim_scorer', { p_match: id })).toMatchObject({ ok: true, seq: 3 });
+    expect(await db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 4, p_state: st(4), p_score: SCORE })).toMatchObject({
+      ok: true,
+      status: 'live',
+    });
+  });
+
+  it('dos teléfonos de la misma cuenta: la lista vieja que llega de la cola no pisa la que se siguió en el otro', async () => {
+    const x = await padel();
+    const id = await oneMatch(x);
+    const st = (origin: string, seq: number, parent?: { origin: string; seq: number }) => ({
+      v: 1,
+      seq,
+      config: {},
+      base: null,
+      log: [],
+      at: 0,
+      origin,
+      ...(parent ? { parent } : {}),
+    });
+    const pub = (seq: number, state: Record<string, unknown>) =>
+      db.rpc(w.u.luis, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: seq, p_state: state, p_score: SCORE });
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    expect(await pub(8, st('A', 8))).toMatchObject({ ok: true });
+    // El teléfono B (misma cuenta) pide el turno, sigue desde lo de A (8) y publica.
+    expect(await db.rpc(w.u.luis, 'claim_scorer', { p_match: id })).toMatchObject({ ok: true, seq: 8, state: { origin: 'A' } });
+    expect(await pub(9, st('B', 9, { origin: 'A', seq: 8 }))).toMatchObject({ ok: true });
+    expect(await pub(15, st('B', 15, { origin: 'A', seq: 8 }))).toMatchObject({ ok: true });
+    // A vuelve con señal: lo que anotó sin señal (30) llega tarde. Aunque el número es más alto, es otra lista.
+    expect(await pub(30, st('A', 30))).toMatchObject({ ok: false, reason: 'stale', seq: 15 });
+    // Un tercero que tomó una lista vieja tampoco.
+    expect(await pub(16, st('C', 16, { origin: 'A', seq: 8 }))).toMatchObject({ ok: false, reason: 'stale' });
+    expect(await pub(16, st('C', 16, { origin: 'B', seq: 14 }))).toMatchObject({ ok: false, reason: 'stale' });
+    expect((await matchRow(id)).state).toMatchObject({ origin: 'B', seq: 15 });
+    // Terminar o suspender desde la lista vieja tampoco la pisa.
+    expect(await db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1, p_seq: 30, p_state: st('A', 30) })).toMatchObject({
+      ok: false,
+      reason: 'stale',
+    });
+    await db.rpc(w.u.luis, 'suspend_match', { p_match: id, p_seq: 30, p_state: st('A', 30), p_score: { text: 'viejo' } });
+    expect(await matchRow(id)).toMatchObject({ status: 'suspended', seq: 15, state: { origin: 'B', seq: 15 }, score: SCORE });
+    // B lo retoma y termina.
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    expect(await db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1, p_seq: 16, p_state: st('B', 16, { origin: 'A', seq: 8 }) })).toEqual({
+      ok: true,
+      status: 'finished',
     });
   });
 });
@@ -383,7 +496,7 @@ describe('resultado: proponer, confirmar, disputar', () => {
     await fails(db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: null, p_winner: 1 }), 'invalido');
     await fails(db.rpc(mia, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1 }), DENIED);
     await db.rpc(w.u.otra, 'claim_scorer', { p_match: id });
-    await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 8, p_state: STATE, p_score: SCORE });
+    await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 8, p_state: { ...STATE, seq: 8 }, p_score: SCORE });
     // Otra anota en vivo: luis no lo cierra desde su teléfono; el admin sí.
     await fails(db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1 }), DENIED);
     // Un final viejo del mismo anotador (de otro teléfono): no pisa.
@@ -498,7 +611,7 @@ describe('W.O., aplazado, suspendido, anulado y borrado', () => {
     // Otro jugador lo retoma: recibe el estado para seguir.
     const claim = await db.rpc<Record<string, unknown>>(w.u.otra, 'claim_scorer', { p_match: id });
     expect(claim).toMatchObject({ ok: true, seq: 4, state: { ...STATE, seq: 4 }, status: 'suspended' });
-    await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 5, p_state: STATE, p_score: SCORE });
+    await db.rpc(w.u.otra, 'publish_match', { p_op_id: randomUUID(), p_match: id, p_seq: 5, p_state: { ...STATE, seq: 5 }, p_score: SCORE });
     expect((await matchRow(id)).status).toBe('live');
   });
 
@@ -548,6 +661,66 @@ describe('datos del partido y jugadores de cada lado', () => {
     expect((await db.admin<{ team_id: string }>('select team_id from public.match_sides where match_id = $1 and side = 1', [id]))[0].team_id).toBe(x.pairA);
     // Ana ya no está en la alineación, pero sigue en la pareja: sigue siendo de su lado.
     await db.rpc(w.u.ana, 'claim_scorer', { p_match: id });
+  });
+
+  it('un jugador no pasa a un rival a su lado ni le vacía el lado; con el resultado propuesto, la alineación no se toca', async () => {
+    const x = await padel();
+    // Americano: el lado es solo quién juega (sin pareja de temporada).
+    const [id] = await db.rpc<string[]>(w.u.sofi, 'create_matches', {
+      p_league: x.lid,
+      p_matches: [
+        {
+          sides: [
+            { side: 1, players: [{ player_id: x.p.luis }, { player_id: x.p.ana }] },
+            { side: 2, players: [{ player_id: x.p.otra }, { player_id: x.p.nuevo }] },
+          ],
+        },
+      ],
+    });
+    const lineup = async (side: number) =>
+      (await db.admin<{ player_id: string }>('select player_id from public.match_players where match_id = $1 and side = $2', [id, side])).map((r) => r.player_id).sort();
+    const rivals = [x.p.otra, x.p.nuevo].sort();
+    const withOtra = [{ player_id: x.p.luis }, { player_id: x.p.ana }, { player_id: x.p.otra }];
+    // Pasar a otra a su lado (le quitaría su lado para confirmar o reclamar): no.
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: withOtra }), 'invalido');
+    // Con el turno: del lado rival no quita ni agrega (ni lo vacía); sí cambia posición, dorsal o suplente.
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [] }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: x.p.otra }] }), 'invalido');
+    await fails(
+      db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: x.p.otra }, { player_id: x.p.nuevo }, { player_id: x.p.pedro }] }),
+      'invalido',
+    );
+    await db.rpc(w.u.luis, 'set_match_players', {
+      p_match: id,
+      p_side: 2,
+      p_players: [{ player_id: x.p.otra, position: 'drive' }, { player_id: x.p.nuevo, position: 'reves' }],
+    });
+    expect(await lineup(2)).toEqual(rivals);
+    expect(await db.count('public.match_players', `match_id = $1 and position = 'reves'`, [id])).toBe(1);
+    // Propone el resultado: ya no cambia nada (ni su propio lado).
+    await db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: SCORE, p_winner: 1 });
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: withOtra }), 'cerrado');
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: x.p.luis }] }), 'cerrado');
+    expect(await lineup(2)).toEqual(rivals);
+    // El rival sigue teniendo su lado: reclama. En disputa, tampoco la cambia él.
+    await db.rpc(w.u.otra, 'dispute_result', { p_match: id, p_note: 'No fue así' });
+    await fails(db.rpc(w.u.otra, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: x.p.otra }] }), 'cerrado');
+    // El admin sí la arregla (también pasa a alguien de lado).
+    await db.rpc(w.u.sofi, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: x.p.luis }, { player_id: x.p.nuevo }] });
+    expect(await lineup(1)).toEqual([x.p.luis, x.p.nuevo].sort());
+  });
+
+  it('con parejas: tampoco entra a su lado alguien de la pareja rival (aunque no esté en la alineación)', async () => {
+    const x = await padel();
+    const [id] = await db.rpc<string[]>(w.u.sofi, 'create_matches', {
+      p_league: x.lid,
+      p_matches: [{ sides: [{ side: 1, team_id: x.pairA }, { side: 2, team_id: x.pairB, players: [{ player_id: x.p.otra }] }] }],
+    });
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: x.p.luis }, { player_id: x.p.nuevo }] }), 'invalido');
+    await db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: x.p.luis }, { player_id: x.p.pedro, sub: true }] });
+    // nuevo sigue siendo del lado 2.
+    expect(await db.rpc(w.u.nuevo, 'claim_scorer', { p_match: id })).toMatchObject({ ok: true });
   });
 
   it('mis partidos en todas mis ligas (por jugador o por pareja)', async () => {
@@ -633,9 +806,12 @@ describe('equipos y parejas de temporada', () => {
     ]);
     await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: h.p.ana, p_role: 'captain' }), DENIED);
     await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t2, p_player: h.p.nuevo, p_jersey: 5 }), DENIED);
-    // Dorsal repetido: no.
-    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: h.p.nuevo, p_jersey: 7 }), '23505');
-    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: h.p.nuevo, p_jersey: 100 }), INVALID);
+    // Un jugador de la liga sin equipo entra como jugador. Dorsal repetido: no.
+    const libre = await player(db, h.lid, 'Libre');
+    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: libre, p_jersey: 7 }), '23505');
+    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: libre, p_jersey: 100 }), INVALID);
+    await db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: libre, p_jersey: 8 });
+    expect((await db.admin<{ role: string }>('select role from public.team_players where team_id = $1 and player_id = $2', [h.t1, libre]))[0].role).toBe('player');
     // Jugador de otra liga: no.
     await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: w.p.pedro }), INVALID);
     // El admin sí cambia roles.
@@ -691,6 +867,48 @@ describe('equipos y parejas de temporada', () => {
     // Borrar el equipo deja el nombre en el partido.
     await db.rpc(w.u.otro, 'delete_season_team', { p_team: h.t1 });
     expect(await db.admin('select team_id, label from public.match_sides where match_id = $1 and side = 1', [id])).toEqual([{ team_id: null, label: 'Tigres' }]);
+  });
+
+  it('el capitán no suma a su plantilla a un jugador de otro equipo (el admin sí)', async () => {
+    const h = await hoops();
+    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: h.p.nuevo }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'set_roster', { p_team: h.t1, p_players: [{ player_id: h.p.ana }, { player_id: h.p.nuevo }] }), 'invalido');
+    await fails(db.rpc(w.u.otra, 'set_roster', { p_team: h.t2, p_players: [{ player_id: h.p.nuevo }, { player_id: h.p.luis }] }), 'invalido');
+    expect(await db.admin('select team_id from public.team_players where player_id = $1', [h.p.nuevo])).toEqual([{ team_id: h.t2 }]);
+    // Sus partidos siguen igual: nuevo marca su convocatoria con los Leones.
+    const [id] = await db.rpc<string[]>(w.u.otro, 'create_matches', {
+      p_league: h.lid,
+      p_matches: [{ sides: [{ side: 1, team_id: h.t1 }, { side: 2, team_id: h.t2 }] }],
+    });
+    await db.rpc(w.u.nuevo, 'set_match_rsvp', { p_match: id, p_status: 'yes' });
+    // Su plantilla sí la toca: dorsales de los que ya están y quien no tiene equipo.
+    const libre = await player(db, h.lid, 'Libre');
+    await db.rpc(w.u.luis, 'set_roster', { p_team: h.t1, p_players: [{ player_id: h.p.ana, jersey: 5 }, { player_id: libre }] });
+    expect(await db.count('public.team_players', 'team_id = $1', [h.t1])).toBe(3);
+    // El admin lo puede poner en los dos (decisión suya).
+    await db.rpc(w.u.otro, 'set_team_player', { p_team: h.t1, p_player: h.p.nuevo });
+    expect(await db.count('public.team_players', 'player_id = $1', [h.p.nuevo])).toBe(2);
+  });
+
+  it('equipos: el capitán no pone en su lado a alguien del otro equipo; la mesa anota los presentes de los dos lados', async () => {
+    const h = await hoops();
+    const [id] = await db.rpc<string[]>(w.u.otro, 'create_matches', {
+      p_league: h.lid,
+      p_matches: [{ sides: [{ side: 1, team_id: h.t1 }, { side: 2, team_id: h.t2 }] }],
+    });
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: h.p.luis }, { player_id: h.p.nuevo }] }), 'invalido');
+    // Con el turno (mesa): los presentes del otro lado, también quitar y agregar.
+    await db.rpc(w.u.luis, 'claim_scorer', { p_match: id });
+    await db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: h.p.otra }, { player_id: h.p.nuevo }] });
+    await db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: h.p.otra }] });
+    // Pero no pasa a alguien de los Tigres al lado de los Leones.
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [{ player_id: h.p.ana }] }), 'invalido');
+    await db.rpc(w.u.luis, 'finish_match', { p_match: id, p_score: { text: '60-50', sides: [60, 50] }, p_winner: 1 });
+    // Propuesto: el turno se soltó (el lado rival ya no es suyo) y su lado tampoco cambia.
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 2, p_players: [] }), DENIED);
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: id, p_side: 1, p_players: [{ player_id: h.p.luis }] }), 'cerrado');
+    expect(await db.count('public.match_players', 'match_id = $1 and side = 2', [id])).toBe(1);
+    await db.rpc(w.u.otra, 'dispute_result', { p_match: id });
   });
 });
 

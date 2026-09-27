@@ -65,6 +65,7 @@ export default function App() {
                     <Route path="/perfil" element={<ProfilePage />} />
                     <Route path="/cuenta" element={<AccountPage />} />
                     <Route path="/superadmin" element={<SuperAdminPage />} />
+                    {/* La ruta fija gana a la de sección: /superadmin/marca sigue siendo la página del logo. */}
                     <Route
                       path="/superadmin/marca"
                       element={
@@ -73,6 +74,7 @@ export default function App() {
                         </SuperOnly>
                       }
                     />
+                    <Route path="/superadmin/:section" element={<SuperAdminPage />} />
                     <Route path="/l/:lid" element={<LeagueShell />}>
                       {/* Cada ruta muestra la pantalla del deporte de la liga (el boliche, las de siempre). */}
                       <Route index element={<SportRoute slot="Home" bowling={<LeagueHome />} />} />

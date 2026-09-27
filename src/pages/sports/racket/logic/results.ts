@@ -17,6 +17,7 @@ import {
 } from '../../../../sports/formats';
 import { matchTotals, resolveRules, stateFromScore, type RacketRules, type RacketSport } from '../../../../sports/racket';
 import type { MatchResult, Side, StandingRow } from '../../../../sports/types';
+import { localParts } from './time';
 
 /** Partidos a sets (liga, torneo, sueltos): formato '' o 'sets'. Los de puntos son del americano/mexicano. */
 export const isSetsMatch = (m: Pick<Match, 'format'>) => m.format === '' || m.format === 'sets';
@@ -125,6 +126,8 @@ export function pairStandings(
 
 /** Qué tan grande es cada columna de la tabla (sets o juegos) según el deporte. */
 export const forLabel = (sport: RacketSport) => (sport === 'pickleball' ? 'Puntos' : 'Juegos');
+/** Lo que se cuenta como «set» en las tablas: en pickleball son juegos. */
+export const setsLabel = (sport: RacketSport) => (sport === 'pickleball' ? 'Juegos' : 'Sets');
 
 // ---------------------------------------------------------------------------------------------------------
 // Jugadores
@@ -273,6 +276,25 @@ export const winPct = (won: number, played: number) => (played ? Math.round((won
 export const inSeason = (season: { seasonStart?: string; seasonEnd?: string }, day: string | null) =>
   !day || ((!season.seasonStart || day >= season.seasonStart) && (!season.seasonEnd || day <= season.seasonEnd));
 
+/** Formatos que duran meses: cada partido cae en la temporada por su propia fecha. */
+const LONG_EVENTS = new Set(['escalera', 'cajas']);
+
+/**
+ * Día del partido para la temporada ('YYYY-MM-DD' en la zona de la liga). Torneo, liga de parejas y noches: el
+ * día del evento (su tabla no se parte entre dos temporadas). Escalera y liga por cajas, que duran meses: el del
+ * partido (acordado, propuesto o confirmado); el del evento solo si el partido no tiene ninguno. Sin evento: el
+ * del partido.
+ */
+export function seasonDay(
+  m: Pick<Match, 'eventId' | 'scheduledAt' | 'proposedAt' | 'confirmedAt'>,
+  events: ReadonlyMap<string, { date: string; type: string }>,
+  tz?: string | null,
+): string | null {
+  const e = m.eventId ? events.get(m.eventId) : undefined;
+  if (e && !LONG_EVENTS.has(e.type)) return e.date;
+  return localParts(m.scheduledAt ?? m.proposedAt ?? m.confirmedAt, tz)?.date ?? e?.date ?? null;
+}
+
 /**
  * Ranking individual de la temporada con los partidos a sets que cuentan: cada jugador suma lo de su lado
  * (puntos de tabla 3/1/0, sets y juegos). Orden: puntos → ganados → dif. de sets → dif. de juegos → sorteo.
@@ -322,6 +344,8 @@ export function seasonPlayerTable(
   for (const r of rows.values()) {
     r.diff = r.for - r.against;
     r.extra.setsDiff = r.extra.setsFor - r.extra.setsAgainst;
+    // En pickleball los «sets» son juegos: la columna «Jue.» (racketColumns) lee gamesDiff.
+    if (opts.sport === 'pickleball') r.extra.gamesDiff = r.extra.setsDiff;
   }
   return resolveTies(
     [...rows.values()],

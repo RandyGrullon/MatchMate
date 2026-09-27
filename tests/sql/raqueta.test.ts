@@ -287,6 +287,70 @@ describe('liga por cajas', () => {
     await fails(save(ev, 1, month1(c)), INVALID);
   });
 
+  it('la liga dura años: 24 jugadores en 6 cajas, mes tras mes, sin pasarse del tope de events.config', async () => {
+    // Antes, con el tope de 8 KB en events.config, el mes 3 fallaba (23514 events_config_check).
+    const c = await club('tennis');
+    const ids: string[] = Object.values(c.p);
+    for (let i = ids.length; i < 24; i++) ids.push(await player(db, c.lid, `Jugador ${i + 1}`));
+    const ev = await cajas(c);
+    const boxesOf = (list: string[]) => Array.from({ length: 6 }, (_, b) => list.slice(b * 4, b * 4 + 4));
+    const day = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
+    const size = async () => (await db.admin<{ n: number }>('select pg_column_size(config) as n from public.events where id = $1', [ev]))[0].n;
+    let list = ids;
+    let moves: { id: string; from: number; to: number; move: string }[] | null = null;
+    const MONTHS = 120;
+    for (let n = 1; n <= MONTHS; n++) {
+      await save(ev, n, { boxes: boxesOf(list), matches: [] }, { p_label: `Mes ${n}`, p_start: day(2026, 9 + n - 1, 1), p_end: day(2026, 9 + n, 0), p_moves: moves });
+      expect(await size()).toBeLessThan(32768);
+      // Cierre del mes: todos corren 2 lugares (suben, bajan o se quedan en su caja).
+      const next = [...list.slice(2), ...list.slice(0, 2)];
+      moves = next.map((id, i) => {
+        const from = Math.floor(list.indexOf(id) / 4);
+        const to = Math.floor(i / 4);
+        return { id, from, to, move: to < from ? 'sube' : to > from ? 'baja' : 'queda' };
+      });
+      list = next;
+    }
+    const e = await eventRow(ev);
+    expect(e.player_count).toBe(24);
+    const months = (e.config as { months: Record<string, unknown>[]; round: number }).months;
+    expect((e.config as { round: number }).round).toBe(MONTHS);
+    expect(months).toHaveLength(MONTHS);
+    // El mes abierto y el último cerrado, completos.
+    expect(months[MONTHS - 1]).toMatchObject({ n: MONTHS, closed: false });
+    expect(months[MONTHS - 1].boxes).toHaveLength(6);
+    expect(months[MONTHS - 2]).toMatchObject({ n: MONTHS - 1, closed: true });
+    expect(months[MONTHS - 2].boxes).toHaveLength(6);
+    expect(months[MONTHS - 2].moves).toHaveLength(24);
+    // Los cerrados de antes: sin cajas y sin los que se quedaron en su caja (suben 10 y bajan 2 cada mes).
+    for (const m of months.slice(0, MONTHS - 2)) expect(m).not.toHaveProperty('boxes');
+    // Los más viejos, archivados (solo número y nombre); los recientes conservan quién subió y quién bajó.
+    const archived = months.map((m) => m.archived === true);
+    const firstKept = archived.indexOf(false);
+    expect(firstKept).toBeGreaterThan(0);
+    expect(archived.slice(0, firstKept).every(Boolean)).toBe(true);
+    expect(archived.slice(firstKept).some(Boolean)).toBe(false);
+    expect(months[0]).toEqual({ n: 1, label: 'Mes 1', closed: true, archived: true });
+    for (const m of months.slice(firstKept, MONTHS - 2)) {
+      expect(m).toMatchObject({ closed: true, start: expect.any(String) });
+      expect((m.moves as { move: string }[]).map((x) => x.move).sort()).toEqual([...Array(2).fill('baja'), ...Array(10).fill('sube')]);
+    }
+    // Queda casi un año de historia.
+    expect(MONTHS - 2 - firstKept).toBeGreaterThanOrEqual(6);
+    // Rehacer el mes abierto (nadie jugó) sigue sirviendo y no pierde nada.
+    await save(ev, MONTHS, { boxes: boxesOf(list), matches: [] }, { p_label: `Mes ${MONTHS}` });
+    expect(((await eventRow(ev)).config as { months: unknown[] }).months).toHaveLength(MONTHS);
+  });
+
+  it('events.config: hasta 32 KB (lo mismo que revisan los deportes); más, no', async () => {
+    const c = await club('tennis');
+    const liga = await createEvent(c, 'liga', { notes: 'x'.repeat(20000) });
+    expect(((await eventRow(liga)).config as { notes: string }).notes).toHaveLength(20000);
+    await fails(createEvent(c, 'liga', { notes: 'x'.repeat(33000) }), INVALID);
+    // También lo de otros deportes (boliche no tiene trigger propio: lo frena el check de la tabla).
+    await fails(db.admin(`update public.events set config = $2 where id = $1`, [liga, { notes: 'x'.repeat(33000) }]), INVALID);
+  });
+
   it('dobles: cajas de parejas de temporada', async () => {
     const c = await club('pickleball');
     const team = (name: string, a: string, b: string) => db.rpc<string>(w.u.sofi, 'create_season_team', { p_league: c.lid, p_name: name, p_players: [one(a), one(b)] });

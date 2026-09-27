@@ -60,6 +60,8 @@ create table if not exists auth.users (
   is_anonymous boolean not null default false
 );
 create unique index if not exists users_email_key on auth.users (email);
+-- Lo que lee la consola del superadmin (20260927001100_consola.sql) y en Supabase ya existe.
+alter table auth.users add column if not exists last_sign_in_at timestamptz;
 
 -- Como en Supabase: el sub del JWT que PostgREST deja en request.jwt.claims.
 create or replace function auth.uid() returns uuid

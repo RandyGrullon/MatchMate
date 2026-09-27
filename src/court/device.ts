@@ -129,6 +129,8 @@ export function useSunMode(): [boolean, (on: boolean) => void] {
 /**
  * Colores del modo cancha como variables CSS (se ponen en el contenedor): los dos lados y, con sol, todo en
  * blanco y negro puro con letras gruesas. `--court-a` / `--court-b` = fondo de cada lado; `-fg` = su letra.
+ * Con sol se fija también la letra sobre cada color fuerte (`--on-*`): el tema oscuro la pone oscura (para sus
+ * colores claros) y sobre los colores oscuros del sol no se leería.
  */
 export function courtVars(sun: boolean): Record<string, string> {
   if (sun) {
@@ -143,10 +145,13 @@ export function courtVars(sun: boolean): Record<string, string> {
       '--accent-fg': '#ffffff',
       '--accent-soft': '#e6e6e6',
       '--danger': '#b00000',
+      '--on-danger': '#ffffff',
       '--danger-soft': '#ffe5e5',
       '--warn': '#7a3d00',
+      '--on-warn': '#ffffff',
       '--warn-soft': '#fff0cc',
       '--ok': '#005c2a',
+      '--on-ok': '#ffffff',
       '--ok-soft': '#dcf5e6',
       '--court-a': '#000000',
       '--court-a-fg': '#ffffff',

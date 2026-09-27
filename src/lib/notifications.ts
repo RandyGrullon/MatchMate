@@ -1,3 +1,4 @@
+import { leagueSport } from '../sports/registry';
 import { eventLabel, formatDate, formatDateLong, parseDate } from './format';
 import type { LeagueFeed } from './data';
 import type { League } from './types';
@@ -68,9 +69,14 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
       private: league.visibility === 'private',
     };
     const eventsById = new Map(feed.events.map((e) => [e.id, e]));
+    const sport = leagueSport(league);
+    const bowling = sport === 'bowling';
 
     for (const e of feed.events) {
       if (e.date < today) continue;
+      // Los otros deportes tienen sus propios tipos (americano, ronda, encuentro…): de ellos solo se avisa
+      // el torneo; nada de «Práctica» ni de «¿Vas?», que son del boliche.
+      if (!bowling && e.type !== 'torneo') continue;
       const created = ms(e.createdAt, now);
       if (e.type === 'torneo') {
         const isToday = e.date === today;
@@ -79,7 +85,7 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
           ...base,
           id: `torneo:${feed.lid}:${e.id}`,
           kind: isToday ? 'torneo-hoy' : 'torneo',
-          title: isToday ? `¡Hoy es ${eventLabel(e)}!` : `Nuevo torneo: ${eventLabel(e)}`,
+          title: isToday ? `¡Hoy es ${eventLabel(e, sport)}!` : `Nuevo torneo: ${eventLabel(e, sport)}`,
           body: [formatDateLong(e.date), extra && (extra.length > 90 ? `${extra.slice(0, 90)}…` : extra)].filter(Boolean).join(' · '),
           to: `/l/${feed.lid}/e/${e.id}`,
           // El del día sube arriba ese día aunque se haya anunciado antes.
@@ -108,7 +114,7 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
       if (!reviewed || now - reviewed > 30 * DAY) continue;
       const ev = s.eventId ? eventsById.get(s.eventId) : undefined;
       const games = (s.scores ?? []).filter((g) => g != null).join(' · ');
-      const where = ev ? eventLabel(ev) : s.date ? `Práctica ${formatDate(s.date)}` : '';
+      const where = ev ? eventLabel(ev, sport) : s.date ? `Práctica ${formatDate(s.date)}` : '';
       const approved = s.status === 'aprobado';
       out.push({
         ...base,
@@ -144,7 +150,7 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
             : types.has('felicitar')
               ? `${who} te ${many ? 'felicitaron' : 'felicitó'} 🎉`
               : `A ${who} le${many ? 's' : ''} gustó tu juego`,
-        body: ev ? eventLabel(ev) : 'Toca para ver tu juego',
+        body: ev ? eventLabel(ev, sport) : 'Toca para ver tu juego',
         to: postUrl(feed.lid, entryId),
         time: ms(sorted[0].createdAt, now),
       });
@@ -167,7 +173,7 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
         id: `comentario:${feed.lid}:${entryId}`,
         kind: 'comentario',
         title: `${who} ${count > 1 ? 'comentaron' : 'comentó'} tu juego`,
-        body: [`“${text.length > 90 ? `${text.slice(0, 90)}…` : text}”`, ev && eventLabel(ev)].filter(Boolean).join(' · '),
+        body: [`“${text.length > 90 ? `${text.slice(0, 90)}…` : text}”`, ev && eventLabel(ev, sport)].filter(Boolean).join(' · '),
         to: postUrl(feed.lid, entryId),
         time: ms(last.createdAt, now),
       });

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DEMO_COURSE } from '../../sports/golf/demo';
+import { DEMO_COURSE, DEMO_PARS } from '../../sports/golf/demo';
 import { handicapFor } from '../../sports/golf/course';
 import { DEFAULT_MERIT_POINTS } from '../../sports/golf/leaderboard';
 import { currentOutbox } from './client';
@@ -19,7 +19,9 @@ import {
   fetchGolfTournaments,
   golfCompetition,
   golfRules,
+  pendingGolfSign,
   queueGolfScores,
+  queueGolfSign,
   registerGolf,
   saveGolfCourse,
   saveGolfRules,
@@ -31,6 +33,7 @@ import {
 import { createLeague, getInviteCode, joinLeague } from './leagues';
 import { createPlayer } from './players';
 import { flaky, openWorld, type FlakyBackend, type TestWorld } from './testkit';
+import { cardWire, emptyLog, markSent, mergeCard, readLog, sendPending, setHole, unsentPatches, writeLog, type CardWriter } from '../../pages/sports/golf/courtLog';
 
 let w: TestWorld;
 let net: FlakyBackend;
@@ -126,7 +129,7 @@ describe('campos, rondas y tarjetas con la base de verdad', () => {
     expect((await fetchGolfEvent(lid, round)).cards.map((c) => c.groupNo)).toEqual([1, 1]);
   });
 
-  it('la tarjeta del grupo por la cola: sin señal se junta en un solo envío y sale al volver', async () => {
+  it('la tarjeta del grupo por la cola: sin señal se junta en un envío por tarjeta y sale al volver', async () => {
     await w.as('ana@x.com');
     net.offline = true;
     const a = queueGolfScores(lid, round, [
@@ -137,13 +140,16 @@ describe('campos, rondas y tarjetas con la base de verdad', () => {
       { cardId: cards.ana, holes: [0, 1, 2, 3, 4, 5].map((i) => ({ i, s: 5, p: 2, u: false })) },
       { cardId: cards.pedro, holes: [0, 1, 2, 3, 4, 5].map((i) => ({ i, s: i === 5 ? null : 6, p: null, u: i === 5 })) },
     ]);
-    expect(outbox().getSnapshot().pendingCount).toBe(1);
+    // Una pendiente por tarjeta: la segunda de cada tarjeta reemplazó a la primera.
+    expect(outbox().getSnapshot().pendingCount).toBe(2);
     expect(net.calls).toHaveLength(0);
     net.offline = false;
     await outbox().flush();
-    expect(await a.done).toBe(12);
-    expect(await b.done).toBe(12);
-    expect(net.calls.filter((c) => c.fn === 'golf_save_hole_scores')).toHaveLength(1);
+    expect(await Promise.all(a.map((x) => x.done))).toEqual([6, 6]);
+    expect(await Promise.all(b.map((x) => x.done))).toEqual([6, 6]);
+    const calls = net.calls.filter((c) => c.fn === 'golf_save_hole_scores');
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => (c.args.p_cards as { card_id: string }[]).map((x) => x.card_id))).toEqual([[cards.ana], [cards.pedro]]);
     const ev = await fetchGolfEvent(lid, round);
     const pe = ev.cards.find((c) => c.id === cards.pedro)!;
     expect(pe.strokes.slice(0, 7)).toEqual([6, 6, 6, 6, 6, null, null]);
@@ -154,7 +160,7 @@ describe('campos, rondas y tarjetas con la base de verdad', () => {
   it('si se pierde la respuesta se reenvía con el mismo op_id; firmar va después de los hoyos', async () => {
     net.dropReplies = 1;
     const all = Array.from({ length: 18 }, (_, i) => ({ i, s: DEMO_COURSE.holes[i].par, p: null, u: false }));
-    const q = queueGolfScores(lid, round, [{ cardId: cards.ana, holes: all }]);
+    const [q] = queueGolfScores(lid, round, [{ cardId: cards.ana, holes: all }]);
     const signed = signGolfCard(lid, round, cards.ana);
     await outbox().flush();
     await outbox().flush();
@@ -197,5 +203,111 @@ describe('campos, rondas y tarjetas con la base de verdad', () => {
     await deleteGolfTournament(lid, t.tournamentId);
     expect(await fetchGolfTournaments(lid)).toEqual([]);
     expect((await fetchGolfRounds(lid)).filter((r) => r.tournamentId === t.tournamentId)).toEqual([]);
+  });
+});
+
+describe('la tarjeta en el campo desde el teléfono (courtLog + cola)', () => {
+  let r2: string;
+  const c2: Record<string, string> = {};
+  const who = (): CardWriter => ({ isAdmin: false, staff: false, myCard: { id: c2.ana, groupNo: 1 } });
+  const serverCards = async () => (await fetchGolfEvent(lid, r2)).cards;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  const clearFailed = async () => {
+    for (const f of outbox().listFailed()) await outbox().discard(f.opId);
+  };
+
+  beforeAll(async () => {
+    await w.as('rosa@x.com');
+    r2 = await createGolfRound(lid, { date: '2026-10-17', courseId: course, name: 'Fin de mes' });
+    const luis = await createPlayer(lid, 'Luis', null);
+    await w.as('ana@x.com');
+    c2.ana = await registerGolf(lid, r2);
+    await w.as('rosa@x.com');
+    await addGolfPlayers(lid, r2, [{ playerId: pedro }, { playerId: luis }]);
+    const ev = await fetchGolfEvent(lid, r2);
+    c2.pedro = ev.cards.find((c) => c.playerId === pedro)!.id;
+    c2.luis = ev.cards.find((c) => c.playerId === luis)!.id;
+    await setGolfGroups(lid, r2, [
+      { cardId: c2.ana, groupNo: 1 },
+      { cardId: c2.pedro, groupNo: 1 },
+      { cardId: c2.luis, groupNo: 2 },
+    ]);
+  });
+
+  it('va por cuenta y por tarjeta: solo lo que la cuenta puede escribir; una tarjeta rechazada no frena las demás', async () => {
+    await w.as('ana@x.com');
+    // Lo que anotó otra cuenta (Rosa) en este teléfono no es de Ana: ni lo ve ni lo manda.
+    writeLog(setHole(emptyLog(r2, rosaId), c2.luis, 0, { s: 3, p: null, u: false }));
+    expect(readLog(r2, anaId).holes).toEqual({});
+    let log = emptyLog(r2, anaId);
+    for (const id of [c2.ana, c2.pedro, c2.luis]) log = setHole(log, id, 0, { s: 5, p: null, u: false });
+    writeLog(log);
+    // Mientras tanto el admin firmó la tarjeta de Pedro (el teléfono de Ana todavía no lo sabe).
+    const stale = await serverCards();
+    await w.b.db.query(`update public.golf_cards set status = 'firmada' where id = $1`, [c2.pedro]);
+    const wait = sendPending(lid, r2, stale, who())!;
+    await outbox().flush();
+    await expect(wait).rejects.toThrow('cerrado');
+    await settle();
+    // Una llamada por tarjeta; la de Luis (otro grupo) ni se manda.
+    const calls = net.calls.filter((c) => c.fn === 'golf_save_hole_scores');
+    expect(calls.map((c) => (c.args.p_cards as { card_id: string }[]).map((x) => x.card_id))).toEqual([[c2.ana], [c2.pedro]]);
+    const after = await serverCards();
+    expect(after.find((c) => c.id === c2.ana)!.strokes[0]).toBe(5);
+    expect(after.find((c) => c.id === c2.pedro)!.strokes[0]).toBeNull();
+    expect(after.find((c) => c.id === c2.luis)!.strokes[0]).toBeNull();
+    // La de Ana quedó enviada; la rechazada salió del teléfono (queda en «no se pudo enviar») y no se vuelve a armar.
+    const now = readLog(r2, anaId);
+    expect(now.holes[c2.ana]['0'].sentAt).toBeTypeOf('number');
+    expect(now.holes[c2.pedro]).toBeUndefined();
+    expect(outbox().listFailed()).toHaveLength(1);
+    expect(sendPending(lid, r2, after, who())).toBeNull();
+    expect(readLog(r2, rosaId).holes[c2.luis]).toBeDefined();
+    await clearFailed();
+  });
+
+  it('la firma no depende del orden: «Enviar» otra vez no pasa los hoyos detrás de ella y la firma lleva la tarjeta revisada', async () => {
+    await w.b.db.query(`update public.golf_cards set status = 'abierta' where id = $1`, [c2.pedro]);
+    await w.as('ana@x.com');
+    let log = emptyLog(r2, anaId);
+    DEMO_PARS.forEach((par, i) => (log = setHole(log, c2.ana, i, { s: par, p: null, u: false })));
+    writeLog(log);
+    const cardsNow = await serverCards();
+    net.offline = true;
+    // «Revisar y firmar»: salen los hoyos (G1) y detrás la firma, con la tarjeta tal como se revisó.
+    const g1 = sendPending(lid, r2, cardsNow, who())!;
+    const reviewed = { cardId: c2.ana, holes: cardWire(mergeCard(cardsNow.find((c) => c.id === c2.ana)!, readLog(r2, anaId))) };
+    const sign = queueGolfSign(lid, r2, c2.ana, { holes: reviewed.holes });
+    void sign.done.then(() => writeLog(markSent(readLog(r2, anaId), [reviewed], Date.now())));
+    expect(pendingGolfSign(lid, c2.ana)).toBe(true);
+    // «Enviar» otra vez sin cambios: ya está igual en la cola, no se vuelve a encolar (quedaría detrás de la firma).
+    expect(sendPending(lid, r2, cardsNow, who())).toBeNull();
+    expect(outbox().getSnapshot().pendingCount).toBe(2);
+    // Un hoyo de un compañero sale aparte, sin mover los de Ana.
+    writeLog(setHole(readLog(r2, anaId), c2.pedro, 1, { s: 4, p: null, u: false }));
+    const gp = sendPending(lid, r2, cardsNow, who())!;
+    // Y un cambio en la de Ana después de firmar (en pantalla solo el admin puede) sí queda detrás de la firma.
+    writeLog(setHole(readLog(r2, anaId), c2.ana, 0, { s: 9, p: null, u: false }));
+    const g2 = sendPending(lid, r2, cardsNow, who())!;
+    const order = outbox()
+      .listPending(lid)
+      .map((o) => (o.fn === 'golf_sign_card' ? 'firma' : (o.args.p_cards as { card_id: string }[])[0].card_id));
+    expect(order).toEqual(['firma', c2.pedro, c2.ana]);
+    net.offline = false;
+    await outbox().flush();
+    // La firma guarda la tarjeta revisada y firma; el cambio de después ya no entra (firmada).
+    await sign.done;
+    expect(await gp).toBe(1);
+    await expect(g2).rejects.toThrow('cerrado');
+    await expect(g1).rejects.toThrow('cerrado');
+    await settle();
+    const after = await serverCards();
+    const ana = after.find((c) => c.id === c2.ana)!;
+    expect(ana.signed).toBe(true);
+    expect(ana.strokes).toEqual(DEMO_PARS);
+    expect(after.find((c) => c.id === c2.pedro)!.strokes[1]).toBe(4);
+    expect(pendingGolfSign(lid, c2.ana)).toBe(false);
+    expect(unsentPatches(readLog(r2, anaId))).toEqual([]);
+    await clearFailed();
   });
 });

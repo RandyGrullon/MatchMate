@@ -176,6 +176,9 @@ export function createSportStatusStore(opts: SportStatusStoreOptions = {}): Spor
 let shared: SportStatusStore | null = null;
 const sharedStore = () => (shared ??= createSportStatusStore());
 
+/** Vuelve a leer sport_status (p. ej. después de que el superadmin abre o cierra un deporte). */
+export const refreshSportStatus = (): Promise<void> => sharedStore().refresh();
+
 /** Solo pruebas: usar otra copia compartida (null = la de siempre, creada de nuevo). */
 export function setSportStatusStoreForTests(store: SportStatusStore | null): void {
   shared = store;

@@ -92,7 +92,7 @@ Errores como el resto de la API (`no_permitido` 42501, `invalido`, `no_existe`, 
 | `set_match_players(p_match, p_side, p_players, p_op_id?)` | — | Reemplaza la alineación de un lado. |
 | `claim_scorer(p_match, p_force=false)` | `{ok, scorer_id, scorer_name, lease_until, expired, status, seq, version, state}` | `state` solo si `ok`. Partido cerrado: `cerrado`. |
 | `release_scorer(p_match, p_to?)` | — | Soltar (null) o entregar. |
-| `publish_match(p_op_id, p_match, p_seq, p_state, p_score)` | `{ok, status, seq, version, lease_until}` o `{ok:false, reason}` | **Nunca falla por el turno**: `reason` = `lease` (+ `scorer_id`, `scorer_name`), `stale` (+ `seq`: llegó algo más nuevo) o `cerrado` (+ `status`). Si nadie tiene el turno, lo toma. Pasa `scheduled`/`suspended` a `live`. |
+| `publish_match(p_op_id, p_match, p_seq, p_state, p_score)` | `{ok, status, seq, version, lease_until}` o `{ok:false, reason}` | **Nunca falla por el turno**: `reason` = `lease` (+ `scorer_id`, `scorer_name`), `stale` (+ `seq`: llegó algo más nuevo o una lista que no sigue a la guardada) o `cerrado` (+ `status`). Si nadie tiene el turno y el partido no está suspendido, lo toma; un partido **suspendido** solo se retoma con `claim_scorer` antes (lo que llegue de la cola sin turno da `lease`). Pasa a `live` solo si trae algo más nuevo que lo del servidor (publicar lo mismo solo renueva el turno). `p_seq` ≤ seq del servidor + 10 000 y, si el estado trae `seq`, tiene que ser igual. Una lista de otro teléfono solo entra si sigue a la guardada (`parent`). |
 | `finish_match(p_match, p_score, p_winner?, p_state?, p_seq?, p_op_id?)` | `{ok, status}` o `{ok:false, reason:'stale'}` | `p_score` obligatorio. Raqueta: `p_winner` 1\|2. Si otro anota en vivo con el turno vigente, solo el admin cierra. Suelta el turno. Push al otro lado (§6). |
 | `confirm_result(p_match, p_op_id?)` | — | Ya confirmado: nada. |
 | `dispute_result(p_match, p_note?, p_op_id?)` | — | Nota ≤500. |
@@ -226,10 +226,19 @@ function PadelCourt({ lid, match, isAdmin, userId, onExit }: …) {
   `lease.kind = 'other'` (solo lectura; su lista queda guardada); el admin ve «Tomar el control».
 - **Retomar en otro teléfono:** el turno trae `state` (el `CourtSnapshot` publicado) y el teléfono sigue desde ahí.
   Si el teléfono tenía jugadas sin enviar y otro siguió después, gana el servidor y la lista local queda aparte
-  (`conflict`). Cada teléfono firma sus listas (`origin`), así una respuesta perdida no cuenta como de otro.
+  (`conflict`). Cada lista lleva `origin` (un id al azar por partido y teléfono, que no identifica al aparato) y
+  `parent` (la lista que siguió al tomar el turno): el servidor rechaza una lista vieja de otro teléfono y la cancha
+  quita de la cola lo suyo que ya no sirve.
+- **Sin señal y sin lista propia:** arranca desde el estado del partido que el teléfono ya tenía guardado y no
+  publica hasta tener el turno (lo vuelve a pedir cada 20 s y al volver la señal).
+- **Suspendido:** abrir la cancha de un partido suspendido solo para mirar no lo pone en vivo (al salir suelta el
+  turno). Si el admin lo suspende mientras un teléfono anota, esa cancha se cierra y descarta lo que tenía en cola.
 - **Publicación:** la primera jugada enseguida (el partido sale «En vivo»); después en los hitos (con 3 s mínimo
   entre publicaciones) o cada 60 s si hubo cambios; al terminar, suspender o pasar a segundo plano, ya. Nunca por
   punto. Va por la cola con colapso (sin señal solo sale la última) y cada publicación renueva el turno.
+- **Alineaciones (`set_match_players`):** fuera del admin y el anotador de la liga, nada cambia con el resultado ya
+  propuesto o reclamado, nadie del otro lado entra al propio, y en raqueta el que anota solo cambia posición, dorsal
+  o suplente del rival (no agrega ni quita). En equipos, un capitán no suma a su plantilla a alguien de otro equipo.
 - `CourtLayout`: pantalla completa (fija, con zonas seguras), pantalla siempre encendida (Wake Lock; en iPhone viejo
   avisa cómo quitar el bloqueo), modo sol (alto contraste, se recuerda), pantalla completa donde se puede, avisos de
   turno y sin señal, **Deshacer siempre a la vista**, Terminar (confirma con el resumen) y Suspender (menú).
@@ -240,7 +249,7 @@ function PadelCourt({ lid, match, isAdmin, userId, onExit }: …) {
   `createPublisher`, `createCourtStore`, `pruneCourtLogs` (limpiar listas de partidos cerrados).
 
 `CourtSnapshot` (lo que va en `matches.state`): `{ v: 1, seq, config, base (estado tras compactar o null), log,
-at, origin }`. Más de 400 jugadas: las viejas pasan a `base` (se pueden deshacer las últimas 100).
+at, origin, parent }`. Más de 400 jugadas: las viejas pasan a `base` (se pueden deshacer las últimas 100).
 
 ## 8. Piezas de pantalla (`src/components/match`)
 

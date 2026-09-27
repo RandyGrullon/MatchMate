@@ -3,8 +3,8 @@ import type { ClaimResult, FinishResult, MatchScore, MatchStatus, PublishResult 
 import type { Side } from '../sports/types';
 import type { CourtStore } from './log';
 import { createPublisher, type Publisher } from './publisher';
-import { applyEvent, canUndo, outcome, pickSnapshot, snapshotState, startSnapshot, undoEvent, withOrigin, type LocalCourt } from './session';
-import type { CourtAdapter, CourtSnapshot } from './types';
+import { applyEvent, canUndo, isSnapshot, outcome, pickSnapshot, snapshotState, startSnapshot, undoEvent, withOrigin, type LocalCourt } from './session';
+import type { CourtAdapter, CourtParent, CourtSnapshot } from './types';
 
 /**
  * El anotador de un partido sin React: lista de jugadas guardada en el teléfono, turno de anotar, publicación
@@ -25,7 +25,7 @@ export type LeaseState =
   | { kind: 'stale' }
   /** Esta cuenta no puede anotar este partido. */
   | { kind: 'denied' }
-  /** El partido ya no se anota (terminado, aplazado, suspendido, anulado). */
+  /** El partido ya no se anota (terminado, aplazado, suspendido, anulado). Suspendido: se retoma con `claim`. */
   | { kind: 'closed'; status: MatchStatus };
 
 export interface CourtView<C = unknown, S = unknown, E = unknown> {
@@ -55,8 +55,17 @@ export interface CourtDeps {
   /** Termina; undefined = quedó en la cola (sin señal). */
   finish(r: { score: MatchScore; winner: Side | null; state: Record<string, unknown>; seq: number }): Promise<FinishResult | undefined>;
   suspend(r: { score: MatchScore | null; state: Record<string, unknown>; seq: number; note?: string }): Promise<void>;
+  /** Suelta el turno (al salir sin haber anotado nada de un partido suspendido que se abrió solo para mirar). */
+  release?(): Promise<void>;
+  /**
+   * Quita de la cola lo que este teléfono tenía por publicar o terminar de este partido: su lista ya no vale (otro
+   * anotador, otra lista más nueva, se tomó la del servidor, el partido se suspendió).
+   */
+  discardQueued?(): Promise<unknown>;
+  /** Lo último que este teléfono vio del partido (caché de useMatch): para seguir sin señal y sin lista propia. */
+  cached?(): { state: unknown; seq: number } | null;
   store: CourtStore;
-  /** Id de este teléfono (ver courtDeviceId). */
+  /** Id de este teléfono para este partido (ver courtOrigin). */
   origin: string;
 }
 
@@ -69,6 +78,8 @@ export interface CourtMachineOptions<C, S, E> {
   config?: C | null;
   deps: CourtDeps;
   publisher?: { minGapMs?: number; idleMs?: number };
+  /** Sin señal, cada cuánto se vuelve a pedir el turno (ms). Por defecto 20 s (y al volver la señal, ya). */
+  claimRetryMs?: number;
 }
 
 export interface CourtMachine<C, S, E> {
@@ -81,7 +92,7 @@ export interface CourtMachine<C, S, E> {
   /** Aplica una jugada. Devuelve null o el mensaje de error del motor. */
   apply(ev: E): string | null;
   undo(): boolean;
-  /** Pide el turno otra vez (el admin con `force` se lo quita a otro). */
+  /** Pide el turno otra vez (el admin con `force` se lo quita a otro; también retoma un suspendido). */
   claim(force?: boolean): Promise<ClaimResult | null>;
   finish(): Promise<'sent' | 'queued' | 'stale'>;
   suspend(note?: string): Promise<void>;
@@ -94,8 +105,21 @@ export interface CourtMachine<C, S, E> {
 
 const OPEN: readonly MatchStatus[] = ['scheduled', 'live', 'suspended'];
 const READ_ONLY = new Set<LeaseState['kind']>(['other', 'stale', 'denied', 'closed']);
+/** Sin señal: cada cuánto se vuelve a pedir el turno. */
+export const CLAIM_RETRY_MS = 20_000;
 
 const plain = (snap: CourtSnapshot) => snap as unknown as Record<string, unknown>;
+const originOf = (state: unknown): string | null => {
+  const o = state && typeof state === 'object' ? (state as { origin?: unknown }).origin : null;
+  return typeof o === 'string' && o ? o : null;
+};
+
+/** Lo que manda el publicador: la lista y en qué «época» (cambia al tomar otra lista: lo de antes ya no cuenta). */
+interface Sent {
+  epoch: number;
+  result?: PublishResult;
+  error?: unknown;
+}
 
 export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): CourtMachine<C, S, E> {
   const { lid, mid, adapter, deps } = o;
@@ -113,16 +137,44 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
   let error: string | null = null;
   let closed = false;
   let view: CourtView<C, S, E> | null = null;
+  /** Id de este teléfono en esta lista: el de la lista guardada si hay (no cambia a mitad de partido). */
+  let origin = deps.origin;
+  /**
+   * La lista ya se comparó con la del servidor (se pidió el turno con señal) o ya se publicó antes. Mientras no,
+   * sin señal no se publica: al volver la señal primero se pide el turno (si otro siguió el partido, gana el
+   * servidor y esta lista queda aparte, en vez de pisarlo o quedar «vieja»).
+   */
+  let verified = false;
+  /** Lo que tenía el partido al tomar el turno (para las listas que empiezan después). */
+  let parent: CourtParent | null = null;
+  /** Estado del partido que se vio por última vez (useMatch) y al tomar el turno. */
+  let lastStatus: MatchStatus | null = null;
+  let claimedStatus: MatchStatus | null = null;
+  /** En esta sesión se anotó, deshizo, empezó o publicó algo. */
+  let touched = false;
+  /** Sube al dejar una lista (se tomó la del servidor, otro anotador, lista vieja): sus respuestas ya no cuentan. */
+  let epoch = 0;
+  let claiming: Promise<ClaimResult | null> | null = null;
+  let autoClaim = false;
+  let retry: ReturnType<typeof setTimeout> | null = null;
 
-  const publisher: Publisher = createPublisher({
-    current: () => (snap && state !== null ? { seq: snap.seq, payload: { snap, state } } : null),
-    send: ({ snap: s, state: st }) => deps.publish({ seq: s.seq, state: plain(s), score: adapter.score(st) }),
-    onSent: (seq, r) => onPublished(seq, r as PublishResult),
-    onError: (_seq, e) => {
-      // La cola ya reintenta sola lo de red; aquí solo llega lo definitivo (sin permiso, sin sesión).
-      if (classifyError(e) === 'final' && asBackendError(e)?.kind === 'permission') setLease({ kind: 'denied' });
-      else console.error('publicar partido', e);
+  const publisher: Publisher = createPublisher<{ snap: CourtSnapshot<C, S, E>; state: S; epoch: number }>({
+    // Solo lo que el servidor todavía no tiene: abrir la cancha (se toma lo publicado) y salir no publica nada.
+    current: () => (snap && state !== null && snap.seq > published ? { seq: snap.seq, payload: { snap, state, epoch } } : null),
+    send: ({ snap: s, state: st, epoch: ep }) => {
+      touched = true;
+      return deps.publish({ seq: s.seq, state: plain(s), score: adapter.score(st) }).then(
+        (result): Sent => ({ epoch: ep, result }),
+        (err: unknown): Sent => ({ epoch: ep, error: err }),
+      );
     },
+    onSent: (seq, x) => {
+      const sent = x as Sent;
+      if (sent.epoch !== epoch) return;
+      if (sent.error !== undefined) onPublishError(sent.error);
+      else if (sent.result) onPublished(seq, sent.result);
+    },
+    onError: (_seq, e) => onPublishError(e),
     minGapMs: o.publisher?.minGapMs,
     idleMs: o.publisher?.idleMs,
   });
@@ -132,36 +184,80 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
     for (const l of [...listeners]) l();
   }
 
-  function setLease(next: LeaseState) {
-    lease = next;
-    if (READ_ONLY.has(next.kind)) publisher.pause();
+  /** Sin señal y con una lista que el servidor no conoce: no se publica hasta pedir el turno. */
+  function syncPublisher() {
+    if (READ_ONLY.has(lease.kind) || (!verified && (lease.kind === 'offline' || lease.kind === 'checking'))) publisher.pause();
     else publisher.resume();
-    emit();
   }
+
+  function clearRetry() {
+    if (retry) clearTimeout(retry);
+    retry = null;
+  }
+
+  function scheduleRetry() {
+    if (retry || closed || !autoClaim || !o.userId) return;
+    retry = setTimeout(() => {
+      retry = null;
+      if (!closed && lease.kind === 'offline') void claimNow(false);
+    }, o.claimRetryMs ?? CLAIM_RETRY_MS);
+  }
+
+  function setLease(next: LeaseState, notify = true) {
+    lease = next;
+    syncPublisher();
+    if (next.kind === 'offline') scheduleRetry();
+    else clearRetry();
+    if (notify) emit();
+  }
+
+  const onOnline = () => {
+    if (!closed && lease.kind === 'offline') void claimNow(false);
+  };
 
   function save() {
     if (!snap) return;
     void deps.store.save({ lid, mid, uid: o.userId, snap: snap as CourtSnapshot, published, orphan });
   }
 
+  /** La lista de este teléfono ya no vale: lo suyo en la cola se descarta y sus respuestas no cuentan. */
+  function dropQueued() {
+    epoch++;
+    void deps.discardQueued?.().catch(() => {});
+  }
+
+  function onPublishError(e: unknown) {
+    if (closed) return;
+    // La cola ya reintenta sola lo de red; aquí solo llega lo definitivo (sin permiso, sin sesión).
+    if (classifyError(e) === 'final' && asBackendError(e)?.kind === 'permission') setLease({ kind: 'denied' });
+    else console.error('publicar partido', e);
+  }
+
   function onPublished(seq: number, r: PublishResult) {
     if (closed) return;
     if (r.ok) {
+      verified = true;
       if (seq > published) {
         published = seq;
         void deps.store.patch(lid, mid, { published });
       }
-      if (lease.kind === 'offline' || lease.kind === 'checking') lease = { kind: 'mine' };
+      if (lease.kind === 'offline' || lease.kind === 'checking') setLease({ kind: 'mine' }, false);
       emit();
       return;
     }
-    if (r.reason === 'lease') setLease({ kind: 'other', scorerId: r.scorerId ?? null, scorerName: r.scorerName ?? null, expired: false });
-    else if (r.reason === 'stale') setLease({ kind: 'stale' });
-    else if (r.reason === 'cerrado') setLease({ kind: 'closed', status: r.status ?? 'finished' });
+    if (r.reason === 'lease') {
+      dropQueued();
+      // Suspendido (por el admin) sin anotador: se retoma pidiendo el turno.
+      if (r.status === 'suspended' && !r.scorerId) setLease({ kind: 'closed', status: 'suspended' });
+      else setLease({ kind: 'other', scorerId: r.scorerId ?? null, scorerName: r.scorerName ?? null, expired: false });
+    } else if (r.reason === 'stale') {
+      dropQueued();
+      setLease({ kind: 'stale' });
+    } else if (r.reason === 'cerrado') setLease({ kind: 'closed', status: r.status ?? 'finished' });
   }
 
   function use(next: CourtSnapshot<C, S, E>) {
-    snap = withOrigin(next, deps.origin);
+    snap = withOrigin(next, origin);
     try {
       state = snapshotState(adapter, snap);
       error = null;
@@ -172,22 +268,68 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
     }
   }
 
-  async function claimNow(force: boolean): Promise<ClaimResult | null> {
+  /** Lista nueva: sigue desde lo que tenía el partido al tomar el turno (su seq, para no llegar «vieja»). */
+  function fresh(config: C): CourtSnapshot<C, S, E> {
+    const s = startSnapshot<C, S, E>(config, Date.now(), origin);
+    if (parent) {
+      s.parent = parent;
+      s.seq = Math.max(s.seq, parent.seq);
+    }
+    published = s.seq;
+    return s;
+  }
+
+  /**
+   * Sin señal y sin lista en el teléfono: se sigue desde lo que el teléfono ya había visto del partido (la caché
+   * de useMatch), no desde 0-0. Al volver la señal se pide el turno antes de publicar.
+   */
+  function seedFromCache() {
+    const c = deps.cached?.();
+    if (!c || !isSnapshot(c.state)) return;
+    const remote = c.state as CourtSnapshot<C, S, E>;
+    use(remote);
+    published = remote.seq;
+    snap = { ...snap!, parent: { origin: originOf(remote), seq: Math.max(c.seq, remote.seq) } };
+    save();
+  }
+
+  function claimNow(force: boolean): Promise<ClaimResult | null> {
+    if (claiming && !force) return claiming;
+    const p = doClaim(force);
+    claiming = p;
+    void p.finally(() => {
+      if (claiming === p) claiming = null;
+    });
+    return p;
+  }
+
+  async function doClaim(force: boolean): Promise<ClaimResult | null> {
     try {
       const r = await deps.claim(force);
       if (closed) return r;
       if (!r.ok) {
+        dropQueued();
         setLease({ kind: 'other', scorerId: r.scorerId, scorerName: r.scorerName, expired: r.expired });
         return r;
       }
+      verified = true;
+      claimedStatus = r.status;
+      parent = { origin: originOf(r.state), seq: r.seq };
       const local: LocalCourt<C, S, E> | null = snap ? { snap, published } : null;
       const picked = pickSnapshot<C, S, E>(local, r.state);
       if (picked.snap && picked.source === 'remote') {
         if (picked.conflict && snap) orphan = snap as CourtSnapshot;
         conflict = picked.conflict;
+        // Se sigue con la lista del servidor: lo que este teléfono tenía en la cola de la suya ya no vale.
+        if (snap) dropQueued();
         use(picked.snap);
         // Lo del servidor ya está publicado.
         published = Math.max(published, picked.snap.seq);
+        publisher.reset(published);
+      }
+      if (snap) {
+        // El servidor puede ir más adelante que la lista (un estado que no se puede leer): se sigue desde su número.
+        snap = { ...snap, seq: Math.max(snap.seq, r.seq), parent };
         save();
       }
       setLease({ kind: 'mine' });
@@ -202,8 +344,7 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
         // El final que quedó en la cola ya llegó: la lista del teléfono ya no hace falta.
         if (finishedSent) void deps.store.remove(lid, mid);
         setLease({ kind: 'closed', status: 'finished' });
-      }
-      else setLease({ kind: 'offline' });
+      } else setLease({ kind: 'offline' });
       return null;
     }
   }
@@ -235,19 +376,26 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
     },
 
     async open(claim = true) {
+      autoClaim = claim && !!o.userId;
       const rec = await deps.store.load(lid, mid);
       if (closed) return;
       if (rec && (rec.uid === null || rec.uid === o.userId)) {
+        // La lista sigue con el id con que se empezó en este teléfono.
+        if (rec.snap.origin) origin = rec.snap.origin;
         published = rec.published;
         orphan = rec.orphan ?? null;
         finishedSent = !!rec.finished;
+        verified = rec.published > 0;
         use(rec.snap as CourtSnapshot<C, S, E>);
       }
-      if (claim && o.userId) await claimNow(false);
-      else lease = { kind: 'offline' };
+      syncPublisher();
+      if (autoClaim && typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('online', onOnline);
+      if (autoClaim) await claimNow(false);
+      else setLease({ kind: 'offline' }, false);
       if (closed) return;
+      if (!snap && lease.kind === 'offline') seedFromCache();
       if (!snap && o.config != null) {
-        use(startSnapshot<C, S, E>(o.config, Date.now(), deps.origin));
+        use(fresh(o.config));
         save();
       }
       ready = true;
@@ -256,7 +404,8 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
 
     start(config) {
       if (snap) return;
-      use(startSnapshot<C, S, E>(config, Date.now(), deps.origin));
+      use(fresh(config));
+      touched = true;
       save();
       emit();
     },
@@ -266,9 +415,10 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
       if (READ_ONLY.has(lease.kind)) return lease.kind === 'closed' ? 'El partido ya no se anota.' : 'Otro anotador tiene el control.';
       try {
         const r = applyEvent(adapter, snap, ev, Date.now(), state);
-        snap = withOrigin(r.snap, deps.origin);
+        snap = withOrigin(r.snap, origin);
         state = r.state;
         error = null;
+        touched = true;
         save();
         emit();
         publisher.changed(r.milestone);
@@ -286,9 +436,10 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
       const lastEv = snap.log[snap.log.length - 1];
       const r = undoEvent(adapter, snap, Date.now());
       if (!r) return false;
-      snap = withOrigin(r.snap, deps.origin);
+      snap = withOrigin(r.snap, origin);
       state = r.state;
       error = null;
+      touched = true;
       save();
       emit();
       // Deshacer un hito (fin de set, gol, fin del partido) se publica pronto.
@@ -319,7 +470,7 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
         setLease({ kind: 'closed', status: r.status ?? 'finished' });
         return 'sent';
       } catch (e) {
-        publisher.resume();
+        syncPublisher();
         throw e;
       }
     },
@@ -330,7 +481,7 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
       try {
         await deps.suspend({ score: state !== null ? adapter.score(state) : null, state: plain(snap), seq: snap.seq, note });
       } catch (e) {
-        publisher.resume();
+        syncPublisher();
         throw e;
       }
       setLease({ kind: 'closed', status: 'suspended' });
@@ -342,7 +493,17 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
 
     setStatus(status) {
       if (!status || closed) return;
-      if (OPEN.includes(status)) return;
+      const prev = lastStatus;
+      lastStatus = status;
+      if (OPEN.includes(status)) {
+        // Lo suspendieron desde otro lado (el admin, lluvia) mientras este teléfono anotaba: deja de anotar y no
+        // publica lo que tenía (no lo pone en vivo otra vez). Se retoma pidiendo el turno.
+        if (status === 'suspended' && (prev === 'live' || prev === 'scheduled') && !READ_ONLY.has(lease.kind)) {
+          dropQueued();
+          setLease({ kind: 'closed', status: 'suspended' });
+        }
+        return;
+      }
       if (finishedSent) void deps.store.remove(lid, mid);
       if (lease.kind !== 'closed' || lease.status !== status) setLease({ kind: 'closed', status });
     },
@@ -350,7 +511,13 @@ export function createCourtMachine<C, S, E>(o: CourtMachineOptions<C, S, E>): Co
     close() {
       if (closed) return;
       if (!READ_ONLY.has(lease.kind)) publisher.flush();
+      // Se abrió un partido suspendido solo para mirar: el turno queda libre otra vez (lo retoma cualquiera).
+      if (lease.kind === 'mine' && claimedStatus === 'suspended' && (lastStatus === null || lastStatus === 'suspended') && !touched) {
+        void deps.release?.().catch(() => {});
+      }
       closed = true;
+      clearRetry();
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') window.removeEventListener('online', onOnline);
       publisher.dispose();
       listeners.clear();
     },

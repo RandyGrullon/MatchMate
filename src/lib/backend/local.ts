@@ -311,7 +311,8 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
           const exists = await tx.query('select 1 from auth.users where lower(email) = $1', [mail]);
           if (exists.rows.length) throw mapAuthError({ code: 'email_exists' });
           const row = await tx.query<{ id: string }>(
-            `insert into auth.users (id, email, raw_user_meta_data) values (gen_random_uuid(), $1, $2) returning id`,
+            `insert into auth.users (id, email, raw_user_meta_data, email_confirmed_at, last_sign_in_at)
+             values (gen_random_uuid(), $1, $2, now(), now()) returning id`,
             [mail, JSON.stringify({ ...meta, name: name.trim() })],
           );
           const newId = row.rows[0].id;
@@ -343,6 +344,7 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
         )
       ).rows[0];
       if (!row?.hash || !(await verifyPassword(password, row.hash))) throw mapAuthError({ code: 'invalid_credentials' });
+      await db.query('update auth.users set last_sign_in_at = now() where id = $1', [row.id]).catch(() => undefined);
       return signedIn({ userId: row.id, email: row.email });
     },
     async signInWithGoogle() {

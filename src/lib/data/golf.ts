@@ -2,7 +2,7 @@ import { DEFAULT_ALLOWANCE, type GolfCourse, type GolfHole, type GolfTee, type N
 import { DEFAULT_MERIT_POINTS } from '../../sports/golf/leaderboard';
 import type { GolfBasis, GolfCompetition, GolfFormat, MaxScoreRule } from '../../sports/golf/scoring';
 import { uuidv7 } from '../db/ids';
-import { enqueue, invalidate, rpc, select, sentOrQueued, useLive, type Live } from './client';
+import { currentOutbox, enqueue, invalidate, rpc, select, sentOrQueued, useLive, type Live } from './client';
 import { tags } from './keys';
 import { chunks } from './rows';
 import { useTopic } from './topics';
@@ -13,7 +13,8 @@ import { useTopic } from './topics';
  * - Lecturas con la caché de consultas (se ven sin señal con lo último que llegó). Las tarjetas del evento se
  *   ponen al día por el tiempo real del evento (`event:<id>`, aviso 'entries') o consultando cada 15–20 s.
  * - La tarjeta en el campo se anota en el teléfono (src/pages/sports/golf/courtLog.ts) y se publica por la cola
- *   sin conexión cada 3 hoyos (`queueGolfScores`): nunca golpe por golpe. Firmar también va por la cola.
+ *   sin conexión cada 3 hoyos (`queueGolfScores`, una operación por tarjeta): nunca golpe por golpe. Firmar
+ *   también va por la cola y lleva los hoyos revisados (`queueGolfSign`): no depende del orden de la cola.
  * - El resto (campos, rondas, inscripciones, grupos, cerrar) necesita señal: RPC directa.
  */
 
@@ -64,6 +65,8 @@ export interface GolfCardDoc {
   pickedUp: boolean[];
   signed: boolean;
   signedAt: string | null;
+  /** Cuándo se anotó algo por primera vez (aunque después se vaciara): desde ahí el jugador ya no cambia salida ni Index. */
+  scoredAt: string | null;
   dq: boolean;
 }
 
@@ -143,6 +146,7 @@ interface CardRow {
   picked_up: boolean[] | null;
   status: string;
   signed_at: string | null;
+  scored_at?: string | null;
   dq: boolean;
 }
 
@@ -185,6 +189,7 @@ export function toCard(r: CardRow): GolfCardDoc {
     pickedUp: r.picked_up ?? Array(n).fill(false),
     signed: r.status === 'firmada',
     signedAt: r.signed_at,
+    scoredAt: r.scored_at ?? null,
     dq: !!r.dq,
   };
 }
@@ -543,34 +548,78 @@ export interface GolfCardPatch {
   holes: GolfHoleWire[];
 }
 
-/**
- * Encola los hoyos anotados en el teléfono (solo los que cambian). Sin señal se guarda y sale solo; si hay
- * varios envíos pendientes del mismo evento, se manda solo el último (que ya trae todo lo pendiente).
- * `done` se cumple cuando el servidor lo tiene (o falla si lo rechaza).
- */
-export function queueGolfScores(lid: string, eventId: string, cards: GolfCardPatch[]): { opId: string; done: Promise<number> } {
-  const { opId, done } = enqueue<number>(
-    'golf_save_hole_scores',
-    { p_event: eventId, p_cards: cards.map((c) => ({ card_id: c.cardId, holes: c.holes })) },
-    { group: lid, collapseKey: `golf:${eventId}`, label: 'Tarjeta de golf' },
-  );
-  return {
-    opId,
-    done: done.then((n) => {
-      afterCards(lid, eventId);
-      return n;
-    }),
-  };
+/** Clave de colapso de los hoyos de una tarjeta: un envío pendiente por tarjeta (el último trae todo lo que falta). */
+export const golfCardOpKey = (eventId: string, cardId: string) => `golf:${eventId}:${cardId}`;
+
+export interface QueuedGolfCard {
+  cardId: string;
+  patch: GolfCardPatch;
+  opId: string;
+  /** Se cumple cuando el servidor tiene esa tarjeta (o falla si la rechaza: solo esa). */
+  done: Promise<number>;
 }
 
-/** Firma (o, el admin, vuelve a abrir) la tarjeta. Va por la cola: sirve sin señal, después de los hoyos. */
-export async function signGolfCard(lid: string, eventId: string, cardId: string, signed = true): Promise<void> {
-  const { done } = enqueue(
+/**
+ * Encola los hoyos anotados en el teléfono (solo los que cambian): UNA operación por tarjeta, así el servidor
+ * acepta o rechaza cada tarjeta por separado (una firmada, de otro grupo o con datos malos no frena las demás).
+ * Sin señal se guarda y sale solo; si hay varios envíos pendientes de la misma tarjeta, se manda solo el
+ * último (que ya trae todo lo pendiente de esa tarjeta).
+ */
+export function queueGolfScores(lid: string, eventId: string, cards: GolfCardPatch[]): QueuedGolfCard[] {
+  return cards.map((patch) => {
+    const { opId, done } = enqueue<number>(
+      'golf_save_hole_scores',
+      { p_event: eventId, p_cards: [{ card_id: patch.cardId, holes: patch.holes }] },
+      { group: lid, collapseKey: golfCardOpKey(eventId, patch.cardId), label: 'Tarjeta de golf' },
+    );
+    const settled = done.then((n) => {
+      afterCards(lid, eventId);
+      return n;
+    });
+    settled.catch(() => undefined);
+    return { cardId: patch.cardId, patch, opId, done: settled };
+  });
+}
+
+const sameWire = (a: GolfHoleWire, b: GolfHoleWire) => a.s === b.s && a.p === b.p && !!a.u === !!b.u;
+
+/** Esos hoyos de la tarjeta ya están, con esos mismos valores, en un envío pendiente de la cola. */
+export function golfScoresQueued(lid: string, eventId: string, patch: GolfCardPatch): boolean {
+  const key = golfCardOpKey(eventId, patch.cardId);
+  const op = [...(currentOutbox()?.listPending(lid) ?? [])].reverse().find((o) => o.fn === 'golf_save_hole_scores' && o.collapseKey === key);
+  if (!op) return false;
+  const sent = new Map(((op.args.p_cards as { holes?: GolfHoleWire[] }[] | undefined)?.[0]?.holes ?? []).map((h) => [h.i, h] as const));
+  return patch.holes.every((h) => {
+    const x = sent.get(h.i);
+    return !!x && sameWire(x, h);
+  });
+}
+
+/** Hay una firma de esa tarjeta en la cola, todavía sin llegar al servidor. */
+export function pendingGolfSign(lid: string, cardId: string): boolean {
+  return (currentOutbox()?.listPending(lid) ?? []).some((o) => o.fn === 'golf_sign_card' && o.args.p_card === cardId && o.args.p_signed !== false);
+}
+
+/**
+ * Encola la firma (o, el admin, quitarla). Firmar lleva los hoyos tal como se revisaron (`holes`): el servidor
+ * los guarda y firma en el mismo paso, así la firma sale bien aunque los hoyos no hayan llegado antes (o se
+ * hayan quedado detrás en la cola). `done` se cumple cuando el servidor la tiene.
+ */
+export function queueGolfSign(lid: string, eventId: string, cardId: string, opts: { signed?: boolean; holes?: GolfHoleWire[] | null } = {}): { opId: string; done: Promise<void> } {
+  const signed = opts.signed ?? true;
+  const { opId, done } = enqueue<void>(
     'golf_sign_card',
-    { p_card: cardId, p_signed: signed },
+    { p_card: cardId, p_signed: signed, ...(signed && opts.holes?.length ? { p_holes: opts.holes } : {}) },
     { group: lid, collapseKey: `golf-firma:${cardId}`, label: signed ? 'Firmar tarjeta' : 'Abrir tarjeta' },
   );
-  void done.then(() => afterCards(lid, eventId)).catch(() => undefined);
+  const settled = done.then(() => afterCards(lid, eventId));
+  settled.catch(() => undefined);
+  return { opId, done: settled };
+}
+
+/** Firma (o, el admin, vuelve a abrir) la tarjeta. Va por la cola: sirve sin señal. */
+export async function signGolfCard(lid: string, eventId: string, cardId: string, signed = true, holes?: GolfHoleWire[] | null): Promise<void> {
+  const { done } = queueGolfSign(lid, eventId, cardId, { signed, holes });
   await sentOrQueued(done);
 }
 

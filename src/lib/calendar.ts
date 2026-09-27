@@ -1,8 +1,9 @@
+import { leagueSport } from '../sports/registry';
 import type { LeagueFeed } from './data';
-import { parseDate, toIsoDate } from './format';
+import { parseDate, toIsoDate, typeLabel } from './format';
 import { eventStart } from './reminders';
-import { parseSchedule } from './schedule';
-import type { BowlingEvent, League } from './types';
+import { formatTime, parseSchedule } from './schedule';
+import type { League } from './types';
 
 /** Un día del calendario de "Próximos" en el Home. */
 export interface CalendarItem {
@@ -11,7 +12,10 @@ export interface CalendarItem {
   date: string;
   lid: string;
   leagueName: string;
-  type: BowlingEvent['type'];
+  /** Deporte de la liga: el «voy» y las prácticas según el horario son solo del boliche. */
+  sport: string;
+  /** Tipo del evento tal como está en la base: 'practica' | 'torneo' (boliche), 'americano', 'ronda', 'encuentro'… */
+  type: string;
   name: string;
   /** "7:00 pm" si se sabe la hora. */
   time: string | null;
@@ -39,10 +43,22 @@ export function weekStart(iso: string): string {
   return addDays(iso, -weekdayOf(iso));
 }
 
+/** "7:30 pm" de una hora 'HH:MM' o 'HH:MM:SS' de la base; null si no hay o no se entiende. */
+function startOf(time: string | null | undefined): { minutes: number; label: string } | null {
+  const hhmm = time?.slice(0, 5) ?? '';
+  const label = hhmm ? formatTime(hhmm) : '';
+  if (!label) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  return { minutes: h * 60 + m, label };
+}
+
 /**
  * Lo que viene en tus ligas entre `from` y `from + days`: las prácticas y torneos creados y, en las
  * ligas con horario (p. ej. "Martes · 7:00 pm"), también las prácticas de cada semana aunque el admin
  * todavía no las haya creado. Ordenado por día y hora.
+ *
+ * Las prácticas (el «voy» y las que salen solas del horario) son del boliche. En los otros deportes salen
+ * los eventos creados con su tipo («Americano», «Ronda», «Encuentro»…) y su hora, sin prácticas inventadas.
  */
 export function upcomingCalendar(feeds: LeagueFeed[], leagues: League[], from: string, days: number): CalendarItem[] {
   const to = addDays(from, days);
@@ -50,8 +66,26 @@ export function upcomingCalendar(feeds: LeagueFeed[], leagues: League[], from: s
   for (const feed of feeds) {
     const league = leagues.find((l) => l.id === feed.lid);
     if (!league) continue;
-    const base = { lid: feed.lid, leagueName: league.name, playerId: feed.playerId };
+    const sport = leagueSport(league);
+    const base = { lid: feed.lid, leagueName: league.name, playerId: feed.playerId, sport };
     const inRange = feed.events.filter((e) => e.date >= from && e.date < to);
+    if (sport !== 'bowling') {
+      for (const e of inRange) {
+        const start = startOf(e.startTime) ?? eventStart(e, league);
+        out.push({
+          ...base,
+          key: `${feed.lid}:${e.id}`,
+          date: e.date,
+          type: e.type,
+          name: e.name?.trim() || typeLabel(e.type, sport),
+          time: start?.label ?? null,
+          minutes: start?.minutes ?? null,
+          eventId: e.id,
+          going: false,
+        });
+      }
+      continue;
+    }
     for (const e of inRange) {
       const start = eventStart(e, league);
       out.push({

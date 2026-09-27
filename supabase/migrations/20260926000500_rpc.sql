@@ -1681,11 +1681,15 @@ begin
   return v_id;
 end $$;
 
+-- Sin require_uid a propósito: una cuenta bloqueada también puede quitar las notificaciones de su teléfono.
 create function public.delete_push_subscription(p_endpoint text) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare
-  v_uid uuid := private.require_uid();
+  v_uid uuid := auth.uid();
 begin
+  if v_uid is null then
+    raise exception 'no_permitido' using errcode = '42501';
+  end if;
   delete from public.push_subscriptions where endpoint = p_endpoint and user_id = v_uid;
   return found;
 end $$;

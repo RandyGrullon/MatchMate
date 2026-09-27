@@ -316,6 +316,49 @@ export function footballAdapter(clock: { now?: () => number; offset?: () => numb
   };
 }
 
+/**
+ * El adaptador con un modo «callado»: dentro de `quietly` ninguna jugada ni deshacer es hito (no se publica
+ * enseguida). Lo usa `replaceLastEvent` para que el deshacer de en medio no salga a los espectadores.
+ */
+export function quietAdapter<C, S, E>(base: CourtAdapter<C, S, E>): { adapter: CourtAdapter<C, S, E>; quietly: <T>(fn: () => T) => T } {
+  let quiet = 0;
+  return {
+    adapter: { ...base, milestone: (prev, next, ev) => quiet === 0 && !!base.milestone?.(prev, next, ev) },
+    quietly<T>(fn: () => T): T {
+      quiet++;
+      try {
+        return fn();
+      } finally {
+        quiet--;
+      }
+    },
+  };
+}
+
+/** Lo que hace falta del modo cancha (useCourt o createCourtMachine) para cambiar la última jugada. */
+export interface LastEventEditor<E> {
+  undo(): boolean;
+  apply(ev: E): string | null;
+  flush(): void;
+}
+
+/**
+ * Cambia la última jugada de la lista (`prev`) por `next` (el gol con quién marcó, la asistencia o el autogol)
+ * sin que los espectadores vean el paso de en medio, con el gol quitado (1-0 → 0-0 → 1-0):
+ * - el deshacer va callado (no es hito: no se publica enseguida);
+ * - lo nuevo se publica ya (`flush`): una sola publicación por cambio.
+ * Si igual salió el paso de en medio (hacía más de un minuto que no se publicaba nada), la de `flush` sale en el
+ * mismo instante y la cola la reemplaza antes de mandarla (misma clave de colapso, todavía sin enviar): al servidor
+ * nunca llega el estado sin el gol. Si el motor rechaza `next`, vuelve `prev`. Devuelve null o el error del motor.
+ */
+export function replaceLastEvent<E>(court: LastEventEditor<E>, quietly: <T>(fn: () => T) => T, prev: E, next: E): string | null {
+  if (!quietly(() => court.undo())) return 'No se pudo cambiar la jugada.';
+  const err = court.apply(next);
+  if (err) court.apply(prev);
+  court.flush();
+  return err;
+}
+
 // ---------- Lo publicado, visto desde las pantallas ----------
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

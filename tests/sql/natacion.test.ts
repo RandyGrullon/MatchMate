@@ -285,6 +285,87 @@ describe('nadadores menores', () => {
   });
 });
 
+describe('menor por el año de nacimiento (aunque no lo marquen)', () => {
+  const swimmersOf = (lid: string) =>
+    db.asAnon<{ name: string }>('select p.name from public.players p join public.swim_swimmers s on s.player_id = p.id where p.league_id = $1 order by 1', [lid]);
+
+  it('liga pública sin menores: un niño no entra como adulto (ni por el entrenador ni por el admin)', async () => {
+    const pub = await swimLeague({ minors: false, visibility: 'public' });
+    const nina = { p_league: pub.lid, p_name: 'Niña', p_club: pub.clubA, p_is_minor: false, p_birth_year: born(9), p_sex: 'F' };
+    await fails(db.rpc(w.u.luis, 'swim_register_swimmer', nina), 'invalido');
+    await fails(db.rpc(w.u.luis, 'swim_register_swimmer', { ...nina, p_consent: true, p_guardian_name: 'Mamá' }), 'invalido');
+    await fails(db.rpc(w.u.org, 'swim_register_swimmer', { ...nina, p_consent: true }), 'invalido');
+    // Sin sexo tampoco (no se cuela por no poder pedir los datos de menor).
+    await fails(db.rpc(w.u.org, 'swim_register_swimmer', { ...nina, p_sex: null }), 'invalido');
+    // 17 este año: menor. 18 este año: adulto (la misma cuenta que el formulario).
+    await fails(db.rpc(w.u.org, 'swim_register_swimmer', { ...nina, p_name: 'Casi', p_birth_year: born(17) }), 'invalido');
+    const grown = await db.rpc<string>(w.u.org, 'swim_register_swimmer', { ...nina, p_name: 'Ya grande', p_birth_year: born(18) });
+    expect(await db.admin('select is_minor from public.players where id = $1', [grown])).toEqual([{ is_minor: false }]);
+    expect(await db.count('public.players', 'league_id = $1 and name in ($2, $3)', [pub.lid, 'Niña', 'Casi'])).toBe(0);
+    // Un visitante solo ve al adulto.
+    expect(await swimmersOf(pub.lid)).toEqual([{ name: 'Ya grande' }]);
+  });
+
+  it('liga con menores: queda como menor (con consentimiento) y nadie la reclama', async () => {
+    const s = await swimLeague();
+    const nina = { p_league: s.lid, p_name: 'Niña', p_club: s.clubA, p_is_minor: false, p_birth_year: born(9), p_sex: 'F' };
+    await fails(db.rpc(w.u.luis, 'swim_register_swimmer', nina), 'invalido');
+    const p = await db.rpc<string>(w.u.luis, 'swim_register_swimmer', { ...nina, p_consent: true });
+    expect(await db.admin('select is_minor, user_id from public.players where id = $1', [p])).toEqual([{ is_minor: true, user_id: null }]);
+    expect(await db.admin('select consent_by, consent_at is not null as consent from public.player_private where player_id = $1', [p])).toEqual([
+      { consent_by: w.u.luis, consent: true },
+    ]);
+    await db.admin(`insert into public.league_members (league_id, user_id, role, display_name) values ($1, $2, 'member', 'Niña')`, [s.lid, w.u.nuevo]);
+    await fails(db.rpc(w.u.nuevo, 'claim_player', { p_player: p }), 'invalido');
+    // Pedirla al entrar con el mismo nombre tampoco se la lleva (ensure_player solo toma jugadores que no son menores).
+    const mine = await db.rpc<string>(w.u.nuevo, 'ensure_my_player', { p_league: s.lid, p_prefer: p });
+    expect(mine).not.toBe(p);
+    expect(await db.admin('select user_id from public.players where id = $1', [p])).toEqual([{ user_id: null }]);
+  });
+
+  it('a un adulto o a una cuenta no se le pone un año de menor; a un menor no se le quita la marca', async () => {
+    const s = await swimLeague();
+    const adult = await db.rpc<string>(w.u.org, 'swim_register_swimmer', { p_league: s.lid, p_name: 'Adulta', p_birth_year: 1990, p_sex: 'F' });
+    await fails(db.rpc(w.u.org, 'swim_update_swimmer', { p_player: adult, p_patch: { birth_year: born(12) } }), 'invalido');
+    await fails(db.rpc(w.u.org, 'set_player_private', { p_player: adult, p_birth_year: born(12), p_sex: 'F' }), 'invalido');
+    // La cuenta de luis tampoco (los menores no tienen cuenta).
+    await fails(db.rpc(w.u.org, 'swim_update_swimmer', { p_player: s.pLuis, p_patch: { birth_year: born(15) } }), 'invalido');
+    await fails(db.rpc(w.u.org, 'set_player_private', { p_player: s.pLuis, p_birth_year: born(15) }), 'invalido');
+    await db.rpc(w.u.org, 'swim_update_swimmer', { p_player: s.pLuis, p_patch: { birth_year: born(30), sex: 'M' } });
+    expect(await db.admin('select birth_year from public.player_private where player_id = any ($1) order by birth_year', [[adult, s.pLuis]])).toEqual([
+      { birth_year: 1990 },
+      { birth_year: born(30) },
+    ]);
+    // Lo que no toca la edad sigue igual (update_player siempre reescribe is_minor).
+    await db.rpc(w.u.org, 'update_player', { p_player: s.pLuis, p_patch: { name: 'Luis G.' } });
+    await db.rpc(w.u.org, 'swim_update_swimmer', { p_player: adult, p_patch: { name: 'Adulta M.', sex: 'F' } });
+
+    const nene = await kid(s, 'Nene', 10, 'M', s.clubA);
+    await fails(db.rpc(w.u.org, 'update_player', { p_player: nene, p_patch: { is_minor: false } }), 'invalido');
+    await db.admin(`insert into public.league_members (league_id, user_id, role, display_name) values ($1, $2, 'member', 'nuevo')`, [s.lid, w.u.nuevo]);
+    // Ni por debajo de las RPC (el trigger salta antes que el CHECK sin cuenta).
+    await fails(db.admin('update public.players set is_minor = false, user_id = $2 where id = $1', [nene, w.u.nuevo]), 'invalido');
+    expect(await db.admin('select is_minor, user_id from public.players where id = $1', [nene])).toEqual([{ is_minor: true, user_id: null }]);
+    // Quien ya cumple 18 este año deja de ser menor y puede tener cuenta.
+    const grown = await kid(s, 'Grande', 18, 'M', s.clubA);
+    await db.rpc(w.u.org, 'update_player', { p_player: grown, p_patch: { is_minor: false } });
+    expect(await db.rpc(w.u.nuevo, 'claim_player', { p_player: grown })).toBe(grown);
+    // Salir de la liga (la cuenta se suelta sola) nunca falla.
+    await db.admin('delete from public.league_members where league_id = $1 and user_id = $2', [s.lid, w.u.nuevo]);
+    expect(await db.admin('select user_id from public.players where id = $1', [grown])).toEqual([{ user_id: null }]);
+  });
+
+  it('vale en cualquier deporte: set_player_private no deja un año de menor en un adulto o una cuenta', async () => {
+    // Liga de boliche privada (pedro sin cuenta, luis con cuenta) y pública (p1 sin cuenta).
+    await fails(db.rpc(w.u.org, 'set_player_private', { p_player: w.p.pedro, p_birth_year: born(12) }), 'invalido');
+    await fails(db.rpc(w.u.org, 'set_player_private', { p_player: w.p.luis, p_birth_year: born(16) }), 'invalido');
+    await fails(db.rpc(w.u.otro, 'set_player_private', { p_player: w.p.p1, p_birth_year: born(8) }), 'invalido');
+    await db.rpc(w.u.org, 'set_player_private', { p_player: w.p.pedro, p_birth_year: 1985, p_sex: 'M' });
+    await fails(db.rpc(w.u.org, 'set_player_private', { p_player: w.p.pedro, p_birth_year: born(12), p_sex: 'M' }), 'invalido');
+    expect(await db.admin('select birth_year from public.player_private where player_id = $1', [w.p.pedro])).toEqual([{ birth_year: 1985 }]);
+  });
+});
+
 describe('inscripciones', () => {
   it('el sexo y la categoría tienen que ser los de la prueba; la siembra se puede cambiar', async () => {
     const s = await swimLeague();

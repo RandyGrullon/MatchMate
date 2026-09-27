@@ -44,7 +44,9 @@ export default function PairsAdmin() {
           <p className="text-xs text-muted">Valen para los partidos nuevos. Los que ya están creados se quedan con sus reglas (el admin las cambia antes de empezar cada uno).</p>
         </Card>
       </Section>
-      {(doubles || sport === 'tennis') && <PairsSection />}
+      {/* Pádel siempre es de dobles; en tenis y pickleball, aunque las reglas sean de individual, las cajas y la escalera
+          de dobles piden parejas. */}
+      {(doubles || sport !== 'padel') && <PairsSection />}
       <LevelsSection />
     </div>
   );

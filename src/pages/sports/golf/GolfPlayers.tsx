@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Shuffle, Signature, UserPlus, Users } from 'lucide-react';
 import {
   addGolfPlayers,
+  pendingGolfSign,
   registerGolf,
   setGolfDq,
   setGolfGroups,
@@ -200,20 +201,30 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
   const { lid } = useLeagueCtx();
   const run = useAction();
   const { confirm } = useFeedback();
-  const started = holesDone(card) > 0;
+  // Anotó algo alguna vez (aunque después vació la tarjeta): el servidor ya no deja cambiar salida ni Index.
+  const started = holesDone(card) > 0 || !!card.scoredAt;
+  const signing = !card.signed && pendingGolfSign(lid, card.id);
   const locked = round.closed || card.signed || started;
   return (
     <Card className="flex flex-col gap-3 px-4 py-4">
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold">Mi tarjeta</p>
-        {card.signed ? <Badge tone="ok">Firmada</Badge> : isComplete(card) ? <Badge tone="warn">Falta firmar</Badge> : <Badge>{holesDone(card)} hoyos</Badge>}
+        {card.signed ? (
+          <Badge tone="ok">Firmada</Badge>
+        ) : signing ? (
+          <Badge tone="ok">Firmada · por enviar</Badge>
+        ) : isComplete(card) ? (
+          <Badge tone="warn">Falta firmar</Badge>
+        ) : (
+          <Badge>{holesDone(card)} hoyos</Badge>
+        )}
       </div>
       <Field label="Salida (tees)" hint={locked ? 'Ya empezaste a anotar: la salida no cambia (pídeselo al admin).' : undefined}>
         <TeeSelect round={round} value={card.teeId} disabled={locked} onChange={(teeId) => run(() => registerGolf(lid, round.eventId, { teeId }), 'Salida cambiada')} />
       </Field>
       <HcpExplain round={round} teeId={card.teeId} index={card.hcpIndex} />
       <div className="flex flex-wrap gap-2">
-        {!card.signed && isComplete(card) && !round.closed && (
+        {!card.signed && !signing && isComplete(card) && !round.closed && (
           <Button variant="primary" icon={<Signature className="size-4" />} onClick={() => onSign(card)}>
             Revisar y firmar
           </Button>

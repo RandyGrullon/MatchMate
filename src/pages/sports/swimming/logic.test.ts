@@ -9,7 +9,10 @@ import {
   eventResults,
   groupForMeet,
   groupLabel,
+  leagueYear,
   meetScores,
+  minorAgeProblem,
+  minorByBirthYear,
   meetStage,
   pendingHeats,
   publishedHeats,
@@ -201,5 +204,39 @@ describe('inscripciones y estado', () => {
     expect(meetStage(meet(), 3)).toBe('inscripciones');
     expect(meetStage(meet({ heatsPublishedAt: 'x' }), 3)).toBe('series');
     expect(meetStage(meet({ heatsPublishedAt: 'x', finalizedAt: 'y' }), 3)).toBe('final');
+  });
+});
+
+describe('menor por el año de nacimiento', () => {
+  it('año de la liga en su zona horaria', () => {
+    // 1 de enero 2027 a las 02:00 UTC: en Santo Domingo (UTC−4) todavía es 2026.
+    const now = Date.UTC(2027, 0, 1, 2);
+    expect(leagueYear('America/Santo_Domingo', now)).toBe(2026);
+    expect(leagueYear('UTC', now)).toBe(2027);
+    expect(leagueYear(undefined, now)).toBe(2026);
+    expect(leagueYear('No/Existe', now)).toBe(2027);
+  });
+
+  it('menor si le faltan años para 18 este año (la misma cuenta que la base)', () => {
+    expect(minorByBirthYear(2017, 2026)).toBe(true);
+    expect(minorByBirthYear(2009, 2026)).toBe(true);
+    expect(minorByBirthYear(2008, 2026)).toBe(false);
+    expect(minorByBirthYear(null, 2026)).toBe(false);
+  });
+
+  it('con año de menor no se guarda como adulto (ni en una liga sin menores ni con cuenta)', () => {
+    const base = { year: 2026, isMinor: false, editing: false, hasAccount: false, minorsOk: false };
+    // Adulto o sin año: se puede.
+    expect(minorAgeProblem({ ...base, birthYear: 1990 })).toBeNull();
+    expect(minorAgeProblem({ ...base, birthYear: null })).toBeNull();
+    expect(minorAgeProblem({ ...base, birthYear: 2008 })).toBeNull();
+    // Niña en una liga pública sin menores: no se puede (antes solo salía un aviso y se guardaba como adulta).
+    expect(minorAgeProblem({ ...base, birthYear: 2017 })).toMatch(/no admite menores/);
+    expect(minorAgeProblem({ ...base, birthYear: 2017, minorsOk: true })).toMatch(/márcalo como menor/);
+    expect(minorAgeProblem({ ...base, birthYear: 2017, minorsOk: true, isMinor: true })).toBeNull();
+    // Cambiando un nadador adulto o con cuenta: tampoco.
+    expect(minorAgeProblem({ ...base, birthYear: 2012, editing: true, minorsOk: true })).toMatch(/no está registrado como menor/);
+    expect(minorAgeProblem({ ...base, birthYear: 2012, editing: true, hasAccount: true })).toMatch(/no tienen cuenta/);
+    expect(minorAgeProblem({ ...base, birthYear: 2012, editing: true, isMinor: true, minorsOk: true })).toBeNull();
   });
 });

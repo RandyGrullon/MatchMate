@@ -25,8 +25,8 @@ const short = (iso: string) => {
 };
 
 /**
- * Home › Próximos: calendario semanal (lunes a domingo) de tus prácticas y torneos en todas tus ligas.
- * Las prácticas de cada semana salen según el horario de la liga aunque el admin todavía no las creó.
+ * Home › Próximos: calendario semanal (lunes a domingo) de los eventos de todas tus ligas, de cualquier deporte.
+ * En el boliche, las prácticas de cada semana salen según el horario de la liga aunque el admin todavía no las creó.
  */
 export function WeekCalendar() {
   const { feeds, leagues } = useNotifications();
@@ -119,7 +119,8 @@ export function WeekCalendar() {
 
 function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) => void }) {
   const to = item.eventId ? `/l/${item.lid}/e/${item.eventId}` : `/l/${item.lid}`;
-  const canRsvp = item.type === 'practica' && !!item.eventId && !!item.playerId;
+  // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
+  const canRsvp = item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
   return (
     <div className="flex items-center gap-3 px-4 py-2">
       <Link to={to} className="flex min-w-0 flex-1 items-center gap-3">

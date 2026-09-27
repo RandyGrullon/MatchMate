@@ -14,7 +14,7 @@ import { Avatar } from '../../../components/Avatar';
 import { useAction } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select } from '../../../components/ui';
 import { ClubTag, Segmented, clubMap, useNames, useSwim } from './bits';
-import { groupLabel } from './logic';
+import { groupLabel, leagueYear, minorAgeProblem } from './logic';
 
 const SEX_LABEL: Record<Sex, string> = { F: 'Femenino', M: 'Masculino', X: 'Otro' };
 
@@ -147,14 +147,19 @@ export function SwimmerFormModal({ open, onClose, editing, fixedClub }: { open: 
     setConsent(!!editing?.priv?.consentAt);
   }, [open, editing, fixedClub, minorsOk]);
 
-  const thisYear = new Date().getFullYear();
+  // El año de hoy en la zona de la liga: la base cuenta la edad igual.
+  const thisYear = leagueYear(league.tz);
   const birthYear = year ? Number(year) : null;
   const badYear = birthYear != null && (!Number.isInteger(birthYear) || birthYear < 1900 || birthYear > thisYear);
-  const minorAge = birthYear != null && thisYear - birthYear < 18;
+  // Con año de menor tiene que ser menor (sin cuenta); si no, la base lo rechaza.
+  const ageProblem = badYear
+    ? null
+    : minorAgeProblem({ birthYear, year: thisYear, isMinor, editing: !!editing, hasAccount: !!editing?.player.uid, minorsOk });
   const valid =
     name.trim().length > 0 &&
     name.trim().length <= 60 &&
     !badYear &&
+    !ageProblem &&
     (!isMinor || (birthYear != null && !!sex && consent)) &&
     (!fixedClub || club === fixedClub);
 
@@ -238,7 +243,11 @@ export function SwimmerFormModal({ open, onClose, editing, fixedClub }: { open: 
             </Select>
           </Field>
         </div>
-        {!isMinor && minorAge && !editing && <p className="text-xs text-warn">Por el año de nacimiento es menor de edad: márcalo como menor.</p>}
+        {ageProblem && (
+          <p role="alert" className="text-xs text-warn">
+            {ageProblem}
+          </p>
+        )}
         <Field label={isMinor ? 'Sexo (obligatorio)' : 'Sexo'}>
           <Segmented
             label="Sexo"

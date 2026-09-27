@@ -12,10 +12,9 @@ import { Chips, racketColumns } from './bits';
 import { parseLeagueConfig } from './logic/league';
 import { fmtPoints } from './logic/night';
 import { byModality, MODALITY_LABEL, type Modality } from './logic/modality';
-import { inSeason, isSetsMatch, pairStandings, seasonNightTable, seasonPlayerTable, winPct } from './logic/results';
+import { inSeason, isSetsMatch, pairStandings, seasonDay, seasonNightTable, seasonPlayerTable, winPct } from './logic/results';
 import { rankingNote, tiebreakText } from './logic/tiebreaks';
 import { groupStage, groupTables, parseTourneyConfig } from './logic/tourney';
-import { localParts } from './logic/time';
 import { useNames } from './names';
 import { hasNights, useRacket } from './sport';
 
@@ -25,12 +24,6 @@ interface Competition {
   key: string;
   name: string;
   rows: StandingRow[];
-}
-
-/** Día del partido para la temporada: la fecha del evento o la del partido (en la zona de la liga). */
-function dayOf(m: Match, eventDate: ReadonlyMap<string, string>, tz?: string | null): string | null {
-  if (m.eventId && eventDate.has(m.eventId)) return eventDate.get(m.eventId)!;
-  return localParts(m.scheduledAt ?? m.proposedAt ?? m.confirmedAt, tz)?.date ?? null;
 }
 
 /** Tablas de las ligas de parejas y de los grupos de los torneos. */
@@ -69,10 +62,10 @@ export default function RacketStandings() {
   const [whole, setWhole] = useState(false);
   const nightsWord = ext.words?.nights ?? 'Noches';
 
-  const eventDate = useMemo(() => new Map(events.data.map((e) => [e.id, e.date] as const)), [events.data]);
+  const eventDays = useMemo(() => new Map(events.data.map((e) => [e.id, { date: e.date, type: e.type }] as const)), [events.data]);
   const matches = useMemo(
-    () => (whole || !hasSeason ? all : all.filter((m) => inSeason(league, dayOf(m, eventDate, league.tz)))),
-    [all, whole, hasSeason, league, eventDate],
+    () => (whole || !hasSeason ? all : all.filter((m) => inSeason(league, seasonDay(m, eventDays, league.tz)))),
+    [all, whole, hasSeason, league, eventDays],
   );
   const comps = useMemo(
     () => [...competitions(sport, events.data, matches, now), ...(ext.competitions?.(events.data, matches, now) ?? [])],

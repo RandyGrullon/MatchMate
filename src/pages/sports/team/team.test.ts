@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { createElement as h } from 'react';
+import { renderToString } from 'react-dom/server';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { courtVars } from '../../../court/device';
 import type { Match, MatchSide } from '../../../lib/data/matches';
 import type { SeasonTeam } from '../../../lib/data/seasonTeams';
-import { canOpenTable, currentRound, myTeams, rosterSide, rsvpTargets, scorerCandidates, shortName, speakerSide, teamColor, textOn, upcomingFor } from './logic';
+import { ON_OK, canOpenTable, currentRound, myTeams, rosterSide, rsvpTargets, scorerCandidates, shortName, speakerSide, teamColor, textOn, upcomingFor } from './logic';
+import { RsvpButtons } from './TeamBits';
 import { addDays, localTime, matchClashes, parseCourts, parseTimes, planClashes, planDrafts, planSchedule, roundDates, zonedIso } from './schedule';
 
 const SD = 'America/Santo_Domingo';
@@ -189,5 +193,75 @@ describe('quién es quién en el partido', () => {
     expect(textOn('#1e3a8a')).toBe('#ffffff');
     expect(shortName('Juan Pérez Soto')).toBe('Juan S.');
     expect(shortName('Ana')).toBe('Ana');
+  });
+});
+
+// ---------- Letra sobre el verde y el ámbar (claro, oscuro y modo sol) ----------
+
+/** src/index.css tal cual: Vitest deja vacíos los .css importados (también con ?raw), así que se lee del disco. */
+let indexCss = '';
+beforeAll(async () => {
+  const fs = (await import(/* @vite-ignore */ `node:${'fs'}`)) as { readFileSync(path: URL, encoding: 'utf8'): string };
+  indexCss = fs.readFileSync(new URL('../../../index.css', import.meta.url), 'utf8');
+});
+
+/** Las variables `--x: valor;` del bloque con ese selector en src/index.css. */
+function cssVars(selector: string): Record<string, string> {
+  const i = indexCss.indexOf(`${selector} {`);
+  if (i < 0) throw new Error(`Falta ${selector} en index.css`);
+  const body = indexCss.slice(i + selector.length + 2, indexCss.indexOf('}', i));
+  return Object.fromEntries([...body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+}
+
+function luminance(hex: string): number {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) throw new Error(`Color raro: ${hex}`);
+  const [r, g, b] = [m[1], m[2], m[3]].map((x) => {
+    const c = parseInt(x, 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const contrast = (a: string, b: string) => {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
+
+describe('letra sobre los colores de estado', () => {
+  const themeVars = (): [string, Record<string, string>][] => {
+    const light = cssVars(':root');
+    return [
+      ['claro', light],
+      ['oscuro del teléfono', { ...light, ...cssVars(':root:not([data-theme="light"])') }],
+      ['oscuro elegido', { ...light, ...cssVars(':root[data-theme="dark"]') }],
+    ];
+  };
+  // Lo que resuelve `var(--on-ok, var(--bg))` (y --on-warn): la del tema si existe; si no, el fondo.
+  const onColor = (v: Record<string, string>, tone: 'ok' | 'warn') => v[`--on-${tone}`] ?? v['--bg'];
+
+  it('la convocatoria activa (Voy / Tal vez) y el penal convertido se leen en claro, oscuro y con sol (4.5:1)', () => {
+    const themes = themeVars();
+    for (const [name, vars] of themes) {
+      for (const sun of [false, true]) {
+        const v: Record<string, string> = sun ? { ...vars, ...courtVars(true) } : vars;
+        for (const tone of ['ok', 'warn'] as const) {
+          const ratio = contrast(onColor(v, tone), v[`--${tone}`]);
+          expect(ratio, `${tone} en ${name}${sun ? ' con sol' : ''}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+    // Lo que había: blanco fijo sobre el verde y el ámbar del oscuro (no se lee).
+    const dark = themes[1][1];
+    expect(contrast('#ffffff', dark['--ok'])).toBeLessThan(3);
+    expect(contrast('#ffffff', dark['--warn'])).toBeLessThan(3);
+    expect(ON_OK).toBe('var(--on-ok, var(--bg))');
+  });
+
+  it('los botones Voy / Tal vez / No voy marcados usan la letra del tema, nunca blanco fijo', () => {
+    const html = (value: 'yes' | 'maybe' | 'no') => renderToString(h(RsvpButtons, { value, onChange: () => {} }));
+    expect(html('yes')).toContain('bg-ok text-[color:var(--on-ok,var(--bg))]');
+    expect(html('maybe')).toContain('bg-warn text-[color:var(--on-warn,var(--bg))]');
+    expect(html('no')).toContain('bg-danger text-on-danger');
+    for (const v of ['yes', 'maybe', 'no'] as const) expect(html(v)).not.toContain('text-white');
   });
 });

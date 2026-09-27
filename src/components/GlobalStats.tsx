@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { CalendarCheck, CalendarDays, ChevronRight, Flame, Globe, Hash, Layers, Sigma, Target, Trophy } from 'lucide-react';
+import { CalendarCheck, CalendarDays, ChevronRight, CircleHelp, Flame, Globe, Hash, Layers, Sigma, Target, Trophy } from 'lucide-react';
 import { frameStats } from '../lib/bowling';
 import { usePlayerAcrossLeagues } from '../lib/data';
 import { eventLabel, formatDate } from '../lib/format';
 import { playerStats } from '../lib/stats';
 import type { BowlingEvent, Entry, League, Member } from '../lib/types';
+import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { Stat } from './event/StandingsTab';
 import { ScoreChart, type ChartPoint } from './ScoreChart';
 import { Badge, Card, LoadError, StatsSkeleton } from './ui';
@@ -16,9 +17,96 @@ interface Played {
   event: BowlingEvent;
 }
 
+/** Una liga de otro deporte en el perfil global: sus números están en el perfil de esa liga. */
+export interface SportLeagueLink {
+  lid: string;
+  name: string;
+  sport: string;
+  kind: League['kind'];
+}
+
 /**
- * Perfil global: puntaje y promedio de la cuenta sumando todas sus ligas (y torneos sin liga), y los de
- * cada liga. La cuenta es su jugador en cada liga. Solo cuentan los juegos verificados, igual que en cada liga.
+ * Separa las membresías: las del boliche (el perfil global suma pinos, promedios y series) y las ligas de los
+ * otros deportes, que llevan sus números en el perfil de cada liga. Una liga que no se pudo leer se queda con
+ * el boliche, como antes (sale sin juegos).
+ */
+export function splitBySport(memberships: Member[], leagues: League[]): { bowling: Member[]; others: SportLeagueLink[] } {
+  const byId = new Map(leagues.map((l) => [l.id, l]));
+  const bowling: Member[] = [];
+  const others: SportLeagueLink[] = [];
+  for (const m of memberships) {
+    const league = byId.get(m.leagueId);
+    if (!league || leagueSport(league) === 'bowling') bowling.push(m);
+    else if (!others.some((o) => o.lid === league.id)) others.push({ lid: league.id, name: league.name, sport: leagueSport(league), kind: league.kind });
+  }
+  const order = sportsOf(others.map((o) => ({ id: o.lid, sport: o.sport })));
+  others.sort((a, b) => order.indexOf(a.sport) - order.indexOf(b.sport) || a.name.localeCompare(b.name));
+  return { bowling, others };
+}
+
+/**
+ * Perfil global › Mis estadísticas: los números del boliche sumando sus ligas y, aparte, las ligas de los
+ * otros deportes con un link al perfil de cada una (cada deporte cuenta lo suyo: sets, goles, golpes, marcas).
+ */
+export function ProfileStats({ memberships, leagues }: { memberships: Member[]; leagues: League[] }) {
+  const { bowling, others } = useMemo(() => splitBySport(memberships, leagues), [memberships, leagues]);
+  const showBowling = bowling.length > 0 || others.length === 0;
+  return (
+    <>
+      {showBowling && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">{others.length ? 'Mis estadísticas de boliche' : 'Mis estadísticas'}</h2>
+            <p className="text-sm text-muted">
+              {others.length ? 'Tus ligas y torneos de boliche juntos.' : 'Todas tus ligas y torneos juntos.'} Solo cuentan los juegos que ya cuentan en cada
+              liga.
+            </p>
+          </div>
+          <GlobalStats memberships={bowling} leagues={leagues} />
+        </section>
+      )}
+      {others.length > 0 && <SportLeagues leagues={others} alone={!showBowling} />}
+    </>
+  );
+}
+
+/** Las ligas de los otros deportes: cada una abre «Mis números» en esa liga. */
+function SportLeagues({ leagues, alone }: { leagues: SportLeagueLink[]; alone: boolean }) {
+  return (
+    <section className="flex flex-col gap-3" aria-label={alone ? 'Mis ligas' : 'Mis ligas de otros deportes'}>
+      <div>
+        <h2 className="text-lg font-bold tracking-tight">{alone ? 'Mis ligas' : 'Otros deportes'}</h2>
+        <p className="text-sm text-muted">Cada deporte lleva sus números en el perfil de la liga: toca una para ver los tuyos.</p>
+      </div>
+      <Card className="divide-y divide-line overflow-hidden">
+        {leagues.map((l) => {
+          const meta = sportMeta(l.sport);
+          const Icon = meta?.icon ?? CircleHelp;
+          return (
+            <Link key={l.lid} to={`/l/${l.lid}/perfil`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                <Icon className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{l.name}</div>
+                <div className="text-xs text-muted">
+                  {meta?.short ?? 'Otro deporte'} · {l.kind === 'torneo' ? 'Torneo' : 'Liga'}
+                </div>
+              </div>
+              <span className="text-xs font-medium text-accent">Mis números</span>
+              <ChevronRight className="size-4 text-muted" />
+            </Link>
+          );
+        })}
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Perfil global del boliche: puntaje y promedio de la cuenta sumando todas sus ligas (y torneos sin liga), y los
+ * de cada liga. La cuenta es su jugador en cada liga. Solo cuentan los juegos verificados, igual que en cada liga.
+ * Recibe solo las membresías del boliche (ver `splitBySport`): los otros deportes no tienen pinos ni promedio.
  */
 export function GlobalStats({ memberships, leagues }: { memberships: Member[]; leagues: League[] }) {
   const links = memberships.filter((m) => m.playerId).map((m) => ({ lid: m.leagueId, playerId: m.playerId! }));
@@ -51,7 +139,7 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
     }
     return (
       <Card className="p-4 text-sm text-muted">
-        Únete a una liga o crea la tuya: aquí verás tu puntaje y tu promedio de todas tus ligas juntas.
+        Únete a una liga o crea la tuya: aquí verás tus números de todas tus ligas juntas.
       </Card>
     );
   }

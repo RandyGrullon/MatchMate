@@ -65,6 +65,23 @@ describe('en juego ahora en el home', () => {
     const leagues = [lg('a', 'A', 'Martes · 9:00 pm'), lg('b', 'B', 'Martes · 7:00 pm')];
     expect(liveGames(feeds, leagues, at(20, 45)).map((g) => g.event.id)).toEqual(['b1', 'a1']);
   });
+
+  it('solo las ligas del boliche: un americano o una ronda de hoy no es «anotar mis juegos»', () => {
+    const other = (id: string, type: string) => ({ id, date: '2026-09-29', type, games: 0 }) as unknown as BowlingEvent;
+    const feeds = [
+      feed('bol', [ev('practica-hoy', '2026-09-29')]),
+      feed('padel', [other('americano-hoy', 'americano')]),
+      feed('golf', [other('ronda-hoy', 'ronda')]),
+      feed('tenis', [ev('practica-tenis', '2026-09-29')]),
+    ];
+    const leagues = [
+      lg('bol', 'Boliche', 'Martes · 7:00 pm'),
+      { ...lg('padel', 'Pádel', 'Martes · 7:00 pm'), sport: 'padel' },
+      { ...lg('golf', 'Golf', ''), sport: 'golf' },
+      { ...lg('tenis', 'Tenis', ''), sport: 'tennis' },
+    ];
+    expect(liveGames(feeds, leagues, at(19, 45)).map((g) => g.event.id)).toEqual(['practica-hoy']);
+  });
 });
 
 describe('tablero en vivo', () => {

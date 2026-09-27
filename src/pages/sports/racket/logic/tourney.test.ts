@@ -98,6 +98,20 @@ describe('grupos y cuadro', () => {
     expect(bracketTodo(cat, b, [semi1, fixed, final]).update.map((u) => [u.match.id, u.bm.side2])).toEqual([[final.id, 'T2']]);
   });
 
+  it('un partido de grupo anulado no traba el cuadro: está (no falta) y no queda pendiente', () => {
+    const cat: TourneyCategory = { ...newCategory('A'), pairs: ids(3), groups: 1, perGroup: 2, thirdPlace: false, groupsOf: [ids(3)] };
+    const stage = groupStage(cat, 0);
+    const m12 = win('T1', 'T2', { stage });
+    const m13 = win('T1', 'T3', { stage });
+    const m23 = win('T2', 'T3', { stage, status: 'void' });
+    // Antes: {done: false, missing: 1} y «Crear los 1 partidos que faltan» no creaba nada.
+    expect(groupsDone(cat, [m12, m13, m23], NOW)).toEqual({ done: true, pending: 0, total: 2, missing: 0 });
+    expect(qualifiers('padel', cat, [m12, m13, m23], { now: NOW }).map((x) => x.id)).toEqual(['T1', expect.any(String)]);
+    // El cruce anulado y rehecho cuenta una vez: si además borran otro, falta ese.
+    const again = win('T3', 'T2', { stage, status: 'scheduled', winner: null, score: null });
+    expect(groupsDone(cat, [m12, m23, again], NOW)).toEqual({ done: false, pending: 1, total: 2, missing: 1 });
+  });
+
   it('las fases de cada grupo: «Categoría A · Grupo B»', () => {
     expect(groupStage({ name: 'Categoría A' }, 1)).toBe('Categoría A · Grupo B');
   });

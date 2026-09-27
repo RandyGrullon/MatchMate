@@ -5,6 +5,7 @@ import {
   AUTO_CONFIRM_MS,
   awaitingConfirmation,
   autoConfirmAt,
+  cachedCourtState,
   canConfirm,
   canDispute,
   compareMatches,
@@ -278,6 +279,32 @@ describe('lo pendiente en la cola se ve de una', () => {
     const lineup = overlayMatch(base, [item('set_match_players', { p_match: 'm1', p_side: 1, p_players: [{ player_id: 'pPedro', sub: true }] })]);
     expect(lineup.sides[0].players).toEqual([{ playerId: 'pPedro', side: 1, position: null, jersey: null, sub: true }]);
     expect(lineup.sides[1]).toBe(base.sides[1]);
+  });
+
+  it('publicar pone en vivo como el servidor: solo con algo nuevo, y un suspendido solo si quien publica lo retomó', () => {
+    const sus = toMatch(row({ status: 'suspended', seq: 4, scorer_id: null }), sides, players);
+    // Lo mismo que ya estaba (abrir la cancha para mirar): no.
+    const same = overlayMatch(sus, [item('publish_match', { p_match: 'm1', p_seq: 4, p_state: { v: 1, seq: 4 }, p_score: null })]);
+    expect(same.status).toBe('suspended');
+    // Algo nuevo de un teléfono que no pidió el turno (el servidor dice 'lease'): sigue suspendido.
+    expect(overlayMatch(sus, [item('publish_match', { p_match: 'm1', p_seq: 5, p_state: { v: 1, seq: 5 }, p_score: null })]).status).toBe('suspended');
+    // Lo retomó (tiene el turno) y anota algo nuevo: en vivo.
+    const mine = { ...sus, scorerId: 'u-ana' };
+    expect(overlayMatch(mine, [item('publish_match', { p_match: 'm1', p_seq: 5, p_state: { v: 1, seq: 5 }, p_score: null })]).status).toBe('live');
+    const sched = toMatch(row({ status: 'scheduled', seq: 0 }), sides, players);
+    expect(overlayMatch(sched, [item('publish_match', { p_match: 'm1', p_seq: 1, p_state: { v: 1, seq: 1 }, p_score: null })]).status).toBe('live');
+  });
+
+  it('lo último que el teléfono vio del partido completo (la cancha sin señal sigue desde ahí)', () => {
+    expect(cachedCourtState('nadie')).toBeNull();
+    const state = { v: 1, seq: 7, config: {}, base: null, log: [], at: 0, origin: 'tel-A' };
+    const full = toMatch(row({ id: 'm-cache', seq: 7, state }), sides, players);
+    queryClient.setQueryData<Wire<Match> | null>(matchKeys.one('m-cache'), full);
+    expect(cachedCourtState('m-cache')).toEqual({ state, seq: 7 });
+    // De una lista (sin el estado del anotador) no sirve.
+    const listed = toMatch(row({ id: 'm-lista', seq: 2 }), sides, players);
+    queryClient.setQueryData<Wire<Match> | null>(matchKeys.one('m-lista'), listed);
+    expect(cachedCourtState('m-lista')).toBeNull();
   });
 
   it('lo de otro partido o de otra RPC no toca la lista', () => {

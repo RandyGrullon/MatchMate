@@ -96,7 +96,8 @@ export default function AdminPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Tour name="admin" steps={ADMIN_TOUR} when={isAdmin} />
+      {/* El tour de Admin habla de las pestañas del boliche (Aprobar, promedios): los otros deportes no lo ven. */}
+      <Tour name="admin" steps={ADMIN_TOUR} when={isAdmin && bowling} />
       <div data-tour="admin-secciones">
         <Tabs items={tabs} active={tab} onChange={(k) => setParams({ tab: k }, { replace: true })} />
       </div>

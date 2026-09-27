@@ -193,24 +193,54 @@ export async function pruneCourtLogs(store: CourtStore, closed: ReadonlySet<stri
   return n;
 }
 
-const DEVICE_KEY = 'mm:cancha:telefono';
-let device: string | null = null;
+/** Ids de este teléfono por partido: {partido: {o: id, t: último uso (ms)}}. */
+export const ORIGINS_KEY = 'mm:cancha:origenes';
+/** El id único por teléfono de antes (se publicaba igual en todos los partidos): ya no se usa y se borra. */
+const OLD_DEVICE_KEY = 'mm:cancha:telefono';
+/** Un id sin usar tanto tiempo se olvida (las listas del teléfono se borran igual a los 30 días). */
+const ORIGIN_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+/** Sin localStorage: valen para esta pestaña. */
+const tabOrigins = new Map<string, string>();
 
-/** Id al azar de este teléfono para las listas (origin). Se guarda en localStorage. */
-export function courtDeviceId(): string {
-  if (device) return device;
+const randomId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `t-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+type OriginMap = Record<string, { o: string; t: number }>;
+
+function readOrigins(): OriginMap {
   try {
-    device = localStorage.getItem(DEVICE_KEY);
+    const raw = JSON.parse(localStorage.getItem(ORIGINS_KEY) ?? '{}') as unknown;
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as OriginMap) : {};
   } catch {
-    device = null;
+    return {};
   }
-  if (!device) {
-    device = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `t-${Math.random().toString(36).slice(2)}${Date.now()}`;
-    try {
-      localStorage.setItem(DEVICE_KEY, device);
-    } catch {
-      // sin almacenamiento: vale para esta pestaña
-    }
+}
+
+/**
+ * Id al azar de este teléfono para la lista de ESTE partido (el `origin` que va en matches.state). Uno por
+ * partido: lo publicado, que lee cualquiera que ve la liga, no sirve para saber que dos partidos (de ligas o
+ * cuentas distintas) se anotaron con el mismo teléfono. Es el mismo cada vez que se abre ese partido en este
+ * teléfono (así reconoce lo que él mismo publicó); se guarda en localStorage y se olvida a los 30 días sin uso.
+ */
+export function courtOrigin(mid: string, now = Date.now()): string {
+  const map = readOrigins();
+  const e = map[mid];
+  const origin = (e && typeof e.o === 'string' && e.o) || tabOrigins.get(mid) || randomId();
+  tabOrigins.set(mid, origin);
+  map[mid] = { o: origin, t: now };
+  for (const [k, v] of Object.entries(map)) {
+    if (!v || typeof v.t !== 'number' || now - v.t > ORIGIN_MAX_AGE_MS) delete map[k];
   }
-  return device;
+  try {
+    localStorage.setItem(ORIGINS_KEY, JSON.stringify(map));
+    localStorage.removeItem(OLD_DEVICE_KEY);
+  } catch {
+    // sin almacenamiento: vale para esta pestaña
+  }
+  return origin;
+}
+
+/** Solo pruebas: olvida los ids guardados en la memoria de la pestaña. */
+export function resetCourtOriginsForTests() {
+  tabOrigins.clear();
 }

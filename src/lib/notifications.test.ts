@@ -310,6 +310,64 @@ describe('avisos', () => {
   });
 });
 
+describe('ligas de otros deportes', () => {
+  const other = (type: string, date: string, extra: Partial<BowlingEvent> = {}) =>
+    event(`x-${type}`, type as BowlingEvent['type'], date, { name: '', createdAt: at(now - HOUR), ...extra });
+
+  it('sus eventos no salen como prácticas del boliche (americano, cajas, ronda, encuentro)', () => {
+    const notices = buildNotices(
+      [
+        feed({ lid: 'padel', events: [other('americano', today), other('cajas', '2026-09-27'), other('practica', '2026-09-28')] }),
+        feed({ lid: 'golf', events: [other('ronda', '2026-09-26')] }),
+        feed({ lid: 'nado', events: [other('encuentro', today)] }),
+      ],
+      [league('padel', { sport: 'padel' }), league('golf', { sport: 'golf' }), league('nado', { sport: 'swimming' })],
+      today,
+      now,
+    );
+    expect(notices).toEqual([]);
+  });
+
+  it('el torneo sí se avisa, con el nombre del tipo del deporte', () => {
+    const notices = buildNotices(
+      [
+        feed({
+          lid: 'padel',
+          events: [other('torneo', '2026-10-03', { createdAt: at(now - 2 * HOUR) }), other('torneo', today, { id: 'hoy', name: 'Copa Pádel' })],
+        }),
+      ],
+      [league('padel', { name: 'Pádel Club', sport: 'padel' })],
+      today,
+      now,
+    );
+    expect(notices.map((n) => [n.kind, n.title])).toEqual([
+      ['torneo-hoy', '¡Hoy es Copa Pádel!'],
+      ['torneo', `Nuevo torneo: Torneo ${formatDate('2026-10-03')}`],
+    ]);
+  });
+
+  it('el buzón de sugerencias sigue llegando en cualquier deporte', () => {
+    const notes = [{ id: 's1', text: 'Más canchas', read: false, createdAt: at(now - HOUR) }];
+    const notices = buildNotices(
+      [feed({ lid: 'golf', isAdmin: true, events: [other('ronda', today)], suggestions: notes })],
+      [league('golf', { sport: 'golf' })],
+      today,
+      now,
+    );
+    expect(notices.map((n) => [n.kind, n.to])).toEqual([['sugerencia', '/l/golf/admin?tab=buzon']]);
+  });
+
+  it('en el boliche todo sigue igual', () => {
+    const notices = buildNotices(
+      [feed({ events: [event('p', 'practica', '2026-09-27', { createdAt: at(now - HOUR) })] })],
+      [league('l1', { sport: 'bowling' })],
+      today,
+      now,
+    );
+    expect(notices.map((n) => n.kind)).toEqual(['practica']);
+  });
+});
+
 describe('cuándo', () => {
   it('dice el tiempo en palabras', () => {
     expect(relativeTime(now - 20_000, now)).toBe('ahora');

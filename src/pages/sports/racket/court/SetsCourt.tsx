@@ -74,19 +74,27 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
         {live.label && <Badge tone={s && s.sport !== 'pickleball' && s.decidingPoint ? 'warn' : 'accent'}>{live.label}</Badge>}
       </div>
       {!court.over && (
-        <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm" role="status">
-          {pickle && live.call ? (
-            <>
-              Canto: <b className="tabular-nums">{live.call}</b> · saca {labels[live.server - 1]}
-            </>
-          ) : (
-            <>
-              Saca <b>{serverName ?? labels[live.server - 1]}</b>
-              {serverName ? ` (${labels[live.server - 1]})` : ''}
-              {live.serveFrom ? ` · desde la ${live.serveFrom === 'right' ? 'derecha' : 'izquierda'}` : ' · punto decisivo: elige lado quien recibe'}
-            </>
+        <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
+          <p className="min-w-0 flex-1 text-sm" role="status">
+            {pickle && live.call ? (
+              <>
+                Canto: <b className="tabular-nums">{live.call}</b> · saca {labels[live.server - 1]}
+              </>
+            ) : (
+              <>
+                Saca <b>{serverName ?? labels[live.server - 1]}</b>
+                {serverName ? ` (${labels[live.server - 1]})` : ''}
+                {live.serveFrom ? ` · desde la ${live.serveFrom === 'right' ? 'derecha' : 'izquierda'}` : ' · punto decisivo: elige lado quien recibe'}
+              </>
+            )}
+          </p>
+          {/* Aquí y no en la barra de abajo: con «Orden» ahí, «Terminar» se salía de la pantalla en un teléfono. */}
+          {canOrder && (
+            <Button size="sm" className="shrink-0" onClick={() => setOrdering(true)} icon={<Repeat2 className="size-4" />} aria-label="Orden de saque" disabled={court.readOnly}>
+              Orden
+            </Button>
           )}
-        </p>
+        </div>
       )}
       {live.changeEnds && !court.over && (
         <p className="flex items-center gap-2 rounded-xl bg-warn-soft px-3 py-2 text-base font-bold text-warn" role="alert">
@@ -122,14 +130,9 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
         finishSummary={winner ? `${court.summary} · Ganan ${labels[winner - 1]}` : court.summary}
         onFinished={() => onExit()}
         actions={
-          <>
-            {canOrder && (
-              <Button className="h-14" onClick={() => setOrdering(true)} icon={<Repeat2 className="size-5" />} aria-label="Orden de saque" disabled={court.readOnly} />
-            )}
-            <Button className="h-14" onClick={() => setRetiring(true)} icon={<Flag className="size-5" />} disabled={court.readOnly || court.over} aria-label="Retiro">
-              <span className="hidden sm:inline">Retiro</span>
-            </Button>
-          </>
+          <Button className="h-14" onClick={() => setRetiring(true)} icon={<Flag className="size-5" />} disabled={court.readOnly || court.over} aria-label="Retiro">
+            <span className="hidden sm:inline">Retiro</span>
+          </Button>
         }
       >
         <TwoHalves swap={live?.leftSide === 2} disabled={court.readOnly || court.over || !s} a={half(0)} b={half(1)} />

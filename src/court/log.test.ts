@@ -1,8 +1,8 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { pointsEngine, type PointsConfig, type PointsEvent, type PointsState } from '../sports/formats/social';
-import { courtKey, createCourtStore, pruneCourtLogs, resetMemoryCourtStore } from './log';
+import { ORIGINS_KEY, courtKey, courtOrigin, createCourtStore, pruneCourtLogs, resetCourtOriginsForTests, resetMemoryCourtStore } from './log';
 import { applyEvent, snapshotState, startSnapshot } from './session';
 import type { CourtAdapter, CourtSnapshot } from './types';
 
@@ -79,5 +79,57 @@ describe('lista guardada en el teléfono', () => {
     const s = createCourtStore('memory');
     await s.save({ lid: 'L', mid: 'M', uid: null, snap: { v: 9 } as unknown as CourtSnapshot, published: 0 });
     expect(await s.load('L', 'M')).toBeNull();
+  });
+});
+
+/** localStorage de mentira (en las pruebas no hay navegador). */
+function memoryStorage(): Storage {
+  const m = new Map<string, string>();
+  return {
+    get length() {
+      return m.size;
+    },
+    key: (i) => [...m.keys()][i] ?? null,
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, String(v)),
+    removeItem: (k) => void m.delete(k),
+    clear: () => m.clear(),
+  };
+}
+
+describe('id del teléfono en cada lista (origin, va publicado en matches.state)', () => {
+  it('uno por partido: lo publicado no liga partidos (de otras ligas o cuentas) a un mismo teléfono', () => {
+    const ls = memoryStorage();
+    vi.stubGlobal('localStorage', ls);
+    try {
+      resetCourtOriginsForTests();
+      // El id único de antes (el mismo en todos los partidos) ya no se usa y se borra.
+      ls.setItem('mm:cancha:telefono', 'id-de-siempre');
+      const a = courtOrigin('M1');
+      const b = courtOrigin('M2');
+      expect(a).not.toBe(b);
+      expect([a, b]).not.toContain('id-de-siempre');
+      expect(ls.getItem('mm:cancha:telefono')).toBeNull();
+      // El mismo cada vez que se abre ese partido en este teléfono (también después de recargar la app).
+      expect(courtOrigin('M1')).toBe(a);
+      resetCourtOriginsForTests();
+      expect(courtOrigin('M1')).toBe(a);
+      // A los 30 días sin usar se olvida.
+      const later = Date.now() + 31 * 24 * 3600 * 1000;
+      courtOrigin('M3', later);
+      expect(Object.keys(JSON.parse(ls.getItem(ORIGINS_KEY) ?? '{}'))).toEqual(['M3']);
+      // La lista del teléfono (IndexedDB/localStorage) no confunde la clave de los ids con una lista.
+      expect(ORIGINS_KEY.split(':')).toHaveLength(3);
+    } finally {
+      vi.unstubAllGlobals();
+      resetCourtOriginsForTests();
+    }
+  });
+
+  it('sin localStorage: uno por partido igual (vale para la pestaña)', () => {
+    resetCourtOriginsForTests();
+    const a = courtOrigin('X1');
+    expect(courtOrigin('X1')).toBe(a);
+    expect(courtOrigin('X2')).not.toBe(a);
   });
 });

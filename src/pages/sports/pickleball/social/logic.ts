@@ -98,9 +98,68 @@ export function gameText(g: GameRules): string {
 // Mixto: cada pareja con uno de cada grupo
 
 /**
+ * Las parejas que juegan cuando sobran `extra` parejas (en el orden del sorteo). De cada grupo descansan los
+ * `extra` que menos han descansado, así nadie repite descanso mientras otro de su grupo no haya descansado.
+ * Se prefieren parejas de la rotación que cumplen eso (descansan juntos); si no alcanza, descansan juntos los que
+ * tocan y sus compañeros de la rotación juegan juntos esa ronda.
+ */
+function playingMixedPairs(shuffled: readonly [string, string][], extra: number, restsOf: (p: string) => number): [string, string][] {
+  if (extra <= 0) return [...shuffled];
+  const tier = (side: 0 | 1) => {
+    const list = shuffled.map((p) => p[side]);
+    const cut = restsOf([...list].sort((a, b) => restsOf(a) - restsOf(b))[extra - 1]);
+    // Los de menos descansos que el corte descansan sí o sí; de los empatados en el corte, los que falten.
+    return { rest: new Set(list.filter((p) => restsOf(p) < cut)), tie: new Set(list.filter((p) => restsOf(p) === cut)) };
+  };
+  const a = tier(0);
+  const b = tier(1);
+  let qa = extra - a.rest.size;
+  let qb = extra - b.rest.size;
+  const restA = (p: string) => {
+    a.rest.add(p);
+    qa--;
+  };
+  const restB = (p: string) => {
+    b.rest.add(p);
+    qb--;
+  };
+  // 1) Si uno de la pareja ya descansa y su compañero está empatado en el corte, descansan juntos.
+  for (const [pa, pb] of shuffled) {
+    if (a.rest.has(pa) && !b.rest.has(pb) && b.tie.has(pb) && qb > 0) restB(pb);
+    else if (b.rest.has(pb) && !a.rest.has(pa) && a.tie.has(pa) && qa > 0) restA(pa);
+  }
+  // 2) Parejas con los dos empatados en el corte.
+  for (const [pa, pb] of shuffled) {
+    if (qa > 0 && qb > 0 && a.tie.has(pa) && b.tie.has(pb) && !a.rest.has(pa) && !b.rest.has(pb)) {
+      restA(pa);
+      restB(pb);
+    }
+  }
+  // 3) Lo que falte, en el orden del sorteo (esas parejas se separan).
+  for (const [pa, pb] of shuffled) {
+    if (qa > 0 && a.tie.has(pa) && !a.rest.has(pa)) restA(pa);
+    if (qb > 0 && b.tie.has(pb) && !b.rest.has(pb)) restB(pb);
+  }
+  const playing: [string, string][] = [];
+  const loneA: string[] = [];
+  const loneB: string[] = [];
+  for (const [pa, pb] of shuffled) {
+    const ra = a.rest.has(pa);
+    const rb = b.rest.has(pb);
+    if (!ra && !rb) playing.push([pa, pb]);
+    else if (ra && !rb) loneB.push(pb);
+    else if (!ra && rb) loneA.push(pa);
+  }
+  // Los que se quedaron sin compañero (el suyo descansa) juegan juntos.
+  loneA.forEach((pa, i) => playing.push([pa, loneB[i]]));
+  return playing;
+}
+
+/**
  * Ronda mixta: en la ronda r, el i-ésimo de A juega con el (i + r)-ésimo de B (compañero distinto cada ronda
- * mientras haya); las parejas se enfrentan en un orden al azar (con la semilla) y, si sobran, descansan las que
- * menos han descansado. Del grupo más grande descansan los que sobran, rotando.
+ * mientras haya); las parejas se enfrentan en un orden al azar (con la semilla) y, si sobran, descansan de cada
+ * grupo los que menos han descansado (si para eso hay que separar una pareja, sus compañeros juegan juntos esa
+ * ronda). Del grupo más grande descansan los que sobran, rotando.
  */
 export function mixedRound(groupA: readonly string[], groupB: readonly string[], opts: { round: number; courts: number; seed: string; previous?: readonly SocialRound[] }): SocialRound {
   const n = Math.min(groupA.length, groupB.length);
@@ -120,13 +179,7 @@ export function mixedRound(groupA: readonly string[], groupB: readonly string[],
   const pairs: [string, string][] = A.map((a, i) => [a, B[(i + r) % n]]);
   const rand = seededRandom(`${opts.seed}:mixto:${opts.round}`);
   const courts = Math.max(1, Math.min(opts.courts, Math.floor(pairs.length / 2)));
-  // Descansan las parejas que sobran: primero las de quienes menos han descansado.
-  const shuffled = shuffle(pairs, rand);
-  const ranked = shuffled
-    .map((p, i) => ({ p, i, k: (rests.get(p[0]) ?? 0) + (rests.get(p[1]) ?? 0) }))
-    .sort((a, b) => a.k - b.k || a.i - b.i);
-  const restingPairs = ranked.slice(courts * 2).map((x) => x.p);
-  const playingPairs = shuffled.filter((p) => !restingPairs.includes(p));
+  const playingPairs = playingMixedPairs(shuffle(pairs, rand), pairs.length - courts * 2, (p) => rests.get(p) ?? 0);
   const matches = Array.from({ length: courts }, (_, k) => ({ court: k + 1, side1: playingPairs[2 * k], side2: playingPairs[2 * k + 1] }));
   const playing = new Set(matches.flatMap((m) => [...m.side1, ...m.side2]));
   const all = [...groupA, ...groupB];

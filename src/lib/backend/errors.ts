@@ -28,6 +28,17 @@ const P0001_KINDS: Record<string, BackendErrorKind> = {
 /** Primera palabra del mensaje de una RPC: 'invalido: nombre' → 'invalido'. */
 const raisedCode = (message: string) => message.trim().split(/[\s:]/)[0];
 
+/**
+ * Cuenta bloqueada por el superadmin (consola): toda RPC que escribe falla con 'bloqueada' (42501). Sale como
+ * `permission` con código 'bloqueada' y este mensaje, para que la pantalla lo muestre tal cual.
+ */
+export const BLOCKED_CODE = 'bloqueada';
+export const BLOCKED_MESSAGE = 'Tu cuenta está bloqueada. Escríbele al equipo de MatchMate.';
+
+/** ¿El error es de una cuenta bloqueada? */
+export const isBlockedError = (e: unknown): boolean =>
+  !!e && typeof e === 'object' && ((e as { code?: unknown }).code === BLOCKED_CODE || (e as { message?: unknown }).message === BLOCKED_MESSAGE);
+
 /** Por estado HTTP, cuando no hay un código que diga más. */
 function kindFromStatus(status: number): BackendErrorKind | null {
   if (status === 0 || status >= 500) return 'network';
@@ -57,6 +68,9 @@ export function mapDbError(e: DbErrorLike): BackendError {
   const message = (e.message || '').trim() || 'Error de la base de datos';
   const status = typeof e.status === 'number' ? e.status : null;
 
+  if (raisedCode(message) === BLOCKED_CODE && (code === '42501' || code === 'P0001' || code === BLOCKED_CODE || (!code && status === 403))) {
+    return new BackendError(BLOCKED_MESSAGE, 'permission', BLOCKED_CODE);
+  }
   if (code) {
     if (code === 'P0001') {
       const kind = P0001_KINDS[raisedCode(message)] ?? 'validation';

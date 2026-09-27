@@ -199,6 +199,19 @@ describe('pantallas de pickleball', () => {
     expect(t).toContain('Jugadores y DUPR');
     expect(html).toContain('value="3.752"');
   });
+
+  it('admin con las reglas «Individual»: las parejas siguen a mano (las cajas y la escalera de dobles las piden)', () => {
+    const before = queryClient.getQueryData(racketKeys.rules(L));
+    queryClient.setQueryData(racketKeys.rules(L), { match: { sport: 'pickleball', doubles: false, bestOf: 3 } });
+    try {
+      const t = text(render(h(screens.adminTabs![0].Component)));
+      expect(t).toContain('Individual, mejor de 3 juegos a 11');
+      expect(t).toContain('Parejas (3)');
+      expect(t).toContain('Ana / Luis');
+    } finally {
+      queryClient.setQueryData(racketKeys.rules(L), before);
+    }
+  });
 });
 
 describe('round robin social', () => {

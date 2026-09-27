@@ -14,7 +14,7 @@ import { BackLink } from '../../../components/BackLink';
 import { PickList, Section, racketColumns } from '../racket/bits';
 import { levelText, useLevels } from '../racket/levels';
 import { exportCompetitionExcel } from '../racket/excel';
-import { forLabel, seasonPlayerTable } from '../racket/logic/results';
+import { forLabel, seasonPlayerTable, setsLabel } from '../racket/logic/results';
 import { tiebreakText } from '../racket/logic/tiebreaks';
 import { todayIn } from '../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../racket/match/MatchDetail';
@@ -164,6 +164,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
       nameOf: names.nameOf,
       tz: league.tz,
       forLabel: forLabel(sport),
+      setsLabel: setsLabel(sport),
     }).catch((e) => {
       console.error(e);
       toast('No se pudo hacer el Excel', 'error');
@@ -372,7 +373,11 @@ function MonthsHistory({ cfg }: { cfg: BoxConfig }) {
               </p>
             )}
             {fresh.length > 0 && <p className="text-muted">Entraron: {fresh.map((x) => names.entrantName(x.id)).join(', ')}</p>}
-            {!m.moves.length && <p className="text-muted">Sin cambios.</p>}
+            {m.archived ? (
+              <p className="text-muted">De este mes ya no se guarda quién subió y quién bajó.</p>
+            ) : (
+              !m.moves.length && <p className="text-muted">Sin cambios.</p>
+            )}
           </Card>
         );
       })}

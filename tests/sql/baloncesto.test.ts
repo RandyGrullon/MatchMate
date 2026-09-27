@@ -260,6 +260,18 @@ describe('refuerzos y marcador', () => {
     expect(await db.count('public.match_players', 'match_id = $1', [m2])).toBe(3);
   });
 
+  it('el capitán no se salta el tope sumando a su plantilla (o a su lado) a un jugador de otro equipo', async () => {
+    const h = await hoops({ rules: { match: { variant: '5x5' }, teams: { reinforcements: 0 } } });
+    await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: h.t1, p_player: h.p.nuevo }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'set_roster', { p_team: h.t1, p_players: [{ player_id: h.p.ana }, { player_id: h.p.nuevo }] }), 'invalido');
+    await fails(db.rpc(w.u.luis, 'set_match_players', { p_match: h.match, p_side: 1, p_players: [{ player_id: h.p.luis }, { player_id: h.p.nuevo }] }), 'invalido');
+    expect(await db.count('public.match_players', 'match_id = $1', [h.match])).toBe(0);
+    // nuevo sigue siendo de los Leones: su convocatoria funciona y la delegada lo puede sacar.
+    await db.rpc(w.u.nuevo, 'set_match_rsvp', { p_match: h.match, p_status: 'yes' });
+    expect(await rsvps(h.match)).toEqual([{ player_id: h.p.nuevo, side: 2, status: 'yes' }]);
+    expect(await db.rpc(w.u.otra, 'remove_team_player', { p_team: h.t2, p_player: h.p.nuevo })).toBe(true);
+  });
+
   it('cada lado de 0 a 300 puntos (en otras ligas no aplica)', async () => {
     const h = await hoops();
     await fails(

@@ -98,9 +98,16 @@ export function disciplineStatus(m: Pick<Match, 'status'>): DisciplineStatus {
   }
 }
 
-/** Orden en el calendario: la fecha y la jornada (los partidos sin fecha van al final, por jornada). */
-export function disciplineOrder(m: Pick<Match, 'scheduledAt' | 'round'>): string {
-  const when = m.scheduledAt && Number.isFinite(Date.parse(m.scheduledAt)) ? new Date(m.scheduledAt).toISOString() : '9999-12-31T23:59:59.999Z';
+const isoOf = (v: string | null | undefined): string | null => (v && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null);
+
+/**
+ * Orden en el calendario: la fecha y la jornada (no la jornada primero: los aplazados se juegan fuera de orden).
+ * Un partido sin fecha que ya tiene resultado va cuando se anotó (propuesto o confirmado; el W.O. también se
+ * confirma): la roja de un partido armado sin horario se cumple en el siguiente del equipo. Solo los que no tienen
+ * ninguna fecha (sin jugar y sin programar) van al final, por jornada.
+ */
+export function disciplineOrder(m: Pick<Match, 'scheduledAt' | 'round'> & Partial<Pick<Match, 'proposedAt' | 'confirmedAt'>>): string {
+  const when = isoOf(m.scheduledAt) ?? isoOf(m.proposedAt) ?? isoOf(m.confirmedAt) ?? '9999-12-31T23:59:59.999Z';
   return `${when}#${String(m.round ?? 999).padStart(3, '0')}`;
 }
 

@@ -2,26 +2,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, CloudOff, Hand, Minus, Plus, Send, Signature, Undo2 } from 'lucide-react';
 import { strokesReceived } from '../../../sports/golf/course';
 import { scoreRound } from '../../../sports/golf/scoring';
-import { queueGolfScores, type GolfCardDoc, type GolfRoundFull } from '../../../lib/data/golf';
-import { isOnline, sentOrQueued } from '../../../lib/data/client';
+import { pendingGolfSign, type GolfCardDoc, type GolfRoundFull } from '../../../lib/data/golf';
+import { currentOutbox, isOnline, sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
 import { useLeagueCtx } from '../../../lib/league';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, cx } from '../../../components/ui';
 import {
+  canWriteCard,
   groupHolesDone,
   groupOrder,
   holeDone,
-  markSent,
   mergeCard,
   nextGroupHole,
-  readLog,
   reconcile,
+  sendPending,
   setHole,
   shouldPublish,
   unsentCount,
-  unsentPatches,
   useCourtLog,
-  writeLog,
+  type CardWriter,
 } from './courtLog';
 import { ToPar } from './bits';
 import { cardHoles, golfRoundOf, hcpText, startIndex } from './logic';
@@ -29,28 +28,13 @@ import { cardHoles, golfRoundOf, hcpText, startIndex } from './logic';
 const MAX_PUTT_CHIPS = 5;
 
 /**
- * Manda por la cola lo anotado en este teléfono que falta (solo de las tarjetas que existen) y, cuando el
- * servidor lo confirma, lo marca como enviado. Devuelve la espera (o null si no había nada).
- */
-export function sendPending(lid: string, eventId: string, cardIds: ReadonlySet<string>): Promise<number> | null {
-  const patches = unsentPatches(readLog(eventId)).filter((p) => cardIds.has(p.cardId));
-  if (!patches.length) return null;
-  const { done } = queueGolfScores(lid, eventId, patches);
-  return done.then((n) => {
-    const cur = readLog(eventId);
-    const next = markSent(cur, patches, Date.now());
-    if (next !== cur) writeLog(next);
-    return n;
-  });
-}
-
-/**
  * La tarjeta del grupo en el campo: un teléfono anota a los 1–4 jugadores del grupo. Hoyo actual en grande
  * con su par y SI, un +/− por jugador que arranca en el par, putts opcionales y «recogió». «Hoyo listo» pone
  * el par a quien no se tocó y pasa solo al siguiente hoyo del orden de juego del grupo.
  *
  * Todo se guarda en el teléfono al momento (sirve sin señal) y se publica por la cola cada 3 hoyos terminados
- * (o al tocar «Enviar»), nunca golpe por golpe.
+ * (o al tocar «Enviar»), nunca golpe por golpe, una operación por tarjeta y solo de las tarjetas que la cuenta
+ * puede escribir. Una tarjeta con la firma en la cola ya no se cambia en este teléfono (salvo el admin).
  */
 export function GolfCourt({
   round,
@@ -76,11 +60,23 @@ export function GolfCourt({
   const eventId = round.eventId;
   const [log, update] = useCourtLog(eventId);
   const [sending, setSending] = useState(false);
+  // Se vuelve a dibujar cuando cambia la cola (p. ej. la firma pendiente llegó al servidor).
+  useOutboxSnapshot();
 
-  // El servidor ya trae lo enviado: se limpia del teléfono.
+  const who: CardWriter = useMemo(() => ({ isAdmin, staff, myCard }), [isAdmin, staff, myCard]);
+  const writable = useCallback(
+    (cardId: string) => {
+      const c = cards.find((x) => x.id === cardId);
+      return !!c && canWriteCard(c, who);
+    },
+    [cards, who],
+  );
+
+  // El servidor ya trae lo enviado: se limpia del teléfono. Lo de una tarjeta ya firmada tampoco se queda
+  // (solo el admin la cambia).
   useEffect(() => {
-    if (cards.length) update((l) => reconcile(l, cards, Date.now()));
-  }, [cards, update]);
+    if (cards.length) update((l) => reconcile(l, cards, Date.now(), (c) => isAdmin || !c.signed));
+  }, [cards, update, isAdmin]);
 
   const merged = useMemo(() => cards.map((c) => mergeCard(c, log)), [cards, log]);
 
@@ -115,13 +111,17 @@ export function GolfCourt({
   const order = useMemo(() => groupOrder(n, startIndex(round, group[0]?.startHole ?? 1)), [n, round, group]);
   const pendingHole = nextGroupHole(group, order);
   const current = log.hole != null && log.hole >= 0 && log.hole < n ? log.hole : (pendingHole ?? order[0] ?? 0);
-  const unsent = unsentCount(log);
+  const unsent = unsentCount(log, writable);
   const doneCount = groupHolesDone(group, n);
 
   const publish = useCallback(() => {
     try {
-      const wait = sendPending(lid, eventId, new Set(cards.map((c) => c.id)));
-      if (!wait) return;
+      const wait = sendPending(lid, eventId, cards, who);
+      if (!wait) {
+        // Todo lo que falta ya está en la cola: que salga ya (sin esperar el próximo reintento).
+        void currentOutbox()?.flush();
+        return;
+      }
       wait.catch((e) => toast(saveErrorMessage(e), 'error'));
       if (!isOnline()) return;
       // Con señal se espera un poco al servidor; si tarda (señal mala), queda en la cola y sale sola.
@@ -132,7 +132,7 @@ export function GolfCourt({
     } catch (e) {
       toast(saveErrorMessage(e), 'error');
     }
-  }, [cards, eventId, lid, toast]);
+  }, [cards, eventId, lid, toast, who]);
 
   if (!scopes.length) {
     return (
@@ -144,7 +144,8 @@ export function GolfCourt({
 
   const holesOf = (c: GolfCardDoc) => cardHoles(round, c.teeId);
   const head = group[0] ? holesOf(group[0])[current] : null;
-  const canEdit = (c: GolfCardDoc) => !c.signed || isAdmin;
+  const signing = (c: GolfCardDoc) => !c.signed && pendingGolfSign(lid, c.id);
+  const canEdit = (c: GolfCardDoc) => isAdmin || (!c.signed && !signing(c));
 
   function set(c: GolfCardDoc, value: { s: number | null; p: number | null; u: boolean }) {
     update((l) => setHole(l, c.id, current, value));
@@ -257,7 +258,7 @@ export function GolfCourt({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="truncate font-semibold">{nameOf(c.playerId)}</span>
-                    {c.signed && <Badge tone="ok">Firmada</Badge>}
+                    {c.signed ? <Badge tone="ok">Firmada</Badge> : signing(c) && <Badge tone="ok">Firmada · por enviar</Badge>}
                     {h && group[0] && h.par !== holesOf(group[0])[current]?.par && <Badge>Par {h.par}</Badge>}
                   </div>
                   <div className="text-xs text-muted">
@@ -377,7 +378,7 @@ export function GolfCourt({
         <Card className="flex flex-col gap-2 px-4 py-4 text-center">
           <p className="font-semibold">¡Terminaron los {n} hoyos!</p>
           <p className="text-sm text-muted">Envía las tarjetas y que cada jugador revise y firme la suya.</p>
-          {myCard && group.some((c) => c.id === myCard.id) && !myCard.signed && (
+          {myCard && group.some((c) => c.id === myCard.id) && !myCard.signed && !signing(myCard) && (
             <Button variant="primary" className="h-12 text-base" icon={<Signature className="size-5" />} onClick={() => onSign(group.find((c) => c.id === myCard.id)!)}>
               Revisar y firmar mi tarjeta
             </Button>

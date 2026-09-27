@@ -47,6 +47,9 @@ const RPC_AUTHENTICATED = [
   'save_points_result', 'accept_challenge', 'cancel_challenge', 'create_challenge', 'join_ladder', 'leave_ladder',
   'save_box_month', 'set_ladder', 'sync_ladder', 'server_now', 'set_match_official', 'set_match_rsvp',
   'delete_football_sanction', 'save_football_sanction',
+  // Consola del superadmin (y touch_seen, de cualquier cuenta).
+  'touch_seen', 'admin_overview', 'admin_series', 'admin_users', 'admin_user', 'admin_leagues', 'admin_audit_log',
+  'admin_system', 'admin_scan_stats', 'admin_block_user', 'admin_unblock_user', 'admin_announce', 'admin_count_recipients',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
@@ -172,5 +175,35 @@ describe('nada abierto por accidente', () => {
     await fails(db.asAnon('select player_id from public.memberships'), '42501');
     // service_role sí (respaldos, Edge Functions).
     expect((await db.as(SERVICE, 'select id from public.profiles')).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('de private, anon y authenticated solo ejecutan lo que usan las políticas (RLS y Storage)', async () => {
+    const rows = await db.admin<{ who: string; fn: string }>(
+      `select r.who, p.proname as fn from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        cross join (values ('anon'), ('authenticated')) as r (who)
+        where n.nspname = 'private' and has_function_privilege(r.who, p.oid, 'execute') order by 1, 2`,
+    );
+    expect(rows).toEqual([
+      { who: 'anon', fn: 'readable_leagues' },
+      ...['admin_leagues', 'can_upload_photo_path', 'is_super', 'my_leagues', 'photo_admin_leagues', 'readable_leagues'].map((fn) => ({
+        who: 'authenticated',
+        fn,
+      })),
+    ]);
+  });
+
+  it('otra cuenta (dueño o admin de liga) no ve correos ajenos ni la auditoría; el superadmin sí', async () => {
+    for (const who of [w.u.org, w.u.sofi, w.u.luis]) {
+      expect(await db.asUser(who, 'select id from public.profiles')).toEqual([{ id: who }]);
+      expect(await db.asUser(who, 'select id from public.admin_audit')).toEqual([]);
+      // Las RPC de la consola tampoco (y en la auditoría no queda nada).
+      await fails(db.rpc(who, 'admin_users', {}), ['no_permitido', '42501']);
+      await fails(db.rpc(who, 'admin_user', { p_user: w.u.ana }), ['no_permitido', '42501']);
+    }
+    expect((await db.asUser(w.u.dios, 'select id from public.profiles')).length).toBeGreaterThanOrEqual(10);
+    // Una cuenta bloqueada sigue viendo solo lo suyo.
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.org, p_reason: 'x' });
+    expect(await db.asUser(w.u.org, 'select id, blocked_at is not null as b from public.profiles')).toEqual([{ id: w.u.org, b: true }]);
+    await fails(db.rpc(w.u.org, 'admin_users', {}), ['bloqueada', 'no_permitido']);
   });
 });

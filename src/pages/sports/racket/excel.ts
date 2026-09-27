@@ -82,6 +82,8 @@ export async function exportCompetitionExcel(o: {
   nameOf: (id: string) => string;
   tz?: string | null;
   forLabel: string;
+  /** «Sets» (pádel y tenis) o «Juegos» (pickleball). */
+  setsLabel?: string;
 }) {
   const { default: writeExcelFile } = await import('write-excel-file/browser');
   const used = new Set<string>();
@@ -115,7 +117,7 @@ export async function exportCompetitionExcel(o: {
       stickyRowsCount: 1,
       columns: [{ width: 8 }, { width: 30 }, ...Array.from({ length: 8 }, () => ({ width: 10 }))],
       data: [
-        head(['Puesto', 'Nombre', 'PJ', 'G', 'P', 'Sets +', 'Sets −', `${o.forLabel} +`, `${o.forLabel} −`, 'Pts']),
+        head(['Puesto', 'Nombre', 'PJ', 'G', 'P', `${o.setsLabel ?? 'Sets'} +`, `${o.setsLabel ?? 'Sets'} −`, `${o.forLabel} +`, `${o.forLabel} −`, 'Pts']),
         ...t.rows.map((r) => [
           { value: r.rank },
           { value: o.entrantName(r.id) },
@@ -136,7 +138,7 @@ export async function exportCompetitionExcel(o: {
     stickyRowsCount: 1,
     columns: [{ width: 8 }, { width: 28 }, ...Array.from({ length: 7 }, () => ({ width: 10 }))],
     data: [
-      head(['Puesto', 'Jugador', 'PJ', 'G', 'P', '% G', 'Dif. sets', `Dif. ${o.forLabel.toLowerCase()}`, 'Pts']),
+      head(['Puesto', 'Jugador', 'PJ', 'G', 'P', '% G', `Dif. ${(o.setsLabel ?? 'Sets').toLowerCase()}`, `Dif. ${o.forLabel.toLowerCase()}`, 'Pts']),
       ...o.players.map((r) => [
         { value: r.rank },
         { value: o.nameOf(r.id) },

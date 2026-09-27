@@ -82,6 +82,7 @@ async function card(eventId: string, playerId: string) {
     picked_up: boolean[];
     status: string;
     dq: boolean;
+    scored_at: string | null;
   }>('select * from public.golf_cards where event_id = $1 and player_id = $2', [eventId, playerId]);
   return rows[0];
 }
@@ -300,6 +301,37 @@ describe('inscripción y handicap (igual que el motor)', () => {
     expect(await card(e, g.p.luis)).toBeUndefined();
     expect((await db.admin<{ player_count: number }>('select player_count from public.events where id = $1', [e]))[0].player_count).toBe(0);
   });
+
+  it('el Index congelado no se cambia vaciando la tarjeta y volviéndose a inscribir (scored_at)', async () => {
+    const e = await round(w.u.sofi);
+    const c = await db.rpc<string>(w.u.luis, 'golf_register', { p_event: e, p_index: 5 });
+    expect((await card(e, g.p.luis)).scored_at).toBeNull();
+    await save(w.u.luis, e, [{ card_id: c, holes: Array.from({ length: 9 }, (_, i) => ({ i, s: 6 })) }]);
+    await fails(db.rpc(w.u.luis, 'golf_register', { p_event: e, p_index: 30 }), 'cerrado');
+    // Borra todos los hoyos (golpes null): la tarjeta queda vacía, pero ya se anotó en ella.
+    await save(w.u.luis, e, [{ card_id: c, holes: Array.from({ length: 18 }, (_, i) => ({ i, s: null })) }]);
+    const blank = await card(e, g.p.luis);
+    expect(blank.strokes).toEqual(Array(18).fill(null));
+    expect(blank.scored_at).not.toBeNull();
+    await fails(db.rpc(w.u.luis, 'golf_register', { p_event: e, p_index: 30 }), 'cerrado');
+    await fails(db.rpc(w.u.luis, 'golf_register', { p_event: e, p_tee: 'roja' }), 'cerrado');
+    // Salirse y volver a entrar tampoco sirve: no se puede salir.
+    await fails(db.rpc(w.u.luis, 'golf_unregister', { p_card: c }), 'cerrado');
+    expect(await card(e, g.p.luis)).toMatchObject({ hcp_index: 5, tee_id: 'azul', playing_hcp: handicapFor(5, DEMO_COURSE, 'azul').playingHcp });
+    // «Recogió» también cuenta como anotar, aunque después se deshaga.
+    const a = await db.rpc<string>(w.u.ana, 'golf_register', { p_event: e, p_index: 10 });
+    await save(w.u.ana, e, [{ card_id: a, holes: [{ i: 0, u: true }] }]);
+    await save(w.u.ana, e, [{ card_id: a, holes: [{ i: 0, u: false }] }]);
+    await fails(db.rpc(w.u.ana, 'golf_register', { p_event: e, p_index: 30 }), 'cerrado');
+    // El admin sí la cambia.
+    await db.rpc(w.u.sofi, 'golf_register', { p_event: e, p_player: g.p.luis, p_index: 30 });
+    expect((await card(e, g.p.luis)).hcp_index).toBe(30);
+    // El admin cambia los hoyos de la ronda (tarjetas nuevas, vacías): vuelven a estar sin anotar.
+    await db.rpc(w.u.sofi, 'golf_update_round', { p_event: e, p_patch: { nine: 'front' } });
+    expect((await card(e, g.p.luis)).scored_at).toBeNull();
+    await db.rpc(w.u.luis, 'golf_register', { p_event: e, p_tee: 'roja' });
+    expect((await card(e, g.p.luis)).tee_id).toBe('roja');
+  });
 });
 
 describe('grupos y tarjeta por grupo', () => {
@@ -420,6 +452,33 @@ describe('grupos y tarjeta por grupo', () => {
     // Recoger cuenta como hoyo terminado para firmar.
     await save(w.u.luis, e, [{ card_id: c.ana, holes: parHoles().map((h, i) => (i === 5 ? { i, u: true } : h)) }]);
     await db.rpc(w.u.ana, 'golf_sign_card', { p_card: c.ana });
+  });
+
+  it('la firma lleva los hoyos revisados: firma aunque los hoyos de la cola no hayan llegado antes', async () => {
+    const pars = DEMO_COURSE.holes.map((h) => h.par);
+    // Luis firma su tarjeta vacía en el servidor con los 18 hoyos que revisó en el teléfono.
+    await db.rpc(w.u.luis, 'golf_sign_card', { p_card: c.luis, p_op_id: randomUUID(), p_holes: parHoles() });
+    const l = await card(e, g.p.luis);
+    expect(l.status).toBe('firmada');
+    expect(l.strokes).toEqual(pars);
+    expect(l.putts).toEqual(Array(18).fill(2));
+    expect(l.scored_at).not.toBeNull();
+    // Los hoyos que llegan después por la cola ya no la cambian.
+    await fails(save(w.u.luis, e, [{ card_id: c.luis, holes: [{ i: 0, s: 9 }] }]), 'cerrado');
+    // Ya firmada: otra firma con otros hoyos no los toca.
+    await db.rpc(w.u.luis, 'golf_sign_card', { p_card: c.luis, p_holes: parHoles().map((h) => ({ ...h, s: h.s + 1 })) });
+    expect((await card(e, g.p.luis)).strokes).toEqual(pars);
+    // Solo el jugador o el admin firman: otro del grupo no escribe la tarjeta por aquí.
+    await fails(db.rpc(w.u.luis, 'golf_sign_card', { p_card: c.ana, p_holes: parHoles() }), DENIED);
+    // Incompleta o con hoyos malos: no firma ni guarda nada.
+    await fails(db.rpc(w.u.ana, 'golf_sign_card', { p_card: c.ana, p_holes: parHoles(17) }), 'invalido');
+    await fails(db.rpc(w.u.ana, 'golf_sign_card', { p_card: c.ana, p_holes: [{ i: 0, s: 0 }] }), INVALID);
+    await fails(db.rpc(w.u.ana, 'golf_sign_card', { p_card: c.ana, p_holes: parHoles().concat([{ i: 0, s: 4, p: 2 }]) }), INVALID);
+    const a = await card(e, g.p.ana);
+    expect([a.status, a.strokes, a.scored_at]).toEqual(['abierta', Array(18).fill(null), null]);
+    // El admin firma la de Pedro (sin cuenta) con sus hoyos.
+    await db.rpc(w.u.sofi, 'golf_sign_card', { p_card: c.pedro, p_holes: parHoles() });
+    expect((await card(e, g.p.pedro)).status).toBe('firmada');
   });
 
   it('cerrar la ronda: nadie anota ni firma; se puede volver a abrir; descalificar es del admin', async () => {

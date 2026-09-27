@@ -312,6 +312,64 @@ begin
   return p;
 end $$;
 
+-- Cuánto puede adelantarse el seq que manda el teléfono al que ya tiene el partido. Un partido de verdad no
+-- llega ni cerca (cada jugada o deshacer suma 1); sin tope, un anotador publicaba 2^31-1 y el que seguía
+-- después quedaba siempre «viejo» (o se pasaba del entero).
+create function private.match_seq_step() returns integer
+language sql immutable set search_path = '' as $$
+  select 10000
+$$;
+
+-- p_seq que manda el teléfono (publicar, terminar, suspender): null (solo al terminar o suspender sin cancha),
+-- o de 0 a seq del partido + match_seq_step(), y el mismo que el `seq` del estado si el estado lo trae.
+-- Si no: 'invalido'.
+create function private.check_seq(p_seq integer, p_state jsonb, p_have integer) returns void
+language plpgsql immutable set search_path = '' as $$
+begin
+  if p_seq is null then
+    return;
+  end if;
+  if p_seq < 0 or p_seq::bigint > coalesce(p_have, 0)::bigint + private.match_seq_step() then
+    perform private.fail('invalido');
+  end if;
+  if jsonb_typeof(p_state) = 'object' and p_state ? 'seq'
+     and (jsonb_typeof(p_state -> 'seq') <> 'number' or (p_state ->> 'seq')::numeric <> p_seq) then
+    perform private.fail('invalido');
+  end if;
+end $$;
+
+-- La lista que manda el teléfono sigue a la que tiene el partido: la publicó el mismo teléfono (mismo `origin`),
+-- o este teléfono la tomó de ella al pedir el turno (`parent` = {origin, seq} de lo que había) y después no
+-- llegó nada más nuevo. Si falta el origin de un lado o del otro (nada publicado, o un estado que no viene del
+-- modo cancha) solo cuenta seq. Así la lista vieja de otro teléfono de la misma cuenta (sin señal, en la cola)
+-- no pisa la que se siguió en otro lado, aunque su seq sea más alto: seq solo compara jugadas de una misma lista.
+create function private.state_follows(p_state jsonb, m public.matches) returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(
+    nullif(p_state ->> 'origin', '') is null
+    or nullif(m.state ->> 'origin', '') is null
+    or p_state ->> 'origin' = m.state ->> 'origin'
+    or (jsonb_typeof(p_state -> 'parent') = 'object'
+        and p_state -> 'parent' ->> 'origin' = m.state ->> 'origin'
+        and jsonb_typeof(p_state -> 'parent' -> 'seq') = 'number'
+        and (p_state -> 'parent' ->> 'seq')::numeric >= m.seq),
+    false)
+$$;
+
+-- Capitán o delegado: no suma a la plantilla a quien ya está en otro equipo de temporada de la liga (le rompería
+-- la convocatoria y su lado en los partidos de los dos, y se saltaría el tope de refuerzos). Lo cambia el admin.
+-- Los que ya están en este equipo no cuentan (se les puede cambiar dorsal o posición).
+create function private.check_free_players(p_team uuid, p_league uuid, p_players uuid[]) returns void
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if exists (select 1 from unnest(p_players) as n (player_id)
+               join public.team_players tp on tp.player_id = n.player_id and tp.league_id = p_league and tp.team_id <> p_team
+               join public.teams t on t.id = tp.team_id and t.event_id is null
+              where not exists (select 1 from public.team_players x where x.team_id = p_team and x.player_id = n.player_id)) then
+    raise exception 'invalido' using errcode = 'P0001', detail = 'Ese jugador ya está en otro equipo de la liga. Lo cambia el admin.';
+  end if;
+end $$;
+
 -- Ganador según la familia: 1, 2 o null (empate). En raqueta no hay empates (salvo W.O. doble).
 create function private.check_winner(p_league uuid, p_winner integer, p_required boolean) returns smallint
 language plpgsql stable security definer set search_path = '' as $$
@@ -408,8 +466,9 @@ begin
   end loop;
 end $$;
 
--- Plantilla de un equipo: [{player_id, jersey?, position?, role?}]. p_roles = false: el rol no se toca (los
--- nuevos entran como 'player') y los capitanes y delegados no se pueden quitar (lo hace el admin).
+-- Plantilla de un equipo: [{player_id, jersey?, position?, role?}]. p_roles = false (capitán o delegado): el rol
+-- no se toca (los nuevos entran como 'player'), los capitanes y delegados no se pueden quitar y no entra quien
+-- ya está en otro equipo de la liga (eso lo hace el admin).
 create function private.write_roster(p_team uuid, p_league uuid, p_players jsonb, p_roles boolean) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -420,6 +479,10 @@ begin
               where jsonb_typeof(x) <> 'object' or nullif(x ->> 'player_id', '') is null
                  or (p_roles and x ? 'role' and coalesce(x ->> 'role', '') not in ('player', 'captain', 'delegate'))) then
     perform private.fail('invalido');
+  end if;
+  if not p_roles then
+    perform private.check_free_players(p_team, p_league,
+      array(select distinct (x ->> 'player_id')::uuid from jsonb_array_elements(p_players) x));
   end if;
   delete from public.team_players tp
    where tp.team_id = p_team
@@ -629,11 +692,21 @@ end $$;
 
 -- Quién juega en un lado (alineación, presentes, suplente): admin, anotador de la liga, quien tiene el turno
 -- de anotar, o el capitán/delegado (raqueta: un jugador) de ese lado. p_players = [{player_id, position?, jersey?, sub?}].
+-- Quien no es admin ni anotador de la liga (el lado de una cuenta sale de aquí: no se puede usar para quitárselo
+-- al rival y que no confirme ni reclame):
+-- - con el resultado ya propuesto (finished, disputed) no cambia nada: 'cerrado';
+-- - no pone en su lado a nadie del otro lado (su alineación o su pareja/equipo): 'invalido';
+-- - en raqueta, con el turno, del lado rival solo cambia posición, dorsal o suplente de los que ya están (no
+--   quita ni agrega: en raqueta el lado ES quién juega). En equipos la mesa sí anota los presentes de los dos
+--   lados (ahí el lado es del capitán o delegado del equipo, no de la alineación).
 create function public.set_match_players(p_match uuid, p_side smallint, p_players jsonb, p_op_id uuid default null) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := private.require_uid();
   m public.matches;
+  v_official boolean;
+  v_side smallint;
+  v_ids uuid[];
 begin
   if private.op_begin(p_op_id, 'set_match_players') is not null then
     return;
@@ -642,12 +715,37 @@ begin
   if p_side is null or p_side not in (1, 2) then
     perform private.fail('invalido');
   end if;
-  if not (private.is_match_official(m.league_id) or coalesce(m.scorer_id = v_uid, false)
-          or coalesce(private.match_side(p_match) = p_side, false)) then
+  v_official := private.is_match_official(m.league_id);
+  v_side := private.match_side(p_match);
+  if not (v_official or coalesce(m.scorer_id = v_uid, false) or coalesce(v_side = p_side, false)) then
     perform private.deny();
   end if;
   if m.status in ('confirmed', 'walkover', 'void') and not private.is_admin(m.league_id) then
     perform private.fail('cerrado');
+  end if;
+  if not v_official then
+    if m.status in ('finished', 'disputed') then
+      perform private.fail('cerrado');
+    end if;
+    if jsonb_typeof(p_players) is distinct from 'array'
+       or exists (select 1 from jsonb_array_elements(p_players) x
+                   where jsonb_typeof(x) <> 'object' or nullif(x ->> 'player_id', '') is null) then
+      perform private.fail('invalido');
+    end if;
+    v_ids := array(select distinct (x ->> 'player_id')::uuid from jsonb_array_elements(p_players) x);
+    if exists (select 1 from public.match_players mp
+                where mp.match_id = p_match and mp.side <> p_side and mp.player_id = any (v_ids))
+       or exists (select 1 from public.match_sides ms join public.team_players tp on tp.team_id = ms.team_id
+                   where ms.match_id = p_match and ms.side <> p_side and tp.player_id = any (v_ids)) then
+      raise exception 'invalido' using errcode = 'P0001', detail = 'Ese jugador es del otro lado del partido.';
+    end if;
+    if v_side is distinct from p_side and private.league_family(m.league_id) = 'racket'
+       and (exists (select unnest(v_ids)
+                    except select mp.player_id from public.match_players mp where mp.match_id = p_match and mp.side = p_side)
+            or exists (select mp.player_id from public.match_players mp where mp.match_id = p_match and mp.side = p_side
+                       except select unnest(v_ids))) then
+      raise exception 'invalido' using errcode = 'P0001', detail = 'Los jugadores del otro lado los cambia el admin.';
+    end if;
   end if;
   perform private.write_players(p_match, m.league_id, p_side, p_players);
   update public.matches x set seq = x.seq where x.id = p_match;
@@ -720,8 +818,12 @@ end $$;
 
 -- Publica el estado del anotador (lo manda la cola; el teléfono colapsa y solo sale el último). Renueva el
 -- turno (no hay escrituras aparte). Nunca falla por el turno: devuelve {ok: false, reason} y el teléfono
--- avisa. reason: 'lease' (otro tiene el turno: scorer_id, scorer_name), 'stale' (llegó una publicación más
--- nueva: seq) o 'cerrado' (el partido ya terminó o se aplazó). Si nadie tiene el turno, lo toma.
+-- avisa. reason: 'lease' (otro tiene el turno: scorer_id, scorer_name; o el partido está suspendido y no lo
+-- retomó quien publica), 'stale' (llegó una publicación más nueva, o de otra lista: seq) o 'cerrado' (el
+-- partido ya terminó o se aplazó). Si nadie tiene el turno, lo toma (salvo suspendido: se retoma solo pidiendo
+-- el turno con claim_scorer). Pasa a en vivo solo con algo nuevo (p_seq mayor que el del partido): publicar lo
+-- mismo que ya estaba (abrir la cancha para mirar y salir) solo renueva el turno.
+-- p_seq: de 0 a seq + match_seq_step(), y el mismo que p_state.seq si viene ('invalido' si no).
 create function public.publish_match(p_op_id uuid, p_match uuid, p_seq integer, p_state jsonb, p_score jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -738,18 +840,23 @@ begin
   if not private.can_score_as(p_match, m.league_id, v_uid) then
     perform private.deny();
   end if;
-  if p_seq is null or p_seq < 0 then
+  if p_seq is null then
     perform private.fail('invalido');
   end if;
   if private.check_state(p_state) is null then
     perform private.fail('invalido');
   end if;
+  perform private.check_seq(p_seq, p_state, m.seq);
   p_score := private.check_score(p_score);
   if m.status not in ('scheduled', 'live', 'suspended') then
     v := jsonb_build_object('ok', false, 'reason', 'cerrado', 'status', m.status, 'seq', m.seq);
+  elsif m.status = 'suspended' and m.scorer_id is distinct from v_uid then
+    -- Suspendido (por el admin, o por quien anotaba): lo que llega de la cola de un teléfono que no lo retomó no
+    -- toma el turno libre ni lo pone en vivo.
+    v := private.claim_result(m, false) || jsonb_build_object('reason', 'lease');
   elsif m.scorer_id is not null and m.scorer_id <> v_uid then
     v := private.claim_result(m, false) || jsonb_build_object('reason', 'lease');
-  elsif p_seq < m.seq then
+  elsif p_seq < m.seq or not private.state_follows(p_state, m) then
     v := jsonb_build_object('ok', false, 'reason', 'stale', 'status', m.status, 'seq', m.seq);
   else
     update public.matches x set
@@ -758,7 +865,7 @@ begin
       seq = p_seq,
       scorer_id = v_uid,
       lease_until = now() + private.match_lease(),
-      status = case when x.status in ('scheduled', 'suspended') then 'live' else x.status end
+      status = case when x.status in ('scheduled', 'suspended') and p_seq > x.seq then 'live' else x.status end
     where x.id = p_match
     returning * into m;
     v := jsonb_build_object('ok', true, 'status', m.status, 'seq', m.seq, 'version', m.version, 'lease_until', m.lease_until);
@@ -771,7 +878,8 @@ end $$;
 -- confirmado. Alguien de un lado: queda propuesto ('finished') y confirma el otro lado; a las 48 h cuenta
 -- solo. Quien propuso (o el admin) puede corregir su propuesta dentro de las 48 h.
 -- p_score = {text, sides, …}; p_winner 1|2 (null = empate, no en raqueta); p_state = estado final (opcional).
--- Devuelve {ok, status} o {ok: false, reason: 'stale'} si ya llegó una publicación más nueva de otro teléfono.
+-- Devuelve {ok, status} o {ok: false, reason: 'stale'} si ya llegó una publicación más nueva de otro teléfono
+-- (seq más alto, o la lista del partido es otra que la que termina: ver state_follows). El admin cierra igual.
 create function public.finish_match(
   p_match uuid,
   p_score jsonb,
@@ -822,7 +930,8 @@ begin
     perform private.fail('invalido');
   end if;
   p_state := private.check_state(p_state);
-  if p_seq is not null and p_seq < m.seq and not v_admin then
+  perform private.check_seq(p_seq, p_state, m.seq);
+  if not v_admin and ((p_seq is not null and p_seq < m.seq) or (p_state is not null and not private.state_follows(p_state, m))) then
     v := jsonb_build_object('ok', false, 'reason', 'stale', 'status', m.status, 'seq', m.seq);
     perform private.op_end(p_op_id, v);
     return v;
@@ -1084,7 +1193,8 @@ begin
 end $$;
 
 -- Suspender con marcador parcial (lluvia, falta de luz): quien tiene el turno, el anotador de la liga o el
--- admin. Se guarda el estado (si viene y no es viejo) y se suelta el turno; se retoma pidiendo el turno.
+-- admin. Se guarda el estado (si viene, no es viejo y sigue a la lista del partido) y se suelta el turno; se
+-- retoma pidiendo el turno.
 create function public.suspend_match(
   p_match uuid,
   p_state jsonb default null,
@@ -1116,7 +1226,8 @@ begin
   end if;
   p_state := private.check_state(p_state);
   p_score := private.check_score(p_score);
-  v_fresh := p_seq is null or p_seq >= m.seq;
+  perform private.check_seq(p_seq, p_state, m.seq);
+  v_fresh := (p_seq is null or p_seq >= m.seq) and (p_state is null or private.state_follows(p_state, m));
   update public.matches x set
     status = 'suspended',
     state = case when v_fresh then coalesce(p_state, x.state) else x.state end,
@@ -1256,7 +1367,8 @@ begin
 end $$;
 
 -- Pone (o cambia) un jugador en la plantilla. Admin: todo, también el rol. Capitán o delegado del equipo:
--- dorsal y posición; los nuevos entran como 'player' y no cambia roles (p_role distinto de null/'player': no).
+-- dorsal y posición; los nuevos entran como 'player' y no cambia roles (p_role distinto de null/'player': no);
+-- no suma a quien ya está en otro equipo de la liga ('invalido': lo cambia el admin).
 create function public.set_team_player(
   p_team uuid,
   p_player uuid,
@@ -1282,6 +1394,9 @@ begin
        p_role <> 'player'
        or coalesce((select tp.role from public.team_players tp where tp.team_id = p_team and tp.player_id = p_player), 'player') <> 'player') then
     perform private.deny();
+  end if;
+  if not v_admin then
+    perform private.check_free_players(p_team, t.league_id, array[p_player]);
   end if;
   insert into public.team_players as tp (team_id, player_id, league_id, jersey, position, role)
   values (p_team, p_player, t.league_id, p_jersey::smallint, nullif(btrim(coalesce(p_position, '')), ''), coalesce(p_role, 'player'))
@@ -1311,7 +1426,7 @@ begin
 end $$;
 
 -- Plantilla completa de una vez (reemplaza la que había). Admin: con roles. Capitán o delegado: los roles no
--- cambian y los capitanes y delegados se quedan.
+-- cambian, los capitanes y delegados se quedan y no entra quien ya está en otro equipo de la liga.
 create function public.set_roster(p_team uuid, p_players jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1555,6 +1670,7 @@ declare
     'league_family', 'require_match_league', 'match_lease', 'match_auto_confirm', 'match_final', 'match_side_of', 'match_side',
     'can_score_as', 'is_match_official', 'team_role', 'match_for_update', 'season_team_for_update', 'match_history',
     'check_score', 'check_state', 'check_winner', 'claim_result', 'write_players', 'write_sides', 'write_roster',
+    'match_seq_step', 'check_seq', 'state_follows', 'check_free_players',
     'bump_match_version', 'check_match', 'check_season_team', 'check_team_is_season',
     'match_row', 'emit_match_update', 'emit_matches', 'emit_match_children', 'emit_season_teams', 'emit_team_players',
     'push_result_to_confirm'

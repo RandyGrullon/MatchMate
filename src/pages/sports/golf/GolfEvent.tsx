@@ -2,7 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ClipboardList, Flag, ListOrdered, Lock, LockOpen, Settings2, Share2, Signature, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent, useEvent, usePlayers } from '../../../lib/data';
-import { closeGolfRound, signGolfCard, useGolfEvent, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
+import { closeGolfRound, pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
+import { sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
 import { eventLabel, formatDateLong, toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { BackLink } from '../../../components/BackLink';
@@ -10,9 +11,9 @@ import { saveErrorMessage, useAction, useFeedback } from '../../../components/fe
 import { shareLink } from '../../../components/share';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
 import { CardModal } from './bits';
-import { mergeCard, useCourtLog } from './courtLog';
+import { cardWire, markSent, mergeCard, sendPending, useCourtLog } from './courtLog';
 import { GolfBoard } from './GolfBoard';
-import { GolfCourt, sendPending } from './GolfCourt';
+import { GolfCourt } from './GolfCourt';
 import { GolfPlayers } from './GolfPlayers';
 import { RoundForm } from './RoundForm';
 import { formatLabel, holesDone, isComplete, nineLabel } from './logic';
@@ -38,7 +39,9 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const golf = useGolfEvent(lid, eventId);
   const players = usePlayers(lid);
   const tournaments = useGolfTournaments(lid);
-  const [log] = useCourtLog(eventId ?? '');
+  const [log, updateLog] = useCourtLog(eventId ?? '');
+  // La firma pendiente en la cola cambia lo que se ofrece (se vuelve a dibujar cuando la cola cambia).
+  useOutboxSnapshot();
 
   // Lo anotado en este teléfono se ve en todas las pestañas aunque no haya llegado al servidor.
   const cards = useMemo(() => golf.data.cards.map((c) => mergeCard(c, log)), [golf.data.cards, log]);
@@ -87,9 +90,13 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
 
   async function sign(card: GolfCardDoc) {
     try {
-      // Primero sale lo anotado que falte; la firma va detrás en la misma cola.
-      sendPending(lid, eventId!, new Set(golf.data.cards.map((c) => c.id)))?.catch((e) => toast(saveErrorMessage(e), 'error'));
-      await signGolfCard(lid, eventId!, card.id);
+      // Primero sale lo anotado que falte (una operación por tarjeta). La firma lleva además la tarjeta tal
+      // como se revisó: el servidor la guarda y firma a la vez, sin depender del orden de la cola.
+      sendPending(lid, eventId!, golf.data.cards, { isAdmin, staff, myCard })?.catch((e) => toast(saveErrorMessage(e), 'error'));
+      const reviewed = { cardId: card.id, holes: cardWire(cards.find((c) => c.id === card.id) ?? card) };
+      const { done } = queueGolfSign(lid, eventId!, card.id, { holes: reviewed.holes });
+      void done.then(() => updateLog((l) => markSent(l, [reviewed], Date.now()))).catch(() => undefined);
+      await sentOrQueued(done);
       toast('Tarjeta firmada');
       setSigning(null);
     } catch (e) {
@@ -193,7 +200,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
         </Empty>
       ) : (
         <>
-          {myCard && !myCard.signed && !round.closed && isComplete(myCard) && tab !== 'tarjeta' && (
+          {myCard && !myCard.signed && !pendingGolfSign(lid, myCard.id) && !round.closed && isComplete(myCard) && tab !== 'tarjeta' && (
             <Button variant="primary" className="h-12" icon={<Signature className="size-5" />} onClick={() => setSigning(myCard)}>
               Terminaste: revisa y firma tu tarjeta
             </Button>

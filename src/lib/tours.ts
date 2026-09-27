@@ -6,22 +6,22 @@ import type { TourStep } from '../components/Tour';
  * El color de la app se puede cambiar: los textos dicen «el botón del centro», no su color.
  */
 
-/** Tour del Home: lo principal de la app (sale la primera vez que se entra). */
+/** Tour del Home: lo principal de la app (sale la primera vez que se entra). Sirve para cualquier deporte. */
 export const HOME_TOUR: TourStep[] = [
   {
     target: 'nav',
     title: 'Bienvenido a MatchMate',
-    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus notificaciones y tu Perfil (tus números en todas las ligas).',
+    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus notificaciones y tu Perfil (tus números y tus ligas).',
   },
   {
     target: 'en-juego',
     title: 'En juego ahora',
-    body: 'Cuando empieza una práctica o un torneo de tus ligas, aparece aquí. Toca "Anotar mis juegos" y anótalos mientras juegas.',
+    body: 'Cuando empieza una práctica o un torneo de tus ligas de boliche, aparece aquí. Toca "Anotar mis juegos" y anótalos mientras juegas.',
   },
   {
     target: 'proximos',
-    title: 'Tus próximas prácticas y torneos',
-    body: 'Semana por semana, de todas tus ligas. Las prácticas de cada semana salen solas según el horario. Toca "Voy" para confirmar que vas.',
+    title: 'Lo que viene',
+    body: 'Semana por semana, los eventos de todas tus ligas. En el boliche, las prácticas de cada semana salen solas según el horario: toca "Voy" para confirmar que vas.',
   },
   {
     target: 'campana',

@@ -8,6 +8,7 @@ import type { Side } from '../../sports/types';
 import {
   backend,
   cachedQueries,
+  currentOutbox,
   enqueue,
   getUserId,
   invalidate,
@@ -389,7 +390,8 @@ export function overlayMatch<M extends Wire<Match>>(m: M, ops: readonly OutboxIt
         if (typeof a.p_seq === 'number' && a.p_seq < out.seq) continue;
         next.score = (a.p_score as MatchScore | null) ?? null;
         next.seq = Number(a.p_seq) || out.seq;
-        if (out.status === 'scheduled' || out.status === 'suspended') next.status = 'live';
+        // Como el servidor: en vivo solo con algo nuevo; un suspendido, solo si quien publica lo retomó (tiene el turno).
+        if (Number(a.p_seq) > out.seq && (out.status === 'scheduled' || (out.status === 'suspended' && out.scorerId === o.userId))) next.status = 'live';
         // El detalle (useMatch) también lleva el estado del anotador.
         if (out.state !== undefined) next.state = (a.p_state as Record<string, unknown> | null) ?? out.state;
         break;
@@ -997,6 +999,38 @@ export async function suspendMatch(
   if (r.note?.trim()) args.p_note = r.note.trim();
   const { done } = enqueue('suspend_match', args, { group: lid, collapseKey: matchCollapse.suspend(id), label: 'Partido suspendido' });
   await sentOrQueued(done);
+}
+
+/**
+ * Quita de la cola lo que este teléfono tenía por publicar o terminar de ese partido (el modo cancha lo pide
+ * cuando su lista ya no vale: otro anotador, otra lista más nueva, el partido se suspendió). Lo que ya se está
+ * enviando no se toca. Devuelve cuántas quitó.
+ */
+export async function discardQueuedCourtOps(lid: string, id: string): Promise<number> {
+  const ob = currentOutbox();
+  if (!ob) return 0;
+  const keys = new Set([matchCollapse.publish(id), matchCollapse.finish(id)]);
+  let n = 0;
+  for (const it of ob.listPending(lid)) {
+    if (!it.collapseKey || !keys.has(it.collapseKey) || it.status === 'sending') continue;
+    try {
+      await ob.discard(it.opId);
+      n++;
+    } catch {
+      // se empezó a enviar justo ahora: el servidor la rechaza igual (turno, lista vieja)
+    }
+  }
+  return n;
+}
+
+/**
+ * Lo último que este teléfono tiene del partido completo (la caché de `useMatch`, también sin señal): el estado
+ * del anotador y el seq del partido. null si no está en la caché.
+ */
+export function cachedCourtState(id: string): { state: Record<string, unknown> | null; seq: number } | null {
+  const m = queryClient.getQueryData<Wire<Match> | null>(matchKeys.one(id));
+  if (!m || m.state === undefined) return null;
+  return { state: m.state ?? null, seq: m.seq };
 }
 
 /** Quién juega en un lado (alineación, presentes, suplente). Por la cola (la mesa lo hace sin señal). */

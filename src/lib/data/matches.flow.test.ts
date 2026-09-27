@@ -10,6 +10,7 @@ import {
   claimScorer,
   confirmResult,
   createMatches,
+  discardQueuedCourtOps,
   fetchLeagueMatches,
   fetchMatch,
   fetchMyMatches,
@@ -17,6 +18,7 @@ import {
   isFinal,
   publishMatch,
   resetMatchesForTests,
+  setMatchPlayers,
 } from './matches';
 import { fetchPlayers } from './players';
 import { createSeasonTeam, fetchSeasonTeams, removeTeamPlayer, setRoster, setTeamPlayer } from './seasonTeams';
@@ -151,6 +153,24 @@ describe('partidos con la base de verdad', () => {
     await w.as('rosa@x.com');
     const r = await publishMatch(lid, mid, { seq: 9, state: { v: 1 }, score: null }).done;
     expect(r).toMatchObject({ ok: false, reason: 'lease', scorerName: 'Ana' });
+  });
+
+  it('la cancha quita de la cola lo suyo (publicar y terminar) cuando su lista ya no vale; lo demás se queda', async () => {
+    await w.as('ana@x.com');
+    net.offline = true;
+    const pub = publishMatch(lid, mid, { seq: 4, state: { v: 1, seq: 4 }, score: { text: 'viejo' } });
+    expect(await finishMatch(lid, mid, { score: { text: 'viejo', sides: [0, 2] }, winner: 2, seq: 4 })).toBeUndefined();
+    const other = setMatchPlayers(lid, mid, 2, [{ playerId: pAna }]);
+    expect(outbox().getSnapshot().pendingCount).toBe(3);
+    expect(await discardQueuedCourtOps(lid, mid)).toBe(2);
+    await expect(pub.done).rejects.toThrow();
+    expect(outbox().listPending(lid).map((o) => o.fn)).toEqual(['set_match_players']);
+    // Nada de lo viejo llega al servidor.
+    net.offline = false;
+    await other;
+    await outbox().flush();
+    expect(net.calls.filter((c) => c.fn === 'publish_match' || c.fn === 'finish_match')).toHaveLength(0);
+    expect(await fetchMatch(lid, mid)).toMatchObject({ status: 'live', seq: 3, score: { text: '0-40' } });
   });
 
   it('terminar (propone la rival), confirmar (el otro lado) y mis partidos', async () => {

@@ -20,10 +20,10 @@ import {
 import type { Side } from '../../../sports/types';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Field, Input, Modal, cx } from '../../../components/ui';
-import { rosterOf, shortName, teamColor, textOn } from '../team/logic';
+import { ON_OK, rosterOf, shortName, teamColor, textOn } from '../team/logic';
 import { BigButton, JerseyButton, ScoreHeader, useTicker } from '../team/ScorerPieces';
 import type { TeamLeague } from '../team/useTeamLeague';
-import { atBreak, eventLabel, footballAdapter, stageLabel } from './adapter';
+import { atBreak, eventLabel, footballAdapter, quietAdapter, replaceLastEvent, stageLabel } from './adapter';
 import { CardIcon, REASON_TEXT } from './bits';
 import { LineupModal, type LineupSide } from './LineupModal';
 import { footballConfigFrom, footballTeamRules } from './rules';
@@ -69,7 +69,8 @@ export function FootballCourt({
   const offset = useServerOffset();
   const offsetRef = useRef(offset);
   offsetRef.current = offset;
-  const adapter = useMemo(() => footballAdapter({ offset: () => offsetRef.current }), []);
+  // `quietly`: cambiar quién marcó sin publicar el deshacer de en medio (replaceLastEvent).
+  const { adapter, quietly } = useMemo(() => quietAdapter(footballAdapter({ offset: () => offsetRef.current })), []);
   // Hitos (reloj, fin del tiempo) como mucho cada 5 s; los goles y las rojas se publican al toque (flush).
   const court = useCourt<FootballConfig, FootballState, FootballEvent>({
     lid: tl.lid,
@@ -121,11 +122,10 @@ export function FootballCourt({
       return false;
     }
     const prev = lastEvent() as Extract<FootballEvent, { type: 'goal' }>;
-    if (!court.undo()) return false;
-    const next: FootballEvent = { ...prev, ...patch };
-    if (act(next)) return true;
-    court.apply(prev);
-    return false;
+    // Quitar y volver a poner el gol sin que los espectadores lo vean desaparecer.
+    const err = replaceLastEvent<FootballEvent>(court, quietly, prev, { ...prev, ...patch });
+    if (err) toast(err, 'error');
+    return !err;
   };
 
   const scoreGoal = (side: Side) => {
@@ -825,7 +825,7 @@ function SubSheet({
 }
 
 /** Tanda de penales paso a paso: quién patea, gol o fallado, y cómo va (aparte del marcador). */
-function Shootout({
+export function Shootout({
   state: s,
   names,
   colors,
@@ -861,7 +861,10 @@ function Shootout({
             <span
               key={i}
               title={k.player ? who(side, k.player) : undefined}
-              className={cx('inline-flex size-6 items-center justify-center rounded-full text-xs font-bold text-white', k.scored ? 'bg-ok' : 'bg-danger')}
+              className={cx(
+                'inline-flex size-6 items-center justify-center rounded-full text-xs font-bold',
+                k.scored ? 'bg-ok text-[color:var(--on-ok,var(--bg))]' : 'bg-danger text-on-danger',
+              )}
             >
               {k.scored ? '✓' : '✗'}
             </span>
@@ -910,7 +913,7 @@ function Shootout({
               ))}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <BigButton tone="team" disabled={readOnly} onTap={() => kick(true)} className="min-h-20" style={{ background: 'var(--ok)', color: '#ffffff' }} ariaLabel={`Penal de ${names[nextSide - 1]}: gol`}>
+            <BigButton tone="team" disabled={readOnly} onTap={() => kick(true)} className="min-h-20" style={{ background: 'var(--ok)', color: ON_OK }} ariaLabel={`Penal de ${names[nextSide - 1]}: gol`}>
               <Goal className="size-7" /> GOL
             </BigButton>
             <BigButton tone="team" disabled={readOnly} onTap={() => kick(false)} className="min-h-20" style={{ background: 'var(--danger)', color: 'var(--on-danger)' }} ariaLabel={`Penal de ${names[nextSide - 1]}: fallado`}>

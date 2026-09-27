@@ -265,6 +265,19 @@ describe('natación con la base de verdad', () => {
     const [id] = await saveSwimEvents(lid, meetId, [{ distance: 200, stroke: 'combinado', gender: 'F', ageGroups: ['11-12', '13-14'] }]);
     expect((await fetchSwimEvents(lid, meetId)).find((e) => e.id === id)).toMatchObject({ num: 3, distance: 200, stroke: 'combinado', ageGroups: ['11-12', '13-14'] });
   });
+
+  it('con año de nacimiento de menor queda como menor aunque no lo marquen', async () => {
+    await w.as('org@x.com');
+    const nina = { name: 'Niña', clubId: clubA, isMinor: false, birthYear: YEAR - 9, sex: 'F' as const, guardianName: null };
+    // Sin el permiso del tutor no entra (antes quedaba registrada como adulta).
+    await expect(registerSwimmer(lid, { ...nina, consent: false })).rejects.toMatchObject({ kind: 'validation' });
+    const id = await registerSwimmer(lid, { ...nina, consent: true });
+    const rows = await w.b.db.query<{ is_minor: boolean; user_id: string | null }>('select is_minor, user_id from public.players where id = $1', [id]);
+    expect(rows.rows).toEqual([{ is_minor: true, user_id: null }]);
+    // A un adulto no se le pone un año de menor.
+    const adult = await registerSwimmer(lid, { name: 'Adulta', clubId: null, isMinor: false, birthYear: 1990, sex: 'F', consent: false, guardianName: null });
+    await expect(updateSwimmer(lid, adult, { birthYear: YEAR - 12 })).rejects.toMatchObject({ kind: 'validation' });
+  });
 });
 
 describe('piezas sin base', () => {

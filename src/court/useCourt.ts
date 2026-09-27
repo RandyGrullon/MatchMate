@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { claimScorer, finishMatch, publishMatch, suspendMatch, type ClaimResult, type MatchStatus } from '../lib/data/matches';
-import { courtDeviceId, courtStore, pruneCourtLogs, type CourtStore } from './log';
+import {
+  cachedCourtState,
+  claimScorer,
+  discardQueuedCourtOps,
+  finishMatch,
+  publishMatch,
+  releaseScorer,
+  suspendMatch,
+  type ClaimResult,
+  type MatchStatus,
+} from '../lib/data/matches';
+import { courtOrigin, courtStore, pruneCourtLogs, type CourtStore } from './log';
 import { createCourtMachine, type CourtDeps, type CourtMachine, type CourtView } from './machine';
 import type { CourtAdapter } from './types';
 
@@ -39,8 +49,12 @@ export function courtDeps(lid: string, mid: string, store: CourtStore = courtSto
     publish: (p) => publishMatch(lid, mid, p).done,
     finish: (r) => finishMatch(lid, mid, r),
     suspend: (r) => suspendMatch(lid, mid, { state: r.state, score: r.score, seq: r.seq, note: r.note }),
+    release: () => releaseScorer(lid, mid),
+    discardQueued: () => discardQueuedCourtOps(lid, mid),
+    cached: () => cachedCourtState(mid),
     store,
-    origin: courtDeviceId(),
+    // Un id por partido (no uno por teléfono): lo publicado no liga partidos ni cuentas a un mismo teléfono.
+    origin: courtOrigin(mid),
   };
 }
 

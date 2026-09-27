@@ -7,6 +7,8 @@
  * - `leagues`: listas de ligas. `members`: membresías de la cuenta. `feeds`: la campana.
  * - `events:<liga>` / `event:<evento>`, `entries:<liga>` / `entries:e:<evento>`, `subs:<liga>` / `subs:e:<evento>`,
  *   `live:e:<evento>`, `players:<liga>`, `members:<liga>`, `social:<liga>`, `suggestions:<liga>`.
+ * - Consola del superadmin: `admin` (todo), `admin:users`, `admin:leagues`, `admin:audit`, `admin:system`,
+ *   `admin:stats` (resumen, series y lecturas de fotos).
  */
 
 export const sortedKey = (ids: readonly string[]) => [...ids].sort().join(',');
@@ -37,6 +39,15 @@ export const keys = {
   playerSubs: (lid: string, playerId: string) => `subs:p:${lid}:${playerId}`,
   live: (eventId: string) => `live:e:${eventId}`,
   suggestions: (lid: string) => `suggestions:${lid}`,
+  // Consola del superadmin (nunca se guardan en el teléfono). `q` = los parámetros de la lista ya normalizados.
+  adminOverview: 'admin:overview',
+  adminSeries: (days: number) => `admin:series:${days}`,
+  adminUsers: (q: string) => `admin:users:${q}`,
+  adminUser: (id: string) => `admin:user:${id}`,
+  adminLeagues: (q: string) => `admin:leagues:${q}`,
+  adminAudit: (q: string) => `admin:audit:${q}`,
+  adminSystem: 'admin:system',
+  adminScan: (days: number) => `admin:scan:${days}`,
 };
 
 export const tags = {
@@ -57,4 +68,12 @@ export const tags = {
   suggestions: (lid: string) => `suggestions:${lid}`,
   users: 'users',
   profile: (uid: string) => `profile:${uid}`,
+  // Consola del superadmin: `admin` = todo; las demás, por sección.
+  admin: 'admin',
+  adminUsers: 'admin:users',
+  adminLeagues: 'admin:leagues',
+  adminAudit: 'admin:audit',
+  adminSystem: 'admin:system',
+  /** Resumen, series y lecturas de fotos. */
+  adminStats: 'admin:stats',
 };

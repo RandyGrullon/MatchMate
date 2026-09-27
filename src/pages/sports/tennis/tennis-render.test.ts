@@ -251,6 +251,31 @@ describe('liga por cajas', () => {
     expect(part).toContain('NTRP 4.5');
   });
 
+  it('los meses viejos que la base archivó dicen que ya no guardan quién subió y quién bajó', () => {
+    const LARGA = ev(
+      'B3',
+      'cajas',
+      'Cajas de siempre',
+      {
+        format: 'cajas',
+        entrants: P,
+        round: 3,
+        months: [
+          { n: 1, label: 'Agosto 2026', closed: true, archived: true },
+          { n: 2, label: 'Septiembre 2026', closed: true, moves: [{ id: 't5', from: 1, to: 0, move: 'sube' }] },
+          { n: 3, label: 'Octubre 2026', boxes: [P.slice(0, 4), P.slice(4)], closed: false },
+        ],
+      },
+      8,
+    );
+    queryClient.setQueryData(racketKeys.event('B3'), LARGA);
+    queryClient.setQueryData(matchKeys.event('B3'), []);
+    const meses = text(eventRoute(`/l/${L}/e/B3?ver=historial`));
+    expect(meses).toContain('Agosto 2026 De este mes ya no se guarda quién subió y quién bajó.');
+    expect(meses).toContain('Septiembre 2026 Subieron: Juan (Caja 1)');
+    expect(meses).not.toContain('Sin cambios');
+  });
+
   it('sin mes: el admin lo arma; los demás esperan', () => {
     expect(text(eventRoute(`/l/${L}/e/B2`))).toContain('Armar el primer mes');
     expect(text(eventRoute(`/l/${L}/e/B2`, GUEST))).toContain('Todavía no empieza');

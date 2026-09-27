@@ -67,9 +67,10 @@ export function RsvpButtons({
   label?: string;
 }) {
   const order: RsvpStatus[] = ['yes', 'maybe', 'no'];
+  // Nunca letra blanca fija: en oscuro el verde y el ámbar se aclaran (ver ON_OK / ON_WARN en ./logic).
   const on: Record<RsvpStatus, string> = {
-    yes: 'bg-ok text-white border-ok',
-    maybe: 'bg-warn text-white border-warn',
+    yes: 'bg-ok text-[color:var(--on-ok,var(--bg))] border-ok',
+    maybe: 'bg-warn text-[color:var(--on-warn,var(--bg))] border-warn',
     no: 'bg-danger text-on-danger border-danger',
   };
   return (

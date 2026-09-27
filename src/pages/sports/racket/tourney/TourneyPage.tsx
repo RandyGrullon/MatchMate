@@ -14,7 +14,7 @@ import { BracketView, MatchCard, StandingsTable } from '../../../../components/m
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { Chips, PickList, Section, Stepper, racketColumns } from '../bits';
 import { exportCompetitionExcel } from '../excel';
-import { entrantKey, forLabel, seasonPlayerTable } from '../logic/results';
+import { entrantKey, forLabel, seasonPlayerTable, setsLabel } from '../logic/results';
 import {
   CATEGORY_IDS,
   bracketDrafts,
@@ -115,6 +115,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
       nameOf: names.nameOf,
       tz: league.tz,
       forLabel: forLabel(sport),
+      setsLabel: setsLabel(sport),
     }).catch((e) => {
       console.error(e);
       toast('No se pudo hacer el Excel', 'error');

@@ -22,6 +22,8 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260926000500_rpc.sql` | Todas las RPC y la lista explícita de permisos |
 | `migrations/20260926000600_realtime.sql` | Triggers que avisan por `private.emit` |
 | `migrations/20260926000700_realtime_storage_supabase.sql` | **Solo Supabase**: políticas de `realtime.messages` y del bucket `scoreboards` |
+| `migrations/20260927001100_consola.sql` | Consola del superadmin: visto por última vez, bloqueo de cuentas, auditoría, RPC `admin_*` y anuncios (ver «Consola del superadmin») |
+| `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -57,6 +59,7 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | SQLSTATE | message | Significa | `BackendErrorKind` |
 |---|---|---|---|
 | `42501` | `no_permitido` | No tiene permiso (o no hay sesión). También `permission denied` de Postgres | `permission` |
+| `42501` | `bloqueada` | La cuenta está bloqueada por el superadmin: no escribe nada (leer sí). El cliente la muestra como «Tu cuenta está bloqueada. Escríbele al equipo de MatchMate.» (código `bloqueada`) | `permission` |
 | `P0001` | `invalido` | Dato que no sirve (nombre vacío, pinos fuera de 0–300, clave de patch desconocida…) | `validation` |
 | `P0001` | `no_existe` | La liga, evento, jugador, envío… no existe (o no es de esa liga) | `not_found` |
 | `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador), op_id de otra cuenta u otra función | `conflict` |
@@ -86,6 +89,7 @@ Hoy solo `bowling` está `open`; los demás `beta` (solo el superadmin crea liga
 `created_at`, `updated_at`. Se crea sola al registrarse (trigger; nombre de `raw_user_meta_data.name`,
 o `full_name` de Google, o lo de antes de la @ del correo, recortado a 60; `adult: true` llena
 `adult_confirmed_at`). Otros miembros se ven por `league_members.display_name`.
+Consola: `last_seen_at` (lo pone `touch_seen`), `blocked_at` y `blocked_reason` (≤ 200; la cuenta ve si está bloqueada).
 
 ### `leagues` — liga visible
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
@@ -368,6 +372,53 @@ cuenta. Nadie puede enviar (no hay política de INSERT). Borrar una liga no mand
 Bucket privado `scoreboards`, 1 MB, `image/webp` o `image/jpeg`. Leer: quien ve la liga. Subir: admin,
 anotador o miembro con jugador en una liga sin menores (`private.can_upload_photo_path`). Borrar: admins
 de la liga. Sin actualizar. En local, `BackendStorage` guarda el archivo por su cuenta; `photos.path` es la clave.
+
+## Consola del superadmin
+
+`20260927001100_consola.sql` (pruebas: `tests/sql/consola.test.ts`; cliente: `src/lib/data/admin.ts`). La
+administración de cada liga (dueño + admins de esa liga) no cambia: esto es de toda la app y solo para el
+superadmin (`profiles.is_superadmin`). Las lecturas devuelven `jsonb` en camelCase (los tipos de `admin.ts`), con
+horas en texto ISO (`'2026-09-27T16:03:11.123Z'`) y días `'YYYY-MM-DD'` en hora de RD (`private.console_tz()`).
+Páginas: `p_limit` 1–100 (se corrige), `p_offset` ≥ 0, orden estable, `{rows, total}`.
+
+**Bloqueo.** `private.require_uid()` (la usan todas las RPC que escriben; una prueba lo revisa) falla con
+`bloqueada` (42501) si `profiles.blocked_at` no es null. Leer sigue igual (RLS). Tampoco borra archivos de fotos
+(`mm_scoreboards_delete` usa `private.photo_admin_leagues()`: las de `admin_leagues`, ninguna si está bloqueada), ni sube fotos a Storage
+(`can_upload_photo`) ni gasta lecturas con IA (`can_scan`). `sync_ladder` (se llama al abrir la escalera) y
+`touch_seen` no la exigen. Un superadmin nunca está bloqueado (nombrarlo superadmin lo desbloquea); nadie se
+bloquea a sí mismo. Bloquear no borra nada.
+
+**Auditoría.** `public.admin_audit` (`id`, `at`, `actor_id`, `action`, `target_type` `user|league|sport|app`,
+`target_id`, `detail` jsonb): la lee solo el superadmin; nadie escribe directo (`private.audit`). Acciones:
+`set_superadmin` {value, before, name, email, unblocked?}, `set_sport_status` {from, to}, `block_user`
+{name, email, reason, already}, `unblock_user` {name, email, wasBlocked, reason}, `announce` {title, body, url,
+audience, recipients}, y cuando un superadmin actúa sobre una liga que no es suya: `delete_league` {name, sport,
+kind, ownerId, ownerName, members, players, events} y `transfer_league` {name, sport, from, to, fromName, toName}.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `touch_seen() → void` | cualquier cuenta (también bloqueada) | `last_seen_at` = ahora si está vacío o tiene más de 6 h; agrega el día a `private.daily_seen` (una fila por cuenta y día; la limpieza diaria pasa los días de hace más de 35 a `private.daily_active`, un número por día, y guarda 400 días). Nunca falla. La app la llama una vez al día por teléfono (`mm:visto:<uid>`). |
+| `admin_overview() → AdminOverview` | superadmin | Cuentas (nuevas, activas por `last_seen_at`, superadmins, bloqueadas, sin confirmar), ligas (por deporte, activas = algo cambió en 7 días), actividad de 7 días, tamaño de la base y de las fotos (null si no se sabe), lecturas de hoy y topes (900/40), push. |
+| `admin_series(p_days=30) → AdminSeriesPoint[]` | superadmin | Un día por fila (1–366), con ceros: registros, activos (`daily_seen`), eventos, partidos y juegos creados, lecturas (`scan_days`, día de Google). |
+| `admin_users(p_search, p_filter='all', p_limit=50, p_offset=0) → {rows: AdminUser[], total}` | superadmin | Más nuevas primero. Busca en nombre y correo (sin comodines) o por id. Filtro `all\|super\|blocked\|unconfirmed\|inactive` (30 días sin abrir o nunca); otro: `invalido`. |
+| `admin_user(p_user) → AdminUserDetail \| null` | superadmin | Con sus ligas (hasta 200), teléfonos, lecturas de hoy y si marcó mayor de edad. |
+| `admin_leagues(p_search, p_sport, p_kind, p_visibility, p_sort='activity', p_limit=50, p_offset=0) → {rows: AdminLeague[], total}` | superadmin | Busca en nombre de la liga, nombre o correo del dueño, o id. `p_sort` `activity\|name\|created\|members`. `lastActivityAt` = lo último cambiado en eventos, juegos, partidos, envíos, golf o natación. |
+| `admin_audit_log(p_action=null, p_limit=50, p_offset=0) → {rows: AdminAuditEntry[], total}` | superadmin | Lo más nuevo primero, con el nombre de quién lo hizo. |
+| `admin_system() → AdminSystem` | superadmin | Migraciones (`supabase_migrations`), último `ping`, tareas de pg_cron con su última corrida, cola de push, deportes con sus ligas. Lo que no existe (PGlite) sale null. |
+| `admin_scan_stats(p_days=30) → AdminScanStats` | superadmin | Lecturas por día (1–90), por modelo (`scan_minutes`, 3 días) y las 10 cuentas que más leen (`scan_usage`, 7 días). |
+| `admin_block_user(p_user, p_reason=null) → void` | superadmin | Motivo ≤ 200. `invalido` (a sí mismo o motivo largo), `no_permitido` (superadmin), `no_existe`. Otra vez: cambia el motivo, no la hora. |
+| `admin_unblock_user(p_user) → void` | superadmin | `no_existe`. |
+| `admin_count_recipients(p_audience jsonb) → int` | superadmin | Cuántas cuentas recibirían el anuncio. |
+| `admin_announce(p_title, p_body, p_url='/', p_audience='{"kind":"all"}') → int` | superadmin | Título 1–60, texto 1–180, ruta de la app (empieza con una sola `/`, sin espacios ni `\`, ≤ 200). Público `{kind: 'all'}`, `{kind: 'sport', sport}`, `{kind: 'league', leagueId}` o `{kind: 'admins'}` (dueños y admins de cualquier liga). Reciben las cuentas **sin bloquear y con avisos activados** en algún teléfono: una fila de `push_outbox` por cuenta (el trigger la reparte a sus teléfonos, ttl 24 h, tag `anuncio:<ms>`) y llama a send-push. Máximo 5 por hora entre todos los superadmins: `rate_limited`. Devuelve cuántas cuentas. |
+
+Traspasar y borrar ligas de cualquiera: `transfer_ownership` y `delete_league` de siempre (el superadmin ya podía).
+Deportes: `set_sport_status`. Índices nuevos: `profiles` por fecha de registro, visto, bloqueadas y superadmins;
+`created_at` de `events`, `entries`, `matches`, `submissions` y `photos`; envíos pendientes.
+
+**Ojo al cambiar migraciones viejas:** esta redefine (create or replace, mismos permisos) `private.require_uid`,
+`private.can_upload_photo`, `private.can_scan`, `public.sync_ladder`, `set_superadmin`, `set_sport_status`,
+`delete_league` y `transfer_ownership`. Un cambio a esas funciones en su archivo original queda tapado por esta:
+hay que hacerlo aquí (o en una migración nueva después).
 
 ## Seguridad (lo que prueban `tests/sql/seguridad.test.ts` y `nuevas.test.ts`)
 

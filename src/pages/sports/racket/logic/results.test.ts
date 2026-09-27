@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { inSeason, pairStandings, playerRecord, racketResultOf, seasonNightTable, seasonPlayerTable, winPct } from './results';
+import { racketColumns } from '../bits';
+import { inSeason, pairStandings, playerRecord, racketResultOf, seasonDay, seasonNightTable, seasonPlayerTable, setsLabel, winPct } from './results';
 import { mkMatch, pts, sets } from './testMatch';
 
 const RULES = { match: { sport: 'padel' } };
@@ -98,10 +99,48 @@ describe('jugadores', () => {
     expect(t.find((r) => r.id === 'pedro')).toMatchObject({ played: 1, won: 0, points: 1 });
   });
 
+  it('ranking de pickleball: la columna «Jue.» muestra la dif. de juegos (no 0)', () => {
+    const m = mkMatch({ a: ['ana'], b: ['luis'], status: 'confirmed', winner: 1, score: { text: '11-5 11-7' } });
+    const t = seasonPlayerTable([m], { sport: 'pickleball', rules: { match: { sport: 'pickleball', bestOf: 3, doubles: false } }, now: NOW });
+    expect(t.find((r) => r.id === 'ana')).toMatchObject({ for: 22, against: 12, extra: { setsDiff: 2, gamesDiff: 2 } });
+    expect(t.find((r) => r.id === 'luis')?.extra.gamesDiff).toBe(-2);
+    const col = racketColumns('pickleball').find((c) => c.key === 'sets')!;
+    expect(col.label).toBe('Jue.');
+    expect(t.map((r) => col.value(r))).toEqual(['+2', '-2']);
+    expect(setsLabel('pickleball')).toBe('Juegos');
+    expect(setsLabel('padel')).toBe('Sets');
+  });
+
   it('noches de la temporada: puntos totales, ganados y promedio', () => {
     const t = seasonNightTable(matches, { now: NOW });
     expect(t[0]).toMatchObject({ id: 'luis', nights: 2, played: 3, points: 38, won: 1 });
     expect(t.find((r) => r.id === 'ana')).toMatchObject({ nights: 2, played: 3, points: 34, avg: 11.3 });
+  });
+
+  it('temporada: la escalera y las cajas cuentan cada partido por su fecha; torneo, liga y noches por la del evento', () => {
+    const season = { seasonStart: '2026-01-01', seasonEnd: '2026-06-30' };
+    const events = new Map([
+      ['LAD', { date: '2025-12-20', type: 'escalera' }],
+      ['BOX', { date: '2026-06-01', type: 'cajas' }],
+      ['TOR', { date: '2025-12-28', type: 'torneo' }],
+      ['NOC', { date: '2026-03-05', type: 'americano' }],
+    ]);
+    const tz = 'America/Santo_Domingo';
+    // Reto de la escalera jugado en marzo (la escalera se creó en diciembre): es de esta temporada.
+    const reto = { eventId: 'LAD', scheduledAt: '2026-03-10T23:00:00Z', proposedAt: null, confirmedAt: null };
+    expect(seasonDay(reto, events, tz)).toBe('2026-03-10');
+    expect(inSeason(season, seasonDay(reto, events, tz))).toBe(true);
+    // Sin fecha acordada: la del resultado propuesto; sin ninguna, la del evento.
+    expect(seasonDay({ ...reto, scheduledAt: null, proposedAt: '2026-02-02T15:00:00Z' }, events, tz)).toBe('2026-02-02');
+    expect(seasonDay({ ...reto, scheduledAt: null }, events, tz)).toBe('2025-12-20');
+    // Cajas que empezaron en junio: el partido de julio ya es de la temporada que sigue.
+    const julio = { eventId: 'BOX', scheduledAt: null, proposedAt: null, confirmedAt: '2026-07-15T12:00:00Z' };
+    expect(inSeason(season, seasonDay(julio, events, tz))).toBe(false);
+    // El torneo se queda entero con el día del evento, aunque la final se juegue en enero.
+    expect(seasonDay({ eventId: 'TOR', scheduledAt: '2026-01-04T20:00:00Z', proposedAt: null, confirmedAt: null }, events, tz)).toBe('2025-12-28');
+    expect(seasonDay({ eventId: 'NOC', scheduledAt: '2026-03-06T02:00:00Z', proposedAt: null, confirmedAt: null }, events, tz)).toBe('2026-03-05');
+    // Suelto: su fecha, en la zona de la liga (las 02:00 UTC del 1 de enero son las 22:00 del 31 en Santo Domingo).
+    expect(seasonDay({ eventId: null, scheduledAt: '2026-01-01T02:00:00Z', proposedAt: null, confirmedAt: null }, events, tz)).toBe('2025-12-31');
   });
 
   it('temporada: sin fechas, todo', () => {

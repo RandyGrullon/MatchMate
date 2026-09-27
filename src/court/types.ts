@@ -36,8 +36,20 @@ export interface CourtSnapshot<C = unknown, S = unknown, E = unknown> {
   /** Hora del teléfono (ms) de la última acción. */
   at: number;
   /**
-   * Teléfono que sigue esta lista (id al azar guardado en el teléfono). Al retomar, un teléfono reconoce lo que
-   * él mismo publicó (respuesta perdida, deshacer) y no lo toma como de otro.
+   * Teléfono que sigue esta lista (id al azar de este teléfono para ESTE partido: ver courtOrigin). Al retomar, un
+   * teléfono reconoce lo que él mismo publicó (respuesta perdida, deshacer) y no lo toma como de otro.
    */
   origin?: string;
+  /**
+   * Lo que tenía el partido cuando este teléfono tomó el turno (la lista de la que sigue esta). El servidor acepta
+   * la lista de otro teléfono solo si sigue a la que tiene (mismo `origin`, o `parent` = esa y sin nada más nuevo
+   * después): así la lista vieja de otro teléfono que llega tarde de la cola no pisa la que se siguió.
+   */
+  parent?: CourtParent;
+}
+
+/** Lista del servidor de la que sigue una lista: su teléfono (`origin`, null si no tenía) y el seq del partido. */
+export interface CourtParent {
+  origin: string | null;
+  seq: number;
 }

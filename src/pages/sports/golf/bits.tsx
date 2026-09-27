@@ -12,8 +12,10 @@ export function ToPar({ value, className }: { value: number | null | undefined; 
   );
 }
 
+// Eagle: texto sobre el dorado con el color del tema (--on-gold); si el tema no lo trae, tinta oscura, que se
+// lee sobre el dorado claro y el oscuro (el blanco fijo no se lee en modo oscuro).
 const TONE: Record<string, string> = {
-  eagle: 'rounded-full bg-gold text-white',
+  eagle: 'rounded-full bg-gold text-[color:var(--on-gold,#0d0f15)]',
   birdie: 'rounded-full ring-2 ring-ok text-ok',
   par: '',
   bogey: 'rounded-sm ring-1 ring-line',

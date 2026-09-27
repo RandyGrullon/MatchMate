@@ -339,11 +339,15 @@ export function Tabs<K extends string>({
   );
 }
 
-/** Medalla para los 3 primeros; número para el resto. */
+/**
+ * Medalla para los 3 primeros; número para el resto. El número va del color del fondo de la app: claro sobre
+ * el oro, la plata y el bronce del modo claro, y oscuro sobre los del modo oscuro (que son claros: con blanco
+ * no se leía).
+ */
 export function Position({ pos }: { pos: number }) {
   const color = pos === 1 ? 'bg-gold' : pos === 2 ? 'bg-silver' : pos === 3 ? 'bg-bronze' : null;
   return color ? (
-    <span className={cx('inline-flex size-6 items-center justify-center rounded-full text-xs font-bold text-white', color)}>{pos}</span>
+    <span className={cx('inline-flex size-6 items-center justify-center rounded-full text-xs font-bold text-bg', color)}>{pos}</span>
   ) : (
     <span className="inline-flex size-6 items-center justify-center text-sm font-medium text-muted tabular-nums">{pos}</span>
   );

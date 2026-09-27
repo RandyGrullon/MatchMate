@@ -13,7 +13,8 @@
 --
 -- Menores: sin cuenta (players.is_minor + CHECK), solo en ligas con menores (trigger), que son privadas y sin
 -- fotos ni social (reglas de la Fase 0). Los registra el admin o el entrenador de su club, con el
--- consentimiento del padre, madre o tutor (quién y cuándo, en player_private).
+-- consentimiento del padre, madre o tutor (quién y cuándo, en player_private). Con año de nacimiento de menor
+-- el jugador es menor sí o sí (triggers de players y player_private, en todas las ligas).
 --
 -- Puestos, puntos por club y medallero los calcula el teléfono con el motor (src/sports/swimming): la base
 -- guarda los tiempos crudos y cierra el encuentro al finalizar (después no se cambian resultados).
@@ -361,6 +362,64 @@ begin
 end $$;
 
 -- =====================================================================
+-- Menores por su año de nacimiento (todas las ligas)
+-- =====================================================================
+-- Quien tiene año de nacimiento de menor (año de hoy en la zona de la liga − año < 18, la misma cuenta que el
+-- formulario) es menor: players.is_minor y sin cuenta. Así le aplican el trigger de ligas con menores (privadas,
+-- sin fotos ni social), el CHECK sin cuenta y las RPC que no dejan reclamar ni vincular a un menor.
+-- Va en triggers y no solo en las RPC de natación porque el año también se escribe con set_player_private, y
+-- is_minor y la cuenta cambian con update_player, claim_player, join_league (ensure_player) y
+-- link_account_to_player. Solo se revisa lo que cambia: la edad solo sube (lo que estaba bien sigue bien) y
+-- quitar una cuenta (p. ej. al salir de la liga) nunca falla.
+
+-- ¿Menor por ese año de nacimiento en esa liga? (null = no se sabe = no).
+create function private.minor_by_birth_year(p_league uuid, p_birth_year integer) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select coalesce(private.swim_league_year(p_league) - p_birth_year < 18, false)
+$$;
+
+-- player_private: un año de menor solo en un jugador menor y sin cuenta.
+create function private.check_minor_birth_year() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.birth_year is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if new.birth_year is not distinct from old.birth_year then
+      return new;
+    end if;
+  end if;
+  if exists (select 1 from public.players p
+              where p.id = new.player_id and (not p.is_minor or p.user_id is not null)
+                and private.minor_by_birth_year(p.league_id, new.birth_year)) then
+    raise exception 'invalido' using errcode = 'P0001',
+      detail = 'Por el año de nacimiento es menor de edad: tiene que estar registrado como menor y sin cuenta.';
+  end if;
+  return new;
+end $$;
+
+create trigger player_private_minor_age before insert or update of birth_year on public.player_private
+  for each row execute function private.check_minor_birth_year();
+
+-- players: con año de menor no se le quita is_minor ni se le pone una cuenta.
+create function private.check_minor_player() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not ((old.is_minor and not new.is_minor) or (new.user_id is not null and new.user_id is distinct from old.user_id)) then
+    return new;
+  end if;
+  if private.minor_by_birth_year(new.league_id, (select pp.birth_year from public.player_private pp where pp.player_id = new.id)) then
+    raise exception 'invalido' using errcode = 'P0001',
+      detail = 'Por el año de nacimiento es menor de edad: tiene que estar registrado como menor y sin cuenta.';
+  end if;
+  return new;
+end $$;
+
+create trigger players_minor_age before update of is_minor, user_id on public.players
+  for each row execute function private.check_minor_player();
+
+-- =====================================================================
 -- RPC: encuentros y pruebas (admin)
 -- =====================================================================
 
@@ -623,6 +682,7 @@ end $$;
 -- Admin, o el entrenador en su propio club: registra un nadador sin cuenta.
 -- Menor: solo en ligas con menores, con año de nacimiento, sexo y el consentimiento del padre, madre o tutor
 -- (p_consent = true; queda quién lo registró y cuándo). El año y el sexo van solo a player_private.
+-- Con año de nacimiento de menor es menor aunque venga p_is_minor = false (y en una liga sin menores no entra).
 create function public.swim_register_swimmer(
   p_league uuid,
   p_name text,
@@ -650,6 +710,7 @@ begin
   if p_birth_year is not null and (p_birth_year < 1900 or p_birth_year > private.swim_league_year(p_league)) then
     perform private.fail('invalido');
   end if;
+  v_minor := v_minor or private.minor_by_birth_year(p_league, p_birth_year);
   if v_minor and (not coalesce(p_consent, false) or p_birth_year is null or p_sex is null) then
     perform private.fail('invalido');
   end if;
@@ -665,7 +726,8 @@ begin
 end $$;
 
 -- Admin: cambia al nadador (también a uno con cuenta). Claves: name, club_id, birth_year, sex, guardian_name,
--- consent (true = el tutor dio su permiso ahora). Un menor no se queda sin año, sexo ni consentimiento.
+-- consent (true = el tutor dio su permiso ahora). Un menor no se queda sin año, sexo ni consentimiento, y un año
+-- de menor no se le pone a quien no está registrado como menor o tiene cuenta ('invalido', trigger de player_private).
 create function public.swim_update_swimmer(p_player uuid, p_patch jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare

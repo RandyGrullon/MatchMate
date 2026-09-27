@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { asBackendError } from '../lib/db/errors';
+import { BLOCKED_MESSAGE, isBlockedError } from '../lib/backend/errors';
 import { Button, MODAL_OPENED, Modal, cx } from './ui';
 
 interface Toast {
@@ -120,6 +121,7 @@ export function useFeedback() {
 export function saveErrorMessage(e: unknown): string {
   const be = asBackendError(e);
   const msg = e instanceof Error ? e.message : String(e);
+  if (isBlockedError(be ?? e)) return BLOCKED_MESSAGE;
   if (be?.kind === 'permission' || /permission/i.test(msg)) return 'Sin permiso para guardar. ¿Sesión de admin activa?';
   if (be?.kind === 'network') return 'Sin conexión. Intenta de nuevo cuando vuelva la señal.';
   if (be?.kind === 'auth') return 'Tu sesión venció. Entra de nuevo.';

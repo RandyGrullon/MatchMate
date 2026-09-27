@@ -103,6 +103,11 @@ export function LeaseBanner({
       <>
         <Lock className="size-5 shrink-0" />
         <span className="flex-1">{CLOSED[lease.status]}</span>
+        {lease.status === 'suspended' && onClaim && (
+          <Button size="sm" variant="secondary" loading={busy} onClick={() => void claim(false)}>
+            Retomar
+          </Button>
+        )}
       </>
     );
   }

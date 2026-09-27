@@ -14,7 +14,7 @@ import { Badge, Button, Card, Empty, ListSkeleton, Tabs } from '../../../../comp
 import { eventTypeInfo, racketColumns } from '../bits';
 import { exportCompetitionExcel } from '../excel';
 import { parseLeagueConfig } from '../logic/league';
-import { forLabel, pairStandings, seasonPlayerTable } from '../logic/results';
+import { forLabel, pairStandings, seasonPlayerTable, setsLabel } from '../logic/results';
 import { pointsText, tiebreakText } from '../logic/tiebreaks';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { useNames } from '../names';
@@ -88,6 +88,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
       nameOf: names.nameOf,
       tz: league.tz,
       forLabel: forLabel(sport),
+      setsLabel: setsLabel(sport),
     }).catch((e) => {
       console.error(e);
       toast('No se pudo hacer el Excel', 'error');

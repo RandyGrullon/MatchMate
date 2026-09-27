@@ -15,12 +15,16 @@
 -- - Liga por cajas (tenis, pickleball y pádel): save_box_month (admin, atómica) abre el mes con sus cajas y sus
 --   partidos; si había un mes abierto, lo cierra (anula lo que no se jugó y guarda quién sube y quién baja). Las
 --   cajas y la tabla de cada caja las calcula el teléfono con src/sports/formats (box.ts); la base las guarda.
+--   events.config tiene tope (32 KB): de los meses cerrados viejos se quitan las cajas y los que se quedaron en su
+--   caja y, si hace falta, los más viejos se archivan (solo n y nombre, `archived`), así la liga dura años.
 -- - Escalera (tenis, pickleball y pádel): ladder_rungs (puestos) y ladder_challenges (retos). El reto crea su
 --   partido (lado 1 = retador, lado 2 = retado) y cuando el resultado cuenta (confirmado, W.O. o a las 48 h) la
 --   escalera se mueve sola: si gana el retador toma el puesto del retado y los del medio bajan uno. Plazos: para
 --   aceptar y para jugar; si se vencen, W.O. a favor del retador. Los plazos se aplican en sync_ladder (al abrir
 --   la pantalla), en cada RPC de la escalera y por cron en Supabase (20260927000790_raqueta_cron_supabase.sql).
 --   Corregir un resultado después de que la escalera se movió no la mueve otra vez: el admin la ordena con set_ladder.
+--   Orden de los bloqueos, en todos los caminos (RPC de la escalera, RPC de partidos por match_for_update, el trigger
+--   y el cron): evento 'escalera' → partido → reto → puestos.
 --
 -- Tiempo real: event:<escalera> y league:<liga> con el evento 'ladder' {t: 'rungs' | 'challenges', op}. Las cajas
 -- usan los avisos de siempre (events y matches).
@@ -232,6 +236,9 @@ declare
   v_all text[];
   v_month jsonb;
   v_prev jsonb;
+  v_config jsonb;
+  v_len integer;
+  v_i integer;
 begin
   perform private.require_uid();
   select * into e from public.events x where x.id = p_event for update;
@@ -303,8 +310,33 @@ begin
   else
     v_months := v_months || jsonb_build_array(v_month);
   end if;
-  update public.events x set config = coalesce(x.config, '{}'::jsonb) || jsonb_build_object('months', v_months, 'round', p_month)
-   where x.id = p_event;
+  -- events.config tiene tope (32 KB) y la liga por cajas puede durar años. De los meses cerrados antes del último
+  -- se quitan las cajas (la pantalla ya no las usa y quedan en los partidos de ese mes) y, de las subidas y bajadas,
+  -- los que se quedaron en su caja (la pantalla muestra solo quién subió, bajó o entró). Si aun así pasa de 24 KB
+  -- (queda lugar para que el admin la edite), se archivan los meses más viejos: solo su número y su nombre, con
+  -- `archived` (la pantalla dice que ese detalle ya no se guarda).
+  v_len := jsonb_array_length(v_months);
+  select coalesce(jsonb_agg(case
+           when jsonb_typeof(m) = 'object' and m -> 'closed' = 'true'::jsonb and i < v_len - 1 and jsonb_typeof(m -> 'moves') = 'array' then
+             (m - 'boxes') || jsonb_build_object('moves',
+               (select coalesce(jsonb_agg(x order by k), '[]'::jsonb) from jsonb_array_elements(m -> 'moves') with ordinality as b (x, k)
+                 where x ->> 'move' is distinct from 'queda'))
+           when jsonb_typeof(m) = 'object' and m -> 'closed' = 'true'::jsonb and i < v_len - 1 then m - 'boxes'
+           else m end order by i), '[]'::jsonb)
+    into v_months
+    from jsonb_array_elements(v_months) with ordinality as a (m, i);
+  v_config := coalesce(e.config, '{}'::jsonb) || jsonb_build_object('months', v_months, 'round', p_month);
+  v_i := 0;
+  while pg_column_size(v_config) >= 24576 and v_i < v_len - 1 loop
+    v_prev := v_months -> v_i;
+    if jsonb_typeof(v_prev) = 'object' and v_prev -> 'closed' = 'true'::jsonb and v_prev -> 'archived' is distinct from 'true'::jsonb then
+      v_months := jsonb_set(v_months, array[v_i::text],
+        jsonb_strip_nulls(jsonb_build_object('n', v_prev -> 'n', 'label', v_prev -> 'label', 'closed', true, 'archived', true)));
+      v_config := v_config || jsonb_build_object('months', v_months);
+    end if;
+    v_i := v_i + 1;
+  end loop;
+  update public.events x set config = v_config where x.id = p_event;
 
   if jsonb_array_length(coalesce(p_matches, '[]'::jsonb)) > 0 then
     v_ids := public.create_matches(e.league_id, (
@@ -439,6 +471,23 @@ begin
     perform private.fail('invalido');
   end if;
   return e;
+end $$;
+
+-- Las RPC de partidos (confirm_result, admin_correct_result, set_walkover, void_match…) bloquean el partido con
+-- private.match_for_update y, al cambiar su estado, el trigger matches_ladder mueve la escalera. Para que usen el
+-- mismo orden que las RPC de la escalera (evento → partido → reto → puestos) y no se crucen con ellas ni con el cron
+-- (23505 en los puestos o deadlock), match_for_update bloquea antes el evento si el partido es de una escalera. La
+-- de partidos (20260927000100_partidos.sql) sigue igual como match_for_update_base: no se copia, así lo que cambie
+-- allá sigue valiendo.
+alter function private.match_for_update(uuid) rename to match_for_update_base;
+
+create function private.match_for_update(p_match uuid) returns public.matches
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform 1 from public.events e
+   where e.id = (select x.event_id from public.matches x where x.id = p_match) and e.type = 'escalera'
+     for update;
+  return private.match_for_update_base(p_match);
 end $$;
 
 -- El participante sirve para esa escalera: jugador de la liga (individual) o pareja de temporada (dobles).
@@ -606,17 +655,25 @@ declare
   v_n integer := 0;
 begin
   for r in select distinct c.event_id from public.ladder_challenges c where c.status in ('pending', 'accepted') loop
+    -- Como las RPC de la escalera: primero el evento bloqueado.
+    perform 1 from public.events e where e.id = r.event_id for update;
     v_n := v_n + private.ladder_sync(r.event_id);
   end loop;
   return v_n;
 end $$;
 
 -- Cuando el partido de un reto queda confirmado, en W.O. o anulado, el reto se cierra y la escalera se mueve.
+-- Casi siempre el evento ya está bloqueado (match_for_update, RPC de la escalera, cron); si algún camino no lo
+-- bloqueó, se bloquea aquí para que dos movidas de la misma escalera nunca vayan a la vez.
 create function private.ladder_on_match() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
   c public.ladder_challenges;
 begin
+  if not exists (select 1 from public.ladder_challenges x where x.match_id = new.id and x.status in ('pending', 'accepted')) then
+    return null;
+  end if;
+  perform 1 from public.events e where e.id = new.event_id for update;
   for c in select * from public.ladder_challenges x where x.match_id = new.id and x.status in ('pending', 'accepted') loop
     perform private.ladder_from_match(c, new);
   end loop;
@@ -1001,7 +1058,8 @@ declare
     'raq_sport', 'night_league', 'raq_is_uuid', 'raq_num_between', 'raq_game_ok', 'raq_score_ok', 'raq_check_event', 'raq_check_match',
     'raq_check_player', 'ladder_guard', 'ladder_opt', 'ladder_doubles', 'ladder_event', 'ladder_entrant_ok', 'ladder_mine',
     'ladder_my_entrant', 'ladder_users', 'ladder_name', 'ladder_compact', 'ladder_move', 'ladder_resolve', 'ladder_from_match',
-    'ladder_sync', 'ladder_expire_all', 'ladder_on_match', 'ladder_cancel', 'ladder_push', 'ladder_emit'
+    'ladder_sync', 'ladder_expire_all', 'ladder_on_match', 'ladder_cancel', 'ladder_push', 'ladder_emit',
+    'match_for_update', 'match_for_update_base'
   ];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname

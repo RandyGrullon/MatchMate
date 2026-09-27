@@ -7,9 +7,9 @@
  * - `CourtLayout`: pantalla completa con Wake Lock, modo sol, Deshacer siempre a la vista, Terminar y Suspender.
  * - `TwoHalves`: dos mitades gigantes para tocar el lado que ganó el punto.
  */
-export type { CourtAdapter, CourtSnapshot } from './types';
+export type { CourtAdapter, CourtParent, CourtSnapshot } from './types';
 export { applyEvent, canUndo, compact, isSnapshot, outcome, pickSnapshot, snapshotState, startSnapshot, undoEvent, withOrigin, KEEP_UNDO, MAX_LOG } from './session';
-export { courtDeviceId, courtKey, courtStore, createCourtStore, pruneCourtLogs, type CourtRecord, type CourtStore } from './log';
+export { courtKey, courtOrigin, courtStore, createCourtStore, pruneCourtLogs, type CourtRecord, type CourtStore } from './log';
 export { createPublisher, IDLE_MS, MIN_GAP_MS, type Publisher, type PublisherOptions } from './publisher';
 export { createCourtMachine, type CourtDeps, type CourtMachine, type CourtView, type LeaseState } from './machine';
 export { courtDeps, useCourt, type CourtController, type UseCourtOptions } from './useCourt';

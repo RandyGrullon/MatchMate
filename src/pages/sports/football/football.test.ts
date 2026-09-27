@@ -482,6 +482,25 @@ describe('la temporada: tabla, goleadores, tarjetas, vallas y disciplina', () =>
     expect(after.discipline.sanctions[0]).toMatchObject({ served: [m4.id], remaining: 0 });
   });
 
+  it('disciplina: la roja de un partido sin fecha (armado sin horario) se cumple en el siguiente partido del equipo', () => {
+    n = 0;
+    const day = (d: number) => new Date(T0 + d * 86_400_000).toISOString();
+    // Jornada 1 sin horario: el resultado se anotó el día 3. Jornada 2 programada el día 10.
+    const m1 = played('A', 'B', [{ type: 'card', side: 1, player: 'x', card: 'red' }], { scheduledAt: null, proposedAt: day(3), confirmedAt: day(4) });
+    const m2 = match({ home: 'A', away: 'C', scheduledAt: day(10) });
+    const season = footballSeason({ matches: [m1, m2], teamIds: ['A', 'B', 'C'], rules: {}, now: T0 });
+    expect(season.discipline.sanctions).toEqual([{ player: 'x', team: 'A', reason: 'roja', matchId: m1.id, matches: 1, served: [], remaining: 1 }]);
+    expect(season.suspendedNext).toEqual([{ player: 'x', team: 'A', reason: 'roja', fromMatchId: m1.id, remaining: 1, matchId: m2.id }]);
+    // Resultado cargado por el admin (solo confirmado, sin propuesta): cuenta la hora de la confirmación.
+    const m1admin = { ...m1, proposedAt: null, confirmedAt: day(4) };
+    expect(footballSeason({ matches: [m1admin, m2], teamIds: ['A', 'B', 'C'], rules: {}, now: T0 }).suspendedNext.map((s) => s.matchId)).toEqual([m2.id]);
+    // Se cumple jugando el de la jornada 2, sin él.
+    const m2done = { ...m2, status: 'confirmed' as const, score: footballScore(play([{ type: 'goal', side: 2 }]), T0), winner: 2 as const };
+    const after = footballSeason({ matches: [m1, m2done], teamIds: ['A', 'B', 'C'], rules: {}, now: T0 });
+    expect(after.discipline.sanctions[0]).toMatchObject({ served: [m2.id], remaining: 0 });
+    expect(after.suspendedNext).toEqual([]);
+  });
+
   it('3 amarillas = 1 partido; si juega suspendido sale como alineación indebida; el comité suma partidos', () => {
     n = 0;
     const y = (p: string): FootballEvent => ({ type: 'card', side: 1, player: p, card: 'yellow' });
@@ -514,6 +533,13 @@ describe('la temporada: tabla, goleadores, tarjetas, vallas y disciplina', () =>
     expect(disciplineStatus({ status: 'live' })).toBe('scheduled');
     expect(disciplineOrder({ scheduledAt: null, round: 3 }) > disciplineOrder({ scheduledAt: '2030-01-01T00:00:00Z', round: 9 })).toBe(true);
     expect(disciplineOrder({ scheduledAt: null, round: 3 }) < disciplineOrder({ scheduledAt: null, round: 10 })).toBe(true);
+    // Sin fecha pero con resultado: cuando se anotó (propuesto, si no confirmado), antes que lo programado después.
+    const played = { scheduledAt: null, round: 9, proposedAt: '2029-12-01T10:00:00Z', confirmedAt: '2029-12-02T10:00:00Z' };
+    expect(disciplineOrder(played)).toBe('2029-12-01T10:00:00.000Z#009');
+    expect(disciplineOrder({ ...played, proposedAt: null })).toBe('2029-12-02T10:00:00.000Z#009');
+    expect(disciplineOrder(played) < disciplineOrder({ scheduledAt: '2030-01-01T00:00:00Z', round: 1 })).toBe(true);
+    // La fecha programada manda aunque haya resultado.
+    expect(disciplineOrder({ ...played, scheduledAt: '2030-02-01T00:00:00Z' })).toBe('2030-02-01T00:00:00.000Z#009');
   });
 
   it('matchResultOf: W.O. doble no cuenta; los penales van como shootout', () => {

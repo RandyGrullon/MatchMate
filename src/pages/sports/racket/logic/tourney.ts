@@ -141,14 +141,21 @@ export function groupTables(sport: RacketSport, cat: TourneyCategory, matches: r
 
 /**
  * Todos los partidos de los grupos cuentan (confirmados, W.O. o con las 48 h). `missing` = partidos que deberían
- * estar (todos contra todos en cada grupo) y no están en la base (se crearon a medias o se borraron).
+ * estar (todos contra todos en cada grupo) y no están en la base (se crearon a medias o se borraron). Un partido
+ * anulado sí está (no cuenta en la tabla ni queda pendiente): así lo ve también «Crear los que faltan», que no lo
+ * vuelve a crear; cada cruce se cuenta una vez aunque tenga un anulado y otro rehecho.
  */
 export function groupsDone(cat: TourneyCategory, matches: readonly Match[], now = Date.now()): { done: boolean; pending: number; total: number; missing: number } {
   const groups = cat.groupsOf ?? [];
   const list = groups.flatMap((_, g) => groupMatches(cat, g, matches));
   const expected = groups.reduce((t, ids) => t + (ids.length * (ids.length - 1)) / 2, 0);
   const pending = list.filter((m) => !isFinal(m, now)).length;
-  const missing = Math.max(0, expected - list.length);
+  const present = new Set(
+    groups.flatMap((_, g) =>
+      matches.filter((m) => m.stage === groupStage(cat, g) && !m.bracketKey).map((m) => `${g}|${[entrantKey(m.sides[0]), entrantKey(m.sides[1])].sort().join('|')}`),
+    ),
+  );
+  const missing = Math.max(0, expected - present.size);
   return { done: expected > 0 && pending === 0 && missing === 0, pending, total: list.length, missing };
 }
 

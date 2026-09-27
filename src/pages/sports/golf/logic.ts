@@ -103,20 +103,26 @@ export function roundBoard(round: GolfRoundFull, cards: readonly GolfCardDoc[], 
   return golfLeaderboard(players, comp, { rounds: 1 }).map((r) => ({ ...r, card: byPlayer.get(r.id) ?? null, unfinished: unfinished.has(r.id) }));
 }
 
-/** Leaderboard de un torneo: suma de sus rondas (en orden), con countback por la última. */
+/**
+ * Leaderboard de un torneo: suma de sus rondas (en orden), con countback por la última. Una ronda ya cerrada
+ * que el jugador no jugó (sin tarjeta) o no terminó lo deja sin puesto («No terminó»): no puede ganar sumando
+ * menos rondas que los demás. Las rondas abiertas suman lo que va.
+ */
 export function tournamentBoard(rounds: readonly GolfRoundFull[], cards: readonly GolfCardDoc[], comp: GolfCompetition): BoardRow[] {
   const ordered = [...rounds].sort((a, b) => (a.roundNo ?? 0) - (b.roundNo ?? 0));
   const ids = [...new Set(cards.map((c) => c.playerId))];
   const cardAt = (eventId: string, pid: string) => cards.find((c) => c.eventId === eventId && c.playerId === pid) ?? null;
+  /** Ronda cerrada sin tarjeta, o con la tarjeta sin terminar (y sin descalificar por el comité). */
+  const missed = (c: GolfCardDoc | null, i: number) => ordered[i].closed && (!c || (!c.dq && !isComplete(c)));
   const players: GolfPlayerRounds[] = ids.map((pid) => {
     const mine = ordered.map((r) => cardAt(r.eventId, pid));
-    const dq = mine.some((c, i) => !!c && (c.dq || (ordered[i].closed && !isComplete(c))));
+    const dq = mine.some((c, i) => !!c?.dq || missed(c, i));
     return { id: pid, rounds: ordered.map((r, i) => (mine[i] ? golfRoundOf(r, mine[i]!) : null)), dq };
   });
   return golfLeaderboard(players, comp, { rounds: ordered.length }).map((r) => {
     const mine = ordered.map((x) => cardAt(x.eventId, r.id));
     const last = [...mine].reverse().find((c) => !!c) ?? null;
-    return { ...r, card: last, unfinished: mine.some((c, i) => !!c && ordered[i].closed && !c.dq && !isComplete(c)) };
+    return { ...r, card: last, unfinished: mine.some((c, i) => missed(c, i)) };
   });
 }
 

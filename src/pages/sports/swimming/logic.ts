@@ -44,6 +44,48 @@ export const SCHEME_LABEL: Record<AgeScheme, string> = {
   none: 'Sin categorías',
 };
 
+// ---------- Menores ----------
+
+/** Desde esta edad (cumplida este año) ya no es menor. La base cuenta igual (private.minor_by_birth_year). */
+export const ADULT_AGE = 18;
+
+/** Año de hoy en la zona de la liga (como la base; sin zona, la de siempre de las ligas). */
+export function leagueYear(tz?: string | null, now: number = Date.now()): number {
+  const year = (timeZone: string) => Number(new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone }).format(now));
+  try {
+    return year(tz || 'America/Santo_Domingo');
+  } catch {
+    return year('UTC');
+  }
+}
+
+/** ¿Menor por su año de nacimiento? (año de la liga − año < 18; sin año no se sabe: no). */
+export const minorByBirthYear = (birthYear: number | null | undefined, year: number): boolean => birthYear != null && year - birthYear < ADULT_AGE;
+
+/**
+ * Por qué no se puede guardar el nadador por su edad (null = se puede). Con año de nacimiento de menor tiene que
+ * estar registrado como menor (sin cuenta) en una liga con menores; si no, la base lo rechaza ('invalido').
+ */
+export function minorAgeProblem(o: {
+  birthYear: number | null;
+  year: number;
+  isMinor: boolean;
+  /** Cambiando un nadador que ya existe (ahí la marca de menor no se cambia). */
+  editing: boolean;
+  hasAccount: boolean;
+  minorsOk: boolean;
+}): string | null {
+  if (!minorByBirthYear(o.birthYear, o.year) || o.isMinor) return null;
+  if (o.editing) {
+    return o.hasAccount
+      ? 'Con ese año de nacimiento sería menor de edad, y los menores no tienen cuenta. Revisa el año.'
+      : 'Con ese año de nacimiento sería menor de edad, pero no está registrado como menor. Revisa el año.';
+  }
+  return o.minorsOk
+    ? 'Por el año de nacimiento es menor de edad: márcalo como menor.'
+    : 'Por el año de nacimiento es menor de edad y esta liga no admite menores (un admin lo activa en Admin › Liga, «Liga con menores»; la liga queda privada).';
+}
+
 // ---------- Pruebas ----------
 
 /** «50 m Libre». */
