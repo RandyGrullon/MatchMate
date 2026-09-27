@@ -3,14 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>BowlingX</title>
-    <meta name="description" content="Torneos y prácticas de boliche: jugadores, equipos, handicap y estadísticas." />
+    <title>MatchMate</title>
+    <meta name="description" content="Ligas, torneos y partidos entre amigos, en español: pádel, tenis, pickleball, boliche, baloncesto, fútbol, golf y natación. Tablas, estadísticas y resultados en vivo." />
+    <meta name="application-name" content="MatchMate" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="BowlingX" />
+    <meta name="apple-mobile-web-app-title" content="MatchMate" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#161922" media="(prefers-color-scheme: dark)" />
@@ -18,7 +20,7 @@
       // Apariencia elegida en Configuración (claro/oscuro y color), antes de pintar: sin parpadeo.
       (function () {
         try {
-          var p = JSON.parse(localStorage.getItem('bowlingx:tema') || 'null');
+          var p = JSON.parse(localStorage.getItem('mm:tema') || 'null');
           if (p && (p.mode === 'light' || p.mode === 'dark')) {
             document.documentElement.setAttribute('data-theme', p.mode);
             var bar = p.mode === 'dark' ? '#161922' : '#ffffff';
@@ -28,10 +30,10 @@
               m.setAttribute('content', bar);
             });
           }
-          var css = localStorage.getItem('bowlingx:tema-css');
+          var css = localStorage.getItem('mm:tema-css');
           if (css) {
             var st = document.createElement('style');
-            st.id = 'bowlingx-acento';
+            st.id = 'mm-acento';
             st.textContent = css;
             document.head.appendChild(st);
           }
@@ -41,87 +43,99 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- splash:css (generado por scripts/icons/splash.mjs desde src/components/splash/scenes.ts; no editar a mano) -->
     <style>
-      /* Animación de apertura: va en el HTML para verse al instante, antes de que cargue la app. */
-      #splash {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 14px;
-        background: #f4f5f8;
-        color: #151822;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-        transition: opacity 0.35s ease, visibility 0.35s;
-      }
-      #splash.out { opacity: 0; visibility: hidden; }
-      #splash svg { width: 220px; height: 120px; overflow: visible; }
-      #splash .ball { animation: sp-roll 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) both; transform-box: fill-box; transform-origin: center; }
-      #splash .pin { transform-box: fill-box; transform-origin: 50% 100%; animation: sp-fall 0.5s ease-in 0.55s both; }
-      #splash .p2 { animation-name: sp-fall2; animation-delay: 0.6s; }
-      #splash .p3 { animation-name: sp-fall3; animation-delay: 0.65s; }
-      #splash .word { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; animation: sp-word 0.45s ease-out 0.75s both; }
-      #splash .word b { color: var(--accent, #4338ca); }
-      /* Pinos con borde y sombra: en claro no se pierden contra el fondo. La bola, del color de la app. */
-      #splash .pin-body { fill: #ffffff; stroke: #8e96a8; stroke-width: 1.4; }
-      #splash .pin { filter: drop-shadow(0 2px 1.5px rgb(16 24 40 / 0.22)); }
-      #splash .ball-body { fill: var(--accent, #4338ca); }
-      #splash .ball { filter: drop-shadow(0 3px 3px rgb(16 24 40 / 0.25)); }
-      #splash .lane { stroke: #151822; stroke-opacity: 0.16; }
-      @keyframes sp-roll { from { transform: translateX(-160px) rotate(-540deg); } to { transform: none; } }
-      @keyframes sp-fall { to { transform: translate(26px, -10px) rotate(80deg); opacity: 0; } }
-      @keyframes sp-fall2 { to { transform: translate(10px, -22px) rotate(-70deg); opacity: 0; } }
-      @keyframes sp-fall3 { to { transform: translate(30px, 6px) rotate(95deg); opacity: 0; } }
-      @keyframes sp-word { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) #splash { background: #0d0f15; color: #eceef3; }
-        :root:not([data-theme="light"]) #splash .word b { color: var(--accent, #8b8cf6); }
-        :root:not([data-theme="light"]) #splash .pin-body { stroke: #c9ccd6; }
-        :root:not([data-theme="light"]) #splash .pin { filter: none; }
-        :root:not([data-theme="light"]) #splash .ball-body { fill: var(--accent, #8b8cf6); }
-        :root:not([data-theme="light"]) #splash .lane { stroke: #8b8cf6; stroke-opacity: 0.35; }
-      }
-      :root[data-theme="dark"] #splash { background: #0d0f15; color: #eceef3; }
-      :root[data-theme="dark"] #splash .word b { color: var(--accent, #8b8cf6); }
-      :root[data-theme="dark"] #splash .pin-body { stroke: #c9ccd6; }
-      :root[data-theme="dark"] #splash .pin { filter: none; }
-      :root[data-theme="dark"] #splash .ball-body { fill: var(--accent, #8b8cf6); }
-      :root[data-theme="dark"] #splash .lane { stroke: #8b8cf6; stroke-opacity: 0.35; }
-      @media (prefers-reduced-motion: reduce) {
-        #splash * { animation: none !important; }
-      }
+      #splash{position:fixed;inset:0;z-index:9999;background:var(--sp-bg);font-family:Inter,ui-sans-serif,system-ui,sans-serif;transition:opacity .35s ease,visibility .35s}
+      #splash.out{opacity:0;visibility:hidden}
+      .mm-sp{--sp-acc:var(--accent,#4338ca);--sp-on:var(--accent-fg,#fff);--sp-bg:#f4f5f8;--sp-fg:#151822;--sp-piece:#fff;--sp-edge:#8e96a8;--sp-gnd:#151822;--sp-gnd-o:.16;--sp-hole:#262a36;--sp-drop:drop-shadow(0 2px 1.5px rgb(16 24 40 / .22));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--sp-fg)}
+      .mm-sp[data-mode=dark]{--sp-acc:var(--accent,#8b8cf6);--sp-on:var(--accent-fg,#0d0f15);--sp-bg:#0d0f15;--sp-fg:#eceef3;--sp-edge:#c9ccd6;--sp-gnd:var(--sp-acc);--sp-gnd-o:.35;--sp-hole:#000;--sp-drop:none}
+      @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .mm-sp:not([data-mode=light]){--sp-acc:var(--accent,#8b8cf6);--sp-on:var(--accent-fg,#0d0f15);--sp-bg:#0d0f15;--sp-fg:#eceef3;--sp-edge:#c9ccd6;--sp-gnd:var(--sp-acc);--sp-gnd-o:.35;--sp-hole:#000;--sp-drop:none}}
+      :root[data-theme=dark] .mm-sp:not([data-mode=light]){--sp-acc:var(--accent,#8b8cf6);--sp-on:var(--accent-fg,#0d0f15);--sp-bg:#0d0f15;--sp-fg:#eceef3;--sp-edge:#c9ccd6;--sp-gnd:var(--sp-acc);--sp-gnd-o:.35;--sp-hole:#000;--sp-drop:none}
+      .mm-sp svg{width:var(--sp-w,220px);height:auto;aspect-ratio:11/6;overflow:visible}
+      .mm-sp .word{font-size:calc(var(--sp-w,220px)*.127);font-weight:800;letter-spacing:-.02em;line-height:1.2;animation:sp-word .45s ease-out .75s both}
+      .mm-sp .word b{color:var(--sp-acc)}
+      .mm-sp .acc{fill:var(--sp-acc)}
+      .mm-sp .on{fill:var(--sp-on)}
+      .mm-sp .pc{fill:var(--sp-piece);stroke:var(--sp-edge);stroke-width:1.4}
+      .mm-sp .gnd{fill:none;stroke:var(--sp-gnd);stroke-opacity:var(--sp-gnd-o);stroke-width:2;stroke-linecap:round}
+      .mm-sp.loop svg{animation:sp-loop 2s linear infinite}
+      .mm-sp.loop svg *{animation-iteration-count:infinite!important}
+      .mm-sp.still *{animation:none!important}
+      @keyframes sp-loop{0%{opacity:0}6%,90%{opacity:1}100%{opacity:0}}
+      @keyframes sp-word{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+      @media (prefers-reduced-motion:reduce){.mm-sp *{animation:none!important}}
+      .sp-generic .tile{transform-box:fill-box;transform-origin:center;animation:sp-generic-tile 2s both}
+      .sp-generic .m{stroke:var(--sp-on);stroke-dasharray:1;transform-box:fill-box;transform-origin:50% 64%;animation:sp-generic-m 2s both}
+      .sp-generic .h1,.sp-generic .h2{transform-box:fill-box;transform-origin:center}
+      .sp-generic .h1{animation:sp-generic-h1 2s both}
+      .sp-generic .h2{animation:sp-generic-h2 2s both}
+      .sp-generic .clap{stroke:var(--sp-on);opacity:0;transform-box:fill-box;transform-origin:center;animation:sp-generic-clap 2s both}
+      @keyframes sp-generic-tile{0%{opacity:0;transform:scale(.6);animation-timing-function:cubic-bezier(.2,.8,.2,1)}14%{opacity:1;transform:scale(1.04)}22%,100%{opacity:1;transform:none}}
+      @keyframes sp-generic-m{0%,8%{opacity:0;stroke-dashoffset:1}9%{opacity:1;stroke-dashoffset:1;animation-timing-function:cubic-bezier(.5,0,.3,1)}38%{stroke-dashoffset:0;transform:none}44%{transform:none;animation-timing-function:ease-out}48%{transform:scale(1.07)}56%,100%{opacity:1;stroke-dashoffset:0;transform:none}}
+      @keyframes sp-generic-h1{0%,27%{transform:scale(0)}35%{transform:scale(1.28)}41%{transform:scale(.9)}46%,100%{transform:none}}
+      @keyframes sp-generic-h2{0%,32%{transform:scale(0)}40%{transform:scale(1.28)}46%{transform:scale(.9)}51%,100%{transform:none}}
+      @keyframes sp-generic-clap{0%,46%{opacity:0;transform:scale(.3)}49%{opacity:.9}64%,100%{opacity:0;transform:scale(1.9)}}
+      .sp-bowling .ball{transform-box:fill-box;transform-origin:center;filter:drop-shadow(0 3px 3px rgb(16 24 40 / .25));animation:sp-bowling-roll 2s both}
+      .sp-bowling .pin{transform-box:fill-box;transform-origin:50% 100%;filter:var(--sp-drop);animation:sp-bowling-p1 2s both}
+      .sp-bowling .p2{animation-name:sp-bowling-p2}
+      .sp-bowling .p3{animation-name:sp-bowling-p3}
+      @keyframes sp-bowling-roll{0%{transform:translateX(-160px) rotate(-540deg);animation-timing-function:cubic-bezier(.3,.7,.4,1)}35%,100%{transform:none}}
+      @keyframes sp-bowling-p1{0%,27.5%{opacity:1;transform:none;animation-timing-function:ease-in}52.5%,100%{opacity:0;transform:translate(26px,-10px) rotate(80deg)}}
+      @keyframes sp-bowling-p2{0%,30%{opacity:1;transform:none;animation-timing-function:ease-in}55%,100%{opacity:0;transform:translate(10px,-22px) rotate(-70deg)}}
+      @keyframes sp-bowling-p3{0%,32.5%{opacity:1;transform:none;animation-timing-function:ease-in}57.5%,100%{opacity:0;transform:translate(30px,6px) rotate(95deg)}}
     </style>
+    <!-- /splash:css -->
   </head>
   <body>
-    <div id="splash" aria-hidden="true">
-      <svg viewBox="0 0 220 120">
-        <g class="pin p1"><path d="M122 108c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z" class="pin-body" /><rect x="119" y="72" width="6" height="3" rx="1" fill="#e5484d" /></g>
-        <g class="pin p2"><path d="M142 104c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z" class="pin-body" /><rect x="139" y="68" width="6" height="3" rx="1" fill="#e5484d" /></g>
-        <g class="pin p3"><path d="M162 108c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z" class="pin-body" /><rect x="159" y="72" width="6" height="3" rx="1" fill="#e5484d" /></g>
-        <g class="ball">
-          <circle class="ball-body" cx="104" cy="92" r="17" />
-          <circle cx="99" cy="85" r="2.6" fill="#ffffff" fill-opacity="0.85" />
-          <circle cx="107" cy="83" r="2.6" fill="#ffffff" fill-opacity="0.85" />
-          <circle cx="104" cy="91" r="2.6" fill="#ffffff" fill-opacity="0.85" />
+    <!-- splash:html (generado por scripts/icons/splash.mjs desde src/components/splash/scenes.ts; no editar a mano) -->
+    <template id="sp-generic">
+      <svg class="sp-generic" viewBox="0 0 220 120">
+        <g transform="translate(62 12) scale(.1875)">
+          <rect class="acc tile" width="512" height="512" rx="112"/>
+          <circle class="clap" cx="256" cy="324" r="46" fill="none" stroke-width="14"/>
+          <path class="m" d="M150 384V218L256 324L362 218V384" pathLength="1" fill="none" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle class="on h1" cx="150" cy="138" r="36"/>
+          <circle class="on h2" cx="362" cy="138" r="36"/>
         </g>
-        <line class="lane" x1="20" y1="110" x2="210" y2="110" stroke-width="2" stroke-linecap="round" />
       </svg>
-      <div class="word">Bowling<b>X</b></div>
-    </div>
+    </template>
+    <template id="sp-bowling">
+      <svg class="sp-bowling" viewBox="0 0 220 120">
+        <g class="pin p1"><path class="pc" d="M122 108c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z"/><rect x="119" y="72" width="6" height="3" rx="1" fill="#e5484d"/></g>
+        <g class="pin p2"><path class="pc" d="M142 104c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z"/><rect x="139" y="68" width="6" height="3" rx="1" fill="#e5484d"/></g>
+        <g class="pin p3"><path class="pc" d="M162 108c-7 0-8-12-4-21 2-5 1-9 1-13 0-7 1-12 3-12s3 5 3 12c0 4-1 8 1 13 4 9 3 21-4 21z"/><rect x="159" y="72" width="6" height="3" rx="1" fill="#e5484d"/></g>
+        <g class="ball">
+          <circle class="acc" cx="104" cy="92" r="17"/>
+          <circle cx="99" cy="85" r="2.6" fill="#fff" fill-opacity=".85"/>
+          <circle cx="107" cy="83" r="2.6" fill="#fff" fill-opacity=".85"/>
+          <circle cx="104" cy="91" r="2.6" fill="#fff" fill-opacity=".85"/>
+        </g>
+        <path class="gnd" d="M20 110H210"/>
+      </svg>
+    </template>
+    <div id="splash" class="mm-sp" aria-hidden="true"><div class="word">Match<b>Mate</b></div></div>
     <script>
       // Una vez por sesión (al abrir la app instalada siempre es una sesión nueva); nunca más de 4 s.
+      // La escena es la del último deporte usado (mm:sport); si no hay o no está activa, la genérica.
       (function () {
         var el = document.getElementById('splash');
         try {
-          if (sessionStorage.getItem('bowlinx:splash')) { el.remove(); return; }
-          sessionStorage.setItem('bowlinx:splash', '1');
+          if (sessionStorage.getItem('mm:splash')) { el.remove(); return; }
+          sessionStorage.setItem('mm:splash', '1');
         } catch (e) {}
+        var scenes = {"bowling":"bowling"};
+        var scene = 'generic';
+        try {
+          var sport = localStorage.getItem('mm:sport');
+          if (sport && Object.prototype.hasOwnProperty.call(scenes, sport)) scene = scenes[sport];
+        } catch (e) {}
+        var t = document.getElementById('sp-' + scene);
+        if (t) el.insertBefore(t.content.cloneNode(true), el.firstChild);
+        el.setAttribute('data-scene', scene);
         setTimeout(function () { if (el.isConnected) { el.classList.add('out'); setTimeout(function () { el.remove(); }, 400); } }, 4000);
       })();
     </script>
+    <!-- /splash:html -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -24,13 +24,13 @@ async function leagueData(lid: string) {
 }
 
 function download(data: object, name: string) {
-  const blob = new Blob([JSON.stringify({ app: 'BowlingX', exportedAt: new Date().toISOString(), ...data }, null, 2)], {
+  const blob = new Blob([JSON.stringify({ app: 'MatchMate', exportedAt: new Date().toISOString(), ...data }, null, 2)], {
     type: 'application/json',
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `bowlingx-${name}-${toIsoDate(new Date())}.json`;
+  a.download = `matchmate-${name}-${toIsoDate(new Date())}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

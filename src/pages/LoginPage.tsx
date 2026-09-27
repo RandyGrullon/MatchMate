@@ -92,7 +92,7 @@ export default function LoginPage() {
         </Link>
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <Logo className="size-12" />
-          <h1 className="text-2xl font-bold tracking-tight">BowlingX</h1>
+          <h1 className="text-2xl font-bold tracking-tight">MatchMate</h1>
           <p className="text-sm text-muted">Ligas y torneos de boliche</p>
         </div>
         <Card className="flex flex-col gap-4 p-5">

@@ -35,9 +35,9 @@ export function OfflineBar() {
 
 export function Brand({ to = '/', compact }: { to?: string; compact?: boolean }) {
   return (
-    <Link to={to} className="flex shrink-0 items-center gap-2 font-semibold" aria-label="BowlingX">
+    <Link to={to} className="flex shrink-0 items-center gap-2 font-semibold" aria-label="MatchMate">
       <Logo />
-      {!compact && <span>BowlingX</span>}
+      {!compact && <span>MatchMate</span>}
       {usingEmulators && <span className="rounded bg-warn-soft px-1.5 text-[11px] font-medium text-warn">EMULADOR</span>}
     </Link>
   );

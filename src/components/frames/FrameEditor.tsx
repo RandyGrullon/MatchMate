@@ -15,7 +15,7 @@ export interface ScoreValue {
 
 export type ScoreMode = 'pines' | 'teclado' | 'total';
 type Mode = ScoreMode;
-const MODE_KEY = 'bowlinx:modo-anotar';
+const MODE_KEY = 'mm:modo-anotar';
 
 function savedMode(): Mode | null {
   try {

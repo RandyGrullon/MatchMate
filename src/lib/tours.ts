@@ -4,7 +4,7 @@ import type { TourStep } from '../components/Tour';
 export const HOME_TOUR: TourStep[] = [
   {
     target: 'nav',
-    title: 'Bienvenido a BowlingX',
+    title: 'Bienvenido a MatchMate',
     body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón morado para crear, tus notificaciones y tu Perfil (tus números en todas las ligas).',
   },
   {

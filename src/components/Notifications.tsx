@@ -35,7 +35,7 @@ const Ctx = createContext<NoticesState>({
   listOpen: false,
 });
 
-const seenKey = (uid: string) => `bowlingx:avisos-vistos:${uid}`;
+const seenKey = (uid: string) => `mm:avisos-vistos:${uid}`;
 
 function readSeen(uid: string | undefined): number {
   if (!uid) return 0;
@@ -139,7 +139,7 @@ function useSystemNotifications(uid: string | undefined, items: Notice[], ready:
     if (uid && notifyState() === 'granted') subscribePush(uid).catch(() => undefined);
   }, [uid]);
 
-  const key = uid ? `bowlingx:avisos-telefono:${uid}` : null;
+  const key = uid ? `mm:avisos-telefono:${uid}` : null;
   useEffect(() => {
     if (!key || !ready || notifyState() !== 'granted') return;
     let last = 0;

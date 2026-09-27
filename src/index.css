@@ -45,6 +45,10 @@
   --gold: #c79a1c;
   --silver: #8a94a3;
   --bronze: #b0703a;
+  /* Marca (los SVG de docs/marca usan estas tres juntas): siguen el modo y el color elegido. */
+  --mm-accent: var(--accent);
+  --mm-on-accent: var(--accent-fg);
+  --mm-text: var(--fg);
 }
 
 /* Oscuro: como el teléfono (salvo que se eligió claro) o elegido en Configuración. */

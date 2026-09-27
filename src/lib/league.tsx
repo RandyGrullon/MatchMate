@@ -28,7 +28,7 @@ export function useLeagueCtx(): LeagueCtx {
   return ctx;
 }
 
-const LAST = 'bowlinx:liga';
+const LAST = 'mm:liga';
 
 /** Última liga abierta en este teléfono: la app abre ahí. */
 export function rememberLeague(lid: string | null) {

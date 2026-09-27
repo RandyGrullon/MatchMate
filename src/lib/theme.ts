@@ -6,7 +6,7 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface ThemePrefs {
   mode: ThemeMode;
-  /** Color principal (hex) o null = el morado de BowlingX. */
+  /** Color principal (hex) o null = el morado de MatchMate. */
   accent: string | null;
 }
 
@@ -22,10 +22,10 @@ export const ACCENT_PRESETS: { name: string; hex: string }[] = [
   { name: 'Grafito', hex: '#475569' },
 ];
 
-const PREFS_KEY = 'bowlingx:tema';
+const PREFS_KEY = 'mm:tema';
 /** CSS ya calculado del color: index.html lo pone antes de que cargue la app. */
-const CSS_KEY = 'bowlingx:tema-css';
-const STYLE_ID = 'bowlingx-acento';
+const CSS_KEY = 'mm:tema-css';
+const STYLE_ID = 'mm-acento';
 
 // Fondos de la app (deben coincidir con index.css): contra ellos se mide el contraste del color.
 const LIGHT_SURFACE = '#ffffff';
@@ -90,6 +90,20 @@ export function accentVars(hex: string): { light: AccentVars; dark: AccentVars }
     light: { accent: toHex(l), fg: fgOn(l), soft: toHex(mix(lightSurface, base, 0.12)) },
     dark: { accent: toHex(d), fg: fgOn(d), soft: toHex(mix(darkSurface, base, 0.24)) },
   };
+}
+
+/** Los tonos diseñados a mano del morado de siempre (iguales a index.css). */
+const DEFAULT_VARS: { light: AccentVars; dark: AccentVars } = {
+  light: { accent: DEFAULT_ACCENT, fg: '#ffffff', soft: '#e8e7fb' },
+  dark: { accent: '#8b8cf6', fg: DARK_FG, soft: '#25264a' },
+};
+
+/**
+ * Los tonos del color de la marca para claro y oscuro, como los usa la app (el morado de siempre con sus tonos
+ * a mano). Sirve para dibujar el logo o una animación en un modo que no es el de la pantalla (vista previa).
+ */
+export function brandColors(hex: string | null): { light: AccentVars; dark: AccentVars } {
+  return (hex && hex.toLowerCase() !== DEFAULT_ACCENT && accentVars(hex)) || DEFAULT_VARS;
 }
 
 /** Las reglas CSS del color (vacío = el morado de siempre, con sus tonos diseñados a mano). */

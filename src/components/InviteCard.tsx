@@ -80,7 +80,7 @@ export function InviteCard({ league }: { league: League }) {
               variant="primary"
               icon={<Share2 className="size-4" />}
               onClick={async () => {
-                if (await shareLink(inviteUrl(code), `Únete a ${league.name} en BowlingX`)) toast('Link copiado');
+                if (await shareLink(inviteUrl(code), `Únete a ${league.name} en MatchMate`)) toast('Link copiado');
               }}
             >
               Compartir

@@ -110,7 +110,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   const framesTotal = framed.reduce((a, f) => ({ strikes: a.strikes + f.strikes, spares: a.spares + f.spares }), { strikes: 0, spares: 0 });
 
   async function share() {
-    if (await shareLink(playerUrl(lid, p.id), `${p.name} · BowlingX`)) toast('Link copiado');
+    if (await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`)) toast('Link copiado');
   }
 
   async function leave() {

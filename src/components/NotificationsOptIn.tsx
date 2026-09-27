@@ -5,7 +5,7 @@ import { enableNotifications, isStandalone, notificationsSupported, notifyState,
 import { useFeedback } from './feedback';
 import { Button, Card } from './ui';
 
-const LATER_KEY = 'bowlingx:avisos-despues';
+const LATER_KEY = 'mm:avisos-despues';
 /** Si dijo "ahora no", se vuelve a ofrecer después de estos días. */
 const LATER_DAYS = 14;
 
@@ -96,7 +96,7 @@ export function NotificationsCard() {
         </p>
       ) : state === 'denied' ? (
         <p className="flex items-start gap-1.5 text-sm text-warn">
-          <BellOff className="mt-0.5 size-4 shrink-0" /> Están bloqueadas. Actívalas en los ajustes del teléfono (Notificaciones › BowlingX).
+          <BellOff className="mt-0.5 size-4 shrink-0" /> Están bloqueadas. Actívalas en los ajustes del teléfono (Notificaciones › MatchMate).
         </p>
       ) : !notificationsSupported() || !installed ? (
         <p className="flex items-start gap-1.5 text-sm text-muted">

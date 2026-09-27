@@ -164,7 +164,7 @@ export default function EventPage({ eventId: fixed }: { eventId?: string }) {
         <Button
           variant="ghost"
           onClick={async () => {
-            if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · BowlingX`)) toast('Link copiado');
+            if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
           }}
           aria-label="Compartir"
           data-tour="compartir"

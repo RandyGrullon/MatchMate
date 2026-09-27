@@ -39,7 +39,7 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <Logo className="size-11" />
           <div className="min-w-0">
-            <h1 className="truncate text-2xl font-bold tracking-tight">{auth.user ? `Hola, ${displayName(auth).split(' ')[0]}` : 'BowlingX'}</h1>
+            <h1 className="truncate text-2xl font-bold tracking-tight">{auth.user ? `Hola, ${displayName(auth).split(' ')[0]}` : 'MatchMate'}</h1>
             <p className="text-sm text-muted">Ligas y torneos de boliche</p>
           </div>
         </div>

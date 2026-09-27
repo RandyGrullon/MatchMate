@@ -94,14 +94,14 @@ export function AppearanceCard() {
         </div>
         {prefs.accent && (
           <button type="button" onClick={() => update({ accent: null })} className="flex items-center gap-1.5 self-start text-sm font-medium text-accent">
-            <RotateCcw className="size-3.5" /> Volver al morado de BowlingX
+            <RotateCcw className="size-3.5" /> Volver al morado de MatchMate
           </button>
         )}
       </div>
 
       {/* Vista previa con el color elegido. */}
       <div className="flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-2.5 text-sm">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-accent font-bold text-accent-fg">X</span>
+        <span className="flex size-8 items-center justify-center rounded-lg bg-accent font-bold text-accent-fg">M</span>
         <span className="flex-1 font-medium text-accent">Así se ven los botones y los enlaces</span>
       </div>
     </Card>

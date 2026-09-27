@@ -239,7 +239,7 @@ export function LoadError({ error }: { error: Error }) {
 }
 
 /** Se abrió un modal (los avisos lo escuchan para quedar encima). */
-export const MODAL_OPENED = 'bowlingx:modal-abierto';
+export const MODAL_OPENED = 'mm:modal-abierto';
 
 export function Modal({
   open,

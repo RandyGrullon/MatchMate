@@ -8,7 +8,7 @@ interface InstallEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-const DISMISS_KEY = 'bowlinx:instalar-descartado';
+const DISMISS_KEY = 'mm:instalar-descartado';
 const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 const recentlyDismissed = () => {
@@ -85,7 +85,7 @@ export function PwaPrompts() {
   if (installEvent) {
     return (
       <Banner icon={<Download className="size-5" />} onClose={dismiss}>
-        <p className="font-medium">Instala BowlingX en tu celular</p>
+        <p className="font-medium">Instala MatchMate en tu celular</p>
         <p className="text-xs text-muted">Se abre como una app, más rápido y sin conexión.</p>
         <Button
           size="sm"
@@ -106,7 +106,7 @@ export function PwaPrompts() {
   if (showIos) {
     return (
       <Banner icon={<Share className="size-5" />} onClose={dismiss}>
-        <p className="font-medium">Instala BowlingX</p>
+        <p className="font-medium">Instala MatchMate</p>
         <p className="text-xs text-muted">
           Toca <Share className="inline size-3.5 align-[-2px]" /> <b>Compartir</b> y luego <b>Agregar a inicio</b>.
         </p>

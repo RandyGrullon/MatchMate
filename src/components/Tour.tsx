@@ -16,7 +16,7 @@ export interface TourStep {
   body: string;
 }
 
-const PREFIX = 'bowlingx:tour:';
+const PREFIX = 'mm:tour:';
 const seenKey = (name: string, uid: string) => `${PREFIX}${name}:${uid}`;
 /** Solo un tour a la vez. */
 let running = false;

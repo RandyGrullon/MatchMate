@@ -1,4 +1,4 @@
-/* Notificaciones de BowlingX dentro del service worker (lo carga el SW de la app con importScripts). */
+/* Notificaciones de MatchMate dentro del service worker (lo carga el SW de la app con importScripts). */
 
 // Push del envío programado (recordatorios de prácticas y torneos): llega aunque la app esté cerrada.
 self.addEventListener('push', (event) => {
@@ -9,11 +9,11 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'BowlingX', {
+    self.registration.showNotification(data.title || 'MatchMate', {
       body: data.body || '',
       tag: data.tag,
       icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      badge: '/badge-96.png',
       data: { url: data.url || '/' },
     }),
   );

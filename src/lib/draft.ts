@@ -18,12 +18,12 @@ export interface GameDraft {
   savedAt?: number;
 }
 
-const prefix = (lid: string, playerId: string) => `bowlinx:borrador:${lid}:${playerId}`;
+const prefix = (lid: string, playerId: string) => `mm:borrador:${lid}:${playerId}`;
 const key = (lid: string, playerId: string, eventId: string) => `${prefix(lid, playerId)}:${eventId}`;
 /** Antes había un solo borrador por liga (sin el evento en la clave): se sigue leyendo. */
 const legacyKey = prefix;
 /** Aviso interno para que las pantallas abiertas vean el borrador nuevo al momento. */
-const CHANGED = 'bowlingx:borrador';
+const CHANGED = 'mm:borrador';
 
 function readRaw(k: string): string | null {
   try {
@@ -88,7 +88,7 @@ const pendingLive = new Map<string, Pending>();
  * Lo último que este dispositivo publicó en cada evento (valores sin los vacíos del final). Se guarda en el
  * teléfono para que, aunque la app se cierre o se recargue, al enviar o borrar se quite la fila en vivo.
  */
-const markerKey = (k: string) => `bowlinx:vivo:${k}`;
+const markerKey = (k: string) => `mm:vivo:${k}`;
 const memoryMarkers = new Map<string, string[]>();
 /** Marca de "falló la última publicación": no coincide con nada, así la próxima vuelve a publicar. */
 const FAILED = ['\u0000'];
