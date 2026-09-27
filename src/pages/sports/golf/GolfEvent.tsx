@@ -1,0 +1,231 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { ClipboardList, Flag, ListOrdered, Lock, LockOpen, Settings2, Share2, Signature, Trash2, Trophy, Users } from 'lucide-react';
+import { deleteEvent, useEvent, usePlayers } from '../../../lib/data';
+import { closeGolfRound, signGolfCard, useGolfEvent, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
+import { eventLabel, formatDateLong, toIsoDate } from '../../../lib/format';
+import { useLeagueCtx } from '../../../lib/league';
+import { BackLink } from '../../../components/BackLink';
+import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
+import { shareLink } from '../../../components/share';
+import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
+import { CardModal } from './bits';
+import { mergeCard, useCourtLog } from './courtLog';
+import { GolfBoard } from './GolfBoard';
+import { GolfCourt, sendPending } from './GolfCourt';
+import { GolfPlayers } from './GolfPlayers';
+import { RoundForm } from './RoundForm';
+import { formatLabel, holesDone, isComplete, nineLabel } from './logic';
+
+type TabKey = 'tarjeta' | 'leaderboard' | 'jugadores';
+
+/**
+ * Una ronda de golf: la tarjeta del grupo (en el campo), el leaderboard en vivo y los jugadores (inscribirse,
+ * grupos). El admin elige campo y formato, cierra la ronda o la borra.
+ */
+export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
+  const params = useParams();
+  const eventId = fixed ?? params.eventId;
+  const { lid, base, isAdmin, member, myPlayerId, league } = useLeagueCtx();
+  const standalone = league.kind === 'torneo';
+  const navigate = useNavigate();
+  const run = useAction();
+  const { confirm, toast } = useFeedback();
+  const [search, setSearch] = useSearchParams();
+  const [editing, setEditing] = useState(false);
+  const [signing, setSigning] = useState<GolfCardDoc | null>(null);
+  const event = useEvent(lid, eventId);
+  const golf = useGolfEvent(lid, eventId);
+  const players = usePlayers(lid);
+  const tournaments = useGolfTournaments(lid);
+  const [log] = useCourtLog(eventId ?? '');
+
+  // Lo anotado en este teléfono se ve en todas las pestañas aunque no haya llegado al servidor.
+  const cards = useMemo(() => golf.data.cards.map((c) => mergeCard(c, log)), [golf.data.cards, log]);
+  const nameOf = useMemo(() => {
+    const m = new Map(players.data.map((p) => [p.id, p.name] as const));
+    return (pid: string) => m.get(pid) ?? '(jugador borrado)';
+  }, [players.data]);
+
+  const err = event.error ?? golf.error;
+  if (err) return <LoadError error={err} />;
+  if (event.loading || (golf.loading && !golf.data.round)) return <PageSkeleton />;
+  if (!event.data || !eventId) {
+    return (
+      <Empty title="Esta ronda no existe">
+        <Link to={base} className="text-accent">
+          Volver
+        </Link>
+      </Empty>
+    );
+  }
+
+  const ev = event.data;
+  const round = golf.data.round;
+  const myCard = myPlayerId ? (cards.find((c) => c.playerId === myPlayerId) ?? null) : null;
+  const staff = isAdmin || !!member?.scorer;
+  const today = toIsoDate(new Date());
+  const started = cards.some((c) => holesDone(c) > 0);
+  const tournament = round?.tournamentId ? tournaments.data.find((t) => t.id === round.tournamentId) : null;
+  const title = eventLabel({ type: ev.type, name: ev.name, date: ev.date }, 'golf');
+
+  const tabs: { key: TabKey; label: string; icon: ReactNode }[] = round
+    ? [
+        ...(!round.closed && (staff || myCard) ? [{ key: 'tarjeta' as const, label: 'Tarjeta', icon: <ClipboardList className="size-4" /> }] : []),
+        { key: 'leaderboard', label: 'Leaderboard', icon: <ListOrdered className="size-4" /> },
+        { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
+      ]
+    : [];
+  const requested = search.get('tab') as TabKey | null;
+  const fallback: TabKey =
+    tabs.some((t) => t.key === 'tarjeta') && (ev.date === today || (myCard && holesDone(myCard) > 0))
+      ? 'tarjeta'
+      : started || round?.closed
+        ? 'leaderboard'
+        : 'jugadores';
+  const tab: TabKey = requested && tabs.some((t) => t.key === requested) ? requested : tabs.some((t) => t.key === fallback) ? fallback : 'leaderboard';
+
+  async function sign(card: GolfCardDoc) {
+    try {
+      // Primero sale lo anotado que falte; la firma va detrás en la misma cola.
+      sendPending(lid, eventId!, new Set(golf.data.cards.map((c) => c.id)))?.catch((e) => toast(saveErrorMessage(e), 'error'));
+      await signGolfCard(lid, eventId!, card.id);
+      toast('Tarjeta firmada');
+      setSigning(null);
+    } catch (e) {
+      toast(saveErrorMessage(e), 'error');
+    }
+  }
+
+  async function remove() {
+    const ok = await confirm({
+      title: `¿Eliminar ${title}?`,
+      message: 'Se borran sus inscritos y tarjetas. No se puede deshacer.',
+      confirmText: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+    navigate(standalone ? `${base}/admin?tab=liga` : base);
+    await run(() => deleteEvent(lid, eventId!), 'Ronda eliminada');
+  }
+
+  async function toggleClosed() {
+    if (!round) return;
+    if (!round.closed) {
+      const unsigned = cards.filter((c) => !c.signed && !c.dq && holesDone(c) > 0).length;
+      const unfinished = cards.filter((c) => !c.dq && !isComplete(c)).length;
+      const ok = await confirm({
+        title: '¿Cerrar la ronda?',
+        message: (
+          <>
+            Quedan los resultados finales y cuentan para el orden de mérito. Nadie anota más (se puede volver a abrir).
+            {unfinished > 0 && <span className="mt-2 block text-warn">{unfinished} sin terminar: salen como «No terminó».</span>}
+            {unsigned > 0 && <span className="mt-2 block text-warn">{unsigned} tarjetas sin firmar (cuentan igual; puedes descalificarlas).</span>}
+          </>
+        ),
+        confirmText: 'Cerrar ronda',
+      });
+      if (!ok) return;
+    }
+    await run(() => closeGolfRound(lid, eventId!, !round.closed), round.closed ? 'Ronda abierta' : 'Ronda cerrada');
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-start gap-3">
+        {!standalone && <BackLink fallback={base} className="mt-1" />}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
+            {tournament && (
+              <Badge tone="accent">
+                <Trophy className="size-3" />
+                {tournament.name}
+                {round?.roundNo ? ` · R${round.roundNo}` : ''}
+              </Badge>
+            )}
+            {round?.closed ? (
+              <Badge tone="ok">
+                <Lock className="size-3" /> Cerrada
+              </Badge>
+            ) : started ? (
+              <Badge tone="ok">
+                <span className="live-dot" /> En juego
+              </Badge>
+            ) : null}
+          </div>
+          <p className="text-sm text-muted first-letter:uppercase">
+            {formatDateLong(ev.date)}
+            {ev.startTime ? ` · ${ev.startTime.slice(0, 5)}` : ''}
+            {round && ` · ${round.courseName} · ${nineLabel(round.nine, round.holes)} · ${formatLabel(round.competition)}${round.shotgun ? ' · salida simultánea' : ''}`}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          aria-label="Compartir"
+          title="Compartir"
+          icon={<Share2 className="size-5" />}
+          onClick={async () => {
+            if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
+          }}
+        />
+      </div>
+
+      {isAdmin && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" icon={<Settings2 className="size-4" />} onClick={() => setEditing(true)} disabled={round?.closed}>
+            {round ? 'Campo y formato' : 'Elegir campo'}
+          </Button>
+          {round && (
+            <Button size="sm" icon={round.closed ? <LockOpen className="size-4" /> : <Lock className="size-4" />} onClick={toggleClosed}>
+              {round.closed ? 'Volver a abrir' : 'Cerrar ronda'}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={remove}>
+            Eliminar
+          </Button>
+        </div>
+      )}
+
+      {!round ? (
+        <Empty icon={<Flag className="size-8" />} title="Esta ronda todavía no tiene campo">
+          {isAdmin ? 'Toca «Elegir campo» para decir en qué campo y con qué formato se juega.' : 'El admin tiene que elegir el campo y el formato.'}
+        </Empty>
+      ) : (
+        <>
+          {myCard && !myCard.signed && !round.closed && isComplete(myCard) && tab !== 'tarjeta' && (
+            <Button variant="primary" className="h-12" icon={<Signature className="size-5" />} onClick={() => setSigning(myCard)}>
+              Terminaste: revisa y firma tu tarjeta
+            </Button>
+          )}
+          <Tabs items={tabs} active={tab} onChange={(k) => setSearch({ tab: k }, { replace: true })} />
+          <div key={tab} className="animate-fade-up">
+            {tab === 'tarjeta' ? (
+              <GolfCourt round={round} cards={golf.data.cards} nameOf={nameOf} myCard={myCard} staff={staff} isAdmin={isAdmin} onSign={setSigning} />
+            ) : tab === 'leaderboard' ? (
+              <GolfBoard round={round} cards={cards} nameOf={nameOf} />
+            ) : (
+              <GolfPlayers round={round} cards={cards} players={players.data} onSign={setSigning} />
+            )}
+          </div>
+          <CardModal
+            open={!!signing}
+            onClose={() => setSigning(null)}
+            name={signing ? `Firmar: ${nameOf(signing.playerId)}` : ''}
+            round={round}
+            card={signing ? (cards.find((c) => c.id === signing.id) ?? signing) : null}
+            footer={
+              <>
+                <Button onClick={() => setSigning(null)}>Todavía no</Button>
+                <Button variant="primary" icon={<Signature className="size-4" />} onClick={() => signing && sign(signing)}>
+                  Firmo: está correcta
+                </Button>
+              </>
+            }
+          />
+        </>
+      )}
+      {isAdmin && <RoundForm open={editing} onClose={() => setEditing(false)} edit={{ eventId, round, started }} />}
+    </div>
+  );
+}

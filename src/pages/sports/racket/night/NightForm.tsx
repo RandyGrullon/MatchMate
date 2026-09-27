@@ -1,0 +1,173 @@
+import { useState } from 'react';
+import { UserPlus } from 'lucide-react';
+import { createPlayer } from '../../../../lib/data';
+import { useLeagueCtx } from '../../../../lib/league';
+import type { RestPolicy } from '../../../../sports/formats';
+import { useAction } from '../../../../components/feedback';
+import { Button, Field, Input, Select, cx } from '../../../../components/ui';
+import { PickList, Stepper } from '../bits';
+import { NIGHT_MAX_COURTS, NIGHT_MAX_PLAYERS, NIGHT_TARGETS, REST_LABELS, nightInfo, suggestRounds, type NightConfig } from '../logic/night';
+import { levelScale, levelText } from '../levels';
+import { useNames } from '../names';
+import { useRacket } from '../sport';
+
+type NightPart = 'courts' | 'points' | 'rounds';
+
+/**
+ * Lo que se edita de la noche (al crearla y en «Ajustes»): canchas, puntos, rondas y descansos. `parts` elige qué
+ * partes se ven (al crear: canchas y puntos primero; rondas y descansos después de elegir a los jugadores).
+ */
+export function NightFields({ value, onChange, parts = ['courts', 'points', 'rounds'] }: { value: NightConfig; onChange: (c: NightConfig) => void; parts?: NightPart[] }) {
+  const c = value;
+  const info = nightInfo(c.players.length, c.courts.length);
+  const setCourts = (n: number) => {
+    const courts = Array.from({ length: n }, (_, i) => c.courts[i] ?? `Cancha ${i + 1}`);
+    onChange({ ...c, courts });
+  };
+  const show = (p: NightPart) => parts.includes(p);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        {show('courts') && <Stepper label="Canchas" value={c.courts.length} min={1} max={NIGHT_MAX_COURTS} onChange={setCourts} />}
+        {show('rounds') && <Stepper label="Rondas" value={c.rounds} min={1} max={30} onChange={(rounds) => onChange({ ...c, rounds })} />}
+      </div>
+      {show('courts') && (
+        <div className="grid grid-cols-2 gap-2">
+          {c.courts.map((name, i) => (
+            <Input
+              key={i}
+              value={name}
+              maxLength={40}
+              aria-label={`Nombre de la cancha ${i + 1}`}
+              onChange={(e) => onChange({ ...c, courts: c.courts.map((x, j) => (j === i ? e.target.value : x)) })}
+            />
+          ))}
+        </div>
+      )}
+      {show('points') && (
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-muted">Cada partido</span>
+        <div className="flex flex-wrap gap-2">
+          {NIGHT_TARGETS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={c.points.mode === 'total' && c.points.target === t}
+              onClick={() => onChange({ ...c, points: { ...c.points, mode: 'total', target: t, minutes: undefined } })}
+              className={cx(
+                'h-11 min-w-16 rounded-xl border-2 px-3 font-semibold tabular-nums transition active:scale-95',
+                c.points.mode === 'total' && c.points.target === t ? 'border-accent bg-accent-soft text-accent' : 'border-line',
+              )}
+            >
+              A {t}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-pressed={c.points.mode === 'time'}
+            onClick={() => onChange({ ...c, points: { ...c.points, mode: 'time', minutes: c.points.minutes ?? 15, target: undefined } })}
+            className={cx('h-11 rounded-xl border-2 px-3 font-semibold transition active:scale-95', c.points.mode === 'time' ? 'border-accent bg-accent-soft text-accent' : 'border-line')}
+          >
+            Por tiempo
+          </button>
+        </div>
+        {c.points.mode === 'time' && (
+          <Stepper label="Minutos por partido" value={c.points.minutes ?? 15} min={5} max={60} onChange={(minutes) => onChange({ ...c, points: { ...c.points, minutes } })} />
+        )}
+      </div>
+      )}
+      {show('rounds') && (
+      <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm">
+        {info.tooFew ? (
+          'Hacen falta al menos 4 jugadores.'
+        ) : (
+          <>
+            {info.perRound} {info.perRound === 1 ? 'partido' : 'partidos'} por ronda
+            {info.resting ? `, descansan ${info.resting} por ronda` : ', nadie descansa'}
+            {info.idleCourts ? ` (sobran ${info.idleCourts} ${info.idleCourts === 1 ? 'cancha' : 'canchas'})` : ''}.
+            {c.format === 'americano' && info.roundsForAll > 0 && ` Para jugar con todos harían falta ${info.roundsForAll} rondas.`}
+            {info.resting > 0 && info.equalRests.length > 0 && ` Con ${info.equalRests.slice(0, 3).join(', ')} rondas todos descansan igual.`}{' '}
+            <button type="button" className="font-medium text-accent" onClick={() => onChange({ ...c, rounds: suggestRounds(c.format, c.players.length, c.courts.length) })}>
+              Usar las recomendadas
+            </button>
+          </>
+        )}
+      </p>
+      )}
+      {show('rounds') && info.resting > 0 && (
+        <Field label="Quien descansa suma">
+          <Select value={c.rest} onChange={(e) => onChange({ ...c, rest: e.target.value as RestPolicy })}>
+            {(Object.keys(REST_LABELS) as RestPolicy[]).map((k) => (
+              <option key={k} value={k}>
+                {REST_LABELS[k]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      {show('rounds') && c.format === 'mexicano' && (
+        <Field label="Ronda 1" hint="Por nivel: 1+4 contra 2+3 con el nivel de cada jugador (Admin › Parejas y niveles).">
+          <Select value={c.firstRound} onChange={(e) => onChange({ ...c, firstRound: e.target.value === 'level' ? 'level' : 'random' })}>
+            <option value="random">Al azar</option>
+            <option value="level">Por nivel</option>
+          </Select>
+        </Field>
+      )}
+    </div>
+  );
+}
+
+/** Quién juega la noche: la lista de la liga con su nivel, y agregar a alguien nuevo por su nombre. */
+export function NightPlayers({ value, onChange, levels }: { value: string[]; onChange: (ids: string[]) => void; levels: Record<string, number> }) {
+  const { lid } = useLeagueCtx();
+  const scale = levelScale(useRacket().sport);
+  const names = useNames();
+  const run = useAction();
+  const [name, setName] = useState('');
+  const selected = new Set(value);
+  const items = [...names.players]
+    .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || a.name.localeCompare(b.name, 'es'))
+    .map((p) => ({ id: p.id, name: p.name, sub: levels[p.id] != null ? levelText(levels[p.id], scale) : undefined }));
+
+  const add = async () => {
+    const n = name.trim();
+    if (!n) return;
+    const id = await run(() => createPlayer(lid, n, null), `${n} agregado`);
+    if (id) {
+      onChange([...value, id]);
+      setName('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">
+          {value.length} {value.length === 1 ? 'jugador' : 'jugadores'}
+        </p>
+        {value.length > 0 && (
+          <button type="button" className="text-sm text-muted hover:text-fg" onClick={() => onChange([])}>
+            Quitar a todos
+          </button>
+        )}
+      </div>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void add();
+        }}
+      >
+        <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Agregar a alguien nuevo" aria-label="Nombre del jugador nuevo" />
+        <Button type="submit" icon={<UserPlus className="size-4" />} disabled={!name.trim()} aria-label="Agregar jugador" />
+      </form>
+      <PickList
+        items={items}
+        selected={selected}
+        max={NIGHT_MAX_PLAYERS}
+        onToggle={(id) => onChange(selected.has(id) ? value.filter((x) => x !== id) : [...value, id])}
+        empty="La liga no tiene jugadores todavía: agrega a los de esta noche con su nombre."
+      />
+    </div>
+  );
+}
