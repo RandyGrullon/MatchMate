@@ -33,6 +33,42 @@ interface FilterBuilder extends PromiseLike<{ data: unknown; error: DbErrorLike 
   contains(col: string, v: unknown): FilterBuilder;
   order(col: string, opts: { ascending: boolean }): FilterBuilder;
   limit(n: number): FilterBuilder;
+  range(from: number, to: number): FilterBuilder;
+}
+
+/**
+ * Filas por pedido. Supabase corta cada respuesta en `max_rows` (config.toml y el paso 3 de la guía: 500) sin
+ * avisar; `select` pide de a páginas hasta traerlo todo (o hasta `limit`).
+ */
+export const PAGE_ROWS = 500;
+/** Tope de páginas de una consulta (100 000 filas): una consulta así es un error, no una lista. */
+const MAX_PAGES = 200;
+
+/** Clave de las tablas sin `id` (para que las páginas salgan en un orden fijo y no se salte ni repita nada). */
+const TABLE_KEYS: Record<string, readonly string[]> = {
+  league_secrets: ['league_id'],
+  league_members: ['league_id', 'user_id'],
+  memberships: ['league_id', 'user_id'],
+  player_private: ['player_id'],
+  event_rsvps: ['event_id', 'player_id'],
+  live_states: ['event_id', 'subject_key'],
+  match_sides: ['match_id', 'side'],
+  match_players: ['match_id', 'player_id'],
+  team_players: ['team_id', 'player_id'],
+  golf_rounds: ['event_id'],
+  swim_swimmers: ['player_id'],
+  swim_meets: ['event_id'],
+  ladder_rungs: ['event_id', 'entrant_id'],
+  match_rsvps: ['match_id', 'player_id'],
+  match_officials: ['match_id'],
+  sport_status: ['id'],
+};
+
+/** El orden pedido más la clave de la tabla al final (desempate estable entre páginas). */
+export function pagedOrder(q: SelectQuery): { col: string; asc?: boolean }[] {
+  const order = [...(q.order ?? [])];
+  for (const col of TABLE_KEYS[q.table] ?? ['id']) if (!order.some((o) => o.col === col)) order.push({ col });
+  return order;
 }
 
 /** SelectQuery → llamadas de supabase-js (`.eq`, `.in`, `.order`…). Exportada para probarla. */
@@ -295,14 +331,30 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
     auth,
     storage,
     async select<T = Record<string, unknown>>(q: SelectQuery): Promise<T[]> {
-      let res: { data: unknown; error: DbErrorLike | null; status?: number };
-      try {
-        res = await applySelect(client, q);
-      } catch (e) {
-        throw toBackendError(e);
+      const page = async (query: SelectQuery, from?: number, to?: number): Promise<T[]> => {
+        let res: { data: unknown; error: DbErrorLike | null; status?: number };
+        try {
+          const b = applySelect(client, query);
+          res = await (from !== undefined && to !== undefined ? b.range(from, to) : b);
+        } catch (e) {
+          throw toBackendError(e);
+        }
+        if (res.error) throw mapDbError({ ...res.error, status: res.status ?? res.error.status });
+        return (Array.isArray(res.data) ? res.data : []) as T[];
+      };
+      // Lo que cabe en una respuesta: un solo pedido, como siempre.
+      if (q.limit !== undefined && q.limit <= PAGE_ROWS) return page(q);
+      // Si no, de a páginas con un orden fijo hasta traerlo todo (o hasta `limit`).
+      const want = q.limit ?? Infinity;
+      const paged: SelectQuery = { ...q, order: pagedOrder(q), limit: undefined };
+      const out: T[] = [];
+      for (let i = 0; i < MAX_PAGES && out.length < want; i++) {
+        const from = i * PAGE_ROWS;
+        const rows = await page(paged, from, from + Math.min(PAGE_ROWS, want - from) - 1);
+        out.push(...rows);
+        if (rows.length < PAGE_ROWS) break;
       }
-      if (res.error) throw mapDbError({ ...res.error, status: res.status ?? res.error.status });
-      return (Array.isArray(res.data) ? res.data : []) as T[];
+      return out;
     },
     async rpc<T = unknown>(fn: string, args?: Record<string, unknown>): Promise<T> {
       // Los mismos nombres que acepta el backend local (así un error de nombre sale igual en los dos).

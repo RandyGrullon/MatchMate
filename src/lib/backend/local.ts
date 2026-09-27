@@ -44,6 +44,11 @@ export interface LocalBackendOptions {
   files?: FileStore;
   /** Edge Functions locales, además de las de fábrica. */
   handlers?: Record<string, LocalHandler>;
+  /**
+   * Demo en el navegador: mientras no haya superadmin, la cuenta que se crea lo es (para poder crear ligas de los
+   * deportes en beta y abrirlos). Solo la base local de ese navegador; Supabase nunca pasa por aquí.
+   */
+  firstUserIsSuper?: boolean;
 }
 
 export interface LocalBackend extends Backend {
@@ -311,6 +316,13 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
           );
           const newId = row.rows[0].id;
           await tx.query('insert into auth.local_passwords (user_id, hash) values ($1, $2)', [newId, hash]);
+          if (opts.firstUserIsSuper) {
+            await tx.query(
+              `update public.profiles set is_superadmin = true
+                where id = $1 and not exists (select 1 from public.profiles p where p.is_superadmin)`,
+              [newId],
+            );
+          }
           return newId;
         })
         .catch((e) => {

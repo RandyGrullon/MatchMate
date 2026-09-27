@@ -185,4 +185,28 @@ describe('estado de los deportes contra la base real (PGlite)', () => {
     },
     120_000,
   );
+
+  it.skipIf(!haveMigrations || !haveShim)(
+    'demo local: la primera cuenta es superadmin (abre los deportes en beta); las siguientes no',
+    async () => {
+      const [{ createLocalBackend }, { loadLocalSql }] = await Promise.all([import('../lib/backend/local'), import('../lib/backend/migrations')]);
+      const b = await createLocalBackend({ sql: loadLocalSql(), firstUserIsSuper: true, sessionStore: { get: () => null, set: () => undefined } });
+      try {
+        const first = (await b.auth.signUp('uno@example.com', 'secreto1', 'Uno', { adult: true }))!.userId;
+        await b.rpc('set_sport_status', { p_sport: 'golf', p_status: 'open' });
+        await b.auth.signOut();
+        const second = (await b.auth.signUp('dos@example.com', 'secreto2', 'Dos', { adult: true }))!.userId;
+        const rows = await b.db.query<{ id: string; is_superadmin: boolean }>('select id, is_superadmin from public.profiles order by email desc');
+        expect(rows.rows).toEqual([
+          { id: first, is_superadmin: true },
+          { id: second, is_superadmin: false },
+        ]);
+        expect((await fetchSportStatus(b)).golf).toBe('open');
+        await expect(b.rpc('set_sport_status', { p_sport: 'golf', p_status: 'beta' })).rejects.toBeInstanceOf(BackendError);
+      } finally {
+        await b.close();
+      }
+    },
+    120_000,
+  );
 });

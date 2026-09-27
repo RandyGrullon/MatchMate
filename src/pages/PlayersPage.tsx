@@ -8,7 +8,8 @@ import type { Entry, Member, Player } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
 import { playerUrl, shareLink } from '../components/share';
 import { Avatar } from '../components/Avatar';
-import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select } from '../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, cx } from '../components/ui';
+import { leagueSport } from '../sports/registry';
 
 export function useStatsByPlayer(entries: Entry[]) {
   return useMemo(() => {
@@ -22,15 +23,17 @@ export function useStatsByPlayer(entries: Entry[]) {
 
 const noStats: PlayerStats = { games: 0, pins: 0, autoAverage: null, high: 0, highSeries: 0, pending: 0 };
 
-/** Admin: jugadores de la liga, su promedio y la cuenta vinculada. */
+/** Admin: jugadores de la liga, su promedio (boliche) y la cuenta vinculada. */
 export default function PlayersPage() {
-  const { lid, base } = useLeagueCtx();
+  const { lid, base, league } = useLeagueCtx();
+  // Promedio, juegos y mejor son del boliche; los otros deportes muestran sus números en Tabla y en cada jugador.
+  const bowling = leagueSport(league) === 'bowling';
   const { toast } = useFeedback();
   const players = usePlayers(lid);
   const members = useLeagueMembers(lid);
   const memberByUid = useMemo(() => new Map(members.data.map((m) => [m.uid, m])), [members.data]);
   const unlinked = members.data.filter((m) => !m.playerId);
-  const entries = useAllEntries(lid);
+  const entries = useAllEntries(bowling ? lid : undefined);
   const stats = useStatsByPlayer(entries.data);
   const [q, setQ] = useState('');
   // Por id: el modal muestra el jugador en vivo (si alguien se vincula mientras está abierto, se ve).
@@ -50,7 +53,9 @@ export default function PlayersPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold tracking-tight">Jugadores</h2>
-          <p className="text-sm text-muted">Promedio calculado con los juegos que cuentan.</p>
+          <p className="text-sm text-muted">
+            {bowling ? 'Promedio calculado con los juegos que cuentan.' : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
+          </p>
         </div>
         <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
           <span className="hidden sm:inline">Nuevo jugador</span>
@@ -75,13 +80,15 @@ export default function PlayersPage() {
         </Empty>
       ) : (
         <Card className="stagger divide-y divide-line overflow-hidden">
-          <div className="hidden grid-cols-[1fr_6rem_5rem_5rem_5.5rem] gap-3 px-4 py-2 text-xs font-medium text-muted sm:grid">
-            <span>Jugador</span>
-            <span className="text-right">Promedio</span>
-            <span className="text-right">Juegos</span>
-            <span className="text-right">Mejor</span>
-            <span />
-          </div>
+          {bowling && (
+            <div className="hidden grid-cols-[1fr_6rem_5rem_5rem_5.5rem] gap-3 px-4 py-2 text-xs font-medium text-muted sm:grid">
+              <span>Jugador</span>
+              <span className="text-right">Promedio</span>
+              <span className="text-right">Juegos</span>
+              <span className="text-right">Mejor</span>
+              <span />
+            </div>
+          )}
           {filtered.map((p, i) => {
             const s = stats.get(p.id) ?? noStats;
             const avg = p.averageOverride ?? s.autoAverage;
@@ -90,7 +97,7 @@ export default function PlayersPage() {
               <div
                 key={p.id}
                 style={{ '--i': i } as CSSProperties}
-                className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2/60 sm:grid sm:grid-cols-[1fr_6rem_5rem_5rem_5.5rem]"
+                className={cx('flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2/60', bowling && 'sm:grid sm:grid-cols-[1fr_6rem_5rem_5rem_5.5rem]')}
               >
                 <button onClick={() => setEditing(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <Avatar name={p.name} />
@@ -103,11 +110,13 @@ export default function PlayersPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted sm:hidden">
-                      <span className="tabular-nums">Prom. {avg ?? '—'}</span>
-                      {p.averageOverride != null && <Badge>fijo</Badge>}
-                      <span>· {s.games} juegos</span>
-                    </div>
+                    {bowling && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted sm:hidden">
+                        <span className="tabular-nums">Prom. {avg ?? '—'}</span>
+                        {p.averageOverride != null && <Badge>fijo</Badge>}
+                        <span>· {s.games} juegos</span>
+                      </div>
+                    )}
                     {s.pending > 0 && (
                       <Badge tone="warn" className="mt-0.5">
                         {s.pending} sin foto
@@ -115,12 +124,16 @@ export default function PlayersPage() {
                     )}
                   </div>
                 </button>
-                <div className="hidden items-center justify-end gap-1.5 text-right tabular-nums sm:flex">
-                  {p.averageOverride != null && <Badge>fijo</Badge>}
-                  <span className="font-semibold">{avg ?? '—'}</span>
-                </div>
-                <span className="hidden text-right text-muted tabular-nums sm:block">{s.games}</span>
-                <span className="hidden text-right text-muted tabular-nums sm:block">{s.high || '—'}</span>
+                {bowling && (
+                  <>
+                    <div className="hidden items-center justify-end gap-1.5 text-right tabular-nums sm:flex">
+                      {p.averageOverride != null && <Badge>fijo</Badge>}
+                      <span className="font-semibold">{avg ?? '—'}</span>
+                    </div>
+                    <span className="hidden text-right text-muted tabular-nums sm:block">{s.games}</span>
+                    <span className="hidden text-right text-muted tabular-nums sm:block">{s.high || '—'}</span>
+                  </>
+                )}
                 <div className="flex justify-end gap-1">
                   <Button variant="ghost" size="sm" title="Compartir link" aria-label="Compartir link" onClick={() => share(p)} icon={<Link2 className="size-4" />} />
                   <Link
@@ -185,7 +198,8 @@ function PlayerFormModal({
   players: Player[];
   onClose: () => void;
 }) {
-  const { lid } = useLeagueCtx();
+  const { lid, league } = useLeagueCtx();
+  const bowling = leagueSport(league) === 'bowling';
   const run = useAction();
   const { confirm } = useFeedback();
   const [name, setName] = useState('');
@@ -212,7 +226,9 @@ function PlayerFormModal({
     if (!player) return;
     const ok = await confirm({
       title: `¿Eliminar a ${player.name}?`,
-      message: `Se borran también sus ${stats.games + stats.pending} juegos en torneos y prácticas. No se puede deshacer.`,
+      message: bowling
+        ? `Se borran también sus ${stats.games + stats.pending} juegos en torneos y prácticas. No se puede deshacer.`
+        : 'Se borran también sus resultados en esta liga. No se puede deshacer.',
       confirmText: 'Eliminar',
       danger: true,
     });
@@ -244,16 +260,18 @@ function PlayerFormModal({
         <Field label="Nombre">
           <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
         </Field>
-        <Field
-          label="Promedio fijo (opcional)"
-          hint={
-            stats.autoAverage != null
-              ? `Calculado con sus juegos: ${stats.autoAverage} (${stats.games} juegos). Déjalo vacío para usar ese.`
-              : 'Sin juegos verificados todavía. Si no pones uno, empieza en 0.'
-          }
-        >
-          <Input type="number" inputMode="numeric" min={0} max={300} value={avg} onChange={(e) => setAvg(e.target.value)} placeholder="Automático" />
-        </Field>
+        {bowling && (
+          <Field
+            label="Promedio fijo (opcional)"
+            hint={
+              stats.autoAverage != null
+                ? `Calculado con sus juegos: ${stats.autoAverage} (${stats.games} juegos). Déjalo vacío para usar ese.`
+                : 'Sin juegos verificados todavía. Si no pones uno, empieza en 0.'
+            }
+          >
+            <Input type="number" inputMode="numeric" min={0} max={300} value={avg} onChange={(e) => setAvg(e.target.value)} placeholder="Automático" />
+          </Field>
+        )}
       </form>
       {player && <AccountSection player={player} account={account} members={members} players={players} onDone={onClose} />}
     </Modal>

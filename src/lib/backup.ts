@@ -18,6 +18,26 @@ const LEAGUE_TABLES = [
   'comments',
   'suggestions',
   'memberships',
+  // Partidos (raqueta y equipos), equipos de temporada, convocatorias, escaleras y sanciones.
+  'matches',
+  'match_sides',
+  'match_players',
+  'team_players',
+  'match_rsvps',
+  'match_officials',
+  'ladder_rungs',
+  'ladder_challenges',
+  'football_sanctions',
+  // Golf y natación.
+  'golf_courses',
+  'golf_tournaments',
+  'golf_rounds',
+  'golf_cards',
+  'swim_clubs',
+  'swim_swimmers',
+  'swim_meets',
+  'swim_events',
+  'swim_entries',
 ] as const;
 
 async function leagueData(lid: string) {

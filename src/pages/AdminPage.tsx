@@ -39,7 +39,7 @@ import {
   useSubmissions,
 } from '../lib/data';
 import { useNotifications } from '../components/Notifications';
-import { formatDate } from '../lib/format';
+import { formatDate, venueLabel } from '../lib/format';
 import { rememberLeague, roleLabel, useLeagueCtx, whatsappUrl } from '../lib/league';
 import type { Member } from '../lib/types';
 import { Avatar } from '../components/Avatar';
@@ -47,7 +47,7 @@ import { InviteCard } from '../components/InviteCard';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { Tour } from '../components/Tour';
 import { ADMIN_TOUR } from '../lib/tours';
-import { leagueSport } from '../sports/registry';
+import { leagueSport, sportMeta } from '../sports/registry';
 import { useSportScreens } from '../sports/screens';
 import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
@@ -280,6 +280,8 @@ function SettingsPanel() {
   const isTournament = league.kind === 'torneo';
   const season = league.seasonStart && league.seasonEnd ? `${formatDate(league.seasonStart)} – ${formatDate(league.seasonEnd)}` : '';
   const contact = [league.contactName, league.contactPhone].filter(Boolean).join(' · ');
+  // La foto del marcador es solo del boliche.
+  const photos = sportMeta(leagueSport(league))?.photos ?? false;
 
   return (
     <div className="flex flex-col gap-5">
@@ -320,7 +322,7 @@ function SettingsPanel() {
         >
           <div className="overflow-hidden" inert={!open}>
             <dl className="grid gap-2.5 pt-4 text-sm sm:grid-cols-2">
-              <Detail icon={<MapPin className="size-4" />} label="Bolera" value={league.venue} />
+              <Detail icon={<MapPin className="size-4" />} label={venueLabel(league.sport)} value={league.venue} />
               {!isTournament && <Detail icon={<Clock className="size-4" />} label="Cuándo juegan" value={league.schedule} />}
               {!isTournament && <Detail icon={<CalendarRange className="size-4" />} label="Temporada" value={season} />}
               <Detail
@@ -337,11 +339,13 @@ function SettingsPanel() {
                   ))
                 }
               />
-              <Detail
-                icon={<Camera className="size-4" />}
-                label="Foto del marcador"
-                value={league.requirePhoto !== false ? 'Obligatoria para que cuente' : 'Opcional'}
-              />
+              {photos && (
+                <Detail
+                  icon={<Camera className="size-4" />}
+                  label="Foto del marcador"
+                  value={league.requirePhoto !== false ? 'Obligatoria para que cuente' : 'Opcional'}
+                />
+              )}
             </dl>
             <Button className="mt-4 w-full sm:w-auto" icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
               Editar datos
@@ -422,6 +426,7 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
   const { confirm, toast } = useFeedback();
   const [busy, setBusy] = useState<string | null>(null);
   const isTournament = league.kind === 'torneo';
+  const bowling = leagueSport(league) === 'bowling';
 
   async function backup() {
     setBusy('backup');
@@ -454,7 +459,9 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
   async function remove() {
     const ok = await confirm({
       title: `¿Borrar ${league.name}?`,
-      message: 'Se borran sus torneos, prácticas, jugadores, juegos, fotos, miembros e invitación. No se puede deshacer; descarga el respaldo antes.',
+      message: bowling
+        ? 'Se borran sus torneos, prácticas, jugadores, juegos, fotos, miembros e invitación. No se puede deshacer; descarga el respaldo antes.'
+        : 'Se borran sus eventos, partidos, jugadores, resultados, miembros e invitación. No se puede deshacer; descarga el respaldo antes.',
       confirmText: 'Borrar todo',
       danger: true,
     });
@@ -487,23 +494,29 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
         <ConfigRow
           icon={<DatabaseBackup className="size-5" />}
           title="Respaldo"
-          text="Descarga todos los datos (jugadores, eventos, juegos y miembros) en un archivo. Las fotos no entran."
+          text={
+            bowling
+              ? 'Descarga todos los datos (jugadores, eventos, juegos y miembros) en un archivo. Las fotos no entran.'
+              : 'Descarga todos los datos (jugadores, eventos, partidos, resultados y miembros) en un archivo.'
+          }
           action={
             <Button size="sm" loading={busy === 'backup'} onClick={backup}>
               Descargar
             </Button>
           }
         />
-        <ConfigRow
-          icon={<ImageMinus className="size-5" />}
-          title="Fotos viejas"
-          text="Borra las fotos de hace más de un año para no llenar el espacio gratis. Los juegos siguen contando."
-          action={
-            <Button size="sm" loading={busy === 'photos'} onClick={freePhotos}>
-              Borrar
-            </Button>
-          }
-        />
+        {bowling && (
+          <ConfigRow
+            icon={<ImageMinus className="size-5" />}
+            title="Fotos viejas"
+            text="Borra las fotos de hace más de un año para no llenar el espacio gratis. Los juegos siguen contando."
+            action={
+              <Button size="sm" loading={busy === 'photos'} onClick={freePhotos}>
+                Borrar
+              </Button>
+            }
+          />
+        )}
         {(isOwner || isSuper) && (
           <ConfigRow
             danger

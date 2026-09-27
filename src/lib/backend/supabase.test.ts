@@ -10,9 +10,11 @@ type AuthCb = (event: string, session: unknown) => void;
 function mockClient() {
   const calls: unknown[][] = [];
   let next: Res = { data: [], error: null, status: 200 };
+  // Respuestas en orden (una por pedido); cuando se acaban, `next`.
+  const queue: Res[] = [];
   const builder = () => {
     const b: Record<string, unknown> = {};
-    for (const m of ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'is', 'contains', 'order', 'limit']) {
+    for (const m of ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'is', 'contains', 'order', 'limit', 'range']) {
       b[m] = (...args: unknown[]) => {
         calls.push([m, ...args]);
         return b;
@@ -22,7 +24,7 @@ function mockClient() {
       calls.push(['maybeSingle']);
       return Promise.resolve(profileRes);
     };
-    b.then = (ok: (r: Res) => unknown, fail: (e: unknown) => unknown) => Promise.resolve(next).then(ok, fail);
+    b.then = (ok: (r: Res) => unknown, fail: (e: unknown) => unknown) => Promise.resolve(queue.shift() ?? next).then(ok, fail);
     return b;
   };
   let profileRes: Res = { data: { name: 'Ana Perfil' }, error: null };
@@ -88,6 +90,7 @@ function mockClient() {
     channels,
     authCbs,
     respond: (r: Res) => void (next = r),
+    respondPages: (...r: Res[]) => void queue.push(...r),
     respondProfile: (r: Res) => void (profileRes = r),
     respondStorage: (r: Res) => void (storageRes = r),
     fire: (event: string, session: unknown) => [...authCbs].forEach((cb) => cb(event, session)),
@@ -111,6 +114,53 @@ const fail = async (p: Promise<unknown>) => {
 const flush = () => new Promise((r) => setTimeout(r, 30));
 
 describe('select → PostgREST', () => {
+  const rows = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ id: `r${from + i}` }));
+
+  it('de a páginas de 500 con orden fijo hasta traer todo (Supabase corta en max_rows)', async () => {
+    const m = mockClient();
+    const b = create(m);
+    m.respondPages({ data: rows(500), error: null }, { data: rows(500, 500), error: null }, { data: rows(3, 1000), error: null });
+    const out = await b.select({ table: 'entries', filters: [{ col: 'league_id', op: 'eq', value: 'l1' }], order: [{ col: 'date', asc: false }] });
+    expect(out).toHaveLength(1003);
+    expect(m.calls.filter((c) => c[0] === 'range')).toEqual([
+      ['range', 0, 499],
+      ['range', 500, 999],
+      ['range', 1000, 1499],
+    ]);
+    // El orden pedido y la clave al final como desempate.
+    expect(m.calls.filter((c) => c[0] === 'order').slice(0, 2)).toEqual([
+      ['order', 'date', { ascending: false }],
+      ['order', 'id', { ascending: true }],
+    ]);
+  });
+
+  it('tablas sin id: desempata por su clave; con límite chico, un solo pedido sin páginas', async () => {
+    const m = mockClient();
+    const b = create(m);
+    m.respondPages({ data: rows(2), error: null });
+    await b.select({ table: 'event_rsvps' });
+    expect(m.calls.filter((c) => c[0] === 'order')).toEqual([
+      ['order', 'event_id', { ascending: true }],
+      ['order', 'player_id', { ascending: true }],
+    ]);
+    const m2 = mockClient();
+    const b2 = create(m2);
+    await b2.select({ table: 'events', limit: 20 });
+    expect(m2.calls.some((c) => c[0] === 'range')).toBe(false);
+    expect(m2.calls.filter((c) => c[0] === 'limit')).toEqual([['limit', 20]]);
+  });
+
+  it('límite mayor que una página: pide solo lo que falta', async () => {
+    const m = mockClient();
+    const b = create(m);
+    m.respondPages({ data: rows(500), error: null }, { data: rows(200, 500), error: null });
+    expect(await b.select({ table: 'matches', limit: 700 })).toHaveLength(700);
+    expect(m.calls.filter((c) => c[0] === 'range')).toEqual([
+      ['range', 0, 499],
+      ['range', 500, 699],
+    ]);
+  });
+
   it('traduce columnas, filtros, orden y límite', () => {
     const m = mockClient();
     const when = new Date('2026-09-26T12:00:00Z');

@@ -29,7 +29,8 @@ export function getBackend(): Backend {
   } else {
     lazy = createLazyBackend('local', async () => {
       const [{ createLocalBackend }, { loadLocalSql }] = await Promise.all([import('./local'), import('./migrations')]);
-      return createLocalBackend({ sql: loadLocalSql() });
+      // Demo local: la primera cuenta es superadmin (abre y prueba los deportes en beta).
+      return createLocalBackend({ sql: loadLocalSql(), firstUserIsSuper: true });
     });
     instance = lazy;
   }
