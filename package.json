@@ -15,7 +15,9 @@
     "test:reglas": "npx -y firebase-tools@13 emulators:exec --only firestore --project demo-bowlinx-reglas \"vitest run -c vitest.reglas.config.ts\""
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "firebase": "^12.19.0",
+    "idb": "^8.0.3",
     "lucide-react": "^1.47.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -24,6 +26,7 @@
     "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
