@@ -1,0 +1,657 @@
+{
+ "summary": "MatchMate es un repo nuevo, ya creado en C:\\Users\\rgrullon\\code\\matchmate: es la copia de BowlingX 29334d1 (commit 3f0f57a) más la carpeta de Supabase con supabase-js, idb y pglite (commit f03af51). Corre en Supabase Free y se queda 100 % gratis. BowlingX sigue igual en Firebase para tu liga hasta la migración final.\n\nLa Fase 0 va en 3 partes y cuesta unos 46–63 días:\n- 0A: marca y base de datos segura.\n- 0B: capa de datos, modo sin conexión y todo el boliche igual que hoy.\n- 0C: fotos, lectura con IA gratis, push y piloto.\nEs unas 5 veces más cara que en el plan de Firebase. Firestore daba hechas tres cosas que aquí hay que construir: las reglas (se reescriben como políticas de Postgres), la capa de datos y la cola sin conexión.\n\nDespués vienen los deportes en el orden de la investigación:\n- pádel, en dos entregas (es el de más demanda organizada en RD);\n- tenis y pickleball, que salen casi gratis sobre el motor del pádel;\n- baloncesto;\n- fútbol de campo y sala;\n- golf;\n- natación.\nAl final se migra BowlingX.\n\nTotal: unos 136–177 días-persona con asistente IA (probable ~155), o sea 8–11 meses de calendario contando pilotos y las 2 semanas de prueba del boliche.\n\nHitos:\n- boliche en MatchMate listo para piloto: hacia el día 50–60;\n- primera noche real de pádel: hacia el día 60–75;\n- boliche, pádel, tenis y pickleball: 84–111 días (unos 5 meses).\n\nPara seguir gratis:\n- Realtime solo en las pantallas «En vivo», por Broadcast;\n- la app pide solo lo que cambió;\n- mantener despierto el proyecto y hacer respaldos propios;\n- fotos comprimidas en Storage que se borran a los 90 días;\n- una cadena de modelos gratis de Google con topes.",
+ "sportOrder": [
+  {
+   "sport": "Boliche (Fase 0)",
+   "why": "Ya existe. Pasarlo igual que hoy a Supabase es la base de todo: tu liga y otras migrarán aquí, y valida la capa de datos, la cola sin conexión y el en vivo que usarán los demás deportes."
+  },
+  {
+   "sport": "Pádel (Fases 1 y 2)",
+   "why": "Es el de más demanda entre adultos que compiten en torneos y ligas en RD: federación creada en marzo de 2025, United Capital Padel Tour 2026 con más de 220 jugadores por parada, torneos casi cada fin de semana y jugadores que ya reservan por Playtomic. Además construye el motor de raqueta (partido, set, juego, punto, deshacer, confirmación del rival) que reutilizan tenis y pickleball."
+  },
+  {
+   "sport": "Tenis y pickleball (Fase 3, juntos)",
+   "why": "Por demanda pura irían detrás de baloncesto y fútbol, pero cuestan un 30–40 % de lo que cuesta el pádel porque usan el mismo motor. También comparten clubes y clientes: el Rafa Nadal Tennis Center tiene 5 canchas de tenis, 4 de pádel y 6 de pickleball. El pickleball es el deporte que más crece en EE. UU., y Fedotenis tiene 32 torneos de veteranos en 2026."
+  },
+  {
+   "sport": "Baloncesto (Fase 4)",
+   "why": "Es el más practicado de RD (30,3 % de quienes hacen deporte, ENHOGAR 2022), aunque mucho de ese juego es informal. Construye el motor de equipos de temporada: plantillas, calendario, mesa anotadora y acta en vivo."
+  },
+  {
+   "sport": "Fútbol de campo y fútbol sala (Fase 5)",
+   "why": "Es el número 1 en Latinoamérica y la llave para crecer fuera de RD, donde lo practica el 7 %. Reusa casi todo el motor del baloncesto y cuesta un 50–60 % de lo que cuesta este. El futsal va como variante del mismo módulo porque casi no hay evidencia de ligas de adultos en RD."
+  },
+  {
+   "sport": "Golf (Fase 6)",
+   "why": "Hay más de 30 campos en RD, pero orientados al turismo, con una base local chica y muchas apps ya establecidas. Necesita un motor propio (WHS y Stableford) y tiene poca demanda local."
+  },
+  {
+   "sport": "Natación (Fase 7)",
+   "why": "Tiene la demanda de adultos más baja y la competencia organizada es casi toda juvenil, lo que choca con no tener cuentas de menores. Necesita un motor propio (series, carriles, cronómetro)."
+  }
+ ],
+ "phases": [
+  {
+   "name": "Fase 0A · Repo, marca y base de Supabase (≈12 %)",
+   "goal": "Dar a MatchMate su identidad (nombre, logo y animaciones) y un backend Supabase seguro y probado que reemplace las reglas de Firestore, sin tocar BowlingX. Esta parte todavía no se publica para usuarios.",
+   "sports": [
+    "Boliche (único deporte activo; los otros 8 existen solo en el esquema)"
+   ],
+   "deliverables": [
+    "Ya hecho: el repo C:\\Users\\rgrullon\\code\\matchmate con la copia de BowlingX 29334d1 (commit 3f0f57a) y la carpeta supabase con supabase-js, idb y pglite (commit f03af51). Falta el README, un .env.example con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY, y quitar los scripts que todavía nombran Firebase.",
+    "Marca MatchMate: logo «Dúo» (o el que elijas) en Logo.tsx; favicon que sigue el modo del sistema; iconos de la app de 192 y 512, maskable con rx=0, apple-touch y un icono de un color para las notificaciones; manifest nuevo con nombre, id y dominio propios (p. ej. matchmate.vercel.app); claves locales mm:*, nunca bowlingx:* ni bowlinx:*. «BowlingX» pasa a «MatchMate» en los textos generales; los textos propios del boliche no cambian.",
+    "Animaciones de apertura: index.html elige la escena según mm:sport (el último deporte usado) y la copia desde un <template>. Salen activas la genérica (el Dúo se arma solo) y la del boliche (la de hoy). Las 8 de los otros deportes se hacen ahora, visibles solo en una página de vista previa del superadmin para que las apruebes; cada fase enciende la de su deporte.",
+    "Migraciones SQL con el esquema multideporte de la investigación: profiles, leagues (deporte fijo, rules jsonb, has_minors), league_secrets, league_members, players, player_private (año de nacimiento y sexo, solo admins), teams, team_players, events, event_rsvps, entries, submissions, photos, live_states, reactions, comments, suggestions, push_subscriptions, reminders_sent, push_outbox, tombstones y sport_status (qué deportes están abiertos o en beta). matches, match_sides, match_players, match_log y swim_* se crean ya pero no se usan hasta su fase.",
+    "RLS con unas 25 funciones RPC y triggers que sustituyen las 407 líneas de firestore.rules, según la tabla de equivalencias:\n- ver una liga pública o de la que se es miembro; el admin escribe todo;\n- crear la liga y quedar como dueño en la misma transacción;\n- invitación por código con límite de intentos;\n- un jugador por cuenta; roles;\n- «Voy» solo el propio; +1 juego de práctica;\n- envíos que no se duplican; aprobar y rechazar;\n- social con el autor sacado de la base; buzón anónimo;\n- límites de ritmo; push con la URL validada.",
+    "Pruebas SQL: las 72 pruebas de tests/reglas.test.ts (763 líneas) pasadas una por una, más unas 25 nuevas: menores, deporte fijo, beta, op_id repetido y que un visitante sin cuenta no pueda escribir nada.",
+    "Auth:\n- correo y contraseña (repetida) y Google;\n- olvidé y cambiar contraseña;\n- perfil creado por trigger;\n- casilla «tengo 18 años o más»;\n- superadmin sembrado por SQL (se quita la lista fija admin@admin.com);\n- correos por SMTP gratis.",
+    "CI en GitHub Actions: typecheck, las 107 pruebas unitarias, las pruebas SQL y el build en cada push. Las migraciones van solas a staging y a mano a producción. Desde el día 1 corre cada día un «mantener despierto» para que staging no se pause mientras se construye."
+   ],
+   "sportLogic": [
+    "El boliche queda congelado, igual que en BowlingX:\n- pinos de 0 a 300, hasta 10 juegos, cuadros con X y /, y décimo cuadro;\n- handicap = (230 − promedio) × 80 % por juego y solo en torneo (base y % configurables);\n- promedio truncado;\n- categorías A–D con cortes en 200, 175 y 160;\n- mínimo 6 juegos para entrar al ranking;\n- mejor serie = 3 juegos seguidos dentro de un evento;\n- las 4 formas actuales de sumar equipos, sin «arreglarlas».",
+    "La base valida lo mismo que el teléfono: ok_pins y un trigger por deporte (hoy solo boliche: hasta 10 valores de 0 a 300). Una prueba compara los límites del código TypeScript con los de SQL.",
+    "El deporte de una liga es fijo: un trigger impide cambiar sport u owner_id. Un deporte en beta solo lo puede crear el superadmin, y eso lo impone la base (sport_status), no la pantalla.",
+    "Menores:\n- no tienen cuenta (players.is_minor exige que no haya user_id);\n- una liga con menores es privada, sin fotos ni social (CHECK y políticas);\n- en público solo se ve la categoría, nunca el año de nacimiento."
+   ],
+   "onCourt": [
+    "En la bolera no cambia nada todavía, porque esta parte no llega a los usuarios. Quedan listas y probadas las RPC que usará la cancha: submit_games(op_id…), upsert_live_state y add_practice_game."
+   ],
+   "techWork": [
+    "En local: npx supabase start (Docker ya instalado; CLI 2.118 por npx). supabase db reset recrea todo con seed.sql, que carga el caso de referencia del boliche.",
+    "Funciones de ayuda en el esquema private (security definer, set search_path = '', (select auth.uid())): is_super, my_leagues, admin_leagues, owner_leagues, readable_leagues, my_player, is_scorer y can_upload_photo. Hay un índice en cada columna que filtra una política.",
+    "Nada de UPDATE directo en league_members, matches ni submissions: solo por RPC. Donde Firestore usaba onlyChanged se usan permisos por columna (p. ej. suggestions.read).",
+    "Dos formas de correr las pruebas SQL: Vitest + PGlite (ya instalado), rápida en Windows y sin Docker, simulando auth.uid() con set_config; y pgTAP con supabase test db en CI.",
+    "Tipos generados con supabase gen types typescript en src/lib/db.types.ts. supabase db lint y el Security Advisor, sin avisos.",
+    "Reparto aproximado, con partes que se solapan: repo, entorno y CI 2–3; marca e iconos 1–2; 10 animaciones 2–3; esquema 3–4; RLS, RPC y triggers 5–7; pruebas SQL 3–4; auth 1–2."
+   ],
+   "ownerActions": [
+    "Crear la cuenta de Supabase (gratis, sin tarjeta) y dos proyectos, matchmate-staging y matchmate-prod, en la región East US (North Virginia). El plan gratis permite solo 2 proyectos activos por cuenta. Guarda la contraseña de cada base en tu gestor.",
+    "Crear el repo privado matchmate en GitHub (BowlingX es público; MatchMate no debe serlo) y el proyecto de Vercel ligado a él.",
+    "Pegar tú las claves; yo nunca las escribo:\n- URL y anon key de staging en Vercel (Preview) y las de producción en Vercel (Production);\n- service_role, contraseña de la base y access token de Supabase como secretos de GitHub Actions.",
+    "Google Cloud Console: crear el cliente OAuth «MatchMate» (pantalla de consentimiento y las URIs de redirección que te paso) y pegar el ID y el secreto en Supabase › Authentication › Google, en los dos proyectos.",
+    "Crear el correo gratis para Auth (Brevo, 300 al día, o una Gmail con contraseña de aplicación) y pegar los datos SMTP en Supabase › Authentication › SMTP.",
+    "Correr una vez npx supabase login en tu PC (abre el navegador).",
+    "Elegir el logo y aprobar las 10 animaciones en la vista previa."
+   ],
+   "effortDays": "16–22 (probable 19)",
+   "exitCriteria": [
+    "supabase db reset levanta todo desde cero, en local y en CI.",
+    "Cada una de las 72 pruebas de reglas tiene su equivalente SQL en verde, más las ~25 nuevas. Las 107 unitarias siguen en verde sin cambiar lo que esperan.",
+    "Security Advisor sin avisos, ninguna tabla de public sin RLS, y una prueba que confirma que un visitante sin cuenta no puede escribir en ninguna tabla.",
+    "En staging funcionan el registro con correo, la entrada con Google y recuperar la contraseña (el correo llega).",
+    "Logo y 10 animaciones aprobados por ti, probados en claro, en oscuro, con acento personalizado y con movimiento reducido."
+   ],
+   "risks": [
+    "Dejar un hueco de seguridad al reescribir las reglas. Se evita con todo cerrado por defecto, escrituras sensibles solo por RPC y una prueba por cada regla vieja.",
+    "El límite de 2 proyectos gratis por cuenta.",
+    "Docker en Windows lento o roto: las pruebas SQL corren también en PGlite.",
+    "Staging se pausa tras 1 semana sin actividad: el «mantener despierto» hace una escritura real desde el día 1.",
+    "matchmate.vercel.app puede estar ocupado; en ese caso se elige otro subdominio gratis."
+   ]
+  },
+  {
+   "name": "Fase 0B · Capa de datos, sin conexión y boliche igual que hoy (≈26 %)",
+   "goal": "Pasar todas las pantallas del boliche de Firestore a Supabase sin que el jugador note diferencia, con una cola de pendientes que aguanta la bolera o la cancha sin señal. Es la base que usarán todos los deportes.",
+   "sports": [
+    "Boliche"
+   ],
+   "deliverables": [
+    "Nueva capa de datos: las 85 funciones de src/lib/data.ts (con sus 11 escuchas onSnapshot) se reescriben con los mismos nombres y parámetros, así que las ~40 pantallas y componentes casi no cambian. Por dentro usa una copia local en IndexedDB (idb) y una sincronización por liga que trae solo lo que cambió.",
+    "Cola de pendientes con indicador «N por enviar» y «enviado», y aviso «cambió en otro teléfono» cuando dos admins editan lo mismo.",
+    "En vivo por Broadcast, con un canal privado por evento. Si falla, la app consulta cada 15–20 s.",
+    "Registro de deportes en src/sports con un solo punto de desvío (LeagueShell y EventPage).\n- Pantalla «Actualiza la app» si una liga trae un deporte que la versión no conoce.\n- Selector de deporte en Crear: el boliche abierto y ya marcado; los demás solo para el superadmin.",
+    "Todo el boliche, igual que hoy:\n- ligas y torneos, públicos o privados;\n- invitación por link, QR o código;\n- roles: dueño, admin, anotador y superadmin;\n- cada cuenta juega como su propio jugador (también el dueño y los admins), y reclamar jugador;\n- torneos y prácticas con anuncio, cuenta regresiva y WhatsApp; «Voy»;\n- equipos, equipos automáticos y sus nombres;\n- handicap y categorías; juegos por sesión;\n- anotar por pinos, teclado o total, con borrador;\n- envíos y aprobaciones (el admin lee la foto o cambia la fila);\n- pizarra en vivo, social y buzón anónimo;\n- campana de avisos y calendario semanal;\n- ranking por temporada y Excel por temporada y liga;\n- estadísticas por liga y globales;\n- tours, modo claro/oscuro con acento y aviso de versión nueva.",
+    "Respaldo JSON por liga y completo del superadmin, ahora desde Postgres, y scripts/importar-torneo.mjs adaptado.",
+    "Transformador de Firestore a Supabase, escrito ya como arnés de paridad y reutilizado en la migración final:\n- ids a UUID v5 e ids compuestos;\n- rsvp y teams pasan a filas;\n- member.playerId pasa a players.user_id.",
+    "Cuando la paridad pasa, se quitan del repo firebase, firestore.rules, los emuladores y sus scripts."
+   ],
+   "sportLogic": [
+    "El boliche no cambia: stats.ts, bowling.ts, exportExcel.ts, live.ts, calendar.ts, reminders.ts y notifications.ts se reutilizan sin tocar y siguen calculando en el teléfono.",
+    "Paridad con un caso de referencia hecho a mano: 2 prácticas y 1 torneo con equipos, handicap y categorías, un empate en el ranking y un jugador sin juegos.\n- El caso, en formato Firestore, pasa por el transformador, se carga en Supabase y se lee con la nueva capa.\n- La clasificación del evento, el ranking de temporada, playerStats, liveRows y las filas del Excel tienen que salir idénticos a BowlingX.",
+    "La campana de avisos se sigue calculando en el teléfono como hoy (notifications.ts y sus pruebas). El boliche no necesita tabla de avisos."
+   ],
+   "onCourt": [
+    "Mismas pantallas para anotar (pinos, teclado o total) y el mismo borrador en el teléfono.",
+    "Sin señal funcionan:\n- anotar y el borrador;\n- publicar en vivo (al volver se envía solo el último estado);\n- enviar juegos;\n- «Voy» y +1 juego de práctica.\nAprobar, crear eventos, social y ajustes piden conexión, con un aviso claro.",
+    "El teléfono publica el en vivo como máximo cada 2–3 s, siempre con el estado completo. La pizarra se conecta a Realtime solo mientras está en pantalla y se desconecta si pasa más de 60 s oculta.",
+    "Si la sesión (1 h) vence sin señal, la app no cierra la sesión: sigue trabajando en local y la renueva antes de enviar."
+   ],
+   "techWork": [
+    "Sincronización: select … where league_id = $1 and updated_at > cursor, más los tombstones desde el cursor.\n- Se dispara al abrir, al volver a primer plano, al navegar y cada 30–60 s en pantallas activas (aprobaciones, evento en curso).\n- Si el cursor tiene más de 60 días, se recarga todo.\n- navigator.storage.persist() para que el navegador no borre la caché.",
+    "Cola: {op_id UUID v7, kind, args, collapse_key, created_at, attempts} en IndexedDB.\n- Un solo emisor (navigator.locks) que envía en orden, con espera creciente entre reintentos.\n- En iPhone se envía al abrir, porque no hay Background Sync.\n- Las RPC reciben p_op_id y lo guardan en private.op_log, así que repetir un envío no duplica nada.",
+    "Realtime:\n- el trigger broadcast_live en live_states llama a realtime.send hacia el canal privado event:<id>;\n- política de lectura en realtime.messages según readable_leagues, y ninguna de escritura;\n- «Allow public access» apagado; sin Presence; sin Postgres Changes.\nHay que verificar en staging si un visitante sin cuenta puede entrar a canales privados; si no, los visitantes consultan cada 15–20 s. Ante too_many_connections, la app pasa sola a consultar.",
+    "Pruebas nuevas:\n- cola: un reintento no duplica, colapso, orden y corte a mitad de envío;\n- sincronización: borrados y cursor viejo;\n- contrato del registro de deportes;\n- unas 10 de extremo a extremo en el navegador contra supabase start: crear liga → unirse con código → anotar en modo avión → volver → aprobar → ranking y Excel.",
+    "Reparto aproximado: capa de datos 8–10; cola y sesión sin red 5–7; en vivo 2–3; paridad, transformador y pruebas de extremo a extremo 3–4."
+   ],
+   "ownerActions": [
+    "Probar en tu teléfono la versión de staging (Vercel Preview) con una liga de prueba y decirme todo lo que se sienta distinto a BowlingX.",
+    "Aprobar la lista de qué funciona sin señal y qué pide conexión."
+   ],
+   "effortDays": "18–24 (probable 21)",
+   "exitCriteria": [
+    "Los snapshots del caso de referencia salen idénticos a los de BowlingX, y las 107 unitarias pasan sin cambiar lo que esperan.",
+    "Una serie completa anotada en modo avión y enviada al volver, sin duplicados ni pérdidas. Se repite 3 veces con cortes a mitad de envío.",
+    "Pizarra en vivo con 2 teléfonos anotando y 3 mirando: retraso de 5 s o menos. Con Realtime apagado, la consulta periódica la mantiene al día.",
+    "Ningún import de firebase en src, y el paquete inicial no crece más de un 10 % frente a BowlingX."
+   ],
+   "risks": [
+    "La capa de datos es lo más grande y lo más fácil de subestimar. Se mantienen los mismos nombres de funciones y no se avanza sin las pruebas de extremo a extremo.",
+    "La cola podría duplicar o perder juegos: op_id que no duplica y pruebas con cortes.",
+    "Las aprobaciones ya no llegan al instante como con onSnapshot: se actualizan al volver a la pantalla y cada 30–60 s, con un botón de refrescar.",
+    "Tentación de «mejorar» el boliche mientras se porta: no se cambia nada hasta pasar la paridad.",
+    "iOS puede borrar los datos de una app instalada que no se usa en semanas: persist() y sincronización completa si falta la caché."
+   ]
+  },
+  {
+   "name": "Fase 0C · Fotos, lectura gratis con IA, push y piloto del boliche (≈35 %)",
+   "goal": "Cerrar el boliche completo en MatchMate (fotos, lectura gratis de la pantalla de la bolera, recordatorios push y respaldos) y probarlo con noches reales en paralelo a BowlingX, que sigue siendo el oficial.",
+   "sports": [
+    "Boliche"
+   ],
+   "deliverables": [
+    "Fotos en Supabase Storage, ya no en base64 dentro de la base:\n- bucket privado scoreboards, con límite de 1 MB y solo WebP o JPEG;\n- ruta {liga}/{foto}.webp;\n- se ven con URLs firmadas de 1 h que se guardan en la caché del service worker.",
+    "Lectura de la pantalla de la bolera, gratis, con la Edge Function scan-bowling (ver lectura de imágenes). Se reutiliza la cola en segundo plano de hoy (scanJobs): se puede enviar sin esperar la lectura, y el admin la lee o cambia la fila al aprobar.",
+    "Recordatorios push desde Supabase, en lugar del cron de GitHub Actions: el día antes a las 12 pm, el mismo día y poco antes de empezar, en la hora de la liga.",
+    "Tareas programadas con Supabase Cron:\n- borrar fotos vencidas;\n- limpiar tombstones, op_log, live_states viejos y el historial del cron;\n- mantener despierto el proyecto.",
+    "Respaldo diario de la base a un repo privado, con prueba de restauración.",
+    "Panel de uso para el superadmin: tamaño de la base y de Storage, fotos guardadas, lecturas del día por modelo, cola de push y pendientes.",
+    "Política de privacidad y términos: solo mayores de 18, fotos leídas por la capa gratis de Google, ligas con menores sin fotos, Ley 172-13 y Ley 136-03 de RD.",
+    "MatchMate publicado en producción con su logo, su animación y el aviso para activar las notificaciones."
+   ],
+   "sportLogic": [
+    "La lectura solo propone números: el juego cuenta cuando el admin aprueba, como hoy. Si la liga exige foto, un juego solo cuenta verificado con foto.",
+    "Si la lectura viene de un modelo de respaldo, se acepta sola solo cuando la suma coincide con el total de la pantalla (matchesTotal). Si no, queda «por revisar» en aprobaciones.",
+    "Las fotos se borran a los 90 días de aprobadas (configurable por liga) y a los 7 días si se rechazan. El juego conserva la marca de verificado, así que las estadísticas no cambian."
+   ],
+   "onCourt": [
+    "La foto se comprime en el teléfono con image.ts: lado largo de 1600 px, WebP con calidad 0,72, 150–300 KB. Sin señal, la foto queda en la cola y se sube antes de enviar los juegos; la lectura espera a que haya conexión.",
+    "Los recordatorios llegan aunque la app esté cerrada. En iPhone, solo si la app está instalada en la pantalla de inicio."
+   ],
+   "techWork": [
+    "Políticas de Storage:\n- leer: según readable_leagues;\n- subir: can_upload_photo (admin, anotador o miembro con jugador, y liga sin menores).\nLas fotos se borran solo por la API de Storage, desde la Edge Function purge-photos, nunca por SQL.",
+    "scan-bowling:\n- verify_jwt activado;\n- can_scan: el usuario está en el evento, el deporte es boliche, el evento está abierto y la liga no tiene menores;\n- consume_scan en Postgres y caché por SHA-256 de 24 h;\n- cadena de modelos, en la región us-east-1;\n- escribe el resultado con service_role, así que el teléfono ya no puede escribir «scanned»;\n- CORS solo para el dominio de MatchMate.",
+    "Volver a pasar las 32 fotos de prueba por cada modelo de la cadena y guardar el acierto. Un modelo que no llegue al mínimo no se activa.",
+    "Push:\n- claves VAPID nuevas;\n- un cron cada 15 minutos llama a private.enqueue_due_reminders, que pasa a SQL la lógica de reminders.ts y llena push_outbox (las pruebas de reminders.ts sirven de referencia, comparando las dos salidas con las mismas fechas);\n- pg_net llama a la Edge Function send-push con un secreto guardado en Vault;\n- send-push usa web-push generateRequestDetails + fetch, envía por lotes de 200 y borra las suscripciones que responden 404/410.",
+    "Respaldo: GitHub Actions corre cada día supabase db dump por el pooler (modo sesión) hacia el repo privado. El mismo job llama a rpc/ping, que hace una escritura real para mantener despierto el proyecto.",
+    "Reparto aproximado: Storage y cola de fotos 2–3; lectura con IA y validación 2–3; push 2–3; cron, respaldos y panel 1–2; privacidad 0,5; pruebas en iPhone y Android 2–3; arreglos después del piloto 2–3."
+   ],
+   "ownerActions": [
+    "Crear un proyecto nuevo de Google para MatchMate (no usar bowlinx-12368) y una clave de Google AI Studio, y pegarla en Supabase › Edge Functions › Secrets como GEMINI_API_KEY. No crear varios proyectos para sumar cupo: lo prohíben los términos de Google.",
+    "Opcional: crear una cuenta gratis de Cloudflare y un token solo para Workers AI (CF_AI_TOKEN y CF_ACCOUNT_ID) como respaldo.",
+    "Pegar en los secretos de Supabase las claves VAPID y el secreto del cron que te genero.",
+    "Crear el repo privado de respaldos y pegar la cadena de conexión del pooler como secreto de GitHub.",
+    "Aprobar el texto de privacidad y términos.",
+    "Piloto en paralelo: conseguir 4–8 voluntarios de tu liga que anoten también en MatchMate durante 2 noches. BowlingX sigue siendo el oficial.",
+    "Instalar MatchMate en tu iPhone y en un Android y activar las notificaciones.",
+    "Vigilar el correo de Supabase por avisos de pausa o de límites."
+   ],
+   "effortDays": "12–17 (probable 14). Total de la Fase 0: 46–63 (probable ~54)",
+   "exitCriteria": [
+    "El modelo principal lee bien al menos 31 de las 32 fotos de prueba. Cada respaldo se mide y solo se activa si llega a 29 de 32 o más.",
+    "Piloto en paralelo: 2 noches reales con ranking, promedios y Excel iguales a BowlingX, sin juegos perdidos ni duplicados.",
+    "El push llega en iPhone (con la app instalada) y en Android en los 3 momentos.",
+    "El respaldo se restaura bien en local, y pasan 14 días sin aviso de pausa.",
+    "Uso medido en una noche de liga: Realtime por debajo de 50 mensajes/s y de 100 conexiones; base por debajo de 50 MB; egress proyectado por debajo de 3 GB al mes.",
+    "PUERTA 0: 2 semanas en producción sin incidentes antes de abrir cualquier otro deporte."
+   ],
+   "risks": [
+    "El cupo gratis de Gemini puede cambiar sin aviso. Para eso están la cadena de modelos, Cloudflare y la opción de anotar a mano; la lectura nunca bloquea el envío.",
+    "En la capa gratis Google puede usar las fotos para mejorar sus productos, y en la UE, el Reino Unido y Suiza no hay capa gratis. La política lo dice y la lectura se apaga en ligas de esos países.",
+    "En iPhone el push solo llega con la app instalada.",
+    "El piloto es trabajo doble para los voluntarios: solo 2 noches y solo quien quiera.",
+    "Las fotos base64 de BowlingX no caben todas en 1 GB: en la migración solo se suben las de los últimos meses."
+   ]
+  },
+  {
+   "name": "Fase 1 · Pádel: noche de Americano y Mexicano + modo cancha (≈46 %)",
+   "goal": "Poner el deporte con más demanda organizada en RD en manos de un grupo real lo antes posible. De paso se construye lo que usarán todos los deportes de partido: partidos, lista de jugadas con deshacer, un solo anotador y el modo cancha sin señal.",
+   "sports": [
+    "Pádel"
+   ],
+   "deliverables": [
+    "Plantillas «Americano de la noche» y «Mexicano». El admin elige jugadores y canchas y la app arma las rondas. Cada cancha anota desde un teléfono. Hay tabla individual en vivo y una tarjeta de resultados para WhatsApp (share.ts).",
+    "Asistente «Crear liga» en 3 pasos: deporte → plantilla → nombre, club y día. Reutiliza la invitación y el QR.",
+    "Pantalla del organizador:\n- la ronda actual de cada cancha;\n- cargar un marcador con dos números si no se anotó en vivo;\n- generar la siguiente ronda al instante;\n- corregir un marcador (solo el admin).",
+    "«Mis partidos», con los de todas mis ligas, y aviso push «te toca la cancha 2 en la ronda 3» al publicar la ronda.",
+    "Perfil de pádel del jugador y Excel de la noche (rondas y tabla), con un escritor de Excel genérico. El Excel del boliche no se toca.",
+    "Animación de apertura del pádel encendida: la pala golpea, la pelota rebota en el cristal.",
+    "Pádel en beta: solo el superadmin crea ligas de pádel (sport_status)."
+   ],
+   "sportLogic": [
+    "Americano: siempre en dobles, pero el puntaje es individual.\n- Si el número de jugadores es múltiplo de 4, el calendario evita repetir compañero hasta agotar las combinaciones.\n- Si no lo es, descansa quien menos ha descansado, y recibe el promedio de puntos de esa ronda.\n- Se elige cuántas rondas jugar (con 12 jugadores, todos con todos serían 11 rondas, demasiado largo).\n- Cada partido termina cuando la suma de los dos lados llega al total elegido (16, 21, 24 o 32) o por tiempo.",
+    "Mexicano: la ronda 1 va al azar o por nivel. Después se arma con la tabla: 1+4 contra 2+3 en la cancha 1, 5+8 contra 6+7 en la cancha 2, y así. Los descansos siguen la misma regla. Recomendado: 8 jugadores o más, 2 canchas o más y 6–8 rondas.",
+    "Tabla: puntos → partidos ganados → diferencia de puntos. El nivel se escribe a mano (Playtomic 0–7 o A/B/C) y solo sirve para armar la ronda 1; no hay Elo.",
+    "Estadísticas: noches jugadas, puntos totales y por partido, partidos ganados y perdidos, % de victorias, récord con cada compañero y contra cada rival."
+   ],
+   "onCourt": [
+    "Modo cancha común (src/court):\n- pantalla completa y siempre encendida (Wake Lock; aviso en iPhone viejos);\n- botones gigantes en la mitad de abajo y Deshacer siempre visible;\n- modo sol de alto contraste, en vertical u horizontal;\n- vibración solo en Android;\n- reutiliza GestureGuards y noZoom.",
+    "El partido es una lista de jugadas guardada en IndexedDB, y el marcador se recalcula con replay(lista); deshacer es quitar la última jugada. Aguanta recargas, cortes de señal y batería agotada: otro teléfono retoma desde el último lote enviado.",
+    "Pantalla del Americano: dos mitades gigantes; se toca la pareja que ganó el punto (+1). Muestra el total objetivo, avisa el cambio de saque y tiene el botón «Terminar».",
+    "Un solo anotador por partido (matches.scorer_id). Solo el admin puede darle el control a otro, y con confirmación. El teléfono que lo pierde conserva su lista y ve «otro anotador tomó el control».",
+    "Publica el estado en vivo como máximo cada 2–3 s, y la lista de jugadas por lotes (cada ~10 s o al cerrar el partido) a través de la cola de pendientes."
+   ],
+   "techWork": [
+    "Se activan matches, match_sides, match_players, match_log y live_states con subject_key 'm:<partido>'. No hay escritura directa; todo va por RPC:\n- save_round (solo admin, atómica);\n- claim_scoring;\n- push_match_log: exige seq sin huecos y un reintento no duplica;\n- finish_match;\n- take_over_scoring(expected_seq), solo el admin;\n- correct_score.",
+    "my_matches(): una RPC que une match_players con players.user_id y alimenta «Mis partidos» de todas las ligas. En Firestore era un problema; en SQL es un JOIN.",
+    "Push en el momento: al publicar la ronda, un trigger llena push_outbox y pg_net llama a send-push. Es gratis; en iPhone solo llega con la app instalada.",
+    "Presupuesto de Realtime: 6 canchas punto a punto con 15 espectadores cada una son unos 3,6 mensajes/s y unos 2.400 mensajes por partido, muy por debajo del límite.",
+    "Al confirmarse el partido, el cron compacta match_log en log_archive (jsonb) y borra las filas.",
+    "Núcleo puro en src/competition, con unas 30 pruebas TypeScript y 15 SQL:\n- generadores de americano y mexicano con 8, 9, 10, 12 y 16 jugadores: nadie juega dos veces en una ronda, no se repite compañero antes de tiempo y los descansos se reparten;\n- motor de suma de puntos y motor de tabla con desempates configurables;\n- secuencias al azar donde deshacer siempre vuelve al estado anterior.",
+    "La interfaz del motor se prueba desde ya con un borrador del motor de sets de la Fase 2, para no diseñarla solo para el americano."
+   ],
+   "ownerActions": [
+    "Nombrar el grupo piloto: un organizador y 8–16 jugadores que jueguen americano o mexicano en 2 canchas o más, y fijar una noche.",
+    "Como superadmin, crear la liga piloto y nombrar admin al organizador (te guío paso a paso).",
+    "Confirmar los valores por defecto: americano a 24 puntos (o por tiempo) y mexicano de 6–8 rondas."
+   ],
+   "effortDays": "15–19 (probable 17)",
+   "exitCriteria": [
+    "Un americano o mexicano real (8 jugadores o más, 2 canchas o más) anotado de principio a fin en teléfonos, con un corte de señal simulado y sin perder un punto. La tabla coincide con la calculada a mano.",
+    "El organizador crea su segundo evento solo, sin ayuda.",
+    "El uso de esa noche queda por debajo de 20 mensajes/s de Realtime en el pico y de 50 MB de egress.",
+    "Boliche: todas las pruebas y snapshots en verde, y ninguna pantalla del boliche cambió."
+   ],
+   "risks": [
+    "Dos teléfonos anotando la misma cancha: hay un solo anotador y solo el admin puede darle el control a otro.",
+    "Diseñar el núcleo solo para el americano: se prueba desde ya con el borrador del motor de sets.",
+    "Wake Lock no existe en iPhone viejos: la app avisa que hay que quitar el bloqueo automático.",
+    "El alcance crece (liga, torneo, escalera): eso va a las Fases 2 y 3."
+   ]
+  },
+  {
+   "name": "Fase 2 · Pádel: liga de parejas y torneo por categorías (≈55 %)",
+   "goal": "Completar el pádel con puntos, juegos y sets, competencias largas y confirmación del rival. El motor de sets lo reutilizan tenis y pickleball; el calendario, la tabla y la confirmación, los deportes de equipo.",
+   "sports": [
+    "Pádel"
+   ],
+   "deliverables": [
+    "Plantilla «Liga de parejas»: todos contra todos por jornadas, de ida o de ida y vuelta, con canchas, horas y aviso de choques.",
+    "Plantilla «Torneo por categorías» A/B/C: grupos repartidos en zigzag por nivel, cruces 1A–2B y cuadro de eliminación con pases directos (byes) para los mejores sembrados. Partido por el 3.er lugar opcional.",
+    "Parejas con id estable (teams sin evento) y regla de suplente: los puntos van a la pareja y las estadísticas al jugador.",
+    "Flujo del resultado:\n- si lo anota el admin, queda final;\n- si lo anota un jugador, el rival confirma con un toque o lo disputa;\n- a las 48 h sin reclamo se confirma solo;\n- si hay disputa, decide el admin.",
+    "W.O., aplazado, suspendido con marcador parcial (lluvia o falta de luz) y reprogramado, con historial.",
+    "Modo «solo resultado»: teclear 6-4 3-6 10-7 en 10 segundos.",
+    "Tabla de liga y de grupos, cuadro, ranking de temporada, perfil con récord por compañero y por rival, y Excel (partidos, tabla y jugadores). El calendario semanal muestra mis partidos.",
+    "Push de «partido hoy 8 pm, cancha 2» y de «tienes un resultado por confirmar». Al cumplir los criterios de salida, el pádel sale de beta."
+   ],
+   "sportLogic": [
+    "Puntos 15-30-40. El 40-40 se resuelve según la liga: punto de oro (por defecto), ventaja o Star Point de la FIP 2026 (hasta 2 ventajas y luego un punto decisivo).",
+    "Sets a 6 ganando por 2, con tie-break a 7 en 6-6, al mejor de 3. El tercer set es un súper tie-break a 10 ganando por 2 (por defecto) o un set completo.",
+    "Saque con la rotación de dobles; en el tie-break se saca 1 punto y luego se alterna cada 2. Cambio de lado en los juegos impares y cada 6 puntos del tie-break. Antes de empezar se registran el sorteo, quién saca, el orden de saque de cada pareja y el lado inicial.",
+    "W.O.: 6-0 6-0 para la pareja presente y 0 puntos de tabla para la ausente. Retiro: gana el rival, se guarda el marcador de ese momento y, para la tabla, se completa el set a favor del ganador.",
+    "Tabla: ganar 3, perder 1, W.O. 0 (alternativa: 2 y 0). Desempates, en orden:\n1. puntos;\n2. enfrentamiento directo si empatan 2, o minitabla entre los empatados, repetida mientras sigan empatados, si son 3 o más;\n3. diferencia de sets;\n4. diferencia de juegos;\n5. juegos a favor;\n6. sorteo.",
+    "Cuadro de eliminación: se completa a la siguiente potencia de 2 y los byes van en el orden estándar de siembra.",
+    "Estadísticas: jugados, ganados, perdidos, % de victorias, sets y juegos a favor y en contra, racha, récord con cada compañero y contra cada rival."
+   ],
+   "onCourt": [
+    "Dos mitades gigantes, una por pareja. La cabecera muestra sets, juegos, 15/30/40/AD, el aviso «Punto de oro» o «Star point», quién saca y desde qué lado, y el cambio de lado. El tie-break entra solo.",
+    "Antes de empezar se confirma la configuración de la liga: ventaja, punto de oro o Star Point, y súper tie-break.",
+    "Al terminar: resumen → «Enviar» → el rival recibe un push para confirmar. Todo funciona en modo avión y se sincroniza al volver."
+   ],
+   "techWork": [
+    "Motor puro de sets en src/competition, con los parámetros ya pensados para tenis y pickleball:\n- mode: tennis | sideout | rally;\n- deuce: ad | noad | golden | star;\n- gamesPerSet 6 | 4, tbAt, tbTo;\n- finalSet: full | mtb10; bestOf 1 | 3 | 5;\n- gameTo 11 | 15 | 21, winBy 2, doubles.\nPor ahora solo se activan las variantes del pádel. Unas 50 pruebas.",
+    "Generadores puros:\n- todos contra todos por el método del círculo: N(N−1)/2 partidos, descanso si el número es impar, local y visita equilibrados, ida y vuelta;\n- grupos en zigzag;\n- cuadro con byes;\n- asignación de fecha, cancha y hora con aviso de choques.",
+    "RPC confirm_match (solo un jugador del otro lado o el admin) y dispute_match. Un cron cada 15 minutos confirma los partidos terminados hace más de 48 h sin disputa. En Supabase hay servidor, así que es un cierre real y no un cálculo al leer.",
+    "Verificación opcional en el servidor: al confirmar, una Edge Function (Deno) corre el mismo motor TypeScript sobre match_log y rechaza el resultado si el marcador no coincide.",
+    "Recordatorios de partidos dentro de enqueue_due_reminders, y unas 12 pruebas SQL nuevas: quién puede confirmar, cierre a las 48 h y forma de los sets (hasta 5 sets, juegos de 0 a 7, tie-break de 0 a 99)."
+   ],
+   "ownerActions": [
+    "Nombrar una liga de parejas real (6 parejas o más) y un club o grupo para un torneo por categorías.",
+    "Confirmar los valores por defecto: punto de oro, súper tie-break a 10, tabla 3/1/0 y confirmación automática a las 48 h (esta ya la aprobaste).",
+    "Decidir cuándo el pádel sale de beta y se abre a todos."
+   ],
+   "effortDays": "13–16 (probable 14,5)",
+   "exitCriteria": [
+    "Una liga de parejas real con al menos 1 jornada completa confirmada por los rivales, sin que intervenga el admin, y con la tabla igual a la calculada a mano.",
+    "3 partidos completos anotados en modo avión y sincronizados después, sin perder puntos.",
+    "Torneo de prueba con 5, 6 y 11 parejas: grupos, byes y cuadro correctos.",
+    "El motor en verde en todas las variantes del pádel; el boliche y la Fase 1 siguen en verde."
+   ],
+   "risks": [
+    "El rival nunca confirma: se cierra solo a las 48 h y el admin tiene la última palabra.",
+    "Los relojes de los teléfonos no coinciden: las 48 h y los turnos usan la hora del servidor.",
+    "Que se cuelen extras (Elo, escalera, doble eliminación): van a la Fase 3 o a «después»."
+   ]
+  },
+  {
+   "name": "Fase 3 · Tenis y pickleball, más liga por cajas y escalera (≈62 %)",
+   "goal": "Sumar dos deportes con poco esfuerzo sobre el motor de raqueta, más los formatos de club que mantienen una liga activa todo el mes.",
+   "sports": [
+    "Tenis",
+    "Pickleball"
+   ],
+   "deliverables": [
+    "Tenis, individual y dobles: plantillas «Liga por cajas mensual», «Escalera» y «Torneo con cuadro».",
+    "Pickleball, individual, dobles y mixto: plantillas «Round robin social» (el calendario del americano con juegos a 11), «Liga de dobles» y «Torneo grupos + eliminatoria».",
+    "Liga por cajas, también para pádel:\n- cajas de 4 a 6 jugadores o parejas por nivel;\n- todos contra todos durante el mes, con fechas que acuerdan ellos;\n- suben 2 y bajan 2, y hay que jugar al menos 2 partidos para subir o salvarse;\n- el admin cierra el mes con una RPC atómica.",
+    "Escalera, también para pádel (se puede dejar para después y ahorra ~2 días):\n- se puede retar hasta 3 puestos arriba;\n- hay plazo para aceptar y para jugar; si no se juega, es W.O.;\n- el ganador toma el puesto del otro y el perdedor baja uno.",
+    "Tabla, ranking, perfil y Excel de cada deporte, con individual y dobles por separado.",
+    "Animaciones de tenis y pickleball encendidas."
+   ],
+   "sportLogic": [
+    "Tenis:\n- 0-15-30-40, con ventaja o sin ella;\n- sets a 6 con tie-break a 7 en 6-6, sets cortos a 4 (tie-break en 4-4) o Fast4 (en 3-3);\n- set decisivo como match tie-break a 10, opcional;\n- mejor de 3 (5 opcional);\n- en el tie-break, 1 saque y luego cada 2, y cambio de lado cada 6 puntos;\n- en dobles los compañeros alternan los juegos de saque.",
+    "Tabla de tenis: ganar 3 y perder 1 (o 2 y 1), W.O. 0. Desempates: enfrentamiento directo → diferencia de sets → diferencia de juegos. El nivel NTRP (1.5–7.0) se escribe a mano.",
+    "Pickleball: juegos a 11 (o a 15 o 21) ganando por 2, a 1 juego o al mejor de 3. Conteo tradicional por defecto:\n- solo puntúa el equipo que saca;\n- en dobles hay sacador 1 y sacador 2, y el juego empieza en 0-0-2;\n- se canta sacador-receptor-número;\n- el motor sigue la posición de cada jugador (derecha o izquierda), no un sacador 1 fijo;\n- en el juego decisivo se cambia de lado a 6, 8 u 11.",
+    "Pickleball con conteo por rally (configurable): un punto en cada rally, sin segundo sacador, y el lado del saque sale de la paridad del puntaje. Queda la opción «punto de juego solo sacando: sí/no»; su valor por defecto se fija después de verificarlo en el reglamento vigente.",
+    "Tabla de pickleball (round robin de USA Pickleball): victorias → victorias entre los empatados → diferencia de puntos, total y entre los empatados, en el orden que diga el reglamento vigente, que se verifica antes → puntos a favor. El DUPR se escribe a mano.",
+    "Estadísticas: tenis igual que el pádel. Pickleball: ganados y perdidos, diferencia de puntos, puntos a favor y en contra, y récord con cada compañero."
+   ],
+   "onCourt": [
+    "Tenis: la pantalla de raqueta en modo individual, con selector con o sin ventaja, indicador de tie-break y su rotación de saque.",
+    "Pickleball, conteo tradicional: botones «ganó el que saca» y «ganó el que recibe». La app suma el punto, o pasa del sacador 1 al 2 y luego cambia el saque. Muestra el canto en grande (por ejemplo 5-3-2), el lado desde donde se saca y el aviso de cambio de lado. En conteo por rally se toca el lado que ganó.",
+    "Mismo modo cancha, cola sin señal y publicación con tope de la Fase 1."
+   ],
+   "techWork": [
+    "Activar en el motor de sets las variantes de tenis y pickleball, con unas 40 pruebas tomadas de ejemplos del reglamento: 20 secuencias del canto desde 0-0-2, rally con y sin «solo sacando», sin ventaja, sets cortos, Fast4 y match tie-break.",
+    "'tennis' y 'pickleball' entran en sport_status en beta, con límites propios en el trigger de validación (puntos de pickleball de 0 a 99) y el estado 'challenge' para la escalera. Unas 8 pruebas SQL; la prueba de contrato corre para boliche, pádel, tenis y pickleball.",
+    "RPC close_box_month (atómica), challenge_accept y challenge_expire. El cron da W.O. en los retos vencidos.",
+    "Módulos que se cargan solo cuando se usan (import())."
+   ],
+   "ownerActions": [
+    "Nombrar un round robin de pickleball (8 jugadores o más) y un grupo de tenis para una liga por cajas o una escalera.",
+    "Decidir si la escalera entra ahora o después."
+   ],
+   "effortDays": "10–13 (probable 11,5; sin escalera, 2 días menos)",
+   "exitCriteria": [
+    "Un round robin real de pickleball y una liga por cajas o escalera de tenis, con al menos 4 partidos confirmados. Las tablas coinciden con las calculadas a mano, incluida la diferencia de puntos.",
+    "El canto de pickleball coincide en las 20 secuencias de ejemplo.",
+    "Boliche y pádel sin regresiones.",
+    "PUERTA B, antes de los deportes de equipo: con 4 semanas o más de raqueta en uso, revisar conexiones de Realtime, mensajes al mes, egress y tamaño de la base."
+   ],
+   "risks": [
+    "Demasiadas combinaciones de reglas: solo se ofrecen plantillas probadas.",
+    "Una rotación de saque de pickleball mal hecha deja mal el marcador: lista de jugadas, deshacer y pruebas con ejemplos.",
+    "Disputas en la escalera: decide el admin.",
+    "Hay menos demanda de tenis: se hace lo mínimo."
+   ]
+  },
+  {
+   "name": "Fase 4 · Baloncesto: equipos de temporada y mesa anotadora (≈72 %)",
+   "goal": "Pasar la liga de baloncesto de barrio del papel al teléfono con una mesa anotadora rápida. Aquí nacen los equipos de temporada, el calendario entre equipos, los delegados y el acta en vivo que después usa el fútbol.",
+   "sports": [
+    "Baloncesto"
+   ],
+   "deliverables": [
+    "Equipos de temporada: nombre, color y plantilla con dorsal y posición.\n- Un capitán o delegado maneja su plantilla y confirma el resultado de su lado.\n- Refuerzos con un límite por partido.\n- Los jugadores sin cuenta los crea el admin y se vinculan después con claim_player.",
+    "Calendario de ida o de ida y vuelta entre equipos, con canchas, horas y aviso de choques (usa los generadores de la Fase 2). Convocatoria por partido (Voy / No voy / Tal vez) con alerta si hay menos de 5.",
+    "Anotador de mesa designado para cada partido.",
+    "Mesa anotadora en vivo, tabla FIBA, tabla de máximos anotadores, perfil con puntos por partido y pantalla «En vivo» de la jornada.",
+    "Plantillas «Liga 5x5 FIBA 4×10», «Liga de barrio a 2 mitades con reloj corrido» y «Torneo 3x3 a 21» (esta última se puede dejar para después).",
+    "Excel: calendario, tabla, resultados y anotadores. Animación del baloncesto encendida."
+   ],
+   "sportLogic": [
+    "Canastas de 1, 2 y 3 puntos. 4 cuartos de 10 minutos o 2 mitades, prórrogas de 5 minutos y reloj opcional.",
+    "Faltas por tipo:\n- personal;\n- ofensiva: cuenta como falta de equipo, pero sin tiros libres;\n- técnica y antideportiva.\nEl jugador sale con 5 faltas, o con 2 técnicas, 2 antideportivas o 1 de cada, con aviso en la 4.ª. También hay técnicas del entrenador y flecha de posesión alterna.",
+    "Faltas de equipo por cuarto: desde la 5.ª hay bonus, y la prórroga cuenta como el 4.º cuarto. Tiempos muertos: 2 en la primera mitad y 3 en la segunda (máximo 2 en los últimos 2 minutos), y 1 por prórroga.",
+    "3x3: a 21 puntos o 10 minutos, con canastas de 1 y 2. Desde la 7.ª falta de equipo, 2 tiros libres; desde la 10.ª, 2 tiros libres más la posesión.",
+    "Tabla FIBA: ganar 2, perder 1.\n- Forfeit: 20-0 y 0 puntos (Art. 20).\n- Default (Art. 21): si el ganador iba abajo, queda 2-0, y el perdedor recibe 1 punto.\nDesempates: puntos entre los empatados → diferencia entre ellos → puntos a favor entre ellos → diferencia general → puntos a favor generales, verificado contra el Apéndice D vigente.",
+    "Estadísticas v1 (con el recorte aceptado: solo puntos y faltas): puntos, triples, tiros libres anotados, faltas, partidos jugados (según la lista de presentes que confirma el anotador), promedio, máximo y tabla de anotadores. Sin box score completo."
+   ],
+   "onCourt": [
+    "Cabecera con el marcador grande, el cuarto, reloj opcional, faltas de equipo con la insignia BONUS y tiempos muertos restantes.",
+    "Dos columnas de dorsales: se toca el dorsal y luego +1, +2, +3 o Falta (con su tipo). Por defecto hay un modo rápido sin jugador: +1, +2 o +3 directo al equipo.",
+    "Faltas en cada dorsal: amarillo con 4 y fuera con 5. Botones Deshacer, «Fin del cuarto» y «Finalizar».",
+    "El reloj se calcula con marcas de tiempo, no con setInterval, así que no se atrasa si se bloquea la pantalla. Los espectadores reciben una hora de referencia y su teléfono la avanza solo.",
+    "Si anota el anotador designado, el resultado queda final. Si no, lo confirma el delegado rival o el admin."
+   ],
+   "techWork": [
+    "teams con event_id nulo (equipos de temporada) y team_players con dorsal, posición y capitán. RPC set_roster solo para el capitán de ese equipo o el admin. event_rsvps pasa de sí/no a sí/no/tal vez.",
+    "is_scorer se extiende a los otros deportes. En las ligas de boliche sigue sin haber anotadores, y la prueba que lo comprueba no cambia.",
+    "match_log con los tipos pts1, pts2, pts3, foul (P/O/T/U), timeout, period_end y present. Motor de periodos y jugadas compartido con el fútbol: reloj, faltas, bonus, tiempos muertos y prórroga. Unas 35 pruebas.",
+    "Realtime: el estado en vivo lleva el marcador, el cuarto, las faltas y el reloj (corriendo, inicio_ms y restante_ms), con un envío cada 2–3 s como máximo.\n- Con muchas familias mirando, 150 conectados casi llenan las 200 conexiones del proyecto.\n- Por eso los visitantes sin cuenta de ligas públicas consultan cada 15–20 s y solo los miembros se conectan.\n- Si Realtime responde too_many_connections, todos pasan a consultar.",
+    "Tabla FIBA con minitabla repetida entre los empatados. Los anotadores de la temporada se calculan en el teléfono; se pasan a una RPC si el egress lo pide."
+   ],
+   "ownerActions": [
+    "Nombrar una liga de baloncesto real (4 equipos o más) con alguien que hoy lleve la planilla en papel, para comparar.",
+    "Decidir si el 3x3 entra ahora o después.",
+    "Revisar conmigo los números de la PUERTA B antes de empezar."
+   ],
+   "effortDays": "14–17 (probable 15,5)",
+   "exitCriteria": [
+    "Una jornada real (2 partidos o más) anotada en la mesa con el teléfono, con marcador y puntos por jugador iguales a la planilla en papel.",
+    "Pruebas en verde: tabla FIBA con empate a 3, bonus por cuarto y en prórroga, salida con 5 faltas o con 2 técnicas, límite de tiempos muertos, forfeit y default.",
+    "Un partido con 50 espectadores o más, sin pasar de 100 conexiones ni de 20 mensajes/s.",
+    "Boliche y raqueta en verde, incluida la prueba «en una liga de boliche no hay anotadores»."
+   ],
+   "risks": [
+    "El anotador no da abasto: por eso el modo sin dorsal es el predeterminado.",
+    "El reloj del teléfono no es oficial: es opcional y está rotulado como referencia.",
+    "Muchos espectadores contra el límite de 200 conexiones del plan gratis: los visitantes consultan cada cierto tiempo.",
+    "Plantillas grandes con jugadores sin cuenta: los crea el admin y se vinculan después."
+   ]
+  },
+  {
+   "name": "Fase 5 · Fútbol de campo y fútbol sala (≈80 %)",
+   "goal": "Reutilizar los equipos, el calendario y la mesa del baloncesto para ligas de fútbol 11 y futsal, con reloj, tarjetas y disciplina automática. Es la llave para crecer en Latinoamérica.",
+   "sports": [
+    "Fútbol de campo (el fútbol 7 es una configuración)",
+    "Fútbol sala (futsal)"
+   ],
+   "deliverables": [
+    "Al crear la liga se elige «Fútbol» con modalidad Campo o Sala, y no cambia después. Por dentro son los ids football y futsal, con estadísticas separadas.",
+    "Plantillas «Liga de campo ida y vuelta», «Liga de sala» y «Torneo relámpago» (grupos + final).",
+    "Acta digital en vivo: goles (incluido el autogol), asistencias opcionales, tarjetas, cambios y portero de cada lado en cada partido.",
+    "Lista automática de suspendidos, y tablas de goleadores, tarjetas y vallas invictas.",
+    "Convocatoria con alerta de mínimo (7 en campo, 3 en sala) y aviso si se convoca a un suspendido.",
+    "Excel: calendario, tabla, goleadores y disciplina. Animaciones de fútbol y futsal encendidas."
+   ],
+   "sportLogic": [
+    "Campo:\n- 2 tiempos de 45, 40, 35 o 30 minutos, más el añadido (minuto 45+2);\n- amarilla, y roja directa o por doble amarilla;\n- cambios configurables: 5, ilimitados o con reingreso;\n- en eliminatorias, prórroga opcional de 2×15 y penales (5 y luego muerte súbita), guardados aparte: no cuentan en los goles ni en la tabla.",
+    "Sala:\n- 5 contra 5, 2 tiempos de 20 minutos con reloj parado (o corrido en amateur);\n- 1 tiempo muerto por equipo en cada mitad, ninguno en la prórroga; cambios ilimitados;\n- faltas acumuladas por mitad: desde la 6.ª, tiro libre desde 10 m sin barrera; se reinician en el descanso y la prórroga cuenta con la segunda mitad;\n- con una roja, el equipo juega con uno menos 2 minutos o hasta que le marquen;\n- tanda de 3 o 5 penales (configurable).",
+    "Tabla: ganar 3, empatar 1, perder 0; W.O. = 3-0. Los desempates son configurables; por defecto: diferencia de goles → goles a favor → enfrentamiento directo → juego limpio (amarilla −1, roja −3) → sorteo. La tabla dice qué regla usó.",
+    "Disciplina, configurable:\n- una roja = 1 partido de suspensión;\n- N amarillas acumuladas (3 por defecto, o 5) = 1 partido;\n- si las amarillas de una doble amarilla suman a la acumulación también se configura.\nLa suspensión se cumple en el siguiente partido que el equipo juegue de verdad, no en la «próxima jornada» si descansa o se aplaza.",
+    "Estadísticas: goles, asistencias, amarillas, rojas, partidos jugados (según los presentes) y, del portero, vallas invictas y goles recibidos. Las de sala y las de campo nunca se mezclan."
+   ],
+   "onCourt": [
+    "Reloj de cada tiempo, parado (sala) o corrido (campo), más el añadido. Se calcula con marcas de tiempo, y el minuto se llena solo en cada jugada.",
+    "Dos botones gigantes, «GOL LOCAL» y «GOL VISITA». Después, si se quiere, quién marcó y quién asistió. El autogol va con un toque.",
+    "Tarjetas y cambios desde el dorsal, con aviso de que la doble amarilla es roja. Fin del tiempo, tanda de penales paso a paso y Deshacer.",
+    "En sala: contador de faltas acumuladas con alerta en la 5.ª, tiempo muerto por mitad y cuenta regresiva de 2 minutos tras una roja.",
+    "Cada gol o roja se publica al instante (sin esperar el tope de 2–3 s), y el reloj como máximo cada 5 s."
+   ],
+   "techWork": [
+    "Un solo módulo, src/sports/football, con variante campo o sala. match_log con los tipos goal, own_goal, assist, yellow, red, sub, gk, shootout y period_end; goles de 0 a 99.",
+    "Las suspensiones se calculan a partir de los partidos de la temporada. La app avisa pero no bloquea, y el admin puede corregir el acta.",
+    "Unas 35 pruebas: doble amarilla, faltas acumuladas y su reinicio, prórroga contada con la 2.ª mitad, los 2 minutos tras una roja, penales, empates de 2 y de 3 equipos, juego limpio y suspensión con jornada de descanso.",
+    "'football' y 'futsal' entran en sport_status y en la prueba de contrato."
+   ],
+   "ownerActions": [
+    "Nombrar una liga de sala o de campo real (o un torneo relámpago) y un delegado que anote.",
+    "Confirmar la disciplina por defecto: roja = 1 partido y 3 amarillas = 1 partido."
+   ],
+   "effortDays": "10–13 (probable 11,5)",
+   "exitCriteria": [
+    "Una jornada real de sala y una de campo (o un torneo relámpago) anotadas en el teléfono con el reloj.",
+    "Calendario de 6 equipos o más generado sin choques. La tabla y las suspensiones coinciden con lo calculado a mano en 2 casos de empate.",
+    "Una jornada de 3 partidos o más con unos 50 espectadores queda dentro del presupuesto de la Puerta B.",
+    "En el perfil, las estadísticas de sala y de campo salen separadas, y todo lo anterior sigue en verde."
+   ],
+   "risks": [
+    "Cada liga desempata distinto: la lista es configurable y la tabla muestra la regla usada.",
+    "Discusiones por suspensiones: la app avisa y el admin decide.",
+    "Piden fútbol 7 u otras variantes como deporte aparte: se resuelven como configuración, sin agregar ids."
+   ]
+  },
+  {
+   "name": "Fase 6 · Golf (≈88 %)",
+   "goal": "Torneos de club y ligas de amigos con neto WHS y Stableford, y tarjeta por grupo que funciona sin señal. Es el primer deporte nuevo de tipo «serie»: reutiliza las inscripciones y aprobaciones del boliche, pero sin lectura con IA.",
+   "sports": [
+    "Golf"
+   ],
+   "deliverables": [
+    "Campos del club (courses) de 9 o 18 hoyos, con par e índice de dificultad (SI) por hoyo, y salidas (course_tees) con rating, slope y par. El evento guarda una copia del campo al crearse.",
+    "Handicap Index escrito a mano (el de FEDOGOLF o GHIN), congelado al inscribirse y rotulado como «no oficial».",
+    "Formatos v1: stroke play bruto y neto (1 ronda o más, agrupadas en un torneo) y Stableford, más un orden de mérito de la temporada.",
+    "Tarjeta por grupo, leaderboard en vivo y firma de la tarjeta.",
+    "Excel (tarjetas y leaderboard) y plantillas «Torneo stroke play neto a 1 ronda» y «Liga mensual Stableford». Animación del golf encendida.",
+    "Sin foto ni lectura con IA (decidido: la IA es solo para el boliche)."
+   ],
+   "sportLogic": [
+    "entries.scores guarda los golpes de cada hoyo (de 1 a 20) y data guarda los putts y si «recogió». La salida va por inscripción, porque cada jugador puede salir de tees distintos.",
+    "Fórmulas del WHS:\n- handicap de campo = Index × Slope/113 + (Rating − Par);\n- con 9 hoyos: (Index/2) × Slope/113 + (Rating9 − Par9);\n- handicap de juego = handicap de campo × el % de la competencia (95 % por defecto), sin redondear antes de aplicar el %, y 0,5 sube.",
+    "Los golpes de ventaja se reparten por hoyo según el SI; con handicap mayor que 18, un segundo golpe en los hoyos más difíciles. Con un Index «plus» (negativo) se devuelven golpes empezando por el SI 18.",
+    "Neto = bruto − handicap de juego.\n- Stableford, por hoyo contra el par neto: doble bogey o peor 0, bogey 1, par 2, birdie 3, eagle 4, albatros 5.\n- «Recogió» solo vale en Stableford o en el formato «máximo por hoyo»; en stroke play, no terminar un hoyo descalifica.",
+    "Clasificación por menor neto, menor bruto o mayor Stableford. Empates por countback: últimos 9, 6, 3 y 1 hoyos; en neto con la parte proporcional del handicap; en salida simultánea (shotgun), los hoyos 10 a 18.",
+    "Estadísticas: mejor ronda bruta y neta, promedio de golpes, Stableford medio, eagles, birdies, pares, bogeys, putts y hoyos en uno. La app no calcula el Index oficial."
+   ],
+   "onCourt": [
+    "Un teléfono lleva la tarjeta del grupo (1 a 4 jugadores), y la anota un inscrito del mismo grupo en ese evento. Muestra en grande el hoyo actual con su par y SI, un +/− por jugador que arranca en el par y los putts opcionales. Al terminar un hoyo pasa solo al siguiente.",
+    "Funciona los 18 hoyos sin señal con la cola y el borrador, y publica el estado del grupo como máximo una vez por hoyo.",
+    "Al final cada jugador revisa y firma su tarjeta, y sigue el flujo de envío que ya existe (pendiente → aprobado)."
+   ],
+   "techWork": [
+    "Sacar las piezas del boliche que suponen pinos de 0 a 300 y que «gana el más alto» (aprobaciones, envío de juegos, pizarra en vivo, mis juegos y la gráfica). Cuesta 3–5 días y lo reutiliza la natación.",
+    "Trigger de validación del golf: 9 o 18 valores de 1 a 20; Index decimal de −10 a 54; slope de 55 a 155; SI del 1 al 18 sin repetir.",
+    "entries.group_no y una política que deja a un inscrito del grupo escribir las tarjetas de su grupo en ese evento. courses y course_tees solo los escribe el admin. events.parent_id agrupa las rondas de un torneo.",
+    "Unas 35 pruebas: handicaps con ejemplos de la USGA/WHS, 9 contra 18 hoyos, Index plus, handicap mayor que 18, Stableford, countback y shotgun, y «recogió»."
+   ],
+   "ownerActions": [
+    "Conseguir un torneo de club o un grupo de amigos (8 jugadores o más, 2 grupos o más) y los datos del campo: par, SI, rating y slope de cada salida.",
+    "Pedir al comité 3 tarjetas calculadas a mano para comparar."
+   ],
+   "effortDays": "11–14 (probable 12,5)",
+   "exitCriteria": [
+    "Un torneo real anotado en teléfonos en un campo con zonas sin señal. Neto y Stableford coinciden con 3 tarjetas del comité, y el countback está probado.",
+    "Un torneo simulado (20 jugadores, 5 grupos, 30 espectadores) queda dentro del presupuesto.",
+    "El boliche sin regresiones después de sacar las piezas de 0–300."
+   ],
+   "risks": [
+    "Confundir el Index con el handicap de campo: la pantalla muestra los dos y de dónde sale cada número.",
+    "Errores al cargar el campo: validaciones y una vista previa con el par total.",
+    "Poca demanda local y muchas apps: se hace lo mínimo, sin match play, four-ball, scramble ni skins."
+   ]
+  },
+  {
+   "name": "Fase 7 · Natación (≈94 %)",
+   "goal": "Encuentros de club con finales por tiempo y marcas personales, sin competir con el software de las competencias federadas y respetando que casi todo el público son menores sin cuenta.",
+   "sports": [
+    "Natación"
+   ],
+   "deliverables": [
+    "Encuentro con hasta 18 pruebas. Cada prueba es distancia (25–1500) × estilo (libre, espalda, pecho, mariposa, combinado) × piscina de 25 o 50 m × sexo × categoría.",
+    "Inscripciones con tiempo de siembra o «sin tiempo» (NT). Reparto automático en series y carriles, con un paso explícito para publicar la hoja de series.",
+    "Cronometraje por serie en el teléfono. Resultados por prueba y categoría, puntos por club, medallero y marcas personales con su progresión.",
+    "Plantillas «Encuentro de club (finales por tiempo)» y «Control de marcas», y Excel con la hoja de series y los resultados. Animación de natación encendida.",
+    "Si hay poca demanda, se entrega solo «Control de marcas» (3–4 días)."
+   ],
+   "sportLogic": [
+    "El tiempo se guarda como entero en centésimas y se muestra como mm:ss.hh; gana el menor. Estados: ok, DQ, DNS y DNF; los tres últimos no entran en los puestos.",
+    "Categorías por edad al 31 de diciembre: 8 y menos, 9-10, 11-12, 13-14, 15-17 y 18+. Másters en tramos de 5 años desde 25-29.",
+    "Siembra:\n- la serie más rápida va al final;\n- los mejores tiempos, en los carriles del centro (4,5,3,6,2,7,1,8 con 8 carriles; 3,4,2,5,1,6 con 6);\n- los nadadores sin tiempo, en las primeras series;\n- mínimo 3 nadadores en la primera serie;\n- en finales por tiempo las series mezclan categorías y el puesto se calcula por categoría.",
+    "Puntos por puesto configurables: 6-4-3-2-1, o 9-7-6-5-4-3-2-1 con 8 carriles. En un empate se suman los puntos de los puestos empatados y se reparten. Sin relevos (recorte aceptado).",
+    "Marca personal = mejor tiempo por estilo, distancia y piscina (las de 25 m y 50 m van separadas), con la progresión y el % de mejora."
+   ],
+   "onCourt": [
+    "Vista de la serie con una fila por carril: nadador y tiempo de siembra.",
+    "Cada teléfono arranca su propio cronómetro con la señal de salida, porque sin señal no se puede compartir uno. Tiene un STOP grande por carril y está rotulado como no oficial.",
+    "La forma principal es el teclado mm:ss.hh, para tiempos de cronómetros físicos. DQ o DNS con un toque, y los resultados se ordenan solos.",
+    "Todo funciona sin señal. «Publicar serie» manda la serie completa y pasa a la siguiente."
+   ],
+   "techWork": [
+    "swim_races y swim_results (creadas en la Fase 0A) con RLS, y los campos heat, lane, time_ms y status.",
+    "El año de nacimiento y el sexo van solo en player_private (lo ven los admins); en público se ve solo la categoría calculada. Los nadadores menores no tienen cuenta: los registra el entrenador o el admin. Las ligas con menores son privadas, sin fotos ni social.",
+    "Unas 30 pruebas: siembra con 5, 8, 13 y 17 nadadores, empates y DQ, categorías justo en las fechas límite, puntos repartidos y marcas por tipo de piscina.",
+    "La prueba de contrato en verde para los 9 deportes."
+   ],
+   "ownerActions": [
+    "Nombrar un club o un entrenador para un encuentro real (4 pruebas o más, 3 series o más).",
+    "Decidir entre el encuentro completo o solo «Control de marcas», según la demanda que veas."
+   ],
+   "effortDays": "9–11 (probable 10; solo «Control de marcas»: 3–4)",
+   "exitCriteria": [
+    "Un encuentro real cronometrado en teléfonos. La hoja de series coincide con la del entrenador y los puntos por club son correctos.",
+    "Las marcas de piscina de 25 y de 50 m salen separadas en el perfil, y ningún año de nacimiento se ve en ligas públicas.",
+    "Todos los deportes y el boliche en verde."
+   ],
+   "risks": [
+    "Datos de menores: solo año de nacimiento y sexo, privados, y sin cuentas de menores.",
+    "Un toque en el teléfono no es cronometraje oficial: está rotulado y hay teclado para los cronómetros físicos.",
+    "Es el deporte que menos funciona como liga: puede quedarse solo en «Control de marcas»."
+   ]
+  },
+  {
+   "name": "Fase 8 · Migración de BowlingX (Firebase) a MatchMate (100 %)",
+   "goal": "Pasar las cuentas, ligas, juegos y fotos de BowlingX a MatchMate sin que nadie pierda su historial ni tenga que cambiar la contraseña, y apagar BowlingX con una redirección.",
+   "sports": [
+    "Boliche"
+   ],
+   "deliverables": [
+    "Script de exportación con firebase-admin: colecciones y subcolecciones a NDJSON.",
+    "Transformación con el transformador de la Fase 0B:\n- ids a UUID v5 e ids compuestos (evento_jugador, liga_uid);\n- rsvp pasa a event_rsvps y teams a filas;\n- member.playerId pasa a players.user_id;\n- se conservan las marcas importado y sin-foto;\n- live y limits no se migran.",
+    "Fotos base64 a Storage; solo las de los últimos N meses si no caben en 1 GB.",
+    "Usuarios: con firebase auth:export y los parámetros del hash, se crean en Supabase con el uid convertido a UUID v5, email_confirm y password_hash $fbscrypt$… Entran con su contraseña de siempre, y los de Google se unen solos al tocar «Continuar con Google».",
+    "Verificación automática: conteos, promedios, rankings y totales por jugador idénticos entre BowlingX y MatchMate.",
+    "Corte final:\n1. BowlingX en solo lectura, con aviso.\n2. Exportación final.\n3. Importación a producción.\n4. Redirección del dominio de BowlingX a MatchMate.\n5. Aviso para instalar MatchMate y volver a activar las notificaciones."
+   ],
+   "sportLogic": [
+    "Es el mismo boliche: los números de cada jugador (promedio truncado, handicap, categorías, mejores series y ranking) tienen que salir idénticos antes y después."
+   ],
+   "onCourt": [
+    "El corte se hace un día sin liga. Los borradores guardados en el teléfono por BowlingX no pasan, así que se avisa de enviar todo antes."
+   ],
+   "techWork": [
+    "Ensayo completo en staging al menos 2 veces, midiendo cuánto dura el corte.",
+    "La importación se puede repetir: los UUID v5 permiten volver a correrla sin duplicar.",
+    "Si alguien ya se registró en MatchMate con el mismo correo, se reutiliza su uuid.",
+    "En BowlingX solo se toca lo mínimo del corte (aviso, solo lectura y redirección), y con tu aprobación.",
+    "Reparto aproximado: exportación 1; transformación y fotos 2 (el transformador ya existe); usuarios 1; carga y verificación 2; ensayos y corte 2; imprevistos 1–2."
+   ],
+   "ownerActions": [
+    "Correr firebase auth:export con tu cuenta de Google y copiar de la consola de Firebase los parámetros del hash (signer key, salt separator, rounds y mem_cost). Son secretos: no van al repo.",
+    "Generar la clave de cuenta de servicio de Firebase para la exportación y guardarla fuera del repo.",
+    "Elegir la fecha del corte (un día sin liga) y avisar a los jugadores.",
+    "Aprobar los cambios mínimos a BowlingX del día del corte.",
+    "Mantener el proyecto de Firebase en solo lectura 90 días como respaldo. Si luego se borra, lo decides y lo haces tú."
+   ],
+   "effortDays": "8–11 (probable 9,5)",
+   "exitCriteria": [
+    "Dos ensayos en staging con verificación 100 % idéntica.",
+    "En producción entran todos los usuarios (probado con 5 cuentas de correo y 5 de Google), los rankings y promedios son idénticos y las fotos recientes se ven.",
+    "El dominio de BowlingX redirige a MatchMate."
+   ],
+   "risks": [
+    "Si los parámetros del hash se copian mal, nadie puede entrar. Se prueba antes en staging con tu propia cuenta.",
+    "Fotos que no caben en 1 GB: solo se suben las de los últimos meses.",
+    "Usuarios confundidos por el cambio de nombre y de app: aviso previo, redirección y una guía para instalar la nueva.",
+    "Las suscripciones push están atadas al dominio viejo: cada uno tiene que volver a activarlas."
+   ]
+  }
+ ],
+ "imageReading": "Solo para boliche y totalmente gratis.\n\nCómo funciona:\n- Una Supabase Edge Function, scan-bowling, pide que el usuario haya iniciado sesión. Está fijada en la región us-east-1, porque la capa gratis de Gemini no funciona desde la UE.\n- Llama a la Gemini API gratis con una clave de Google AI Studio de un proyecto de Google nuevo, solo para MatchMate. No pide tarjeta ni facturación, y la clave nunca va en el teléfono.\n- Se mantienen el prompt y el responseSchema actuales de BowlingX, protegidos por una prueba de hash.\n\nOrden de modelos:\n1. gemini-3.5-flash-lite.\n2. gemini-3.1-flash-lite, con su propio cupo (unas 500 al día cada uno).\n3. Gemma 4, con el JSON pedido en el prompt.\n4. Cloudflare Workers AI gratis (unas 130 al día; opcional).\n5. Anotar a mano, que ya existe.\n\nControles en Postgres, sin costo:\n- can_scan: el usuario está en el evento, el deporte es boliche, el evento está abierto y la liga no tiene menores.\n- 40 fotos al día por usuario y 8 s entre fotos.\n- 900 al día en total, por debajo del cupo de Google, que se reinicia a medianoche del Pacífico (3–4 am en RD).\n- Caché por SHA-256 durante 24 h, para que reintentar la misma foto no gaste cupo.\n\nFlujo:\n- La foto se comprime en el teléfono (WebP, 1600 px, 300 KB o menos) y sube a Storage; la función la lee de ahí y escribe el resultado con service_role.\n- La lectura solo propone números y el admin aprueba, como hoy. Si viene de un modelo de respaldo y no cuadra con el total de la pantalla, queda «por revisar».\n- La cola en segundo plano que ya existe (scanJobs) reintenta cada vez más espaciado cuando no hay cupo. Nunca bloquea el envío.\n\nCapacidad:\n- Solo con Flash-Lite, unas 1.000 lecturas al día: 3 veces la peor noche (10 ligas × 30 fotos).\n- Con Gemma, unas 2.500 (sin verificar).\n- En Supabase se usan unas 11.000 invocaciones al mes de las 500.000 gratis.\n\nDescartados:\n- leer en el teléfono: cientos de MB de descarga y malo con pantallas LCD fotografiadas en ángulo;\n- Firebase AI Logic: otro login y App Check con reCAPTCHA;\n- OpenRouter, Mistral y GitHub Models: no son gratis de verdad o ya cerraron.\n\nCondiciones:\n- la política de privacidad avisa que en la capa gratis Google puede usar las fotos;\n- cuentas solo de mayores de 18 y sin fotos en ligas con menores;\n- lectura apagada en ligas de la UE, el Reino Unido y Suiza;\n- antes de activar cada modelo se repasan las 32 fotos de prueba (mínimo 31/32 el principal y 29/32 los respaldos).",
+ "brand": "El nombre es MatchMate: match = partida, mate = compañero.\n\nLogo recomendado, «Dúo»: dos compañeros tomados de la mano forman la M. Las piernas son los cuerpos, la V del centro son los brazos y los dos puntos son las cabezas.\n- Dice partida y compañero a la vez.\n- Se lee bien a 32 px.\n- Se anima fácil: la M se dibuja y las cabezas aparecen con un rebote.\nAlternativas: «Costura», una M que es la costura de una pelota (a 32 px se pierde y recuerda al metro), y «Jaque», una M que termina en ✓ de partida confirmada (parece una app de tareas).\n\nColores: tres variables CSS que siempre van juntas.\n| Variable | Claro | Oscuro |\n|---|---|---|\n| --mm-accent (fondo del icono y «Mate») | #4338ca | #8b8cf6 |\n| --mm-on-accent (dibujo sobre el acento) | #fff | #0d0f15 |\n| --mm-text (la palabra «Match») | #151822 | #eceef3 |\n- Blanco sobre el acento oscuro no llega al contraste; por eso en oscuro el dibujo es #0d0f15.\n- Cuando el usuario cambia el acento, la app calcula el color del dibujo por contraste.\n\nPiezas:\n- icono de 512 y logotipo de 960×240;\n- favicon que cambia con el modo claro u oscuro;\n- icono maskable con rx=0;\n- versión de un color para el icono de las notificaciones push.\n\nAnimaciones de apertura: una por deporte, con el mismo patrón que BowlingX.\n- SVG de 220×120 y unos 1,5 s; el objeto principal va en var(--accent) y la palabra MatchMate aparece a los 0,75 s.\n- Con movimiento reducido se ve directamente la imagen final, que tiene que verse bien.\n- index.html elige la escena según mm:sport (el último deporte usado) y la copia desde un <template>; son unas 10 escenas de 1–1,5 KB.\n\nEscenas:\n- genérica: el Dúo se arma solo y la V late como un choque de manos;\n- boliche: la de hoy, sin cambios;\n- pádel: la pala golpea y la pelota rebota en el cristal;\n- tenis: la pelota cruza la red y bota;\n- pickleball: la pelota perforada cae en la zona de no volea (kitchen);\n- baloncesto: la pelota entra limpia y la malla se estira;\n- fútbol: la red se infla;\n- futsal: una suela frena la pelota y la patea a un arco chico;\n- golf: la pelota rueda y cae al hoyo mientras la bandera ondea;\n- natación: brazadas, toque en la pared y cronómetro.\n\nTodas se hacen en la Fase 0A, con una vista previa para que las apruebes, y cada fase enciende la de su deporte. Las pruebas de color están en C:\\Users\\rgrullon\\AppData\\Local\\Temp\\claude\\C--Users-rgrullon-code-bowlinx\\e5adfd6f-c11f-41aa-855f-e746f25e0b80\\scratchpad\\mm\\ (view-light.png, view-dark.png y los 6 SVG).",
+ "decisionsForOwner": [
+  "Logo: «Dúo» (recomendado), «Costura» o «Jaque». Las pruebas en claro y oscuro están en C:\\Users\\rgrullon\\AppData\\Local\\Temp\\claude\\C--Users-rgrullon-code-bowlinx\\e5adfd6f-c11f-41aa-855f-e746f25e0b80\\scratchpad\\mm\\view-light.png y view-dark.png.",
+  "Orden de los deportes: pádel → tenis y pickleball → baloncesto → fútbol de campo y sala → golf → natación. Por demanda pura, baloncesto y fútbol irían antes que tenis y pickleball. Los adelanto porque cuestan un 30–40 % de lo que cuesta el pádel y los juegan los mismos clubes. Si ya tienes una liga de baloncesto esperando, se puede invertir.",
+  "Pilotos (la pregunta 5, que no quedó clara). Un «piloto» es un grupo real que usa el deporte nuevo una noche o una jornada, mientras yo miro los errores, antes de abrirlo a todo el mundo. Necesito que me digas a quién pedírselo en cada fase:\n- boliche (0C): 4–8 voluntarios de tu liga;\n- pádel: un grupo que juegue americano (F1) y una liga de parejas (F2);\n- un grupo de pickleball y uno de tenis (F3);\n- una liga de baloncesto (F4);\n- una liga de sala o de campo (F5);\n- un torneo de golf (F6);\n- un club de natación (F7).\nSi no hay grupo, el deporte se termina igual, pero queda en «beta» y solo lo puede crear el superadmin (tú).",
+  "BowlingX mientras se construye MatchMate: propongo congelarlo y hacer solo arreglos. Cada función nueva del boliche se haría solo en MatchMate; si no, hay que hacerla dos veces y la migración se complica. ¿De acuerdo?",
+  "Cuándo migrar: por defecto al final, como pediste. La otra opción es adelantarla a justo después de la Fase 0C (unos 3 meses), cuando el boliche ya está igual que hoy y probado en 2 noches; así dejas de mantener dos apps durante 6–8 meses. Lo decidimos con el piloto en la mano.",
+  "Recorte opcional para llegar antes: boliche, pádel, tenis y pickleball toman unos 84–111 días (unos 5 meses). Los demás deportes vendrían después, según la demanda que veas.",
+  "Correo de las cuentas, gratis y sin dominio: Brevo (300 correos al día) o una Gmail con contraseña de aplicación. Resend es mejor, pero exige un dominio propio (unos 12 USD al año), y eso ya no es gratis. ¿Cuál prefieres?",
+  "Dirección de la app: matchmate.vercel.app, que es gratis, si está libre. Un dominio propio cuesta dinero.",
+  "Tope de gasto: el plan asume Supabase gratis para siempre. Si algún día se llenan las 200 conexiones de Realtime o la pausa por inactividad causa problemas, la salida es el plan Pro (25 USD al mes). ¿Ese día prefieres pagar o recortar?",
+  "Límites de la lectura con IA: 40 fotos por usuario al día, 8 s entre fotos y 900 al día en total. Las fotos se guardan 90 días después de aprobadas y 7 si se rechazan. ¿De acuerdo?",
+  "Privacidad: en la capa gratis, Google puede usar las fotos para mejorar sus productos. La política lo dirá, y las cuentas serán solo para mayores de 18. ¿Lo apruebas?",
+  "Softbol y voleibol: en RD los practica más gente que el fútbol (6,1 % y 10,6 % de quienes hacen deporte). ¿Los agregamos a la lista para después del fútbol?",
+  "Aviso sobre BowlingX (fuera de este plan): desde el 2 de noviembre de 2026, Firebase AI Logic exige App Check.\n- Si VITE_RECAPTCHA_SITE_KEY no está en Vercel producción y App Check no está obligatorio en la consola, la lectura de fotos de BowlingX puede dejar de funcionar.\n- Además, su segundo modelo (gemini-3.8-flash) solo da unas 20 fotos gratis al día; gemini-3.1-flash-lite es mejor respaldo.\n¿Quieres que haga ese arreglo pequeño en BowlingX?"
+ ],
+ "whatNotToDo": [
+  "No tocar BowlingX (ni su repo ni el proyecto de Firebase bowlinx-12368) por necesidades de MatchMate. Tampoco compartir con él claves, dominio, id del manifest ni claves locales bowlingx:* o bowlinx:*.",
+  "No usar Firebase en MatchMate, tampoco AI Logic como puente: todo va en Supabase.",
+  "Realtime:\n- no usar Postgres Changes para el en vivo;\n- no conectarse fuera de las pantallas «En vivo»;\n- no usar Presence;\n- no enviar cada punto por separado: estado completo cada 2–3 s como máximo.",
+  "No descargar la liga entera cada vez que se abre la app: solo lo que cambió desde el cursor.",
+  "Fotos: no guardarlas en la base en base64, no usar la transformación de imágenes de Supabase (es de pago) y no borrarlas por SQL.",
+  "No poner service_role, la clave de Gemini ni ningún otro secreto en variables VITE_* ni en el repo. Los respaldos nunca van a un repo público.",
+  "No crear varios proyectos de Google para multiplicar el cupo gratis de Gemini (lo prohíben sus términos), ni usar la IA para leer resultados de otros deportes.",
+  "No usar PowerSync, RxDB premium, ElectricSQL ni Zero: o son de pago, o son otro servicio que mantener despierto, o no permiten escribir sin conexión.",
+  "No activar nada de pago en Supabase (PITR, más capacidad, dominio propio, quitar el tope de gasto) sin tu aprobación.",
+  "No escribir directo desde el teléfono en tablas sensibles: partidos, membresías, envíos y aprobaciones van por RPC probadas.",
+  "No permitir dos anotadores a la vez en un partido, ni que otro tome el control solo porque pasó un tiempo.",
+  "No repartir «if deporte ==» por las pantallas ni copiar el código para cada deporte: todo pasa por el módulo del deporte y un solo punto de desvío.",
+  "No cambiar el deporte de una liga después de creada, ni mezclar estadísticas de deportes distintos (tampoco campo con sala).",
+  "No «mejorar» el boliche mientras se porta: primero tiene que salir idéntico a BowlingX.",
+  "No abrir un deporte al público sin su piloto y sus criterios de salida, ni avanzar de fase con una prueba del boliche en rojo.",
+  "No construir en la primera versión:\n- reservas de canchas ni pagos;\n- ratings globales (Elo, DUPR) ni integraciones con Playtomic, DUPR, UTR o GHIN;\n- Index oficial de golf ni GPS;\n- software federado de natación ni relevos;\n- match play, box score completo, doble eliminación ni formato suizo.",
+  "No depender de Background Sync, de la vibración en iOS, de controles Bluetooth ni de las teclas de volumen: una app web instalada no los recibe de forma fiable.",
+  "No migrar los datos de BowlingX sin 2 ensayos en staging, ni borrar el proyecto de Firebase antes de 90 días después del corte."
+ ]
+}

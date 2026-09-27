@@ -28,13 +28,19 @@ export default defineConfig({
       },
     }),
   ],
+  // PGlite (Postgres en el navegador, solo para el modo local de desarrollo y demo) trae su propio WASM.
+  optimizeDeps: { exclude: ['@electric-sql/pglite'] },
   build: {
-    // Firebase pesa ~600 kB; va en su propio archivo para que el navegador lo guarde entre versiones.
     chunkSizeWarningLimit: 700,
     rolldownOptions: {
       output: {
         advancedChunks: {
-          groups: [{ name: 'firebase', test: /node_modules[\/](@firebase|firebase)[\/]/ }],
+          groups: [
+            // Cada uno en su archivo: el navegador lo guarda entre versiones, y PGlite solo se baja en modo local.
+            { name: 'supabase', test: /node_modules[\/]@supabase[\/]/ },
+            { name: 'pglite', test: /node_modules[\/]@electric-sql[\/]pglite[\/]/ },
+            { name: 'firebase', test: /node_modules[\/](@firebase|firebase)[\/]/ },
+          ],
         },
       },
     },
