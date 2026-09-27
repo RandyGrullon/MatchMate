@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   CalendarRange,
@@ -47,6 +47,8 @@ import { InviteCard } from '../components/InviteCard';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { Tour } from '../components/Tour';
 import { ADMIN_TOUR } from '../lib/tours';
+import { leagueSport } from '../sports/registry';
+import { useSportScreens } from '../sports/screens';
 import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
 import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Tabs, TopLoader, cx } from '../components/ui';
@@ -54,23 +56,39 @@ import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Tabs, TopLoader, c
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 
-type Tab = 'jugadores' | 'aprobar' | 'miembros' | 'buzon' | 'liga';
+type Tab = string;
 
 /** Administración de la liga (dueño, admins y superadmin). */
 export default function AdminPage() {
   const { lid, isAdmin, league } = useLeagueCtx();
   const [params, setParams] = useSearchParams();
-  const pending = useSubmissions(isAdmin ? lid : undefined, 'pendiente').data.length;
+  const sport = leagueSport(league);
+  const bowling = sport === 'bowling';
+  // Pestañas propias del deporte (una con la misma clave que una general la reemplaza).
+  const screens = useSportScreens(bowling ? null : sport);
+  const pending = useSubmissions(isAdmin && bowling ? lid : undefined, 'pendiente').data.length;
   const newSuggestions = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
-  const tabs: { key: Tab; label: string; icon: ReactNode; count?: number }[] = [
+  const generic: { key: Tab; label: string; icon: ReactNode; count?: number; Component?: ComponentType }[] = [
     { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
-    { key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending },
+    // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
+    ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
     { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
     { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
   ];
-  const requested = params.get('tab') as Tab | null;
+  const extra = screens?.adminTabs ?? [];
+  const tabs = [
+    ...generic.map((t) => {
+      const own = extra.find((x) => x.key === t.key);
+      return own ? { ...t, label: own.label, Component: own.Component } : t;
+    }),
+    ...extra
+      .filter((x) => !generic.some((t) => t.key === x.key))
+      .map((x) => ({ key: x.key, label: x.label, icon: x.icon ? <x.icon className="size-4" /> : <Settings2 className="size-4" />, Component: x.Component })),
+  ];
+  const requested = params.get('tab');
   const tab: Tab = tabs.some((t) => t.key === requested) ? requested! : 'jugadores';
+  const Own = tabs.find((t) => t.key === tab)?.Component;
 
   if (!isAdmin) {
     return <LoadError error={new Error('permission-denied')} />;
@@ -84,7 +102,9 @@ export default function AdminPage() {
       </div>
       <Suspense fallback={<TopLoader />}>
         <div key={tab} className="animate-fade-up">
-          {tab === 'jugadores' ? (
+          {Own ? (
+            <Own />
+          ) : tab === 'jugadores' ? (
             <PlayersPage />
           ) : tab === 'aprobar' ? (
             <ApprovalsPage />

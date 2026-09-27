@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { useLeagueCtx } from './lib/league';
+import { SportRoute } from './sports/screens';
 import { FeedbackProvider } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppRouter } from './components/GestureGuards';
@@ -73,13 +74,14 @@ export default function App() {
                       }
                     />
                     <Route path="/l/:lid" element={<LeagueShell />}>
-                      <Route index element={<LeagueHome />} />
-                      <Route path="ranking" element={<LeagueRanking />} />
-                      <Route path="juegos" element={<GamesFeedPage />} />
-                      <Route path="perfil" element={<LeagueProfilePage />} />
+                      {/* Cada ruta muestra la pantalla del deporte de la liga (el boliche, las de siempre). */}
+                      <Route index element={<SportRoute slot="Home" bowling={<LeagueHome />} />} />
+                      <Route path="ranking" element={<SportRoute slot="Standings" bowling={<LeagueRanking />} />} />
+                      <Route path="juegos" element={<SportRoute slot="Feed" bowling={<GamesFeedPage />} />} />
+                      <Route path="perfil" element={<SportRoute slot="MyProfile" bowling={<LeagueProfilePage />} />} />
                       <Route path="admin" element={<AdminPage />} />
                       <Route path="e/:eventId" element={<EventPage />} />
-                      <Route path="j/:playerId" element={<PlayerRoute />} />
+                      <Route path="j/:playerId" element={<SportRoute slot="Player" bowling={<PlayerRoute />} />} />
                       <Route path="*" element={<Navigate to="." replace />} />
                     </Route>
                     <Route path="*" element={<Navigate to="/" replace />} />

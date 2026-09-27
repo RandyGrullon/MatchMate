@@ -4,7 +4,8 @@ import { CalendarDays, Check, ChevronDown, Globe, Lock, Medal, MessageCircleHear
 import { useAuth } from '../lib/auth';
 import { useLeague, useLeaguesByIds, useMembership, useMyMemberships, useSubmissions } from '../lib/data';
 import { rememberSport } from '../lib/splash';
-import { dispatchSport, leagueSport, sportsOf } from '../sports/registry';
+import { leagueSport, sportsOf } from '../sports/registry';
+import { dispatchLeague, useSportScreens } from '../sports/screens';
 import { SportBadge } from '../pages/sports/SportBits';
 import { useNotifications } from './Notifications';
 import { useCreateMenu } from './CreateMenu';
@@ -54,14 +55,18 @@ export default function LeagueShell() {
   }, [ctx]);
 
   // Por deporte: qué pantallas lleva, y la animación con que abre la app la próxima vez.
-  const sport = league.data ? dispatchSport(leagueSport(league.data)) : null;
+  const sport = league.data ? dispatchLeague(league.data) : null;
   const sportId = sport && sport.kind !== 'unknown' ? sport.sport : null;
   useEffect(() => {
     if (sportId) rememberSport(sportId);
   }, [sportId]);
   const ready = sport?.kind === 'ready';
+  const bowling = sportId === 'bowling';
+  // Pantallas y nombres de pestañas del deporte (el boliche usa las de siempre).
+  const screens = useSportScreens(ready && !bowling ? sportId : null);
 
-  const pending = useSubmissions(ctx?.isAdmin && ready ? lid : undefined, 'pendiente').data.length;
+  // Los envíos por aprobar son del boliche; los otros deportes confirman los resultados en sus partidos.
+  const pending = useSubmissions(ctx?.isAdmin && ready && bowling ? lid : undefined, 'pendiente').data.length;
   const newNotes = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
 
   // La pestaña activa siempre a la vista (en el celular no caben todas).
@@ -124,14 +129,21 @@ export default function LeagueShell() {
 
   const base = ctx.base;
   const standalone = ctx.league.kind === 'torneo';
+  // Otro deporte: los nombres de sus pestañas (y las que no tiene no salen).
+  const names = bowling
+    ? { home: standalone ? 'Torneo' : 'Calendario', feed: 'Juegos', standings: standalone ? null : 'Ranking', profile: 'Mis juegos' }
+    : {
+        home: screens?.tabs?.home ?? (standalone ? 'Torneo' : 'Calendario'),
+        feed: screens?.Feed ? (screens.tabs?.feed === undefined ? 'Partidos' : screens.tabs.feed) : null,
+        standings: screens?.Standings ? (screens.tabs?.standings === undefined ? 'Tabla' : screens.tabs.standings) : null,
+        profile: screens?.tabs?.profile ?? 'Mis partidos',
+      };
   const tabs = [
-    standalone
-      ? { to: base, label: 'Torneo', icon: Trophy, end: true, tour: 'tab-calendario' }
-      : { to: base, label: 'Calendario', icon: CalendarDays, end: true, tour: 'tab-calendario' },
+    { to: base, label: names.home, icon: standalone ? Trophy : CalendarDays, end: true, tour: 'tab-calendario' },
     // Los juegos de todos, para felicitar y comentar.
-    { to: `${base}/juegos`, label: 'Juegos', icon: MessageCircleHeart, tour: 'tab-juegos' },
-    ...(standalone ? [] : [{ to: `${base}/ranking`, label: 'Ranking', icon: Medal, tour: 'tab-ranking' }]),
-    { to: `${base}/perfil`, label: 'Mis juegos', icon: Target, tour: 'tab-perfil' },
+    ...(names.feed ? [{ to: `${base}/juegos`, label: names.feed, icon: MessageCircleHeart, tour: 'tab-juegos' }] : []),
+    ...(names.standings ? [{ to: `${base}/ranking`, label: names.standings, icon: Medal, tour: 'tab-ranking' }] : []),
+    { to: `${base}/perfil`, label: names.profile, icon: Target, tour: 'tab-perfil' },
     ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: pending + newNotes, tour: 'tab-admin' }] : []),
   ];
 

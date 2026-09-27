@@ -45,7 +45,7 @@ import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
 import type { Entry } from '../lib/types';
-import { dispatchSport, leagueSport } from '../sports/registry';
+import { dispatchLeague, SportRoute } from '../sports/screens';
 
 const SportComingSoon = lazy(() => import('./sports/SportComingSoon'));
 const UpdateAppScreen = lazy(() => import('./sports/UpdateAppScreen'));
@@ -58,8 +58,8 @@ type TabKey = 'inscritos' | 'equipos' | 'juegos' | 'clasificacion';
  */
 export default function EventPage(props: { eventId?: string }) {
   const { league } = useLeagueCtx();
-  const sport = dispatchSport(leagueSport(league));
-  if (sport.kind === 'ready') return <BowlingEventPage {...props} />;
+  const sport = dispatchLeague(league);
+  if (sport.kind === 'ready') return <SportRoute slot="Event" bowling={<BowlingEventPage {...props} />} />;
   return (
     <Suspense fallback={<PageSkeleton />}>
       {sport.kind === 'unknown' ? (
