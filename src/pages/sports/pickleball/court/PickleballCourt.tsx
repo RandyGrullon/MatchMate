@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, CircleDot, Flag } from 'lucide-react';
+import { ArrowLeftRight, CircleDot, Flag, Settings2 } from 'lucide-react';
 import { CourtLayout, TwoHalves } from '../../../../court';
-import type { Match } from '../../../../lib/data/matches';
+import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import { resolveRules, type MatchSetup, type Pair, type PickleballEvent, type PickleballRules, type PickleballState, type Player } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
+import { useAction } from '../../../../components/feedback';
 import { Badge, Button, Modal, cx } from '../../../../components/ui';
 import { engineRules } from '../../racket/court/adapters';
 import { useAdapterCourt } from '../../racket/court/useAdapterCourt';
 import { pointsDeps } from '../../racket/court/usePointsCourt';
 import { isPointsMatch } from '../../racket/logic/results';
-import { rulesText } from '../../racket/logic/rulesText';
+import { presetOf, presetsOf, rulesText } from '../../racket/logic/rulesText';
 import { useNames } from '../../racket/names';
 import type { RacketCourtProps } from '../../racket/sport';
 import { pickleballAdapter, pickleView, serverNumberText, type PickleMode, type PickleView } from './logic';
@@ -55,7 +56,14 @@ export function PickleballCourt({ match, isAdmin, userId, onExit }: RacketCourtP
   if (court.ready && !court.snapshot) {
     return (
       <CourtLayout title={title} subtitle="Antes de empezar" onExit={onExit} court={court} isAdmin={isAdmin} canSuspend={false}>
-        <PickleSetup rules={rules} labels={labels} people={people} onStart={(setup) => court.start(setup)} />
+        <PickleSetup
+          rules={rules}
+          labels={labels}
+          people={people}
+          match={match}
+          canChange={isAdmin && mode === 'sets' && match.status === 'scheduled' && match.seq === 0}
+          onStart={(setup) => court.start(setup)}
+        />
       </CourtLayout>
     );
   }
@@ -254,17 +262,62 @@ function Choice<T extends string | number>({ label, options, value, onChange }: 
   );
 }
 
-/** El sorteo: quién saca primero, quién empieza a la derecha en cada pareja y qué lado queda a tu izquierda. */
-function PickleSetup({ rules, labels, people, onStart }: { rules: PickleballRules; labels: readonly [string, string]; people: string[][]; onStart: (s: MatchSetup) => void }) {
+/**
+ * El sorteo: quién saca primero, quién empieza a la derecha en cada pareja y qué lado queda a tu izquierda. El
+ * admin puede cambiar las reglas de este partido antes del primer punto (plantillas probadas).
+ */
+function PickleSetup({
+  rules,
+  labels,
+  people,
+  match,
+  canChange,
+  onStart,
+}: {
+  rules: PickleballRules;
+  labels: readonly [string, string];
+  people: string[][];
+  match: Match;
+  canChange: boolean;
+  onStart: (s: MatchSetup) => void;
+}) {
+  const { lid } = useLeagueCtx();
+  const run = useAction();
   const [first, setFirst] = useState<Side>(1);
   const [fp, setFp] = useState<Pair<Player>>([0, 0]);
   const [left, setLeft] = useState<Side>(1);
+  const [changing, setChanging] = useState(false);
+  const current = presetOf('pickleball', rules);
   return (
     <div className="mx-auto flex h-full max-w-xl flex-col gap-5 overflow-y-auto pb-4">
-      <div className="rounded-2xl bg-surface-2 px-4 py-3">
-        <p className="text-xs font-medium text-muted">Reglas de este partido</p>
-        <p className="text-sm font-semibold">{rulesText(rules)}</p>
+      <div className="flex items-start gap-2 rounded-2xl bg-surface-2 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-muted">Reglas de este partido</p>
+          <p className="text-sm font-semibold">{rulesText(rules)}</p>
+        </div>
+        {canChange && (
+          <Button size="sm" variant="ghost" icon={<Settings2 className="size-4" />} onClick={() => setChanging(true)}>
+            Cambiar
+          </Button>
+        )}
       </div>
+      <Modal open={changing} onClose={() => setChanging(false)} title="Reglas de este partido">
+        <div className="flex flex-col gap-2">
+          {presetsOf('pickleball').map((p) => (
+            <Button
+              key={p.id}
+              variant={current?.id === p.id ? 'primary' : 'secondary'}
+              className="h-auto min-h-12 justify-start py-2 text-left"
+              onClick={async () => {
+                await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
+                setChanging(false);
+              }}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+      </Modal>
       <Choice
         label="¿Quién saca primero?"
         value={first}

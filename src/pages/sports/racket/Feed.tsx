@@ -9,6 +9,7 @@ import { Button, Empty, ListSkeleton, LoadError } from '../../../components/ui';
 import { Chips, Section } from './bits';
 import { isPointsMatch, matchTime } from './logic/results';
 import { MatchDetail, useMatchParam, useMySide } from './match/MatchDetail';
+import { useRacket } from './sport';
 
 type Filter = 'todos' | 'mios' | 'sets' | 'noches';
 
@@ -20,6 +21,7 @@ const PAGE = 20;
  */
 export default function RacketFeed() {
   const { lid, league, myPlayerId } = useLeagueCtx();
+  const { ext } = useRacket();
   const param = useMatchParam();
   const q = useMatches({ lid });
   const all = useWithPendingPoints(lid, q.data);
@@ -57,7 +59,7 @@ export default function RacketFeed() {
           { key: 'todos', label: 'Todos' },
           ...(myPlayerId ? [{ key: 'mios' as const, label: 'Míos', count: all.filter((m) => mySideOf(m) !== null && awaitingConfirmation(m, now)).length }] : []),
           { key: 'sets', label: 'Liga y torneos' },
-          { key: 'noches', label: 'Noches' },
+          { key: 'noches', label: ext.words?.nights ?? 'Noches' },
         ]}
         value={filter}
         onChange={(k) => {

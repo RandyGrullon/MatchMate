@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { CheckCircle2, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
+import { CheckCircle2, Download, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
 import { useMatches, type Match } from '../../../../lib/data/matches';
 import { saveNightRound, savePointsResult, updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
@@ -12,6 +12,7 @@ import { MatchCard, ResultEntryModal, StandingsTable, whatsappShareUrl, type Sta
 import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
 import { Stepper, appOrigin } from '../../racket/bits';
+import { exportNightExcel } from '../../racket/excel';
 import { levelText, useLevels } from '../../racket/levels';
 import { nightRounds, type NightRound, type NextRound } from '../../racket/logic/night';
 import { timeLabel } from '../../racket/logic/time';
@@ -153,6 +154,13 @@ export function SocialPage({ event }: { event: RacketEvent }) {
     }
   };
 
+  // En el Excel, «Puntos» son los anotados (la tabla va ordenada por ganados).
+  const excel = () =>
+    exportNightExcel({ title, date: event.date, rounds, table: table.map((r) => ({ ...r, points: r.for })), nameOf: names.nameOf }).catch((e) => {
+      console.error(e);
+      toast('No se pudo hacer el Excel', 'error');
+    });
+
   const share = socialShareText({ title, date: formatDateLong(event.date), rows: table, nameOf: names.nameOf, final: finished, url: `${appOrigin()}${base}/e/${event.id}?ver=tabla` });
   const mine = current?.matches.find((m) => [...m.side1, ...m.side2].includes(myPlayerId ?? '')) ?? null;
   const resting = !!myPlayerId && !!current?.rests.includes(myPlayerId);
@@ -202,6 +210,9 @@ export function SocialPage({ event }: { event: RacketEvent }) {
               </Button>
             )
           )}
+          <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!rounds.length}>
+            Excel
+          </Button>
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
             Borrar
           </Button>

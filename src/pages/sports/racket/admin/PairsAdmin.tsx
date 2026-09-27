@@ -44,7 +44,7 @@ export default function PairsAdmin() {
           <p className="text-xs text-muted">Valen para los partidos nuevos. Los que ya están creados se quedan con sus reglas (el admin las cambia antes de empezar cada uno).</p>
         </Card>
       </Section>
-      {doubles && <PairsSection />}
+      {(doubles || sport === 'tennis') && <PairsSection />}
       <LevelsSection />
     </div>
   );
