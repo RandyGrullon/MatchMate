@@ -2,8 +2,9 @@ import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { CalendarDays, House, LogIn, Plus, Settings, UserRound, WifiOff } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { usingEmulators } from '../lib/firebase';
+import { backendMode } from '../lib/backend';
 import { Logo } from './Logo';
+import { OutboxIndicator } from './OutboxIndicator';
 import { useCreateMenu } from './CreateMenu';
 import { NotificationsBell } from './Notifications';
 import { TopLoader, cx } from './ui';
@@ -28,17 +29,20 @@ export function OfflineBar() {
   if (online) return null;
   return (
     <div className="flex items-center justify-center gap-2 bg-warn-soft px-4 py-2 text-sm text-warn">
-      <WifiOff className="size-4" /> Sin conexión: los cambios se guardan y se sincronizan al volver.
+      <WifiOff className="size-4" /> Sin conexión: lo que anotes se guarda y se envía solo al volver.
     </div>
   );
 }
+
+/** Modo local (PGlite en el navegador, sin Supabase): solo desarrollo y demo. */
+const local = backendMode() === 'local';
 
 export function Brand({ to = '/', compact }: { to?: string; compact?: boolean }) {
   return (
     <Link to={to} className="flex shrink-0 items-center gap-2 font-semibold" aria-label="MatchMate">
       <Logo />
       {!compact && <span>MatchMate</span>}
-      {usingEmulators && <span className="rounded bg-warn-soft px-1.5 text-[11px] font-medium text-warn">EMULADOR</span>}
+      {local && <span className="rounded bg-warn-soft px-1.5 text-[11px] font-medium text-warn">LOCAL</span>}
     </Link>
   );
 }
@@ -189,6 +193,7 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
         {subnav && <div className={cx('mx-auto px-4 pb-2', width)}>{subnav}</div>}
       </div>
       <OfflineBar />
+      <OutboxIndicator />
       <main className={cx('mx-auto px-4 py-5', width)}>
         <Suspense fallback={<TopLoader />}>
           {/* key = ruta: cada pantalla entra con una transición suave */}

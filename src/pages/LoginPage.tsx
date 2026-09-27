@@ -1,12 +1,13 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { ArrowLeft, LogIn, UserPlus } from 'lucide-react';
-import { authErrorMessage, login, loginWithGoogle, MIN_PASSWORD, signUp, useAuth } from '../lib/auth';
+import { ArrowLeft, KeyRound, LogIn, MailCheck, UserPlus } from 'lucide-react';
+import { authErrorMessage, login, loginWithGoogle, MIN_PASSWORD, resetPassword, signUp, useAuth } from '../lib/auth';
+import { pendingByUser } from '../lib/db/outbox';
 import { Button, Card, Field, Input, Loading, Tabs } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { PasswordInput } from '../components/PasswordInput';
 
-type Mode = 'entrar' | 'registro';
+type Mode = 'entrar' | 'registro' | 'recuperar';
 
 /** La "G" de Google con sus colores (botón de entrar con Google). */
 function GoogleIcon() {
@@ -23,47 +24,66 @@ function GoogleIcon() {
 export default function LoginPage() {
   const { user, loading } = useAuth();
   const [params, setParams] = useSearchParams();
-  const mode: Mode = params.get('modo') === 'registro' ? 'registro' : 'entrar';
+  const modo = params.get('modo');
+  const mode: Mode = modo === 'registro' ? 'registro' : modo === 'recuperar' ? 'recuperar' : 'entrar';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  // «Tengo 18 años o más»: obligatorio para crear la cuenta (las ligas con menores las lleva un adulto).
+  const [adult, setAdult] = useState(false);
   const [busy, setBusy] = useState<'correo' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Qué correo se mandó: para confirmar la cuenta nueva o para poner otra contraseña.
+  const [sent, setSent] = useState<'confirmar' | 'recuperar' | null>(null);
+  // Cambios anotados sin señal que quedaron en el teléfono al salir: salen solos cuando esa cuenta entre.
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    pendingByUser()
+      .then((byUser) => setWaiting(Object.values(byUser).reduce((n, u) => n + u.pending, 0)))
+      .catch(() => undefined);
+  }, []);
 
-  // Mientras se crea la cuenta no se redirige: el perfil (users/{uid}) todavía se está guardando.
   // A dónde volver sin entrar: la pantalla de la que vino (si es de la app) o Home.
   const nextParam = params.get('next');
   const back = nextParam?.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
 
   if (user && !busy) {
     if (loading) return <Loading />;
-    // Vuelve a donde estaba (solo rutas internas); si no, a su liga.
-    const next = params.get('next');
-    return <Navigate to={next?.startsWith('/') && !next.startsWith('//') ? next : '/'} replace />;
+    // Vuelve a donde estaba (solo rutas internas); si no, a Home.
+    return <Navigate to={back} replace />;
   }
 
-  const mismatch = mode === 'registro' && password2 !== '' && password !== password2;
-  const short = mode === 'registro' && password !== '' && password.length < MIN_PASSWORD;
+  const signingUp = mode === 'registro';
+  const mismatch = signingUp && password2 !== '' && password !== password2;
+  const short = signingUp && password !== '' && password.length < MIN_PASSWORD;
 
   function switchMode(m: Mode) {
     setError(null);
+    setSent(null);
     setPassword('');
     setPassword2('');
     const p = new URLSearchParams(params);
-    if (m === 'registro') p.set('modo', 'registro');
-    else p.delete('modo');
+    if (m === 'entrar') p.delete('modo');
+    else p.set('modo', m);
     setParams(p, { replace: true });
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (mode === 'registro' && (password !== password2 || password.length < MIN_PASSWORD)) return;
+    if (signingUp && (password !== password2 || password.length < MIN_PASSWORD || !adult)) return;
     setBusy('correo');
     setError(null);
     try {
-      if (mode === 'registro') await signUp(name, email, password);
-      else await login(email, password);
+      if (mode === 'recuperar') {
+        await resetPassword(email);
+        setSent('recuperar');
+      } else if (signingUp) {
+        const { needsConfirm } = await signUp(name, email, password, adult);
+        if (needsConfirm) setSent('confirmar');
+      } else {
+        await login(email, password);
+      }
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {
@@ -73,6 +93,7 @@ export default function LoginPage() {
 
   /** Con Google sirve igual para entrar o registrarse: si no tenía cuenta, se crea. */
   async function google() {
+    if (signingUp && !adult) return;
     setBusy('google');
     setError(null);
     try {
@@ -83,6 +104,15 @@ export default function LoginPage() {
       setBusy(null);
     }
   }
+
+  const adultBox = signingUp && (
+    <label className="flex items-start gap-2.5 text-sm">
+      <input type="checkbox" required checked={adult} onChange={(e) => setAdult(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]" />
+      <span>
+        Tengo 18 años o más. <span className="text-muted">Los menores juegan en ligas que maneja un adulto, sin cuenta propia.</span>
+      </span>
+    </label>
+  );
 
   return (
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
@@ -96,57 +126,97 @@ export default function LoginPage() {
           <p className="text-sm text-muted">Ligas y torneos de boliche</p>
         </div>
         <Card className="flex flex-col gap-4 p-5">
-          <Tabs
-            items={[
-              { key: 'entrar', label: 'Entrar' },
-              { key: 'registro', label: 'Crear cuenta' },
-            ]}
-            active={mode}
-            onChange={switchMode}
-          />
-          <Button onClick={google} loading={busy === 'google'} disabled={!!busy} icon={<GoogleIcon />}>
-            {mode === 'registro' ? 'Registrarme con Google' : 'Entrar con Google'}
-          </Button>
-          <div className="flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-line" />o con tu correo
-            <span className="h-px flex-1 bg-line" />
-          </div>
-          <form onSubmit={submit} className="flex flex-col gap-4">
-            {mode === 'registro' && (
-              <Field label="Tu nombre">
-                <Input required maxLength={60} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+          {sent ? (
+            <div className="flex flex-col items-center gap-3 py-2 text-center">
+              <MailCheck className="size-10 text-accent" />
+              <p className="font-semibold">Revisa tu correo</p>
+              <p className="text-sm text-muted">
+                {sent === 'confirmar'
+                  ? `Te mandamos un link a ${email.trim()} para confirmar tu cuenta. Ábrelo y después entra con tu correo y contraseña.`
+                  : `Si ${email.trim()} tiene cuenta, te llegará un link para poner una contraseña nueva.`}
+              </p>
+              <Button onClick={() => switchMode('entrar')}>Volver a entrar</Button>
+            </div>
+          ) : mode === 'recuperar' ? (
+            <form onSubmit={submit} className="flex flex-col gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold">
+                  <KeyRound className="size-4 text-accent" /> Olvidé mi contraseña
+                </h2>
+                <p className="text-sm text-muted">Escribe tu correo y te mandamos un link para poner una nueva.</p>
+              </div>
+              <Field label="Correo">
+                <Input type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
               </Field>
-            )}
-            <Field label="Correo">
-              <Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
-            </Field>
-            <Field label="Contraseña" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined}>
-              <PasswordInput
-                value={password}
-                onChange={setPassword}
-                autoComplete={mode === 'registro' ? 'new-password' : 'current-password'}
-                invalid={short}
+              {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+              <Button type="submit" variant="primary" loading={busy === 'correo'} disabled={!!busy}>
+                Mandar el link
+              </Button>
+              <button type="button" onClick={() => switchMode('entrar')} className="text-sm font-medium text-accent">
+                Volver a entrar
+              </button>
+            </form>
+          ) : (
+            <>
+              <Tabs
+                items={[
+                  { key: 'entrar', label: 'Entrar' },
+                  { key: 'registro', label: 'Crear cuenta' },
+                ]}
+                active={mode}
+                onChange={switchMode}
               />
-            </Field>
-            {mode === 'registro' && (
-              <Field label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined}>
-                <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
-              </Field>
-            )}
-            {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-            <Button
-              type="submit"
-              variant="primary"
-              loading={busy === 'correo'}
-              disabled={!!busy || (mode === 'registro' && (mismatch || short || !password2))}
-              icon={mode === 'registro' ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
-            >
-              {mode === 'registro' ? 'Crear cuenta' : 'Entrar'}
-            </Button>
-          </form>
+              {adultBox}
+              <Button onClick={google} loading={busy === 'google'} disabled={!!busy || (signingUp && !adult)} icon={<GoogleIcon />}>
+                {signingUp ? 'Registrarme con Google' : 'Entrar con Google'}
+              </Button>
+              <div className="flex items-center gap-3 text-xs text-muted">
+                <span className="h-px flex-1 bg-line" />o con tu correo
+                <span className="h-px flex-1 bg-line" />
+              </div>
+              <form onSubmit={submit} className="flex flex-col gap-4">
+                {signingUp && (
+                  <Field label="Tu nombre">
+                    <Input required maxLength={60} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+                  </Field>
+                )}
+                <Field label="Correo">
+                  <Input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                </Field>
+                <Field label="Contraseña" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined}>
+                  <PasswordInput value={password} onChange={setPassword} autoComplete={signingUp ? 'new-password' : 'current-password'} invalid={short} />
+                </Field>
+                {signingUp && (
+                  <Field label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined}>
+                    <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
+                  </Field>
+                )}
+                {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  loading={busy === 'correo'}
+                  disabled={!!busy || (signingUp && (mismatch || short || !password2 || !adult))}
+                  icon={signingUp ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
+                >
+                  {signingUp ? 'Crear cuenta' : 'Entrar'}
+                </Button>
+                {!signingUp && (
+                  <button type="button" onClick={() => switchMode('recuperar')} className="self-center text-sm font-medium text-accent">
+                    Olvidé mi contraseña
+                  </button>
+                )}
+              </form>
+            </>
+          )}
         </Card>
+        {waiting > 0 && (
+          <p className="mt-4 rounded-lg bg-warn-soft px-3 py-2 text-center text-xs text-warn">
+            Este teléfono tiene {waiting} {waiting === 1 ? 'cambio sin enviar' : 'cambios sin enviar'}: entra con la cuenta que los anotó y salen solos.
+          </p>
+        )}
         <p className="mt-4 text-center text-xs text-muted">
-          {mode === 'registro'
+          {signingUp
             ? 'Después te unes a tu liga y eliges quién eres en la lista de jugadores.'
             : 'Si entras con Google por primera vez, tu cuenta se crea sola.'}
         </p>

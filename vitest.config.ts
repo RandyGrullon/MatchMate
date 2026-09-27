@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// Pruebas unitarias (sin Firebase). Las reglas se prueban aparte con `pnpm test:reglas`.
+// Pruebas unitarias. La base de datos (SQL y RLS en PGlite) se prueba aparte con `pnpm test:sql`.
 export default defineConfig({
   test: { include: ['src/**/*.test.ts'] },
 });

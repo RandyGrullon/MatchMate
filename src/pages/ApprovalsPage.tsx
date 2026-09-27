@@ -8,12 +8,12 @@ import {
   setSubmissionScan,
   useAllEntries,
   useEvents,
-  usePhoto,
   usePlayers,
   useSubmissions,
 } from '../lib/data';
 import { eventTitle, formatDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
+import { usePhoto } from '../lib/photos';
 import { rowFor, type ScanRow } from '../lib/scan-result';
 import { scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
 import { firstFreeSlot, isValidScore, slots } from '../lib/stats';
@@ -213,13 +213,17 @@ function SubmissionCard({
             <ImageOff className="size-6" /> Sin foto (la liga no la exige)
           </div>
         ) : photo.data ? (
-          <PhotoView src={photo.data.data} />
-        ) : (
+          <PhotoView src={photo.data.url} />
+        ) : photo.loading ? (
           <Skeleton className="h-48 w-full rounded-xl" />
+        ) : (
+          <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line text-sm text-muted">
+            <ImageOff className="size-6" /> {photo.error ? 'No se pudo cargar la foto (¿sin señal?)' : 'La foto ya no existe'}
+          </div>
         )}
         <div className="flex flex-col gap-3">
           {sub.photoId && (
-            <PhotoReading sub={sub} player={player} photoData={photo.data?.data ?? null} onApply={() => (proposeRead.current = true)} />
+            <PhotoReading sub={sub} player={player} photoUrl={photo.data?.url ?? null} onApply={() => (proposeRead.current = true)} />
           )}
           {sub.scannedName && (
             <p className="text-xs text-muted">
@@ -342,9 +346,10 @@ const adminReads = new Map<string, { jobId: string; pick: boolean }>();
 /**
  * Lo que leyó la IA de la foto del envío. Recién enviado, puede que el teléfono del jugador todavía la
  * esté leyendo (se lee en segundo plano); si no llegó (cerró la app, sin señal, no encontró su fila),
- * el admin la lee aquí. Con lo leído ya puesto, se puede volver a leer o elegir otra fila de la foto.
+ * el admin la lee aquí (con la foto guardada: se baja de su URL firmada y va a la Edge Function). Con lo leído
+ * ya puesto, se puede volver a leer (la misma foto sale de la caché de 24 h, sin gastar cupo) o elegir otra fila.
  */
-function PhotoReading({ sub, player, photoData, onApply }: { sub: Submission; player: Player; photoData: string | null; onApply: () => void }) {
+function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; player: Player; photoUrl: string | null; onApply: () => void }) {
   const { lid } = useLeagueCtx();
   const run = useAction();
   const now = useNow(30_000);
@@ -371,8 +376,8 @@ function PhotoReading({ sub, player, photoData, onApply }: { sub: Submission; pl
   }
 
   function start(pick: boolean) {
-    if (!photoData) return;
-    const next = { jobId: startScan(photoData), pick };
+    if (!photoUrl) return;
+    const next = { jobId: startScan(photoUrl, { leagueId: lid, eventId: sub.eventId ?? null }), pick };
     adminReads.set(sub.id, next);
     setRead(next);
     scanDone(next.jobId)
@@ -390,7 +395,7 @@ function PhotoReading({ sub, player, photoData, onApply }: { sub: Submission; pl
   }
 
   if (hasRead && !read) {
-    return photoData ? (
+    return photoUrl ? (
       <Button variant="ghost" size="sm" className="self-start" icon={<RotateCcw className="size-4" />} onClick={() => start(true)}>
         Leer de nuevo o elegir otra fila
       </Button>
@@ -454,7 +459,7 @@ function PhotoReading({ sub, player, photoData, onApply }: { sub: Submission; pl
           </Button>
         </div>
       )}
-      {!busy && !choices && photoData && (!hasRead || job?.status === 'error') && (
+      {!busy && !choices && photoUrl && (!hasRead || job?.status === 'error') && (
         <Button size="sm" className="self-start" icon={<ScanLine className="size-4" />} onClick={() => start(hasRead)}>
           {job?.status === 'error' ? 'Intentar de nuevo' : 'Leer con IA'}
         </Button>

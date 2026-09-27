@@ -5,19 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:emu": "vite --mode emulator",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:sql": "vitest run -c vitest.sql.config.ts",
-    "emulators": "npx -y firebase-tools@13 emulators:start --only auth,firestore --project demo-matchmate",
-    "importar": "node scripts/importar-torneo.mjs",
-    "test:reglas": "npx -y firebase-tools@13 emulators:exec --only firestore --project demo-bowlinx-reglas \"vitest run -c vitest.reglas.config.ts\""
+    "marca": "node scripts/icons/generate.mjs && node scripts/icons/splash.mjs",
+    "supabase:start": "npx -y supabase@2 start",
+    "supabase:stop": "npx -y supabase@2 stop",
+    "supabase:reset": "npx -y supabase@2 db reset",
+    "db:types": "npx -y supabase@2 gen types typescript --local > src/lib/db.types.ts",
+    "test:migrar": "vitest run -c scripts/migrar/vitest.config.ts",
+    "migrar": "node scripts/migrar/cli.mjs",
+    "importar": "node scripts/importar-torneo.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
-    "firebase": "^12.19.0",
     "idb": "^8.0.3",
     "lucide-react": "^1.47.0",
     "react": "^19.3.0",
@@ -28,9 +31,9 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "@firebase/rules-unit-testing": "^5.0.2",
     "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^20.19.43",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

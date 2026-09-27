@@ -172,11 +172,11 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       });
       return () => data.subscription.unsubscribe();
     },
-    async signUp(email, password, name) {
+    async signUp(email, password, name, meta) {
       const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { name: name.trim() }, emailRedirectTo: origin() || undefined },
+        options: { data: { ...meta, name: name.trim() }, emailRedirectTo: origin() || undefined },
       });
       if (error) throw mapAuthError(error as AuthErrorLike);
       // Con «Confirm email» activado, un correo ya registrado vuelve sin identidades y sin error.
@@ -204,6 +204,10 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       const { error } = await client.auth.signOut({ scope: 'local' });
       names.clear();
       writeLastSession(null);
+      if (error) throw mapAuthError(error as AuthErrorLike);
+    },
+    async resendConfirmation(email) {
+      const { error } = await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: origin() || undefined } });
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
     async resetPassword(email) {

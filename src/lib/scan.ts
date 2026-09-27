@@ -1,145 +1,106 @@
-import { initializeApp } from 'firebase/app';
-import { AIError, getAI, getGenerativeModel, GoogleAIBackend, Schema, type AI, type GenerativeModel } from 'firebase/ai';
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
-import { firebaseConfig } from './firebase';
-import { parseScanResult, ScanError, type ScanErrorKind, type ScanRow } from './scan-result';
+import { BackendError, getBackend } from './backend';
+import type { ScanFailure, ScanResponse } from '../../supabase/functions/_shared/scan-core';
+import { blobToDataUrl } from './image';
+import { ScanError, type ScanRow } from './scan-result';
 
 export { ScanError, type ScanRow };
 
 /**
- * Modelos en orden de preferencia. La capa gratuita de cada uno tiene su propio cupo por minuto/día:
- * si el primero se queda sin cupo (429) se intenta con el siguiente. Flash-Lite leyó bien las 32 fotos
- * de prueba con juegos (2,4 s de media) y tiene más cupo gratis que Flash.
+ * Lee los pinos de una foto con la Edge Function `scan-bowling` (Gemini API gratis, con cupos en Postgres).
+ * La foto va como data URL (la copia nítida para la IA); una URL firmada (la foto ya guardada, en aprobaciones)
+ * se baja primero y se manda igual. De qué liga y evento es la decide el servidor: permisos y cupos.
  */
-const MODELS = [import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.5-flash-lite', 'gemini-3.8-flash'].filter(
-  (m, i, all) => all.indexOf(m) === i,
-);
-
-const schema = Schema.object({
-  properties: {
-    esPantallaDeBoliche: Schema.boolean({
-      description: 'true si la foto muestra resultados o marcador de boliche',
-    }),
-    soloTotales: Schema.boolean({
-      description: 'true si la pantalla solo muestra totales o promedios por jugador, sin los juegos uno por uno',
-    }),
-    jugadores: Schema.array({
-      items: Schema.object({
-        properties: {
-          nombre: Schema.string({ description: 'Nombre del jugador tal como aparece' }),
-          handicap: Schema.integer({ nullable: true, description: 'Handicap mostrado, o null' }),
-          juegos: Schema.array({
-            items: Schema.integer(),
-            description: 'Pinos scratch de cada juego en su posición (Game 1, Game 2...); 0 si no lo jugó',
-          }),
-          total: Schema.integer({ nullable: true, description: 'Total scratch que muestra la pantalla, o null' }),
-        },
-      }),
-    }),
-  },
-});
-
-const PROMPT = `Esta foto es de la pantalla de una bolera (boliche / bowling). Puede estar en español o en inglés,
-tomada en ángulo, con reflejos o con varios jugadores.
-
-Extrae, para cada jugador que aparezca:
-- nombre: exactamente como se ve en pantalla.
-- handicap: el handicap que muestre la pantalla (columna "Handicap"/"Hdcp"), o null si no aparece.
-- juegos: la puntuación SCRATCH (sin handicap) de cada juego, uno por columna y en su posición: Game 1, Game 2,
-  Game 3... En pantallas en español es la fila "Puntuación real". Si un juego aparece en 0 o vacío, pon 0 en esa
-  posición (no lo saltes). NO incluyas totales, series, promedios ni la suma con handicap.
-  Si es un marcador cuadro por cuadro (frames) de un juego terminado, devuelve solo el total final de ese juego.
-- total: el total scratch del jugador que muestre la pantalla ("Scratch", "Total", "Puntuación real"), o null.
-
-Si la pantalla muestra un solo jugador a la vez (por ejemplo una pestaña de "Estadísticas"), devuelve solo ese jugador.
-Si la pantalla solo tiene totales o promedios (por ejemplo "Statistics": Games, Total score, Average) sin los juegos
-uno por uno, pon soloTotales=true, juegos vacío y el total de cada jugador.
-Solo incluye números que se lean con claridad. Cada juego vale entre 0 y 300.
-Si la foto no es de una pantalla de resultados de boliche, devuelve esPantallaDeBoliche=false y jugadores vacío.`;
-
-let ai: AI | null = null;
-const models = new Map<string, GenerativeModel>();
-
-/**
- * AI Logic exige App Check. Va en una instancia aparte de Firebase que se crea al primer escaneo:
- * así Auth y Firestore no esperan el token de App Check ni cargan reCAPTCHA en cada página.
- */
-function getModel(name: string) {
-  ai ??= createAI();
-  if (!models.has(name)) {
-    models.set(
-      name,
-      getGenerativeModel(ai, {
-        model: name,
-        generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0 },
-      }),
-    );
-  }
-  return models.get(name)!;
+export interface ScanContext {
+  leagueId: string;
+  /** null = envío por fecha (todavía sin evento). */
+  eventId?: string | null;
 }
 
-function createAI() {
-  const aiApp = initializeApp(firebaseConfig, 'ai');
-  // El token de depuración solo existe en `pnpm dev`: en el build de producción Vite elimina esta rama,
-  // así nunca queda publicado aunque la variable esté definida en Vercel.
-  const debugToken = import.meta.env.DEV && location.hostname === 'localhost' ? import.meta.env.VITE_APPCHECK_DEBUG_TOKEN : undefined;
-  if (debugToken) {
-    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: string }).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
+export const SCAN_FUNCTION = 'scan-bowling';
+
+export async function scanScoreboard(image: string, ctx: ScanContext | null | undefined): Promise<ScanRow[]> {
+  if (!ctx?.leagueId) throw new ScanError('Falta la liga para leer la foto.', 'config');
+  let dataUrl: string;
+  try {
+    dataUrl = await toDataUrl(image);
+  } catch {
+    throw new ScanError('No se pudo abrir la foto para leerla.', 'red');
   }
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
-  const appCheck = Boolean(siteKey || debugToken);
-  if (appCheck) {
-    initializeAppCheck(aiApp, {
-      provider: new ReCaptchaEnterpriseProvider(siteKey || 'debug'),
-      isTokenAutoRefreshEnabled: false,
-    });
+  let res: unknown;
+  try {
+    res = await getBackend().invoke<ScanResponse>(SCAN_FUNCTION, { image: dataUrl, leagueId: ctx.leagueId, eventId: ctx.eventId ?? null });
+  } catch (e) {
+    throw scanErrorFrom(e);
   }
-  return getAI(aiApp, { backend: new GoogleAIBackend(), useLimitedUseAppCheckTokens: appCheck });
+  return rowsFromResponse(res);
 }
 
-/** Lee los pinos de una foto (data URL JPEG) con Gemini vía Firebase AI Logic. */
-export async function scanScoreboard(dataUrl: string, modelNames: string[] = MODELS): Promise<ScanRow[]> {
-  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-  let text = '';
-  for (let i = 0; i < modelNames.length; i++) {
-    try {
-      const result = await getModel(modelNames[i]).generateContent([
-        PROMPT,
-        { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-      ]);
-      text = result.response.text();
-      break;
-    } catch (e) {
-      console.warn(`[escaneo] ${modelNames[i]}`, e);
-      if (statusOf(e) === 429 && i < modelNames.length - 1) continue;
-      const { message, kind } = explain(e);
-      throw new ScanError(message, kind);
-    }
-  }
-  return parseScanResult(text);
+/** La foto como data URL: si ya lo es, igual; si es una URL (firmada, blob:), se baja. */
+async function toDataUrl(image: string): Promise<string> {
+  if (image.startsWith('data:')) return image;
+  const res = await fetch(image);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return blobToDataUrl(await res.blob());
 }
 
-function statusOf(e: unknown): number | undefined {
-  return e instanceof AIError ? e.customErrorData?.status : undefined;
+const isRow = (r: unknown): r is ScanRow => {
+  const x = r as ScanRow | null;
+  return (
+    !!x &&
+    typeof x.name === 'string' &&
+    Array.isArray(x.games) &&
+    x.games.every((g) => g === null || typeof g === 'number') &&
+    (x.handicap === null || typeof x.handicap === 'number') &&
+    (x.total === null || typeof x.total === 'number')
+  );
+};
+
+/** Lo que respondió la función → filas, o ScanError con el tipo que entiende scanJobs. */
+export function rowsFromResponse(res: unknown): ScanRow[] {
+  const r = (res ?? {}) as Partial<ScanResponse> & Record<string, unknown>;
+  if (Array.isArray(r.rows)) {
+    const rows = r.rows.filter(isRow).map((x) => ({ ...x, matchesTotal: typeof x.matchesTotal === 'boolean' ? x.matchesTotal : null }));
+    if (rows.length) return rows;
+    throw new ScanError('No se pudieron leer puntuaciones en la foto.');
+  }
+  if (r.retry === true) {
+    const after = typeof r.retryAfter === 'number' && r.retryAfter > 0 ? Math.round(r.retryAfter * 1000) : null;
+    const message = typeof r.message === 'string' && r.message ? r.message : 'No se pudo escanear la foto.';
+    // Sin cupo o hay que esperar unos segundos: `cupo` (se reintenta cuando dice el servidor). La IA tardó o falló: `red`.
+    const kind = r.reason === 'cupo' || r.reason === 'espera' ? 'cupo' : 'red';
+    throw new ScanError(message, kind, after);
+  }
+  throw new ScanError('No se pudo escanear la foto.', 'red');
 }
 
-function explain(e: unknown): { message: string; kind: ScanErrorKind } {
-  const msg = e instanceof Error ? e.message : String(e);
-  const status = statusOf(e);
-  if ((e instanceof AIError && e.code === 'api-not-enabled') || /has not been used|SERVICE_DISABLED/i.test(msg)) {
-    return { message: 'El escaneo con IA no está activado en Firebase (AI Logic).', kind: 'config' };
+/** Error al invocar la función → ScanError. El `code` del cuerpo ({code, message}) manda sobre el estado HTTP. */
+export function scanErrorFrom(e: unknown): ScanError {
+  if (e instanceof ScanError) return e;
+  if (!(e instanceof BackendError)) return new ScanError('No se pudo escanear la foto.', 'red');
+  const code = e.code as ScanFailure['code'] | string | null;
+  const message = e.message && !/^Error \d+$/.test(e.message) ? e.message : null;
+  switch (code) {
+    case 'foto':
+      return new ScanError(message ?? 'La IA no pudo leer esta foto. Prueba con otra foto.', 'foto');
+    case 'invalido':
+      return new ScanError(message ?? 'La foto no se pudo mandar a leer.', 'foto');
+    case 'limite':
+    case 'config':
+    case 'no_permitido':
+    case 'no_existe':
+    case 'cerrado':
+      return new ScanError(message ?? 'La lectura con IA no está disponible ahora.', 'config');
+    case 'sesion':
+      return new ScanError('Tu sesión venció. Entra de nuevo para leer fotos con IA.', 'config');
+    case 'servidor':
+      return new ScanError(message ?? 'No se pudo escanear la foto.', 'red');
   }
-  if (status === 429 || /quota|resource.?exhausted/i.test(msg)) {
-    return { message: 'Se alcanzó el límite gratuito del escaneo por ahora. Intenta en un minuto.', kind: 'cupo' };
+  if (e.kind === 'network') return new ScanError('Sin conexión para escanear la foto.', 'red');
+  if (e.kind === 'rate_limited') return new ScanError('Se alcanzó el límite gratuito del escaneo por ahora. Intenta en un minuto.', 'cupo');
+  if (e.kind === 'auth') return new ScanError('Tu sesión venció. Entra de nuevo para leer fotos con IA.', 'config');
+  // La función no está (404), el modo local no la tiene, o algo de configuración: reintentar no sirve.
+  if (e.kind === 'not_found' || e.kind === 'validation' || e.kind === 'permission') {
+    return new ScanError(e.kind === 'validation' && message ? message : 'La lectura con IA no está disponible.', 'config');
   }
-  if (/app.?check|attestation/i.test(msg) || status === 401 || status === 403) {
-    return { message: 'El escaneo fue bloqueado por App Check. Revisa la configuración de App Check en Firebase.', kind: 'config' };
-  }
-  // La IA respondió pero no quiso o no pudo leerla (bloqueo o respuesta cortada): reintentar da lo mismo.
-  if (e instanceof AIError && e.code === 'response-error') {
-    return { message: 'La IA no pudo leer esta foto. Prueba con otra foto.', kind: 'foto' };
-  }
-  if (status == null && !navigator.onLine) return { message: 'Sin conexión para escanear la foto.', kind: 'red' };
-  // Sin respuesta (la señal se cayó a medias) o el servidor falló: vale la pena reintentar.
-  return { message: 'No se pudo escanear la foto.', kind: status == null || status >= 500 ? 'red' : 'config' };
+  return new ScanError('No se pudo escanear la foto.', 'red');
 }

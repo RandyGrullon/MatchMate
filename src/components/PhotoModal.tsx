@@ -1,16 +1,21 @@
 import { useState, type ReactNode } from 'react';
 import { ZoomIn, ZoomOut } from 'lucide-react';
-import { usePhoto } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
+import { usePhoto } from '../lib/photos';
 import { IMPORTED, NO_PHOTO } from '../lib/types';
 import { Button, Loading, Modal, cx } from './ui';
 
+/**
+ * La foto del marcador: `src` es la URL firmada de Storage, o el data URL de una foto recién tomada.
+ * Las de Storage se piden con CORS (crossOrigin) para que el service worker pueda guardarlas y verlas sin señal.
+ */
 export function PhotoView({ src, className }: { src: string; className?: string }) {
   const [zoom, setZoom] = useState(false);
   return (
     <div className={cx('relative overflow-auto rounded-xl bg-black/80', zoom ? 'max-h-[70dvh]' : '', className)}>
       <img
         src={src}
+        crossOrigin={/^https?:/i.test(src) ? 'anonymous' : undefined}
         alt="Foto del marcador"
         onClick={() => setZoom((z) => !z)}
         className={cx('mx-auto cursor-zoom-in', zoom ? 'max-w-none w-[220%] cursor-zoom-out' : 'max-h-[60dvh] w-full object-contain')}
@@ -63,7 +68,9 @@ export function PhotoModal({
       ) : photo.loading ? (
         <Loading />
       ) : photo.data ? (
-        <PhotoView src={photo.data.data} />
+        <PhotoView src={photo.data.url} />
+      ) : photo.error ? (
+        <p className="text-sm text-muted">No se pudo cargar la foto. Revisa tu conexión e intenta de nuevo.</p>
       ) : (
         <p className="text-sm text-muted">La foto ya no existe.</p>
       )}

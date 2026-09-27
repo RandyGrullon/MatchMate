@@ -171,7 +171,8 @@ export function SubmitGamesModal({
     cancelScan(scanId);
     setPhoto(img);
     setRowIdx(null);
-    setScanId(startScan(img.scan));
+    // La lectura se cobra al cupo de la liga (y del evento, si ya se eligió).
+    setScanId(startScan(img.scan, { leagueId: lid, eventId: byDate ? null : (event?.id ?? null) }));
   }
 
   // Cuando termina de leerse: se elige la fila del jugador y, si no había anotado nada, se llenan sus juegos.

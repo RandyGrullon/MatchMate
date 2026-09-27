@@ -1,3 +1,11 @@
+/**
+ * Hora que viene del servidor (created_at, reviewed_at…). La base la manda como texto ISO; la capa de datos
+ * la entrega como un objeto con toMillis() (igual que el Timestamp de Firestore), así las pantallas no cambian.
+ */
+export interface Stamp {
+  toMillis(): number;
+}
+
 export type EventType = 'torneo' | 'practica';
 
 /** Cómo se ordena una clasificación: con handicap o solo pinos (scratch). */
@@ -35,11 +43,18 @@ export interface League {
   contactPhone: string;
   /** Si es true, un juego solo cuenta con la foto del marcador. */
   requirePhoto: boolean;
+  /** Deporte (fijo después de crear). Sin valor = boliche. */
+  sport?: string;
+  /** Liga con menores: siempre privada, sin fotos ni social. */
+  hasMinors?: boolean;
+  /** Zona horaria de la liga (IANA). */
+  tz?: string;
+  createdAt?: Stamp | null;
 }
 
 export type LeagueRole = 'owner' | 'admin' | 'member';
 
-/** Pertenencia de una cuenta a una liga. id = `${leagueId}_${uid}`. */
+/** Pertenencia de una cuenta a una liga (vista memberships). id = `${leagueId}_${uid}`. */
 export interface Member {
   id: string;
   leagueId: string;
@@ -53,11 +68,14 @@ export interface Member {
   scorer?: boolean;
 }
 
-/** Código de invitación a una liga privada (el id del documento es el código). */
+/** Invitación: a qué liga lleva un código (id = el código, en mayúsculas). */
 export interface Invite {
   id: string;
   leagueId: string;
   leagueName: string;
+  sport?: string;
+  kind?: LeagueKind;
+  visibility?: Visibility;
 }
 
 export interface Player {
@@ -67,20 +85,24 @@ export interface Player {
   averageOverride: number | null;
   /** Cuenta vinculada; sin cuenta = null o ausente (jugadores que anota el admin). */
   uid?: string | null;
+  /** Menor de edad (solo en ligas con menores; nunca tiene cuenta). */
+  isMinor?: boolean;
 }
 
-/** Cuenta de la app (users/{uid}). */
+/** Cuenta de la app (tabla profiles). */
 export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  /** Superadmin: administra todas las ligas y las cuentas. */
+  /** Superadmin: administra todas las ligas y las cuentas (profiles.is_superadmin). */
   superadmin?: boolean;
 }
 
+/** Equipo del evento (tabla teams): el mapa `event.teams` va por id del equipo. */
 export interface Team {
   name: string;
   order: number;
+  color?: string | null;
 }
 
 export interface BowlingEvent {
@@ -106,8 +128,10 @@ export interface BowlingEvent {
   announcement?: string;
   /** Asistencia confirmada por los jugadores (práctica): playerId → true. */
   rsvp?: Record<string, boolean>;
+  /** Hora de inicio ('HH:MM:SS'), si se puso. */
+  startTime?: string | null;
   /** Cuándo se creó (para los avisos de "nuevo torneo"). */
-  createdAt?: { toMillis(): number } | null;
+  createdAt?: Stamp | null;
 }
 
 /**
@@ -119,7 +143,7 @@ export interface GameFrames {
   masks?: (number | null)[];
 }
 
-/** Participación de un jugador en un evento. id = `${eventId}_${playerId}`. */
+/** Participación de un jugador en un evento (una por jugador y evento; el id es un uuid). */
 export interface Entry {
   id: string;
   eventId: string;
@@ -158,28 +182,30 @@ export interface Submission {
   photoId: string | null;
   status: SubmissionStatus;
   note: string | null;
-  createdAt?: { toMillis(): number } | null;
+  createdAt?: Stamp | null;
   /** Cuándo lo aprobó o rechazó un admin. */
-  reviewedAt?: { toMillis(): number } | null;
+  reviewedAt?: Stamp | null;
   /** Qué cuenta lo revisó (un admin que aprueba sus propios juegos no recibe aviso). */
   reviewedBy?: string | null;
+  /** Qué cuenta lo envió (un admin puede enviar por otro jugador). */
+  createdBy?: string | null;
 }
 
 /**
- * leagues/{lid}/live/{eventId}_{playerId}: los juegos que el jugador va anotando en su teléfono,
- * publicados para que todos los vean en vivo. No cuentan hasta que los envía y un admin los aprueba.
+ * Tabla live_states: los juegos que el jugador va anotando en su teléfono, publicados para que todos los
+ * vean en vivo. No cuentan hasta que los envía y un admin los aprueba. id = `${eventId}_${playerId}`.
  */
 export interface LiveScore {
   id: string;
   eventId: string;
   playerId: string;
   scores: (number | null)[];
-  updatedAt?: { toMillis(): number } | null;
+  updatedAt?: Stamp | null;
 }
 
 /**
- * leagues/{lid}/suggestions/{id}: nota del buzón de sugerencias. Es anónima: la nota no guarda quién la
- * escribió, solo el mensaje; la marca de ritmo (limits/{uid}) no la puede leer nadie desde la app.
+ * Tabla suggestions: nota del buzón de sugerencias. Es anónima: la nota no guarda quién la escribió, solo
+ * el mensaje; el ritmo (una por minuto) se lleva aparte en la base y nadie lo puede leer desde la app.
  * La leen los organizadores (dueño y admins).
  */
 export interface Suggestion {
@@ -187,13 +213,13 @@ export interface Suggestion {
   text: string;
   /** Ya la vio un organizador. */
   read: boolean;
-  createdAt?: { toMillis(): number } | null;
+  createdAt?: Stamp | null;
 }
 
 /** Reacción al juego de alguien: me gusta o felicitar (una por persona y juego). */
 export type ReactionType = 'like' | 'felicitar';
 
-/** leagues/{lid}/reactions/{entryId}_{uid} */
+/** Tabla reactions: una por persona y juego. */
 export interface Reaction {
   id: string;
   /** Participación (juego de un jugador en un evento). */
@@ -205,10 +231,10 @@ export interface Reaction {
   uid: string;
   name: string;
   type: ReactionType;
-  createdAt?: { toMillis(): number } | null;
+  createdAt?: Stamp | null;
 }
 
-/** leagues/{lid}/comments/{id}: comentario en el juego de alguien. */
+/** Tabla comments: comentario en el juego de alguien. */
 export interface GameComment {
   id: string;
   entryId: string;
@@ -217,13 +243,13 @@ export interface GameComment {
   uid: string;
   name: string;
   text: string;
-  createdAt?: { toMillis(): number } | null;
+  createdAt?: Stamp | null;
 }
 
+/** Foto del marcador para mostrar (el archivo está en Storage; `url` es la URL firmada). Ver photos.ts. */
 export interface Photo {
   id: string;
-  /** data URL JPEG comprimida */
-  data: string;
-  width: number;
-  height: number;
+  url: string;
+  width: number | null;
+  height: number | null;
 }

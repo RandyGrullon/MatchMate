@@ -5,6 +5,8 @@ import { displayName, useAuth } from '../lib/auth';
 import { joinLeague, useLeaguesByIds, useMyMemberships, usePublicLeagues } from '../lib/data';
 import { roleLabel } from '../lib/league';
 import type { League, Member } from '../lib/types';
+import { leagueSport, sportsOf } from '../sports/registry';
+import { SportBadge, SportChips, useSportFilter } from './sports/SportBits';
 import { AppShell } from '../components/Shell';
 import { useCreateMenu } from '../components/CreateMenu';
 import { useAction } from '../components/feedback';
@@ -22,7 +24,13 @@ export default function LeaguesPage() {
   const [joining, setJoining] = useState<string | null>(null);
 
   const roleOf = (lid: string) => memberships.data.find((m) => m.leagueId === lid)?.role;
-  const others = pub.data.filter((l) => !roleOf(l.id)).sort((a, b) => a.name.localeCompare(b.name));
+  // Deporte: insignia en cada fila y filtro solo si en pantalla hay ligas de más de uno.
+  const sports = sportsOf([...mine.data, ...pub.data]);
+  const multi = sports.length > 1;
+  const [sport, setSport] = useSportFilter(multi ? sports : []);
+  const bySport = (l: League) => !sport || leagueSport(l) === sport;
+  const myLeagues = mine.data.filter(bySport);
+  const others = pub.data.filter((l) => !roleOf(l.id) && bySport(l)).sort((a, b) => a.name.localeCompare(b.name));
 
   async function join(l: League) {
     if (!auth.user) return navigate(`/login?next=${encodeURIComponent('/ligas')}`);
@@ -40,8 +48,10 @@ export default function LeaguesPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Eventos</h1>
-          <p className="text-sm text-muted">Entra a una liga o torneo para ver sus torneos, prácticas y clasificaciones.</p>
+          <p className="text-sm text-muted">Entra a una liga o torneo para ver su calendario y sus clasificaciones.</p>
         </div>
+
+        {multi && <SportChips sports={sports} value={sport} onChange={setSport} />}
 
         {auth.user ? (
           <section className="flex flex-col gap-2">
@@ -50,6 +60,8 @@ export default function LeaguesPage() {
               <LoadError error={memberships.error} />
             ) : memberships.loading || mine.loading ? (
               <ListSkeleton rows={2} />
+            ) : mine.data.length > 0 && myLeagues.length === 0 ? (
+              <p className="text-sm text-muted">No tienes ligas de este deporte.</p>
             ) : mine.data.length === 0 ? (
               <Empty icon={<Shield className="size-8" />} title="Todavía no estás en ninguna">
                 Únete a una pública aquí abajo, o crea la tuya o pon el código que te compartieron.
@@ -61,8 +73,8 @@ export default function LeaguesPage() {
               </Empty>
             ) : (
               <Card className="stagger divide-y divide-line overflow-hidden">
-                {mine.data.map((l, i) => (
-                  <LeagueRow key={l.id} league={l} index={i} role={roleOf(l.id)} />
+                {myLeagues.map((l, i) => (
+                  <LeagueRow key={l.id} league={l} index={i} role={roleOf(l.id)} showSport={multi} />
                 ))}
               </Card>
             )}
@@ -87,7 +99,13 @@ export default function LeaguesPage() {
           ) : pub.loading ? (
             <ListSkeleton rows={3} />
           ) : others.length === 0 ? (
-            <p className="text-sm text-muted">{pub.data.length ? 'Ya estás en todas las públicas.' : 'Todavía no hay ligas ni torneos públicos.'}</p>
+            <p className="text-sm text-muted">
+              {sport && pub.data.some((l) => !roleOf(l.id))
+                ? 'No hay públicas de este deporte.'
+                : pub.data.length
+                  ? 'Ya estás en todas las públicas.'
+                  : 'Todavía no hay ligas ni torneos públicos.'}
+            </p>
           ) : (
             <Card className="stagger divide-y divide-line overflow-hidden">
               {others.map((l, i) => (
@@ -98,6 +116,7 @@ export default function LeaguesPage() {
                       <div className="flex items-center gap-2">
                         <span className="truncate font-medium">{l.name}</span>
                         {l.kind === 'torneo' && <Badge tone="accent">Torneo</Badge>}
+                        {multi && <SportBadge sport={leagueSport(l)} />}
                       </div>
                       <LeagueMeta league={l} />
                     </div>
@@ -134,7 +153,7 @@ function LeagueIcon({ league }: { league: League }) {
   );
 }
 
-function LeagueRow({ league, role, index }: { league: League; role?: Member['role']; index: number }) {
+function LeagueRow({ league, role, index, showSport }: { league: League; role?: Member['role']; index: number; showSport?: boolean }) {
   return (
     <Link to={`/l/${league.id}`} style={{ '--i': index } as CSSProperties} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
       <LeagueIcon league={league} />
@@ -146,6 +165,7 @@ function LeagueRow({ league, role, index }: { league: League; role?: Member['rol
             {league.kind === 'torneo' ? 'Torneo' : league.visibility === 'private' ? 'Privada' : 'Pública'}
           </Badge>
           {role && role !== 'member' && <Badge tone="accent">{roleLabel(role)}</Badge>}
+          {showSport && <SportBadge sport={leagueSport(league)} />}
         </div>
         <LeagueMeta league={league} />
       </div>

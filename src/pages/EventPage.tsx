@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import {
   CalendarDays,
@@ -45,14 +45,37 @@ import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
 import type { Entry } from '../lib/types';
+import { dispatchSport, leagueSport } from '../sports/registry';
+
+const SportComingSoon = lazy(() => import('./sports/SportComingSoon'));
+const UpdateAppScreen = lazy(() => import('./sports/UpdateAppScreen'));
 
 type TabKey = 'inscritos' | 'equipos' | 'juegos' | 'clasificacion';
 
 /**
- * Un torneo o una práctica. El admin lo maneja todo; el anotador del torneo anota los juegos;
+ * Un evento de la liga. Punto de desvío por deporte (el otro es LeagueShell): el boliche ve sus pantallas
+ * de siempre; un deporte sin pantallas todavía, «Pronto»; uno que esta versión no conoce, «Actualiza la app».
+ */
+export default function EventPage(props: { eventId?: string }) {
+  const { league } = useLeagueCtx();
+  const sport = dispatchSport(leagueSport(league));
+  if (sport.kind === 'ready') return <BowlingEventPage {...props} />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      {sport.kind === 'unknown' ? (
+        <UpdateAppScreen sport={sport.sport} leagueName={league.name} />
+      ) : (
+        <SportComingSoon sport={sport.sport} leagueName={league.name} kind={league.kind ?? 'liga'} />
+      )}
+    </Suspense>
+  );
+}
+
+/**
+ * Un torneo o una práctica de boliche. El admin lo maneja todo; el anotador del torneo anota los juegos;
  * el jugador ve la clasificación en vivo y anota los suyos para enviarlos a revisión.
  */
-export default function EventPage({ eventId: fixed }: { eventId?: string }) {
+function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const params0 = useParams();
   const eventId = fixed ?? params0.eventId;
   const { lid, base, isAdmin, canScore, myPlayerId, league } = useLeagueCtx();

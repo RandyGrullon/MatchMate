@@ -35,6 +35,7 @@ export function createFakeBackend(): FakeBackend {
       signInWithGoogle: unsupported,
       signOut: async () => {},
       resetPassword: unsupported,
+      resendConfirmation: unsupported,
       updatePassword: unsupported,
     },
     storage: { upload: unsupported, signedUrl: unsupported, remove: unsupported },

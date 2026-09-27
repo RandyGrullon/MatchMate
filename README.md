@@ -1,117 +1,120 @@
 # MatchMate
 
-Ligas y torneos de varios deportes (boliche, pádel, tenis, pickleball, baloncesto, fútbol, golf y natación),
-desde el celular. *Match* = partida, *mate* = compañero.
+Ligas y torneos de varios deportes desde el celular, en español. *Match* = partida, *mate* = compañero.
+Es una app web instalable (PWA): abre sin conexión, anota en la cancha aunque no haya señal y avisa con
+notificaciones.
 
-> **Estado:** copia inicial de BowlingX (29334d1). En la Fase 0 pasa a Supabase y se agregan los demás
-> deportes por fases. BowlingX sigue aparte para su liga; sus datos se migran aquí al terminar.
-> Mientras tanto, lo de abajo describe lo heredado de BowlingX.
+> **Estado: Fase 0.** MatchMate nació como copia de BowlingX (29334d1) y está pasando de Firebase a
+> **Supabase** (plan gratis). Primero sale el boliche igual que hoy; los demás deportes se abren por fases.
+> BowlingX sigue aparte para su liga y sus datos se migran aquí al final (Fase 8).
 
-Ligas y torneos de boliche: jugadores, equipos, promedio, handicap y pinos por juego, desde el celular.
+## Deportes
 
-- **Cuentas**: registro y entrada con correo + contraseña (repetida) o con **Google**; la primera vez
-  que alguien entra con Google su cuenta se crea sola.
-- **Ligas** públicas o privadas. Cualquiera con cuenta crea la suya y queda como **dueño**; invita con
-  **link, QR o código** (cambiar el código invalida el anterior). Las públicas se ven sin login.
-  Cada liga tiene bolera, horario, temporada, contacto (WhatsApp) y si **exige foto** del marcador.
-- **Torneos sin liga**: un torneo suelto con sus propios jugadores, equipos, invitación y admins.
-- **Roles**: el dueño y los **admins** de la liga lo manejan todo (eventos, juegos, aprobaciones,
-  jugadores, miembros, nombrar admins). El **superadmin** ve y administra todas las ligas y las cuentas
-  (fijos en `src/lib/admins.ts` + `isFixedSuper()` de las reglas, o nombrados desde /superadmin).
-- **Observador** (Eventos · Ranking · Perfil): los torneos y prácticas de la liga, pasados y por venir,
-  si participó y su posición, la clasificación en vivo y el detalle de cada juego (cuadros y foto).
-- **Anuncios**: el torneo que viene sale arriba para toda la liga (también para quien entra después),
-  con cuenta regresiva, el mensaje del admin y botón de WhatsApp al contacto.
-- **Torneo** (equipos + handicap; regla 2025: (230 − promedio) × 80 %, individual con handicap y equipos
-  por scratch; todo configurable) con **límite de jugadores por equipo** y **equipos automáticos** parejos
-  que mezclan categorías A–D. **Práctica** (pinos individuales) con asistencia ("Voy").
-- **Anotar por cuadros**, de 3 formas: tocando los **pines** que cayeron en cada tiro, con un **teclado**
-  que bloquea lo imposible (tras un 8 solo 0, 1 o spare) o solo el **total** (barra o número). La hoja
-  calcula strikes, spares y el acumulado; se ven strikes/spares en el perfil.
-- **Fotos**: si la liga exige foto, un juego cuenta solo verificado con la foto (leída por IA); si no,
-  cuenta de una. Los jugadores suben sus juegos (con cuadros) y un admin los aprueba.
-- **Ranking** de la liga por temporada, **Excel** del torneo, **respaldo** JSON por liga (y completo para
-  el superadmin) y borrado de fotos viejas para no llenar el espacio gratis.
-- **App instalable** (PWA): animación de apertura, abre sin conexión, avisa cuando hay versión nueva.
+| Deporte | Fase | Qué trae |
+|---|---|---|
+| Boliche | 0 (activo) | Todo lo de BowlingX: prácticas y torneos, handicap, categorías A–D, cuadros, fotos del marcador leídas con IA, ranking y Excel |
+| Pádel | 1 y 2 | Noche de americano y mexicano, modo cancha, liga de parejas y torneo por categorías |
+| Tenis y pickleball | 3 | El mismo motor de raqueta, liga por cajas y escalera |
+| Baloncesto | 4 | Equipos de temporada y mesa anotadora |
+| Fútbol de campo y sala | 5 | Tablas, tarjetas y disciplina |
+| Golf | 6 | Tarjeta por hoyos, índice de dificultad y ventajas |
+| Natación | 7 | Series y tiempos |
 
-React 19 + Vite + Tailwind 4 · Firebase Auth + Firestore (tiempo real, caché sin conexión) ·
-Firebase AI Logic (Gemini, capa gratuita) · Vercel.
+Mientras un deporte no esté abierto queda en **beta**: existe en la base, pero solo el superadmin puede crear
+ligas de él (lo decide la tabla `sport_status`, no la pantalla).
 
-## Correr en local
+Lo que ya hace (heredado de BowlingX): cuentas con correo o Google; ligas públicas o privadas con invitación
+por link, QR o código; torneos sueltos; roles de dueño, admin, anotador y superadmin; cada cuenta juega como su
+propio jugador; «Voy», anuncios con cuenta regresiva y WhatsApp; anotar por pinos, teclado o total; envíos con
+foto que un admin aprueba; pizarra en vivo, reacciones, comentarios y buzón anónimo; ranking por temporada,
+estadísticas y Excel; modo claro/oscuro con color, tours y aviso de versión nueva.
+
+## Arquitectura (resumen)
+
+```
+Pantallas (src/pages, src/components)
+   │  hooks y funciones de src/lib/data.ts (los mismos nombres que en BowlingX)
+Capa de datos (src/lib/data/*.ts)
+   │  lecturas con caché persistida (src/lib/db/query.ts) · escrituras por RPC;
+   │  las de cancha pasan por la cola sin conexión (src/lib/db/outbox.ts)
+Backend (src/lib/backend/types.ts, un solo contrato)
+   ├─ supabase.ts  producción: Postgres + RLS, Auth, Realtime Broadcast, Storage, Edge Functions
+   └─ local.ts     PGlite (Postgres en el navegador) con las mismas migraciones y RLS
+Base de datos (supabase/migrations/*.sql)  ← fuente de verdad: esquema, RLS, RPC y triggers
+Motores de deporte (src/sports/<familia>)  ← funciones puras con pruebas, sin React ni backend
+```
+
+- Todas las tablas con RLS; el teléfono solo lee con `select` y **escribe solo por RPC** que validan permisos.
+- React 19 + Vite + Tailwind 4 · Supabase Free · Vercel Hobby. Todo gratis.
+- Detalle: [docs/arquitectura.md](docs/arquitectura.md). Contrato de la base (tablas, RPC, errores, tiempo real):
+  [supabase/README.md](supabase/README.md).
+
+## Correr en local (sin cuentas de nada)
 
 ```bash
 pnpm install
-cp .env.example .env.local   # y completa las variables VITE_FIREBASE_*
 pnpm dev
 ```
 
-Contra los emuladores (no toca datos reales; necesita Java 11+):
+Abre http://localhost:5173. Sin variables de entorno la app usa el **modo local**: Postgres (PGlite) dentro
+del navegador con las mismas migraciones y RLS que producción. Crea una cuenta ahí mismo: existe solo en ese
+navegador (para empezar de cero: DevTools › Application › IndexedDB › borrar `matchmate`). En modo local no
+hay Google, correos ni lectura de fotos con IA.
+
+**Contra un Supabase de verdad:** copia `.env.example` a `.env.local` y llena `VITE_SUPABASE_URL` y
+`VITE_SUPABASE_PUBLISHABLE_KEY`.
+
+**Supabase completo en tu PC** (necesita Docker):
 
 ```bash
-pnpm emulators   # en otra terminal
-pnpm dev:emu
+pnpm supabase:start   # la primera vez baja las imágenes; al final muestra la URL y la Publishable key
+pnpm supabase:reset   # vuelve a crear la base: migraciones + supabase/seed.sql
+pnpm db:types         # tipos de la base en src/lib/db.types.ts
+pnpm supabase:stop
 ```
 
-`pnpm test` corre las pruebas de los cálculos (handicap, totales, ranking, equipos, cuadros, lectura de fotos).
-`pnpm test:reglas` prueba `firestore.rules` contra el emulador (necesita Java 11+).
+Pon la URL (`http://127.0.0.1:54321`) y la Publishable key en `.env.local`. El seed trae cuentas de prueba
+(`admin@matchmate.local` superadmin, `org@`, `luis@`, `ana@`; contraseña `matchmate123`) y el caso de referencia
+del boliche. Los correos no salen: se ven en Mailpit, http://127.0.0.1:54324.
 
-## Configurar Firebase (una sola vez)
-
-1. **Reglas de Firestore**: publica `firestore.rules`, ya sea pegándolo en
-   Consola → Firestore → Reglas, o con `npx firebase-tools login` y después `pnpm reglas`.
-   Los superadmins fijos están en `isFixedSuper()` de las reglas y en `src/lib/admins.ts` (deben coincidir).
-2. **Authentication → Método de acceso**: activa **Correo/contraseña** y **Google** (este pide el
-   nombre público del proyecto y un correo de asistencia). En Configuración → Acciones del usuario deja
-   **"Crear cuentas" activado** (sin verificación de correo). En Configuración → **Dominios autorizados**
-   agrega el dominio de Vercel (sin eso Google no deja entrar desde la app).
-3. **AI Logic** (escaneo de fotos): Consola → AI Services → AI Logic → *Get started* →
-   **Gemini Developer API**. No hay que copiar ninguna API key.
-4. **App Check** (AI Logic lo exige): Consola → Security → App Check → registra la app web con
-   **reCAPTCHA Enterprise** y pon la *site key* en `VITE_RECAPTCHA_SITE_KEY`. Para probar en
-   localhost registra el valor de `VITE_APPCHECK_DEBUG_TOKEN` en *Manage debug tokens*.
-
-Si la IA no puede leer una foto, la app lo avisa y se pueden anotar los juegos a mano mirando la
-foto; la foto queda igual como comprobante.
-
-## Desplegar en Vercel
-
-Importa el repo en Vercel (detecta Vite solo) y agrega en *Settings → Environment Variables*
-las mismas variables de `.env.example` (`VITE_FIREBASE_*` y `VITE_RECAPTCHA_SITE_KEY`).
-`vercel.json` ya redirige las rutas de la app a `index.html`. Agrega también el dominio de Vercel
-en el registro de reCAPTCHA Enterprise.
-
-## Importar un torneo pasado
+## Pruebas
 
 ```bash
-pnpm importar mi-torneo.json --liga <id-de-la-liga>
+pnpm typecheck   # TypeScript
+pnpm test        # unitarias: cálculos del boliche, motores de deporte, capa de datos, backend local
+pnpm test:sql    # SQL: esquema, RLS, RPC y tiempo real con PGlite (sin Docker)
 ```
 
-El id de la liga es el del link (`/l/<id>`). Pide el correo y la contraseña de un admin de esa liga en la terminal. Los juegos importados cuentan como
-verificados (resultado auditado del Excel, sin foto). `--reemplazar` vuelve a cargar un torneo que
-ya existe. Los archivos de `scripts/datos/` no se suben al repo.
+En GitHub Actions, [ci.yml](.github/workflows/ci.yml) corre las tres más el build en cada push a `main` y en
+cada PR. pgTAP con `supabase start` va de noche y está apagado hasta que haga falta (ver el archivo).
 
-Formato del JSON:
+## Scripts
 
-```json
-{
-  "event": { "id": "torneo-2025", "type": "torneo", "name": "Torneo 2025", "date": "2025-10-25",
-             "games": 3, "hcpBase": 230, "hcpPercent": 80, "individualRankBy": "hcp", "teamRankBy": "scratch" },
-  "teams": ["Equipo 1"],
-  "players": [{ "name": "Nombre", "average": 165, "handicap": 52, "team": "Equipo 1", "scores": [173, 159, 159] }]
-}
-```
-
-## Datos (Firestore)
-
-| Colección | Qué guarda |
+| Script | Qué hace |
 |---|---|
-| `users` | cuentas: correo, nombre y `superadmin` |
-| `leagues/{liga}` | liga o torneo suelto (`kind`): visibilidad, dueño, bolera, horario, temporada, contacto, `requirePhoto` |
-| `leagues/{liga}/players` | jugadores de la liga, promedio fijo opcional y cuenta vinculada (`uid`) |
-| `leagues/{liga}/events` | torneo o práctica: fecha, juegos, handicap, equipos, límite por equipo, anuncio, asistencia |
-| `leagues/{liga}/entries` | participación `evento_jugador`: promedio de entrada, pinos, foto y cuadros de cada juego |
-| `leagues/{liga}/photos` | fotos comprimidas (~100 kB) de los marcadores |
-| `leagues/{liga}/submissions` | juegos subidos por jugadores, pendientes de aprobación |
-| `leagues/{liga}/private/invite` | código de invitación vigente (solo admins) |
-| `members/{liga}_{uid}` | quién está en qué liga, su rol (`owner`/`admin`/`member`) y su jugador |
-| `invites/{código}` | a qué liga lleva cada código de invitación |
+| `pnpm dev` / `pnpm build` / `pnpm preview` | Vite: desarrollo, paquete de producción (con chequeo de tipos) y probar el paquete |
+| `pnpm typecheck` · `pnpm test` · `pnpm test:sql` | Tipos, unitarias y SQL |
+| `pnpm marca` | Vuelve a generar los iconos (`public/`) y la animación de apertura (`index.html`) desde el código de la marca |
+| `pnpm supabase:start` · `supabase:stop` · `supabase:reset` | Supabase en Docker (CLI por `npx`) |
+| `pnpm db:types` | Tipos de TypeScript de la base local |
+
+## Publicar y configurar Supabase
+
+Paso a paso para el dueño (cuentas, claves, Vercel, Google, correo, IA, push, respaldos):
+[docs/CONFIGURAR-SUPABASE.md](docs/CONFIGURAR-SUPABASE.md). Las variables de la app están en
+[.env.example](.env.example); ningún secreto va en el repo ni en variables `VITE_*`.
+
+Tareas automáticas en GitHub Actions:
+
+- [keepalive.yml](.github/workflows/keepalive.yml): cada día llama a la RPC `ping` para que Supabase no pause
+  los proyectos. Si falla, abre un issue.
+- [backup.yml](.github/workflows/backup.yml): cada día respalda la base de producción (con las cuentas), la
+  cifra con age y la guarda 14 días como archivo de la release «respaldos» (nunca en el historial de git).
+
+## Dónde está el plan
+
+- [docs/plan/plan.json](docs/plan/plan.json): fases, entregables, criterios de salida y lo que le toca al dueño.
+- [docs/plan/critica.md](docs/plan/critica.md): correcciones al plan (seguridad, cuotas, respaldos, CI).
+- `docs/plan/investigacion-*.md`: Supabase, deportes y reglas, formatos, marca, demanda en RD.
+- [docs/arquitectura.md](docs/arquitectura.md) y [supabase/README.md](supabase/README.md): cómo está hecho.
+- `docs/marca/`: las opciones de logo.

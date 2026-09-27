@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router';
 import { ChevronRight, Plus, Ticket, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import type { LeagueKind } from '../lib/types';
+import { getSport } from '../sports/registry';
+import { useSportStatus } from '../sports/status';
 import { LeagueFormModal } from './LeagueFormModal';
 import { Button, Input, Modal, cx } from './ui';
 
@@ -14,7 +16,7 @@ export const useCreateMenu = () => useContext(Ctx);
 /**
  * El menú "Crear": crear una liga, un torneo sin liga o unirse con un código. Va una sola vez en la raíz
  * de la app (no dentro de la barra, que se esconde según el tamaño de la pantalla: un modal ahí se trababa
- * al girar el teléfono).
+ * al girar el teléfono). El deporte se elige en el primer paso de LeagueFormModal.
  */
 export function CreateMenuProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -52,7 +54,7 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
       {children}
       <Modal open={open} onClose={() => setOpen(false)} title="Crear">
         <div className="flex flex-col gap-2">
-          <Option icon={<Plus className="size-5" />} title="Crear una liga" text="Con prácticas, torneos y ranking. Pública o privada; invitas con link o QR." onClick={() => pick('liga')} primary />
+          <LeagueOption onClick={() => pick('liga')} />
           <Option icon={<Trophy className="size-5" />} title="Torneo sin liga" text="Un torneo suelto con sus jugadores, equipos y clasificación." onClick={() => pick('torneo')} />
           <form onSubmit={join} className="flex flex-col gap-2 rounded-2xl border border-line p-3">
             <span className="flex items-center gap-2 text-sm font-medium">
@@ -75,9 +77,24 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
           </form>
         </div>
       </Modal>
-      <LeagueFormModal open={creating != null} onClose={() => setCreating(null)} kind={creating ?? 'liga'} onSaved={(to) => navigate(to)} />
+      {/* Se monta al abrirlo: así el estado de los deportes se consulta solo cuando hace falta. */}
+      {creating && <LeagueFormModal open onClose={() => setCreating(null)} kind={creating} onSaved={(to) => navigate(to)} />}
     </Ctx.Provider>
   );
+}
+
+/** «Crear una liga»: si puede elegir, dice que elige el deporte; si no, qué trae la liga de su único deporte. */
+function LeagueOption({ onClick }: { onClick: () => void }) {
+  const { isSuper } = useAuth();
+  const { creatable } = useSportStatus(isSuper);
+  const only = creatable.length === 1 ? creatable[0] : null;
+  const text =
+    creatable.length > 1
+      ? 'Eliges el deporte. Pública o privada; invitas con link o QR.'
+      : only && only !== 'bowling'
+        ? `Liga de ${getSport(only).lower}. Pública o privada; invitas con link o QR.`
+        : 'Con prácticas, torneos y ranking. Pública o privada; invitas con link o QR.';
+  return <Option icon={<Plus className="size-5" />} title="Crear una liga" text={text} onClick={onClick} primary />;
 }
 
 function Option({ icon, title, text, onClick, primary }: { icon: React.ReactNode; title: string; text: string; onClick: () => void; primary?: boolean }) {

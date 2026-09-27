@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { asBackendError } from '../lib/db/errors';
 import { Button, MODAL_OPENED, Modal, cx } from './ui';
 
 interface Toast {
@@ -115,6 +116,20 @@ export function useFeedback() {
   return ctx;
 }
 
+/** Mensaje para un error al guardar (los códigos de la base, en palabras sencillas). */
+export function saveErrorMessage(e: unknown): string {
+  const be = asBackendError(e);
+  const msg = e instanceof Error ? e.message : String(e);
+  if (be?.kind === 'permission' || /permission/i.test(msg)) return 'Sin permiso para guardar. ¿Sesión de admin activa?';
+  if (be?.kind === 'network') return 'Sin conexión. Intenta de nuevo cuando vuelva la señal.';
+  if (be?.kind === 'auth') return 'Tu sesión venció. Entra de nuevo.';
+  if (be?.kind === 'rate_limited') return 'Muy seguido: espera un momento e intenta de nuevo.';
+  if (be?.kind === 'not_found') return 'Ya no existe: alguien lo borró.';
+  // Los errores propios de la capa de datos ya vienen en español (p. ej. un código de invitación que no sirve).
+  if (be?.code === 'invalid_code') return be.message;
+  return 'No se pudo guardar. Intenta de nuevo.';
+}
+
 /** Ejecuta una escritura mostrando el error si falla. */
 export function useAction() {
   const { toast } = useFeedback();
@@ -126,8 +141,7 @@ export function useAction() {
         return r;
       } catch (e) {
         console.error(e);
-        const msg = e instanceof Error ? e.message : String(e);
-        toast(/permission/i.test(msg) ? 'Sin permiso para guardar. ¿Sesión de admin activa?' : 'No se pudo guardar. Intenta de nuevo.', 'error');
+        toast(saveErrorMessage(e), 'error');
         return undefined;
       }
     },

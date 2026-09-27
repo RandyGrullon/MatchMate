@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bell, BellOff, BellRing, CheckCircle2, Smartphone } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
+import { pushConfigured } from '../lib/pushKey';
 import { useFeedback } from './feedback';
 import { Button, Card } from './ui';
 
@@ -31,7 +32,8 @@ function useEnable() {
     const next = await enableNotifications(user.uid).catch(() => ({ state: notifyState(), subscribed: false }));
     setBusy(false);
     setState(next.state);
-    if (next.state === 'granted' && next.subscribed) toast('Notificaciones activadas');
+    // Sin clave de push (desarrollo o demo local) no hay recordatorios con la app cerrada: no es un error.
+    if (next.state === 'granted' && (next.subscribed || !pushConfigured())) toast('Notificaciones activadas');
     else if (next.state === 'granted')
       toast('Notificaciones activadas, pero los recordatorios con la app cerrada no quedaron listos (¿sin señal?). Se reintenta solo al abrir la app.', 'error');
     else if (next.state === 'denied') toast('Las notificaciones quedaron bloqueadas. Puedes activarlas en los ajustes del teléfono.', 'error');

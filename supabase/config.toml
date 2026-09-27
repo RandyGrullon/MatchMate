@@ -1,3 +1,8 @@
+# MatchMate · configuración del Supabase LOCAL (`pnpm supabase:start`, Docker) y de las Edge Functions.
+# Los proyectos de verdad (staging y producción) se configuran en el panel de Supabase, paso a paso en
+# docs/CONFIGURAR-SUPABASE.md. No correr `supabase config push` contra ellos: pondría estas URLs de localhost.
+# Los valores env(...) salen de variables del sistema o de supabase/.env.local (ignorado por git); nunca se escriben aquí.
+#
 # For detailed configuration reference documentation, visit:
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
@@ -15,7 +20,9 @@ schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
-max_rows = 1000
+# MatchMate: 500 para que nadie baje lo público de un tirón (crítica 22). En los proyectos de verdad se pone
+# igual en Project Settings › Data API › Max rows.
+max_rows = 500
 # Controls whether new tables, views, sequences and functions created in the `public` schema by
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
@@ -155,11 +162,23 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+# MatchMate: `pnpm dev` (Vite) corre en el 5173. Producción usa https://matchmate.vercel.app (en el panel).
+site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# La app pide volver a su origen (entrar con Google, confirmar el correo) y a /cuenta?recuperar=1
+# (olvidé mi contraseña): por eso cada origen va solo y con /**. 4173 = `pnpm preview`.
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://localhost:5173/**",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5173/**",
+  "http://localhost:4173",
+  "http://localhost:4173/**",
+  "https://matchmate.vercel.app",
+  "https://matchmate.vercel.app/**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -210,10 +229,12 @@ token_verifications = 30
 web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# MatchMate: Cloudflare Turnstile en el registro y en «olvidé mi contraseña» (crítica 12), apagado en local.
+# La site key va en VITE_TURNSTILE_SITE_KEY; la secreta, en el panel (Authentication › Attack Protection).
 # [auth.captcha]
 # enabled = true
-# provider = "hcaptcha"
-# secret = ""
+# provider = "turnstile"
+# secret = "env(SUPABASE_AUTH_CAPTCHA_SECRET)"
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -222,7 +243,8 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# MatchMate: sí (crítica 12 y 37). En local el correo no sale: se ve en Mailpit, http://127.0.0.1:54324
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -233,14 +255,18 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# MatchMate: Gmail con contraseña de aplicación (la cuenta necesita verificación en 2 pasos; ~500 correos al día).
+# Apagado en local (los correos se ven en Mailpit). En staging y producción se pone lo mismo en el panel:
+# Authentication › Emails › SMTP Settings. Para probar la entrega real desde local: enabled = true y las variables
+# SMTP_USER (la Gmail completa) y SMTP_PASS (la contraseña de aplicación de 16 letras, sin espacios).
+[auth.email.smtp]
+enabled = false
+host = "smtp.gmail.com"
+port = 587
+user = "env(SMTP_USER)"
+pass = "env(SMTP_PASS)"
+admin_email = "env(SMTP_USER)"
+sender_name = "MatchMate"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -318,6 +344,20 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+# MatchMate: Google. Apagado en local (el modo local de la app no tiene Google); para probarlo aquí: enabled = true,
+# las variables SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID y SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET, y en el cliente OAuth
+# de Google la URI http://127.0.0.1:54321/auth/v1/callback. En staging y producción: Authentication › Sign In / Providers.
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+# DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+# true solo si en local se prueba Google Identity Services (signInWithIdToken) y falla por el nonce.
+skip_nonce_check = false
+email_optional = false
+
 [auth.external.apple]
 enabled = false
 client_id = ""
@@ -381,11 +421,32 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# Secretos de las funciones en local: los valores en supabase/.env.local (ignorado por git) y descomentar aquí.
+# En staging y producción: `supabase secrets set` o Edge Functions › Secrets en el panel (docs/CONFIGURAR-SUPABASE.md).
 # [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# GEMINI_API_KEY = "env(GEMINI_API_KEY)"
+# VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
+# VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
+# VAPID_SUBJECT = "env(VAPID_SUBJECT)"
+# CRON_SECRET = "env(CRON_SECRET)"
+# APP_ORIGIN = "env(APP_ORIGIN)"
 
-[analytics]
+# Edge Functions de MatchMate. verify_jwt = false en las dos (crítica 1): con las claves nuevas (sb_publishable_ /
+# sb_secret_) la verificación de la puerta no sirve, así que cada función valida por dentro:
+# - scan-bowling: el JWT del usuario (auth.getClaims) y sus permisos (can_scan / consume_scan).
+# - send-push: la cabecera x-cron-secret contra CRON_SECRET (la llama pg_net desde el cron, con el secreto en Vault).
+[functions.scan-bowling]
 enabled = true
+verify_jwt = false
+
+[functions.send-push]
+enabled = true
+verify_jwt = false
+
+# MatchMate: apagado. Levanta 2 contenedores más (logflare y vector) y en Windows pide exponer Docker en el
+# puerto 2375; la app no lo usa. Encenderlo solo para ver los logs en Studio.
+[analytics]
+enabled = false
 port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

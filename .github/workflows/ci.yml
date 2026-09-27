@@ -1,0 +1,88 @@
+# CI de MatchMate. En cada push a main y en cada PR: tipos, pruebas unitarias, pruebas SQL (PGlite, sin Docker)
+# y build, en un solo job para gastar pocos minutos (crítica 14: el repo privado tiene 2.000 min/mes gratis).
+# Un push que solo cambia documentos (docs/, *.md) no corre nada.
+#
+# pgTAP con `supabase start` (Docker: 3–6 min solo bajando imágenes) va aparte, de noche, y está APAGADO:
+# se enciende con la variable del repo PGTAP_NOCHE = true (Settings › Secrets and variables › Actions › Variables)
+# cuando existan pruebas en supabase/tests. También se puede correr a mano (Actions › CI › Run workflow).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**/*.md']
+  schedule:
+    - cron: '41 8 * * *' # 4:41 am en RD
+  workflow_dispatch:
+    inputs:
+      pgtap:
+        description: 'Correr también pgTAP con supabase start (Docker, más minutos)'
+        type: boolean
+        default: false
+
+# Un push nuevo cancela el anterior de la misma rama (no se pagan minutos por algo que ya quedó viejo).
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Tipos, pruebas y build
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Instalar
+        run: pnpm install --frozen-lockfile
+      - name: Tipos
+        run: pnpm typecheck
+      - name: Pruebas unitarias
+        run: pnpm test
+      - name: Pruebas SQL (PGlite)
+        run: pnpm test:sql
+      - name: Herramienta de migración desde BowlingX (tipos y pruebas)
+        run: |
+          pnpm exec tsc --noEmit -p scripts/migrar/tsconfig.json
+          pnpm test:migrar
+      # `pnpm build` repite el tsc que ya corrió arriba: aquí solo Vite. Sin VITE_SUPABASE_* sale en modo local.
+      - name: Build
+        run: pnpm exec vite build
+
+  pgtap:
+    name: pgTAP con Supabase local (de noche)
+    if: >-
+      (github.event_name == 'schedule' && vars.PGTAP_NOCHE == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.pgtap)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # Base nueva con todas las migraciones (también las *_supabase.sql de Storage y Realtime) y el seed.
+      # Solo los contenedores que hacen falta, para bajar menos imágenes.
+      - name: Levantar Supabase (migraciones + seed)
+        run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector
+      - name: Lint de la base
+        run: supabase db lint --local --level warning --fail-on error
+      - name: Pruebas pgTAP
+        run: |
+          if find supabase/tests -name '*.sql' 2>/dev/null | grep -q .; then
+            supabase test db
+          else
+            echo "::notice::Todavía no hay pruebas pgTAP en supabase/tests: solo se probó que las migraciones y el seed cargan."
+          fi

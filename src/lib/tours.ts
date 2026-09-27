@@ -1,16 +1,22 @@
 import type { TourStep } from '../components/Tour';
 
+/**
+ * Textos de los tours guiados. El del Home es de toda la app (sirve para cualquier deporte); los de la liga,
+ * el evento y Admin son de las pantallas del boliche: cada deporte trae los suyos con sus pantallas.
+ * El color de la app se puede cambiar: los textos dicen «el botón del centro», no su color.
+ */
+
 /** Tour del Home: lo principal de la app (sale la primera vez que se entra). */
 export const HOME_TOUR: TourStep[] = [
   {
     target: 'nav',
     title: 'Bienvenido a MatchMate',
-    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón morado para crear, tus notificaciones y tu Perfil (tus números en todas las ligas).',
+    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus notificaciones y tu Perfil (tus números en todas las ligas).',
   },
   {
     target: 'en-juego',
     title: 'En juego ahora',
-    body: 'Cuando empieza una práctica o un torneo de tu liga, aparece aquí. Toca "Anotar mis juegos" y anótalos mientras juegas.',
+    body: 'Cuando empieza una práctica o un torneo de tus ligas, aparece aquí. Toca "Anotar mis juegos" y anótalos mientras juegas.',
   },
   {
     target: 'proximos',
@@ -29,8 +35,8 @@ export const HOME_TOUR: TourStep[] = [
   },
   {
     target: 'crear',
-    title: 'El botón morado: crear',
-    body: 'Crea tu liga (prácticas, torneos y ranking) o un torneo suelto con equipos y clasificación, o únete con un código de invitación.',
+    title: 'El botón del centro: crear',
+    body: 'Crea tu liga (con su calendario, torneos y ranking) o un torneo suelto con equipos y clasificación, o únete con un código de invitación.',
   },
   {
     target: 'unirse',
@@ -39,7 +45,7 @@ export const HOME_TOUR: TourStep[] = [
   },
 ];
 
-/** Tour de la liga (Calendario): sus secciones. */
+/** Tour de la liga de boliche (Calendario): sus secciones. */
 export const LEAGUE_TOUR: TourStep[] = [
   {
     target: 'secciones',
@@ -83,7 +89,7 @@ export const LEAGUE_TOUR: TourStep[] = [
   },
 ];
 
-/** Tour del evento con el panel del jugador: anotar mientras se juega. */
+/** Tour del evento de boliche con el panel del jugador: anotar mientras se juega. */
 export const EVENT_TOUR: TourStep[] = [
   {
     target: 'modo',
@@ -117,7 +123,7 @@ export const EVENT_TOUR: TourStep[] = [
   },
 ];
 
-/** Tour de Admin: lo que maneja el organizador. */
+/** Tour de Admin (boliche): lo que maneja el organizador. */
 export const ADMIN_TOUR: TourStep[] = [
   {
     target: 'admin-secciones',

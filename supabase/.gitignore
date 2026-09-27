@@ -6,3 +6,7 @@
 .env.keys
 .env.local
 .env.*.local
+
+# Secretos locales de Supabase y de las Edge Functions
+.env
+functions/.env

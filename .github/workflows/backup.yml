@@ -1,0 +1,157 @@
+# Respaldo diario de la base de producción (crítica 25). Supabase Free no guarda respaldos propios.
+#
+# - `supabase db dump` por el pooler en modo sesión (GitHub no tiene IPv6 y la conexión directa es solo IPv6),
+#   en 3 partes: roles, esquema y datos. Los datos traen también el esquema auth (cuentas, identidades de Google
+#   y contraseñas cifradas) y las filas de storage; el paso comprueba que auth.users e identities vengan.
+#   Los ARCHIVOS de las fotos no van aquí (se copian aparte, fase 0C).
+# - Se cifra con age para la(s) clave(s) pública(s) de AGE_PUBLIC_KEY. La clave privada la guarda el dueño y
+#   nunca entra a GitHub: sin ella nadie puede abrir el respaldo.
+# - Se sube como archivo de la release «respaldos» de este repo (que tiene que ser privado; si no, falla).
+#   Nada va al historial de git. Se borran los de más de 14 días.
+#
+# Secretos: SUPABASE_DB_URL (Connect › Session pooler, con la contraseña de la base) y AGE_PUBLIC_KEY (age1…).
+# Si falla: job en rojo (GitHub manda un correo) y se abre o se comenta el issue «Respaldo falló».
+name: Respaldo
+
+on:
+  schedule:
+    - cron: '7 9 * * *' # 5:07 am en RD (casi nadie escribe a esa hora)
+  workflow_dispatch:
+
+concurrency:
+  group: respaldo
+  cancel-in-progress: false
+
+permissions:
+  contents: write # crear la release «respaldos» y subir o borrar sus archivos
+  issues: write # avisar si falla
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  TAG: respaldos
+  DIAS: 14
+  TITULO: Respaldo falló
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Revisar secretos y que el repo sea privado
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$DB_URL" ] || { echo "::error::Falta el secreto SUPABASE_DB_URL (docs/CONFIGURAR-SUPABASE.md, paso 11)."; exit 1; }
+          [ -n "$AGE_PUBLIC_KEY" ] || { echo "::error::Falta el secreto AGE_PUBLIC_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11)."; exit 1; }
+          case "$DB_URL" in
+            *pooler.supabase.com:5432/*) ;;
+            *:6543/*) echo "::error::SUPABASE_DB_URL es el pooler en modo transacción (6543): usa el Session pooler (5432)."; exit 1 ;;
+            *db.*.supabase.co*) echo "::error::SUPABASE_DB_URL es la conexión directa (solo IPv6): usa el Session pooler."; exit 1 ;;
+            *) echo "::warning::SUPABASE_DB_URL no parece el Session pooler de Supabase (…pooler.supabase.com:5432/…)." ;;
+          esac
+          if [ "$(gh repo view "$GH_REPO" --json isPrivate --jq .isPrivate)" != "true" ]; then
+            echo "::error::Este repo no es privado: los respaldos nunca van a un repo público."
+            exit 1
+          fi
+
+      # El checkout da supabase/config.toml (versión de Postgres para pg_dump) y las migraciones que van en el respaldo.
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump (roles, esquema y datos)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p respaldo
+          supabase db dump --db-url "$DB_URL" --role-only -f respaldo/roles.sql
+          supabase db dump --db-url "$DB_URL" -f respaldo/schema.sql
+          supabase db dump --db-url "$DB_URL" --data-only --use-copy -f respaldo/data.sql
+
+          # Tiene que traer las cuentas. Si una versión nueva de la CLI dejara auth fuera, se pide aparte.
+          tiene_cuentas() { grep -qs '^COPY "auth"."users"' "$@" && grep -qs '^COPY "auth"."identities"' "$@"; }
+          if ! tiene_cuentas respaldo/data.sql; then
+            echo "::warning::El dump de datos no trajo auth: se pide aparte."
+            supabase db dump --db-url "$DB_URL" --data-only --use-copy --schema auth -f respaldo/auth-data.sql
+            tiene_cuentas respaldo/data.sql respaldo/auth-data.sql || { echo "::error::El respaldo no trae auth.users / auth.identities."; exit 1; }
+          fi
+          grep -q '^COPY "public"."leagues"' respaldo/data.sql || { echo "::error::El respaldo no trae public.leagues."; exit 1; }
+
+          cp -r supabase/migrations respaldo/migrations
+          {
+            echo "Respaldo de MatchMate (producción) · $(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "Repo en el commit $GITHUB_SHA · CLI $(supabase --version)"
+            echo
+            echo "roles.sql       roles propios (sin contraseñas)"
+            echo "schema.sql      esquema de public y private (sin auth, storage ni cron: esos los crea Supabase)"
+            echo "data.sql        datos de todo (public, private, auth, storage, cron), con COPY"
+            echo "migrations/     las migraciones del repo en ese momento (para las políticas de Storage y Realtime)"
+            echo
+            echo "Cómo restaurar: docs/CONFIGURAR-SUPABASE.md, «Restaurar un respaldo»."
+          } > respaldo/LEEME.txt
+          ls -lh respaldo
+
+      - name: Instalar age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
+      - name: Cifrar
+        env:
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$AGE_PUBLIC_KEY" | tr -d '\r' > destinatarios.txt
+          archivo="matchmate-prod-$(date -u +%Y-%m-%d-%H%M).tar.gz.age"
+          tar -czf - respaldo | age -R destinatarios.txt -o "$archivo"
+          rm -rf respaldo destinatarios.txt # lo que no está cifrado no sale de esta máquina
+          ls -lh "$archivo"
+          echo "ARCHIVO=$archivo" >> "$GITHUB_ENV"
+
+      - name: Subir a la release «respaldos»
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --prerelease --title 'Respaldos de la base' \
+              --notes 'Respaldos diarios de producción, cifrados con age. Los sube .github/workflows/backup.yml y se guardan 14 días. Para abrirlos hace falta la clave privada de age del dueño.'
+          fi
+          gh release upload "$TAG" "$ARCHIVO" --clobber
+
+      # Solo después de subir el de hoy: nunca se queda sin respaldos por un día que falló.
+      - name: Borrar los de más de 14 días
+        run: |
+          set -euo pipefail
+          corte=$(date -u -d "-$DIAS days" +%Y-%m-%dT%H:%M:%SZ)
+          gh api "repos/$GH_REPO/releases/tags/$TAG" \
+            --jq ".assets[] | select(.created_at < \"$corte\") | \"\(.id) \(.name)\"" |
+          while read -r id nombre; do
+            echo "Borrando $nombre"
+            gh api -X DELETE "repos/$GH_REPO/releases/assets/$id"
+          done
+
+      - name: Avisar con un issue
+        if: failure() && github.event_name == 'schedule'
+        run: |
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          aviso="El respaldo diario de la base falló: $url
+
+          Qué revisar: que el proyecto no esté pausado, que SUPABASE_DB_URL siga bien (si cambiaste la contraseña de la
+          base, hay que pegar la cadena nueva) y que AGE_PUBLIC_KEY sea una clave age1… válida.
+          Este issue se cierra solo cuando un respaldo sale bien."
+          num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$aviso"
+          else
+            gh issue create --title "$TITULO" --body "$aviso"
+          fi
+
+      - name: Cerrar el aviso si ya funciona
+        if: success()
+        run: |
+          num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue close "$num" --comment "Respaldo bien otra vez: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi

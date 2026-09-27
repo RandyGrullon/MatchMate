@@ -101,7 +101,7 @@ export function ScanModal({
     setRows([]);
     setScanError(null);
     cancelScan(current.current);
-    const id = startScan(img.scan, { background: false });
+    const id = startScan(img.scan, { background: false, leagueId: lid, eventId: event.id });
     current.current = id;
     setScanId(id);
     try {

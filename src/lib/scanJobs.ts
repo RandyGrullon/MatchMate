@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ScanContext } from './scan';
 import { ScanError, type ScanRow } from './scan-result';
 
 /**
@@ -25,15 +26,20 @@ interface Job {
 
 /** Lo que usa la lectura (se cambia en las pruebas). */
 export const scanDeps = {
-  scan: async (dataUrl: string): Promise<ScanRow[]> => (await import('./scan')).scanScoreboard(dataUrl),
+  scan: async (dataUrl: string, ctx?: ScanContext | null): Promise<ScanRow[]> => (await import('./scan')).scanScoreboard(dataUrl, ctx),
   isOnline: () => typeof navigator === 'undefined' || navigator.onLine !== false,
   untilOnline: () => new Promise<void>((resolve) => window.addEventListener('online', () => resolve(), { once: true })),
   sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 };
 
-/** Reintentos con señal cuando la red falla (esperas crecientes) y cuando se acaba el cupo gratis. */
+/**
+ * Reintentos con señal cuando la red falla (esperas crecientes) y cuando se acaba el cupo gratis. Si el servidor
+ * dice cuándo volver (retryAfterMs: 8 s entre fotos, el minuto siguiente, lo que diga Google), se espera eso.
+ */
 const NETWORK_RETRY_MS = [5_000, 15_000, 30_000];
 const QUOTA_RETRY_MS = [65_000, 65_000];
+const MIN_WAIT_MS = 1_000;
+const MAX_WAIT_MS = 5 * 60_000;
 /** Lecturas que se recuerdan (las terminadas más viejas se olvidan). */
 const MAX_JOBS = 20;
 
@@ -53,7 +59,7 @@ function setState(id: string, state: ScanJobState) {
 /** Qué decir mientras la lectura espera. */
 export function waitingText(motivo: WaitReason): string {
   if (motivo === 'sin-senal') return 'Sin señal: la foto se lee sola cuando vuelva la conexión.';
-  if (motivo === 'cupo') return 'Se acabó el cupo gratis de la IA por ahora: se vuelve a intentar sola en un minuto.';
+  if (motivo === 'cupo') return 'La IA está ocupada o sin cupo gratis por ahora: se vuelve a intentar sola en un momento.';
   return 'No se pudo leer la foto todavía: se vuelve a intentar sola en unos segundos.';
 }
 
@@ -64,7 +70,7 @@ function pause(job: Job, wait: Promise<void>) {
   return Promise.race([wait, new Promise<void>((resolve) => (job.wake = resolve))]);
 }
 
-async function run(id: string, dataUrl: string, background: boolean): Promise<ScanRow[]> {
+async function run(id: string, dataUrl: string, background: boolean, ctx: ScanContext | null): Promise<ScanRow[]> {
   const job = jobs.get(id)!;
   let networkFails = 0;
   let quotaFails = 0;
@@ -78,7 +84,7 @@ async function run(id: string, dataUrl: string, background: boolean): Promise<Sc
     if (job.cancelled) throw cancelled();
     setState(id, { status: 'leyendo' });
     try {
-      const rows = await scanDeps.scan(dataUrl);
+      const rows = await scanDeps.scan(dataUrl, ctx);
       if (job.cancelled) throw cancelled();
       setState(id, { status: 'listo', rows });
       return rows;
@@ -96,7 +102,9 @@ async function run(id: string, dataUrl: string, background: boolean): Promise<Sc
       }
       if (background && err.kind === 'cupo' && quotaFails < QUOTA_RETRY_MS.length) {
         setState(id, { status: 'esperando', motivo: 'cupo' });
-        await pause(job, scanDeps.sleep(QUOTA_RETRY_MS[quotaFails++]));
+        const wait = err.retryAfterMs != null ? Math.min(MAX_WAIT_MS, Math.max(MIN_WAIT_MS, err.retryAfterMs)) : QUOTA_RETRY_MS[quotaFails];
+        quotaFails++;
+        await pause(job, scanDeps.sleep(wait));
         continue;
       }
       setState(id, { status: 'error', message: err.message });
@@ -105,15 +113,23 @@ async function run(id: string, dataUrl: string, background: boolean): Promise<Sc
   }
 }
 
+export interface StartScanOptions {
+  /** false = quien está mirando la pantalla (el admin): un solo intento y, si falla, avisa enseguida. */
+  background?: boolean;
+  /** Liga y evento de la foto: el servidor revisa permisos y cupos con ellos (sin liga no se puede leer). */
+  leagueId?: string;
+  /** null o sin él = envío por fecha (todavía sin evento). */
+  eventId?: string | null;
+}
+
 /**
- * Empieza a leer la foto (data URL JPEG) y devuelve el id de la lectura. `background: false` es para
- * quien está mirando la pantalla (el admin): un solo intento y, si falla, avisa enseguida.
+ * Empieza a leer la foto (data URL, o la URL de la foto ya guardada) y devuelve el id de la lectura.
  */
-export function startScan(dataUrl: string, { background = true }: { background?: boolean } = {}): string {
+export function startScan(dataUrl: string, { background = true, leagueId, eventId = null }: StartScanOptions = {}): string {
   const id = `lectura-${++seq}`;
   const job: Job = { state: { status: 'leyendo' }, done: Promise.resolve([]), cancelled: false };
   jobs.set(id, job);
-  job.done = run(id, dataUrl, background).catch((e: unknown) => {
+  job.done = run(id, dataUrl, background, leagueId ? { leagueId, eventId } : null).catch((e: unknown) => {
     const err = e instanceof ScanError ? e : new ScanError('No se pudo escanear la foto.', 'red');
     setState(id, { status: 'error', message: err.message });
     throw err;

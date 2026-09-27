@@ -100,6 +100,35 @@ describe('lectura de la foto en segundo plano', () => {
     expect(scanState(id)?.status).toBe('error');
   });
 
+  it('si el servidor dice cuándo volver (8 s entre fotos, el minuto siguiente), espera eso', async () => {
+    const waits = [3_000, 10, 10 * 60_000];
+    scanDeps.scan = vi.fn(async () => {
+      const ms = waits.shift();
+      if (ms !== undefined) throw new ScanError('Espera unos segundos entre una foto y otra.', 'cupo', ms);
+      return [row('Ana', [210])];
+    });
+    // Solo 2 reintentos por cupo: la tercera vez avisa.
+    await expect(scanDone(startScan('x'))).rejects.toThrow('Espera unos segundos');
+    expect(sleeps).toEqual([3_000, 1_000]);
+    sleeps.length = 0;
+    waits.push(10 * 60_000, 10 * 60_000);
+    expect(await scanDone(startScan('x'))).toEqual([row('Ana', [210])]);
+    // Nunca más de 5 minutos.
+    expect(sleeps).toEqual([5 * 60_000, 5 * 60_000]);
+  });
+
+  it('manda la liga y el evento de la foto (sin liga, null)', async () => {
+    scanDeps.scan = vi.fn(async () => [row('Luis', [150])]);
+    await scanDone(startScan('x', { leagueId: 'liga', eventId: 'evento' }));
+    await scanDone(startScan('y', { leagueId: 'liga' }));
+    await scanDone(startScan('z'));
+    expect(vi.mocked(scanDeps.scan).mock.calls).toEqual([
+      ['x', { leagueId: 'liga', eventId: 'evento' }],
+      ['y', { leagueId: 'liga', eventId: null }],
+      ['z', null],
+    ]);
+  });
+
   it('la fila del jugador: por su nombre, o la única que hay', () => {
     const rows = [row('LUIS G', [180]), row('ANA', [150])];
     expect(rowFor('Luis Gómez', rows)?.name).toBe('LUIS G');

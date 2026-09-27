@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router';
-import { Check, ChevronRight, Compass, Crown, LogOut, Pencil, Settings } from 'lucide-react';
-import { createProfile, displayName, logout, renameProfile, useAuth } from '../lib/auth';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
+import { Check, ChevronRight, Compass, Crown, KeyRound, LogOut, Pencil, Settings } from 'lucide-react';
+import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
 import { BackLink } from '../components/BackLink';
@@ -12,7 +12,8 @@ import { unsubscribePush } from '../lib/push';
 import { resetTours } from '../components/Tour';
 import { useCreateMenu } from '../components/CreateMenu';
 import { Avatar } from '../components/Avatar';
-import { useAction } from '../components/feedback';
+import { useAction, useFeedback } from '../components/feedback';
+import { PasswordInput } from '../components/PasswordInput';
 import { Badge, Button, Card, Field, Input, ListSkeleton, Loading } from '../components/ui';
 
 /** Configuración (engrane de arriba): nombre, correo, apariencia, mis ligas, superadmin y cerrar sesión. */
@@ -52,7 +53,7 @@ export default function AccountPage() {
     await logout();
   }
 
-  // Cuenta creada en la consola de Firebase: se completa con el nombre.
+  // Cuenta sin perfil (el registro no alcanzó a crearlo): se completa con el nombre.
   const needsProfile = !auth.profile;
 
   return (
@@ -103,6 +104,7 @@ export default function AccountPage() {
           )}
         </Card>
 
+        <PasswordCard />
         <AppearanceCard />
         <NotificationsCard />
         <Button
@@ -156,5 +158,76 @@ export default function AccountPage() {
         </Button>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * Contraseña nueva. Se abre sola al volver del link de «Olvidé mi contraseña» (/cuenta?recuperar=1); las cuentas
+ * de Google también pueden ponerse una para entrar con su correo.
+ */
+function PasswordCard() {
+  const auth = useAuth();
+  const { toast } = useFeedback();
+  const [params, setParams] = useSearchParams();
+  const recovering = auth.recovering || params.get('recuperar') === '1';
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const short = password !== '' && password.length < MIN_PASSWORD;
+  const mismatch = password2 !== '' && password !== password2;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (short || mismatch || !password2) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updatePassword(password);
+      toast('Contraseña guardada');
+      setOpen(false);
+      setPassword('');
+      setPassword2('');
+      if (params.has('recuperar')) {
+        const p = new URLSearchParams(params);
+        p.delete('recuperar');
+        setParams(p, { replace: true });
+      }
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open && !recovering) {
+    return (
+      <Button className="self-start" variant="ghost" icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>
+        Cambiar contraseña
+      </Button>
+    );
+  }
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <h2 className="flex items-center gap-2 font-semibold">
+        <KeyRound className="size-4 text-accent" /> {recovering ? 'Pon tu contraseña nueva' : 'Cambiar contraseña'}
+      </h2>
+      <form onSubmit={save} className="flex flex-col gap-3">
+        <Field label="Contraseña nueva" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined}>
+          <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" invalid={short} autoFocus={recovering} />
+        </Field>
+        <Field label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined}>
+          <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
+        </Field>
+        {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          {!recovering && <Button onClick={() => setOpen(false)}>Cancelar</Button>}
+          <Button type="submit" variant="primary" loading={busy} disabled={short || mismatch || !password2} icon={<Check className="size-4" />}>
+            Guardar
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

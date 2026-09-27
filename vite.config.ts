@@ -16,6 +16,8 @@ export default defineConfig({
         // Notificaciones: push de los recordatorios y abrir la app al tocarlas.
         importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // El modo local (PGlite, ~16 MB con su WASM) no va en la caché de todos: en producción no se usa.
+        globIgnores: ['**/local-*.js', '**/pglite-*', '**/initdb-*'],
         navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
@@ -35,12 +37,9 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         advancedChunks: {
-          groups: [
-            // Cada uno en su archivo: el navegador lo guarda entre versiones, y PGlite solo se baja en modo local.
-            { name: 'supabase', test: /node_modules[\/]@supabase[\/]/ },
-            { name: 'pglite', test: /node_modules[\/]@electric-sql[\/]pglite[\/]/ },
-            { name: 'firebase', test: /node_modules[\/](@firebase|firebase)[\/]/ },
-          ],
+          // Supabase en su archivo: el navegador lo guarda entre versiones. PGlite (modo local) no se agrupa a
+          // mano: al importarse de forma dinámica queda solo en su archivo y nunca se precarga en producción.
+          groups: [{ name: 'supabase', test: /node_modules[\/]@supabase[\/]/ }],
         },
       },
     },

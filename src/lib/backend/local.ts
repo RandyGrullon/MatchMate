@@ -294,7 +294,7 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
       authListeners.add(wrapped);
       return () => void authListeners.delete(wrapped);
     },
-    async signUp(email, password, name) {
+    async signUp(email, password, name, meta) {
       needAuth();
       needCrypto();
       const mail = email.trim().toLowerCase();
@@ -307,7 +307,7 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
           if (exists.rows.length) throw mapAuthError({ code: 'email_exists' });
           const row = await tx.query<{ id: string }>(
             `insert into auth.users (id, email, raw_user_meta_data) values (gen_random_uuid(), $1, $2) returning id`,
-            [mail, JSON.stringify({ name: name.trim() })],
+            [mail, JSON.stringify({ ...meta, name: name.trim() })],
           );
           const newId = row.rows[0].id;
           await tx.query('insert into auth.local_passwords (user_id, hash) values ($1, $2)', [newId, hash]);
@@ -341,6 +341,8 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
       setCurrent(null);
       emit('SIGNED_OUT', null);
     },
+    // En local no hay correos: las cuentas quedan confirmadas al crearse.
+    async resendConfirmation() {},
     async resetPassword() {
       throw new BackendError('Recuperar la contraseña no está disponible en modo local (no hay correo).', 'validation', 'email_provider_disabled');
     },

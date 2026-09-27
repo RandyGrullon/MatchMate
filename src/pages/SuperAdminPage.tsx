@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
-import { ChevronRight, Crown, DatabaseBackup, Globe, Lock, Search, Trophy, Users } from 'lucide-react';
-import { isFixedSuper } from '../lib/admins';
+import { ChevronRight, Crown, DatabaseBackup, Globe, Lock, Palette, Search, Trophy, Users } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { setSuperadmin, useAllLeagues, useUsers } from '../lib/data';
 import { BackLink } from '../components/BackLink';
@@ -75,6 +74,14 @@ export default function SuperAdminPage() {
             <h1 className="text-xl font-bold tracking-tight">Superadmin</h1>
             <p className="text-sm text-muted">Todas las ligas y las cuentas de la app.</p>
           </div>
+          <Link
+            to="/superadmin/marca"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-line px-3 text-sm font-medium hover:bg-surface-2"
+            title="Logo y animaciones de cada deporte"
+          >
+            <Palette className="size-4" />
+            <span className="hidden sm:inline">Marca</span>
+          </Link>
           <Button icon={<DatabaseBackup className="size-4" />} loading={backingUp} onClick={backup}>
             <span className="hidden sm:inline">Respaldo completo</span>
           </Button>
@@ -119,8 +126,7 @@ export default function SuperAdminPage() {
         ) : (
           <Card className="divide-y divide-line overflow-hidden">
             {filteredUsers.map((u) => {
-              const fixed = isFixedSuper(u.email);
-              const isSuper = fixed || u.superadmin === true;
+              const isSuper = u.superadmin === true;
               return (
                 <div key={u.id} className="flex items-center gap-3 px-4 py-2.5">
                   <Avatar name={u.name} className="size-8 text-xs" />
@@ -128,9 +134,10 @@ export default function SuperAdminPage() {
                     <div className="truncate text-sm font-medium">{u.name}</div>
                     <div className="truncate text-xs text-muted">{u.email}</div>
                   </div>
-                  {fixed ? (
+                  {/* Nadie se quita a sí mismo (el primero se nombra por SQL). */}
+                  {isSuper && u.id === auth.user?.uid ? (
                     <Badge tone="accent">
-                      <Crown className="size-3" /> Fijo
+                      <Crown className="size-3" /> Tú
                     </Badge>
                   ) : (
                     <Button size="sm" variant={isSuper ? 'secondary' : 'ghost'} onClick={() => toggle(u.id, u.name, !isSuper)} disabled={u.id === auth.user?.uid}>

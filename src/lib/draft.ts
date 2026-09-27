@@ -83,6 +83,9 @@ interface Pending {
   send: () => void;
 }
 const pendingLive = new Map<string, Pending>();
+/** Cuándo salió la última publicación de cada evento: como mucho una cada 2,5 s (cuida el cupo de tiempo real). */
+const lastLive = new Map<string, number>();
+const LIVE_EVERY_MS = 2500;
 
 /**
  * Lo último que este dispositivo publicó en cada evento (valores sin los vacíos del final). Se guarda en el
@@ -137,6 +140,8 @@ function publishLive(lid: string, playerId: string, eventId: string, values: str
   setMarker(k, next);
   const send = () => {
     pendingLive.delete(k);
+    lastLive.set(k, Date.now());
+    // Va por la cola sin conexión: sin señal se guarda y al volver sale solo el último estado.
     publishLiveScores(lid, eventId, playerId, next)
       .then(() => {
         // Ya no queda nada publicado: se limpia la marca.
@@ -147,7 +152,8 @@ function publishLive(lid: string, playerId: string, eventId: string, values: str
         if (same(getMarker(k) ?? FAILED, next)) setMarker(k, FAILED);
       });
   };
-  pendingLive.set(k, { timer: window.setTimeout(send, 700), send });
+  const wait = Math.max(700, LIVE_EVERY_MS - (Date.now() - (lastLive.get(k) ?? 0)));
+  pendingLive.set(k, { timer: window.setTimeout(send, wait), send });
 }
 
 // Al guardar el teléfono o cambiar de app se manda ya lo pendiente (en segundo plano los timers se pausan).

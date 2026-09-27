@@ -1,0 +1,109 @@
+# Mantener despierto (crítica 1 y 27). Supabase Free pausa un proyecto tras 1 semana sin actividad, y los jobs
+# de pg_cron probablemente no cuentan. Cada día esto llama por REST a la RPC ping (una escritura real en
+# private.heartbeat), con la clave secreta en la cabecera `apikey` (las claves sb_secret_ no van como Bearer).
+#
+# Secretos (Settings › Secrets and variables › Actions › Repository secrets):
+#   SUPABASE_URL, SUPABASE_SECRET_KEY                   producción (obligatorios)
+#   SUPABASE_URL_STAGING, SUPABASE_SECRET_KEY_STAGING   staging (opcionales: sin ellos, staging no se llama)
+# Si falla: el job queda en rojo (GitHub manda un correo) y se abre o se comenta el issue «Mantener despierto falló»,
+# con cuántos días seguidos lleva. Cuando vuelve a funcionar, el issue se cierra solo.
+name: Mantener despierto
+
+on:
+  schedule:
+    - cron: '23 11 * * *' # 7:23 am en RD, todos los días
+  workflow_dispatch:
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read # contar los días seguidos con fallo
+  issues: write # avisar con un issue
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  TITULO: Mantener despierto falló
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Llamar a ping
+        env:
+          PROD_URL: ${{ secrets.SUPABASE_URL }}
+          PROD_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          STAGING_URL: ${{ secrets.SUPABASE_URL_STAGING }}
+          STAGING_KEY: ${{ secrets.SUPABASE_SECRET_KEY_STAGING }}
+        run: |
+          set -uo pipefail
+          fallos=0
+
+          # ping <nombre> <url> <clave>: reintenta los errores pasajeros (red, 429, 5xx); 401/404 fallan de una.
+          ping() {
+            local nombre="$1" url="${2%/}" clave="$3" cuerpo codigo
+            cuerpo=$(mktemp)
+            codigo=$(curl -sS -o "$cuerpo" -w '%{http_code}' --max-time 30 \
+              --retry 4 --retry-delay 20 --retry-connrefused \
+              -X POST "$url/rest/v1/rpc/ping" \
+              -H "apikey: $clave" -H 'Content-Type: application/json' -d '{}') || codigo="sin respuesta ($codigo)"
+            if [ "$codigo" = "200" ]; then
+              echo "OK $nombre: $(cat "$cuerpo")"
+            else
+              echo "::error title=Mantener despierto ($nombre)::HTTP $codigo: $(head -c 300 "$cuerpo")"
+              fallos=$((fallos + 1))
+            fi
+          }
+
+          if [ -z "$PROD_URL" ] || [ -z "$PROD_KEY" ]; then
+            echo "::error::Faltan los secretos SUPABASE_URL y SUPABASE_SECRET_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11)."
+            fallos=$((fallos + 1))
+          else
+            ping produccion "$PROD_URL" "$PROD_KEY"
+          fi
+
+          if [ -n "$STAGING_URL" ] && [ -n "$STAGING_KEY" ]; then
+            ping staging "$STAGING_URL" "$STAGING_KEY"
+          else
+            echo "::notice::Sin SUPABASE_URL_STAGING / SUPABASE_SECRET_KEY_STAGING: staging no se llamó."
+          fi
+
+          [ "$fallos" -eq 0 ]
+
+      - name: Avisar con un issue
+        if: failure() && github.event_name == 'schedule'
+        run: |
+          # Días seguidos con fallo, contando este (las corridas programadas anteriores, de la más nueva a la más vieja).
+          dias=1
+          for c in $(gh run list --workflow keepalive.yml --event schedule --status completed --limit 10 --json conclusion --jq '.[].conclusion'); do
+            [ "$c" = "success" ] && break
+            dias=$((dias + 1))
+          done
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          aviso="El «mantener despierto» de Supabase falló ($url). Van **$dias día(s) seguidos**."
+          if [ "$dias" -ge 2 ]; then
+            aviso="$aviso **Urgente:** a los 7 días sin actividad Supabase pausa el proyecto."
+          fi
+          aviso="$aviso
+
+          Qué revisar: que el proyecto no esté pausado (panel de Supabase › el proyecto › Restore) y que los secretos
+          SUPABASE_URL y SUPABASE_SECRET_KEY sigan bien (si se rotó la clave secreta, hay que pegar la nueva).
+          Este issue se cierra solo cuando vuelve a funcionar."
+          num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "$aviso"
+          else
+            gh issue create --title "$TITULO" --body "$aviso"
+          fi
+
+      - name: Cerrar el aviso si ya funciona
+        if: success()
+        run: |
+          num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue close "$num" --comment "Volvió a funcionar: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi

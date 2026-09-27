@@ -1,17 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router';
 import { CalendarDays, Check, ChevronDown, Globe, Lock, Medal, MessageCircleHeart, Plus, Settings2, Target, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useLeague, useLeaguesByIds, useMembership, useMyMemberships, useSubmissions } from '../lib/data';
+import { rememberSport } from '../lib/splash';
+import { dispatchSport, leagueSport, sportsOf } from '../sports/registry';
+import { SportBadge } from '../pages/sports/SportBits';
 import { useNotifications } from './Notifications';
 import { useCreateMenu } from './CreateMenu';
 import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
 import { AppFrame, AppShell } from './Shell';
-import { Empty, Loading, Modal, cx } from './ui';
+import { Empty, Loading, Modal, PageSkeleton, cx } from './ui';
+
+// Pantallas de los deportes que todavía no tienen las suyas (se bajan solo si hacen falta).
+const SportComingSoon = lazy(() => import('../pages/sports/SportComingSoon'));
+const UpdateAppScreen = lazy(() => import('../pages/sports/UpdateAppScreen'));
 
 /**
  * Marco de lo que pasa dentro de una liga: arriba el nombre (toca para cambiar de liga) y sus
  * pestañas (Calendario · Juegos · Ranking · Mis juegos · Admin); abajo, la barra de la app (Home · Eventos · Perfil).
+ *
+ * Es uno de los dos puntos de desvío por deporte (el otro es EventPage): el boliche ve sus pantallas de
+ * siempre; un deporte sin pantallas todavía, «Pronto»; uno que esta versión no conoce, «Actualiza la app».
  */
 export default function LeagueShell() {
   const { lid } = useParams();
@@ -43,7 +53,15 @@ export default function LeagueShell() {
     if (ctx && (ctx.member || ctx.league.visibility === 'public')) rememberLeague(ctx.lid);
   }, [ctx]);
 
-  const pending = useSubmissions(ctx?.isAdmin ? lid : undefined, 'pendiente').data.length;
+  // Por deporte: qué pantallas lleva, y la animación con que abre la app la próxima vez.
+  const sport = league.data ? dispatchSport(leagueSport(league.data)) : null;
+  const sportId = sport && sport.kind !== 'unknown' ? sport.sport : null;
+  useEffect(() => {
+    if (sportId) rememberSport(sportId);
+  }, [sportId]);
+  const ready = sport?.kind === 'ready';
+
+  const pending = useSubmissions(ctx?.isAdmin && ready ? lid : undefined, 'pendiente').data.length;
   const newNotes = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
 
   // La pestaña activa siempre a la vista (en el celular no caben todas).
@@ -74,6 +92,36 @@ export default function LeagueShell() {
     );
   }
 
+  const switcher = (
+    <button
+      type="button"
+      onClick={() => setSwitching(true)}
+      className="flex min-w-0 items-center gap-1 rounded-xl px-2 py-1.5 text-left font-semibold hover:bg-surface-2"
+      aria-label={`${ctx.league.name}: cambiar de liga`}
+      data-tour="cambiar-liga"
+    >
+      <span className="truncate">{ctx.league.name}</span>
+      <ChevronDown className="size-4 shrink-0 text-muted" />
+    </button>
+  );
+
+  if (sport && sport.kind !== 'ready') {
+    return (
+      <LeagueContext.Provider value={ctx}>
+        <AppFrame wide middle={switcher}>
+          <Suspense fallback={<PageSkeleton />}>
+            {sport.kind === 'unknown' ? (
+              <UpdateAppScreen sport={sport.sport} leagueName={ctx.league.name} />
+            ) : (
+              <SportComingSoon sport={sport.sport} leagueName={ctx.league.name} kind={ctx.league.kind ?? 'liga'} />
+            )}
+          </Suspense>
+        </AppFrame>
+        <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+      </LeagueContext.Provider>
+    );
+  }
+
   const base = ctx.base;
   const standalone = ctx.league.kind === 'torneo';
   const tabs = [
@@ -91,18 +139,7 @@ export default function LeagueShell() {
     <LeagueContext.Provider value={ctx}>
       <AppFrame
         wide
-        middle={
-          <button
-            type="button"
-            onClick={() => setSwitching(true)}
-            className="flex min-w-0 items-center gap-1 rounded-xl px-2 py-1.5 text-left font-semibold hover:bg-surface-2"
-            aria-label={`${ctx.league.name}: cambiar de liga`}
-            data-tour="cambiar-liga"
-          >
-            <span className="truncate">{ctx.league.name}</span>
-            <ChevronDown className="size-4 shrink-0 text-muted" />
-          </button>
-        }
+        middle={switcher}
         subnav={
           <nav ref={tabsRef} className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4" aria-label="Secciones de la liga" data-tour="secciones">
             {tabs.map(({ to, label, icon: Icon, end, count, tour }) => (
@@ -140,6 +177,8 @@ function LeagueSwitcher({ open, onClose, current }: { open: boolean; onClose: ()
   const { user } = useAuth();
   const memberships = useMyMemberships(open ? user?.uid : undefined);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
+  // El deporte de cada una, solo si tiene de más de uno.
+  const multi = sportsOf(leagues.data).length > 1;
   return (
     <Modal open={open} onClose={onClose} title="Tus ligas y torneos">
       <div className="flex flex-col gap-1">
@@ -160,6 +199,7 @@ function LeagueSwitcher({ open, onClose, current }: { open: boolean; onClose: ()
               <Globe className="size-4 text-muted" />
             )}
             <span className="flex-1 truncate font-medium">{l.name}</span>
+            {multi && <SportBadge sport={leagueSport(l)} />}
             {l.id === current && <Check className="size-4 text-accent" />}
           </Link>
         ))}

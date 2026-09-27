@@ -1,0 +1,282 @@
+/**
+ * Comandos de la migración (se corren con `node scripts/migrar/cli.mjs <comando>`; paso a paso en docs/migracion.md):
+ *
+ *   exportar     --cuenta-servicio <cuenta.json> --salida <carpeta>
+ *   probar-clave --auth <users.json> --hash <hash.txt> --correo <tu correo>
+ *   importar     --datos <carpeta o respaldo.json> [--auth users.json] [--hash hash.txt]
+ *                [--destino supabase] [--seco] [--fotos-meses N | --fotos-desde AAAA-MM-DD]
+ *                [--confiar-correos] [--sin-claves] [--superadmin correo]… [--dueno-reemplazo correo]
+ *                [--env archivo] [--reporte archivo.json] [--si]
+ *   torneo       <archivo.json> --liga <uuid> [--reemplazar] [--env archivo]
+ *
+ * Sin `--destino supabase` la importación es un ensayo en seco: carga todo en un Postgres en memoria (PGlite)
+ * con las migraciones de verdad, revisa los conteos y la paridad, y no toca nada en internet.
+ */
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
+import { createSupabaseBackend } from '../../src/lib/backend/supabase';
+import { createFirestoreReader, exportBowlingX, getAccessToken, type ServiceAccount } from './exportar';
+import { parseHashConfig, toFbscrypt, verifyFbscrypt } from './hash';
+import { checkCounts, checkParity, dataUrlBytes, formatReport, runImport } from './importar';
+import { createLocalTarget, createNodeClient, createSupabaseTarget, type Target } from './target';
+import { importTournament, type TournamentFile } from './torneo';
+import { normalizeBackup, transformBackup } from './transform';
+import type { FirebaseAuthExport, PhotoFile } from './types';
+
+interface Args {
+  _: string[];
+  flags: Map<string, string[]>;
+}
+
+/** `--clave valor`, `--bandera` y el resto como posicionales. */
+export function parseArgs(argv: string[]): Args {
+  const out: Args = { _: [], flags: new Map() };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const [k, inline] = a.slice(2).split('=', 2);
+      const v = inline ?? (argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : 'true');
+      out.flags.set(k, [...(out.flags.get(k) ?? []), v]);
+    } else out._.push(a);
+  }
+  return out;
+}
+
+const flag = (a: Args, k: string) => a.flags.get(k)?.at(-1);
+const has = (a: Args, k: string) => a.flags.has(k);
+
+/** Lee un archivo KEY=valor (sin pisar lo que ya está en el entorno). */
+function loadEnvFile(path: string): void {
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=(.*)$/.exec(line);
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
+  }
+}
+
+function ask(question: string, hidden = false): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  if (hidden) {
+    // No mostrar lo que se escribe (contraseñas).
+    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = (s: string) => {
+      if (s.includes(question)) process.stdout.write(s);
+    };
+  }
+  return new Promise((done) =>
+    rl.question(question, (answer) => {
+      rl.close();
+      if (hidden) process.stdout.write('\n');
+      done(answer);
+    }),
+  );
+}
+
+const readJson = <T>(path: string): T => JSON.parse(readFileSync(path, 'utf8').replace(/^﻿/, '')) as T;
+const log = (msg: string) => console.log(msg);
+
+/** Fecha (AAAA-MM-DD) `months` meses antes de `iso`. */
+export function monthsBefore(iso: string, months: number): string {
+  const d = new Date(iso);
+  d.setUTCMonth(d.getUTCMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+// ---------- exportar ----------
+
+async function cmdExport(a: Args): Promise<number> {
+  const out = resolve(flag(a, 'salida') ?? 'migracion-bowlingx');
+  const emulator = process.env.FIRESTORE_EMULATOR_HOST;
+  let projectId = flag(a, 'proyecto');
+  let token = 'owner';
+  if (!emulator) {
+    const file = flag(a, 'cuenta-servicio');
+    if (!file) {
+      console.error('Falta --cuenta-servicio <archivo.json> (Firebase › Configuración del proyecto › Cuentas de servicio).');
+      return 1;
+    }
+    const sa = readJson<ServiceAccount>(file);
+    projectId ??= sa.project_id;
+    token = await getAccessToken(sa, fetch);
+  }
+  if (!projectId) {
+    console.error('Falta --proyecto <id>');
+    return 1;
+  }
+  mkdirSync(join(out, 'fotos'), { recursive: true });
+  const reader = createFirestoreReader({ projectId, token, fetchFn: fetch, baseUrl: emulator ? `http://${emulator}/v1` : undefined });
+  const backup = await exportBowlingX(reader, {
+    log,
+    async savePhoto(lid, id, bytes, contentType) {
+      const rel = `fotos/${lid}/${id}.${contentType === 'image/webp' ? 'webp' : 'jpg'}`;
+      mkdirSync(join(out, 'fotos', lid), { recursive: true });
+      writeFileSync(join(out, rel), bytes);
+      return rel;
+    },
+  });
+  writeFileSync(join(out, 'bowlingx.json'), JSON.stringify(backup, null, 1));
+  log(`Listo: ${backup.leagues.length} ligas y ${backup.users.length} cuentas en ${join(out, 'bowlingx.json')}`);
+  return 0;
+}
+
+// ---------- probar-clave ----------
+
+async function cmdCheckPassword(a: Args): Promise<number> {
+  const authFile = flag(a, 'auth');
+  const hashFile = flag(a, 'hash');
+  const email = flag(a, 'correo')?.trim().toLowerCase();
+  if (!authFile || !hashFile || !email) {
+    console.error('Uso: probar-clave --auth users.json --hash hash.txt --correo tu@correo.com');
+    return 1;
+  }
+  const cfg = parseHashConfig(readFileSync(hashFile, 'utf8'));
+  const user = readJson<FirebaseAuthExport>(authFile).users.find((u) => u.email?.toLowerCase() === email);
+  if (!user) {
+    console.error(`${email} no está en ${authFile}.`);
+    return 1;
+  }
+  if (!user.passwordHash || !user.salt) {
+    console.error(`${email} no tiene contraseña en Firebase (entra con Google).`);
+    return 1;
+  }
+  const password = process.env.MM_PASSWORD ?? (await ask(`Contraseña de ${email} en BowlingX: `, true));
+  if (verifyFbscrypt(password, toFbscrypt(user.passwordHash, user.salt, cfg))) {
+    log('BIEN: la contraseña coincide. Los parámetros del hash están bien copiados.');
+    return 0;
+  }
+  log('NO coincide. O la contraseña está mal, o los parámetros del hash se copiaron mal (revisa hash.txt).');
+  return 2;
+}
+
+// ---------- importar ----------
+
+async function cmdImport(a: Args, root: string): Promise<number> {
+  const datos = flag(a, 'datos');
+  if (!datos) {
+    console.error('Falta --datos <carpeta de la exportación o respaldo.json>');
+    return 1;
+  }
+  const envFile = flag(a, 'env');
+  if (envFile) loadEnvFile(envFile);
+  const file = statSync(datos).isDirectory() ? join(datos, 'bowlingx.json') : datos;
+  const baseDir = dirname(resolve(file));
+  const backup = normalizeBackup(readJson<unknown>(file));
+  const auth = flag(a, 'auth') ? readJson<FirebaseAuthExport>(flag(a, 'auth')!) : null;
+  const hashConfig = flag(a, 'hash') ? parseHashConfig(readFileSync(flag(a, 'hash')!, 'utf8')) : null;
+  if (!auth) log('Sin --auth: las cuentas salen del respaldo, sin contraseña (entran con «¿Olvidaste tu contraseña?»).');
+  else if (!hashConfig && !has(a, 'sin-claves')) log('Sin --hash: las cuentas se crean sin contraseña.');
+
+  const months = flag(a, 'fotos-meses');
+  const photosSince = flag(a, 'fotos-desde') ?? (months ? monthsBefore(backup.exportedAt ?? new Date().toISOString(), Number(months)) : null);
+  const toSupabase = flag(a, 'destino') === 'supabase' && !has(a, 'seco') && !has(a, 'dry-run');
+
+  let target: Target;
+  if (toSupabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SECRET_KEY;
+    if (!url || !key) {
+      console.error('Faltan SUPABASE_URL y SUPABASE_SECRET_KEY (en el entorno o con --env archivo).');
+      return 1;
+    }
+    target = createSupabaseTarget({ url, secretKey: key });
+    log(`Destino: ${url}`);
+  } else {
+    log('Ensayo en seco: Postgres en memoria (PGlite) con las migraciones de verdad. No se toca Supabase.');
+    target = await createLocalTarget({ root });
+  }
+
+  const started = Date.now();
+  try {
+    const plan = transformBackup(backup, {
+      auth,
+      hashConfig,
+      existingUsers: await target.listUsers(),
+      photosSince,
+      trustEmails: has(a, 'confiar-correos'),
+      superadmins: a.flags.get('superadmin') ?? [],
+      fallbackOwner: flag(a, 'dueno-reemplazo') ?? null,
+      withoutPasswords: has(a, 'sin-claves'),
+    });
+    // Antes de escribir en Supabase se muestra el plan y se pide confirmar (el ensayo en seco solo lo muestra al final).
+    if (toSupabase) {
+      log(formatReport(plan));
+      if (!has(a, 'si') && (await ask('\n¿Cargar esto en Supabase? Escribe SI para seguir: ')).trim().toUpperCase() !== 'SI') {
+        log('No se hizo nada.');
+        return 1;
+      }
+    }
+    const readPhoto = async (f: PhotoFile) => ('dataUrl' in f.source ? dataUrlBytes(f.source.dataUrl) : new Uint8Array(await readFile(join(baseDir, f.source.file))));
+    const result = await runImport(plan, target, { readFile: readPhoto, log });
+    const counts = await checkCounts(plan, target, result);
+    const parity = await checkParity(backup, plan, target);
+    log('\n' + formatReport(plan, counts, parity, result));
+    log(`\nTardó ${Math.round((Date.now() - started) / 1000)} s.`);
+    const reportFile = resolve(flag(a, 'reporte') ?? join(baseDir, `reporte-${toSupabase ? 'supabase' : 'seco'}.json`));
+    writeFileSync(
+      reportFile,
+      JSON.stringify({ destino: toSupabase ? process.env.SUPABASE_URL : 'seco', report: plan.report, result, counts, parity, map: plan.map }, null, 1),
+    );
+    log(`Reporte completo: ${reportFile}`);
+    const countsOk = counts.every((c) => c.actual === c.expected);
+    return countsOk && parity.ok && !result.files.failed.length ? 0 : 2;
+  } finally {
+    await target.close();
+  }
+}
+
+// ---------- torneo ----------
+
+async function cmdTournament(a: Args, root: string): Promise<number> {
+  const [file] = a._;
+  const league = flag(a, 'liga');
+  if (!file || !league) {
+    console.error('Uso: torneo <archivo.json> --liga <id-de-la-liga> [--reemplazar]');
+    return 1;
+  }
+  const envFile = flag(a, 'env') ?? ['.env.local', '.env'].map((f) => join(root, f)).find((f) => existsSync(f));
+  if (envFile) loadEnvFile(envFile);
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    console.error('Faltan VITE_SUPABASE_URL y VITE_SUPABASE_PUBLISHABLE_KEY (en .env.local).');
+    return 1;
+  }
+  const data = readJson<TournamentFile>(file);
+  log(`${data.event?.name} (${data.event?.date}) · ${data.players?.length ?? 0} jugadores · ${data.teams?.length ?? 0} equipos`);
+  const backend = createSupabaseBackend({ url, publishableKey: key, client: createNodeClient(url, key) });
+  const email = process.env.MM_EMAIL || (await ask('Correo de un admin de la liga: '));
+  const password = process.env.MM_PASSWORD || (await ask('Contraseña: ', true));
+  await backend.auth.signIn(email, password);
+  try {
+    const r = await importTournament(backend, league, data, { replace: has(a, 'reemplazar'), log });
+    log(`Listo: ${r.created} jugadores nuevos, ${r.entered} inscritos, ${r.teams} equipos${r.replaced ? ' (se reemplazó el anterior)' : ''}.`);
+    return 0;
+  } finally {
+    await backend.auth.signOut();
+  }
+}
+
+// ---------- Entrada ----------
+
+export async function main(argv: string[], ctx: { root: string }): Promise<number> {
+  const a = parseArgs(argv);
+  const cmd = a._.shift();
+  try {
+    switch (cmd) {
+      case 'exportar':
+        return await cmdExport(a);
+      case 'probar-clave':
+        return await cmdCheckPassword(a);
+      case 'importar':
+        return await cmdImport(a, ctx.root);
+      case 'torneo':
+        return await cmdTournament(a, ctx.root);
+      default:
+        console.error('Comandos: exportar, probar-clave, importar, torneo. Paso a paso en docs/migracion.md.');
+        return 1;
+    }
+  } catch (e) {
+    console.error(`Error: ${(e as Error).message}`);
+    return 1;
+  }
+}
