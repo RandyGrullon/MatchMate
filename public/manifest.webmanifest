@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "BowlingX — torneos y prácticas de boliche",
+  "short_name": "BowlingX",
+  "description": "Jugadores, equipos, handicap y estadísticas de boliche.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0f15",
+  "theme_color": "#4338ca",
+  "categories": ["sports"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

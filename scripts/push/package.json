@@ -1,0 +1,14 @@
+{
+  "name": "bowlingx-recordatorios",
+  "private": true,
+  "type": "module",
+  "description": "Envío programado de recordatorios (GitHub Actions): notificaciones push de las prácticas y torneos.",
+  "scripts": {
+    "recordatorios": "tsx recordatorios.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.10.0",
+    "tsx": "^4.23.15",
+    "web-push": "^3.6.7"
+  }
+}

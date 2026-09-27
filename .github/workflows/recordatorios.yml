@@ -1,0 +1,38 @@
+# Recordatorios de prácticas y torneos (notificaciones push): el día antes a las 12 pm, el mismo día
+# y poco antes de empezar. Corre cada 15 minutos; sin los secretos no hace nada (ver scripts/push/recordatorios.ts).
+# GitHub apaga los programados si el repositorio pasa 60 días sin cambios: se reactiva en Actions › Recordatorios.
+name: Recordatorios
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: recordatorios
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: scripts/push
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/push/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsx recordatorios.ts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          LIGA_TZ: America/Santo_Domingo
