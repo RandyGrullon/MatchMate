@@ -21,6 +21,10 @@ export interface Session {
 
 export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_UPDATED' | 'PASSWORD_RECOVERY';
 
+/**
+ * `captchaToken`: el de Cloudflare Turnstile (src/components/Turnstile.tsx) cuando el proyecto de Supabase tiene
+ * «Captcha protection» activado. Sin eso, se omite. El backend local lo ignora.
+ */
 export interface BackendAuth {
   getSession(): Promise<Session | null>;
   onChange(cb: (event: AuthEvent, session: Session | null) => void): () => void;
@@ -28,14 +32,14 @@ export interface BackendAuth {
    * Crea la cuenta. Devuelve null si hay que confirmar el correo antes de entrar.
    * `meta`: datos extra del registro que guarda el perfil (p. ej. `{ adult: true }` = marcó «tengo 18 años o más»).
    */
-  signUp(email: string, password: string, name: string, meta?: Record<string, unknown>): Promise<Session | null>;
-  signIn(email: string, password: string): Promise<Session>;
+  signUp(email: string, password: string, name: string, meta?: Record<string, unknown>, captchaToken?: string): Promise<Session | null>;
+  signIn(email: string, password: string, captchaToken?: string): Promise<Session>;
   /** Google: en Supabase redirige (o usa Google Identity Services); en local no está disponible. */
   signInWithGoogle(): Promise<void>;
   signOut(): Promise<void>;
-  resetPassword(email: string): Promise<void>;
+  resetPassword(email: string, captchaToken?: string): Promise<void>;
   /** Vuelve a mandar el correo para confirmar la cuenta (p. ej. cuentas traídas de BowlingX sin confirmar). */
-  resendConfirmation(email: string): Promise<void>;
+  resendConfirmation(email: string, captchaToken?: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
 }
 

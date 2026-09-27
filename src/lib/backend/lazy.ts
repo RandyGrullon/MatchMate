@@ -49,12 +49,12 @@ export function createLazyBackend(mode: Backend['mode'], load: () => Promise<Bac
     auth: {
       getSession: async () => (await ready()).auth.getSession(),
       onChange: (cb) => later((b) => b.auth.onChange(cb)),
-      signUp: async (email, password, name, meta) => (await ready()).auth.signUp(email, password, name, meta),
-      signIn: async (email, password) => (await ready()).auth.signIn(email, password),
+      signUp: async (email, password, name, meta, captcha) => (await ready()).auth.signUp(email, password, name, meta, captcha),
+      signIn: async (email, password, captcha) => (await ready()).auth.signIn(email, password, captcha),
       signInWithGoogle: async () => (await ready()).auth.signInWithGoogle(),
       signOut: async () => (await ready()).auth.signOut(),
-      resetPassword: async (email) => (await ready()).auth.resetPassword(email),
-      resendConfirmation: async (email) => (await ready()).auth.resendConfirmation(email),
+      resetPassword: async (email, captcha) => (await ready()).auth.resetPassword(email, captcha),
+      resendConfirmation: async (email, captcha) => (await ready()).auth.resendConfirmation(email, captcha),
       updatePassword: async (password) => (await ready()).auth.updatePassword(password),
     },
     storage: {

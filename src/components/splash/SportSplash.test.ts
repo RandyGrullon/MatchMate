@@ -7,13 +7,14 @@ import { SportSplash, type SportSplashProps } from './SportSplash';
 const render = (...props: SportSplashProps[]) => renderToStaticMarkup(createElement('div', null, ...props.map((p) => createElement(SportSplash, p))));
 
 describe('SportSplash', () => {
-  it('dibuja la escena del deporte (apagada = la genérica) con la palabra', () => {
+  it('dibuja la escena del deporte (desconocido = la genérica) con la palabra', () => {
     const html = render({ sport: 'bowling' });
     expect(html).toContain('data-scene="bowling"');
     expect(html).toContain('<svg class="sp-bowling"');
     expect(html).toContain('Match<b>Mate</b>');
     expect(html).toContain('aria-hidden="true"');
-    expect(render({ sport: 'padel' })).toContain('data-scene="generic"');
+    expect(render({ sport: 'padel' })).toContain('data-scene="padel"');
+    expect(render({ sport: 'curling' as SportSplashProps['sport'] })).toContain('data-scene="generic"');
     expect(render({})).toContain('data-scene="generic"');
   });
 

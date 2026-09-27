@@ -116,7 +116,8 @@ export const useAuth = () => useContext(Ctx);
 export const displayName = (a: Pick<AuthState, 'user' | 'profile'>) =>
   a.profile?.name || a.user?.displayName || a.user?.email?.split('@')[0] || 'Jugador';
 
-export const login = (email: string, password: string) => getBackend().auth.signIn(email.trim(), password);
+/** `captcha`: token de Turnstile si el proyecto lo pide (src/components/Turnstile.tsx). */
+export const login = (email: string, password: string, captcha?: string) => getBackend().auth.signIn(email.trim(), password, captcha);
 
 export const logout = () => getBackend().auth.signOut();
 
@@ -125,14 +126,14 @@ export const logout = () => getBackend().auth.signOut();
  * correo, no entra todavía: `needsConfirm` = hay que abrir el link que llegó al correo.
  */
 /** `adult`: marcó «tengo 18 años o más» (queda en profiles.adult_confirmed_at). */
-export async function signUp(name: string, email: string, password: string, adult = false): Promise<{ needsConfirm: boolean }> {
-  const s = await getBackend().auth.signUp(email.trim(), password, name.trim(), adult ? { adult: true } : undefined);
+export async function signUp(name: string, email: string, password: string, adult = false, captcha?: string): Promise<{ needsConfirm: boolean }> {
+  const s = await getBackend().auth.signUp(email.trim(), password, name.trim(), adult ? { adult: true } : undefined, captcha);
   return { needsConfirm: !s };
 }
 
 /** Vuelve a mandar el correo de confirmación (cuentas sin confirmar, p. ej. las traídas de BowlingX). */
-export async function resendConfirmation(email: string) {
-  await getBackend().auth.resendConfirmation(email.trim());
+export async function resendConfirmation(email: string, captcha?: string) {
+  await getBackend().auth.resendConfirmation(email.trim(), captcha);
 }
 
 /** Completa el perfil de una cuenta que no lo tenía (lo crea y le pone el nombre). */
@@ -154,7 +155,7 @@ export async function renameProfile(user: Pick<AppUser, 'uid'>, name: string) {
 export const loginWithGoogle = () => getBackend().auth.signInWithGoogle();
 
 /** Manda el correo para poner una contraseña nueva (el link abre /cuenta?recuperar=1). */
-export const resetPassword = (email: string) => getBackend().auth.resetPassword(email.trim());
+export const resetPassword = (email: string, captcha?: string) => getBackend().auth.resetPassword(email.trim(), captcha);
 
 /** Contraseña nueva de la cuenta que entró (también al volver del link de recuperar). */
 export const updatePassword = (password: string) => getBackend().auth.updatePassword(password);

@@ -172,11 +172,11 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       });
       return () => data.subscription.unsubscribe();
     },
-    async signUp(email, password, name, meta) {
+    async signUp(email, password, name, meta, captchaToken) {
       const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { ...meta, name: name.trim() }, emailRedirectTo: origin() || undefined },
+        options: { data: { ...meta, name: name.trim() }, emailRedirectTo: origin() || undefined, captchaToken },
       });
       if (error) throw mapAuthError(error as AuthErrorLike);
       // Con «Confirm email» activado, un correo ya registrado vuelve sin identidades y sin error.
@@ -185,8 +185,8 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       if (data.user) names.set(data.user.id, name.trim() || null);
       return toSession(data.session);
     },
-    async signIn(email, password) {
-      const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password });
+    async signIn(email, password, captchaToken) {
+      const { data, error } = await client.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken } });
       if (error) throw mapAuthError(error as AuthErrorLike);
       const s = await toSession(data.session);
       if (!s) throw mapAuthError({ code: 'session_not_found' });
@@ -206,12 +206,12 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       writeLastSession(null);
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
-    async resendConfirmation(email) {
-      const { error } = await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: origin() || undefined } });
+    async resendConfirmation(email, captchaToken) {
+      const { error } = await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: origin() || undefined, captchaToken } });
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
-    async resetPassword(email) {
-      const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${origin()}/cuenta?recuperar=1` });
+    async resetPassword(email, captchaToken) {
+      const { error } = await client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${origin()}/cuenta?recuperar=1`, captchaToken });
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
     async updatePassword(password) {

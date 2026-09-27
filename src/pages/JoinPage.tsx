@@ -8,6 +8,7 @@ import { BackLink } from '../components/BackLink';
 import { AppShell } from '../components/Shell';
 import { useAction } from '../components/feedback';
 import { Button, Card, Empty, Loading } from '../components/ui';
+import { SportBadge } from './sports/SportBits';
 
 /** Link o QR de invitación: /unirse/<código>. */
 export default function JoinPage() {
@@ -65,6 +66,7 @@ export default function JoinPage() {
           <div>
             <p className="text-sm text-muted">Te invitaron a</p>
             <h1 className="text-xl font-bold tracking-tight">{invite.leagueName}</h1>
+            {invite.sport && <SportBadge sport={invite.sport} className="mt-1.5" />}
           </div>
           {auth.user ? (
             <Button variant="primary" className="w-full" loading={busy} onClick={join} icon={<UserPlus className="size-4" />}>

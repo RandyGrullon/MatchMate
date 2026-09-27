@@ -17,8 +17,8 @@ clave `sb_publishable_`, la VAPID pública y la site key de Turnstile.
 | Configuración local de Supabase (`supabase/config.toml`): máx. 500 filas, confirmar correo, funciones sin `verify_jwt` | Claude | Hecho |
 | Variables de la app (`.env.example`) | Claude | Hecho |
 | GitHub Actions: pruebas (`ci.yml`), mantener despierto (`keepalive.yml`), respaldo diario (`backup.yml`) | Claude | Hecho |
-| Edge Functions `scan-bowling` (lectura de fotos) y `send-push` (notificaciones), cron de recordatorios y limpieza | Claude | Fase 0C (pasos 9 y 10 esperan a que estén) |
-| Turnstile en las pantallas de registro | Claude | Pendiente (paso 12 espera a que esté) |
+| Edge Functions `scan-bowling` (lectura de fotos) y `send-push` (notificaciones), cron de recordatorios y limpieza | Claude | Hecho |
+| Turnstile (casilla anti-robots) en registro, entrar con correo y «Olvidé mi contraseña» | Claude | Hecho (se enciende con el paso 12) |
 | Cuentas, proyectos, claves, Google, correo, secretos | **Tú** | Pasos 1 a 12 |
 
 Necesitas: tu gestor de contraseñas, el repo **privado** `matchmate` en GitHub, el proyecto de Vercel ligado a
@@ -205,7 +205,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
 ## Paso 9. Secretos de las Edge Functions y publicarlas
 
-**Quién: tú.** Hazlo cuando Claude te avise que `scan-bowling` y `send-push` están listas (fase 0C).
+**Quién: tú.** `scan-bowling` y `send-push` ya están en el repo (`supabase/functions`).
 
 - [ ] **Claves VAPID** (notificaciones). En la terminal:
   ```powershell
@@ -242,8 +242,8 @@ aparece la lectura; en *Edge Functions › scan-bowling › Logs* se ve la llama
 
 ## Paso 10. Secretos del cron en Vault
 
-**Quién: tú.** Cuando Claude te avise que el cron de recordatorios está listo (fase 0C). El cron de la base usa
-estos dos valores para llamar a `send-push`.
+**Quién: tú.** El cron de recordatorios ya viene en las migraciones. El cron de la base usa estos dos valores
+para llamar a `send-push`.
 
 - [ ] En **cada** proyecto: *Database › Extensions*: que `pg_cron` y `pg_net` estén activadas.
 - [ ] *Integrations › Vault › Secrets* › *Add new secret* (dos veces):
@@ -298,8 +298,8 @@ tareas diarias de GitHub lo cubren; necesitan estos secretos.
 
 ## Paso 12. Opcional: Turnstile contra registros falsos
 
-**Quién: tú**, cuando Claude te avise que la app ya muestra Turnstile en el registro (si lo activas antes, nadie
-se puede registrar).
+**Quién: tú.** La app ya muestra la casilla cuando tiene la site key. Haz los dos lados juntos: si activas el
+captcha en Supabase sin poner la site key en Vercel, nadie puede entrar con correo ni registrarse.
 
 - [ ] https://dash.cloudflare.com (cuenta gratis) › *Turnstile* › *Add widget*: nombre MatchMate, *Hostnames*
   `matchmate.vercel.app` (y `localhost` para staging), modo *Managed*. Copia la *Site Key* (pública) y la
@@ -308,7 +308,8 @@ se puede registrar).
 - [ ] Supabase, en los dos proyectos: *Authentication › Attack Protection* › *Enable Captcha protection* ›
   *Turnstile by Cloudflare* › la *Secret Key* › *Save*.
 
-**Comprobar:** en la app, el registro y «Olvidé mi contraseña» muestran la casilla de Cloudflare y funcionan.
+**Comprobar:** en la app, entrar con correo, el registro y «Olvidé mi contraseña» muestran la casilla de
+Cloudflare y funcionan (entrar con Google no la necesita).
 
 ---
 

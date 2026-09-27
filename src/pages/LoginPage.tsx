@@ -6,6 +6,7 @@ import { pendingByUser } from '../lib/db/outbox';
 import { Button, Card, Field, Input, Loading, Tabs } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { PasswordInput } from '../components/PasswordInput';
+import { captchaEnabled, Turnstile } from '../components/Turnstile';
 
 type Mode = 'entrar' | 'registro' | 'recuperar';
 
@@ -38,6 +39,10 @@ export default function LoginPage() {
   const [sent, setSent] = useState<'confirmar' | 'recuperar' | null>(null);
   // Cambios anotados sin señal que quedaron en el teléfono al salir: salen solos cuando esa cuenta entre.
   const [waiting, setWaiting] = useState(0);
+  // Turnstile (si está activado): el token sirve una vez; después de cada intento se pide otro.
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
+  const needCaptcha = captchaEnabled();
   useEffect(() => {
     pendingByUser()
       .then((byUser) => setWaiting(Object.values(byUser).reduce((n, u) => n + u.pending, 0)))
@@ -72,22 +77,28 @@ export default function LoginPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (signingUp && (password !== password2 || password.length < MIN_PASSWORD || !adult)) return;
+    if (needCaptcha && !captcha) {
+      setError('Espera la casilla de Cloudflare que comprueba que no eres un robot.');
+      return;
+    }
     setBusy('correo');
     setError(null);
+    const token = captcha ?? undefined;
     try {
       if (mode === 'recuperar') {
-        await resetPassword(email);
+        await resetPassword(email, token);
         setSent('recuperar');
       } else if (signingUp) {
-        const { needsConfirm } = await signUp(name, email, password, adult);
+        const { needsConfirm } = await signUp(name, email, password, adult, token);
         if (needsConfirm) setSent('confirmar');
       } else {
-        await login(email, password);
+        await login(email, password, token);
       }
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {
       setBusy(null);
+      if (needCaptcha) setCaptchaRound((n) => n + 1);
     }
   }
 
@@ -123,7 +134,7 @@ export default function LoginPage() {
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <Logo className="size-12" />
           <h1 className="text-2xl font-bold tracking-tight">MatchMate</h1>
-          <p className="text-sm text-muted">Ligas y torneos de boliche</p>
+          <p className="text-sm text-muted">Ligas y torneos de tus deportes</p>
         </div>
         <Card className="flex flex-col gap-4 p-5">
           {sent ? (
@@ -148,6 +159,7 @@ export default function LoginPage() {
               <Field label="Correo">
                 <Input type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
               </Field>
+              <Turnstile key="recuperar" onToken={setCaptcha} resetKey={captchaRound} />
               {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
               <Button type="submit" variant="primary" loading={busy === 'correo'} disabled={!!busy}>
                 Mandar el link
@@ -191,6 +203,7 @@ export default function LoginPage() {
                     <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
                   </Field>
                 )}
+                <Turnstile key="correo" onToken={setCaptcha} resetKey={captchaRound} />
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
                 <Button
                   type="submit"
@@ -217,7 +230,7 @@ export default function LoginPage() {
         )}
         <p className="mt-4 text-center text-xs text-muted">
           {signingUp
-            ? 'Después te unes a tu liga y eliges quién eres en la lista de jugadores.'
+            ? 'Después creas tu liga o te unes a la de tus amigos con su link o código, y juegas con esta misma cuenta.'
             : 'Si entras con Google por primera vez, tu cuenta se crea sola.'}
         </p>
       </div>

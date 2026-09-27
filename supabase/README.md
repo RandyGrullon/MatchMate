@@ -169,8 +169,10 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 
 ### Solo servidor (sin lectura para la app)
-`reminders_sent`, `push_outbox` (fase 0C, service_role). Esquema `private` (no expuesto): `op_log`, `paces`,
-`rate_limits`, `storage_purge_queue`, `heartbeat`.
+`reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
+evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
+`urgency`, `claimed_at`, `attempts`, `last_status`, `sent_at`). Esquema `private` (no expuesto): `op_log`, `paces`,
+`rate_limits`, `storage_purge_queue`, `heartbeat`, `scan_usage`, `scan_days`, `scan_minutes`, `scan_cache`.
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -300,9 +302,19 @@ Subir primero el archivo a Storage, bucket `scoreboards`, ruta `'<league_id>/<ph
 | `upsert_push_subscription(p_endpoint, p_p256dh, p_auth, p_ua='') → uuid` | la cuenta | Solo `https://` de FCM, Apple, Mozilla o `*.notify.windows.com` (23514). El mismo teléfono con otra cuenta pasa a la cuenta nueva. |
 | `delete_push_subscription(p_endpoint) → boolean` | la cuenta | Solo las suyas. |
 
-### Servicio
+### Servicio (solo `service_role`, la clave secreta: Edge Functions, cron y GitHub Actions)
 
-`ping() → timestamptz` · solo `service_role` (clave secreta): escritura real para «mantener despierto».
+| RPC | Quién la llama | Qué hace |
+|---|---|---|
+| `ping() → timestamptz` | keepalive.yml | Escritura real para «mantener despierto» el proyecto gratis. |
+| `scan_begin(p_user, p_league, p_event, p_key, p_models=null, p_per_minute=null) → jsonb` | `scan-bowling` | Revisa que la cuenta pueda leer fotos en esa liga, busca `p_key` (sha256 de la foto) en la caché de 24 h y cobra el cupo: `{status:'cached', result, model}`, `{status:'ok', model, left}` o `{status:'limit', reason, retry_after, limit}`. |
+| `scan_next_model(p_models, p_per_minute=null) → text` | `scan-bowling` | El siguiente modelo de la cadena con cupo en este minuto (null = ninguno). |
+| `scan_finish(p_user, p_key, p_model=null, p_result=null, p_refund=false) → void` | `scan-bowling` | Guarda el resultado en la caché; `p_refund` devuelve el cupo del día si ningún modelo respondió. |
+| `claim_push_batch(p_limit=50) → setof (id, endpoint, p256dh, auth, title, body, url, tag, urgency, ttl)` | `send-push` | Toma hasta 100 mensajes (los aparta 3 min y sube `attempts`); `ttl` = lo que le queda al aviso. |
+| `finish_push_batch(p_results jsonb) → jsonb` | `send-push` | `[{id, outcome, status}]` con `sent`/`expired` (listo), `gone` (borra el teléfono), `retry` (otra vez en 3 min), `failed` (no se reintenta; 3 seguidos borran el teléfono). Devuelve `{remaining, chained}`; si queda cola pide el siguiente lote con pg_net. |
+
+El cron (`20260926001300_cron_supabase.sql`, solo Supabase) corre `private.cron_reminders()` cada 15 min
+(`private.enqueue_due_reminders(now)` + `send-push`), `private.cleanup_old_rows()` a diario y un ping a `send-push`.
 
 ## De `data.ts` a la base
 
@@ -375,8 +387,7 @@ de la liga. Sin actualizar. En local, `BackendStorage` guarda el archivo por su 
 
 ## Pendiente para otras fases
 
-- 0C: cron (`pg_cron`) de recordatorios y limpieza (`op_log`, `rate_limits`, `tombstones`, `live_states`
-  viejos, `storage_purge_queue`), `consume_scan`, `expires_at` de fotos al aprobar/rechazar, Edge Functions.
-- `supabase/config.toml`: bajar `max_rows` a ~500 (crítica 22) — no es de esta parte.
+- Hecho en 0C: cron de recordatorios y limpieza, cupos de lectura de fotos (`scan_*`), cola de push y las Edge
+  Functions `scan-bowling` y `send-push`. `max_rows` = 500 en `config.toml`.
 - Cada deporte trae su migración (partidos, `match_*`, `swim_*`, equipos de temporada) y agrega su caso a
   `private.series_ok`, `private.check_event` y `private.check_live`.

@@ -55,7 +55,7 @@ export const SCENE_FOR_SPORT: Record<SportId, SceneId> = {
  * Escenas que ya salen al abrir la app. Las demás solo se ven en la vista previa hasta que se encienda su deporte:
  * se agrega aquí y se corre `node scripts/icons/splash.mjs`.
  */
-export const LIVE_SCENES: readonly SceneId[] = ['generic', 'bowling'];
+export const LIVE_SCENES: readonly SceneId[] = ['generic', 'bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming'];
 
 /** La escena de un deporte; sin deporte, desconocido o con la escena apagada: la genérica. */
 export function sceneForSport(sport: string | null | undefined, live: readonly SceneId[] = LIVE_SCENES): SceneId {

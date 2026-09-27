@@ -68,6 +68,26 @@ ni el backend:
 - `src/sports/team/`    baloncesto y fútbol/futsal (mesa anotadora, faltas, tarjetas, tablas, disciplina).
 - `src/sports/golf/` y `src/sports/swimming/`.
 
+## Pantallas por deporte
+
+- `src/sports/registry.ts`: datos de cada deporte (nombre, familia, ícono, cancha/pista, reglas por defecto y su
+  validación, tipos de evento, si usa fotos). `src/sports/status.ts` lee `sport_status` (abierto o beta).
+- `src/sports/screens.tsx` es el contrato: cada deporte exporta por defecto un `SportScreens`
+  (`Home`, `Event`, `Standings?`, `Feed?`, `MyProfile?`, `Player?`, `adminTabs?`, `tabs?`) desde
+  `src/pages/sports/<sportId>/screens.tsx`. La app lo encuentra sola con `import.meta.glob`: las rutas de la liga
+  (`SportRoute`), `EventPage`, las pestañas de `LeagueShell` y las del Admin usan las del deporte de la liga.
+  El boliche usa sus pantallas de siempre. Un deporte sin `screens.tsx` muestra «Pronto»; uno que esta versión
+  no conoce, «Actualiza la app».
+- Lo común de los partidos (raqueta y equipos: anotador, confirmación del rival, W.O., modo cancha) está en
+  `docs/partidos.md`, `src/court/` y `src/components/match/`.
+
+## Datos por módulo (`src/lib/data/`)
+
+`client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
+`rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
+`submissions`, `social`, `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
+
 ## Pruebas
 
 - `pnpm test`: unitarias (`src/**/*.test.ts`).

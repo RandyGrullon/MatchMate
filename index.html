@@ -83,6 +83,111 @@
       @keyframes sp-bowling-p1{0%,27.5%{opacity:1;transform:none;animation-timing-function:ease-in}52.5%,100%{opacity:0;transform:translate(26px,-10px) rotate(80deg)}}
       @keyframes sp-bowling-p2{0%,30%{opacity:1;transform:none;animation-timing-function:ease-in}55%,100%{opacity:0;transform:translate(10px,-22px) rotate(-70deg)}}
       @keyframes sp-bowling-p3{0%,32.5%{opacity:1;transform:none;animation-timing-function:ease-in}57.5%,100%{opacity:0;transform:translate(30px,6px) rotate(95deg)}}
+      .sp-padel .glass{fill:var(--sp-acc);fill-opacity:.12;stroke:var(--sp-acc);stroke-opacity:.5;stroke-width:1.2;animation:sp-padel-glass 2s both}
+      .sp-padel .hit{fill:none;stroke:var(--sp-acc);stroke-width:1.6;stroke-linecap:round;opacity:0;animation:sp-padel-hit 2s both}
+      .sp-padel .holes{fill:none;stroke:var(--sp-edge);stroke-width:3;stroke-linecap:round;stroke-dasharray:0 6}
+      .sp-padel .wrap{fill:none;stroke:var(--sp-edge);stroke-width:1.2}
+      .sp-padel .racket{filter:var(--sp-drop);transform-box:view-box;transform-origin:40px 100px;animation:sp-padel-racket 2s both}
+      .sp-padel .shadow{fill:var(--sp-fg);opacity:.14}
+      .sp-padel .ball{filter:drop-shadow(0 2px 2px rgb(16 24 40 / .22))}
+      .sp-padel .bx{animation:sp-padel-x 2s both}
+      .sp-padel .by{animation:sp-padel-y 2s both}
+      @keyframes sp-padel-racket{0%{transform:rotate(-85deg);animation-timing-function:cubic-bezier(.5,0,.8,.4)}16%{transform:rotate(4deg);animation-timing-function:ease-out}24%{transform:rotate(16deg);animation-timing-function:ease-in-out}40%,100%{transform:none}}
+      @keyframes sp-padel-x{0%,15%{transform:translateX(-54px);animation-timing-function:linear}36%{transform:translateX(64px);animation-timing-function:cubic-bezier(.3,.6,.5,1)}58%,100%{transform:none}}
+      @keyframes sp-padel-y{0%{transform:translateY(-30px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}15%{transform:translateY(-20px);animation-timing-function:cubic-bezier(.33,.66,.66,1)}26%{transform:translateY(-36px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}36%{transform:translateY(-28px);animation-timing-function:cubic-bezier(.4,0,.6,1)}58%,100%{transform:none}}
+      @keyframes sp-padel-glass{0%,35%{fill-opacity:.12}38%{fill-opacity:.55}54%,100%{fill-opacity:.12}}
+      @keyframes sp-padel-hit{0%,35%{opacity:0}38%{opacity:1}52%,100%{opacity:0}}
+      .sp-tennis .post{fill:none;stroke:var(--sp-fg);stroke-opacity:.7;stroke-width:2.2;stroke-linecap:round}
+      .sp-tennis .mesh{fill:none;stroke:var(--sp-fg);stroke-opacity:.28;stroke-width:.8}
+      .sp-tennis .mark{fill:var(--sp-fg);opacity:.16;transform-box:fill-box;transform-origin:center;animation:sp-tennis-mark 2s both}
+      .sp-tennis .seam{fill:none;stroke:var(--sp-on);stroke-width:1.1;stroke-linecap:round}
+      .sp-tennis .bx{animation:sp-tennis-x 2s linear both}
+      .sp-tennis .by{filter:drop-shadow(0 2px 2px rgb(16 24 40 / .22));animation:sp-tennis-y 2s both}
+      .sp-tennis .sq{transform-box:fill-box;transform-origin:50% 100%;animation:sp-tennis-sq 2s both}
+      .sp-tennis .spin{transform-box:fill-box;transform-origin:center;animation:sp-tennis-spin 2s both}
+      @keyframes sp-tennis-x{0%{transform:translateX(-165px)}40%{transform:none}62%{opacity:1}70%,100%{opacity:0;transform:translateX(95px)}}
+      @keyframes sp-tennis-y{0%{transform:translateY(-50px);animation-timing-function:cubic-bezier(.33,.66,.66,1)}16%{transform:translateY(-78px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}40%{transform:none;animation-timing-function:cubic-bezier(.33,.66,.66,1)}56%{transform:translateY(-40px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}70%,100%{transform:translateY(-16px)}}
+      @keyframes sp-tennis-sq{0%,38%{transform:none}40.5%{transform:scale(1.3,.7)}44%,100%{transform:none}}
+      @keyframes sp-tennis-spin{0%{transform:rotate(-540deg)}40%{transform:none}70%,100%{transform:rotate(260deg)}}
+      @keyframes sp-tennis-mark{0%,39%{opacity:0;transform:scale(.3)}42%{opacity:.3;transform:none}100%{opacity:.16;transform:none}}
+      .sp-pickleball .kitchen{fill:var(--sp-acc);fill-opacity:.14;animation:sp-pickleball-k 2s both}
+      .sp-pickleball .post{fill:none;stroke:var(--sp-fg);stroke-opacity:.7;stroke-width:2.2;stroke-linecap:round}
+      .sp-pickleball .mesh{fill:none;stroke:var(--sp-fg);stroke-opacity:.28;stroke-width:.8}
+      .sp-pickleball .wrap{fill:none;stroke:var(--sp-edge);stroke-width:1.2}
+      .sp-pickleball .stripe{fill:var(--sp-acc);fill-opacity:.16}
+      .sp-pickleball .dots{fill:none;stroke:var(--sp-on);stroke-width:1.8;stroke-linecap:round}
+      .sp-pickleball .paddle{filter:var(--sp-drop);transform-box:view-box;transform-origin:44px 100px;animation:sp-pickleball-paddle 2s both}
+      .sp-pickleball .bx{animation:sp-pickleball-x 2s both}
+      .sp-pickleball .by{filter:drop-shadow(0 2px 2px rgb(16 24 40 / .22));animation:sp-pickleball-y 2s both}
+      .sp-pickleball .spin{transform-box:fill-box;transform-origin:center;animation:sp-pickleball-spin 2s both}
+      @keyframes sp-pickleball-paddle{0%{transform:rotate(-28deg);animation-timing-function:ease-in}9%{transform:rotate(8deg);animation-timing-function:ease-out}22%,100%{transform:none}}
+      @keyframes sp-pickleball-x{0%,7%{transform:translateX(-76px);animation-timing-function:linear}44%{transform:translateX(-6px);animation-timing-function:ease-out}56%,100%{transform:none}}
+      @keyframes sp-pickleball-y{0%{transform:translateY(-44px);animation-timing-function:ease-in}7%{transform:translateY(-38px);animation-timing-function:cubic-bezier(.33,.66,.66,1)}24%{transform:translateY(-62px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}44%{transform:none;animation-timing-function:cubic-bezier(.33,.66,.66,1)}50%{transform:translateY(-9px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}56%,100%{transform:none}}
+      @keyframes sp-pickleball-spin{0%,7%{transform:rotate(-260deg);animation-timing-function:ease-out}56%,100%{transform:none}}
+      @keyframes sp-pickleball-k{0%,43%{fill-opacity:.14}47%{fill-opacity:.5}66%,100%{fill-opacity:.14}}
+      .sp-basketball .pole{fill:none;stroke:var(--sp-fg);stroke-opacity:.45;stroke-width:3;stroke-linejoin:round}
+      .sp-basketball .rim{fill:none;stroke:var(--sp-fg);stroke-opacity:.85;stroke-width:2.2;stroke-linecap:round}
+      .sp-basketball .net{fill:none;stroke:var(--sp-fg);stroke-opacity:.45;stroke-width:1;transform-box:fill-box;transform-origin:50% 0;animation:sp-basketball-net 2s both}
+      .sp-basketball .seam{fill:none;stroke:var(--sp-on);stroke-width:1.1}
+      .sp-basketball .bx{animation:sp-basketball-x 2s both}
+      .sp-basketball .by{filter:drop-shadow(0 3px 3px rgb(16 24 40 / .22));animation:sp-basketball-y 2s both}
+      .sp-basketball .spin{transform-box:fill-box;transform-origin:center;animation:sp-basketball-spin 2s both}
+      @keyframes sp-basketball-x{0%{transform:translateX(-127px);animation-timing-function:linear}38%{transform:translateX(-3px);animation-timing-function:ease-out}50%,100%{transform:none}}
+      @keyframes sp-basketball-y{0%{transform:translateY(-8px);animation-timing-function:cubic-bezier(.33,.66,.66,1)}20%{transform:translateY(-92px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}38%{transform:translateY(-61px);animation-timing-function:cubic-bezier(.4,0,.8,.6)}58%{transform:none;animation-timing-function:cubic-bezier(.33,.66,.66,1)}64%{transform:translateY(-9px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}70%,100%{transform:none}}
+      @keyframes sp-basketball-spin{0%{transform:rotate(-400deg);animation-timing-function:ease-out}58%,100%{transform:none}}
+      @keyframes sp-basketball-net{0%,43%{transform:none}50%{transform:scale(.9,1.38)}58%{transform:scale(1.03,.94)}64%,100%{transform:none}}
+      .sp-football .net-bg{fill:var(--sp-fg);fill-opacity:.04}
+      .sp-football .mesh{fill:none;stroke:var(--sp-fg);stroke-opacity:.3;stroke-width:.8}
+      .sp-football .net{transform-box:fill-box;transform-origin:0 50%;animation:sp-football-net 2s both}
+      .sp-football .frame{fill:none;stroke:var(--sp-edge);stroke-width:1.4;stroke-linejoin:round}
+      .sp-football .tufts{fill:none;stroke:var(--sp-gnd);stroke-opacity:var(--sp-gnd-o);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+      .sp-football .post-e{stroke:var(--sp-edge);stroke-width:5;stroke-linecap:round}
+      .sp-football .post{stroke:var(--sp-piece);stroke-width:2.6;stroke-linecap:round}
+      .sp-football .seams{fill:none;stroke:var(--sp-edge);stroke-width:1}
+      .sp-football .bx{animation:sp-football-x 2s both}
+      .sp-football .by{filter:drop-shadow(0 2px 2px rgb(16 24 40 / .22));animation:sp-football-y 2s both}
+      .sp-football .spin{transform-box:fill-box;transform-origin:center;animation:sp-football-spin 2s both}
+      @keyframes sp-football-x{0%{transform:translateX(-160px);animation-timing-function:linear}44%{transform:translateX(9px);animation-timing-function:ease-out}54%{transform:translateX(3px)}62%,100%{transform:none}}
+      @keyframes sp-football-y{0%{transform:none;animation-timing-function:cubic-bezier(.33,.66,.66,1)}20%{transform:translateY(-42px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}44%{transform:translateY(-14px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}54%{transform:none;animation-timing-function:cubic-bezier(.33,.66,.66,1)}58%{transform:translateY(-4px);animation-timing-function:cubic-bezier(.33,0,.66,.33)}62%,100%{transform:none}}
+      @keyframes sp-football-spin{0%{transform:rotate(-720deg);animation-timing-function:cubic-bezier(.2,.6,.4,1)}54%,100%{transform:none}}
+      @keyframes sp-football-net{0%,43%{transform:none}48%{transform:scale(1.2,1.02)}56%{transform:scale(.96,1)}64%,100%{transform:none}}
+      .sp-golf .green{fill:var(--sp-acc);fill-opacity:.15}
+      .sp-golf .cup{fill:var(--sp-hole)}
+      .sp-golf .pole{fill:none;stroke:var(--sp-fg);stroke-opacity:.75;stroke-width:1.6;stroke-linecap:round}
+      .sp-golf .flag{transform-box:fill-box;transform-origin:0 50%;animation:sp-golf-flag 2s ease-in-out both}
+      .sp-golf .dimples{fill:none;stroke:var(--sp-edge);stroke-width:1.1;stroke-linecap:round}
+      .sp-golf .bx{animation:sp-golf-x 2s both}
+      .sp-golf .by{animation:sp-golf-y 2s both}
+      .sp-golf .spin{transform-box:fill-box;transform-origin:center;animation:sp-golf-spin 2s both}
+      @keyframes sp-golf-x{0%{transform:translateX(-128px);animation-timing-function:cubic-bezier(.25,.6,.4,1)}44%,100%{transform:none}}
+      @keyframes sp-golf-y{0%,45%{transform:translateY(-6px);animation-timing-function:cubic-bezier(.5,0,1,1)}51%{transform:translateY(1px)}55%{transform:translateY(-1px)}59%,100%{transform:none}}
+      @keyframes sp-golf-spin{0%{transform:rotate(-600deg);animation-timing-function:cubic-bezier(.25,.6,.4,1)}44%,100%{transform:none}}
+      @keyframes sp-golf-flag{0%,25%,50%,75%,100%{transform:none}12.5%,62.5%{transform:skewY(6deg) scaleX(.86)}37.5%,87.5%{transform:skewY(-4deg) scaleX(.94)}}
+      .sp-swimming .water{fill:var(--sp-acc);fill-opacity:.07}
+      .sp-swimming .wave{fill:none;stroke:var(--sp-acc);stroke-linecap:round}
+      .sp-swimming .w1{stroke-opacity:.6;stroke-width:1.6;animation:sp-swimming-w1 2s linear both}
+      .sp-swimming .w2{stroke-opacity:.3;stroke-width:1.4;animation:sp-swimming-w2 2s linear both}
+      .sp-swimming .rope{fill:none;stroke-width:3.6;stroke-linecap:round;stroke-dasharray:0 12}
+      .sp-swimming .r1{stroke:var(--sp-acc)}
+      .sp-swimming .r2{stroke:var(--sp-edge)}
+      .sp-swimming .body{fill:none;stroke:var(--sp-acc);stroke-opacity:.3;stroke-width:8;stroke-linecap:round}
+      .sp-swimming .gog{fill:none;stroke:var(--sp-fg);stroke-width:1.6;stroke-linecap:round}
+      .sp-swimming .kick{fill:none;stroke:var(--sp-edge);stroke-width:1.2;stroke-linecap:round}
+      .sp-swimming .arm-e{fill:none;stroke:var(--sp-edge);stroke-width:4.2;stroke-linecap:round}
+      .sp-swimming .arm-i{fill:none;stroke:var(--sp-piece);stroke-width:2.2;stroke-linecap:round}
+      .sp-swimming .arm{transform-box:view-box;transform-origin:172px 84px;animation:sp-swimming-arm 2s both}
+      .sp-swimming .sw{animation:sp-swimming-sw 2s both}
+      .sp-swimming .flash{fill:var(--sp-acc);opacity:0;animation:sp-swimming-flash 2s both}
+      .sp-swimming .timer{transform-box:fill-box;transform-origin:center;animation:sp-swimming-timer 2s both}
+      .sp-swimming .knob{fill:none;stroke:var(--sp-edge);stroke-width:2;stroke-linecap:round}
+      .sp-swimming .hand{fill:none;stroke:var(--sp-acc);stroke-width:1.8;stroke-linecap:round;transform-box:view-box;transform-origin:176px 30px;animation:sp-swimming-hand 2s both}
+      @keyframes sp-swimming-sw{0%{transform:translateX(-150px);animation-timing-function:cubic-bezier(.3,.2,.5,1)}54%,100%{transform:none}}
+      @keyframes sp-swimming-arm{0%{transform:rotate(-720deg);animation-timing-function:cubic-bezier(.3,.2,.5,1)}54%,100%{transform:none}}
+      @keyframes sp-swimming-w1{to{transform:translateX(-40px)}}
+      @keyframes sp-swimming-w2{to{transform:translateX(-20px)}}
+      @keyframes sp-swimming-flash{0%,53%{opacity:0}56%{opacity:.55}74%,100%{opacity:0}}
+      @keyframes sp-swimming-timer{0%,55%{opacity:0;transform:scale(.4)}62%{opacity:1;transform:scale(1.12)}68%,100%{opacity:1;transform:none}}
+      @keyframes sp-swimming-hand{0%,56%{transform:rotate(-150deg)}72%,100%{transform:none}}
     </style>
     <!-- /splash:css -->
   </head>
@@ -113,6 +218,127 @@
         <path class="gnd" d="M20 110H210"/>
       </svg>
     </template>
+    <template id="sp-padel">
+      <svg class="sp-padel" viewBox="0 0 220 120">
+        <rect class="glass" x="186" y="22" width="8" height="88" rx="1.5"/>
+        <path class="hit" d="M181 44l-5-5M179 52h-7M181 60l-5 5"/>
+        <path class="gnd" d="M20 110H206"/>
+        <g class="racket">
+          <rect class="pc" x="37" y="74" width="6" height="26" rx="2.5"/>
+          <path class="wrap" d="M37 88h6M37 92h6M37 96h6"/>
+          <ellipse class="pc" cx="40" cy="57" rx="15" ry="18.5"/>
+          <path class="holes" d="M34 50h12M34 57h12M34 64h12"/>
+        </g>
+        <g class="bx">
+          <ellipse class="shadow" cx="116" cy="110" rx="5" ry="1.4"/>
+          <g class="by"><circle class="acc ball" cx="116" cy="80" r="5.5"/></g>
+        </g>
+      </svg>
+    </template>
+    <template id="sp-tennis">
+      <svg class="sp-tennis" viewBox="0 0 220 120">
+        <path class="gnd" d="M20 110H210"/>
+        <ellipse class="mark" cx="150" cy="110" rx="8" ry="2"/>
+        <path class="mesh" d="M101 80h12M101 86h12M101 92h12M101 98h12M101 104h12M104.5 76v34M108 76v34M111.5 76v34"/>
+        <path class="post" d="M100 110V71"/>
+        <rect class="pc" x="98.5" y="72" width="15" height="3.5" rx="1"/>
+        <g class="bx"><g class="by"><g class="sq"><g class="spin">
+          <circle class="acc" cx="150" cy="104" r="6"/>
+          <path class="seam" d="M145.2 100.4c3 1.8 3 5.4 0 7.2M154.8 100.4c-3 1.8-3 5.4 0 7.2"/>
+        </g></g></g></g>
+      </svg>
+    </template>
+    <template id="sp-pickleball">
+      <svg class="sp-pickleball" viewBox="0 0 220 120">
+        <path class="kitchen" d="M117 110h40l-4-8h-32z"/>
+        <path class="gnd" d="M20 110H206"/>
+        <path class="mesh" d="M109 91h7M109 96h7M109 101h7M109 106h7M112.5 88v22M116 88v22"/>
+        <path class="post" d="M108 110V86"/>
+        <rect class="pc" x="106.5" y="86" width="10" height="3" rx="1"/>
+        <g class="paddle">
+          <rect class="pc" x="41" y="78" width="6" height="22" rx="2.5"/>
+          <path class="wrap" d="M41 86h6M41 90.5h6M41 95h6"/>
+          <rect class="pc" x="32" y="48" width="24" height="31" rx="9"/>
+          <rect class="stripe" x="36" y="52" width="16" height="23" rx="6"/>
+        </g>
+        <g class="bx"><g class="by"><g class="spin">
+          <circle class="acc" cx="138" cy="104" r="6"/>
+          <path class="dots" d="M138 100.8h0m2.8 1.6h0m0 3.2h0m-2.8 1.6h0m-2.8-1.6h0m0-3.2h0m2.8 1.6h0"/>
+        </g></g></g>
+      </svg>
+    </template>
+    <template id="sp-basketball">
+      <svg class="sp-basketball" viewBox="0 0 220 120">
+        <path class="gnd" d="M20 110H206"/>
+        <path class="pole" d="M200 110V38h-13"/>
+        <rect class="pc" x="182" y="16" width="5" height="44" rx="1.2"/>
+        <path class="rim" d="M150 50a15 3.4 0 0 1 30 0"/>
+        <g class="bx"><g class="by"><g class="spin">
+          <circle class="acc" cx="165" cy="100.5" r="9.5"/>
+          <path class="seam" d="M155.5 100.5h19M165 91v19M158.3 93.8c3.2 3.6 3.2 9.8 0 13.4M171.7 93.8c-3.2 3.6-3.2 9.8 0 13.4"/>
+        </g></g></g>
+        <path class="net" d="M151 51l6 21M158 51.5l3 20.5M165 52v20M172 51.5l-3 20.5M179 51l-6 21M153 58h24M155 65h20"/>
+        <path class="rim" d="M150 50a15 3.4 0 0 0 30 0M180 50h2"/>
+      </svg>
+    </template>
+    <template id="sp-football">
+      <svg class="sp-football" viewBox="0 0 220 120">
+        <g class="net">
+          <path class="net-bg" d="M160 48L202 56V110H160z"/>
+          <path class="mesh" d="M170.5 50V110M181 52V110M191.5 54V110M160 64h42M160 78h42M160 92h42"/>
+        </g>
+        <path class="frame" d="M160 48L202 56V110"/>
+        <path class="gnd" d="M14 110H206"/>
+        <path class="tufts" d="M34 110l2-5 1.5 5M38 110l2-4 1 4M84 110l2-5 1.5 5M128 110l2-4 1.5 4M131.5 110l2-5 1 5"/>
+        <g class="bx"><g class="by"><g class="spin">
+          <circle class="pc" cx="184" cy="102" r="8"/>
+          <path class="acc" d="M184 98.6L187.23 100.95L186 104.75H182L180.77 100.95Z"/>
+          <path class="seams" d="M184 98.6V94.8M187.23 100.95L190.85 99.78M186 104.75L188.23 107.82M182 104.75L179.77 107.82M180.77 100.95L177.15 99.78"/>
+        </g></g></g>
+        <path class="post-e" d="M160 110V48"/>
+        <path class="post" d="M160 110V48"/>
+      </svg>
+    </template>
+    <template id="sp-golf">
+      <svg class="sp-golf" viewBox="0 0 220 120">
+        <clipPath id="sp-golf-c"><path d="M0-40H220V106.5H0z"/></clipPath>
+        <ellipse class="green" cx="112" cy="107" rx="100" ry="7"/>
+        <ellipse class="cup" cx="160" cy="106.5" rx="7.5" ry="2.4"/>
+        <path class="pole" d="M160 106V28"/>
+        <path class="acc flag" d="M160.8 29l24 6.5-24 6.5z"/>
+        <g clip-path="url(#sp-golf-c)"><g class="bx"><g class="by"><g class="spin">
+          <circle class="pc" cx="160" cy="106" r="5"/>
+          <path class="dimples" d="M157.8 104h0m4.4 0h0m-2.2-2.2h0"/>
+        </g></g></g></g>
+      </svg>
+    </template>
+    <template id="sp-swimming">
+      <svg class="sp-swimming" viewBox="0 0 220 120">
+        <clipPath id="sp-swimming-w"><path d="M14 0H196V120H14z"/></clipPath>
+        <clipPath id="sp-swimming-a"><path d="M0 0H240V84H0z"/></clipPath>
+        <path class="water" d="M14 84H196V110H14z"/>
+        <path class="gnd" d="M16 110H196"/>
+        <rect class="flash" x="187" y="60" width="11" height="36" rx="3"/>
+        <g clip-path="url(#sp-swimming-w)"><g class="sw">
+          <path class="body" d="M136 89q22-6 40-5"/>
+          <path class="kick" d="M122 83q3-5 6 0M114 85q2.5-4 5 0"/>
+          <circle class="pc" cx="181" cy="78" r="7"/>
+          <path class="acc" d="M174 78a7 7 0 0 1 14 0z"/>
+          <path class="gog" d="M184.5 79.6h3.2"/>
+          <g clip-path="url(#sp-swimming-a)"><g class="arm"><path class="arm-e" d="M172 84q9-7 19-4"/><path class="arm-i" d="M172 84q9-7 19-4"/></g></g>
+        </g></g>
+        <g clip-path="url(#sp-swimming-w)"><path class="wave w1" d="M-24 84q5 -3 10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0"/><path class="wave w2" d="M-24 94q5 -2 10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0"/></g>
+        <path class="rope r1" d="M20 101H188"/>
+        <path class="rope r2" d="M26 101H182"/>
+        <rect class="pc" x="196" y="54" width="8" height="58" rx="1.5"/>
+        <rect class="acc" x="192.5" y="66" width="3.5" height="24" rx="1"/>
+        <g class="timer">
+          <circle class="pc" cx="176" cy="30" r="10"/>
+          <path class="knob" d="M176 20v-3M173 16.5h6"/>
+          <path class="hand" d="M176 30v-6.5"/>
+        </g>
+      </svg>
+    </template>
     <div id="splash" class="mm-sp" aria-hidden="true"><div class="word">Match<b>Mate</b></div></div>
     <script>
       // Una vez por sesión (al abrir la app instalada siempre es una sesión nueva); nunca más de 4 s.
@@ -123,7 +349,7 @@
           if (sessionStorage.getItem('mm:splash')) { el.remove(); return; }
           sessionStorage.setItem('mm:splash', '1');
         } catch (e) {}
-        var scenes = {"bowling":"bowling"};
+        var scenes = {"bowling":"bowling","padel":"padel","tennis":"tennis","pickleball":"pickleball","basketball":"basketball","football":"football","futsal":"football","golf":"golf","swimming":"swimming"};
         var scene = 'generic';
         try {
           var sport = localStorage.getItem('mm:sport');
