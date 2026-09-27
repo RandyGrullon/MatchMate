@@ -220,6 +220,15 @@ export function tagsForOp(item: OutboxItem): string[] {
       return [tags.events(lid), ...(eventId ? [tags.event(eventId)] : []), tags.feeds];
     case 'submit_games':
       return [tags.subs(lid), tags.feeds, ...(eventId ? [tags.live(eventId), tags.eventSubs(eventId)] : [])];
+    // Partidos: matches.ts invalida el partido y sus listas al terminar; recargar la liga entera en cada
+    // publicación de la cancha sería bajar todo en cada hito.
+    case 'publish_match':
+    case 'finish_match':
+    case 'confirm_result':
+    case 'dispute_result':
+    case 'suspend_match':
+    case 'set_match_players':
+      return [];
     default:
       return [tags.league(lid)];
   }

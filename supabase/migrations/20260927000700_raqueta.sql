@@ -105,7 +105,8 @@ declare
   v_count integer;
   v_last jsonb;
 begin
-  if v_sport is null or v_sport not in ('tennis', 'pickleball') then
+  -- El pádel pasa por aquí solo con la liga por cajas y la escalera (lo demás lo revisa padel_check_event).
+  if v_sport is null or (v_sport not in ('tennis', 'pickleball') and not (v_sport = 'padel' and new.type in ('cajas', 'escalera'))) then
     return new;
   end if;
   if v_sport = 'tennis' and new.type not in ('liga', 'torneo', 'cajas', 'escalera') then

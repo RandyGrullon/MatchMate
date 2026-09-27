@@ -218,7 +218,10 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   ```
   Genera uno para prod y otro para staging, y guárdalos.
-- [ ] En **cada** proyecto: *Edge Functions › Secrets* › *Add new secret*, uno por uno:
+- [ ] En **cada** proyecto, los secretos de abajo. Dos formas (elige una):
+  - Rápida: copia `supabase/functions/.env.example` a `supabase/functions/.env` (no se sube a GitHub), llénalo y
+    corre `npx -y supabase@2 secrets set --env-file supabase/functions/.env --project-ref REF`. Después borra el `.env`.
+  - A mano: *Edge Functions › Secrets* › *Add new secret*, uno por uno:
 
   | Nombre | Valor |
   |---|---|
@@ -227,10 +230,9 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   | `VAPID_PRIVATE_KEY` | la privada |
   | `VAPID_SUBJECT` | `mailto:` + la Gmail del paso 6 (p. ej. `mailto:matchmate.app@gmail.com`) |
   | `CRON_SECRET` | el de ese proyecto |
-  | `APP_ORIGIN` | prod: `https://matchmate.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma |
+  | `SCAN_ALLOWED_ORIGINS` | prod: `https://matchmate.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma |
 
-  Opcional, como respaldo de la lectura: `CF_AI_TOKEN` y `CF_ACCOUNT_ID` (Cloudflare Workers AI; Claude te dice
-  cómo sacarlos si lo quieres). No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo.
+  No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo.
 - [ ] Publicar las funciones (primero staging; `REF` es el del proyecto):
   ```powershell
   npx -y supabase@2 functions deploy --project-ref REF

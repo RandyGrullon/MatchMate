@@ -237,7 +237,10 @@ begin
       join public.leagues l on l.id = e.league_id
      cross join lateral (select p_now at time zone l.tz as local_now) x
      -- Primero por la fecha en UTC (usa el índice; ninguna zona se aleja más de un día) y luego la de la liga.
-     where e.date between (p_now at time zone 'UTC')::date - 1 and (p_now at time zone 'UTC')::date + 2
+     -- Solo boliche: los textos son de prácticas y torneos en la bolera. Los deportes de partidos avisan cada
+     -- partido (private.padel_match_reminders y los de cada deporte).
+     where l.sport = 'bowling'
+       and e.date between (p_now at time zone 'UTC')::date - 1 and (p_now at time zone 'UTC')::date + 2
        and e.date in (x.local_now::date, x.local_now::date + 1)
      order by e.date, e.id
   loop

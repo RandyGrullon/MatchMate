@@ -136,9 +136,10 @@ function MembersPanel() {
   const players = usePlayers(lid);
   const playerName = useMemo(() => new Map(players.data.map((p) => [p.id, p.name])), [players.data]);
   const sorted = [...members.data].sort((a, b) => ORDER[a.role] - ORDER[b.role] || a.name.localeCompare(b.name));
-  // Anotadores: solo en torneos sin liga (en la liga de práctica no hacen falta).
-  const scorers = league.kind === 'torneo';
-  const where = scorers ? 'el torneo' : 'la liga';
+  // Anotadores: en torneos sin liga y en las ligas de otros deportes (en la liga de práctica del boliche no hacen falta).
+  const bowling = leagueSport(league) === 'bowling';
+  const scorers = league.kind === 'torneo' || !bowling;
+  const where = league.kind === 'torneo' ? 'el torneo' : 'la liga';
 
   async function toggleAdmin(m: Member) {
     const makeAdmin = m.role === 'member';
@@ -162,8 +163,10 @@ function MembersPanel() {
     const ok = await confirm({
       title: make ? `¿Hacer anotador a ${m.name}?` : `¿Quitarle anotador a ${m.name}?`,
       message: make
-        ? 'Podrá anotar los juegos de los inscritos (a mano, por cuadros o con la foto) y nada más. Sigue siendo jugador.'
-        : 'Ya no podrá anotar los juegos del torneo.',
+        ? bowling
+          ? 'Podrá anotar los juegos de los inscritos (a mano, por cuadros o con la foto) y nada más. Sigue siendo jugador.'
+          : 'Podrá anotar los partidos, las tarjetas o los tiempos, y nada más. Sigue siendo jugador.'
+        : `Ya no podrá anotar en ${where}.`,
       confirmText: make ? 'Hacer anotador' : 'Quitar anotador',
       danger: !make,
     });

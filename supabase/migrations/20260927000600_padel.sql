@@ -49,8 +49,9 @@ begin
   if not private.is_padel(new.league_id) then
     return new;
   end if;
-  if new.type not in ('americano', 'mexicano', 'liga', 'torneo', 'noche', 'jornada') then
-    raise exception 'invalido' using errcode = 'P0001', detail = 'Tipo de evento de pádel: americano, mexicano, liga o torneo.';
+  -- 'cajas' y 'escalera' (liga por cajas y escalera) los valida además private.raq_check_event (20260927000700).
+  if new.type not in ('americano', 'mexicano', 'liga', 'torneo', 'noche', 'jornada', 'cajas', 'escalera') then
+    raise exception 'invalido' using errcode = 'P0001', detail = 'Tipo de evento de pádel: americano, mexicano, liga, torneo, cajas o escalera.';
   end if;
   if jsonb_typeof(coalesce(new.config, '{}'::jsonb)) <> 'object' or pg_column_size(new.config) >= 32768 then
     raise exception 'invalido' using errcode = 'P0001', detail = 'Configuración del evento no válida.';

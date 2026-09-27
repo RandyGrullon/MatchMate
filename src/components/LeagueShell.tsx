@@ -36,7 +36,8 @@ export default function LeagueShell() {
     const member = membership.data;
     const isOwner = isSuper || member?.role === 'owner';
     const isAdmin = isOwner || member?.role === 'admin';
-    const isScorer = league.data.kind === 'torneo' && member?.scorer === true;
+    // Anotadores: torneos de boliche y cualquier liga de otro deporte (golf, cronometristas, mesa anotadora).
+    const isScorer = (league.data.kind === 'torneo' || leagueSport(league.data) !== 'bowling') && member?.scorer === true;
     return {
       lid,
       league: league.data,

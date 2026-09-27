@@ -123,13 +123,12 @@ describe('registro de deportes: contrato', () => {
     expect(SPORT_LIST.map((m) => m.id)).toEqual([...rows].sort((a, b) => a.order - b.order).map((r) => r.id));
   });
 
-  it('hoy solo el boliche tiene pantallas; los demás esperan su fase', () => {
-    expect(SPORT_LIST.filter((m) => m.ready).map((m) => m.id)).toEqual(['bowling']);
-    for (const m of SPORT_LIST) if (!m.ready) expect(m.phase, m.id).toBeGreaterThan(0);
+  it('todos los deportes ya tienen sus pantallas en esta versión', () => {
+    expect(SPORT_LIST.filter((m) => !m.ready).map((m) => m.id)).toEqual([]);
     expect(SPORTS.padel.phase).toBe(1);
   });
 
-  it('tipos de evento: el boliche, torneo y práctica como hoy; los demás todavía ninguno', () => {
+  it('tipos de evento: el boliche, torneo y práctica como hoy; los demás, los de su migración', () => {
     expect(SPORTS.bowling.eventTypes.map((t) => [t.id, t.label, t.plural])).toEqual([
       ['torneo', 'Torneo', 'Torneos'],
       ['practica', 'Práctica', 'Prácticas'],
@@ -172,11 +171,11 @@ describe('registro de deportes: funciones', () => {
     expect(leagueSport({ id: 'l1', sport: 'padel' })).toBe('padel');
   });
 
-  it('desvío: boliche listo, los demás «pronto», uno que no conoce: actualizar', () => {
+  it('desvío: los deportes de esta versión, listos; uno que no conoce: actualizar', () => {
     expect(dispatchSport('bowling')).toMatchObject({ kind: 'ready', sport: 'bowling' });
     expect(dispatchSport(null)).toMatchObject({ kind: 'ready', sport: 'bowling' });
-    expect(dispatchSport('padel')).toMatchObject({ kind: 'soon', sport: 'padel', meta: SPORTS.padel });
-    expect(dispatchSport('futsal')).toMatchObject({ kind: 'soon', sport: 'futsal' });
+    expect(dispatchSport('padel')).toMatchObject({ kind: 'ready', sport: 'padel', meta: SPORTS.padel });
+    expect(dispatchSport('futsal')).toMatchObject({ kind: 'ready', sport: 'futsal' });
     expect(dispatchSport('volleyball')).toEqual({ kind: 'unknown', sport: 'volleyball' });
     expect(dispatchSport('__proto__')).toEqual({ kind: 'unknown', sport: '__proto__' });
   });

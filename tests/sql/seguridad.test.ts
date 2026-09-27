@@ -33,6 +33,20 @@ const RPC_AUTHENTICATED = [
   'save_verified_games', 'send_suggestion', 'set_member_role', 'set_member_scorer', 'set_player_private', 'set_reaction', 'set_rsvp',
   'set_sport_status', 'set_submission_scan', 'set_superadmin', 'step_down_admin', 'submit_games', 'transfer_ownership', 'unlink_account',
   'update_entries', 'update_entry', 'update_event', 'update_league', 'update_player', 'upsert_push_subscription',
+  // Deportes (partidos, golf, natación, raqueta, equipos).
+  'admin_correct_result', 'claim_scorer', 'confirm_result', 'create_matches', 'create_season_team', 'delete_match',
+  'delete_season_team', 'dispute_result', 'finish_match', 'my_matches', 'postpone_match', 'publish_match',
+  'release_scorer', 'remove_team_player', 'reschedule_match', 'resolve_dispute', 'set_match_players',
+  'set_match_sides', 'set_roster', 'set_team_player', 'set_walkover', 'suspend_match', 'update_match_schedule',
+  'update_season_team', 'void_match', 'golf_add_players', 'golf_close_round', 'golf_create_round',
+  'golf_create_tournament', 'golf_delete_course', 'golf_delete_tournament', 'golf_register', 'golf_save_course',
+  'golf_save_hole_scores', 'golf_set_dq', 'golf_set_groups', 'golf_set_index', 'golf_sign_card', 'golf_unregister',
+  'golf_update_round', 'swim_create_meet', 'swim_delete_club', 'swim_delete_event', 'swim_enter',
+  'swim_finalize_meet', 'swim_publish_heats', 'swim_record_heat', 'swim_register_swimmer', 'swim_save_club',
+  'swim_save_events', 'swim_unenter', 'swim_update_meet', 'swim_update_swimmer', 'save_night_round',
+  'save_points_result', 'accept_challenge', 'cancel_challenge', 'create_challenge', 'join_ladder', 'leave_ladder',
+  'save_box_month', 'set_ladder', 'sync_ladder', 'server_now', 'set_match_official', 'set_match_rsvp',
+  'delete_football_sanction', 'save_football_sanction',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

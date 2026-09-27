@@ -294,6 +294,30 @@ describe('dobles, lectura y tiempo real', () => {
     expect(await order(c.ev)).toEqual([t3, t1, t2]);
   });
 
+  it('pádel: escalera de parejas y liga por cajas', async () => {
+    const c = await club({ sport: 'padel', config: { doubles: true, open: true } });
+    const team = (name: string, a: string, b: string) => db.rpc<string>(w.u.sofi, 'create_season_team', { p_league: c.lid, p_name: name, p_players: [{ player_id: a }, { player_id: b }] });
+    const t1 = await team('Pedro / Ana', c.p.pedro, c.p.ana);
+    const t2 = await team('Luis / Extra', c.p.luis, c.p.extra);
+    await db.rpc(w.u.sofi, 'set_ladder', { p_event: c.ev, p_entrants: [t1, t2] });
+    const id = await db.rpc<string>(w.u.extra, 'create_challenge', { p_event: c.ev, p_challenged: t1 });
+    await db.rpc(w.u.ana, 'accept_challenge', { p_challenge: id });
+    const mid = (await challenge(id)).match_id as string;
+    await db.rpc(w.u.luis, 'finish_match', { p_match: mid, p_score: SCORE, p_winner: 1 });
+    await db.rpc(w.u.ana, 'confirm_result', { p_match: mid });
+    expect(await order(c.ev)).toEqual([t2, t1]);
+    // Liga por cajas: el tipo pasa y la cuenta de jugadores sale de las cajas del último mes.
+    const cajas = await db.rpc<string>(w.u.sofi, 'create_event', {
+      p_league: c.lid,
+      p_type: 'cajas',
+      p_date: '2026-10-01',
+      p_config: { months: [{ month: 1, boxes: [[t1, t2]] }] },
+    });
+    expect((await db.admin<{ player_count: number }>('select player_count from public.events where id = $1', [cajas]))[0].player_count).toBe(2);
+    // Lo demás del pádel sigue igual: un tipo que no es suyo no pasa.
+    await fails(db.rpc(w.u.sofi, 'create_event', { p_league: c.lid, p_type: 'practica', p_date: '2026-10-01' }), INVALID);
+  });
+
   it('lectura: pública para todos; privada solo miembros', async () => {
     const pub = await club();
     expect(await db.asAnon('select entrant_id from public.ladder_rungs where event_id = $1', [pub.ev])).toHaveLength(5);

@@ -158,6 +158,8 @@ const validateSwimming = validator((r, e) => {
   if (r.pool !== 25 && r.pool !== 50) e.push('La piscina es de 25 o de 50 metros.');
   if (!isInt(r.lanes, 1, 10)) e.push('Los carriles van de 1 a 10.');
   if (!isPoints(r.points)) e.push('Faltan los puntos por puesto.');
+  if (r.ageGroups !== undefined && r.ageGroups !== 'cccan' && r.ageGroups !== 'masters' && r.ageGroups !== 'none')
+    e.push('Las categorías por edad no son válidas.');
 });
 
 // ---------- Los deportes ----------
@@ -178,10 +180,17 @@ const racket = (sport: RacketSport) => ({
   venueHint: 'Club o canchas donde juegan',
   defaultRules: (): SportRules => ({ match: racketDefaultRules(sport) }),
   validateRules: racketValidator(sport),
-  eventTypes: [],
   photos: false,
-  ready: false,
+  ready: true,
 });
+
+// Liga por cajas y escalera: los tres deportes de raqueta (src/pages/sports/racket-formats).
+const RACKET_FORMATS: readonly EventTypeMeta[] = [
+  { id: 'liga', label: 'Liga', plural: 'Ligas' },
+  { id: 'torneo', label: 'Torneo', plural: 'Torneos' },
+  { id: 'cajas', label: 'Liga por cajas', plural: 'Ligas por cajas' },
+  { id: 'escalera', label: 'Escalera', plural: 'Escaleras' },
+];
 
 /** Todos los deportes. TypeScript obliga a que estén todos los SportId. */
 export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
@@ -219,6 +228,14 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     group: 'padel',
     icon: Grid2x2,
     units: { match: MATCH, score: 'sets', side: ['pareja', 'parejas'] },
+    eventTypes: [
+      { id: 'americano', label: 'Americano', plural: 'Americanos' },
+      { id: 'mexicano', label: 'Mexicano', plural: 'Mexicanos' },
+      { id: 'liga', label: 'Liga de parejas', plural: 'Ligas de parejas' },
+      { id: 'torneo', label: 'Torneo', plural: 'Torneos' },
+      { id: 'cajas', label: 'Liga por cajas', plural: 'Ligas por cajas' },
+      { id: 'escalera', label: 'Escalera', plural: 'Escaleras' },
+    ],
     phase: 1,
     scene: 'padel',
     order: 2,
@@ -234,6 +251,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     group: 'tennis',
     icon: Volleyball,
     units: { match: MATCH, score: 'sets', side: PLAYER },
+    eventTypes: RACKET_FORMATS,
     phase: 3,
     scene: 'tennis',
     order: 3,
@@ -249,6 +267,11 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     group: 'pickleball',
     icon: CircleDashed,
     units: { match: MATCH, score: 'puntos', side: PLAYER },
+    eventTypes: [
+      { id: 'americano', label: 'Round robin', plural: 'Round robins' },
+      { id: 'mexicano', label: 'Mexicano', plural: 'Mexicanos' },
+      ...RACKET_FORMATS,
+    ],
     phase: 3,
     scene: 'pickleball',
     order: 4,
@@ -270,7 +293,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     validateRules: validateBasketball,
     eventTypes: [],
     photos: false,
-    ready: false,
+    ready: true,
     phase: 4,
     scene: 'basketball',
     order: 5,
@@ -292,7 +315,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     validateRules: footballValidator('football'),
     eventTypes: [],
     photos: false,
-    ready: false,
+    ready: true,
     phase: 5,
     scene: 'football',
     order: 6,
@@ -314,7 +337,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     validateRules: footballValidator('futsal'),
     eventTypes: [],
     photos: false,
-    ready: false,
+    ready: true,
     phase: 5,
     scene: 'football',
     order: 7,
@@ -334,9 +357,12 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     units: { match: ['ronda', 'rondas'], score: 'golpes', side: PLAYER },
     defaultRules: () => ({ competition: { format: 'stroke', basis: 'net', allowance: DEFAULT_ALLOWANCE }, meritPoints: [...DEFAULT_MERIT_POINTS] }),
     validateRules: validateGolf,
-    eventTypes: [],
+    eventTypes: [
+      { id: 'ronda', label: 'Ronda', plural: 'Rondas' },
+      { id: 'torneo', label: 'Torneo', plural: 'Torneos' },
+    ],
     photos: false,
-    ready: false,
+    ready: true,
     phase: 6,
     scene: 'golf',
     order: 8,
@@ -354,11 +380,15 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     venue: 'Piscina',
     venueHint: 'Dónde nadan',
     units: { match: ['prueba', 'pruebas'], score: 'tiempo', side: ['nadador', 'nadadores'] },
-    defaultRules: () => ({ pool: 25, lanes: 6, points: [...POINTS_6_LANES] }),
+    defaultRules: () => ({ pool: 25, lanes: 6, points: [...POINTS_6_LANES], ageGroups: 'cccan' }),
     validateRules: validateSwimming,
-    eventTypes: [],
+    eventTypes: [
+      { id: 'encuentro', label: 'Encuentro', plural: 'Encuentros' },
+      { id: 'control', label: 'Control de marcas', plural: 'Controles de marcas' },
+      { id: 'torneo', label: 'Torneo', plural: 'Torneos' },
+    ],
     photos: false,
-    ready: false,
+    ready: true,
     phase: 7,
     scene: 'swimming',
     order: 9,

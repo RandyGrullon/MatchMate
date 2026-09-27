@@ -104,7 +104,9 @@ describe('eventos de tenis y pickleball', () => {
   it('un tipo de otro deporte no pasa, y el pádel sigue con los suyos', async () => {
     const padel = await club('padel', 'Pádel Club');
     await createEvent(padel, 'americano');
-    await fails(createEvent(padel, 'escalera'), INVALID);
+    // El pádel también tiene liga por cajas y escalera; lo de otro deporte no.
+    await createEvent(padel, 'escalera');
+    await fails(createEvent(padel, 'ronda'), INVALID);
   });
 });
 
