@@ -9,7 +9,7 @@ import { Button, Empty, ListSkeleton, LoadError } from '../../../components/ui';
 import { Chips, Section } from './bits';
 import { isPointsMatch, matchTime } from './logic/results';
 import { MatchDetail, useMatchParam, useMySide } from './match/MatchDetail';
-import { useRacket } from './sport';
+import { hasNights, useRacket } from './sport';
 
 type Filter = 'todos' | 'mios' | 'sets' | 'noches';
 
@@ -21,7 +21,7 @@ const PAGE = 20;
  */
 export default function RacketFeed() {
   const { lid, league, myPlayerId } = useLeagueCtx();
-  const { ext } = useRacket();
+  const { sport, ext } = useRacket();
   const param = useMatchParam();
   const q = useMatches({ lid });
   const all = useWithPendingPoints(lid, q.data);
@@ -59,7 +59,7 @@ export default function RacketFeed() {
           { key: 'todos', label: 'Todos' },
           ...(myPlayerId ? [{ key: 'mios' as const, label: 'Míos', count: all.filter((m) => mySideOf(m) !== null && awaitingConfirmation(m, now)).length }] : []),
           { key: 'sets', label: 'Liga y torneos' },
-          { key: 'noches', label: ext.words?.nights ?? 'Noches' },
+          ...(hasNights(sport) ? [{ key: 'noches' as const, label: ext.words?.nights ?? 'Noches' }] : []),
         ]}
         value={filter}
         onChange={(k) => {
@@ -71,7 +71,7 @@ export default function RacketFeed() {
         <ListSkeleton rows={4} />
       ) : empty ? (
         <Empty icon={<Swords className="size-8" />} title="Todavía no hay partidos">
-          {filter === 'mios' ? 'Cuando te toque jugar, tus partidos salen aquí.' : 'Los partidos de las ligas, torneos y noches salen aquí.'}
+          {filter === 'mios' ? 'Cuando te toque jugar, tus partidos salen aquí.' : hasNights(sport) ? 'Los partidos de las ligas, torneos y noches salen aquí.' : 'Los partidos de las ligas y torneos salen aquí.'}
         </Empty>
       ) : (
         <>

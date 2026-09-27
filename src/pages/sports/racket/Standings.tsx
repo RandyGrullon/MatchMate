@@ -17,7 +17,7 @@ import { rankingNote, tiebreakText } from './logic/tiebreaks';
 import { groupStage, groupTables, parseTourneyConfig } from './logic/tourney';
 import { localParts } from './logic/time';
 import { useNames } from './names';
-import { useRacket } from './sport';
+import { hasNights, useRacket } from './sport';
 
 type Tab = 'parejas' | 'ranking' | 'noches';
 
@@ -101,7 +101,7 @@ export default function RacketStandings() {
         items={[
           { key: 'parejas' as Tab, label: doubles ? 'Parejas' : 'Ligas', icon: <Users className="size-4" /> },
           { key: 'ranking' as Tab, label: 'Ranking', icon: <Medal className="size-4" /> },
-          { key: 'noches' as Tab, label: nightsWord, icon: <Moon className="size-4" /> },
+          ...(hasNights(sport) ? [{ key: 'noches' as Tab, label: nightsWord, icon: <Moon className="size-4" /> }] : []),
         ]}
         active={tab}
         onChange={(k) => setSearch({ ver: k }, { replace: true })}

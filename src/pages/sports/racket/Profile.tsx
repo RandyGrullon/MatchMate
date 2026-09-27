@@ -16,7 +16,7 @@ import { byModality, MODALITY_LABEL, type Modality } from './logic/modality';
 import { isPointsMatch, matchTime, playerRecord, playerSide, winPct, type PeopleLine, type PlayerRecord } from './logic/results';
 import { levelText, useLevels } from './levels';
 import { useNames } from './names';
-import { useRacket } from './sport';
+import { hasNights, useRacket } from './sport';
 
 /** Mi perfil en la liga (/l/:lid/perfil). */
 export function RacketMyProfile() {
@@ -150,7 +150,7 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
                 { key: 'dobles' as Filter, label: MODALITY_LABEL.dobles },
               ]
             : [{ key: 'sets' as Filter, label: 'Liga y torneos' }]),
-          { key: 'noches' as Filter, label: nightsWord },
+          ...(hasNights(sport) ? [{ key: 'noches' as Filter, label: nightsWord }] : []),
         ]}
         value={filter}
         onChange={setFilter}

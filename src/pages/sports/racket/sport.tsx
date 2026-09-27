@@ -86,6 +86,9 @@ const Ctx = createContext<RacketSportValue | null>(null);
 
 const NO_EXT: RacketExtensions = {};
 
+/** El deporte tiene noches de puntos (americano del pádel, round robin del pickleball; como private.night_league). El tenis no. */
+export const hasNights = (sport: RacketSport): boolean => sport === 'padel' || sport === 'pickleball';
+
 export function RacketProvider({ sport, ext, children }: { sport: RacketSport; ext?: RacketExtensions; children: ReactNode }) {
   const value = useMemo(() => ({ sport, meta: getSport(sport), ext: ext ?? NO_EXT }), [sport, ext]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
