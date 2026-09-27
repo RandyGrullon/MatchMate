@@ -202,14 +202,15 @@ dialog::backdrop {
   100% { transform: scale(1) rotate(0); }
 }
 
-.animate-fade-up { animation: fade-up 0.35s var(--ease-out) both; }
+/* backwards y no both: al terminar no queda un transform puesto (encerraría a los position: fixed de adentro). */
+.animate-fade-up { animation: fade-up 0.35s var(--ease-out) backwards; }
 /* Al felicitar: el ícono salta. */
 .animate-pop { animation: cheer 0.45s var(--ease-out); }
 .animate-fade-in { animation: fade-in 0.25s ease-out both; }
 
 /* Listas: cada fila entra un poco después de la anterior (tope de 12 para no demorar). */
 .stagger > * {
-  animation: fade-up 0.35s var(--ease-out) both;
+  animation: fade-up 0.35s var(--ease-out) backwards;
   animation-delay: calc(min(var(--i, 0), 12) * 28ms);
 }
 

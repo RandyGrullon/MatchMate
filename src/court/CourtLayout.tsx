@@ -1,4 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { CloudUpload, Flag, Maximize, Minimize, MoreVertical, PauseCircle, Sun, Undo2, X } from 'lucide-react';
 import { useFeedback, saveErrorMessage } from '../components/feedback';
 import { Button, Field, Input, Modal, cx } from '../components/ui';
@@ -92,7 +93,7 @@ export function CourtLayout({
   };
 
   const vars = courtVars(sun) as CSSProperties;
-  return (
+  const screen = (
     <div
       className={cx('fixed inset-0 z-40 flex flex-col overscroll-none bg-bg text-fg select-none', sun && 'font-semibold', className)}
       style={{ ...vars, touchAction: 'manipulation' }}
@@ -234,4 +235,6 @@ export function CourtLayout({
       </Modal>
     </div>
   );
+  // Directo en <body>: un transform o filtro de algún contenedor de la página haría que `fixed` quedara dentro de él.
+  return typeof document !== 'undefined' ? createPortal(screen, document.body) : screen;
 }
