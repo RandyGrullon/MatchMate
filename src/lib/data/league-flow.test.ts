@@ -4,8 +4,8 @@ import { playerStats } from '../stats';
 import { NO_PHOTO } from '../types';
 import { currentOutbox, fetchLive, queryClient } from './client';
 import { fetchEntries } from './entries';
-import { addEntries, saveGame } from './entries';
-import { addEventGame, createEvent, fetchEvent, fetchEvents, practiceForDate, setRsvp, updateEvent } from './events';
+import { addEntries, saveGame, saveVerifiedGames } from './entries';
+import { addEventGame, createEvent, deleteEvent, fetchEvent, fetchEvents, practiceForDate, setRsvp, updateEvent } from './events';
 import { fetchLeagueFeeds } from './feeds';
 import { keys } from './keys';
 import { createLeague, createTournament, fetchLeague, getInvite, getInviteCode, joinLeague } from './leagues';
@@ -245,6 +245,23 @@ describe('liga completa con la base de verdad (PGlite + RLS)', () => {
     expect((await fetchEvent(t.lid, t.eid))?.games).toBe(4);
     await updateEvent(t.lid, t.eid, { name: 'Copa grande' });
     expect((await fetchEvent(t.lid, t.eid))?.name).toBe('Copa grande');
+  });
+
+  it('borrar un evento quita también de Storage los archivos de sus fotos (como en BowlingX, libera el espacio)', async () => {
+    await w.as('rosa@x.com');
+    const gone = await createEvent(lid, { ...practiceInput, date: '2026-02-03' });
+    const kept = await createEvent(lid, { ...practiceInput, date: '2026-02-10' });
+    const photoGone = await saveVerifiedGames(lid, { id: gone }, img, [{ entry: null, playerId: anaPlayer, average: 190, values: { 0: 170 } }]);
+    const photoKept = await saveVerifiedGames(lid, { id: kept }, img, [{ entry: null, playerId: anaPlayer, average: 190, values: { 0: 175 } }]);
+    const pathGone = `${lid}/${photoGone}.webp`;
+    const pathKept = `${lid}/${photoKept}.webp`;
+    await expect(w.b.storage.signedUrl('scoreboards', pathGone)).resolves.toBeTruthy();
+    await deleteEvent(lid, gone);
+    expect(await fetchEvent(lid, gone)).toBeNull();
+    await expect(w.b.storage.signedUrl('scoreboards', pathGone)).rejects.toMatchObject({ kind: 'not_found' });
+    // Las fotos de los demás eventos siguen.
+    await expect(w.b.storage.signedUrl('scoreboards', pathKept)).resolves.toBeTruthy();
+    await deleteEvent(lid, kept);
   });
 
   it('las horas del servidor llegan como texto a la caché y como toMillis() a la pantalla', async () => {

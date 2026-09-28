@@ -274,7 +274,7 @@ function PlayerFormModal({
     >
       <form id="player-form" onSubmit={submit} className="flex flex-col gap-4">
         <Field label="Nombre">
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
+          <Input required autoFocus maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
         </Field>
         {bowling && (
           <Field

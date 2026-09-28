@@ -105,7 +105,8 @@ export function makeBackup(opts: { dirty?: boolean } = {}): FsBackup {
         categoryCuts: [200, 175, 160],
         teamSize: 2,
         announcement: 'Traigan su bola',
-        teams: { eq1: { name: 'Rojos', order: 1 }, eq2: { name: 'Azules', order: 2 } },
+        // Como los guarda BowlingX: `order` = Date.now() (addTeam) o Date.now() + i (applyTeams).
+        teams: { eq1: { name: 'Rojos', order: 1774000000000 }, eq2: { name: 'Azules', order: 1774000000001 } },
         playerCount: 5,
         createdAt: t('2026-03-20'),
       },
@@ -195,7 +196,7 @@ export function makeBackup(opts: { dirty?: boolean } = {}): FsBackup {
         hcpPercent: 90,
         individualRankBy: 'hcp',
         teamRankBy: 'hcp',
-        teams: { a: { name: 'Equipo A', order: 1 }, b: { name: dirty ? '' : 'Equipo B', order: 2 } },
+        teams: { a: { name: 'Equipo A', order: 1776000000000 }, b: { name: dirty ? '' : 'Equipo B', order: 1776000000001 } },
         playerCount: 4,
         rsvp: { pAna: true },
         createdAt: t('2026-04-01'),

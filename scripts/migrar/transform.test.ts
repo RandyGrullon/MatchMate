@@ -173,6 +173,23 @@ describe('transformBackup: eventos, juegos y fotos', () => {
     expect(p.report.dropped).toContainEqual(expect.objectContaining({ table: 'events', ref: 'leagues/L1banco/events/eBad' }));
   });
 
+  it('el orden de los equipos (Date.now() en BowlingX) pasa como su lugar 1, 2, 3… y cabe en integer', () => {
+    const backup = makeBackup();
+    const e2 = backup.leagues[0].events!.find((e) => e.id === 'e2')!;
+    // Como applyTeams y addTeam: Date.now() + i; uno sin número va al final.
+    e2.teams = {
+      eq1: { name: 'Rojos', order: 1774000000005 },
+      eq2: { name: 'Azules', order: 1774000000001 },
+      eq3: { name: 'Verdes' },
+      eq4: { name: 'Negros', order: 1774000000003 },
+    };
+    const p = transformBackup(backup, { auth: makeAuthExport(), hashConfig: HASH_CONFIG });
+    const rows = p.rows.teams.filter((r) => r.event_id === eventUuid('L1banco', 'e2'));
+    const byName = Object.fromEntries(rows.map((r) => [r.name as string, r.sort_order as number]));
+    expect(byName).toEqual({ Azules: 1, Negros: 2, Rojos: 3, Verdes: 4 });
+    for (const r of p.rows.teams) expect(r.sort_order as number).toBeLessThanOrEqual(2147483647);
+  });
+
   it('participación evento_jugador → (event_id, player_id); marcas de foto a uuid; importado y sin-foto se quedan', () => {
     const p = plan();
     const luis = find(p.rows.entries, entryUuid('L1banco', 'e1', 'pLuis'))!;

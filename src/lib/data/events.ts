@@ -1,11 +1,11 @@
 import { uuidv7 } from '../db/ids';
 import type { BowlingEvent, EventType, RankBy } from '../types';
-import { enqueue, invalidate, rpc, select, sentOrQueued, useLive, type Live } from './client';
+import { backend, enqueue, getUserId, invalidate, rpc, select, sentOrQueued, useLive, type Live } from './client';
 import { keys, tags } from './keys';
 import { collapse, overlayEvent, overlayEvents, pendingOps } from './pending';
 import { toEvent, type EventRow, type RsvpRow, type TeamRow } from './rows';
 import type { Wire } from './stamp';
-import { useTopic } from './topics';
+import { eventTopics, useTopic } from './topics';
 
 // ---------- Lecturas ----------
 // El evento de la app lleva sus equipos y su «voy» adentro (como en BowlingX): se leen de teams y event_rsvps.
@@ -46,12 +46,17 @@ export const useEvents = (lid: string | undefined): Live<BowlingEvent[]> =>
     tags: lid ? [tags.league(lid), tags.events(lid)] : [],
   });
 
+/** Etiquetas de la lectura de un evento: el aviso 'events' de la liga y los del evento la vuelven a leer. */
+export const eventTags = (lid: string, id: string) => [tags.league(lid), tags.events(lid), tags.event(id)];
+
 /** Un evento, en vivo mientras está en pantalla (su «voy» y sus juegos cambian durante la noche). */
 export function useEvent(lid: string | undefined, id: string | undefined): Live<BowlingEvent | null> {
-  useTopic(lid && id ? `event:${id}` : null, lid ?? null);
+  const [eventTopic = null, leagueTopic = null] = eventTopics(lid, id, !!getUserId());
+  useTopic(eventTopic, lid ?? null);
+  useTopic(leagueTopic, lid ?? null);
   return useLive<BowlingEvent | null>(lid && id ? keys.event(lid, id) : null, lid ? { kind: 'event', lid, id } : null, () => fetchEvent(lid!, id!), {
     initial: null,
-    tags: lid && id ? [tags.league(lid), tags.events(lid), tags.event(id)] : [],
+    tags: lid && id ? eventTags(lid, id) : [],
   });
 }
 
@@ -125,9 +130,33 @@ export async function updateEvent(lid: string, id: string, patch: Partial<EventI
   afterEvent(lid, id);
 }
 
-/** Borra el evento con sus participaciones, envíos, fotos, equipos, «voy», en vivo y social. */
+/** Rutas en Storage de las fotos del evento (vacío si no se pueden leer). */
+async function eventPhotoPaths(lid: string, id: string): Promise<string[]> {
+  try {
+    const rows = await select<{ path: string }>({
+      table: 'photos',
+      columns: 'path',
+      filters: [
+        { col: 'league_id', op: 'eq', value: lid },
+        { col: 'event_id', op: 'eq', value: id },
+      ],
+    });
+    return rows.map((r) => r.path);
+  } catch (e) {
+    console.warn('[fotos] no se pudieron leer las del evento', e);
+    return [];
+  }
+}
+
+/**
+ * Borra el evento con sus participaciones, envíos, fotos, equipos, «voy», en vivo y social. La base borra las filas
+ * de las fotos; los archivos se quitan de Storage aquí (como deleteOldPhotos): nadie más vacía esa cola, y en
+ * BowlingX borrar el evento liberaba el espacio de sus fotos.
+ */
 export async function deleteEvent(lid: string, id: string) {
+  const paths = await eventPhotoPaths(lid, id);
   await rpc('delete_event', { p_event: id });
+  if (paths.length) await backend().storage.remove('scoreboards', paths).catch((e) => console.warn('[fotos] quedan en la cola de borrado', e));
   afterEvent(lid, id);
   invalidate(tags.entries(lid), tags.subs(lid), tags.social(lid));
 }

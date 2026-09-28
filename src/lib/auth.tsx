@@ -209,6 +209,12 @@ export async function resendConfirmation(email: string, captcha?: string) {
   await getBackend().auth.resendConfirmation(email.trim(), captcha);
 }
 
+/**
+ * El error de entrar es «correo sin confirmar». Pasa con las cuentas traídas de BowlingX que no tenían el correo
+ * verificado: se crearon sin mandarles ningún correo, así que la pantalla les ofrece mandar el link.
+ */
+export const isEmailNotConfirmed = (e: unknown): boolean => asBackendError(e)?.code === 'email_not_confirmed';
+
 /** Completa el perfil de una cuenta que no lo tenía (lo crea y le pone el nombre). */
 export async function createProfile(user: Pick<AppUser, 'uid'>, name: string) {
   await rpc('ensure_profile');

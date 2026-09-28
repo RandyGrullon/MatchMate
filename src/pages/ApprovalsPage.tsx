@@ -333,7 +333,7 @@ function SubmissionCard({
         }
       >
         <Field label="Motivo (lo verá el jugador)">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. la foto no se lee" />
+          <Input value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Ej. la foto no se lee" />
         </Field>
       </Modal>
     </Card>

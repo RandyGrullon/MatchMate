@@ -108,6 +108,7 @@ export function EventFormModal({
         <Field label="Nombre" className="col-span-2" hint={!form.name ? 'Si lo dejas vacío se usa la fecha.' : undefined}>
           <Input
             value={form.name}
+            maxLength={80}
             placeholder={isTorneo ? `Torneo ${form.date.slice(0, 4)}` : 'Práctica del martes'}
             onChange={(e) => set('name', e.target.value)}
           />

@@ -67,6 +67,8 @@ export interface TransformOptions {
 export const FIXED_SUPERADMINS = ['admin@admin.com'];
 /** Límite del bucket scoreboards. */
 export const MAX_PHOTO_BYTES = 1048576;
+/** Motivo del bloqueo (consola) de una cuenta que estaba deshabilitada en Firebase. */
+export const BLOCKED_REASON = 'Deshabilitada en BowlingX (Firebase)';
 const MARKS = new Set(['importado', 'sin-foto']);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INVITE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
@@ -434,19 +436,33 @@ export function transformBackup(input: unknown, opts: TransformOptions = {}): Mi
         created_by: null,
         created_at: eventTime,
       });
-      Object.entries(e.teams ?? {}).forEach(([tid, t], i) => {
-        if (!t || typeof t !== 'object' || tid.includes('/')) return;
+      // `order` en BowlingX es Date.now() (+ i): ~1,7 billones, no cabe en teams.sort_order (integer, hasta
+      // 2 147 483 647) y la carga fallaría. Se guarda el lugar de cada equipo (1, 2, 3…) en el mismo orden (los
+      // sin número van al final, como estaban): la clasificación por equipos sale igual.
+      const teamList = Object.entries(e.teams ?? {})
+        .map(([tid, t], i) => ({ tid, t, i }))
+        .filter((x): x is { tid: string; t: { name?: string | null; order?: number }; i: number } => !!x.t && typeof x.t === 'object' && !x.tid.includes('/'));
+      const place = new Map(
+        [...teamList]
+          .sort((a, b) => {
+            const x = isNum(a.t.order) ? a.t.order : Infinity;
+            const y = isNum(b.t.order) ? b.t.order : Infinity;
+            return x === y ? a.i - b.i : x < y ? -1 : 1;
+          })
+          .map((x, k) => [x.tid, k + 1] as const),
+      );
+      for (const { tid, t, i } of teamList) {
         const tref = `${eref}/teams/${tid}`;
         rows.teams.push({
           id: teamUuid(l.id, e.id, tid),
           league_id: lid,
           event_id: eid,
           name: name(t.name, `Equipo ${i + 1}`, 'teams', tref),
-          sort_order: isInt(t.order) ? t.order : i + 1,
+          sort_order: place.get(tid)!,
           color: null,
           created_at: eventTime,
         });
-      });
+      }
       for (const [pid, going] of Object.entries(e.rsvp ?? {})) {
         if (going !== true) continue;
         if (!players.has(pid)) {
@@ -742,9 +758,21 @@ export function transformBackup(input: unknown, opts: TransformOptions = {}): Mi
   }
 
   // ---- Perfiles (las cuentas nuevas; las que ya existían solo se marcan) ----
+  // - adult_confirmed_at NO se llena: BowlingX nunca preguntó la edad. La app (AdultGate) les pregunta una sola vez
+  //   «Tengo 18 años o más» al entrar. Tampoco se toca al volver a cargar (el upsert no lleva esa columna).
+  // - Deshabilitada en Firebase: además de bloqueada en Auth, bloqueada en la consola (blocked_at), para que se vea.
   for (const u of users) {
     if (u.existing) continue;
-    rows.profiles.push({ id: u.id, email: u.email, name: u.name, is_superadmin: u.isSuperadmin, firebase_uid: u.firebaseUid, created_at: u.createdAt });
+    rows.profiles.push({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      is_superadmin: u.isSuperadmin,
+      firebase_uid: u.firebaseUid,
+      blocked_at: u.banned ? u.createdAt : null,
+      blocked_reason: u.banned ? BLOCKED_REASON : null,
+      created_at: u.createdAt,
+    });
   }
   const profileUpdates = users.filter((u) => u.existing).map((u) => ({ id: u.id, firebase_uid: u.firebaseUid, is_superadmin: u.isSuperadmin }));
 

@@ -1,7 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { ArrowLeft, KeyRound, LogIn, MailCheck, UserPlus } from 'lucide-react';
-import { authErrorMessage, login, loginWithGoogle, MIN_PASSWORD, rememberAdultForGoogle, resetPassword, signUp, useAuth } from '../lib/auth';
+import {
+  authErrorMessage,
+  isEmailNotConfirmed,
+  login,
+  loginWithGoogle,
+  MIN_PASSWORD,
+  rememberAdultForGoogle,
+  resendConfirmation,
+  resetPassword,
+  signUp,
+  useAuth,
+} from '../lib/auth';
 import { pendingByUser } from '../lib/db/outbox';
 import { Button, Card, Field, Input, Loading, Tabs } from '../components/ui';
 import { Logo } from '../components/Logo';
@@ -38,6 +49,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   // Qué correo se mandó: para confirmar la cuenta nueva o para poner otra contraseña.
   const [sent, setSent] = useState<'confirmar' | 'recuperar' | null>(null);
+  // Entró con una cuenta sin confirmar el correo (las traídas de BowlingX nunca recibieron el link): se ofrece mandarlo.
+  const [unconfirmed, setUnconfirmed] = useState(false);
   // Cambios anotados sin señal que quedaron en el teléfono al salir: salen solos cuando esa cuenta entre.
   const [waiting, setWaiting] = useState(0);
   // Turnstile (si está activado): el token sirve una vez; después de cada intento se pide otro.
@@ -67,6 +80,7 @@ export default function LoginPage() {
   function switchMode(m: Mode) {
     setError(null);
     setSent(null);
+    setUnconfirmed(false);
     setPassword('');
     setPassword2('');
     const p = new URLSearchParams(params);
@@ -84,6 +98,7 @@ export default function LoginPage() {
     }
     setBusy('correo');
     setError(null);
+    setUnconfirmed(false);
     const token = captcha ?? undefined;
     try {
       if (mode === 'recuperar') {
@@ -95,6 +110,27 @@ export default function LoginPage() {
       } else {
         await login(email, password, token);
       }
+    } catch (err) {
+      setError(authErrorMessage(err));
+      setUnconfirmed(!signingUp && mode === 'entrar' && isEmailNotConfirmed(err));
+    } finally {
+      setBusy(null);
+      if (needCaptcha) setCaptchaRound((n) => n + 1);
+    }
+  }
+
+  /** Manda (otra vez) el link para confirmar el correo de la cuenta que no pudo entrar. */
+  async function sendConfirmation() {
+    if (needCaptcha && !captcha) {
+      setError('Espera la casilla de Cloudflare que comprueba que no eres un robot.');
+      return;
+    }
+    setBusy('correo');
+    setError(null);
+    try {
+      await resendConfirmation(email, captcha ?? undefined);
+      setUnconfirmed(false);
+      setSent('confirmar');
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {
@@ -210,6 +246,11 @@ export default function LoginPage() {
                 )}
                 <Turnstile key="correo" onToken={setCaptcha} resetKey={captchaRound} />
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
+                {unconfirmed && (
+                  <Button onClick={sendConfirmation} loading={busy === 'correo'} disabled={!!busy || !email.trim()} icon={<MailCheck className="size-4" />} className="max-sm:h-11">
+                    Mandarme el link para confirmar
+                  </Button>
+                )}
                 <Button
                   type="submit"
                   variant="primary"

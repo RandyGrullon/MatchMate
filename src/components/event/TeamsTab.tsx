@@ -42,7 +42,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 sm:flex-row">
         <form onSubmit={create} className="flex flex-1 gap-2">
-          <Input placeholder={`Equipo ${teams.length + 1}`} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />
+          <Input placeholder={`Equipo ${teams.length + 1}`} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />
           <Button type="submit" icon={<Plus className="size-4" />} className="shrink-0">
             Crear
           </Button>
@@ -175,7 +175,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
           }}
         >
           <Field label="Nombre">
-            <Input autoFocus value={renaming?.name ?? ''} onChange={(e) => setRenaming((r) => r && { ...r, name: e.target.value })} />
+            <Input autoFocus maxLength={60} value={renaming?.name ?? ''} onChange={(e) => setRenaming((r) => r && { ...r, name: e.target.value })} />
           </Field>
         </form>
       </Modal>

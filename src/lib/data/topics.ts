@@ -97,6 +97,20 @@ function acquire(topic: string, lid: string | null): () => void {
   };
 }
 
+/** Escucha un tema sin pantalla (lo mismo que useTopic). Devuelve cómo soltarlo. */
+export const watchTopicFor = (topic: string, lid: string | null = null): (() => void) => acquire(topic, lid);
+
+/**
+ * Temas de la pantalla de un evento: el del evento (en vivo, juegos, envíos, «voy») y, con cuenta, el de la liga,
+ * que es por donde avisan los cambios del evento mismo (el juego que sumó otro jugador en la práctica, el nombre, el
+ * anuncio). En BowlingX el evento se veía en vivo; sin el de la liga, un jugador no veía el juego nuevo hasta volver
+ * a la app. Sin cuenta el evento ya se consulta cada 15–20 s por su propio tema.
+ */
+export function eventTopics(lid: string | null | undefined, eventId: string | null | undefined, signedIn: boolean): string[] {
+  if (!lid || !eventId) return [];
+  return signedIn ? [`event:${eventId}`, `league:${lid}`] : [`event:${eventId}`];
+}
+
 /** Mientras la pantalla esté abierta, escucha ese tema (null = nada). */
 export function useTopic(topic: string | null, lid: string | null = null) {
   useEffect(() => {

@@ -3,8 +3,24 @@
  * (API de admin de Auth, upsert de PostgREST, Storage) sin tocar internet.
  */
 import { describe, expect, it } from 'vitest';
-import { createNodeClient, createSupabaseTarget } from './target';
+import { checkSupabaseEnv, createNodeClient, createSupabaseTarget } from './target';
 import type { UserPlan } from './types';
+
+describe('SUPABASE_URL y SUPABASE_SECRET_KEY', () => {
+  it('solo la Secret key nueva; las claves viejas (JWT) están desactivadas en el proyecto', () => {
+    expect(checkSupabaseEnv(' https://jbismsdjgjxutfvwnlmf.supabase.co/ ', 'sb_secret_abc')).toEqual({
+      url: 'https://jbismsdjgjxutfvwnlmf.supabase.co',
+      key: 'sb_secret_abc',
+      ref: 'jbismsdjgjxutfvwnlmf',
+    });
+    expect(() => checkSupabaseEnv('https://x.supabase.co', 'eyJhbGciOiJIUzI1NiJ9.x.y')).toThrow(/clave vieja/);
+    expect(() => checkSupabaseEnv('https://x.supabase.co', 'sb_publishable_abc')).toThrow(/Publishable/);
+    expect(() => checkSupabaseEnv('https://x.supabase.co', 'otra')).toThrow(/sb_secret_/);
+    expect(() => checkSupabaseEnv('https://x.supabase.co/rest/v1', 'sb_secret_abc')).toThrow(/sin \/rest\/v1/);
+    expect(() => checkSupabaseEnv('http://x.supabase.co', 'sb_secret_abc')).toThrow(/https/);
+    expect(() => checkSupabaseEnv(undefined, 'sb_secret_abc')).toThrow(/Faltan/);
+  });
+});
 
 interface Call {
   method: string;
@@ -82,16 +98,85 @@ describe('destino Supabase', () => {
     expect(await target.createUser(USER)).toBe('exists');
   });
 
-  it('lista todas las cuentas por páginas', async () => {
+  it('lista todas las cuentas por páginas (con lo que hace falta para ponerlas al día)', async () => {
     const { calls, target } = fake((c) => {
       const page = Number(c.query.get('page'));
-      return { body: { users: page <= 2 ? [{ id: `u${page}`, email: `u${page}@x.do` }] : [], aud: 'authenticated' } };
+      const users = [
+        { id: 'u1', email: 'u1@x.do', email_confirmed_at: '2026-09-01T00:00:00Z', last_sign_in_at: null, app_metadata: { provider: 'email', firebase_uid: 'fb1' } },
+        { id: 'u2', email: 'u2@x.do', email_confirmed_at: null, last_sign_in_at: '2026-09-27T00:00:00Z', app_metadata: { provider: 'google' } },
+      ];
+      return { body: { users: page <= 2 ? [users[page - 1]] : [], aud: 'authenticated' } };
     });
     expect(await target.listUsers()).toEqual([
-      { id: 'u1', email: 'u1@x.do' },
-      { id: 'u2', email: 'u2@x.do' },
+      { id: 'u1', email: 'u1@x.do', emailConfirmed: true, lastSignInAt: null, firebaseUid: 'fb1' },
+      { id: 'u2', email: 'u2@x.do', emailConfirmed: false, lastSignInAt: '2026-09-27T00:00:00Z', firebaseUid: null },
     ]);
     expect(calls).toHaveLength(3);
+  });
+
+  it('manda la Secret key nueva en apikey y Authorization (la puerta de Supabase la cambia por service_role)', async () => {
+    const { calls, target } = fake(() => ({ status: 201 }));
+    await target.upsert('leagues', [{ id: 'l' }]);
+    await target.listUsers().catch(() => undefined);
+    for (const c of calls) {
+      expect(c.headers.get('apikey')).toBe('sb_secret_prueba');
+      expect(c.headers.get('authorization')).toBe('Bearer sb_secret_prueba');
+    }
+  });
+
+  it('confirma el correo de una cuenta que ya estaba', async () => {
+    const { calls, target } = fake(() => ({ body: { id: USER.id } }));
+    await target.confirmEmail(USER.id);
+    expect(calls[0]).toMatchObject({ method: 'PUT', path: `/auth/v1/admin/users/${USER.id}`, body: { email_confirm: true } });
+  });
+
+  it('contraseñas cambiadas: RPC migration_sync_passwords de a 200; null si la base no la tiene', async () => {
+    const { calls, target } = fake((c) => ({ body: (c.body as { p_users: unknown[] }).p_users.length > 0 ? 1 : 0 }));
+    const list = Array.from({ length: 201 }, (_, i) => ({ id: `u${i}`, hash: '$fbscrypt$x' }));
+    expect(await target.syncPasswords(list)).toBe(2);
+    expect(calls.map((c) => [c.method, c.path, (c.body as { p_users: unknown[] }).p_users.length])).toEqual([
+      ['POST', '/rest/v1/rpc/migration_sync_passwords', 200],
+      ['POST', '/rest/v1/rpc/migration_sync_passwords', 1],
+    ]);
+    const missing = fake(() => ({ status: 404, body: { code: 'PGRST202', message: 'Could not find the function public.migration_sync_passwords(p_users) in the schema cache' } }));
+    expect(await missing.target.syncPasswords([])).toBeNull();
+  });
+
+  it('lee solo las claves de las ligas, ordenadas y por páginas', async () => {
+    const { calls, target } = fake((c) => {
+      const [from] = (c.headers.get('range') ?? c.query.get('offset') ?? '0').split('-').map(Number);
+      return { body: from < 500 ? Array.from({ length: 500 }, (_, i) => ({ league_id: 'l1', user_id: `u${from + i}` })) : [] };
+    });
+    expect(await target.keys('league_members', ['l1', 'l2'], ['league_id', 'user_id'])).toHaveLength(500);
+    expect(calls[0].query.get('select')).toBe('league_id,user_id');
+    expect(calls[0].query.get('league_id')).toBe('in.(l1,l2)');
+    expect(calls[0].query.get('order')).toBe('league_id.asc,user_id.asc');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('borra por id de a 100 y por clave doble agrupando por la primera columna', async () => {
+    const { calls, target } = fake(() => ({ status: 204 }));
+    await target.remove('comments', Array.from({ length: 150 }, (_, i) => ({ id: `c${i}` })));
+    await target.remove('event_rsvps', [
+      { event_id: 'e1', player_id: 'p1' },
+      { event_id: 'e1', player_id: 'p2' },
+      { event_id: 'e2', player_id: 'p3' },
+    ]);
+    expect(calls.map((c) => [c.method, c.path, c.query.toString()])).toEqual([
+      ['DELETE', '/rest/v1/comments', `id=in.%28${Array.from({ length: 100 }, (_, i) => `c${i}`).join('%2C')}%29`],
+      ['DELETE', '/rest/v1/comments', `id=in.%28${Array.from({ length: 50 }, (_, i) => `c${100 + i}`).join('%2C')}%29`],
+      ['DELETE', '/rest/v1/event_rsvps', 'event_id=eq.e1&player_id=in.%28p1%2Cp2%29'],
+      ['DELETE', '/rest/v1/event_rsvps', 'event_id=eq.e2&player_id=in.%28p3%29'],
+    ]);
+  });
+
+  it('deja jugadores sin cuenta y quita fotos de Storage', async () => {
+    const { calls, target } = fake(() => ({ body: [] }));
+    await target.unlinkPlayers(['p1', 'p2']);
+    await target.removeFiles('scoreboards', ['L1/a.jpg', 'L1/b.jpg']);
+    expect(calls[0]).toMatchObject({ method: 'PATCH', path: '/rest/v1/players', body: { user_id: null } });
+    expect(calls[0].query.get('id')).toBe('in.(p1,p2)');
+    expect(calls[1]).toMatchObject({ method: 'DELETE', path: '/storage/v1/object/scoreboards', body: { prefixes: ['L1/a.jpg', 'L1/b.jpg'] } });
   });
 
   it('upsert por la clave de la tabla, en lotes de 500', async () => {
