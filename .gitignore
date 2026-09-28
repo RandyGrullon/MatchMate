@@ -12,3 +12,5 @@ ui-debug.log
 scripts/datos/
 .claude/
 *.tsbuildinfo
+.env*
+!.env.example
