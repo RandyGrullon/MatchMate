@@ -56,6 +56,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'submissions') return invalidate(tags.subs(id), tags.entries(id), tags.feeds);
   } else if (kind === 'user') {
     if (msg.event === 'submission') return invalidate(tags.feeds);
+    // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
+    if (msg.event === 'follow' || msg.event === 'like') return invalidate('people:notices', `people:${id}`, tags.feeds);
   }
 }
 

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useLeague, useLeaguesByIds, useMembership, useMyMemberships, useSubmissions } from '../lib/data';
+import { setActiveSport } from '../lib/sportContext';
 import { rememberSport } from '../lib/splash';
 import type { LeagueTabNames } from '../lib/tours';
 import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
@@ -97,7 +98,10 @@ export default function LeagueShell() {
   const sport = league.data ? dispatchLeague(league.data) : null;
   const sportId = sport && sport.kind !== 'unknown' ? sport.sport : null;
   useEffect(() => {
-    if (sportId) rememberSport(sportId);
+    if (!sportId) return;
+    rememberSport(sportId);
+    // Entrar a una liga te pone en su deporte (Home y Eventos pasan a ser de ese deporte; la app toma su color).
+    setActiveSport(sportId);
   }, [sportId]);
   const ready = sport?.kind === 'ready';
   const bowling = sportId === 'bowling';

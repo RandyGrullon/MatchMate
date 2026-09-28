@@ -1,8 +1,9 @@
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { Navigate, NavigationType, Route, Routes, useLocation, useNavigationType, useParams } from 'react-router';
+import { lazy, Suspense, useLayoutEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { useLeagueCtx } from './lib/league';
 import { installErrorReporting } from './lib/errorReport';
+import { getActiveSport, installSportAccent, parseActiveSport, setActiveSport, sportHomePath, useActiveSport } from './lib/sportContext';
 import { SportRoute } from './sports/screens';
 import { FeedbackProvider } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -16,10 +17,15 @@ import { Loading, TopLoader } from './components/ui';
 
 // Los errores de los teléfonos le llegan al dueño de la app (consola › Errores).
 installErrorReporting();
+// La app toma el color del deporte en que estás (antes de pintar la primera pantalla).
+installSportAccent();
 
 // Cada pantalla se descarga al entrar: quien solo mira la clasificación no carga el panel del admin.
 const LeagueShell = lazy(() => import('./components/LeagueShell'));
 const HomePage = lazy(() => import('./pages/HomePage'));
+const SportHomePage = lazy(() => import('./pages/SportHomePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
 const JoinPage = lazy(() => import('./pages/JoinPage'));
@@ -48,6 +54,34 @@ function SuperOnly({ children }: { children: ReactNode }) {
   const { isSuper, loading } = useAuth();
   if (loading) return <Loading />;
   return isSuper ? children : <Navigate to="/ligas" replace />;
+}
+
+/**
+ * `/`: el Home de todos los deportes. Si la app está en un deporte (al abrirla, o un enlace a `/`), va al Home de ese
+ * deporte: al de todos se llega quitando el deporte (Home dos veces, el logo o «Todos los deportes» del selector).
+ * Volver atrás hasta aquí sí es salir del deporte (p. ej. entraste a una liga desde el Home de todos).
+ */
+function GlobalHomeRoute() {
+  const active = useActiveSport();
+  const { key } = useLocation();
+  const back = useNavigationType() === NavigationType.Pop && key !== 'default';
+  useLayoutEffect(() => {
+    // Solo al llegar atrás a esta entrada: no cuando después se elige un deporte aquí mismo (ese navega solo).
+    if (back && getActiveSport()) setActiveSport(null);
+  }, [back, key]);
+  if (active && !back) return <Navigate to={sportHomePath(active)} replace />;
+  return <HomePage />;
+}
+
+/** `/d/:sport`: la app se pone en ese deporte (antes de pintar); uno que esta versión no conoce vuelve a `/`. */
+function SportHomeRoute() {
+  const { sport } = useParams();
+  const id = parseActiveSport(sport);
+  useLayoutEffect(() => {
+    if (id) setActiveSport(id);
+  }, [id]);
+  if (!id) return <Navigate to="/" replace />;
+  return <SportHomePage key={id} />;
 }
 
 function PlayerRoute() {
@@ -86,7 +120,11 @@ export default function App() {
                   {/* «Tengo 18 años o más» una sola vez para quien entró con Google o viene de BowlingX. */}
                   <AdultGate>
                     <Routes>
-                      <Route index element={<Screen area="home" framed><HomePage /></Screen>} />
+                      <Route index element={<Screen area="home" framed><GlobalHomeRoute /></Screen>} />
+                      {/* Home de un deporte (la app queda en ese deporte). */}
+                      <Route path="/d/:sport" element={<Screen area="deporte" framed><SportHomeRoute /></Screen>} />
+                      <Route path="/avisos" element={<Screen area="avisos" framed><NotificationsPage /></Screen>} />
+                      <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
                       <Route path="/ligas" element={<Screen area="ligas" framed><LeaguesPage /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />

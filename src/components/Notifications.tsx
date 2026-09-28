@@ -1,72 +1,83 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
-import {
-  Bell,
-  CalendarCheck,
-  CalendarClock,
-  CalendarDays,
-  CalendarX2,
-  CheckCircle2,
-  ClipboardCheck,
-  Globe,
-  Inbox,
-  Lightbulb,
-  Lock,
-  MapPin,
-  Megaphone,
-  MessageCircle,
-  PartyPopper,
-  ShieldAlert,
-  Swords,
-  Trophy,
-  XCircle,
-} from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router';
+import { Bell } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { ensurePlayer, isJoining, useLeagueFeeds, useLeaguesByIds, useMyMemberships, type LeagueFeed } from '../lib/data';
 import { useMatchNotices } from '../lib/data/matchNotices';
 import { parseDate, toIsoDate } from '../lib/format';
-import { buildNotices, emptyNoticesText, relativeTime, type Notice, type NoticeKind } from '../lib/notifications';
+import {
+  EMPTY_READ_STATE,
+  badgeCount,
+  buildNotices,
+  emptyNoticesText,
+  isNoticeUnread,
+  loadReadState,
+  markAllNoticesRead,
+  markNoticeRead,
+  markNoticesRead,
+  markNoticesSeen,
+  saveReadState,
+  unreadCount,
+  type Notice,
+  type NoticeKind,
+  type NoticeReadState,
+} from '../lib/notifications';
 import { notifyState, showSystemNotification, subscribePush } from '../lib/push';
 import type { League } from '../lib/types';
 import { sportsOf } from '../sports/registry';
-import { Button, Empty, Modal, cx } from './ui';
+import { useSocialNotices } from './notifications/bridge';
+import { cx } from './ui';
+
+/** Ruta de la página de avisos. */
+export const NOTIFICATIONS_PATH = '/avisos';
 
 interface NoticesState {
   items: Notice[];
-  /** Avisos más nuevos que la última vez que se abrió la campana. */
+  /**
+   * El número rojo de la campana: lo sin leer que llegó después de la última vez que se entró a Avisos (al
+   * entrar se quita; los puntos de lo sin leer siguen hasta abrir cada aviso o «Marcar todo como leído»).
+   */
   unread: number;
-  /** Momento de la última vez que se abrieron (para marcar los nuevos). */
+  /** Todo lo sin leer (los puntos de la página). */
+  unreadTotal: number;
+  /** Última vez que se entró a la página (hora del aviso más nuevo que se vio). */
   seenAt: number;
-  markAllRead: () => void;
-  /** Lo que pasa en cada liga de la cuenta (también lo usa "En juego ahora"). */
+  isUnread: (n: Notice) => boolean;
+  /** Abrió un aviso: queda leído. */
+  markRead: (n: Notice) => void;
+  /** Todo leído; con `only`, solo esos (lo que se ve con un filtro). */
+  markAllRead: (only?: readonly Notice[]) => void;
+  /** Está viendo la página: el número de la campana se quita. */
+  markSeen: () => void;
+  /** Todavía no hay nada (primera carga sin copia en el teléfono). */
+  loading: boolean;
+  /** No se pudieron leer las ligas de la cuenta (y no hay copia). */
+  error: Error | null;
+  /** De qué avisamos aquí, según los deportes de la cuenta (para la página vacía). */
+  emptyText: string;
+  /** Lo que pasa en cada liga de la cuenta (también lo usan "En juego ahora", el calendario y el admin). */
   feeds: LeagueFeed[];
   leagues: League[];
-  /** Abre la lista de avisos (hay una sola en toda la app). */
+  /** Lleva a la página de avisos. */
   openNotifications: () => void;
-  listOpen: boolean;
 }
 
 const Ctx = createContext<NoticesState>({
   items: [],
   unread: 0,
+  unreadTotal: 0,
   seenAt: 0,
+  isUnread: () => false,
+  markRead: () => undefined,
   markAllRead: () => undefined,
+  markSeen: () => undefined,
+  loading: false,
+  error: null,
+  emptyText: '',
   feeds: [],
   leagues: [],
   openNotifications: () => undefined,
-  listOpen: false,
 });
-
-const seenKey = (uid: string) => `mm:avisos-vistos:${uid}`;
-
-function readSeen(uid: string | undefined): number {
-  if (!uid) return 0;
-  try {
-    return Number(localStorage.getItem(seenKey(uid))) || 0;
-  } catch {
-    return 0;
-  }
-}
 
 /** Membresías a las que ya se les intentó crear el jugador en esta sesión. */
 const backfilled = new Set<string>();
@@ -74,7 +85,9 @@ const backfilled = new Set<string>();
 /** Avisos de todas las ligas de la cuenta (se calculan de lo que pasa en cada liga; no se guardan aparte). */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const memberships = useMyMemberships(user?.uid);
+  const uid = user?.uid;
+  const navigate = useNavigate();
+  const memberships = useMyMemberships(uid);
   // Cada cuenta juega con su propia cuenta: a quien se unió antes sin jugador (o al dueño de una liga
   // vieja) se le crea el suyo, una vez. Al unirse ahora se crea en el momento.
   useEffect(() => {
@@ -95,71 +108,71 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [today]);
   const feeds = useLeagueFeeds(memberships.data, since);
   // Partidos (raqueta y equipos): por confirmar, reclamos, cambios de hora, rondas y retos. Nada si no juega esos deportes.
-  const matchNotices = useMatchNotices(user?.uid, memberships.data, leagues.data);
-  const [seenAt, setSeenAt] = useState(() => readSeen(user?.uid));
-  useEffect(() => setSeenAt(readSeen(user?.uid)), [user?.uid]);
+  const matchNotices = useMatchNotices(uid, memberships.data, leagues.data);
+  // Seguidores y me gusta del perfil (avisos genéricos de la parte social).
+  const social = useSocialNotices(uid);
   // Lo que vence con la hora (las 48 h para confirmar, el partido de hoy) se recalcula aunque no llegue nada nuevo.
   const tick = useTick(5 * 60_000);
 
   const items = useMemo(
-    () => buildNotices(feeds.data, leagues.data, today, Date.now(), matchNotices.data),
+    () => buildNotices(feeds.data, leagues.data, today, Date.now(), matchNotices.data, social),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick: volver a calcular con la hora nueva
-    [feeds.data, leagues.data, today, matchNotices.data, tick],
+    [feeds.data, leagues.data, today, matchNotices.data, social, tick],
   );
-  const unread = items.filter((n) => n.time > seenAt).length;
-  useSystemNotifications(user?.uid, items, !feeds.loading && !leagues.loading && !matchNotices.loading);
+  useSystemNotifications(uid, items, !feeds.loading && !leagues.loading && !matchNotices.loading);
   const emptyText = useMemo(() => emptyNoticesText(sportsOf(leagues.data)), [leagues.data]);
 
-  // Visto hasta el aviso más nuevo (hora del servidor, no el reloj del teléfono, que puede ir adelantado).
-  const newest = items.reduce((m, n) => Math.max(m, n.time), 0);
-  const markAllRead = useCallback(() => {
-    if (!user) return;
-    // Nunca hacia atrás (si se marcó leída una sugerencia, lo ya visto no vuelve a salir como nuevo).
-    const seen = Math.max(seenAt, newest || Date.now());
-    setSeenAt(seen);
-    try {
-      localStorage.setItem(seenKey(user.uid), String(seen));
-    } catch {
-      // sin almacenamiento: se vuelven a ver como nuevos al recargar
-    }
-  }, [user, newest, seenAt]);
+  // Qué está leído (en este teléfono, por cuenta). Al cambiar de cuenta se lee el de la otra en el mismo render.
+  const [box, setBox] = useState<{ uid: string | undefined; s: NoticeReadState }>(() => ({ uid, s: loadReadState(uid) }));
+  let read = box.s;
+  if (box.uid !== uid) {
+    read = loadReadState(uid);
+    setBox({ uid, s: read });
+  }
+  const update = useCallback((fn: (s: NoticeReadState) => NoticeReadState) => {
+    setBox((b) => {
+      if (!b.uid) return b;
+      const next = fn(b.s);
+      if (next === b.s) return b;
+      saveReadState(b.uid, next);
+      return { uid: b.uid, s: next };
+    });
+  }, []);
+  const markRead = useCallback((n: Notice) => update((s) => markNoticeRead(s, n)), [update]);
+  const markAllRead = useCallback(
+    (only?: readonly Notice[]) => update((s) => (only ? markNoticesRead(s, only) : markAllNoticesRead(s, items, Date.now()))),
+    [update, items],
+  );
+  const markSeen = useCallback(() => update((s) => markNoticesSeen(s, items)), [update, items]);
+  const openNotifications = useCallback(() => navigate(NOTIFICATIONS_PATH), [navigate]);
 
-  // La lista va una sola vez aquí (no dentro de la barra, que se esconde según el tamaño de la pantalla:
-  // un modal ahí se trababa al girar el teléfono).
-  const [listOpen, setListOpen] = useState(false);
-  // Lo que era nuevo al abrir se sigue marcando mientras la lista está abierta.
-  const [newSince, setNewSince] = useState(0);
-  const openNotifications = useCallback(() => {
-    setNewSince(seenAt);
-    setListOpen(true);
-    markAllRead();
-  }, [seenAt, markAllRead]);
+  const state = user ? read : EMPTY_READ_STATE;
+  const unread = user ? badgeCount(items, state) : 0;
+  const unreadTotal = user ? unreadCount(items, state) : 0;
+  const isUnread = useCallback((n: Notice) => isNoticeUnread(n, state), [state]);
+  const loading = !!user && !items.length && (memberships.loading || leagues.loading || feeds.loading || matchNotices.loading);
+  const error = user && !items.length ? (memberships.error ?? leagues.error ?? feeds.error ?? null) : null;
 
-  const value = useMemo(
+  const value = useMemo<NoticesState>(
     () => ({
       items: user ? items : [],
-      unread: user ? unread : 0,
-      seenAt,
+      unread,
+      unreadTotal,
+      seenAt: state.seenAt,
+      isUnread,
+      markRead,
       markAllRead,
+      markSeen,
+      loading,
+      error,
+      emptyText,
       feeds: user ? feeds.data : [],
       leagues: user ? leagues.data : [],
       openNotifications,
-      listOpen,
     }),
-    [user, items, unread, seenAt, markAllRead, feeds.data, leagues.data, openNotifications, listOpen],
+    [user, items, unread, unreadTotal, state.seenAt, isUnread, markRead, markAllRead, markSeen, loading, error, emptyText, feeds.data, leagues.data, openNotifications],
   );
-  return (
-    <Ctx.Provider value={value}>
-      {children}
-      <NotificationsList
-        open={listOpen && !!user}
-        onClose={() => setListOpen(false)}
-        items={items}
-        newSince={newSince}
-        emptyText={emptyText}
-      />
-    </Ctx.Provider>
-  );
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export const useNotifications = () => useContext(Ctx);
@@ -183,6 +196,7 @@ const PHONE_KINDS = new Set<NoticeKind>([
   'aplazado',
   'ronda',
   'reto',
+  'social',
 ]);
 
 /**
@@ -217,7 +231,9 @@ function useSystemNotifications(uid: string | undefined, items: Notice[], ready:
     if (!fresh.length) return;
     // Con la app a la vista basta la campana; en segundo plano, notificación del teléfono.
     if (document.visibilityState === 'hidden') {
-      fresh.slice(0, 3).forEach((n) => void showSystemNotification(n.title, `${n.leagueName} · ${n.body}`, n.to, n.id));
+      fresh
+        .slice(0, 3)
+        .forEach((n) => void showSystemNotification(n.title, [n.leagueName, n.body].filter(Boolean).join(' · '), n.to, n.id));
     }
     save(Math.max(last, ...fresh.map((n) => n.time)));
   }, [key, items, ready]);
@@ -259,134 +275,49 @@ function useToday() {
   return today;
 }
 
-const ICONS: Record<NoticeKind, { icon: ReactNode; tone: string }> = {
-  torneo: { icon: <Megaphone className="size-5" />, tone: 'bg-accent-soft text-accent' },
-  'torneo-hoy': { icon: <Trophy className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  practica: { icon: <CalendarDays className="size-5" />, tone: 'bg-accent-soft text-accent' },
-  aprobado: { icon: <CheckCircle2 className="size-5" />, tone: 'bg-ok-soft text-ok' },
-  rechazado: { icon: <XCircle className="size-5" />, tone: 'bg-danger-soft text-danger' },
-  'por-aprobar': { icon: <Inbox className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  reaccion: { icon: <PartyPopper className="size-5" />, tone: 'bg-accent-soft text-accent' },
-  comentario: { icon: <MessageCircle className="size-5" />, tone: 'bg-ok-soft text-ok' },
-  sugerencia: { icon: <Lightbulb className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  'partido-hoy': { icon: <CalendarCheck className="size-5" />, tone: 'bg-accent-soft text-accent' },
-  'por-confirmar': { icon: <ClipboardCheck className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  reclamo: { icon: <ShieldAlert className="size-5" />, tone: 'bg-danger-soft text-danger' },
-  'cambio-hora': { icon: <CalendarClock className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  aplazado: { icon: <CalendarX2 className="size-5" />, tone: 'bg-warn-soft text-warn' },
-  ronda: { icon: <MapPin className="size-5" />, tone: 'bg-ok-soft text-ok' },
-  reto: { icon: <Swords className="size-5" />, tone: 'bg-accent-soft text-accent' },
-};
-
 /**
- * Botón de avisos. `nav`: en la barra de abajo del teléfono (ícono y nombre); si no, la campana de arriba
- * (en la computadora). Los dos abren la misma lista.
+ * Botón de avisos: lleva a la página de avisos (/avisos), con el número de lo nuevo. `nav`: en la barra de abajo
+ * del teléfono (ícono y nombre); si no, la campana de arriba (en la computadora).
  */
 export function NotificationsBell({ variant = 'icon' }: { variant?: 'icon' | 'nav' }) {
-  const { unread, openNotifications, listOpen } = useNotifications();
+  const { unread } = useNotifications();
   const badge = unread > 0 && (
-    <span className="absolute -top-0.5 -right-0.5 flex min-w-[1.1rem] items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-4 font-bold text-on-danger ring-2 ring-surface">
+    <span
+      className="absolute -top-0.5 -right-0.5 flex min-w-[1.1rem] items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-4 font-bold text-on-danger ring-2 ring-surface"
+      aria-hidden="true"
+    >
       {unread > 9 ? '9+' : unread}
     </span>
   );
-  const label = unread ? `Notificaciones: ${unread} nuevas` : 'Notificaciones';
+  const label = unread ? `Avisos: ${unread} ${unread === 1 ? 'nuevo' : 'nuevos'}` : 'Avisos';
   return variant === 'nav' ? (
-    <button
-      type="button"
-      onClick={openNotifications}
+    <NavLink
+      to={NOTIFICATIONS_PATH}
       data-tour="campana"
       aria-label={label}
-      className={cx('flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition', listOpen ? 'text-accent' : 'text-muted')}
+      className={({ isActive }) => cx('flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition', isActive ? 'text-accent' : 'text-muted')}
     >
       <span className="relative">
         <Bell className="size-5" />
         {badge}
       </span>
-      Notificaciones
-    </button>
+      Avisos
+    </NavLink>
   ) : (
-    <button
-      type="button"
-      onClick={openNotifications}
+    <NavLink
+      to={NOTIFICATIONS_PATH}
       data-tour="campana"
       aria-label={label}
-      title="Notificaciones"
-      className="relative inline-flex size-9 items-center justify-center rounded-xl text-fg transition hover:bg-surface-2 active:scale-95"
+      title="Avisos"
+      className={({ isActive }) =>
+        cx(
+          'relative inline-flex size-9 items-center justify-center rounded-xl transition hover:bg-surface-2 active:scale-95',
+          isActive ? 'bg-accent-soft text-accent' : 'text-fg',
+        )
+      }
     >
       <Bell className="size-5" />
       {badge}
-    </button>
-  );
-}
-
-/** La lista de avisos. */
-function NotificationsList({
-  open,
-  onClose,
-  items,
-  newSince,
-  emptyText,
-}: {
-  open: boolean;
-  onClose: () => void;
-  items: Notice[];
-  newSince: number;
-  /** De qué avisamos aquí (según los deportes de la cuenta). */
-  emptyText: string;
-}) {
-  const navigate = useNavigate();
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!open) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
-  }, [open]);
-
-  function go(n: Notice) {
-    onClose();
-    navigate(n.to);
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Notificaciones" footer={<Button onClick={onClose}>Cerrar</Button>}>
-      {items.length === 0 ? (
-        <Empty icon={<Bell className="size-8" />} title="No tienes avisos">
-          {emptyText}
-        </Empty>
-      ) : (
-        <ul className="-mx-2 flex flex-col">
-          {items.map((n) => {
-            const isNew = n.time > newSince;
-            return (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  onClick={() => go(n)}
-                  className={cx('flex w-full items-start gap-3 rounded-xl px-2 py-3 text-left transition hover:bg-surface-2', isNew && 'bg-accent-soft/40')}
-                >
-                  <span className={cx('flex size-10 shrink-0 items-center justify-center rounded-xl', ICONS[n.kind].tone)}>{ICONS[n.kind].icon}</span>
-                  <span className="min-w-0 flex-1">
-                    {/* La liga en su propia línea, completa (sin cortar el nombre). */}
-                    <span className="flex items-start gap-1 text-xs font-semibold break-words text-fg">
-                      {n.private ? <Lock className="mt-0.5 size-3 shrink-0 text-muted" /> : <Globe className="mt-0.5 size-3 shrink-0 text-muted" />}
-                      <span className="min-w-0">{n.leagueName}</span>
-                    </span>
-                    <span className="block text-[11px] text-muted">
-                      {n.leagueKind === 'torneo' ? (n.private ? 'Torneo privado' : 'Torneo público') : n.private ? 'Liga privada' : 'Liga pública'} ·{' '}
-                      {relativeTime(n.time, now)}
-                    </span>
-                    <span className="mt-1 block font-semibold">{n.title}</span>
-                    <span className="block text-sm text-muted">{n.body}</span>
-                  </span>
-                  {isNew && <span className="mt-2 size-2 shrink-0 rounded-full bg-accent" aria-label="Nuevo" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Modal>
+    </NavLink>
   );
 }

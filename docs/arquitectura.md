@@ -53,6 +53,12 @@ Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, 
 - `src/lib/backend/index.ts` elige el backend: Supabase si hay `VITE_SUPABASE_URL` y
   `VITE_SUPABASE_PUBLISHABLE_KEY`; si no, local (PGlite con persistencia en IndexedDB `idb://matchmate`).
 - Claves de `localStorage`/IndexedDB con prefijo `mm:` (nunca `bowlingx:`/`bowlinx:`).
+- **Deporte activo** (`src/lib/sportContext.ts`, clave `mm:deporte`): el chip de arriba (`SportSwitcher`) lo elige y
+  siempre dice en qué deporte estás; entrar a una liga lo cambia al de la liga. Con deporte, Home, Eventos y Avisos
+  son de ese deporte y la app toma su color. Rutas: `/` Home de todos (si hay deporte activo manda a `/d/:sport`;
+  volver atrás hasta `/` sí quita el deporte), `/d/:sport` Home del deporte, `/ligas` Eventos, `/avisos` página de
+  avisos, `/u/:userId` perfil público, `/perfil` el propio. «Home» de la barra: fuera del Home del deporte va a él;
+  en él, quita el deporte y va a `/`. Para ir al Home de todos: `setActiveSport(null)` y luego `/`.
 - Cola sin conexión solo para lo de cancha: anotar juegos/puntos, en vivo, «Voy», +1 juego, envíos.
   El resto lee en línea con copia persistida para ver sin señal.
 - Textos en español dominicano sencillo, comentarios en español (como BowlingX); identificadores en inglés.
@@ -85,7 +91,7 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
 
 ## Sin señal y errores

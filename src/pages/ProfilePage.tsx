@@ -1,15 +1,18 @@
 import { Link } from 'react-router';
-import { LogIn, Settings, UserPlus } from 'lucide-react';
+import { LogIn, Pencil, Settings, UserPlus } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { AppShell } from '../components/Shell';
-import { Avatar } from '../components/Avatar';
 import { ProfileStats } from '../components/GlobalStats';
-import { Card, Empty, Loading, StatsSkeleton } from '../components/ui';
+import { ProfileView } from '../components/social/ProfileView';
+import { Empty, Loading, StatsSkeleton } from '../components/ui';
+
+const actionLink = 'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.97]';
 
 /**
- * Perfil global: tus números del boliche sumando todas sus ligas y torneos, y tus ligas de los otros deportes
- * (cada liga tiene además su propio perfil, con los números de su deporte).
+ * Tu perfil (/perfil): como te ven los demás (seguidores, seguidos, me gusta, tus juegos con sus me gusta y tus
+ * números por deporte), más editar tu cuenta y tus números del boliche sumando todas tus ligas y torneos (cada
+ * liga tiene además su propio perfil, con los números de su deporte).
  */
 export default function ProfilePage() {
   const auth = useAuth();
@@ -21,12 +24,12 @@ export default function ProfilePage() {
     return (
       <AppShell>
         <Empty icon={<UserPlus className="size-8" />} title="Tu perfil de jugador">
-          Entra para ver tus estadísticas de todas tus ligas juntas.
-          <div className="mt-4 flex justify-center gap-2">
-            <Link to="/login?next=%2Fperfil" className="inline-flex h-10 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2">
+          Entra para ver tus juegos, tus seguidores y tus estadísticas de todas tus ligas juntas.
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <Link to="/login?next=%2Fperfil" className="inline-flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2">
               <LogIn className="size-4" /> Entrar
             </Link>
-            <Link to="/login?modo=registro&next=%2Fperfil" className="inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg">
+            <Link to="/login?modo=registro&next=%2Fperfil" className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg">
               <UserPlus className="size-4" /> Crear cuenta
             </Link>
           </div>
@@ -37,32 +40,36 @@ export default function ProfilePage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-5">
-        <Card className="flex items-center gap-4 p-5">
-          <Avatar name={displayName(auth)} className="size-14 text-lg" />
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-bold tracking-tight">{displayName(auth)}</h1>
-            <p className="text-sm text-muted">Tu perfil global · todas tus ligas</p>
-          </div>
-          <Link
-            to="/cuenta"
-            aria-label="Configuración de la cuenta"
-            title="Configuración de la cuenta"
-            className="inline-flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
-          >
-            <Settings className="size-5" />
-          </Link>
-        </Card>
-
-        {memberships.loading || leagues.loading ? (
-          <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-bold tracking-tight">Mis estadísticas</h2>
-            <StatsSkeleton />
-          </section>
-        ) : (
-          <ProfileStats memberships={memberships.data} leagues={leagues.data} />
-        )}
-      </div>
+      <ProfileView
+        userId={auth.user.uid}
+        fallbackName={displayName(auth)}
+        skipBowlingStats
+        actions={
+          <>
+            <Link to="/cuenta" className={`${actionLink} border border-line bg-surface text-fg hover:bg-surface-2`}>
+              <Pencil className="size-4" aria-hidden="true" /> Editar perfil
+            </Link>
+            <Link
+              to="/cuenta"
+              aria-label="Configuración de la cuenta"
+              title="Configuración de la cuenta"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:bg-surface-2 hover:text-fg"
+            >
+              <Settings className="size-5" aria-hidden="true" />
+            </Link>
+          </>
+        }
+        statsTop={
+          memberships.loading || leagues.loading ? (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-lg font-bold tracking-tight">Mis estadísticas</h2>
+              <StatsSkeleton />
+            </section>
+          ) : (
+            <ProfileStats memberships={memberships.data} leagues={leagues.data} />
+          )
+        }
+      />
     </AppShell>
   );
 }

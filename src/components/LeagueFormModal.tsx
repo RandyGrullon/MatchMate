@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Baby, CalendarRange, Camera, CircleHelp, Clock, Globe, Lock } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { createLeague, createTournament, type LeagueInput } from '../lib/data';
@@ -468,19 +468,33 @@ function Choice({
 }
 
 /**
+ * Deporte que sale marcado al abrir «Crear»: el pedido (p. ej. «Crear liga de pádel» o el deporte en que estás) si
+ * la cuenta lo puede crear; si no, el boliche o el primero que pueda. `direct`: ya viene elegido y se va de una a los
+ * datos (con «Cambiar» arriba si hay otros).
+ */
+export function initialSport(creatable: readonly SportId[], wanted?: SportId | null): { sport: SportId; direct: boolean } {
+  if (wanted && creatable.includes(wanted)) return { sport: wanted, direct: true };
+  return { sport: preselectedSport(creatable) ?? DEFAULT_SPORT, direct: false };
+}
+
+/**
  * Crear una liga o un torneo sin liga, en dos pasos: el deporte (si puede elegir entre varios; el boliche
  * sale marcado) y los datos. Los deportes en beta solo le salen al superadmin (la base igual lo impone).
+ * Con `sport` (p. ej. «Crear liga de pádel» o el deporte en que estás) ese sale marcado y se va de una a los datos.
  * Devuelve a dónde ir después.
  */
 export function LeagueFormModal({
   open,
   onClose,
   kind,
+  sport: wanted,
   onSaved,
 }: {
   open: boolean;
   onClose: () => void;
   kind: LeagueKind;
+  /** Deporte que sale marcado (si la cuenta lo puede crear). */
+  sport?: SportId | null;
   /** Ruta de la liga o del torneo recién creado. */
   onSaved?: (to: string) => void;
 }) {
@@ -491,15 +505,32 @@ export function LeagueFormModal({
   const [initial, setInitial] = useState<LeagueInput>(() => empty(displayName(auth), kind));
   const [sport, setSport] = useState<SportId>(DEFAULT_SPORT);
   const [step, setStep] = useState<'sport' | 'form'>('form');
+  // Ya eligió el deporte a mano: lo que llegue después de la base (qué deportes puede crear) no lo cambia.
+  const touched = useRef(false);
   // Hay de dónde elegir: más de un deporte, o el fútbol con sus dos modalidades.
   const canChoose = sports.creatable.length > 1;
   useEffect(() => {
     if (!open) return;
+    touched.current = false;
     setInitial(empty(displayName(auth), kind));
-    setSport(preselectedSport(sports.creatable) ?? DEFAULT_SPORT);
-    setStep(canChoose ? 'sport' : 'form');
+    const pick = initialSport(sports.creatable, wanted);
+    setSport(pick.sport);
+    setStep(canChoose && !pick.direct ? 'sport' : 'form');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, kind]);
+  }, [open, kind, wanted]);
+  // Qué puede crear llega de la base un momento después (la primera vez): si no tocó nada, se vuelve a marcar.
+  const creatableKey = sports.creatable.join(',');
+  useEffect(() => {
+    if (!open || touched.current) return;
+    const pick = initialSport(sports.creatable, wanted);
+    setSport(pick.sport);
+    if (pick.direct) setStep('form');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creatableKey]);
+  const chooseSport = (id: SportId) => {
+    touched.current = true;
+    setSport(id);
+  };
   const isTournament = kind === 'torneo';
 
   async function save(data: LeagueInput, date: string) {
@@ -544,7 +575,7 @@ export function LeagueFormModal({
         </>
       }
     >
-      {choosing && <SportPicker groups={sports.choices} status={sports.status} value={sport} onChange={setSport} />}
+      {choosing && <SportPicker groups={sports.choices} status={sports.status} value={sport} onChange={chooseSport} />}
       {/* El formulario sigue montado mientras se elige el deporte: lo escrito no se pierde al volver. */}
       <div hidden={choosing}>
         {isTournament && (
@@ -564,7 +595,14 @@ export function LeagueFormModal({
           withDate={isTournament}
           sport={sport}
           creating
-          onChangeSport={canChoose ? () => setStep('sport') : undefined}
+          onChangeSport={
+            canChoose
+              ? () => {
+                  touched.current = true;
+                  setStep('sport');
+                }
+              : undefined
+          }
         />
       </div>
     </Modal>

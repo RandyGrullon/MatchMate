@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronRight, Clock, Flame, Globe, Hash, Layers, LogOut, Share2, Sigma, Target, Trophy, Upload, UserPlus, XCircle } from 'lucide-react';
+import { CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronRight, Clock, Flame, Globe, Hash, Layers, LogOut, Share2, Sigma, Target, Trophy, Upload, UserPlus, UserRound, XCircle } from 'lucide-react';
 import { frameStats } from '../lib/bowling';
 import { useAuth } from '../lib/auth';
 import { removeMember, useEntriesOfEvents, useEvents, usePlayer, usePlayerEntries, usePlayerSubmissions } from '../lib/data';
@@ -15,7 +15,7 @@ import { useAction, useFeedback } from '../components/feedback';
 import { playerUrl, shareLink } from '../components/share';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Skeleton, StatsSkeleton, cx } from '../components/ui';
 import { Stat } from '../components/event/StandingsTab';
-import { Avatar } from '../components/Avatar';
+import { UserLink, userPath } from '../components/social/UserLink';
 import { BackLink } from '../components/BackLink';
 import { SuggestionBox } from '../components/SuggestionBox';
 
@@ -71,6 +71,8 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   // Solo el dueño del perfil sube juegos y ve sus envíos; el admin anota desde el evento.
   const isOwner = !!myPlayerId && myPlayerId === p.id;
   const unclaimed = !p.uid;
+  // Su cuenta (perfil público con seguidores y me gusta); los menores nunca tienen.
+  const account = p.uid && !p.isMinor ? p.uid : null;
   const stats = playerStats(mine);
   // Eventos a los que fue (con al menos un juego que cuenta).
   const attended = mine.filter((e) => e.scores?.some((sc, i) => sc != null && e.photos?.[i] != null)).length;
@@ -138,12 +140,20 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
         <div className="relative flex flex-col items-center gap-3 overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-accent-soft via-surface to-surface p-5 text-center sm:flex-row sm:pr-14 sm:text-left">
           {/* Jugador abierto desde el ranking o un evento (no "Mis juegos"): flecha para volver. */}
           {!own && <BackLink fallback={league.kind === 'torneo' ? base : `${base}/ranking`} className="absolute top-3 left-3 sm:static sm:self-start" />}
-          <Avatar name={p.name} className="size-16 text-xl ring-4 ring-surface" />
+          <UserLink userId={account} name={p.name} hideName avatarClassName="size-16 text-xl ring-4 ring-surface" className="shrink-0" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">{p.name}</h1>
             <p className="text-sm text-muted">
               {stats.games} juegos verificados{stats.pending > 0 && ` · ${stats.pending} por verificar`}
             </p>
+            {account && !isOwner && (
+              <Link
+                to={userPath(account)}
+                className="mt-1 inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft sm:-ml-3"
+              >
+                <UserRound className="size-4" aria-hidden="true" /> Ver su perfil
+              </Link>
+            )}
           </div>
           {isOwner && (
             <Button variant="primary" icon={<Upload className="size-4" />} onClick={() => setSubmitting(true)} className="w-full sm:w-auto">

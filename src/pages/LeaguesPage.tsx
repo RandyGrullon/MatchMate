@@ -1,175 +1,157 @@
-import { useState, type CSSProperties } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { CalendarDays, ChevronRight, Globe, Lock, LogIn, MapPin, Plus, Shield, Trophy } from 'lucide-react';
-import { displayName, useAuth } from '../lib/auth';
-import { joinLeague, useLeaguesByIds, useMyMemberships, usePublicLeagues } from '../lib/data';
-import { roleLabel } from '../lib/league';
-import type { League, Member } from '../lib/types';
-import { leagueSport, sportsOf } from '../sports/registry';
-import { SportBadge, SportChips, useSportFilter } from './sports/SportBits';
+import { useMemo, type ReactNode } from 'react';
+import { CalendarClock, Globe, Layers, Shield, Trophy } from 'lucide-react';
+import { useAuth } from '../lib/auth';
+import { usePublicLeagues } from '../lib/data';
+import { inSport, setActiveSport, useActiveSport } from '../lib/sportContext';
+import { SPORTS } from '../sports/registry';
+import { SportChips, useSportFilter } from './sports/SportBits';
 import { AppShell } from '../components/Shell';
-import { useCreateMenu } from '../components/CreateMenu';
-import { useAction } from '../components/feedback';
-import { Badge, Button, Card, Empty, ListSkeleton, LoadError } from '../components/ui';
+import { NoLeaguesYet, NoneOfKind, SignedOutCard } from '../components/eventos/EventosEmpty';
+import { UpcomingList } from '../components/eventos/UpcomingList';
+import { eventosSubtitle, filterSports, joinable, publicEmptyText, splitMine } from '../components/eventos/logic';
+import { JoinCodeCard } from '../components/home/JoinCodeCard';
+import { LeagueList, LeagueRow } from '../components/home/LeagueCard';
+import { LiveSection } from '../components/home/LiveSection';
+import { PublicLeagues } from '../components/home/PublicLeagues';
+import { Section } from '../components/home/Section';
+import { SportTint } from '../components/home/SportTint';
+import { useActivity, useMyLeagues } from '../components/home/useHomeData';
+import { ListSkeleton, LoadError } from '../components/ui';
+import type { League, Member } from '../lib/types';
 
-/** Eventos: tus ligas (privadas y públicas) y las ligas públicas para unirte. Se entra a cada una para ver sus eventos. */
+/**
+ * Eventos (`/ligas`). En un deporte, solo lo de ese deporte; en «Todos los deportes», todo, con chips para filtrar.
+ * Arriba lo que está en juego; después mis ligas, mis torneos (lo más pronto primero), lo que viene en los próximos
+ * 30 días (eventos y mis partidos, con día, hora, liga y deporte), las públicas para unirme (con buscador) y el código.
+ */
 export default function LeaguesPage() {
   const auth = useAuth();
-  const create = useCreateMenu();
-  const navigate = useNavigate();
-  const run = useAction();
-  const memberships = useMyMemberships(auth.user?.uid);
-  const mine = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
+  const active = useActiveSport();
   const pub = usePublicLeagues();
-  const [joining, setJoining] = useState<string | null>(null);
 
-  const roleOf = (lid: string) => memberships.data.find((m) => m.leagueId === lid)?.role;
-  // Deporte: insignia en cada fila y filtro solo si en pantalla hay ligas de más de uno.
-  const sports = sportsOf([...mine.data, ...pub.data]);
+  // Chips solo en «Todos los deportes» y si hay de más de un deporte (el filtro vive en ?deporte=).
+  const mine = useMyLeagues(null);
+  const sports = filterSports(mine.all, pub.data);
   const multi = sports.length > 1;
-  const [sport, setSport] = useSportFilter(multi ? sports : []);
-  const bySport = (l: League) => !sport || leagueSport(l) === sport;
-  const myLeagues = mine.data.filter(bySport);
-  const others = pub.data.filter((l) => !roleOf(l.id) && bySport(l)).sort((a, b) => a.name.localeCompare(b.name));
+  const [chip, setChip] = useSportFilter(!active && multi ? sports : []);
+  const sport: string | null = active ?? chip;
+  const showSport = !sport && multi;
 
-  async function join(l: League) {
-    if (!auth.user) return navigate(`/login?next=${encodeURIComponent('/ligas')}`);
-    setJoining(l.id);
-    const ok = await run(async () => {
-      await joinLeague(l.id, { uid: auth.user!.uid, name: displayName(auth) }, null);
-      return true;
-    }, `Te uniste a ${l.name}`);
-    setJoining(null);
-    if (ok) navigate(`/l/${l.id}`);
-  }
+  // Mis ligas del deporte (o todas): misma lista mientras no cambie, para no recalcular lo que viene en cada pintada.
+  const leagues = useMemo(() => mine.all.filter(inSport(sport)), [mine.all, sport]);
+  const act = useActivity(leagues, mine.uid);
+  const { ligas, torneos } = splitMine(leagues, act.nextOf);
+  const isMine = (lid: string) => !!mine.roleOf(lid);
+  const toJoin = joinable(pub.data, isMine, sport);
+  const inSportTotal = pub.data.filter(inSport(sport)).length;
+  const others = mine.all.length - leagues.length;
+  const meta = active ? SPORTS[active] : null;
+  const Icon = meta?.icon;
+
+  const showAll = () => (active ? setActiveSport(null) : setChip(null));
+  const signedIn = !!auth.user;
 
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Eventos</h1>
-          <p className="text-sm text-muted">Entra a una liga o torneo para ver su calendario y sus clasificaciones.</p>
-        </div>
-
-        {multi && <SportChips sports={sports} value={sport} onChange={setSport} />}
-
-        {auth.user ? (
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold text-muted">Tus ligas y torneos</h2>
-            {memberships.error ? (
-              <LoadError error={memberships.error} />
-            ) : memberships.loading || mine.loading ? (
-              <ListSkeleton rows={2} />
-            ) : mine.data.length > 0 && myLeagues.length === 0 ? (
-              <p className="text-sm text-muted">No tienes ligas de este deporte.</p>
-            ) : mine.data.length === 0 ? (
-              <Empty icon={<Shield className="size-8" />} title="Todavía no estás en ninguna">
-                Únete a una pública aquí abajo, o crea la tuya o pon el código que te compartieron.
-                <div className="mt-4">
-                  <button type="button" onClick={create.openMenu} className="inline-flex items-center gap-1.5 font-medium text-accent">
-                    <Plus className="size-4" /> Crear o unirme con código
-                  </button>
-                </div>
-              </Empty>
-            ) : (
-              <Card className="stagger divide-y divide-line overflow-hidden">
-                {myLeagues.map((l, i) => (
-                  <LeagueRow key={l.id} league={l} index={i} role={roleOf(l.id)} showSport={multi} />
-                ))}
-              </Card>
+        <header className="flex items-start gap-3">
+          {meta && Icon && (
+            <SportTint sport={active} className="shrink-0">
+              <span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg" aria-hidden="true">
+                <Icon className="size-6" />
+              </span>
+            </SportTint>
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold tracking-tight">{meta ? `Eventos de ${meta.lower}` : 'Eventos'}</h1>
+            <p className="text-sm text-muted">{eventosSubtitle(sport)}</p>
+            {active && (
+              <button
+                type="button"
+                onClick={() => setActiveSport(null)}
+                className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-accent hover:underline"
+              >
+                <Layers className="size-4" aria-hidden="true" /> Ver de todos los deportes
+              </button>
             )}
-          </section>
-        ) : (
-          !auth.loading && (
-            <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-              <p className="flex-1 text-sm text-muted">Entra para ver tus ligas privadas. Las públicas se ven sin cuenta.</p>
-              <Link to="/login?next=%2Fligas" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-line px-4 text-sm font-medium hover:bg-surface-2">
-                <LogIn className="size-4" /> Entrar
-              </Link>
-            </Card>
-          )
+          </div>
+        </header>
+
+        {!active && multi && <SportChips sports={sports} value={chip} onChange={setChip} />}
+
+        {!signedIn && !auth.loading && <SignedOutCard />}
+
+        {signedIn && (
+          <>
+            <LiveSection games={act.games} matches={act.liveItems} />
+
+            {mine.error ? (
+              <LoadError error={mine.error} />
+            ) : mine.loading ? (
+              <Section title="Mis ligas" icon={<Shield className="size-4" />}>
+                <ListSkeleton rows={2} />
+              </Section>
+            ) : leagues.length === 0 ? (
+              <NoLeaguesYet sport={sport} others={others} onShowAll={showAll} />
+            ) : (
+              <>
+                <MineSection title="Mis ligas" icon={<Shield className="size-4" />} kind="liga" sport={sport} leagues={ligas} act={act} role={mine.roleOf} showSport={showSport} />
+                <MineSection title="Mis torneos" icon={<Trophy className="size-4" />} kind="torneo" sport={sport} leagues={torneos} act={act} role={mine.roleOf} showSport={showSport} />
+                <Section title="Próximos" icon={<CalendarClock className="size-4" />} action={<span className="text-xs text-muted">Próximos 30 días</span>}>
+                  <UpcomingList items={act.upcoming} today={act.today} showSport={showSport} loading={act.loading} />
+                </Section>
+              </>
+            )}
+          </>
         )}
 
-        <section className="flex flex-col gap-2">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-muted">
-            <Globe className="size-4" /> Públicas para unirte
-          </h2>
+        <Section title="Públicas para unirte" icon={<Globe className="size-4" />}>
           {pub.error ? (
             <LoadError error={pub.error} />
-          ) : pub.loading ? (
+          ) : pub.loading || mine.loading ? (
             <ListSkeleton rows={3} />
-          ) : others.length === 0 ? (
-            <p className="text-sm text-muted">
-              {sport && pub.data.some((l) => !roleOf(l.id))
-                ? 'No hay públicas de este deporte.'
-                : pub.data.length
-                  ? 'Ya estás en todas las públicas.'
-                  : 'Todavía no hay ligas ni torneos públicos.'}
-            </p>
           ) : (
-            <Card className="stagger divide-y divide-line overflow-hidden">
-              {others.map((l, i) => (
-                <div key={l.id} style={{ '--i': i } as CSSProperties} className="flex items-center gap-3 px-4 py-3">
-                  <Link to={`/l/${l.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                    <LeagueIcon league={l} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">{l.name}</span>
-                        {l.kind === 'torneo' && <Badge tone="accent">Torneo</Badge>}
-                        {multi && <SportBadge sport={leagueSport(l)} />}
-                      </div>
-                      <LeagueMeta league={l} />
-                    </div>
-                  </Link>
-                  <Button size="sm" loading={joining === l.id} onClick={() => join(l)}>
-                    Unirme
-                  </Button>
-                </div>
-              ))}
-            </Card>
+            <PublicLeagues leagues={toJoin} today={act.today} showSport={showSport} search emptyText={publicEmptyText({ sport, inSportTotal })} />
           )}
-        </section>
+        </Section>
+
+        <JoinCodeCard />
       </div>
     </AppShell>
   );
 }
 
-export function LeagueMeta({ league }: { league: League }) {
-  const bits = [league.venue, league.schedule].filter(Boolean);
-  if (!bits.length) return null;
+/** «Mis ligas» o «Mis torneos»: la lista (con lo próximo de cada una) o, si no hay, cómo crear. */
+function MineSection({
+  title,
+  icon,
+  kind,
+  sport,
+  leagues,
+  act,
+  role,
+  showSport,
+}: {
+  title: string;
+  icon: ReactNode;
+  kind: 'liga' | 'torneo';
+  sport: string | null;
+  leagues: League[];
+  act: ReturnType<typeof useActivity>;
+  role: (lid: string) => Member['role'] | undefined;
+  showSport: boolean;
+}) {
   return (
-    <div className="flex items-center gap-1 truncate text-xs text-muted">
-      <MapPin className="size-3 shrink-0" />
-      <span className="truncate">{bits.join(' · ')}</span>
-    </div>
-  );
-}
-
-function LeagueIcon({ league }: { league: League }) {
-  return (
-    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-      {league.kind === 'torneo' ? <Trophy className="size-5" /> : league.visibility === 'private' ? <Lock className="size-5" /> : <CalendarDays className="size-5" />}
-    </div>
-  );
-}
-
-function LeagueRow({ league, role, index, showSport }: { league: League; role?: Member['role']; index: number; showSport?: boolean }) {
-  return (
-    <Link to={`/l/${league.id}`} style={{ '--i': index } as CSSProperties} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-      <LeagueIcon league={league} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="truncate font-medium">{league.name}</span>
-          <Badge tone={league.visibility === 'private' ? 'neutral' : 'accent'}>
-            {league.visibility === 'private' ? <Lock className="size-3" /> : <Globe className="size-3" />}
-            {league.kind === 'torneo' ? 'Torneo' : league.visibility === 'private' ? 'Privada' : 'Pública'}
-          </Badge>
-          {role && role !== 'member' && <Badge tone="accent">{roleLabel(role)}</Badge>}
-          {showSport && <SportBadge sport={leagueSport(league)} />}
-        </div>
-        <LeagueMeta league={league} />
-      </div>
-      <ChevronRight className="size-4 text-muted" />
-    </Link>
+    <Section title={title} icon={icon} action={leagues.length > 0 ? <span className="text-xs tabular-nums text-muted">{leagues.length}</span> : undefined}>
+      {leagues.length === 0 ? (
+        <NoneOfKind kind={kind} sport={sport} />
+      ) : (
+        <LeagueList>
+          {leagues.map((l, i) => (
+            <LeagueRow key={l.id} league={l} index={i} role={role(l.id)} next={act.nextOf.get(l.id)} today={act.today} showSport={showSport} />
+          ))}
+        </LeagueList>
+      )}
+    </Section>
   );
 }

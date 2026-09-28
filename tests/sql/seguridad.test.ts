@@ -54,6 +54,9 @@ const RPC_AUTHENTICATED = [
   // Consola del superadmin (y touch_seen, de cualquier cuenta).
   'touch_seen', 'admin_overview', 'admin_series', 'admin_users', 'admin_user', 'admin_leagues', 'admin_audit_log',
   'admin_system', 'admin_scan_stats', 'admin_block_user', 'admin_unblock_user', 'admin_announce', 'admin_count_recipients',
+  // Social: seguir, perfil público, juegos con me gusta y avisos.
+  'follow_list', 'follow_user', 'following_games', 'profile_games', 'profile_stats', 'public_profile', 'set_game_like',
+  'social_notices', 'unfollow_user',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

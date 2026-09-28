@@ -107,7 +107,7 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1025,6 +1025,93 @@ begin
   perform public.set_rsvp(p_event => pg_temp.id('bowl_tour'), p_going => true);
   assert (select count(*) from public.event_rsvps r where r.event_id = pg_temp.id('bowl_tour')) = 2, 'FAIL bloqueo: desbloqueado no escribe';
   perform pg_temp.ok('bloqueo: Luis desbloqueado vuelve a escribir');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9b. Social: seguir, perfil, me gusta y avisos (todo se deshace con el ROLLBACK)
+-- =====================================================================================================================
+
+-- 9b.1 Ana sigue al dueño (comparten la liga privada) y le da me gusta a su juego del torneo; lo ve en su perfil.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  g jsonb;
+begin
+  r := public.follow_user(p_user => pg_temp.id('u_owner'));
+  assert (r ->> 'following')::boolean and (r ->> 'followers')::integer = 1, format('FAIL social: follow_user %s', r);
+  assert public.follow_user(p_user => pg_temp.id('u_owner')) ->> 'followers' = '1', 'FAIL social: seguir dos veces no es idempotente';
+  r := public.set_game_like(p_kind => 'bowling', p_id => pg_temp.id('bowl_e_owner'), p_liked => true);
+  assert (r ->> 'liked')::boolean and (r ->> 'likes')::integer >= 1, format('FAIL social: set_game_like %s', r);
+  r := public.public_profile(p_user => pg_temp.id('u_owner'));
+  assert (r ->> 'isFollowing')::boolean and (r ->> 'followers')::integer = 1 and r -> 'sports' ? 'bowling',
+    format('FAIL social: public_profile %s', r);
+  g := public.profile_games(p_user => pg_temp.id('u_owner'), p_sport => 'bowling');
+  assert exists (select 1 from jsonb_array_elements(g) x
+                  where x ->> 'id' = pg_temp.val('bowl_e_owner') and (x ->> 'likedByMe')::boolean and x ->> 'kind' = 'bowling'),
+    format('FAIL social: profile_games no trae el juego del dueño con el me gusta (%s)', g);
+  perform pg_temp.ok('social: Ana sigue al dueño (idempotente), le da me gusta a su juego y lo ve en su perfil');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9b.2 El dueño ve a su seguidora, el aviso «te empezó a seguir» y sus números.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.follow_list(p_user => pg_temp.id('u_owner'), p_kind => 'followers');
+  assert jsonb_array_length(r) = 1 and r -> 0 ->> 'id' = pg_temp.val('u_ana'), format('FAIL social: follow_list %s', r);
+  r := public.social_notices();
+  assert exists (select 1 from jsonb_array_elements(r) x where x ->> 'kind' = 'follow' and x ->> 'userId' = pg_temp.val('u_ana')),
+    format('FAIL social: social_notices sin el «te empezó a seguir» (%s)', r);
+  assert (select count(*) from public.follows f where f.followee_id = pg_temp.id('u_owner')) = 1, 'FAIL social: el dueño no lee sus filas';
+  r := public.profile_stats(p_user => pg_temp.id('u_owner'));
+  assert jsonb_typeof(r) = 'object', format('FAIL social: profile_stats %s', r);
+  perform pg_temp.ok('social: el dueño ve su seguidora, el aviso «te empezó a seguir» y sus números');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9b.3 Alguien de fuera no ve nada social de la liga privada ni de quien solo está en ella.
+select set_config('request.jwt.claims', pg_temp.jwt('out'), true);
+set local role authenticated;
+do $$
+begin
+  assert public.public_profile(p_user => pg_temp.id('u_owner')) is null
+      or not exists (select 1 from jsonb_array_elements(public.profile_games(p_user => pg_temp.id('u_owner'))) x
+                      where x ->> 'leagueId' = pg_temp.val('bowl')),
+    'FAIL social: el de fuera ve juegos de la liga privada';
+  assert (select count(*) from public.follows f where f.followee_id = pg_temp.id('u_owner')) = 0, 'FAIL social: el de fuera lee follows ajenos';
+  assert (select count(*) from public.game_likes) = 0, 'FAIL social: el de fuera lee me gusta';
+  perform pg_temp.ok('social: el de fuera no ve juegos, seguidores ni me gusta de la liga privada');
+end $$;
+select pg_temp.must_fail('social: el de fuera no da me gusta en la liga privada',
+  format('select public.set_game_like(p_kind => %L, p_id => %L::uuid, p_liked => true)', 'bowling', pg_temp.val('bowl_e_owner')),
+  array['42501', 'no_permitido']);
+select pg_temp.must_fail('social: nadie se sigue a sí mismo',
+  format('select public.follow_user(p_user => %L::uuid)', pg_temp.val('u_out')), array['invalido', '23514']);
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9b.4 Ana quita el me gusta y deja de seguir (idempotente).
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.set_game_like(p_kind => 'bowling', p_id => pg_temp.id('bowl_e_owner'), p_liked => false);
+  assert not (r ->> 'liked')::boolean, format('FAIL social: quitar el me gusta %s', r);
+  r := public.unfollow_user(p_user => pg_temp.id('u_owner'));
+  assert not (r ->> 'following')::boolean and (r ->> 'followers')::integer = 0, format('FAIL social: unfollow_user %s', r);
+  assert public.unfollow_user(p_user => pg_temp.id('u_owner')) ->> 'followers' = '0', 'FAIL social: dejar de seguir dos veces';
+  perform pg_temp.ok('social: Ana quita el me gusta y deja de seguir (idempotente)');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

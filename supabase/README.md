@@ -34,6 +34,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001400_inscripciones.sql` | «Me apunto» con cupo y lista de espera en noches y torneos de raqueta (`event_signups`, `join_signup`, `leave_signup`, `set_signup`) |
 | `migrations/20260927001500_cuenta.sql` | Mayores de 18 (`confirm_adult`), descargar mis datos (`export_my_data`), borrar la cuenta (`prepare_delete_account` + Edge Function `delete-account`) y errores de los teléfonos (`log_client_error`, `admin_client_errors`) |
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
+| `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -309,6 +310,23 @@ Subir primero el archivo a Storage, bucket `scoreboards`, ruta `'<league_id>/<ph
 | `mark_suggestions_read(p_ids uuid[], p_read boolean=true) → int` | admin de sus ligas | = `markSuggestions`. |
 | `delete_suggestion(p_suggestion) → boolean` | admin | |
 
+
+**Social (perfiles, seguir y me gusta)** — todas con sesión y `require_uid` (una cuenta bloqueada no sigue ni da me
+gusta). Una cuenta «se ve» si es la propia, comparte una liga, es miembro de una liga pública o una de las dos sigue
+a la otra (el superadmin, todas). De lo que se ve solo sale lo de ligas que quien mira puede leer y **sin menores**.
+`follows` directo: cada cuenta lee solo sus filas.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `follow_user(p_user) → {following, followers}` | con sesión | Idempotente. No a uno mismo (`invalido`), ni a quien no existe (`no_existe`), bloqueado o que no se ve (`no_permitido`). 60 cambios por hora (`rate_limited`). Push «te empezó a seguir» uno por persona y día. |
+| `unfollow_user(p_user) → {following, followers}` | con sesión | Idempotente; cuenta en el mismo ritmo. |
+| `follow_list(p_user, p_kind 'followers'\|'following', p_limit=30, p_before, p_before_id) → [{id, name, at, isFollowing, followsYou, isMe}]` | con sesión | Vacía si no se ve; solo lista a quien ve quien mira. Hasta 50. |
+| `public_profile(p_user) → {id, name, since, sports, followers, following, likesReceived, gamesCount, isFollowing, followsYou, isMe}` | con sesión | `null` si no existe o no se ve. |
+| `profile_games(p_user, p_limit=20, p_before, p_before_key, p_sport) → [juego]` · `following_games(p_sport, p_limit, p_before, p_before_key)` | con sesión | Juegos (boliche, partidos, golf, natación) más nuevos primero, con `likes`, `likedByMe` y `detail`. |
+| `profile_stats(p_user) → {bowling, matches, golf, swim}` | con sesión | Números por deporte (boliche: solo juegos verificados). |
+| `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores) | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`. 300 cambios por hora. |
+| `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). |
+
 ### Push
 
 | RPC | Quién | Qué hace |
@@ -372,6 +390,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `league:<id>` | `events` | `{op, ids}` | eventos de la liga (no cuando solo cambia `player_count`) |
 | `league:<id>` | `submissions` | `{op, ids}` | envíos de la liga (aprobaciones) |
 | `user:<uid>` | `submission` | `{id, status}` | su envío fue aprobado o rechazado |
+| `user:<uid>` | `follow` | `{op, user}` | alguien lo empezó a seguir o lo dejó de seguir |
+| `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa

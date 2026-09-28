@@ -2,13 +2,25 @@ import { createContext, useCallback, useContext, useMemo, useState, type FormEve
 import { useLocation, useNavigate } from 'react-router';
 import { ChevronRight, Plus, Ticket, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { useActiveSport } from '../lib/sportContext';
 import type { LeagueKind } from '../lib/types';
 import { getSport } from '../sports/registry';
 import { useSportStatus } from '../sports/status';
+import type { SportId } from '../sports/types';
 import { LeagueFormModal } from './LeagueFormModal';
 import { Button, Input, Modal, cx } from './ui';
 
-const Ctx = createContext<{ openMenu: () => void }>({ openMenu: () => undefined });
+interface CreateMenuApi {
+  /** Abre el menú «Crear» (crear liga, torneo sin liga o unirse con código). */
+  openMenu: () => void;
+  /**
+   * Va directo a crear una liga o un torneo de ese deporte (p. ej. «Crear liga de pádel» en el Home del deporte).
+   * Sin deporte, el que está marcado es el deporte en que estás.
+   */
+  startCreate: (kind: LeagueKind, sport?: SportId | null) => void;
+}
+
+const Ctx = createContext<CreateMenuApi>({ openMenu: () => undefined, startCreate: () => undefined });
 
 /** Abre el menú "Crear" (el círculo del centro, el botón de arriba en la computadora, "Crear o unirme"…). */
 export const useCreateMenu = () => useContext(Ctx);
@@ -16,29 +28,43 @@ export const useCreateMenu = () => useContext(Ctx);
 /**
  * El menú "Crear": crear una liga, un torneo sin liga o unirse con un código. Va una sola vez en la raíz
  * de la app (no dentro de la barra, que se esconde según el tamaño de la pantalla: un modal ahí se trababa
- * al girar el teléfono). El deporte se elige en el primer paso de LeagueFormModal.
+ * al girar el teléfono). El deporte se elige en el primer paso de LeagueFormModal; si estás en un deporte (y lo
+ * puedes crear), sale marcado y se va de una a los datos.
  */
 export function CreateMenuProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const active = useActiveSport();
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState<LeagueKind | null>(null);
+  const [creating, setCreating] = useState<{ kind: LeagueKind; sport: SportId | null } | null>(null);
   const [code, setCode] = useState('');
 
+  const toLogin = useCallback(
+    () => navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`),
+    [navigate, location.pathname, location.search],
+  );
+
+  // Sin parámetros a propósito: varios botones lo pasan directo como onClick.
   const openMenu = useCallback(() => {
-    if (!user) {
-      navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
-      return;
-    }
+    if (!user) return toLogin();
     setCode('');
     setOpen(true);
-  }, [user, navigate, location.pathname, location.search]);
-  const value = useMemo(() => ({ openMenu }), [openMenu]);
+  }, [user, toLogin]);
+
+  const startCreate = useCallback(
+    (kind: LeagueKind, sport?: SportId | null) => {
+      if (!user) return toLogin();
+      setOpen(false);
+      setCreating({ kind, sport: sport === undefined ? active : sport });
+    },
+    [user, toLogin, active],
+  );
+  const value = useMemo(() => ({ openMenu, startCreate }), [openMenu, startCreate]);
 
   function pick(kind: LeagueKind) {
     setOpen(false);
-    setCreating(kind);
+    setCreating({ kind, sport: active });
   }
 
   function join(e: FormEvent) {
@@ -54,8 +80,8 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
       {children}
       <Modal open={open} onClose={() => setOpen(false)} title="Crear">
         <div className="flex flex-col gap-2">
-          <LeagueOption onClick={() => pick('liga')} />
-          <Option icon={<Trophy className="size-5" />} title="Torneo sin liga" text="Un torneo suelto con sus jugadores, equipos y clasificación." onClick={() => pick('torneo')} />
+          <LeagueOption sport={active} onClick={() => pick('liga')} />
+          <TournamentOption sport={active} onClick={() => pick('torneo')} />
           <form onSubmit={join} className="flex flex-col gap-2 rounded-2xl border border-line p-3">
             <span className="flex items-center gap-2 text-sm font-medium">
               <Ticket className="size-5 text-accent" /> ¿Te invitaron? Pon el código
@@ -78,26 +104,51 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
         </div>
       </Modal>
       {/* Se monta al abrirlo: así el estado de los deportes se consulta solo cuando hace falta. */}
-      {creating && <LeagueFormModal open onClose={() => setCreating(null)} kind={creating} onSaved={(to) => navigate(to)} />}
+      {creating && (
+        <LeagueFormModal open onClose={() => setCreating(null)} kind={creating.kind} sport={creating.sport} onSaved={(to) => navigate(to)} />
+      )}
     </Ctx.Provider>
   );
 }
 
-/** «Crear una liga»: si puede elegir, dice que elige el deporte; si no, qué trae la liga de su único deporte. */
-function LeagueOption({ onClick }: { onClick: () => void }) {
+/** El deporte en que estás, si la cuenta lo puede crear (sale marcado al crear). */
+function useCreatableActive(sport: SportId | null): { only: SportId | null; many: boolean; here: SportId | null } {
   const { isSuper } = useAuth();
   const { creatable } = useSportStatus(isSuper);
-  const only = creatable.length === 1 ? creatable[0] : null;
-  const text =
-    creatable.length > 1
+  return {
+    only: creatable.length === 1 ? creatable[0] : null,
+    many: creatable.length > 1,
+    here: sport && creatable.includes(sport) ? sport : null,
+  };
+}
+
+/** «Crear una liga»: de tu deporte (si estás en uno que puedes crear); si no, que elige el deporte o de cuál es. */
+function LeagueOption({ sport, onClick }: { sport: SportId | null; onClick: () => void }) {
+  const { only, many, here } = useCreatableActive(sport);
+  const title = here ? `Crear una liga de ${getSport(here).lower}` : 'Crear una liga';
+  const text = here
+    ? `Pública o privada; invitas con link o QR.${many ? ' Puedes cambiar el deporte.' : ''}`
+    : many
       ? 'Eliges el deporte. Pública o privada; invitas con link o QR.'
       : only && only !== 'bowling'
         ? `Liga de ${getSport(only).lower}. Pública o privada; invitas con link o QR.`
         : 'Con prácticas, torneos y ranking. Pública o privada; invitas con link o QR.';
-  return <Option icon={<Plus className="size-5" />} title="Crear una liga" text={text} onClick={onClick} primary />;
+  return <Option icon={<Plus className="size-5" />} title={title} text={text} onClick={onClick} primary />;
 }
 
-function Option({ icon, title, text, onClick, primary }: { icon: React.ReactNode; title: string; text: string; onClick: () => void; primary?: boolean }) {
+function TournamentOption({ sport, onClick }: { sport: SportId | null; onClick: () => void }) {
+  const { here } = useCreatableActive(sport);
+  return (
+    <Option
+      icon={<Trophy className="size-5" />}
+      title={here ? `Torneo de ${getSport(here).lower} sin liga` : 'Torneo sin liga'}
+      text="Un torneo suelto con sus jugadores, equipos y clasificación."
+      onClick={onClick}
+    />
+  );
+}
+
+function Option({ icon, title, text, onClick, primary }: { icon: ReactNode; title: string; text: string; onClick: () => void; primary?: boolean }) {
   return (
     <button
       type="button"

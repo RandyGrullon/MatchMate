@@ -1,8 +1,34 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeagueFeed } from './data';
 import type { ChallengeNotice, MatchNoticeFeed, NightNotice, NoticeMatch } from './data/matchNotices';
 import { eventLabel, formatDate } from './format';
-import { BOWLING_NOTIFICATIONS_TEXT, buildMatchNotices, buildNotices, emptyNoticesText, notificationsText, relativeTime } from './notifications';
+import {
+  BOWLING_NOTIFICATIONS_TEXT,
+  EMPTY_READ_STATE,
+  MAX_NOTICES,
+  NOTICE_FILTERS,
+  badgeCount,
+  buildMatchNotices,
+  buildNotices,
+  emptyNoticesText,
+  filterNotices,
+  groupNotices,
+  isNoticeFilter,
+  isNoticeUnread,
+  loadReadState,
+  markAllNoticesRead,
+  markNoticeRead,
+  markNoticesRead,
+  markNoticesSeen,
+  notificationsText,
+  relativeTime,
+  safeAppPath,
+  saveReadState,
+  socialNoticesFromRows,
+  unreadCount,
+  type GenericNotice,
+  type Notice,
+} from './notifications';
 import type { BowlingEvent, GameComment, League, Reaction, Submission } from './types';
 
 const HOUR = 3600_000;
@@ -700,5 +726,345 @@ describe('textos según los deportes de la cuenta', () => {
   it('sin ligas: lo general', () => {
     expect(notificationsText([])).toContain('Recordatorios de tus partidos, rondas, encuentros, prácticas y torneos');
     expect(emptyNoticesText([])).toContain('torneos nuevos');
+  });
+});
+
+// ---------- Página de avisos ----------
+
+describe('página de avisos: categoría y deporte de cada aviso', () => {
+  it('cada aviso dice su categoría (Partidos y resultados, Mis ligas, Social, Admin) y el deporte de su liga', () => {
+    const notices = buildNotices(
+      [
+        feed({
+          isAdmin: true,
+          events: [event('t1', 'torneo', '2026-09-30')],
+          mySubs: [sub('a', 'aprobado', { reviewedAt: at(now - HOUR), reviewedBy: 'admin' })],
+          reactions: [reaction('u2', 'Pedro', 'like', now - 2 * HOUR)],
+          suggestions: [{ id: 's1', text: 'Más prácticas', read: false, createdAt: at(now - 3 * HOUR) }],
+        }),
+      ],
+      [league('l1')],
+      today,
+      now,
+    );
+    expect(Object.fromEntries(notices.map((n) => [n.kind, [n.category, n.sport]]))).toEqual({
+      torneo: ['ligas', 'bowling'],
+      aprobado: ['partidos', 'bowling'],
+      reaccion: ['social', 'bowling'],
+      sugerencia: ['admin', 'bowling'],
+    });
+  });
+
+  it('el reclamo al organizador va en Admin; el de «tu resultado», en Partidos', () => {
+    const NOW = Date.parse('2026-10-08T21:00:00Z');
+    const padel = league('mm', { name: 'Pádel Club', sport: 'padel' });
+    const disputed = {
+      id: 'a',
+      leagueId: 'mm',
+      status: 'disputed',
+      proposedSide: 1,
+      proposedBy: 'u1',
+      disputedBy: 'u2',
+      disputedAt: new Date(NOW - HOUR).toISOString(),
+      disputeNote: null,
+      score: null,
+      sides: [],
+      mySide: 1,
+    } as unknown as NoticeMatch;
+    const feedOf = (admin: boolean): MatchNoticeFeed => ({
+      uid: 'u1',
+      mine: [disputed],
+      disputes: admin ? [disputed] : [],
+      challenges: [],
+      nights: [],
+      players: {},
+      adminLeagues: admin ? ['mm'] : [],
+    });
+    expect(buildMatchNotices(feedOf(true), [padel], NOW).map((n) => [n.title, n.category, n.sport])).toEqual([['Reclamaron un resultado', 'admin', 'padel']]);
+    expect(buildMatchNotices(feedOf(false), [padel], NOW).map((n) => [n.title, n.category, n.sport])).toEqual([['Reclamaron tu resultado', 'partidos', 'padel']]);
+  });
+});
+
+describe('avisos genéricos (seguidores y me gusta del perfil)', () => {
+  const social = (id: string, extra: Partial<GenericNotice> = {}): GenericNotice => ({
+    id,
+    kind: 'social',
+    title: 'Ana te empezó a seguir',
+    body: 'Mira su perfil',
+    url: '/perfil/ana',
+    at: now - HOUR,
+    ...extra,
+  });
+
+  it('se mezclan con los demás por hora, en Social, sin liga si no traen una', () => {
+    const notices = buildNotices(
+      [feed({ reactions: [reaction('u2', 'Pedro', 'like', now - 2 * HOUR)] })],
+      [league('l1')],
+      today,
+      now,
+      null,
+      [social('seguir:ana', { icon: 'follow' })],
+    );
+    expect(notices.map((n) => [n.id, n.kind, n.category])).toEqual([
+      ['seguir:ana', 'social', 'social'],
+      ['reaccion:l1:e1_p1', 'reaccion', 'social'],
+    ]);
+    expect(notices[0]).toMatchObject({ title: 'Ana te empezó a seguir', body: 'Mira su perfil', to: '/perfil/ana', lid: '', leagueName: '', sport: null, icon: 'follow', time: now - HOUR });
+  });
+
+  it('con una liga de la cuenta llevan su nombre y su deporte; si no, el deporte que traigan', () => {
+    const padel = league('p1', { name: 'Pádel Club', sport: 'padel', visibility: 'public' });
+    const notices = buildNotices([], [padel], today, now, null, [
+      social('like:1', { lid: 'p1', title: 'A Luis le gustó tu juego', icon: 'like' }),
+      social('like:2', { lid: 'otra', sport: 'tennis', at: now - 2 * HOUR }),
+    ]);
+    expect(notices.map((n) => [n.id, n.lid, n.leagueName, n.sport, n.private])).toEqual([
+      ['like:1', 'p1', 'Pádel Club', 'padel', false],
+      ['like:2', '', '', 'tennis', false],
+    ]);
+  });
+
+  it('la hora puede venir en ms, ISO o Stamp; sin título, sin id o sin hora que sirva, no sale', () => {
+    const notices = buildNotices([], [], today, now, null, [
+      social('ms', { at: now - HOUR }),
+      social('iso', { at: new Date(now - 2 * HOUR).toISOString() }),
+      social('stamp', { at: at(now - 3 * HOUR) }),
+      social('sin-titulo', { title: '  ' }),
+      social('', {}),
+      social('sin-hora', { at: null }),
+      social('hora-mala', { at: 'ayer' }),
+      social('nan', { at: Number.NaN }),
+    ]);
+    expect(notices.map((n) => [n.id, n.time])).toEqual([
+      ['ms', now - HOUR],
+      ['iso', now - 2 * HOUR],
+      ['stamp', now - 3 * HOUR],
+    ]);
+  });
+
+  it('solo llevan a rutas de la app; un id repetido sale una vez', () => {
+    const notices = buildNotices([], [], today, now, null, [
+      social('a', { url: 'https://otro.sitio/robar' }),
+      social('b', { url: '//otro.sitio' }),
+      social('c', { url: 'javascript:alert(1)' }),
+      social('a', { title: 'Repetido', at: now }),
+    ]);
+    expect(notices.map((n) => [n.id, n.title, n.to])).toEqual([
+      ['a', 'Ana te empezó a seguir', '/avisos'],
+      ['b', 'Ana te empezó a seguir', '/avisos'],
+      ['c', 'Ana te empezó a seguir', '/avisos'],
+    ]);
+    expect(safeAppPath('/perfil/ana?tab=juegos')).toBe('/perfil/ana?tab=juegos');
+    expect(safeAppPath('/\\otro.sitio')).toBeNull();
+    expect(safeAppPath('/con espacio')).toBeNull();
+    expect(safeAppPath('perfil')).toBeNull();
+    expect(safeAppPath(null)).toBeNull();
+  });
+
+  it('se guardan como mucho los más nuevos', () => {
+    const many = Array.from({ length: MAX_NOTICES + 5 }, (_, i) => social(`s${i}`, { at: now - i * 60_000 }));
+    const notices = buildNotices([], [], today, now, null, many);
+    expect(notices).toHaveLength(MAX_NOTICES);
+    expect(notices[0].id).toBe('s0');
+  });
+});
+
+describe('avisos del perfil social (lo que devuelve social_notices)', () => {
+  const iso = (t: number) => new Date(t).toISOString();
+  const like = (uid: string, name: string, at: number, extra: Record<string, unknown> = {}) => ({
+    kind: 'like',
+    at: iso(at),
+    userId: uid,
+    name,
+    gameKind: 'match',
+    id: 'm1',
+    playerId: 'p1',
+    leagueId: 'l1',
+    leagueName: 'Liga l1',
+    sport: 'padel',
+    url: '/l/l1/juegos?partido=m1',
+    ...extra,
+  });
+
+  it('seguidores: uno por persona, lleva a su perfil', () => {
+    const out = socialNoticesFromRows([{ kind: 'follow', at: iso(now - HOUR), userId: 'u9', name: 'Ana Pérez' }]);
+    expect(out).toEqual([
+      { id: 'seguir:u9', kind: 'social', icon: 'follow', title: 'Ana Pérez te empezó a seguir', body: 'Toca para ver su perfil.', url: '/u/u9', at: now - HOUR },
+    ]);
+  });
+
+  it('me gusta: uno por juego con todos, la hora del más nuevo y su liga y deporte', () => {
+    const out = socialNoticesFromRows([
+      like('u2', 'Pedro Díaz', now - HOUR),
+      like('u3', 'Rosa', now - 2 * HOUR),
+      like('u4', 'Luis', now - 3 * HOUR),
+      like('u5', 'Juan', now - 4 * HOUR, { gameKind: 'golf', id: 'c1', url: '/l/l1/e/e1' }),
+    ]);
+    expect(out.map((g) => [g.id, g.title, g.url, g.at, g.lid, g.sport])).toEqual([
+      ['gusta:match:m1', 'A Pedro y 2 más les gustó tu partido', '/l/l1/juegos?partido=m1', now - HOUR, 'l1', 'padel'],
+      ['gusta:golf:c1', 'A Juan le gustó tu ronda', '/l/l1/e/e1', now - 4 * HOUR, 'l1', 'padel'],
+    ]);
+    // Con la liga entre las de la cuenta, sale como las demás: en Social, con su liga y su deporte.
+    const [first] = buildNotices([], [league('l1')], today, now, null, out);
+    expect(first).toMatchObject({ id: 'gusta:match:m1', category: 'social', lid: 'l1', leagueName: 'Liga Norte', icon: 'like', to: '/l/l1/juegos?partido=m1' });
+  });
+
+  it('lo dañado se salta; una ruta de afuera no se usa', () => {
+    expect(socialNoticesFromRows(null)).toEqual([]);
+    expect(socialNoticesFromRows({ kind: 'follow' })).toEqual([]);
+    const out = socialNoticesFromRows([
+      null,
+      'x',
+      { kind: 'follow', at: 'ayer', userId: 'u1', name: 'A' },
+      { kind: 'follow', at: iso(now), name: 'Sin id' },
+      { kind: 'otro', at: iso(now), userId: 'u1' },
+      like('u2', 'Pedro', now, { id: null }),
+      like('u3', '', now, { url: 'https://otro.sitio' }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ title: 'A Alguien le gustó tu partido', url: '/l/l1/juegos' });
+  });
+});
+
+describe('página de avisos: filtros y grupos', () => {
+  const n = (id: string, category: Notice['category'], sport: string | null, time = now): Notice => ({
+    id,
+    kind: category === 'social' ? 'social' : 'torneo',
+    category,
+    sport,
+    title: id,
+    body: '',
+    lid: sport ? 'l1' : '',
+    leagueName: sport ? 'Liga' : '',
+    leagueKind: 'liga',
+    private: false,
+    to: '/',
+    time,
+  });
+
+  it('filtra por tipo y por deporte; lo que no es de ningún deporte sale en todos', () => {
+    const items = [n('a', 'partidos', 'padel'), n('b', 'ligas', 'bowling'), n('c', 'social', null), n('d', 'admin', 'padel')];
+    const ids = (list: Notice[]) => list.map((x) => x.id);
+    expect(ids(filterNotices(items, 'todo', null))).toEqual(['a', 'b', 'c', 'd']);
+    expect(ids(filterNotices(items, 'partidos', null))).toEqual(['a']);
+    expect(ids(filterNotices(items, 'todo', 'padel'))).toEqual(['a', 'c', 'd']);
+    expect(ids(filterNotices(items, 'social', 'bowling'))).toEqual(['c']);
+    expect(ids(filterNotices(items, 'admin', 'bowling'))).toEqual([]);
+    expect(NOTICE_FILTERS.map((f) => f.label)).toEqual(['Todo', 'Partidos y resultados', 'Mis ligas', 'Social', 'Admin']);
+    expect(isNoticeFilter('social')).toBe(true);
+    expect(isNoticeFilter('otra')).toBe(false);
+  });
+
+  it('agrupa por Hoy, Esta semana (6 días de antes) y Antes, sin grupos vacíos', () => {
+    const midnight = new Date(2026, 8, 25).getTime();
+    const items = [
+      n('hoy', 'ligas', 'bowling', midnight + HOUR),
+      n('medianoche', 'ligas', 'bowling', midnight),
+      n('ayer', 'ligas', 'bowling', midnight - 1),
+      n('hace6', 'ligas', 'bowling', new Date(2026, 8, 19).getTime()),
+      n('hace7', 'ligas', 'bowling', new Date(2026, 8, 19).getTime() - 1),
+    ];
+    expect(groupNotices(items, now).map((g) => [g.label, g.items.map((x) => x.id)])).toEqual([
+      ['Hoy', ['hoy', 'medianoche']],
+      ['Esta semana', ['ayer', 'hace6']],
+      ['Antes', ['hace7']],
+    ]);
+    expect(groupNotices([items[4]], now).map((g) => g.id)).toEqual(['antes']);
+    expect(groupNotices([], now)).toEqual([]);
+  });
+});
+
+describe('página de avisos: leídos, sin leer y el número de la campana', () => {
+  const a = { id: 'a', time: 1000 };
+  const b = { id: 'b', time: 2000 };
+  const c = { id: 'c', time: 3000 };
+  const items = [c, b, a] as Notice[];
+
+  it('abrir uno lo marca leído; si vuelve con una hora nueva (otro me gusta), sale sin leer otra vez', () => {
+    const s1 = markNoticeRead(EMPTY_READ_STATE, b);
+    expect(isNoticeUnread(b, s1)).toBe(false);
+    expect(isNoticeUnread(a, s1)).toBe(true);
+    expect(unreadCount(items, s1)).toBe(2);
+    // Ya leído: el mismo estado (no se vuelve a guardar).
+    expect(markNoticeRead(s1, b)).toBe(s1);
+    expect(isNoticeUnread({ id: 'b', time: 2500 }, s1)).toBe(true);
+  });
+
+  it('marcar todo: hasta el más nuevo (hora del servidor), nunca hacia atrás; o solo los que se ven', () => {
+    const all = markAllNoticesRead(markNoticeRead(EMPTY_READ_STATE, b), items, 99_999);
+    expect(all).toEqual({ readAt: 3000, seenAt: 3000, reads: {} });
+    expect(unreadCount(items, all)).toBe(0);
+    expect(markAllNoticesRead({ readAt: 5000, seenAt: 5000, reads: {} }, items, 99_999).readAt).toBe(5000);
+    // Sin avisos: hasta ahora.
+    expect(markAllNoticesRead(EMPTY_READ_STATE, [], 7000).readAt).toBe(7000);
+    const some = markNoticesRead(EMPTY_READ_STATE, [a, c]);
+    expect(items.filter((x) => isNoticeUnread(x, some)).map((x) => x.id)).toEqual(['b']);
+    expect(markNoticesRead(some, [a])).toBe(some);
+  });
+
+  it('entrar a la página quita el número de la campana, pero lo sin leer sigue con su punto', () => {
+    expect(badgeCount(items, EMPTY_READ_STATE)).toBe(3);
+    const seen = markNoticesSeen(EMPTY_READ_STATE, items);
+    expect(seen.seenAt).toBe(3000);
+    expect(badgeCount(items, seen)).toBe(0);
+    expect(unreadCount(items, seen)).toBe(3);
+    expect(markNoticesSeen(seen, items)).toBe(seen);
+    // Llega uno nuevo: el número vuelve a 1.
+    expect(badgeCount([{ id: 'd', time: 4000 } as Notice, ...items], seen)).toBe(1);
+    // Lo abierto no cuenta aunque sea nuevo.
+    expect(badgeCount(items, markNoticeRead(EMPTY_READ_STATE, c))).toBe(2);
+  });
+
+  it('lo abierto uno a uno que ya cubre «todo leído» se olvida', () => {
+    const s = markNoticesRead(EMPTY_READ_STATE, [a, b, c]);
+    expect(Object.keys(markAllNoticesRead(s, [b], 0).reads)).toEqual(['c']);
+  });
+});
+
+describe('página de avisos: lo leído se guarda en el teléfono, por cuenta', () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, String(v)),
+      removeItem: (k: string) => void store.delete(k),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('se guarda y se lee igual; cada cuenta el suyo', () => {
+    const s = { readAt: 1000, seenAt: 2500, reads: { x: 2000, viejo: 500 } };
+    saveReadState('u1', s);
+    expect(loadReadState('u1')).toEqual({ readAt: 1000, seenAt: 2500, reads: { x: 2000 } });
+    expect(loadReadState('u2')).toEqual(EMPTY_READ_STATE);
+    expect(loadReadState(null)).toEqual(EMPTY_READ_STATE);
+  });
+
+  it('quien viene de la campana de antes: lo que ya vio queda leído y visto', () => {
+    store.set('mm:avisos-vistos:u1', '1234');
+    expect(loadReadState('u1')).toEqual({ readAt: 1234, seenAt: 1234, reads: {} });
+  });
+
+  it('lo guardado dañado no rompe nada (y no se pierde lo demás)', () => {
+    store.set('mm:avisos-vistos:u1', '1000');
+    store.set('mm:avisos-leidos:u1', '{no es json');
+    expect(loadReadState('u1')).toEqual({ readAt: 1000, seenAt: 1000, reads: {} });
+    store.set('mm:avisos-leidos:u1', JSON.stringify({ a: 2000, b: 'x', c: null }));
+    expect(loadReadState('u1').reads).toEqual({ a: 2000 });
+  });
+
+  it('sin almacenamiento: nada leído y guardar no falla', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('bloqueado');
+      },
+      setItem: () => {
+        throw new Error('bloqueado');
+      },
+      removeItem: () => undefined,
+    });
+    expect(loadReadState('u1')).toEqual(EMPTY_READ_STATE);
+    expect(() => saveReadState('u1', { readAt: 1, seenAt: 1, reads: {} })).not.toThrow();
   });
 });

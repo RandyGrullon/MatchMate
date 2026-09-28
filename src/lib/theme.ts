@@ -31,6 +31,9 @@ const STYLE_ID = 'mm-acento';
 const LIGHT_SURFACE = '#ffffff';
 const DARK_SURFACE = '#161922';
 const DARK_FG = '#0d0f15';
+/** Los demás fondos donde va texto del color (el fondo de la página y el gris de los botones), en claro y oscuro. */
+const LIGHT_BACKS = ['#f4f5f8', '#eef0f4'];
+const DARK_BACKS = ['#0d0f15', '#1e222d'];
 
 type Rgb = [number, number, number];
 
@@ -57,10 +60,11 @@ export function contrast(a: Rgb, b: Rgb): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Acerca el color a `toward` lo mínimo necesario para que se lea contra `surface` (4.5:1). */
-function readable(base: Rgb, surface: Rgb, toward: Rgb): Rgb {
+/** Acerca el color a `toward` lo mínimo necesario para que se lea (4.5:1, AA) contra todos los `surfaces`. */
+function readable(base: Rgb, surfaces: Rgb[], toward: Rgb): Rgb {
+  const worst = (c: Rgb) => Math.min(...surfaces.map((s) => contrast(c, s)));
   let c = base;
-  for (let t = 0; t <= 1.0001 && contrast(c, surface) < 4.5; t += 0.05) c = mix(base, toward, t);
+  for (let t = 0; t <= 1.0001 && worst(c) < 4.5; t += 0.05) c = mix(base, toward, t);
   return c;
 }
 
@@ -83,12 +87,15 @@ export function accentVars(hex: string): { light: AccentVars; dark: AccentVars }
   const darkSurface = parseHex(DARK_SURFACE)!;
   const darkFg = parseHex(DARK_FG)!;
 
-  const l = readable(base, lightSurface, black);
-  const d = readable(base, darkSurface, white);
+  const lightSoft = mix(lightSurface, base, 0.12);
+  const darkSoft = mix(darkSurface, base, 0.24);
+  // Se lee sobre las tarjetas, el fondo de la página, el gris de los botones y su propio fondo suave.
+  const l = readable(base, [lightSurface, lightSoft, ...LIGHT_BACKS.map((h) => parseHex(h)!)], black);
+  const d = readable(base, [darkSurface, darkSoft, ...DARK_BACKS.map((h) => parseHex(h)!)], white);
   const fgOn = (c: Rgb) => (contrast(c, white) >= contrast(c, darkFg) ? '#ffffff' : DARK_FG);
   return {
-    light: { accent: toHex(l), fg: fgOn(l), soft: toHex(mix(lightSurface, base, 0.12)) },
-    dark: { accent: toHex(d), fg: fgOn(d), soft: toHex(mix(darkSurface, base, 0.24)) },
+    light: { accent: toHex(l), fg: fgOn(l), soft: toHex(lightSoft) },
+    dark: { accent: toHex(d), fg: fgOn(d), soft: toHex(darkSoft) },
   };
 }
 
@@ -142,6 +149,56 @@ export function scopedAccentCss(selector: string, hex: string | null): string {
  * eligió otro color en Configuración, se respeta en todas partes.
  */
 export const usesBrandAccent = (p: Pick<ThemePrefs, 'accent'>) => !p.accent || p.accent.toLowerCase() === DEFAULT_ACCENT;
+
+/**
+ * Como `scopedAccentCss`, pero sin color (null) o con el morado pone los tonos de siempre de la app (a mano) en vez
+ * de dejarlo vacío: sirve para una parte de la pantalla que debe verse del color de SU deporte aunque la app entera
+ * esté con el de otro (p. ej. el cuadro del boliche en el selector de deporte mientras la app está en pádel).
+ */
+export function scopedVarsCss(selector: string, hex: string | null): string {
+  if (!/^\.[a-z][a-z0-9-]*$/.test(selector)) return '';
+  if (hex && !parseHex(hex)) return '';
+  const v = brandColors(hex);
+  return [
+    `${selector}{${decl(v.light)}}`,
+    `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) ${selector}{${decl(v.dark)}}}`,
+    `:root[data-theme="dark"] ${selector}{${decl(v.dark)}}`,
+  ].join('');
+}
+
+// ---------- El color del deporte en que estás (toda la app) ----------
+
+/** Id del <style> con el color del deporte activo (aparte del color elegido en Configuración: `mm-acento`). */
+export const SPORT_STYLE_ID = 'mm-acento-deporte';
+/** Se avisa al cambiar la apariencia en Configuración (el color del deporte se vuelve a poner o se quita). */
+export const THEME_EVENT = 'mm:tema';
+
+/**
+ * CSS del color del deporte en que estás para TODA la app (html:root, en claro, oscuro y como el teléfono), con los
+ * mismos tonos que dentro de sus ligas (se leen a 4.5:1 sobre el fondo claro y el oscuro). Vacío si el deporte no
+ * tiene color propio (el boliche usa el morado de siempre) o si la cuenta eligió su color en Configuración: ese se
+ * respeta en todas partes.
+ */
+export function sportAccentCss(hex: string | null, prefs: Pick<ThemePrefs, 'accent'>): string {
+  return hex && usesBrandAccent(prefs) ? accentCss(hex) : '';
+}
+
+/** Pone (o quita) el color del deporte en la página. */
+export function applySportAccent(hex: string | null, prefs: Pick<ThemePrefs, 'accent'> = loadTheme()) {
+  if (typeof document === 'undefined') return;
+  const css = sportAccentCss(hex, prefs);
+  let style = document.getElementById(SPORT_STYLE_ID) as HTMLStyleElement | null;
+  if (!css) {
+    style?.remove();
+    return;
+  }
+  if (!style) {
+    style = document.createElement('style');
+    style.id = SPORT_STYLE_ID;
+    document.head.appendChild(style);
+  }
+  if (style.textContent !== css) style.textContent = css;
+}
 
 export function loadTheme(): ThemePrefs {
   try {
@@ -201,4 +258,6 @@ export function saveTheme(p: ThemePrefs) {
     // sin almacenamiento: vale solo mientras la app está abierta
   }
   applyTheme(p);
+  // El color del deporte en que estás depende de si la cuenta dejó el color de la app como viene.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(THEME_EVENT));
 }

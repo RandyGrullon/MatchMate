@@ -9,10 +9,10 @@ import { liveInfo } from '../lib/live';
 import { entryLine, type Line } from '../lib/stats';
 import type { BowlingEvent, Entry, GameComment, Player, Reaction } from '../lib/types';
 import { useNow } from '../lib/useNow';
-import { Avatar } from '../components/Avatar';
 import { GameDetailModal } from '../components/event/GameDetailModal';
 import { LiveBoard } from '../components/LiveBoard';
 import { PostSocial, ReactionBar } from '../components/social/Social';
+import { UserLink } from '../components/social/UserLink';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Skeleton, cx } from '../components/ui';
 
 /** Eventos pasados que se muestran de a poco. */
@@ -23,6 +23,8 @@ interface Post {
   entry: Entry;
   line: Line;
   name: string;
+  /** Cuenta del jugador (su perfil `/u/:id`); null si no tiene cuenta. */
+  uid: string | null;
   badges: string[];
 }
 
@@ -58,6 +60,8 @@ export default function GamesFeedPage() {
   const reactions = useReactionsOfEvents(lid, ids);
   const comments = useCommentsOfEvents(lid, ids);
   const nameOf = useMemo(() => new Map(players.data.map((p: Player) => [p.id, p.name])), [players.data]);
+  // Los menores nunca tienen cuenta ni perfil público.
+  const uidOf = useMemo(() => new Map(players.data.flatMap((p: Player) => (p.uid && !p.isMinor ? [[p.id, p.uid] as const] : []))), [players.data]);
 
   const loadError = events.error ?? players.error ?? entries.error;
   if (loadError) return <LoadError error={loadError} />;
@@ -85,7 +89,7 @@ export default function GamesFeedPage() {
       live={live}
       loading={entries.loading}
       startsAt={startsAt}
-      posts={postsOf(ev, byEvent(ev.id), nameOf, live)}
+      posts={postsOf(ev, byEvent(ev.id), nameOf, uidOf, live)}
       reactionsOf={reactionsOf}
       commentsOf={commentsOf}
       eventUrl={league.kind === 'torneo' ? base : `${base}/e/${ev.id}`}
@@ -157,7 +161,7 @@ export default function GamesFeedPage() {
 }
 
 /** Juegos de cada jugador del evento, de la mejor serie a la peor, con sus distinciones. */
-function postsOf(event: BowlingEvent, entries: Entry[], nameOf: Map<string, string>, live: boolean): Post[] {
+function postsOf(event: BowlingEvent, entries: Entry[], nameOf: Map<string, string>, uidOf: Map<string, string>, live: boolean): Post[] {
   // En juego se ven también los juegos sin verificar (en vivo); en los pasados, solo los que cuentan.
   const lines = entries.map((entry) => ({ entry, line: entryLine(entry, event, live) })).filter((p) => p.line.games > 0);
   const many = lines.length > 1;
@@ -169,7 +173,7 @@ function postsOf(event: BowlingEvent, entries: Entry[], nameOf: Map<string, stri
       if (line.high === 300) badges.push('🎳 ¡Juego perfecto!');
       else if (many && line.high === best) badges.push('🏆 Mejor juego');
       if (many && line.games > 1 && line.scratch === bestSeries) badges.push('🥇 Mejor serie');
-      return { entry, line, name: nameOf.get(entry.playerId) ?? '(jugador borrado)', badges };
+      return { entry, line, name: nameOf.get(entry.playerId) ?? '(jugador borrado)', uid: uidOf.get(entry.playerId) ?? null, badges };
     })
     .sort((a, b) => b.line.scratch - a.line.scratch || b.line.high - a.line.high);
 }
@@ -253,46 +257,49 @@ function PostCard({
   comments: GameComment[];
   onOpen: () => void;
 }) {
-  const { entry, line, name, badges } = post;
+  const { entry, line, name, uid, badges } = post;
   return (
     <Card className="flex flex-col gap-2 px-3 pt-3 pb-1.5" style={{ '--i': i } as CSSProperties}>
-      <button type="button" onClick={onOpen} className="flex items-start gap-3 text-left">
-        <Avatar name={name} />
+      <div className="flex items-start gap-3">
+        {/* Nombre e iniciales llevan a su perfil (si tiene cuenta); el resto de la tarjeta abre el juego. */}
+        <UserLink userId={uid} name={name} hideName className="shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate font-semibold">{name}</span>
+            <UserLink userId={uid} name={name} avatar={false} className="max-w-full" />
             {badges.map((b) => (
               <span key={b} className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
                 {b}
               </span>
             ))}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {line.scores.map((s, k) =>
-              s == null ? null : (
-                <span
-                  key={k}
-                  className={cx(
-                    'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
-                    s >= 200 ? 'bg-accent text-accent-fg' : 'bg-surface-2',
-                    live && !line.verified[k] && 'opacity-70',
-                  )}
-                  title={`Juego ${k + 1}${live && !line.verified[k] ? ' (sin verificar)' : ''}`}
-                >
-                  {s >= 200 && <Flame className="mr-0.5 size-3" />}
-                  {s}
-                </span>
-              ),
-            )}
-          </div>
+          <button type="button" onClick={onOpen} className="mt-1.5 flex w-full items-start gap-3 rounded-lg text-left" aria-label={`Ver el juego de ${name}`}>
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+              {line.scores.map((s, k) =>
+                s == null ? null : (
+                  <span
+                    key={k}
+                    className={cx(
+                      'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
+                      s >= 200 ? 'bg-accent text-accent-fg' : 'bg-surface-2',
+                      live && !line.verified[k] && 'opacity-70',
+                    )}
+                    title={`Juego ${k + 1}${live && !line.verified[k] ? ' (sin verificar)' : ''}`}
+                  >
+                    {s >= 200 && <Flame className="mr-0.5 size-3" />}
+                    {s}
+                  </span>
+                ),
+              )}
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-lg leading-tight font-bold tabular-nums">{line.scratch}</div>
+              <div className="text-[11px] text-muted">
+                {line.games > 1 ? 'Serie' : 'Pinos'} · prom {line.avg}
+              </div>
+            </div>
+          </button>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-lg leading-tight font-bold tabular-nums">{line.scratch}</div>
-          <div className="text-[11px] text-muted">
-            {line.games > 1 ? 'Serie' : 'Pinos'} · prom {line.avg}
-          </div>
-        </div>
-      </button>
+      </div>
       <div className="border-t border-line pt-1">
         <ReactionBar entry={entry} reactions={reactions} comments={comments} onComments={onOpen} />
       </div>

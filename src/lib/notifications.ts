@@ -24,23 +24,79 @@ export type NoticeKind =
   | 'cambio-hora'
   | 'aplazado'
   | 'ronda'
-  | 'reto';
+  | 'reto'
+  // Genéricos de afuera (seguidores, me gusta del perfil): ver `GenericNotice`.
+  | 'social';
 
-/** Un aviso de la campana: qué pasó, en qué liga y a dónde lleva. */
+/** Para los filtros de la página de avisos: Partidos y resultados, Mis ligas, Social y Admin. */
+export type NoticeCategory = 'partidos' | 'ligas' | 'social' | 'admin';
+
+/** Ícono de un aviso social: seguir, me gusta o comentario. */
+export type SocialIcon = 'follow' | 'like' | 'comment';
+
+/** Un aviso: qué pasó, en qué liga (si es de una) y a dónde lleva. */
 export interface Notice {
   id: string;
   kind: NoticeKind;
   title: string;
   body: string;
+  /** Liga del aviso ('' si no es de una liga, p. ej. «X te empezó a seguir»). */
   lid: string;
   leagueName: string;
   /** Liga o torneo sin liga. */
   leagueKind: 'liga' | 'torneo';
   private: boolean;
+  /** Deporte de la liga (null si no es de una liga). */
+  sport: string | null;
+  category: NoticeCategory;
   to: string;
   /** Milisegundos: para ordenar y saber si es nuevo. */
   time: number;
+  /** Solo los sociales genéricos: qué ícono llevan. */
+  icon?: SocialIcon;
 }
+
+/**
+ * Aviso genérico que viene de afuera (el perfil social: «X te empezó a seguir», «A X le gustó tu juego»).
+ * `url` es una ruta de la app («/u/…», «/l/…»); `at` la hora del servidor (ms, ISO o Stamp). Con `lid` (y la liga
+ * entre las de la cuenta) sale con el nombre y el deporte de la liga; si no, con `sport` si lo trae.
+ */
+export interface GenericNotice {
+  id: string;
+  kind: 'social';
+  title: string;
+  body: string;
+  url: string;
+  at: number | string | { toMillis(): number } | null | undefined;
+  icon?: SocialIcon;
+  lid?: string | null;
+  sport?: string | null;
+}
+
+/** Categoría de cada tipo de aviso (el reclamo al organizador va en Admin: lo decide `buildMatchNotices`). */
+const KIND_CATEGORY: Record<NoticeKind, NoticeCategory> = {
+  torneo: 'ligas',
+  'torneo-hoy': 'ligas',
+  practica: 'ligas',
+  aprobado: 'partidos',
+  rechazado: 'partidos',
+  'por-aprobar': 'admin',
+  reaccion: 'social',
+  comentario: 'social',
+  sugerencia: 'admin',
+  'partido-hoy': 'partidos',
+  'por-confirmar': 'partidos',
+  reclamo: 'partidos',
+  'cambio-hora': 'partidos',
+  aplazado: 'partidos',
+  ronda: 'partidos',
+  reto: 'partidos',
+  social: 'social',
+};
+
+/** Lo que arma cada parte antes de ponerle la categoría (la de su tipo si no trae otra). */
+type Draft = Omit<Notice, 'category'> & { category?: NoticeCategory };
+const finish = (n: Draft): Notice => ({ ...n, category: n.category ?? KIND_CATEGORY[n.kind] });
 
 const DAY = 86400_000;
 const HOUR = 3600_000;
@@ -62,16 +118,23 @@ const newestFirst = <T extends { createdAt?: { toMillis(): number } | null }>(li
 export const postUrl = (lid: string, entryId: string) => `/l/${lid}/juegos?juego=${encodeURIComponent(entryId)}`;
 
 /** Máximo de avisos en la lista. */
-const MAX_NOTICES = 40;
+export const MAX_NOTICES = 60;
 
 /**
  * Arma los avisos a partir de lo que pasa en las ligas de la cuenta (y, si juega deportes de partidos, de sus
- * partidos: `matches`, ver `buildMatchNotices`). `today` es 'YYYY-MM-DD' y `now` en milisegundos (se pasan para
- * poder probarlo).
+ * partidos: `matches`, ver `buildMatchNotices`), más los genéricos de afuera (`extra`: seguidores y me gusta del
+ * perfil). `today` es 'YYYY-MM-DD' y `now` en milisegundos (se pasan para poder probarlo).
  */
-export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: string, now: number, matches: MatchNoticeFeed | null = null): Notice[] {
+export function buildNotices(
+  feeds: LeagueFeed[],
+  leagues: League[],
+  today: string,
+  now: number,
+  matches: MatchNoticeFeed | null = null,
+  extra: readonly GenericNotice[] = [],
+): Notice[] {
   const byId = new Map(leagues.map((l) => [l.id, l]));
-  const out: Notice[] = [];
+  const out: Draft[] = [];
   const startOfToday = parseDate(today).getTime();
   const weekAhead = new Date(startOfToday + 7 * DAY);
   const inAWeek = `${weekAhead.getFullYear()}-${String(weekAhead.getMonth() + 1).padStart(2, '0')}-${String(weekAhead.getDate()).padStart(2, '0')}`;
@@ -79,14 +142,15 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
   for (const feed of feeds) {
     const league = byId.get(feed.lid);
     if (!league) continue;
+    const sport = leagueSport(league);
     const base = {
       lid: feed.lid,
       leagueName: league.name,
       leagueKind: (league.kind ?? 'liga') as 'liga' | 'torneo',
       private: league.visibility === 'private',
+      sport,
     };
     const eventsById = new Map(feed.events.map((e) => [e.id, e]));
-    const sport = leagueSport(league);
     const bowling = sport === 'bowling';
 
     for (const e of feed.events) {
@@ -229,8 +293,105 @@ export function buildNotices(feeds: LeagueFeed[], leagues: League[], today: stri
     }
   }
 
-  const all = matches ? [...out, ...buildMatchNotices(matches, leagues, now)] : out;
-  return all.sort((a, b) => b.time - a.time).slice(0, MAX_NOTICES);
+  const all = [...out.map(finish), ...buildMatchNotices(matches, leagues, now), ...extra.flatMap((g) => fromGeneric(g, byId) ?? [])];
+  // Un id una sola vez (el primero gana), del más nuevo al más viejo.
+  const seen = new Set<string>();
+  const unique = all.filter((n) => !seen.has(n.id) && !!seen.add(n.id));
+  return unique.sort((a, b) => b.time - a.time).slice(0, MAX_NOTICES);
+}
+
+/** Solo rutas de la app («/perfil/ana»), nunca otra página («//otro.sitio», «https://…», «javascript:»). */
+export function safeAppPath(url: string | null | undefined): string | null {
+  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return null;
+  return /\s/.test(url) ? null : url;
+}
+
+/** Qué juego le gustó a alguien, según el tipo de juego del perfil social. */
+const GAME_NOUN: Record<string, string> = { match: 'tu partido', golf: 'tu ronda', swim: 'tu prueba' };
+
+const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+const idText = (v: unknown): string => (typeof v === 'string' || typeof v === 'number' ? String(v) : '');
+
+/**
+ * Lo que devuelve `social_notices` (la RPC del perfil social) como avisos genéricos:
+ * - `{kind: 'follow', at, userId, name}` → «Ana te empezó a seguir» (lleva a su perfil, /u/…);
+ * - `{kind: 'like', at, userId, name, gameKind, id, leagueId, sport, url}` → un aviso por juego con todos los que
+ *   le dieron me gusta («A Ana y 2 más les gustó tu partido»), con la hora del más nuevo: si llega otro me gusta,
+ *   el aviso vuelve a salir sin leer.
+ * Lo que venga dañado o incompleto se salta.
+ */
+export function socialNoticesFromRows(rows: unknown): GenericNotice[] {
+  if (!Array.isArray(rows)) return [];
+  const out: GenericNotice[] = [];
+  const likes = new Map<string, { row: Record<string, unknown>; people: { uid: string; name: string }[]; at: number }>();
+  for (const raw of rows as unknown[]) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    const uid = idText(row.userId);
+    const at = typeof row.at === 'string' && valid(row.at) ? Date.parse(row.at) : null;
+    if (!uid || at === null) continue;
+    const name = text(row.name) || 'Alguien';
+    if (row.kind === 'follow') {
+      out.push({
+        id: `seguir:${uid}`,
+        kind: 'social',
+        icon: 'follow',
+        title: `${name} te empezó a seguir`,
+        body: 'Toca para ver su perfil.',
+        url: `/u/${encodeURIComponent(uid)}`,
+        at,
+      });
+    } else if (row.kind === 'like') {
+      const game = idText(row.id);
+      if (!game) continue;
+      const key = `${text(row.gameKind) || 'juego'}:${game}`;
+      const prev = likes.get(key);
+      if (prev) {
+        prev.people.push({ uid, name });
+        prev.at = Math.max(prev.at, at);
+      } else likes.set(key, { row, people: [{ uid, name }], at });
+    }
+  }
+  for (const [key, { row, people: list, at }] of likes) {
+    // La RPC ya viene del más nuevo al más viejo: el primer nombre es el del último me gusta.
+    const { who, count } = people(list);
+    const lid = idText(row.leagueId);
+    out.push({
+      id: `gusta:${key}`,
+      kind: 'social',
+      icon: 'like',
+      title: `A ${who} ${count === 1 ? 'le gustó' : 'les gustó'} ${GAME_NOUN[text(row.gameKind)] ?? 'tu juego'}`,
+      body: 'Toca para verlo.',
+      url: safeAppPath(text(row.url)) ?? (lid ? `/l/${encodeURIComponent(lid)}/juegos` : '/perfil'),
+      at,
+      lid: lid || null,
+      sport: text(row.sport) || null,
+    });
+  }
+  return out.sort((a, b) => Number(b.at) - Number(a.at));
+}
+
+/** Un aviso genérico (social) como los demás; null si le falta algo. */
+function fromGeneric(g: GenericNotice, byId: Map<string, League>): Notice | null {
+  const time = typeof g.at === 'number' ? (Number.isFinite(g.at) ? g.at : null) : stamp(g.at);
+  const title = typeof g.title === 'string' ? g.title.trim() : '';
+  if (!g.id || !title || time === null) return null;
+  const league = g.lid ? byId.get(g.lid) : undefined;
+  return {
+    id: g.id,
+    kind: 'social',
+    category: 'social',
+    title,
+    body: typeof g.body === 'string' ? g.body.trim() : '',
+    lid: league?.id ?? '',
+    leagueName: league?.name ?? '',
+    leagueKind: (league?.kind ?? 'liga') as 'liga' | 'torneo',
+    private: league?.visibility === 'private',
+    sport: league ? leagueSport(league) : g.sport || null,
+    to: safeAppPath(g.url) ?? '/avisos',
+    time,
+    ...(g.icon ? { icon: g.icon } : {}),
+  };
 }
 
 // ---------- Partidos (raqueta y equipos) ----------
@@ -351,10 +512,20 @@ export function buildMatchNotices(feed: MatchNoticeFeed | null | undefined, leag
   const admins = new Set(feed.adminLeagues);
   const startOfToday = midnight(now);
 
-  const add = (lid: string, n: Omit<Notice, 'lid' | 'leagueName' | 'leagueKind' | 'private'>) => {
+  const add = (lid: string, n: Omit<Draft, 'lid' | 'leagueName' | 'leagueKind' | 'private' | 'sport'>) => {
     const league = byId.get(lid);
     if (!league || out.has(n.id)) return;
-    out.set(n.id, { ...n, lid, leagueName: league.name, leagueKind: (league.kind ?? 'liga') as 'liga' | 'torneo', private: league.visibility === 'private' });
+    out.set(
+      n.id,
+      finish({
+        ...n,
+        lid,
+        leagueName: league.name,
+        leagueKind: (league.kind ?? 'liga') as 'liga' | 'torneo',
+        private: league.visibility === 'private',
+        sport: leagueSport(league),
+      }),
+    );
   };
   const tzOf = (lid: string) => byId.get(lid)?.tz || DEFAULT_TZ;
   const sportOf = (lid: string) => {
@@ -368,6 +539,8 @@ export function buildMatchNotices(feed: MatchNoticeFeed | null | undefined, leag
     add(m.leagueId, {
       id: `reclamo:${m.id}`,
       kind: 'reclamo',
+      // Resolverlo es trabajo de organizador: sale en Admin.
+      category: 'admin',
       title: 'Reclamaron un resultado',
       body: [withScore(m), quoted(m.disputeNote), 'Toca para resolverlo.'].filter(Boolean).join(' '),
       to: matchUrl(m),
@@ -602,4 +775,159 @@ export function relativeTime(time: number, now: number): string {
   if (d <= 1) return 'ayer';
   if (d < 7) return `hace ${d} días`;
   return new Date(time).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' });
+}
+
+// ---------- Página de avisos: filtros, grupos y qué está leído ----------
+
+export type NoticeFilter = 'todo' | NoticeCategory;
+
+/** Los filtros de arriba de la página, en orden. */
+export const NOTICE_FILTERS: readonly { id: NoticeFilter; label: string }[] = [
+  { id: 'todo', label: 'Todo' },
+  { id: 'partidos', label: 'Partidos y resultados' },
+  { id: 'ligas', label: 'Mis ligas' },
+  { id: 'social', label: 'Social' },
+  { id: 'admin', label: 'Admin' },
+];
+
+export const isNoticeFilter = (v: unknown): v is NoticeFilter => NOTICE_FILTERS.some((f) => f.id === v);
+
+/**
+ * Los avisos de un filtro y un deporte (null = todos los deportes). Lo que no es de ningún deporte (p. ej. «X te
+ * empezó a seguir») sale en todos: no es de uno en particular.
+ */
+export function filterNotices(items: readonly Notice[], filter: NoticeFilter, sport: string | null): Notice[] {
+  return items.filter((n) => (filter === 'todo' || n.category === filter) && (!sport || !n.sport || n.sport === sport));
+}
+
+export type NoticeGroupId = 'hoy' | 'semana' | 'antes';
+
+export interface NoticeGroup {
+  id: NoticeGroupId;
+  label: string;
+  items: Notice[];
+}
+
+/** Hoy (desde la medianoche), Esta semana (los 6 días de antes) y Antes. Los vacíos no salen. */
+export function groupNotices(items: readonly Notice[], now: number): NoticeGroup[] {
+  const today = midnight(now);
+  const week = new Date(today);
+  week.setDate(week.getDate() - 6);
+  const groups: NoticeGroup[] = [
+    { id: 'hoy', label: 'Hoy', items: [] },
+    { id: 'semana', label: 'Esta semana', items: [] },
+    { id: 'antes', label: 'Antes', items: [] },
+  ];
+  for (const n of items) groups[n.time >= today ? 0 : n.time >= week.getTime() ? 1 : 2].items.push(n);
+  return groups.filter((g) => g.items.length);
+}
+
+/**
+ * Qué avisos están leídos, en este teléfono:
+ * - `readAt`: todo lo de antes de esta hora está leído («Marcar todo como leído»);
+ * - `reads`: los que se abrieron uno a uno (id → la hora del aviso que se abrió: si el aviso vuelve con una hora
+ *   nueva, p. ej. otro me gusta al mismo juego, vuelve a salir sin leer);
+ * - `seenAt`: la última vez que se entró a la página. El número rojo de la campana cuenta solo lo sin leer que
+ *   llegó después (al entrar se quita, y los puntos de lo sin leer siguen hasta abrirlos).
+ */
+export interface NoticeReadState {
+  readAt: number;
+  seenAt: number;
+  reads: Readonly<Record<string, number>>;
+}
+
+export const EMPTY_READ_STATE: NoticeReadState = { readAt: 0, seenAt: 0, reads: {} };
+
+/** Cuántos abiertos uno a uno se guardan como mucho (los más nuevos). */
+const MAX_READS = 300;
+
+export const isNoticeUnread = (n: Pick<Notice, 'id' | 'time'>, s: NoticeReadState): boolean => n.time > s.readAt && (s.reads[n.id] ?? -1) < n.time;
+
+/** Lo sin leer (los puntos). */
+export const unreadCount = (items: readonly Notice[], s: NoticeReadState): number => items.filter((n) => isNoticeUnread(n, s)).length;
+
+/** El número de la campana: lo sin leer que llegó después de la última vez que se entró a la página. */
+export const badgeCount = (items: readonly Notice[], s: NoticeReadState): number =>
+  items.filter((n) => n.time > s.seenAt && isNoticeUnread(n, s)).length;
+
+/** Sin lo que ya cubre `readAt` y, si son muchos, solo los más nuevos. */
+function pruneReads(reads: Readonly<Record<string, number>>, readAt: number): Record<string, number> {
+  const kept = Object.entries(reads).filter(([, t]) => Number.isFinite(t) && t > readAt);
+  kept.sort((a, b) => b[1] - a[1]);
+  return Object.fromEntries(kept.slice(0, MAX_READS));
+}
+
+/** Abrió un aviso: queda leído (si ya lo estaba, el mismo estado). */
+export function markNoticeRead(s: NoticeReadState, n: Pick<Notice, 'id' | 'time'>): NoticeReadState {
+  return markNoticesRead(s, [n]);
+}
+
+/** Leídos esos avisos (p. ej. «Marcar todo como leído» con un filtro: solo lo que se ve). */
+export function markNoticesRead(s: NoticeReadState, list: readonly Pick<Notice, 'id' | 'time'>[]): NoticeReadState {
+  const fresh = list.filter((n) => isNoticeUnread(n, s));
+  if (!fresh.length) return s;
+  const reads = { ...s.reads };
+  for (const n of fresh) reads[n.id] = n.time;
+  return { ...s, reads: pruneReads(reads, s.readAt) };
+}
+
+/**
+ * Todo leído hasta el aviso más nuevo (la hora del servidor, no el reloj del teléfono, que puede ir adelantado;
+ * sin avisos, ahora). Nunca hacia atrás.
+ */
+export function markAllNoticesRead(s: NoticeReadState, items: readonly Pick<Notice, 'time'>[], now: number): NoticeReadState {
+  const newest = items.reduce((m, n) => Math.max(m, n.time), 0);
+  const readAt = Math.max(s.readAt, newest || now);
+  return { readAt, seenAt: Math.max(s.seenAt, readAt), reads: pruneReads(s.reads, readAt) };
+}
+
+/** Entró a la página: el número de la campana se quita (lo sin leer sigue con su punto). */
+export function markNoticesSeen(s: NoticeReadState, items: readonly Pick<Notice, 'time'>[]): NoticeReadState {
+  const newest = items.reduce((m, n) => Math.max(m, n.time), 0);
+  return newest > s.seenAt ? { ...s, seenAt: newest } : s;
+}
+
+// Se guarda por cuenta. `mm:avisos-vistos` es la de siempre (antes: la última vez que se abrió la campana, que
+// marcaba todo leído): sigue siendo «leído hasta aquí».
+const readAtKey = (uid: string) => `mm:avisos-vistos:${uid}`;
+const seenAtKey = (uid: string) => `mm:avisos-abiertos:${uid}`;
+const readsKey = (uid: string) => `mm:avisos-leidos:${uid}`;
+
+/** Los abiertos uno a uno, de lo guardado (si está dañado, ninguno: no se pierde lo demás). */
+function parseReads(raw: string | null): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((e): e is [string, number] => typeof e[1] === 'number'));
+  } catch {
+    return {};
+  }
+}
+
+/** Lo leído de la cuenta en este teléfono (sin almacenamiento o sin cuenta: nada leído). */
+export function loadReadState(uid: string | null | undefined): NoticeReadState {
+  if (!uid) return EMPTY_READ_STATE;
+  try {
+    const readAt = Number(localStorage.getItem(readAtKey(uid))) || 0;
+    const seen = localStorage.getItem(seenAtKey(uid));
+    // Quien viene de la campana de antes: lo visto es lo leído.
+    const seenAt = seen === null ? readAt : Number(seen) || 0;
+    return { readAt, seenAt: Math.max(seenAt, 0), reads: pruneReads(parseReads(localStorage.getItem(readsKey(uid))), readAt) };
+  } catch {
+    return EMPTY_READ_STATE;
+  }
+}
+
+export function saveReadState(uid: string | null | undefined, s: NoticeReadState): void {
+  if (!uid) return;
+  try {
+    localStorage.setItem(readAtKey(uid), String(s.readAt));
+    localStorage.setItem(seenAtKey(uid), String(s.seenAt));
+    const reads = pruneReads(s.reads, s.readAt);
+    if (Object.keys(reads).length) localStorage.setItem(readsKey(uid), JSON.stringify(reads));
+    else localStorage.removeItem(readsKey(uid));
+  } catch {
+    // sin almacenamiento: al recargar vuelven a salir sin leer
+  }
 }

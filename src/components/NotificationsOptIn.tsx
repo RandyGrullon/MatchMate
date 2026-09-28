@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Bell, BellOff, BellRing, CheckCircle2, Smartphone } from 'lucide-react';
+import { Bell, BellOff, BellRing, CheckCircle2, Smartphone, X } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { notificationsText } from '../lib/notifications';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
@@ -7,17 +7,27 @@ import { pushConfigured } from '../lib/pushKey';
 import { sportsOf } from '../sports/registry';
 import { useFeedback } from './feedback';
 import { useNotifications } from './Notifications';
-import { Button, Card } from './ui';
+import { Button, Card, cx } from './ui';
 
 const LATER_KEY = 'mm:avisos-despues';
+/** La tarjeta de la página de avisos (aparte: cerrarla ahí no esconde la del Home, y al revés). */
+const PAGE_LATER_KEY = 'mm:avisos-pagina-despues';
 /** Si dijo "ahora no", se vuelve a ofrecer después de estos días. */
 const LATER_DAYS = 14;
 
-function askedRecently(): boolean {
+function askedRecently(key = LATER_KEY): boolean {
   try {
-    return Date.now() - Number(localStorage.getItem(LATER_KEY) ?? 0) < LATER_DAYS * 86400_000;
+    return Date.now() - Number(localStorage.getItem(key) ?? 0) < LATER_DAYS * 86400_000;
   } catch {
     return false;
+  }
+}
+
+function saveLater(key: string) {
+  try {
+    localStorage.setItem(key, String(Date.now()));
+  } catch {
+    // sin almacenamiento
   }
 }
 
@@ -60,11 +70,7 @@ export function NotificationsPrompt() {
   if (!user || hidden || !isStandalone() || state !== 'default') return null;
 
   function later() {
-    try {
-      localStorage.setItem(LATER_KEY, String(Date.now()));
-    } catch {
-      // sin almacenamiento
-    }
+    saveLater(LATER_KEY);
     setHidden(true);
   }
 
@@ -121,6 +127,77 @@ export function NotificationsCard() {
         <Button variant="primary" className="self-start" icon={<Bell className="size-4" />} loading={busy} onClick={enable}>
           Activar notificaciones
         </Button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Página de avisos, arriba: si las notificaciones del teléfono no están activas, cómo activarlas (o por qué no se
+ * puede: bloqueadas, o falta instalar la app). Con «Ahora no» o la X se esconde unos días.
+ */
+export function PushOptInCard() {
+  const { user } = useAuth();
+  const { state, busy, enable } = useEnable();
+  const [hidden, setHidden] = useState(() => askedRecently(PAGE_LATER_KEY));
+  if (!user || hidden || state === 'granted') return null;
+
+  function later() {
+    saveLater(PAGE_LATER_KEY);
+    setHidden(true);
+  }
+
+  const canAsk = state === 'default' && notificationsSupported() && isStandalone();
+  const look =
+    state === 'denied'
+      ? {
+          icon: <BellOff className="size-5" />,
+          tone: 'bg-warn-soft text-warn',
+          title: 'Las notificaciones están bloqueadas',
+          text: 'Para enterarte con la app cerrada, actívalas en los ajustes del teléfono (Notificaciones › MatchMate).',
+        }
+      : canAsk
+        ? {
+            icon: <BellRing className="size-5" />,
+            tone: 'bg-accent-soft text-accent',
+            title: 'Activa las notificaciones',
+            text: 'Te avisamos en el teléfono de tus partidos, resultados por confirmar y torneos, aunque la app esté cerrada.',
+          }
+        : {
+            icon: <Smartphone className="size-5" />,
+            tone: 'bg-accent-soft text-accent',
+            title: 'Recibe los avisos en tu teléfono',
+            text: 'Instala la app (Agregar a la pantalla de inicio) y ábrela desde el ícono para activar las notificaciones.',
+          };
+
+  return (
+    <Card className={cx('animate-fade-up flex flex-col gap-3 p-4', canAsk && 'border-accent/40')}>
+      <div className="flex items-start gap-3">
+        <div className={cx('flex size-10 shrink-0 items-center justify-center rounded-xl', look.tone)}>{look.icon}</div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{look.title}</p>
+          <p className="text-sm text-muted">{look.text}</p>
+        </div>
+        {!canAsk && (
+          <button
+            type="button"
+            onClick={later}
+            aria-label="Cerrar"
+            className="-mt-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-fg active:scale-95"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+      {canAsk && (
+        <div className="flex gap-2">
+          <Button className="h-11 flex-1" onClick={later}>
+            Ahora no
+          </Button>
+          <Button variant="primary" className="h-11 flex-1" icon={<Bell className="size-4" />} loading={busy} onClick={enable}>
+            Activar
+          </Button>
+        </div>
       )}
     </Card>
   );

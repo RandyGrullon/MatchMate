@@ -7,12 +7,30 @@ import type { TourStep } from '../components/Tour';
  * El color de la app se puede cambiar: los textos dicen «el botón del centro», no su color.
  */
 
-/** Tour del Home: lo principal de la app (sale la primera vez que se entra). Sirve para cualquier deporte. */
+/**
+ * Tour del Home: lo principal de la app (sale la primera vez que se entra, en el Home de todos o en el de un
+ * deporte; los pasos que no están en esa pantalla se saltan). Sirve para cualquier deporte.
+ */
 export const HOME_TOUR: TourStep[] = [
   {
     target: 'nav',
     title: 'Bienvenido a MatchMate',
-    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus notificaciones y tu Perfil (tus números y tus ligas).',
+    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus Avisos y tu Perfil (tus juegos, seguidores y likes).',
+  },
+  {
+    target: 'deporte',
+    title: 'El deporte en que estás',
+    body: 'Arriba siempre dice en qué deporte estás. Tócalo para cambiar: el Home y Eventos muestran solo lo de ese deporte. Elige «Todos los deportes» para ver todo.',
+  },
+  {
+    target: 'deportes',
+    title: 'Tus deportes',
+    body: 'Toca un deporte para entrar a su Home. Estando ahí, toca Home abajo otra vez para volver a todos los deportes.',
+  },
+  {
+    target: 'portada-deporte',
+    title: 'El Home del deporte',
+    body: 'Todo lo de este deporte: tus ligas, lo que viene y las públicas para unirte. Desde aquí creas una liga de este deporte.',
   },
   {
     target: 'en-juego',
@@ -22,12 +40,17 @@ export const HOME_TOUR: TourStep[] = [
   {
     target: 'proximos',
     title: 'Lo que viene',
-    body: 'Semana por semana, lo que viene en todas tus ligas: partidos, rondas, encuentros, prácticas y torneos. Cuando te pidan confirmar, toca "Voy".',
+    body: 'Semana por semana, lo que viene en tus ligas: partidos, rondas, encuentros, prácticas y torneos. Cuando te pidan confirmar, toca "Voy".',
+  },
+  {
+    target: 'siguiendo',
+    title: 'Siguiendo',
+    body: 'Los juegos de la gente que sigues salen aquí. Dale like para felicitarlos.',
   },
   {
     target: 'campana',
-    title: 'Notificaciones',
-    body: 'Avisos de tus ligas, resultados por confirmar, felicitaciones y comentarios… El número rojo son los nuevos.',
+    title: 'Avisos',
+    body: 'Avisos de tus ligas, resultados por confirmar, seguidores nuevos, likes y comentarios… El número rojo son los nuevos.',
   },
   {
     target: 'config',
