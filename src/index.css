@@ -215,6 +215,12 @@ dialog::backdrop {
 }
 
 dialog[open] { animation: pop-in 0.22s var(--ease-out); }
+/* Modales quietos en el teléfono: el modal no se arrastra ni se amplía con los dedos (encabezado y botones),
+   solo su contenido se desliza de arriba abajo, y la página de atrás no se mueve mientras está abierto. */
+dialog { touch-action: none; overscroll-behavior: contain; }
+dialog .modal-scroll { touch-action: pan-y; overscroll-behavior: contain; }
+html:has(dialog[open]) { overflow: hidden; }
+html:has(dialog[open]) body { overflow: hidden; touch-action: none; }
 dialog[open]::backdrop { animation: fade-in 0.2s ease-out; }
 
 .card-shadow { box-shadow: var(--shadow-card); }

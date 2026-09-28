@@ -326,7 +326,8 @@ export function Modal({
       }}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
-        'm-auto w-[calc(100%-1.5rem)] rounded-2xl border border-line bg-surface p-0 text-fg shadow-2xl',
+        // Fijo: el modal no se arrastra ni rebota (solo se desliza su contenido; ver dialog en index.css).
+        'm-auto w-[calc(100%-1.5rem)] overflow-hidden overscroll-none rounded-2xl border border-line bg-surface p-0 text-fg shadow-2xl',
         'max-h-[calc(100dvh-1.5rem)]',
         wide ? 'max-w-3xl' : 'max-w-lg',
       )}
@@ -337,7 +338,7 @@ export function Modal({
             <h2 className="text-base font-semibold">{title}</h2>
             <Button variant="ghost" size="sm" onClick={onClose} aria-label="Cerrar" icon={<X className="size-4" />} />
           </div>
-          <div className="overflow-y-auto px-5 py-4">{children}</div>
+          <div className="modal-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
           {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
         </div>
       )}

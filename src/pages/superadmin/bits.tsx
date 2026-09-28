@@ -402,7 +402,7 @@ export function Drawer({ open, onClose, title, children, footer, label }: { open
             </h2>
             <Button variant="ghost" onClick={onClose} aria-label="Cerrar" icon={<X className="size-5" />} className="max-sm:size-11" />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          <div className="modal-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
           {footer && <div className="pb-safe flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
         </div>
       )}
