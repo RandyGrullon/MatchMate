@@ -11,7 +11,11 @@ begin
     raise warning 'Sin pg_cron: no se programan los recordatorios de partidos, golf, natación ni noches.';
     return;
   end if;
-  create extension if not exists pg_cron with schema pg_catalog;
+  -- Ya la crea 20260926001300_cron_supabase.sql. Volver a correr «create extension» en Supabase dispara sus scripts de
+  -- permisos y falla con 2BP01 (dependent privileges exist): solo se crea si falta.
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    create extension pg_cron with schema pg_catalog;
+  end if;
   if exists (select 1 from cron.job where jobname = 'mm-padel-partidos') then
     perform cron.unschedule('mm-padel-partidos');
   end if;

@@ -14,7 +14,11 @@ begin
     raise warning 'Sin pg_cron: no se programa la limpieza de la consola.';
     return;
   end if;
-  create extension if not exists pg_cron with schema pg_catalog;
+  -- Ya la crea 20260926001300_cron_supabase.sql. Volver a correr «create extension» en Supabase dispara sus scripts de
+  -- permisos y falla con 2BP01 (dependent privileges exist): solo se crea si falta.
+  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
+    create extension pg_cron with schema pg_catalog;
+  end if;
   -- cron.schedule con un nombre que ya existe lo reemplaza: correr esto otra vez no duplica nada.
   perform cron.schedule('mm-consola-limpieza', '40 8 * * *', 'select private.console_cleanup()');
 end $$;
