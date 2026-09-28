@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { compareMatches } from '../../../lib/data/matches';
 import { StandingsTable, defaultColumns, type StandingsColumn } from '../../../components/match';
+import { ShareButton, leadersShare, standingsShare, type ShareTableSpec } from '../../../components/share';
 import { Badge, Card, Empty, Tabs } from '../../../components/ui';
 import type { FootballTotals } from '../../../sports/team/stats';
 import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
@@ -60,6 +61,38 @@ export const TABLE_COLUMNS: StandingsColumn[] = [
 
 const TABS: readonly Tab[] = ['tabla', 'goleadores', 'tarjetas', 'vallas', 'disciplina'];
 
+/** Imagen de la pestaña que se ve para mandar al grupo (la disciplina no se comparte). */
+function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTableSpec | null {
+  const title = tl.league.name;
+  const team = (id: string) => tl.teamOf(id);
+  const leaders = { title, nameOf: tl.nameOf, teamOf: team, limit: 20 };
+  switch (tab) {
+    case 'tabla': {
+      const sections = season.groups.length ? season.groups.map((g) => ({ heading: g.stage, rows: g.rows })) : [{ rows: season.standings }];
+      if (!sections.some((x) => x.rows.length)) return null;
+      return standingsShare({
+        title,
+        subtitle: 'Tabla de posiciones',
+        sections,
+        columns: TABLE_COLUMNS,
+        nameOf: (id) => team(id)?.name ?? '(equipo borrado)',
+        rowExtra: (id) => ({ dot: team(id)?.color ?? null }),
+        nameLabel: 'Equipo',
+      });
+    }
+    case 'goleadores': {
+      const rows = season.scorers.filter((s) => s.goals > 0 || s.assists > 0);
+      return rows.length ? leadersShare({ ...leaders, subtitle: 'Goleadores', rows, columns: SCORER_COLUMNS }) : null;
+    }
+    case 'tarjetas':
+      return season.cards.length ? leadersShare({ ...leaders, subtitle: 'Tarjetas', rows: season.cards, columns: CARD_COLUMNS }) : null;
+    case 'vallas':
+      return season.keepers.length ? leadersShare({ ...leaders, subtitle: 'Vallas invictas', rows: season.keepers, columns: KEEPER_COLUMNS, nameLabel: 'Portero' }) : null;
+    default:
+      return null;
+  }
+}
+
 /** Tabla, goleadores, tarjetas, vallas invictas y disciplina de la temporada (/l/:lid/ranking; `?ver=disciplina`). */
 export default function FootballStandings() {
   const tl = useTeamLeague();
@@ -67,6 +100,7 @@ export default function FootballStandings() {
   const [params] = useSearchParams();
   const initial = params.get('ver') as Tab | null;
   const [tab, setTab] = useState<Tab>(initial && TABS.includes(initial) ? initial : 'tabla');
+  const canShare = !!shareCard(tl, season, tab);
   return (
     <div className="flex flex-col gap-4">
       <Tabs
@@ -80,6 +114,11 @@ export default function FootballStandings() {
         active={tab}
         onChange={setTab}
       />
+      {canShare && (
+        <div className="flex justify-end">
+          <ShareButton card={() => shareCard(tl, season, tab)} />
+        </div>
+      )}
       {tab === 'tabla' && <TableTab tl={tl} season={season} />}
       {tab === 'goleadores' && (
         <LeadersTable

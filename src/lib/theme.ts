@@ -106,12 +106,13 @@ export function brandColors(hex: string | null): { light: AccentVars; dark: Acce
   return (hex && hex.toLowerCase() !== DEFAULT_ACCENT && accentVars(hex)) || DEFAULT_VARS;
 }
 
+const decl = (x: AccentVars) => `--accent:${x.accent};--accent-fg:${x.fg};--accent-soft:${x.soft};`;
+
 /** Las reglas CSS del color (vacío = el morado de siempre, con sus tonos diseñados a mano). */
 export function accentCss(hex: string | null): string {
   if (!hex || hex.toLowerCase() === DEFAULT_ACCENT) return '';
   const v = accentVars(hex);
   if (!v) return '';
-  const decl = (x: AccentVars) => `--accent:${x.accent};--accent-fg:${x.fg};--accent-soft:${x.soft};`;
   // html:root pesa más que :root de index.css: gana aunque la hoja de la app cargue después.
   return [
     `html:root{${decl(v.light)}}`,
@@ -119,6 +120,28 @@ export function accentCss(hex: string | null): string {
     `html:root[data-theme="dark"]{${decl(v.dark)}}`,
   ].join('');
 }
+
+/**
+ * El color de un deporte dentro de sus ligas: las mismas variables del color de la app (--accent, --accent-fg,
+ * --accent-soft) puestas solo en `selector` (una clase), con sus tonos para claro, oscuro y como el teléfono.
+ * Todo lo de adentro las hereda (pestañas, botones, la portada y su animación). Vacío si el color no sirve.
+ */
+export function scopedAccentCss(selector: string, hex: string | null): string {
+  const v = hex ? accentVars(hex) : null;
+  if (!v || !/^\.[a-z][a-z0-9-]*$/.test(selector)) return '';
+  // La regla de oscuro lleva :root delante: pesa más que la de claro (misma clase) y gana en modo oscuro.
+  return [
+    `${selector}{${decl(v.light)}}`,
+    `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) ${selector}{${decl(v.dark)}}}`,
+    `:root[data-theme="dark"] ${selector}{${decl(v.dark)}}`,
+  ].join('');
+}
+
+/**
+ * ¿La cuenta dejó el color de la app como viene (el morado)? Entonces cada liga toma el color de su deporte; si
+ * eligió otro color en Configuración, se respeta en todas partes.
+ */
+export const usesBrandAccent = (p: Pick<ThemePrefs, 'accent'>) => !p.accent || p.accent.toLowerCase() === DEFAULT_ACCENT;
 
 export function loadTheme(): ThemePrefs {
   try {

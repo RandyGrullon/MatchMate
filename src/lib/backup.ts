@@ -28,6 +28,8 @@ const LEAGUE_TABLES = [
   'ladder_rungs',
   'ladder_challenges',
   'football_sanctions',
+  'event_signups',
+  'league_announcements',
   // Golf y natación.
   'golf_courses',
   'golf_tournaments',

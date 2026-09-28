@@ -2,13 +2,17 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ArrowRight, CalendarDays, Crown, Globe, Lock, LogIn, Ticket, Trophy, UserPlus } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
+import { isMatchSport, myMatchesSince, nextMatch } from '../lib/calendar';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
+import { useLiveMatches, useMyMatches } from '../lib/data/matches';
 import { joinList } from '../lib/format';
 import { lastLeague } from '../lib/league';
+import { useNow } from '../lib/useNow';
 import { SPORTS, leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { openSports, useSportStatus } from '../sports/status';
 import { SportBadge, SportIcon } from './sports/SportBits';
 import { LiveNow } from '../components/LiveNow';
+import { NextMatchCard } from '../components/LiveNowMatches';
 import { NotificationsPrompt } from '../components/NotificationsOptIn';
 import { WeekCalendar } from '../components/WeekCalendar';
 import { Tour } from '../components/Tour';
@@ -17,13 +21,24 @@ import { AppShell } from '../components/Shell';
 import { Logo } from '../components/Logo';
 import { Button, Card, Input, Loading } from '../components/ui';
 
-/** Home: lo que está en juego ahora, lo que viene esta semana, volver a tu última liga y unirse con un código (crear está en el botón del centro de abajo). */
+/**
+ * Home: lo que está en juego ahora (el boliche de hoy y los partidos en vivo de tus ligas), tu próximo partido, lo
+ * que viene esta semana (eventos y tus partidos), volver a tu última liga y unirse con un código (crear está en el
+ * botón del centro de abajo).
+ */
 export default function HomePage() {
   const auth = useAuth();
   const navigate = useNavigate();
-  const memberships = useMyMemberships(auth.user?.uid);
+  const uid = auth.user?.uid;
+  const memberships = useMyMemberships(uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
   const [code, setCode] = useState('');
+  const now = useNow();
+  // Mis partidos en todas mis ligas (desde ayer, más los abiertos): el próximo, los del calendario y los míos en vivo.
+  // La precarga sin señal (src/lib/prefetch.ts) pide lo mismo, así esto sale de la copia del teléfono.
+  const mine = useMyMatches(uid, myMatchesSince(now));
+  // Los en vivo de mis ligas de raqueta y equipos, juegue o no (se releen cada 45 s mientras se ve).
+  const live = useLiveMatches(uid ? leagues.data.filter((l) => isMatchSport(leagueSport(l))).map((l) => l.id) : []);
 
   if (auth.loading) return <Loading />;
 
@@ -33,6 +48,9 @@ export default function HomePage() {
   // Deportes de sus ligas: con uno solo se dice cuál («de boliche»); con varios, no hace falta.
   const sports = sportsOf(leagues.data);
   const only = sports.length === 1 ? sportMeta(sports[0]) : null;
+  // Uno que ya está en vivo (según la lista que se relee cada 45 s) sale en «En juego ahora», no como próximo.
+  const liveIds = new Set(live.data.map((m) => m.id));
+  const next = auth.user ? nextMatch(mine.data.filter((m) => !liveIds.has(m.id)), leagues.data, now.getTime()) : null;
 
   function submitCode(e: FormEvent) {
     e.preventDefault();
@@ -52,10 +70,11 @@ export default function HomePage() {
         </div>
 
         <Tour name="inicio" steps={HOME_TOUR} when={!!auth.user} />
-        {auth.user && <LiveNow />}
+        {auth.user && <LiveNow live={live.data} mine={mine.data} />}
+        {next && <NextMatchCard next={next} />}
         <NotificationsPrompt />
-        {/* Lo que viene en todas tus ligas, semana por semana. */}
-        {auth.user && <WeekCalendar />}
+        {/* Lo que viene en todas tus ligas (con tus partidos), semana por semana. */}
+        {auth.user && <WeekCalendar matches={mine.data} />}
 
         {resume && (
           <Link

@@ -20,6 +20,7 @@ import type { RacketSport } from '../../../../sports/racket';
 import type { StandingRow } from '../../../../sports/types';
 import type { ScheduleEntrant } from './league';
 import { entrantKey, pairStandings, type PointsScheme } from './results';
+import { parseSignup, signupJson, type SignupSettings } from './signup';
 
 export interface TourneyCategory {
   /** Id corto para las claves del cuadro: letras o números (A, B, C, 1…). */
@@ -44,6 +45,8 @@ export interface TourneyConfig {
   categories: TourneyCategory[];
   courts: string[];
   points: PointsScheme;
+  /** Inscripción «Me apunto» (cupo por categoría, fecha límite y lista de espera). Sin ella, la lista la arma el admin. */
+  signup?: SignupSettings;
 }
 
 export const CATEGORY_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const;
@@ -74,16 +77,26 @@ export function parseTourneyConfig(raw: unknown): TourneyConfig {
     if (Array.isArray(x.seeds)) cat.seeds = strList(x.seeds);
     categories.push(cat);
   }
-  return {
+  const out: TourneyConfig = {
     v: 1,
     format: 'torneo',
     categories,
     courts: strList(c.courts, 12).map((x) => x.slice(0, 40)),
     points: c.points === '2-0' ? '2-0' : 'standard',
   };
+  const signup = parseSignup(c.signup);
+  if (signup) out.signup = signup;
+  return out;
 }
 
-export const tourneyConfigJson = (c: TourneyConfig): Record<string, unknown> => ({ ...c, categories: c.categories.map((x) => ({ ...x })) });
+/** Lo que se guarda. La inscripción va con el `rev` que se leyó (si alguien se apuntó mientras tanto, no se pierde). */
+export const tourneyConfigJson = (c: TourneyConfig): Record<string, unknown> => {
+  const { signup, ...rest } = c;
+  return { ...rest, categories: c.categories.map((x) => ({ ...x })), ...(signup ? { signup: signupJson(signup) } : {}) };
+};
+
+/** El torneo ya empezó: alguna categoría armó sus grupos o su cuadro. */
+export const tourneyStarted = (c: Pick<TourneyConfig, 'categories'>) => c.categories.some((x) => !!x.groupsOf?.length || !!x.seeds?.length);
 
 export const newCategory = (id: string, name = `Categoría ${id}`): TourneyCategory => ({ id, name, pairs: [], groups: 0, perGroup: 2, thirdPlace: true });
 

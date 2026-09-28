@@ -92,7 +92,15 @@ export function MatchDetail({ tl, matchId, table, onTable, onBack }: { tl: TeamL
 
       {(m.status === 'scheduled' || m.status === 'postponed') && <Convocatoria tl={tl} match={m} minPlayers={teamRules.minPlayers} />}
 
-      {hasResult(m) && <ShareResultCard match={m} title={tl.league.name} roundWord="Jornada" url={url} />}
+      {hasResult(m) && (
+        <ShareResultCard
+          match={m}
+          title={tl.league.name}
+          roundWord="Jornada"
+          url={url}
+          sideExtra={(s) => ({ dot: tl.teamOf(m.sides.find((x) => x.side === s)?.teamId ?? null)?.color ?? null })}
+        />
+      )}
 
       {tl.isAdmin && (
         <MatchAdminPanel

@@ -17,9 +17,10 @@ clave `sb_publishable_`, la VAPID pública y la site key de Turnstile.
 | Configuración local de Supabase (`supabase/config.toml`): máx. 500 filas, confirmar correo, funciones sin `verify_jwt` | Claude | Hecho |
 | Variables de la app (`.env.example`) | Claude | Hecho |
 | GitHub Actions: pruebas (`ci.yml`), mantener despierto (`keepalive.yml`), respaldo diario (`backup.yml`) | Claude | Hecho |
-| Edge Functions `scan-bowling` (lectura de fotos) y `send-push` (notificaciones), cron de recordatorios y limpieza | Claude | Hecho |
+| Edge Functions `scan-bowling` (lectura de fotos), `send-push` (notificaciones) y `delete-account` («Borrar mi cuenta»), cron de recordatorios y limpieza | Claude | Hecho |
+| Privacidad y términos (`/privacidad`, `/terminos`), «Tengo 18 años o más», «Descargar mis datos» y «Borrar mi cuenta» | Claude | Hecho; el texto es un **borrador** que revisa un abogado (paso 13) |
 | Turnstile (casilla anti-robots) en registro, entrar con correo y «Olvidé mi contraseña» | Claude | Hecho (se enciende con el paso 12) |
-| Cuentas, proyectos, claves, Google, correo, secretos | **Tú** | Pasos 1 a 12 |
+| Cuentas, proyectos, claves, Google, correo, secretos | **Tú** | Pasos 1 a 13 |
 
 Necesitas: tu gestor de contraseñas, el repo **privado** `matchmate` en GitHub, el proyecto de Vercel ligado a
 ese repo, una Gmail para los correos de la app (paso 6) y, para los pasos 4, 9 y 11, una terminal (PowerShell)
@@ -177,6 +178,8 @@ les llega el correo de confirmación (mira en *Spam*) y al tocar el enlace entra
 - [ ] *Google Auth Platform* (antes *OAuth consent screen*) › *Get started*: nombre **MatchMate**, tu correo de
   soporte, público **External**, tu correo de contacto.
   - *Branding* › *Authorized domains*: `matchmate.vercel.app`, `REF_PROD.supabase.co` y `REF_STAGING.supabase.co`.
+  - *Branding* › *Application privacy policy link*: `https://matchmate.vercel.app/privacidad` y *Application terms of
+    service link*: `https://matchmate.vercel.app/terminos` (Google los pide para verificar la app).
   - *Audience* › **Publish app** (si se queda en *Testing*, solo entran los correos de prueba).
 - [ ] *Clients* › *Create client* › *Web application*, nombre «MatchMate web»:
   - *Authorized JavaScript origins*: `https://matchmate.vercel.app` y `http://localhost:5173`.
@@ -205,7 +208,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
 ## Paso 9. Secretos de las Edge Functions y publicarlas
 
-**Quién: tú.** `scan-bowling` y `send-push` ya están en el repo (`supabase/functions`).
+**Quién: tú.** `scan-bowling`, `send-push` y `delete-account` ya están en el repo (`supabase/functions`).
 
 - [ ] **Claves VAPID** (notificaciones). En la terminal:
   ```powershell
@@ -230,17 +233,27 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   | `VAPID_PRIVATE_KEY` | la privada |
   | `VAPID_SUBJECT` | `mailto:` + la Gmail del paso 6 (p. ej. `mailto:matchmate.app@gmail.com`) |
   | `CRON_SECRET` | el de ese proyecto |
-  | `SCAN_ALLOWED_ORIGINS` | prod: `https://matchmate.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma |
+  | `SCAN_ALLOWED_ORIGINS` | prod: `https://matchmate.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma. Lo usan `scan-bowling` y `delete-account` (desde qué páginas se puede pedir) |
 
-  No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo.
-- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto):
+  No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo (`delete-account` usa la clave
+  secreta, `SUPABASE_SECRET_KEYS`, para borrar la cuenta con la API de administración).
+- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto). Publica las tres:
   ```powershell
   npx -y supabase@2 functions deploy --project-ref REF
   ```
+  Si ya tenías las otras y solo falta la de borrar cuentas: `npx -y supabase@2 functions deploy delete-account --project-ref REF`.
 
-**Comprobar:** *Edge Functions* muestra `scan-bowling` y `send-push`, las dos con *Verify JWT* **apagado** (es a
-propósito: cada función revisa por dentro quién la llama). En la app, envía un juego con foto: a los segundos
-aparece la lectura; en *Edge Functions › scan-bowling › Logs* se ve la llamada sin errores.
+**Comprobar:** *Edge Functions* muestra `scan-bowling`, `send-push` y `delete-account`, las tres con *Verify JWT*
+**apagado** (es a propósito: cada función revisa por dentro quién la llama). En la app, envía un juego con foto: a
+los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* se ve la llamada sin errores.
+
+**Comprobar el borrado de cuentas** (en staging, con una cuenta de prueba, nunca la tuya):
+1. Crea la cuenta, crea una liga y únete a ella con otra cuenta.
+2. Con la primera: *Configuración › Tus datos › Descargar mis datos* baja `matchmate-mis-datos-AAAA-MM-DD.json`.
+3. *Borrar mi cuenta*: primero pide pasar la liga a la otra cuenta (o borrarla); después, escribir BORRAR.
+4. La app vuelve a Home sin sesión; en *Authentication › Users* la cuenta ya no está; la liga sigue, ahora de la
+   otra cuenta; en *Edge Functions › delete-account › Logs* sale «cuenta borrada». Si dice «El borrado de cuentas
+   no está configurado», falta publicar la función o la clave secreta del proyecto.
 
 ## Paso 10. Secretos del cron en Vault
 
@@ -313,6 +326,20 @@ captcha en Supabase sin poner la site key en Vercel, nadie puede entrar con corr
 **Comprobar:** en la app, entrar con correo, el registro y «Olvidé mi contraseña» muestran la casilla de
 Cloudflare y funcionan (entrar con Google no la necesita).
 
+## Paso 13. Privacidad y términos: revisión del abogado
+
+**Quién: tú, con un abogado de RD.** Las páginas `/privacidad` y `/terminos` (código en `src/pages/legal/`) dicen
+arriba que son un **borrador**. Antes de abrir la app a otros clubes:
+
+- [ ] Que un abogado revise los dos textos (Ley 172-13 de datos personales, Ley 136-03 de menores, fotos leídas
+  por la capa gratis de Google, datos guardados en Estados Unidos, borrar la cuenta y bajar los datos).
+- [ ] En `src/pages/legal/legal.ts`: el nombre del responsable (`responsible`) y el correo de contacto (`email`),
+  la fecha (`LEGAL_UPDATED`) y `LEGAL_DRAFT = false`. Se lo puedes pedir a Claude con los datos.
+- [ ] Poner los dos links en Google (paso 7, *Branding*).
+
+**Comprobar:** abre https://matchmate.vercel.app/privacidad sin entrar: ya no sale el aviso de borrador ni nada
+marcado en amarillo.
+
 ---
 
 ## Revisión final
@@ -323,6 +350,7 @@ Cloudflare y funcionan (entrar con Google no la necesita).
 - [ ] Tu cuenta es superadmin en producción.
 - [ ] *Mantener despierto* y *Respaldo* en verde varios días seguidos; sabes dónde está la clave privada de age.
 - [ ] Fase 0C: lectura de fotos y notificaciones funcionando (pasos 9 y 10).
+- [ ] «Borrar mi cuenta» probado en staging (paso 9) y la privacidad y los términos revisados (paso 13).
 
 **De ahí en adelante:**
 - Vigila el correo de la cuenta de Supabase: avisa antes de pausar un proyecto o si una organización se acerca

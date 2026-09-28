@@ -10,6 +10,7 @@ import { playerUrl, shareLink } from '../components/share';
 import { Avatar } from '../components/Avatar';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, cx } from '../components/ui';
 import { leagueSport } from '../sports/registry';
+import { peopleWord } from '../components/league/logic';
 
 export function useStatsByPlayer(entries: Entry[]) {
   return useMemo(() => {
@@ -23,9 +24,16 @@ export function useStatsByPlayer(entries: Entry[]) {
 
 const noStats: PlayerStats = { games: 0, pins: 0, autoAverage: null, high: 0, highSeries: 0, pending: 0 };
 
-/** Admin: jugadores de la liga, su promedio (boliche) y la cuenta vinculada. */
-export default function PlayersPage() {
+/**
+ * Admin: jugadores de la liga, su promedio (boliche) y la cuenta vinculada.
+ * `variant="accounts"`: el deporte agrega y edita a su gente en su propia pestaña (`addWhere`: Nadadores, Parejas y
+ * niveles); aquí queda solo lo de las cuentas (vincular, separar, cambiar el nombre o borrar), dentro de Miembros.
+ */
+export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 'full' | 'accounts'; addWhere?: string }) {
   const { lid, base, league } = useLeagueCtx();
+  const accounts = variant === 'accounts';
+  const people = peopleWord(league.sport);
+  const peopleTitle = people[1].charAt(0).toUpperCase() + people[1].slice(1);
   // Promedio, juegos y mejor son del boliche; los otros deportes muestran sus números en Tabla y en cada jugador.
   const bowling = leagueSport(league) === 'bowling';
   const { toast } = useFeedback();
@@ -52,15 +60,21 @@ export default function PlayersPage() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold tracking-tight">Jugadores</h2>
+          <h2 className="text-lg font-bold tracking-tight">{accounts ? `${peopleTitle} y sus cuentas` : 'Jugadores'}</h2>
           <p className="text-sm text-muted">
-            {bowling ? 'Promedio calculado con los juegos que cuentan.' : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
+            {accounts
+              ? `Si alguien se unió y ya estaba en la lista (quizá con otro nombre), toca su nombre y vincúlalo con su cuenta: así no sale dos veces.${addWhere ? ` Para agregar ${people[1]}, usa «${addWhere}».` : ''}`
+              : bowling
+                ? 'Promedio calculado con los juegos que cuentan.'
+                : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
           </p>
         </div>
-        <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-          <span className="hidden sm:inline">Nuevo jugador</span>
-          <span className="sm:hidden">Nuevo</span>
-        </Button>
+        {!accounts && (
+          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+            <span className="hidden sm:inline">Nuevo jugador</span>
+            <span className="sm:hidden">Nuevo</span>
+          </Button>
+        )}
       </div>
 
       {players.data.length > 5 && (
@@ -75,8 +89,10 @@ export default function PlayersPage() {
       ) : players.loading ? (
         <ListSkeleton rows={8} />
       ) : players.data.length === 0 ? (
-        <Empty icon={<UserRound className="size-8" />} title="Todavía no hay jugadores">
-          Agrega a los jugadores de la liga, o deja que cada miembro cree el suyo al unirse.
+        <Empty icon={<UserRound className="size-8" />} title={`Todavía no hay ${people[1]}`}>
+          {accounts && addWhere
+            ? `Agrégalos en «${addWhere}», o deja que cada miembro cree el suyo al unirse.`
+            : 'Agrega a los jugadores de la liga, o deja que cada miembro cree el suyo al unirse.'}
         </Empty>
       ) : (
         <Card className="stagger divide-y divide-line overflow-hidden">

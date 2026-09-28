@@ -3,6 +3,7 @@ import { ListOrdered } from 'lucide-react';
 import { useGolfTournament, type GolfCardDoc, type GolfRoundFull } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
 import { Badge, Card, Empty, Position, cx } from '../../../components/ui';
+import { ShareButton, golfBoardShare } from '../../../components/share';
 import { CardModal, ToPar } from './bits';
 import { boardModes, modeCompetition, modeLabel, roundBoard, thruText, tournamentBoard, type BoardMode, type BoardRow } from './logic';
 
@@ -11,7 +12,7 @@ import { boardModes, modeCompetition, modeLabel, roundBoard, thruText, tournamen
  * quien. Tocar un jugador abre su tarjeta.
  */
 export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; cards: GolfCardDoc[]; nameOf: (playerId: string) => string }) {
-  const { lid } = useLeagueCtx();
+  const { lid, league } = useLeagueCtx();
   const [mode, setMode] = useState<BoardMode>('official');
   const [scope, setScope] = useState<'ronda' | 'torneo'>('ronda');
   const [open, setOpen] = useState<{ card: GolfCardDoc; round: GolfRoundFull } | null>(null);
@@ -47,6 +48,25 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <ShareButton
+          card={() =>
+            golfBoardShare({
+              title: league.name,
+              subtitle: [multi && scope === 'torneo' ? `Torneo (${tournament.data.rounds.length} rondas)` : round.roundNo ? `Ronda ${round.roundNo}` : null, round.courseName, modeLabel(round.competition, mode)]
+                .filter(Boolean)
+                .join(' · '),
+              rows,
+              nameOf,
+              stableford,
+              net,
+              holes: multi && scope === 'torneo' ? holes : round.holes,
+              total: multi && scope === 'torneo',
+              statusOf: (r) => (r.unfinished ? 'No terminó' : r.dq ? (r.card?.dq ? 'Descalificado' : 'Recogió') : undefined),
+            })
+          }
+        />
+      </div>
       {multi && (
         <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
           {(['ronda', 'torneo'] as const).map((k) => (

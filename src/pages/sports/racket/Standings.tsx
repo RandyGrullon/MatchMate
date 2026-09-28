@@ -7,6 +7,7 @@ import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import type { StandingRow } from '../../../sports/types';
 import { StandingsTable, type StandingsColumn } from '../../../components/match';
+import { ShareButton, standingsShare, type ShareTableSpec } from '../../../components/share';
 import { Card, Empty, ListSkeleton, LoadError, Position, Tabs, cx } from '../../../components/ui';
 import { Chips, racketColumns } from './bits';
 import { parseLeagueConfig } from './logic/league';
@@ -80,11 +81,58 @@ export default function RacketStandings() {
     [split, kinds, modo, matches, sport, names, lid, now],
   );
   const nights = useMemo(() => seasonNightTable(matches, { now }), [matches, now]);
+  const rankingColumns: StandingsColumn[] = useMemo(
+    () => [
+      ...racketColumns(sport).slice(0, 4),
+      { key: 'pct', label: '% G', title: 'Porcentaje de victorias', value: (r) => `${winPct(r.won, r.played) ?? 0}%`, wide: true },
+      racketColumns(sport)[6],
+    ],
+    [sport],
+  );
 
   const tab: Tab = (search.get('ver') as Tab | null) ?? (comps.length ? 'parejas' : ranking.length ? 'ranking' : nights.length ? 'noches' : 'parejas');
   const compKey = search.get('tabla') ?? comps[0]?.key;
   const comp = comps.find((c) => c.key === compKey) ?? comps[0];
   const highlight = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
+  const scope = hasSeason ? (whole ? 'Todo' : 'Esta temporada') : null;
+
+  // Imagen de la tabla que se ve (pestaña, tabla elegida y modalidad) para mandar al grupo.
+  const shareCard = (): ShareTableSpec | null => {
+    const subtitle = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
+    if (tab === 'parejas') {
+      if (!comp?.rows.length) return null;
+      return standingsShare({
+        title: league.name,
+        subtitle: subtitle(comp.name, scope),
+        sections: [{ rows: comp.rows }],
+        columns: racketColumns(sport),
+        nameOf: names.entrantName,
+        nameLabel: doubles ? 'Pareja' : 'Jugador',
+      });
+    }
+    if (tab === 'ranking') {
+      if (!ranking.length) return null;
+      return standingsShare({
+        title: league.name,
+        subtitle: subtitle('Ranking', split ? MODALITY_LABEL[modo] : null, scope),
+        sections: [{ rows: ranking }],
+        columns: rankingColumns,
+        nameOf: names.nameOf,
+        nameLabel: 'Jugador',
+        note: rankingNote(sport),
+      });
+    }
+    if (!nights.length) return null;
+    return {
+      kind: 'table',
+      title: league.name,
+      subtitle: subtitle(nightsWord, scope),
+      nameLabel: 'Jugador',
+      columns: [{ label: 'Noches' }, { label: 'PJ' }, { label: 'G' }, { label: 'Prom.', optional: true }, { label: 'Pts', strong: true }],
+      sections: [{ rows: nights.map((r) => ({ rank: r.rank, name: names.nameOf(r.id), values: [r.nights, r.played, r.won, fmtPoints(r.avg), r.points] })) }],
+    };
+  };
+  const canShare = tab === 'parejas' ? !!comp?.rows.length : tab === 'ranking' ? ranking.length > 0 : nights.length > 0;
 
   if (q.error) return <LoadError error={q.error} />;
 
@@ -99,15 +147,21 @@ export default function RacketStandings() {
         active={tab}
         onChange={(k) => setSearch({ ver: k }, { replace: true })}
       />
-      {hasSeason && (
-        <Chips
-          items={[
-            { key: 'temporada', label: 'Esta temporada' },
-            { key: 'todo', label: 'Todo' },
-          ]}
-          value={whole ? 'todo' : 'temporada'}
-          onChange={(k) => setWhole(k === 'todo')}
-        />
+      {(hasSeason || canShare) && (
+        <div className="flex items-center gap-2">
+          {hasSeason && (
+            <Chips
+              className="min-w-0 flex-1"
+              items={[
+                { key: 'temporada', label: 'Esta temporada' },
+                { key: 'todo', label: 'Todo' },
+              ]}
+              value={whole ? 'todo' : 'temporada'}
+              onChange={(k) => setWhole(k === 'todo')}
+            />
+          )}
+          {canShare && <ShareButton className="ml-auto shrink-0" card={shareCard} />}
+        </div>
       )}
 
       {q.loading && !all.length ? (
@@ -136,11 +190,7 @@ export default function RacketStandings() {
           <StandingsTable
             rows={ranking}
             nameOf={names.nameOf}
-            columns={[
-              ...racketColumns(sport).slice(0, 4),
-              { key: 'pct', label: '% G', title: 'Porcentaje de victorias', value: (r) => `${winPct(r.won, r.played) ?? 0}%`, wide: true } satisfies StandingsColumn,
-              racketColumns(sport)[6],
-            ]}
+            columns={rankingColumns}
             highlight={myPlayerId ? [myPlayerId] : []}
             primary={['puntos']}
             onRow={(id) => navigate(`${base}/j/${id}`)}

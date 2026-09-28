@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Medal } from 'lucide-react';
 import { useSwimSeason } from '../../../lib/data/swimming';
 import { formatDate } from '../../../lib/format';
+import { ShareButton, medalPointsShare } from '../../../components/share';
 import { Badge, Card, Empty, ListSkeleton, LoadError } from '../../../components/ui';
 import { ClubTag, PageHead, clubMap, meetTitle, useSwim } from './bits';
 import { seasonTable } from './logic';
@@ -12,13 +13,23 @@ const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).repla
 
 /** Puntos por club de la temporada: la suma de cada encuentro (el control de marcas no cuenta). */
 export default function SwimStandings() {
-  const { lid, base, clubs } = useSwim();
+  const { lid, base, clubs, league } = useSwim();
   const season = useSwimSeason(lid);
   const years = useMemo(() => [...new Set(season.data.meets.map((m) => m.date.slice(0, 4)))].sort().reverse(), [season.data.meets]);
   const [year, setYear] = useState<string | null>(null);
   const shownYear = year ?? years[0] ?? String(new Date().getFullYear());
   const table = useMemo(() => seasonTable(season.data, shownYear), [season.data, shownYear]);
   const byId = useMemo(() => clubMap(clubs.data), [clubs.data]);
+
+  // Imagen de los puntos de la temporada para mandar al grupo.
+  const shareCard = () =>
+    medalPointsShare({
+      title: league.name,
+      subtitle: `Puntos de la temporada ${shownYear}`,
+      rows: table.clubs.map((c) => ({ ...c, id: c.clubId })),
+      who: (id) => byId.get(id) ?? { name: '(club borrado)' },
+      note: `Suma de ${table.meets.length} ${table.meets.length === 1 ? 'encuentro' : 'encuentros'}. El control de marcas no cuenta.`,
+    });
 
   return (
     <div className="flex flex-col gap-5">
@@ -37,6 +48,7 @@ export default function SwimStandings() {
             ))}
           </select>
         )}
+        {!season.loading && table.clubs.length > 0 && <ShareButton variant="ghost" size="md" iconOnly label="Compartir los puntos" card={shareCard} />}
       </PageHead>
 
       {season.error ? (

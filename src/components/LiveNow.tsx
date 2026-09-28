@@ -1,11 +1,13 @@
 import { Link } from 'react-router';
 import { CalendarDays, CheckCircle2, ClipboardList, Clock, PencilLine, Smartphone, Trophy, UserRound, type LucideIcon } from 'lucide-react';
 import type { LeagueFeed } from '../lib/data';
+import type { Match } from '../lib/data/matches';
 import { draftCount, useDraft } from '../lib/draft';
 import { eventLabel } from '../lib/format';
-import { liveGames, type LiveGame } from '../lib/live';
+import { liveGames, liveMatches, type LiveGame } from '../lib/live';
 import type { BowlingEvent } from '../lib/types';
 import { useNow } from '../lib/useNow';
+import { LiveMatchesCard } from './LiveNowMatches';
 import { useNotifications } from './Notifications';
 import { Card, cx } from './ui';
 
@@ -15,19 +17,22 @@ const secondary =
   'inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium whitespace-nowrap text-fg transition hover:bg-surface-2 active:scale-[0.98]';
 
 /**
- * "En juego ahora" en el Home: los eventos de tus ligas que se están jugando (desde 30 minutos antes
- * de la hora de la liga hasta la medianoche), con acceso directo para anotar y ver cómo van todos.
+ * "En juego ahora" en el Home: los eventos del boliche de tus ligas que se están jugando (desde 30 minutos antes
+ * de la hora de la liga hasta la medianoche), con acceso directo para anotar y ver cómo van todos, y los partidos
+ * en vivo de tus ligas de raqueta y equipos (`live` = useLiveMatches, `mine` = useMyMatches; los tuyos primero).
  */
-export function LiveNow() {
+export function LiveNow({ live = [], mine = [] }: { live?: readonly Match[]; mine?: readonly Match[] }) {
   const { feeds, leagues } = useNotifications();
   const now = useNow();
   const games = liveGames(feeds, leagues, now);
-  if (!games.length) return null;
+  const matches = liveMatches(live, mine, leagues, now.getTime());
+  if (!games.length && !matches.length) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="En juego ahora" data-tour="en-juego">
       {games.map((g) => (
         <LiveCard key={`${g.feed.lid}:${g.event.id}`} game={g} />
       ))}
+      <LiveMatchesCard items={matches} />
     </section>
   );
 }

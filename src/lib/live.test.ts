@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LeagueFeed } from './data';
-import { liveGames, liveInfo, liveRows } from './live';
+import { liveGames, liveInfo, liveMatches, liveRows, liveScoreText, type LiveMatchLike } from './live';
 import type { BowlingEvent, Entry, League, LiveScore, Submission } from './types';
 
 const at = (h: number, m = 0) => new Date(2026, 8, 29, h, m);
@@ -125,5 +125,72 @@ describe('tablero en vivo', () => {
     const earlier = { ...phone('juan', [180]), updatedAt: at(500) } as LiveScore;
     expect(liveRows({ games: 3, type: 'practica' }, [], [sent], [later])[0].games[0]).toEqual({ score: 180, source: 'jugador' });
     expect(liveRows({ games: 3, type: 'practica' }, [], [sent], [earlier])[0].games[0]).toEqual({ score: 150, source: 'enviado' });
+  });
+});
+
+describe('partidos en vivo en el home', () => {
+  const stamp = (iso: string) => ({ toMillis: () => Date.parse(iso) });
+  const now = Date.parse('2026-09-29T23:00:00Z');
+  const lg = (id: string, name: string, sport: string) => ({ id, name, schedule: '', sport }) as League;
+  const leagues = [lg('fut', 'Fútbol Norte', 'football'), lg('pad', 'Pádel Club', 'padel'), lg('bol', 'Boliche', 'bowling')];
+  const m = (id: string, leagueId: string, extra: Partial<LiveMatchLike> = {}): LiveMatchLike => ({
+    id,
+    leagueId,
+    eventId: null,
+    scheduledAt: '2026-09-29T22:00:00Z',
+    status: 'live',
+    round: 3,
+    stage: '',
+    court: 'Cancha 1',
+    sides: [
+      { side: 1, label: 'Tigres' },
+      { side: 2, label: 'Leones' },
+    ],
+    score: { text: '2-1', sides: [2, 1] },
+    leaseUntil: null,
+    version: 1,
+    updatedAt: stamp('2026-09-29T22:50:00Z'),
+    ...extra,
+  });
+
+  it('los en vivo de tus ligas de raqueta y equipos, los tuyos primero, con marcador, dónde y el link', () => {
+    const items = liveMatches(
+      [m('a', 'fut', { scheduledAt: '2026-09-29T21:00:00Z' }), m('b', 'pad', { eventId: 'noche', score: { text: '6-4 3-2' }, stage: 'Grupo A' })],
+      [m('b', 'pad', { eventId: 'noche', mySide: 2, score: { text: '6-4 3-2' }, stage: 'Grupo A' })],
+      leagues,
+      now,
+    );
+    expect(items.map((i) => [i.match.id, i.mine, i.title, i.score, i.detail, i.href])).toEqual([
+      ['b', true, 'Tigres vs. Leones', '6-4 3-2', 'Grupo A · Cancha 1', '/l/pad/e/noche?partido=b'],
+      ['a', false, 'Tigres vs. Leones', '2-1', 'Jornada 3 · Cancha 1', '/l/fut/juegos?partido=a'],
+    ]);
+  });
+
+  it('de un mismo partido manda la copia más nueva; los que ya no están en vivo no salen', () => {
+    const items = liveMatches([m('a', 'fut', { version: 5, score: { text: '3-1' } })], [m('a', 'fut', { version: 2, mySide: 1 })], leagues, now);
+    expect(items.map((i) => [i.match.id, i.mine, i.score])).toEqual([['a', true, '3-1']]);
+    // Terminó (la lista del Home todavía no se releyó): la copia más nueva manda.
+    expect(liveMatches([m('a', 'fut', { version: 1 })], [m('a', 'fut', { version: 3, status: 'finished' })], leagues, now)).toEqual([]);
+    expect(liveMatches([m('s', 'fut', { status: 'suspended' }), m('p', 'fut', { status: 'scheduled' })], [], leagues, now)).toEqual([]);
+  });
+
+  it('un «en vivo» que no publica hace más de 3 horas se quedó así y no sale', () => {
+    const old = m('viejo', 'fut', { updatedAt: stamp('2026-09-29T19:30:00Z') });
+    expect(liveMatches([old], [], leagues, now)).toEqual([]);
+    // Si el anotador sigue publicando (su turno se renueva), sale aunque la fila sea vieja.
+    expect(liveMatches([{ ...old, leaseUntil: '2026-09-29T23:03:00Z' }], [], leagues, now)).toHaveLength(1);
+    // Sin horas conocidas no se esconde.
+    expect(liveMatches([{ ...old, updatedAt: null }], [], leagues, now)).toHaveLength(1);
+  });
+
+  it('solo ligas tuyas de raqueta o equipos', () => {
+    expect(liveMatches([m('x', 'otra'), m('y', 'bol')], [], leagues, now)).toEqual([]);
+  });
+
+  it('el marcador corto: el texto o el número grande de cada lado', () => {
+    expect(liveScoreText({ text: ' 78-72 ' })).toBe('78-72');
+    expect(liveScoreText({ sides: [1, 0] })).toBe('1-0');
+    expect(liveScoreText({})).toBeNull();
+    expect(liveScoreText(null)).toBeNull();
   });
 });

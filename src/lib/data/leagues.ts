@@ -73,6 +73,8 @@ export interface LeagueInput {
   hasMinors?: boolean;
   /** Zona horaria IANA (por defecto America/Santo_Domingo). */
   tz?: string;
+  /** Reglas del deporte (`leagues.rules`), solo para `updateLeague`: reemplazan las de la liga completas. */
+  rules?: Record<string, unknown>;
 }
 
 /** LeagueInput (parcial) → claves de la base para `update_league`. */
@@ -91,6 +93,7 @@ export function leaguePatch(patch: Partial<LeagueInput>): Record<string, unknown
     ['requirePhoto', 'require_photo', (v: boolean) => v],
     ['hasMinors', 'has_minors', (v: boolean) => v],
     ['tz', 'tz', (v: string) => v],
+    ['rules', 'rules', (v: Record<string, unknown>) => v],
   ];
   for (const [from, to, conv] of map) if (patch[from] !== undefined) out[to] = conv(patch[from] as never);
   return out;
@@ -230,4 +233,149 @@ export async function joinLeague(
   } finally {
     setJoining(lid, false);
   }
+}
+
+// ---------- Avisos del admin a toda la liga ----------
+
+/** Un aviso del admin a toda la liga («Se suspende por lluvia»): tabla `league_announcements`. */
+export interface LeagueAnnouncement {
+  id: string;
+  leagueId: string;
+  /** El texto (1–180). */
+  body: string;
+  /** Quién lo mandó: su nombre en la liga. */
+  authorName: string;
+  /** A cuántas cuentas les llegó al teléfono (las que tienen los avisos activados). */
+  recipients: number;
+  /** Cuándo se mandó (ISO). */
+  sentAt: string;
+}
+
+interface AnnouncementRow {
+  id: string;
+  league_id: string;
+  body: string;
+  author_name: string;
+  recipients: number;
+  created_at: string;
+}
+
+/** Largo máximo del aviso (el CHECK de la base). */
+export const ANNOUNCE_MAX = 180;
+/** Avisos por día y liga que deja mandar la base (`private.announce_daily_limit`). */
+export const ANNOUNCE_DAILY_LIMIT = 3;
+
+const announcementsTag = (lid: string) => `announcements:${lid}`;
+
+const toAnnouncement = (r: AnnouncementRow): LeagueAnnouncement => ({
+  id: r.id,
+  leagueId: r.league_id,
+  body: r.body,
+  authorName: r.author_name ?? '',
+  recipients: r.recipients ?? 0,
+  sentAt: r.created_at,
+});
+
+/** Los últimos avisos de la liga, el más nuevo primero (los ve quien ve la liga). */
+export async function fetchLeagueAnnouncements(lid: string, limit = 20): Promise<LeagueAnnouncement[]> {
+  const rows = await select<AnnouncementRow>({
+    table: 'league_announcements',
+    filters: [{ col: 'league_id', op: 'eq', value: lid }],
+    order: [
+      { col: 'created_at', asc: false },
+      { col: 'id', asc: false },
+    ],
+    limit,
+  });
+  return rows.map(toAnnouncement);
+}
+
+export const useLeagueAnnouncements = (lid: string | undefined, limit = 20): Live<LeagueAnnouncement[]> =>
+  useLive<LeagueAnnouncement[]>(
+    lid ? `announcements:${lid}:${limit}` : null,
+    lid ? { kind: 'announcements', lid } : null,
+    () => fetchLeagueAnnouncements(lid!, limit),
+    { initial: [], tags: lid ? [tags.league(lid), announcementsTag(lid)] : [] },
+  );
+
+/** Antes de mandar: miembros, a cuántos les llega y cuántos avisos van hoy. */
+export interface AnnounceReach {
+  members: number;
+  reach: number;
+  sentToday: number;
+  dailyLimit: number;
+}
+
+export const fetchAnnounceReach = (lid: string): Promise<AnnounceReach> => rpc<AnnounceReach>('league_announce_reach', { p_league: lid });
+
+/** Solo admins (la RPC lo exige). No se guarda en el teléfono: cambia seguido y es del momento. */
+export const useAnnounceReach = (lid: string | undefined): Live<AnnounceReach | null> =>
+  useLive<AnnounceReach | null>(lid ? `announce-reach:${lid}` : null, lid ? { kind: 'announce-reach', lid } : null, () => fetchAnnounceReach(lid!), {
+    initial: null,
+    persist: false,
+    tags: lid ? [tags.league(lid), announcementsTag(lid), tags.leagueMembers(lid)] : [],
+  });
+
+/**
+ * Admin: manda el aviso al teléfono de los miembros (los que activaron los avisos) y lo deja en el historial de la
+ * liga. Devuelve a cuántas cuentas les llegó. Más de 3 en el día de la liga: BackendError `rate_limited`.
+ */
+export async function announceToLeague(lid: string, body: string): Promise<number> {
+  const n = await rpc<number>('league_announce', { p_league: lid, p_body: body.trim() });
+  invalidate(announcementsTag(lid));
+  return n ?? 0;
+}
+
+// ---------- Invitación con detalles («¿Quién eres?») ----------
+
+/** Un jugador que el admin ya creó y que todavía no tiene cuenta (se puede elegir al unirse). */
+export interface FreePlayer {
+  id: string;
+  name: string;
+}
+
+/** Lo que ve quien abre un link de invitación (con sesión): la liga y los jugadores libres. */
+export interface InviteDetails {
+  leagueId: string;
+  name: string;
+  sport: string;
+  kind: LeagueKind;
+  visibility: Visibility;
+  venue: string;
+  schedule: string;
+  /** YYYY-MM-DD o '' (en un torneo sin liga, la fecha del torneo). */
+  seasonStart: string;
+  seasonEnd: string;
+  hasMinors: boolean;
+  /** Cuántas cuentas hay en la liga. */
+  members: number;
+  /** La cuenta ya es miembro. */
+  member: boolean;
+  /** Sin cuenta y no menores, por nombre (los que `join_league` vincula con `p_prefer`). */
+  players: FreePlayer[];
+}
+
+type InviteDetailsRaw = Omit<InviteDetails, 'seasonStart' | 'seasonEnd' | 'players'> & {
+  seasonStart: string | null;
+  seasonEnd: string | null;
+  players: FreePlayer[] | null;
+};
+
+/** Con el código (link o QR): la liga y quién ya está anotado sin cuenta. null si el código no sirve. Necesita sesión. */
+export async function getInviteDetails(code: string): Promise<InviteDetails | null> {
+  const id = code.trim().toUpperCase();
+  if (!id) return null;
+  const r = await rpc<InviteDetailsRaw | null>('invite_details', { p_code: id });
+  if (!r) return null;
+  return {
+    ...r,
+    venue: r.venue ?? '',
+    schedule: r.schedule ?? '',
+    seasonStart: r.seasonStart ?? '',
+    seasonEnd: r.seasonEnd ?? '',
+    hasMinors: !!r.hasMinors,
+    members: r.members ?? 0,
+    member: !!r.member,
+    players: r.players ?? [],
+  };
 }

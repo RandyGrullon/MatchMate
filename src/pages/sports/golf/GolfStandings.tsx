@@ -5,6 +5,7 @@ import { useEvents, usePlayers } from '../../../lib/data';
 import { useGolfRounds, useGolfRules, useGolfSeason, useGolfTournaments } from '../../../lib/data/golf';
 import { eventLabel, formatDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
+import { ShareButton, type ShareTableSpec } from '../../../components/share';
 import { Card, Empty, ListSkeleton, LoadError, Position } from '../../../components/ui';
 import { inSeasonDate } from './GolfHome';
 import { meritEvents, seasonMerit } from './logic';
@@ -37,13 +38,27 @@ export default function GolfStandings() {
   };
   const season$ = league.seasonStart || league.seasonEnd ? `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}` : null;
 
+  // Imagen del orden de mérito para mandar al grupo.
+  const shareCard = (): ShareTableSpec => ({
+    kind: 'table',
+    title: league.name,
+    subtitle: season$ ? `Orden de mérito · ${season$}` : 'Orden de mérito',
+    nameLabel: 'Jugador',
+    columns: [{ label: 'Jugó' }, { label: 'Ganó' }, { label: 'Mejor', optional: true }, { label: 'Puntos', strong: true }],
+    sections: [{ rows: merit.map((m) => ({ rank: m.rank, name: nameOf(m.id), values: [m.events, m.wins, m.best ?? '–', m.points.toLocaleString('es-DO')] })) }],
+    note: `Puntos por puesto en cada ronda cerrada (${counted.length} ${counted.length === 1 ? 'evento' : 'eventos'}).`,
+  });
+
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight">Orden de mérito</h1>
-        <p className="text-sm text-muted">
-          {season$ ? `Temporada ${season$}. ` : ''}Puntos por puesto en cada ronda cerrada: {rules.data.meritPoints.slice(0, 5).join(', ')}…
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold tracking-tight">Orden de mérito</h1>
+          <p className="text-sm text-muted">
+            {season$ ? `Temporada ${season$}. ` : ''}Puntos por puesto en cada ronda cerrada: {rules.data.meritPoints.slice(0, 5).join(', ')}…
+          </p>
+        </div>
+        {merit.length > 0 && <ShareButton className="shrink-0" card={shareCard} />}
       </div>
       {!merit.length ? (
         <Empty icon={<Medal className="size-8" />} title="Todavía no hay rondas cerradas">

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
+  Baby,
   CalendarRange,
   Camera,
   ChevronDown,
@@ -8,6 +9,7 @@ import {
   ClipboardX,
   Clock,
   DatabaseBackup,
+  Earth,
   Globe,
   Lightbulb,
   ImageMinus,
@@ -48,17 +50,32 @@ import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { Tour } from '../components/Tour';
 import { ADMIN_TOUR } from '../lib/tours';
 import { leagueSport, sportMeta } from '../sports/registry';
-import { useSportScreens } from '../sports/screens';
+import { hasScreens, useSportScreens } from '../sports/screens';
 import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
-import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Tabs, TopLoader, cx } from '../components/ui';
+import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, TopLoader, cx } from '../components/ui';
+import { AnnouncePanel } from '../components/league/Announce';
+import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 
 type Tab = string;
 
-/** Administración de la liga (dueño, admins y superadmin). */
+interface AdminTab {
+  key: Tab;
+  label: string;
+  icon: ReactNode;
+  count?: number;
+  Component?: ComponentType;
+}
+
+/**
+ * Administración de la liga (dueño, admins y superadmin). En el boliche, las pestañas de siempre (abre en
+ * Jugadores). En los otros deportes van primero las suyas (Equipos, Campos, Nadadores, Parejas y niveles: lo que
+ * hace falta para arrancar) y abre en la primera; si el deporte maneja a su gente en su pestaña, la general
+ * «Jugadores» no sale y lo de vincular cuentas queda en Miembros.
+ */
 export default function AdminPage() {
   const { lid, isAdmin, league } = useLeagueCtx();
   const [params, setParams] = useSearchParams();
@@ -68,7 +85,7 @@ export default function AdminPage() {
   const screens = useSportScreens(bowling ? null : sport);
   const pending = useSubmissions(isAdmin && bowling ? lid : undefined, 'pendiente').data.length;
   const newSuggestions = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
-  const generic: { key: Tab; label: string; icon: ReactNode; count?: number; Component?: ComponentType }[] = [
+  const generic: AdminTab[] = [
     { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
     // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
     ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
@@ -76,18 +93,21 @@ export default function AdminPage() {
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
     { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
   ];
-  const extra = screens?.adminTabs ?? [];
-  const tabs = [
-    ...generic.map((t) => {
-      const own = extra.find((x) => x.key === t.key);
-      return own ? { ...t, label: own.label, Component: own.Component } : t;
-    }),
-    ...extra
-      .filter((x) => !generic.some((t) => t.key === x.key))
-      .map((x) => ({ key: x.key, label: x.label, icon: x.icon ? <x.icon className="size-4" /> : <Settings2 className="size-4" />, Component: x.Component })),
-  ];
-  const requested = params.get('tab');
-  const tab: Tab = tabs.some((t) => t.key === requested) ? requested! : 'jugadores';
+  // Las del deporte; una que reemplaza a una general conserva su icono y su número.
+  const own: AdminTab[] = (screens?.adminTabs ?? []).map((x) => {
+    const g = generic.find((t) => t.key === x.key);
+    return g
+      ? { ...g, label: x.label, Component: x.Component }
+      : { key: x.key, label: x.label, icon: x.icon ? <x.icon className="size-4" /> : <Settings2 className="size-4" />, Component: x.Component };
+  });
+  const { tabs, defaultKey, playersMerged } = arrangeAdminTabs(generic, own, bowling);
+  const peopleTab = own.find((t) => PEOPLE_TABS.has(t.key));
+  // Las pantallas del deporte llegan aparte: mientras tanto no se abre una pestaña que después cambia.
+  const waiting = !bowling && hasScreens(sport) && !screens;
+  const raw = params.get('tab');
+  // Un link viejo a «Jugadores» donde ya no sale: lo de las cuentas está en Miembros.
+  const requested = raw === 'jugadores' && playersMerged ? 'miembros' : raw;
+  const tab: Tab = requested && tabs.some((t) => t.key === requested) ? requested : defaultKey;
   const Own = tabs.find((t) => t.key === tab)?.Component;
 
   if (!isAdmin) {
@@ -98,8 +118,47 @@ export default function AdminPage() {
     <div className="flex flex-col gap-5">
       {/* El tour de Admin habla de las pestañas del boliche (Aprobar, promedios): los otros deportes no lo ven. */}
       <Tour name="admin" steps={ADMIN_TOUR} when={isAdmin && bowling} />
+      {waiting ? (
+        <AdminSkeleton />
+      ) : (
+        <AdminTabs
+          tabs={tabs}
+          tab={tab}
+          onChange={(k) => setParams({ tab: k }, { replace: true })}
+          Own={Own}
+          accountsOf={playersMerged ? (peopleTab?.label ?? null) : null}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdminSkeleton() {
+  return (
+    <div className="flex flex-col gap-5" aria-busy="true">
+      <Skeleton className="h-10 w-full rounded-xl sm:w-96" />
+      <ListSkeleton rows={5} />
+    </div>
+  );
+}
+
+function AdminTabs({
+  tabs,
+  tab,
+  onChange,
+  Own,
+  accountsOf,
+}: {
+  tabs: AdminTab[];
+  tab: Tab;
+  onChange: (k: Tab) => void;
+  Own: ComponentType | undefined;
+  accountsOf: string | null;
+}) {
+  return (
+    <>
       <div data-tour="admin-secciones">
-        <Tabs items={tabs} active={tab} onChange={(k) => setParams({ tab: k }, { replace: true })} />
+        <Tabs items={tabs} active={tab} onChange={onChange} />
       </div>
       <Suspense fallback={<TopLoader />}>
         <div key={tab} className="animate-fade-up">
@@ -110,7 +169,7 @@ export default function AdminPage() {
           ) : tab === 'aprobar' ? (
             <ApprovalsPage />
           ) : tab === 'miembros' ? (
-            <MembersPanel />
+            <MembersPanel accountsOf={accountsOf} />
           ) : tab === 'buzon' ? (
             <SuggestionsPanel />
           ) : (
@@ -118,7 +177,7 @@ export default function AdminPage() {
           )}
         </div>
       </Suspense>
-    </div>
+    </>
   );
 }
 
@@ -127,8 +186,10 @@ const ORDER: Record<Member['role'], number> = { owner: 0, admin: 1, member: 2 };
 /**
  * Miembros y permisos. Todos los que entran son jugadores; el dueño nombra admins (y, en torneos
  * sin liga, anotadores). Un miembro puede tener varios roles (p. ej. anotador y jugador).
+ * `accountsOf`: el deporte maneja a su gente en su propia pestaña (ese es su nombre); aquí abajo queda lo de
+ * vincular cada cuenta con su jugador de la lista.
  */
-function MembersPanel() {
+function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   const { lid, league, isOwner } = useLeagueCtx();
   const { user } = useAuth();
   const run = useAction();
@@ -268,11 +329,18 @@ function MembersPanel() {
           })}
         </Card>
       )}
+      {accountsOf && (
+        <Suspense fallback={<ListSkeleton rows={3} />}>
+          <div className="mt-2 border-t border-line pt-5">
+            <PlayersPage variant="accounts" addWhere={accountsOf} />
+          </div>
+        </Suspense>
+      )}
     </div>
   );
 }
 
-/** Datos de la liga (se editan en un modal), invitación y la configuración (respaldo, fotos, borrar). */
+/** Datos de la liga (se editan en un modal), el aviso a toda la liga, la invitación y la configuración (respaldo, fotos, borrar). */
 function SettingsPanel() {
   const { league } = useLeagueCtx();
   const [editing, setEditing] = useState(false);
@@ -283,6 +351,8 @@ function SettingsPanel() {
   const contact = [league.contactName, league.contactPhone].filter(Boolean).join(' · ');
   // La foto del marcador es solo del boliche.
   const photos = sportMeta(leagueSport(league))?.photos ?? false;
+  const tz = league.tz || 'America/Santo_Domingo';
+  const offset = tzOffset(tz);
 
   return (
     <div className="flex flex-col gap-5">
@@ -347,6 +417,12 @@ function SettingsPanel() {
                   value={league.requirePhoto !== false ? 'Obligatoria para que cuente' : 'Opcional'}
                 />
               )}
+              <Detail icon={<Earth className="size-4" />} label="Zona horaria" value={`${tzLabel(tz)}${offset ? ` (${offset})` : ''}`} />
+              <Detail
+                icon={<Baby className="size-4" />}
+                label={isTournament ? 'Torneo con menores' : 'Liga con menores'}
+                value={league.hasMinors ? 'Sí: privada, sin fotos ni comentarios' : 'No'}
+              />
             </dl>
             <Button className="mt-4 w-full sm:w-auto" icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
               Editar datos
@@ -354,6 +430,8 @@ function SettingsPanel() {
           </div>
         </div>
       </Card>
+
+      <AnnouncePanel />
 
       <InviteCard league={league} />
 

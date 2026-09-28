@@ -14,6 +14,7 @@ import { TournamentAdvance, TournamentBuilder } from '../team/TournamentBuilder'
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { REASON_TEXT, SuspendedNotice } from './bits';
 import { exportFootballExcel } from './excel';
+import FootballEvent from './FootballEvent';
 import { FootballMatchCard } from './FootballGames';
 import { disciplineFrom, footballConfigFrom, footballTeamRules, formatOf, knockoutRules, matchMinutes, templateOf, variantOf } from './rules';
 import { groupRanking, suspendedIn, useFootballSeason, type FootballSeason } from './season';
@@ -46,6 +47,8 @@ export default function FootballHome() {
   const thisRound = round == null ? [] : matches.filter((m) => m.round === round && m.status !== 'live' && m.status !== 'suspended');
   const later = open.filter((m) => m.round !== round && m.status !== 'live' && m.status !== 'suspended');
 
+  // Torneo sin liga (el relámpago): su inicio es el del torneo, no el calendario de una liga.
+  if (tl.league.kind === 'torneo') return <FootballEvent />;
   if (tl.matches.error) return <LoadError error={tl.matches.error} />;
 
   return (

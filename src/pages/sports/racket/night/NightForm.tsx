@@ -16,10 +16,22 @@ type NightPart = 'courts' | 'points' | 'rounds';
 /**
  * Lo que se edita de la noche (al crearla y en «Ajustes»): canchas, puntos, rondas y descansos. `parts` elige qué
  * partes se ven (al crear: canchas y puntos primero; rondas y descansos después de elegir a los jugadores).
+ * `expected` = cuántos se espera que jueguen (con «Me apunto», el cupo mientras la lista se llena).
  */
-export function NightFields({ value, onChange, parts = ['courts', 'points', 'rounds'] }: { value: NightConfig; onChange: (c: NightConfig) => void; parts?: NightPart[] }) {
+export function NightFields({
+  value,
+  onChange,
+  parts = ['courts', 'points', 'rounds'],
+  expected,
+}: {
+  value: NightConfig;
+  onChange: (c: NightConfig) => void;
+  parts?: NightPart[];
+  expected?: number;
+}) {
   const c = value;
-  const info = nightInfo(c.players.length, c.courts.length);
+  const count = Math.max(c.players.length, expected ?? 0);
+  const info = nightInfo(count, c.courts.length);
   const setCourts = (n: number) => {
     const courts = Array.from({ length: n }, (_, i) => c.courts[i] ?? `Cancha ${i + 1}`);
     onChange({ ...c, courts });
@@ -87,7 +99,8 @@ export function NightFields({ value, onChange, parts = ['courts', 'points', 'rou
             {info.idleCourts ? ` (sobran ${info.idleCourts} ${info.idleCourts === 1 ? 'cancha' : 'canchas'})` : ''}.
             {c.format === 'americano' && info.roundsForAll > 0 && ` Para jugar con todos harían falta ${info.roundsForAll} rondas.`}
             {info.resting > 0 && info.equalRests.length > 0 && ` Con ${info.equalRests.slice(0, 3).join(', ')} rondas todos descansan igual.`}{' '}
-            <button type="button" className="font-medium text-accent" onClick={() => onChange({ ...c, rounds: suggestRounds(c.format, c.players.length, c.courts.length) })}>
+            {count > c.players.length && `Contando con ${count} jugadores. `}
+            <button type="button" className="font-medium text-accent" onClick={() => onChange({ ...c, rounds: suggestRounds(c.format, count, c.courts.length) })}>
               Usar las recomendadas
             </button>
           </>

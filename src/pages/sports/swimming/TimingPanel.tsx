@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, RotateCcw, Send, Timer, Undo2 } from 'lucide-react';
+import { useWakeLock } from '../../../court';
 import { recordHeat, type SwimEntry, type SwimEventItem } from '../../../lib/data/swimming';
 import { formatSwimTime, type SwimStatus } from '../../../sports/swimming';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, Select, cx } from '../../../components/ui';
+import { FieldModeButton, FieldScreen, useFieldMode } from '../golf/FieldScreen';
 import { ClubTag, TimeKeypad, TimeText } from './bits';
 import { groupLabel, pendingHeats, raceName, raceTitle } from './logic';
 import type { MeetData } from './MeetPage';
@@ -32,16 +34,26 @@ const heatsOf = (ev: SwimEventItem, entries: readonly SwimEntry[]) =>
 
 const hasResult = (e: SwimEntry) => e.resultAt != null || e.time != null || e.status !== 'ok';
 
+/** El modo piscina: pantalla completa (en la dirección, `?piscina=1`) con la pestaña de cronometrar. */
+type FieldMode = ReturnType<typeof useFieldMode>;
+
 /**
  * Pantalla de cancha: cronometrar una serie. Una fila por carril con el nadador y su siembra; SALIDA arranca el
  * cronómetro del teléfono (no oficial) y cada carril tiene su STOP; el tiempo de los cronómetros físicos se
  * escribe con el teclado mm:ss.hh; DQ, DNS y DNF con un toque. Todo queda en el teléfono y «Publicar serie»
  * manda la serie entera en una sola operación (sin señal, sale sola al volver).
+ *
+ * En la orilla: con la pestaña abierta la pantalla no se apaga, «Publicar serie» siempre está a la vista (fijo
+ * abajo, encima de la barra de la app) y «Modo piscina» la pone en pantalla completa con modo sol (piezas del
+ * modo cancha, src/court).
  */
 export function TimingPanel({ data }: { data: MeetData }) {
   const { events, entries } = data;
   const seeded = events.filter((ev) => heatsOf(ev, entries).length > 0);
   const [sel, setSel] = useState<HeatRef | null>(null);
+  const field = useFieldMode('piscina', { ver: 'cronometro' });
+  // Entre serie y serie la pantalla no se apaga (se cronometra con las manos mojadas).
+  useWakeLock(true);
   useEffect(() => sweepTimings(), []);
 
   /** Al abrir: la primera serie que falta por cronometrar. Después no se mueve sola (aunque otro publique). */
@@ -73,8 +85,8 @@ export function TimingPanel({ data }: { data: MeetData }) {
     return after ? { ev: after.id, heat: heatsOf(after, entries)[0] } : null;
   };
 
-  return (
-    <div className="flex flex-col gap-3">
+  const selectors = (
+    <>
       <Select value={ev.id} onChange={(e) => setSel({ ev: e.target.value, heat: heatsOf(seeded.find((x) => x.id === e.target.value)!, entries)[0] })} aria-label="Prueba">
         {seeded.map((e) => (
           <option key={e.id} value={e.id}>
@@ -83,7 +95,7 @@ export function TimingPanel({ data }: { data: MeetData }) {
           </option>
         ))}
       </Select>
-      <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label="Serie">
+      <div className={cx('no-scrollbar flex gap-1.5 overflow-x-auto', !field.on && '-mx-4 px-4')} role="group" aria-label="Serie">
         {heats.map((h) => {
           const done = entries.some((e) => e.swimEventId === ev.id && e.heat === h && hasResult(e));
           return (
@@ -103,40 +115,33 @@ export function TimingPanel({ data }: { data: MeetData }) {
           );
         })}
       </div>
-      <HeatTimer
-        key={`${ev.id}:${heat}`}
-        data={data}
-        ev={ev}
-        heat={heat}
-        heatCount={heats.length}
-        onDone={() => {
-          const n = next();
-          if (n) setSel(n);
-        }}
-      />
+    </>
+  );
+
+  const timer = (
+    <HeatTimer
+      key={`${ev.id}:${heat}`}
+      data={data}
+      ev={ev}
+      heat={heat}
+      heatCount={heats.length}
+      field={field}
+      selectors={selectors}
+      onDone={() => {
+        const n = next();
+        if (n) setSel(n);
+      }}
+    />
+  );
+
+  // El cronómetro queda en el mismo lugar al entrar o salir de la pantalla completa: no pierde lo que se estaba haciendo.
+  return (
+    <div className="flex flex-col gap-3">
+      {!field.on && <FieldModeButton label="Modo piscina" onClick={field.enter} />}
+      {!field.on && selectors}
+      {timer}
     </div>
   );
-}
-
-/** Mantiene la pantalla encendida mientras corre el cronómetro (si el teléfono lo permite). */
-function useWakeLock(active: boolean) {
-  useEffect(() => {
-    if (!active) return;
-    let lock: { release: () => Promise<void> } | null = null;
-    let alive = true;
-    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } };
-    nav.wakeLock
-      ?.request('screen')
-      .then((l) => {
-        if (alive) lock = l;
-        else void l.release().catch(() => undefined);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-      void lock?.release().catch(() => undefined);
-    };
-  }, [active]);
 }
 
 /** El tiempo corriendo (solo esto se redibuja seguido, no la serie entera). */
@@ -159,7 +164,24 @@ const STATUS_BUTTONS: { s: SwimStatus; label: string }[] = [
   { s: 'dnf', label: 'DNF' },
 ];
 
-function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: SwimEventItem; heat: number; heatCount: number; onDone: () => void }) {
+function HeatTimer({
+  data,
+  ev,
+  heat,
+  heatCount,
+  field,
+  selectors,
+  onDone,
+}: {
+  data: MeetData;
+  ev: SwimEventItem;
+  heat: number;
+  heatCount: number;
+  field: FieldMode;
+  /** Prueba y serie (arriba de la pantalla completa). */
+  selectors: ReactNode;
+  onDone: () => void;
+}) {
   const { lid, meet, entries, clubs, name } = data;
   const { toast, confirm } = useFeedback();
   const key = timingKey(ev.id, heat);
@@ -169,7 +191,6 @@ function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: 
   const [keypad, setKeypad] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const state = useMemo(() => replayTiming(log), [log]);
-  useWakeLock(state.startedAt != null);
   // Cada cambio de la lista de toques se guarda en el teléfono al momento.
   const first = useRef(true);
   useEffect(() => {
@@ -241,11 +262,13 @@ function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: 
   const running = state.startedAt != null;
   const keyLane = keypad != null ? lanes.find((e) => e.lane === keypad) : undefined;
 
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm font-semibold">
-        {raceTitle(ev)} · Serie {heat} de {heatCount}
-      </p>
+  const body = (
+    <>
+      {!field.on && (
+        <p className="text-sm font-semibold">
+          {raceTitle(ev)} · Serie {heat} de {heatCount}
+        </p>
+      )}
       {meet.finalizedAt && <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">El encuentro está finalizado: ya no se publican series.</p>}
 
       <Card className="flex flex-col gap-2 p-3">
@@ -331,34 +354,72 @@ function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: 
           );
         })}
       </div>
+    </>
+  );
 
-      <div className="sticky bottom-2 z-10 flex gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-lg backdrop-blur">
-        <Button
-          variant="ghost"
-          className="h-14"
-          icon={<Undo2 className="size-5" />}
-          disabled={!log.length}
-          onClick={() => setLog((prev) => prev.slice(0, -1))}
-          aria-label="Deshacer el último toque"
-        >
-          <span className="hidden sm:inline">Deshacer</span>
-        </Button>
-        <Button variant="primary" className="h-14 flex-1 text-base" loading={busy} disabled={!!meet.finalizedAt} icon={<Send className="size-5" />} onClick={publish}>
-          {publishedAt || onServer ? 'Publicar de nuevo' : 'Publicar serie'}
-        </Button>
+  const bar = (
+    <>
+      <Button
+        variant="ghost"
+        className="h-14"
+        icon={<Undo2 className="size-5" />}
+        disabled={!log.length}
+        onClick={() => setLog((prev) => prev.slice(0, -1))}
+        aria-label="Deshacer el último toque"
+      >
+        <span className="hidden sm:inline">Deshacer</span>
+      </Button>
+      <Button variant="primary" className="h-14 flex-1 text-base" loading={busy} disabled={!!meet.finalizedAt} icon={<Send className="size-5" />} onClick={publish}>
+        {publishedAt || onServer ? 'Publicar de nuevo' : 'Publicar serie'}
+      </Button>
+    </>
+  );
+
+  const note = publishedAt && (
+    <p className="text-center text-xs text-muted">Publicada desde este teléfono a las {new Date(publishedAt).toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })}.</p>
+  );
+
+  const keypadModal = (
+    <TimeKeypad
+      open={keypad != null}
+      title={keyLane ? `Carril ${keypad} · ${name(keyLane.playerId)}` : ''}
+      initial={keypad != null ? (values[keypad]?.time ?? null) : null}
+      onClose={() => setKeypad(null)}
+      onSave={(cs) => {
+        if (keypad != null) push({ t: 'time', lane: keypad, cs });
+        setKeypad(null);
+      }}
+    />
+  );
+
+  if (field.on) {
+    return (
+      <FieldScreen
+        title={raceTitle(ev)}
+        subtitle={`Serie ${heat} de ${heatCount}${running ? ' · en marcha' : ''}`}
+        onExit={field.exit}
+        exitLabel="Salir del modo piscina"
+        top={selectors}
+        footer={<div className="flex gap-2">{bar}</div>}
+      >
+        <div className="flex flex-col gap-3">
+          {body}
+          {note}
+        </div>
+        {keypadModal}
+      </FieldScreen>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {body}
+      {/* Siempre a la vista: fijo abajo, encima de la barra de la app en el teléfono (antes quedaba tapado). */}
+      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-lg backdrop-blur sm:bottom-2">
+        {bar}
       </div>
-      {publishedAt && <p className="text-center text-xs text-muted">Publicada desde este teléfono a las {new Date(publishedAt).toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })}.</p>}
-
-      <TimeKeypad
-        open={keypad != null}
-        title={keyLane ? `Carril ${keypad} · ${name(keyLane.playerId)}` : ''}
-        initial={keypad != null ? (values[keypad]?.time ?? null) : null}
-        onClose={() => setKeypad(null)}
-        onSave={(cs) => {
-          if (keypad != null) push({ t: 'time', lane: keypad, cs });
-          setKeypad(null);
-        }}
-      />
+      {note}
+      {keypadModal}
     </div>
   );
 }

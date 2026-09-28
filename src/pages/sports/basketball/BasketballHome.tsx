@@ -11,6 +11,7 @@ import { currentRound, upcomingFor } from '../team/logic';
 import { ScheduleBuilder, SingleMatchModal } from '../team/ScheduleBuilder';
 import { SectionHead, TeamName } from '../team/TeamBits';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
+import BasketballEvent from './BasketballEvent';
 import { BasketballMatchCard } from './BasketballGames';
 import { exportBasketballExcel } from './excel';
 import { basketballConfigFrom, basketballTeamRules } from './rules';
@@ -39,6 +40,8 @@ export default function BasketballHome() {
   const thisRound = round == null ? [] : matches.filter((m) => m.round === round && m.status !== 'live' && m.status !== 'suspended');
   const later = open.filter((m) => m.round !== round && m.status !== 'live' && m.status !== 'suspended');
 
+  // Torneo sin liga: su inicio es el del torneo (equipos, grupos y eliminatoria), no el calendario de una liga.
+  if (tl.league.kind === 'torneo') return <BasketballEvent />;
   if (tl.matches.error) return <LoadError error={tl.matches.error} />;
 
   return (

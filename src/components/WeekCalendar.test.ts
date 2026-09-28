@@ -1,18 +1,22 @@
 /**
- * Home › Próximos y «En juego ahora» con ligas de varios deportes: los eventos de pádel, golf o natación salen
- * con su tipo (no como «Práctica»), sin «Voy» y sin prácticas inventadas por el horario; «En juego ahora» es
- * solo del boliche (anotar tus juegos). Se dibujan sin navegador (renderToString) con avisos de mentira.
+ * Home › Próximos, «En juego ahora» y «Tu próximo partido» con ligas de varios deportes: los eventos de pádel, golf
+ * o natación salen con su tipo (no como «Práctica»), sin «Voy» y sin prácticas inventadas por el horario; tus
+ * partidos salen en el calendario; «En juego ahora» tiene el boliche de hoy (anotar tus juegos) y los partidos en
+ * vivo de raqueta y equipos. Se dibujan sin navegador (renderToString) con avisos de mentira.
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
+import { nextMatch } from '../lib/calendar';
 import type { LeagueFeed } from '../lib/data';
+import type { Match } from '../lib/data/matches';
 import { toIsoDate } from '../lib/format';
 import { WEEKDAYS } from '../lib/schedule';
 import type { BowlingEvent, League } from '../lib/types';
 import { FeedbackProvider } from './feedback';
 import { LiveNow } from './LiveNow';
+import { NextMatchCard } from './LiveNowMatches';
 import { WeekCalendar } from './WeekCalendar';
 
 const state = vi.hoisted(() => ({ feeds: [] as LeagueFeed[], leagues: [] as League[] }));
@@ -92,5 +96,100 @@ describe('Home con ligas de otros deportes', () => {
     const t = text(h(LiveNow));
     expect(t).toContain('Liga Norte');
     expect(t).not.toContain('Golf del Club');
+  });
+});
+
+describe('Home con partidos (raqueta y equipos)', () => {
+  // La zona de este teléfono: así «hoy» es el mismo día para el calendario y para la liga.
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const sportLeague = (id: string, name: string, sport: string): League => ({ ...league(id, name, sport), tz });
+  const todayAt = (h: number, m = 0) => {
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+  const recent = { toMillis: () => Date.now() - 60_000 };
+  const match = (id: string, leagueId: string, extra: Partial<Match> = {}) =>
+    ({
+      id,
+      leagueId,
+      eventId: null,
+      round: 3,
+      stage: '',
+      court: 'Cancha 2',
+      scheduledAt: todayAt(0, 5),
+      status: 'scheduled',
+      score: null,
+      leaseUntil: null,
+      version: 1,
+      updatedAt: recent,
+      sides: [
+        { side: 1, teamId: null, label: 'Tigres', seed: null, players: [] },
+        { side: 2, teamId: null, label: 'Leones', seed: null, players: [] },
+      ],
+      ...extra,
+    }) as unknown as Match;
+
+  it('Próximos: tu partido de hoy sale con el rival, la liga, la jornada y el link al partido', () => {
+    state.feeds = [feed('fut', [])];
+    state.leagues = [sportLeague('fut', 'Fútbol Norte', 'football')];
+    const html = renderToString(h(MemoryRouter, null, h(FeedbackProvider, null, h(WeekCalendar, { matches: [match('m1', 'fut', { mySide: 1 })] }))));
+    const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(t).toContain('Hoy');
+    expect(t).toContain('vs. Leones');
+    expect(t).toContain('Fútbol Norte · Jornada 3 · Cancha 2');
+    expect(t).not.toContain('Nada más esta semana');
+    expect(html).toContain('href="/l/fut/juegos?partido=m1"');
+    // Sin partidos, el mismo calendario dice que no hay nada.
+    expect(text(h(WeekCalendar))).toContain('Nada más esta semana');
+  });
+
+  it('Próximos: un partido en vivo lo dice', () => {
+    state.feeds = [feed('pad', [])];
+    state.leagues = [sportLeague('pad', 'Pádel Club', 'padel')];
+    const t = text(h(WeekCalendar, { matches: [match('m1', 'pad', { status: 'live', mySide: 2 })] }));
+    expect(t).toContain('vs. Tigres');
+    expect(t).toContain('En vivo');
+  });
+
+  it('En juego ahora: los partidos en vivo de tus ligas, el tuyo marcado, con el marcador', () => {
+    state.feeds = [feed('fut', []), feed('pad', [])];
+    state.leagues = [sportLeague('fut', 'Fútbol Norte', 'football'), sportLeague('pad', 'Pádel Club', 'padel')];
+    const live = [
+      match('a', 'fut', { status: 'live', score: { text: '2-1', sides: [2, 1] } }),
+      match('b', 'pad', { status: 'live', score: { text: '6-4 3-2' }, sides: [{ side: 1, teamId: null, label: 'Ana / Luis', seed: null, players: [] }, { side: 2, teamId: null, label: 'Rosa / Juan', seed: null, players: [] }] } as Partial<Match>),
+    ];
+    const mine = [{ ...live[1], mySide: 1 } as Match];
+    const t = text(h(LiveNow, { live, mine }));
+    expect(t).toContain('En juego ahora');
+    expect(t).toContain('2 partidos');
+    expect(t).toContain('Ana / Luis vs. Rosa / Juan');
+    expect(t).toContain('6-4 3-2');
+    expect(t).toContain('Tu partido');
+    expect(t).toContain('Tigres vs. Leones');
+    expect(t.indexOf('Ana / Luis')).toBeLessThan(t.indexOf('Tigres'));
+  });
+
+  it('En juego ahora: sin partidos en vivo (ni boliche de hoy) no sale nada', () => {
+    state.feeds = [feed('fut', [])];
+    state.leagues = [sportLeague('fut', 'Fútbol Norte', 'football')];
+    expect(text(h(LiveNow, { live: [match('a', 'fut', { status: 'scheduled' })], mine: [] })).trim()).toBe('');
+  });
+
+  it('Tu próximo partido: contra quién, dónde, el día y la hora, y cuántos más hay', () => {
+    const leagues = [sportLeague('fut', 'Fútbol Norte', 'football')];
+    const now = Date.now();
+    const in2h = new Date(now + 2 * 3_600_000).toISOString();
+    const next = nextMatch([match('m1', 'fut', { scheduledAt: in2h, mySide: 2 }), match('m2', 'fut', { scheduledAt: new Date(now + 3 * 86_400_000).toISOString(), mySide: 2 })], leagues, now)!;
+    expect(next).not.toBeNull();
+    const html = renderToString(h(MemoryRouter, null, h(NextMatchCard, { next })));
+    const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(t).toContain('Tu próximo partido');
+    expect(t).toContain('vs. Tigres');
+    expect(t).toContain('Fútbol Norte · Jornada 3 · Cancha 2');
+    expect(t).toContain(`${next.dayLabel} · ${next.time}`);
+    expect(t).toContain('En 2 h');
+    expect(t).toContain('Tienes 1 partido más en los próximos 7 días.');
+    expect(html).toContain('href="/l/fut/juegos?partido=m1"');
   });
 });

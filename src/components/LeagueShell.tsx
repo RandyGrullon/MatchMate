@@ -1,10 +1,30 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router';
-import { CalendarDays, Check, ChevronDown, Globe, Lock, Medal, MessageCircleHeart, Plus, Settings2, Target, Trophy } from 'lucide-react';
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Flag,
+  Globe,
+  ListOrdered,
+  Lock,
+  Medal,
+  MessageCircleHeart,
+  Plus,
+  Settings2,
+  Shirt,
+  Swords,
+  Target,
+  Timer,
+  Trophy,
+  Waves,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useLeague, useLeaguesByIds, useMembership, useMyMemberships, useSubmissions } from '../lib/data';
 import { rememberSport } from '../lib/splash';
-import { leagueSport, sportsOf } from '../sports/registry';
+import type { LeagueTabNames } from '../lib/tours';
+import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { dispatchLeague, useSportScreens } from '../sports/screens';
 import { SportBadge } from '../pages/sports/SportBits';
 import { useNotifications } from './Notifications';
@@ -12,14 +32,32 @@ import { useCreateMenu } from './CreateMenu';
 import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
 import { AppFrame, AppShell } from './Shell';
 import { Empty, Loading, Modal, PageSkeleton, cx } from './ui';
+import { LeagueHomeFrame } from './league/LeagueHome';
+import { isLeagueHome } from './league/logic';
+import { SportTheme } from './league/SportTheme';
 
 // Pantallas de los deportes que todavía no tienen las suyas (se bajan solo si hacen falta).
 const SportComingSoon = lazy(() => import('../pages/sports/SportComingSoon'));
 const UpdateAppScreen = lazy(() => import('../pages/sports/UpdateAppScreen'));
 
+/** Iconos de las pestañas según el deporte: cada liga se reconoce también por sus pestañas. */
+function tabIcons(sport: string, standalone: boolean): { home: LucideIcon; feed: LucideIcon; standings: LucideIcon; profile: LucideIcon } {
+  const meta = sportMeta(sport);
+  const family = meta?.family;
+  if (sport === 'bowling') return { home: standalone ? Trophy : CalendarDays, feed: MessageCircleHeart, standings: Medal, profile: Target };
+  return {
+    home: standalone ? Trophy : sport === 'golf' ? Flag : sport === 'swimming' ? Waves : CalendarDays,
+    feed: Swords,
+    standings: family === 'series' ? Medal : ListOrdered,
+    profile: family === 'team' ? Shirt : sport === 'swimming' ? Timer : sport === 'golf' ? Flag : Target,
+  };
+}
+
 /**
  * Marco de lo que pasa dentro de una liga: arriba el nombre (toca para cambiar de liga) y sus
  * pestañas (Calendario · Juegos · Ranking · Mis juegos · Admin); abajo, la barra de la app (Home · Eventos · Perfil).
+ * Dentro de la liga todo toma el color de su deporte (el boliche, el de la app) y el inicio lleva lo común de
+ * todas las ligas (portada, aviso del admin, «Unirme», datos y buzón: src/components/league/LeagueHome.tsx).
  *
  * Es uno de los dos puntos de desvío por deporte (el otro es EventPage): el boliche ve sus pantallas de
  * siempre; un deporte sin pantallas todavía, «Pronto»; uno que esta versión no conoce, «Actualiza la app».
@@ -114,16 +152,18 @@ export default function LeagueShell() {
   if (sport && sport.kind !== 'ready') {
     return (
       <LeagueContext.Provider value={ctx}>
-        <AppFrame wide middle={switcher}>
-          <Suspense fallback={<PageSkeleton />}>
-            {sport.kind === 'unknown' ? (
-              <UpdateAppScreen sport={sport.sport} leagueName={ctx.league.name} />
-            ) : (
-              <SportComingSoon sport={sport.sport} leagueName={ctx.league.name} kind={ctx.league.kind ?? 'liga'} />
-            )}
-          </Suspense>
-        </AppFrame>
-        <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+        <SportTheme sport={sportId}>
+          <AppFrame wide middle={switcher}>
+            <Suspense fallback={<PageSkeleton />}>
+              {sport.kind === 'unknown' ? (
+                <UpdateAppScreen sport={sport.sport} leagueName={ctx.league.name} />
+              ) : (
+                <SportComingSoon sport={sport.sport} leagueName={ctx.league.name} kind={ctx.league.kind ?? 'liga'} />
+              )}
+            </Suspense>
+          </AppFrame>
+          <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+        </SportTheme>
       </LeagueContext.Provider>
     );
   }
@@ -131,56 +171,67 @@ export default function LeagueShell() {
   const base = ctx.base;
   const standalone = ctx.league.kind === 'torneo';
   // Otro deporte: los nombres de sus pestañas (y las que no tiene no salen).
-  const names = bowling
-    ? { home: standalone ? 'Torneo' : 'Calendario', feed: 'Juegos', standings: standalone ? null : 'Ranking', profile: 'Mis juegos' }
+  const names: LeagueTabNames = bowling
+    ? { home: standalone ? 'Torneo' : 'Calendario', feed: 'Juegos', standings: standalone ? null : 'Ranking', profile: 'Mis juegos', admin: ctx.isAdmin }
     : {
         home: screens?.tabs?.home ?? (standalone ? 'Torneo' : 'Calendario'),
         feed: screens?.Feed ? (screens.tabs?.feed === undefined ? 'Partidos' : screens.tabs.feed) : null,
         standings: screens?.Standings ? (screens.tabs?.standings === undefined ? 'Tabla' : screens.tabs.standings) : null,
         profile: screens?.tabs?.profile ?? 'Mis partidos',
+        admin: ctx.isAdmin,
       };
+  const icons = tabIcons(sportId ?? 'bowling', standalone);
   const tabs = [
-    { to: base, label: names.home, icon: standalone ? Trophy : CalendarDays, end: true, tour: 'tab-calendario' },
+    { to: base, label: names.home, icon: icons.home, end: true, tour: 'tab-calendario' },
     // Los juegos de todos, para felicitar y comentar.
-    ...(names.feed ? [{ to: `${base}/juegos`, label: names.feed, icon: MessageCircleHeart, tour: 'tab-juegos' }] : []),
-    ...(names.standings ? [{ to: `${base}/ranking`, label: names.standings, icon: Medal, tour: 'tab-ranking' }] : []),
-    { to: `${base}/perfil`, label: names.profile, icon: Target, tour: 'tab-perfil' },
+    ...(names.feed ? [{ to: `${base}/juegos`, label: names.feed, icon: icons.feed, tour: 'tab-juegos' }] : []),
+    ...(names.standings ? [{ to: `${base}/ranking`, label: names.standings, icon: icons.standings, tour: 'tab-ranking' }] : []),
+    { to: `${base}/perfil`, label: names.profile, icon: icons.profile, tour: 'tab-perfil' },
     ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: pending + newNotes, tour: 'tab-admin' }] : []),
   ];
+  const home = isLeagueHome(pathname, base);
 
   return (
     <LeagueContext.Provider value={ctx}>
-      <AppFrame
-        wide
-        middle={switcher}
-        subnav={
-          <nav ref={tabsRef} className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4" aria-label="Secciones de la liga" data-tour="secciones">
-            {tabs.map(({ to, label, icon: Icon, end, count, tour }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                data-tour={tour}
-                className={({ isActive }) =>
-                  cx(
-                    'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition sm:px-3',
-                    isActive ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
-                  )
-                }
-              >
-                <Icon className="size-4" />
-                {label}
-                {!!count && <span className="rounded-full bg-danger px-1.5 text-[11px] leading-4 font-bold text-on-danger">{count}</span>}
-              </NavLink>
-            ))}
-            {/* Chrome no deja desplazar hasta el relleno derecho: este espacio deja ver entera la última pestaña. */}
-            <span aria-hidden="true" className="w-3 shrink-0" />
-          </nav>
-        }
-      >
-        <Outlet />
-      </AppFrame>
-      <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+      <SportTheme sport={sportId}>
+        <AppFrame
+          wide
+          middle={switcher}
+          subnav={
+            <nav ref={tabsRef} className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4" aria-label="Secciones de la liga" data-tour="secciones">
+              {tabs.map(({ to, label, icon: Icon, end, count, tour }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  data-tour={tour}
+                  className={({ isActive }) =>
+                    cx(
+                      'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition sm:px-3',
+                      isActive ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
+                    )
+                  }
+                >
+                  <Icon className="size-4" />
+                  {label}
+                  {!!count && <span className="rounded-full bg-danger px-1.5 text-[11px] leading-4 font-bold text-on-danger">{count}</span>}
+                </NavLink>
+              ))}
+              {/* Chrome no deja desplazar hasta el relleno derecho: este espacio deja ver entera la última pestaña. */}
+              <span aria-hidden="true" className="w-3 shrink-0" />
+            </nav>
+          }
+        >
+          {home ? (
+            <LeagueHomeFrame bowling={bowling} tabs={names}>
+              <Outlet />
+            </LeagueHomeFrame>
+          ) : (
+            <Outlet />
+          )}
+        </AppFrame>
+        <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+      </SportTheme>
     </LeagueContext.Provider>
   );
 }

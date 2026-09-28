@@ -107,10 +107,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Sin zoom con los dedos: se puede deslizar en cualquier dirección, pero no pellizcar ni doble toque.
-   El texto tampoco se agranda solo al girar el teléfono. */
+/* Se puede ampliar con los dedos (menos en el modo cancha, que lo bloquea src/lib/noZoom.ts); sin la espera
+   del doble toque. El texto tampoco se agranda solo al girar el teléfono. */
 html {
-  touch-action: pan-x pan-y;
+  touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }

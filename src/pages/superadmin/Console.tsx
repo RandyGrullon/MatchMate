@@ -11,6 +11,7 @@ import AnnouncementsSection from './AnnouncementsSection';
 import ScanSection from './ScanSection';
 import SystemSection from './SystemSection';
 import AuditSection from './AuditSection';
+import ErrorsSection from './ErrorsSection';
 import BrandSection from './BrandSection';
 
 export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
@@ -21,6 +22,7 @@ export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   anuncios: AnnouncementsSection,
   fotos: ScanSection,
   sistema: SystemSection,
+  errores: ErrorsSection,
   auditoria: AuditSection,
   logo: BrandSection,
 };

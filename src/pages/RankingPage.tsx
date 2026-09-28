@@ -8,6 +8,7 @@ import type { Entry } from '../lib/types';
 import { AnimatedNumber, Card, Empty, ListSkeleton, LoadError, Position, Tabs, cx } from '../components/ui';
 import { Avatar } from '../components/Avatar';
 import { LeagueExcelButton } from '../components/LeagueExcelButton';
+import { ShareButton, type ShareTableSpec } from '../components/share';
 
 type Metric = 'promedio' | 'juego' | 'serie' | 'asistencia';
 
@@ -21,16 +22,16 @@ interface Row {
   events: number;
 }
 
-const metrics: { key: Metric; label: string; icon: ReactNode; value: (r: Row) => number }[] = [
-  { key: 'promedio', label: 'Promedio', icon: <Target className="size-4" />, value: (r) => r.average },
-  { key: 'juego', label: 'Mejor juego', icon: <Flame className="size-4" />, value: (r) => r.high },
-  { key: 'serie', label: 'Mejor serie', icon: <Layers className="size-4" />, value: (r) => r.series },
-  { key: 'asistencia', label: 'Asistencia', icon: <CalendarCheck className="size-4" />, value: (r) => r.events },
+const metrics: { key: Metric; label: string; short: string; icon: ReactNode; value: (r: Row) => number }[] = [
+  { key: 'promedio', label: 'Promedio', short: 'Prom.', icon: <Target className="size-4" />, value: (r) => r.average },
+  { key: 'juego', label: 'Mejor juego', short: 'Juego', icon: <Flame className="size-4" />, value: (r) => r.high },
+  { key: 'serie', label: 'Mejor serie', short: 'Serie', icon: <Layers className="size-4" />, value: (r) => r.series },
+  { key: 'asistencia', label: 'Asistencia', short: 'Eventos', icon: <CalendarCheck className="size-4" />, value: (r) => r.events },
 ];
 
 /** Ranking de la liga por temporada (año), para motivar a ir a las prácticas. */
 export default function RankingPage() {
-  const { lid, base, myPlayerId, member } = useLeagueCtx();
+  const { lid, base, myPlayerId, member, league } = useLeagueCtx();
   const [params, setParams] = useSearchParams();
   const events = useEvents(lid);
   const players = usePlayers(lid);
@@ -75,6 +76,17 @@ export default function RankingPage() {
   };
   const error = events.error ?? players.error ?? entries.error;
 
+  // Imagen del ranking que se ve (temporada y métrica) para mandar al grupo.
+  const shareCard = (): ShareTableSpec => ({
+    kind: 'table',
+    title: league.name,
+    subtitle: `${year ? `Ranking ${year}` : 'Ranking'} · ${current.label}`,
+    nameLabel: 'Jugador',
+    columns: [{ label: 'Juegos' }, { label: current.short, strong: true }],
+    sections: [{ rows: ranked.map(({ row, pos }) => ({ rank: pos, name: row.name, values: [row.games, current.value(row)] })) }],
+    note: metric === 'promedio' ? `Solo juegos verificados. Mínimo ${MIN_GAMES} juegos en la temporada.` : 'Solo juegos verificados.',
+  });
+
   return (
     <>
       <div className="flex flex-col gap-5">
@@ -98,6 +110,7 @@ export default function RankingPage() {
               ))}
             </select>
           )}
+          {ranked.length > 0 && <ShareButton variant="ghost" size="md" iconOnly label="Compartir el ranking" card={shareCard} />}
           {member && events.data.length > 0 && <LeagueExcelButton year={year} events={events.data} players={players.data} />}
         </div>
 

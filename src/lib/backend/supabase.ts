@@ -61,6 +61,7 @@ const TABLE_KEYS: Record<string, readonly string[]> = {
   ladder_rungs: ['event_id', 'entrant_id'],
   match_rsvps: ['match_id', 'player_id'],
   match_officials: ['match_id'],
+  event_signups: ['event_id', 'entrant_id'],
   sport_status: ['id'],
 };
 

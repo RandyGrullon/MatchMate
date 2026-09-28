@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { ArrowLeft, KeyRound, LogIn, MailCheck, UserPlus } from 'lucide-react';
-import { authErrorMessage, login, loginWithGoogle, MIN_PASSWORD, resetPassword, signUp, useAuth } from '../lib/auth';
+import { authErrorMessage, login, loginWithGoogle, MIN_PASSWORD, rememberAdultForGoogle, resetPassword, signUp, useAuth } from '../lib/auth';
 import { pendingByUser } from '../lib/db/outbox';
 import { Button, Card, Field, Input, Loading, Tabs } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { PasswordInput } from '../components/PasswordInput';
 import { captchaEnabled, Turnstile } from '../components/Turnstile';
+import { PRIVACY_PATH, TERMS_PATH } from './legal/legal';
 
 type Mode = 'entrar' | 'registro' | 'recuperar';
 
@@ -107,6 +108,8 @@ export default function LoginPage() {
     if (signingUp && !adult) return;
     setBusy('google');
     setError(null);
+    // Marcó «tengo 18 años o más»: al volver de Google se guarda solo (sin preguntar otra vez).
+    if (signingUp && adult) rememberAdultForGoogle();
     try {
       await loginWithGoogle();
     } catch (err) {
@@ -117,8 +120,8 @@ export default function LoginPage() {
   }
 
   const adultBox = signingUp && (
-    <label className="flex items-start gap-2.5 text-sm">
-      <input type="checkbox" required checked={adult} onChange={(e) => setAdult(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]" />
+    <label className="-my-1 flex cursor-pointer items-start gap-2.5 py-1 text-sm">
+      <input type="checkbox" required checked={adult} onChange={(e) => setAdult(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--accent)]" />
       <span>
         Tengo 18 años o más. <span className="text-muted">Los menores juegan en ligas que maneja un adulto, sin cuenta propia.</span>
       </span>
@@ -128,7 +131,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <Link to={back} className="-mt-4 mb-4 inline-flex items-center gap-1.5 rounded-lg py-1 text-sm font-medium text-muted hover:text-fg">
+        <Link to={back} className="-mt-4 mb-2 -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-muted hover:text-fg">
           <ArrowLeft className="size-4" /> Volver
         </Link>
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
@@ -146,7 +149,9 @@ export default function LoginPage() {
                   ? `Te mandamos un link a ${email.trim()} para confirmar tu cuenta. Ábrelo y después entra con tu correo y contraseña.`
                   : `Si ${email.trim()} tiene cuenta, te llegará un link para poner una contraseña nueva.`}
               </p>
-              <Button onClick={() => switchMode('entrar')}>Volver a entrar</Button>
+              <Button onClick={() => switchMode('entrar')} className="max-sm:h-11">
+                Volver a entrar
+              </Button>
             </div>
           ) : mode === 'recuperar' ? (
             <form onSubmit={submit} className="flex flex-col gap-4">
@@ -161,10 +166,10 @@ export default function LoginPage() {
               </Field>
               <Turnstile key="recuperar" onToken={setCaptcha} resetKey={captchaRound} />
               {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-              <Button type="submit" variant="primary" loading={busy === 'correo'} disabled={!!busy}>
+              <Button type="submit" variant="primary" loading={busy === 'correo'} disabled={!!busy} className="max-sm:h-11">
                 Mandar el link
               </Button>
-              <button type="button" onClick={() => switchMode('entrar')} className="text-sm font-medium text-accent">
+              <button type="button" onClick={() => switchMode('entrar')} className="min-h-11 text-sm font-medium text-accent">
                 Volver a entrar
               </button>
             </form>
@@ -179,7 +184,7 @@ export default function LoginPage() {
                 onChange={switchMode}
               />
               {adultBox}
-              <Button onClick={google} loading={busy === 'google'} disabled={!!busy || (signingUp && !adult)} icon={<GoogleIcon />}>
+              <Button onClick={google} loading={busy === 'google'} disabled={!!busy || (signingUp && !adult)} icon={<GoogleIcon />} className="max-sm:h-11">
                 {signingUp ? 'Registrarme con Google' : 'Entrar con Google'}
               </Button>
               <div className="flex items-center gap-3 text-xs text-muted">
@@ -211,11 +216,12 @@ export default function LoginPage() {
                   loading={busy === 'correo'}
                   disabled={!!busy || (signingUp && (mismatch || short || !password2 || !adult))}
                   icon={signingUp ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
+                  className="max-sm:h-11"
                 >
                   {signingUp ? 'Crear cuenta' : 'Entrar'}
                 </Button>
                 {!signingUp && (
-                  <button type="button" onClick={() => switchMode('recuperar')} className="self-center text-sm font-medium text-accent">
+                  <button type="button" onClick={() => switchMode('recuperar')} className="min-h-11 self-center px-2 text-sm font-medium text-accent">
                     Olvidé mi contraseña
                   </button>
                 )}
@@ -232,6 +238,17 @@ export default function LoginPage() {
           {signingUp
             ? 'Después creas tu liga o te unes a la de tus amigos con su link o código, y juegas con esta misma cuenta.'
             : 'Si entras con Google por primera vez, tu cuenta se crea sola.'}
+        </p>
+        <p className="mt-2 text-center text-xs text-muted">
+          MatchMate es solo para mayores de 18 años. Al entrar o crear tu cuenta aceptas los{' '}
+          <Link to={TERMS_PATH} className="font-medium text-accent underline underline-offset-2">
+            Términos de uso
+          </Link>{' '}
+          y la{' '}
+          <Link to={PRIVACY_PATH} className="font-medium text-accent underline underline-offset-2">
+            Política de privacidad
+          </Link>
+          .
         </p>
       </div>
     </div>

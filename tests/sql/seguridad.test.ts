@@ -47,6 +47,10 @@ const RPC_AUTHENTICATED = [
   'save_points_result', 'accept_challenge', 'cancel_challenge', 'create_challenge', 'join_ladder', 'leave_ladder',
   'save_box_month', 'set_ladder', 'sync_ladder', 'server_now', 'set_match_official', 'set_match_rsvp',
   'delete_football_sanction', 'save_football_sanction',
+  // Liga (avisos e invitación), inscripciones y cuenta (mayores de 18, datos, borrar, errores).
+  'invite_details', 'league_announce', 'league_announce_reach', 'join_signup', 'leave_signup', 'set_signup',
+  'admin_clear_client_errors', 'admin_client_errors', 'confirm_adult', 'export_my_data', 'log_client_error',
+  'prepare_delete_account',
   // Consola del superadmin (y touch_seen, de cualquier cuenta).
   'touch_seen', 'admin_overview', 'admin_series', 'admin_users', 'admin_user', 'admin_leagues', 'admin_audit_log',
   'admin_system', 'admin_scan_stats', 'admin_block_user', 'admin_unblock_user', 'admin_announce', 'admin_count_recipients',

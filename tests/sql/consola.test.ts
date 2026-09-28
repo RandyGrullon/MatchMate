@@ -70,6 +70,8 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   ['admin_audit_log', {}],
   ['admin_system', {}],
   ['admin_scan_stats', { p_days: 30 }],
+  ['admin_client_errors', {}],
+  ['admin_clear_client_errors', {}],
   ['admin_block_user', { p_user: w.u.luis, p_reason: 'spam' }],
   ['admin_unblock_user', { p_user: w.u.luis }],
   ['admin_announce', ANNOUNCE],

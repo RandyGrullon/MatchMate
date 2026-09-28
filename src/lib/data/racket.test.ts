@@ -1,7 +1,8 @@
 /**
- * Raqueta (racket.ts): lo puro (filas → eventos, nivel, resultado a puntos pendiente encima) y el camino completo
- * con la base de verdad (PGlite con las migraciones y la RLS): la noche con su configuración, publicar la ronda,
- * terminar un partido con empate sin señal y el nivel de los jugadores.
+ * Raqueta (racket.ts): lo puro (filas → eventos, nivel, resultado a puntos pendiente encima, filas de la
+ * inscripción) y el camino completo con la base de verdad (PGlite con las migraciones y la RLS): la noche con su
+ * configuración, publicar la ronda, terminar un partido con empate sin señal, el nivel de los jugadores y «Me
+ * apunto» con cupo y lista de espera que sube sola.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { OutboxItem } from '../db/outbox';
@@ -15,13 +16,20 @@ import {
   fetchPlayerLevels,
   fetchRacketEvent,
   fetchRacketEvents,
+  fetchSignups,
+  joinSignup,
+  leaveSignup,
   levelOf,
   overlayPoints,
   overlayPointsList,
   saveNightRound,
   savePointsResult,
   setPlayerLevel,
+  setSignup,
+  signupMessageTags,
+  signupTag,
   toRacketEvent,
+  toSignup,
   updateRacketEvent,
 } from './racket';
 import type { Wire } from './stamp';
@@ -66,6 +74,27 @@ describe('lo puro', () => {
     expect(levelOf({ level: 9 })).toBe(7);
     expect(levelOf({ level: 'A' })).toBeNull();
     expect(levelOf(null)).toBeNull();
+  });
+
+  it('fila de event_signups → inscripción (el turno llega como número, texto o bigint)', () => {
+    const r = {
+      event_id: 'E',
+      entrant_id: 'P',
+      player_id: 'P',
+      team_id: null,
+      category: null,
+      status: 'wait',
+      queue_no: '12',
+      queued_at: '2026-10-01T00:00:00Z',
+      promoted_at: null,
+      created_by: 'u',
+    };
+    expect(toSignup(r)).toEqual({ eventId: 'E', entrantId: 'P', playerId: 'P', teamId: null, category: null, status: 'wait', queue: 12, queuedAt: '2026-10-01T00:00:00Z', promotedAt: null, createdBy: 'u' });
+    expect(toSignup({ ...r, queue_no: BigInt(7), status: 'in' })).toMatchObject({ queue: 7, status: 'in' });
+    expect(toSignup({ ...r, status: 'rara' }).status).toBe('in');
+    expect(signupMessageTags('E', { event: 'signups' })).toEqual([signupTag('E')]);
+    expect(signupMessageTags('E', null)).toEqual([signupTag('E')]);
+    expect(signupMessageTags('E', { event: 'ladder' })).toEqual([]);
   });
 
   it('el resultado a puntos en la cola se ve encima (con empate)', () => {
@@ -176,6 +205,46 @@ describe('con la base de verdad', () => {
     await w.as('rosa@x.com');
     await expect(savePointsResult(lid, m.id, [20, 10])).rejects.toBeTruthy();
     expect(await savePointsResult(lid, m.id, [14, 10], { note: 'Corregido' })).toEqual({ ok: true, status: 'confirmed' });
+  });
+
+  it('«Me apunto»: cupo, espera, entrar a la liga al apuntarse, el admin a mano y la espera que sube sola', async () => {
+    await w.as('rosa@x.com');
+    const ev = await createRacketEvent(lid, {
+      type: 'americano',
+      name: 'Americano con cupo',
+      date: '2030-10-08',
+      config: { format: 'americano', players: [], courts: ['Cancha 1'], points: { mode: 'total', target: 24 }, signup: { open: true, cap: 2, until: null } },
+    });
+    expect((await fetchRacketEvent(lid, ev))?.config.signup).toEqual({ open: true, cap: 2, until: null, rev: 0 });
+
+    await w.as('ana@x.com');
+    expect(await joinSignup(lid, ev)).toEqual({ status: 'in', position: 1, entrantId: ps[1], category: null });
+    await w.as('rosa@x.com');
+    expect(await setSignup(lid, ev, ps[2], 'in')).toBe('in');
+
+    // Beto no es de la liga: al apuntarse entra a la liga (pública) y, con la lista llena, a la espera.
+    const betoId = await w.signUp('beto@x.com', 'Beto');
+    const beto = await joinSignup(lid, ev);
+    expect(beto).toMatchObject({ status: 'wait', position: 1 });
+    expect((await fetchPlayers(lid)).find((p) => p.id === beto.entrantId)?.uid).toBe(betoId);
+    expect((await fetchSignups(lid, ev)).map((s) => [s.entrantId, s.status])).toEqual([
+      [ps[1], 'in'],
+      [ps[2], 'in'],
+      [beto.entrantId, 'wait'],
+    ]);
+
+    // Ana ya no puede: entra Beto solo.
+    await w.as('ana@x.com');
+    expect(await leaveSignup(lid, ev)).toBe(true);
+    const cfg = (await fetchRacketEvent(lid, ev))!.config;
+    expect(cfg.players).toEqual([ps[2], beto.entrantId]);
+    expect((await fetchSignups(lid, ev)).find((s) => s.entrantId === beto.entrantId)?.status).toBe('in');
+
+    // El admin cierra la inscripción: ya nadie se apunta.
+    await w.as('rosa@x.com');
+    await updateRacketEvent(lid, ev, { config: { ...cfg, signup: { ...(cfg.signup as object), open: false } } });
+    await w.as('ana@x.com');
+    await expect(joinSignup(lid, ev)).rejects.toThrow(/cerrado/);
   });
 
   it('el nivel del jugador (para el mexicano y la siembra)', async () => {

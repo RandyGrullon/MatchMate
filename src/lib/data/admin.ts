@@ -10,6 +10,7 @@
  */
 import { useMemo } from 'react';
 import type { SportStatus } from '../../sports/status';
+import type { ClientErrorKind } from '../errorReport';
 import type { LeagueKind, LeagueRole, Visibility } from '../types';
 import { backend, invalidate, queryClient, rpc, type Live } from './client';
 import { keys, tags } from './keys';
@@ -161,6 +162,41 @@ export interface Page<T> {
   total: number;
 }
 
+/**
+ * Un error de los teléfonos agrupado por huella (el mismo tipo, mensaje sin ids ni números, y pantalla):
+ * cuántas veces, en cuántos reportes y a cuántas cuentas, y el último reporte completo. Base:
+ * 20260927001500_cuenta.sql (admin_client_errors); los reporta src/lib/errorReport.ts.
+ */
+export interface AdminClientError {
+  fingerprint: string;
+  /** Veces en total (un reporte suma las repeticiones de la misma cuenta en 24 h). */
+  hits: number;
+  reports: number;
+  users: number;
+  firstAt: string;
+  lastAt: string;
+  kind: ClientErrorKind;
+  message: string;
+  /** Pantalla donde pasó ('liga/ranking', 'cuenta'…). */
+  component: string | null;
+  stack: string | null;
+  route: string | null;
+  ua: string | null;
+  appVersion: string | null;
+  /** La cuenta del último reporte. */
+  userId: string | null;
+  userName: string | null;
+  /** Hasta 5 rutas (las más repetidas) y 5 versiones (las más nuevas). */
+  routes: string[];
+  versions: string[];
+}
+
+export interface AdminClientErrors extends Page<AdminClientError> {
+  /** Veces y cuentas de todo lo filtrado (no solo esta página). */
+  hits: number;
+  users: number;
+}
+
 // ---------- Límites (los mismos que revisa la base) ----------
 
 /** Filas por página: la base da como mucho 100. */
@@ -170,6 +206,9 @@ export const MAX_ANNOUNCE_BODY = 180;
 export const MAX_BLOCK_REASON = 200;
 /** Anuncios por hora entre todos los superadmins (después: 'rate_limited'). */
 export const ANNOUNCES_PER_HOUR = 5;
+export const CLIENT_ERROR_KINDS: readonly ClientErrorKind[] = ['error', 'promise', 'render', 'chunk'];
+/** Días hacia atrás que se pueden ver (la base guarda 30). */
+export const CLIENT_ERROR_DAYS = [1, 7, 30] as const;
 
 /** Nombre en español de cada acción de la auditoría (las que no están aquí se muestran tal cual). */
 export const ADMIN_ACTION_LABELS: Readonly<Record<string, string>> = {
@@ -180,6 +219,8 @@ export const ADMIN_ACTION_LABELS: Readonly<Record<string, string>> = {
   announce: 'Anuncio',
   delete_league: 'Borró liga',
   transfer_league: 'Traspasó liga',
+  clear_errors: 'Borró errores',
+  delete_account: 'Cuenta borrada',
 };
 
 /**
@@ -355,6 +396,35 @@ export function toAdminAuditEntry(raw: unknown): AdminAuditEntry {
   };
 }
 
+export function toAdminClientError(raw: unknown): AdminClientError {
+  const r = obj(raw);
+  const texts = (v: unknown) => list(v).filter((x): x is string => typeof x === 'string' && x !== '');
+  return {
+    fingerprint: str(r.fingerprint),
+    hits: num(r.hits),
+    reports: num(r.reports),
+    users: num(r.users),
+    firstAt: str(r.firstAt),
+    lastAt: str(r.lastAt),
+    kind: oneOf(r.kind, CLIENT_ERROR_KINDS, 'error'),
+    message: str(r.message),
+    component: strOrNull(r.component),
+    stack: strOrNull(r.stack),
+    route: strOrNull(r.route),
+    ua: strOrNull(r.ua),
+    appVersion: strOrNull(r.appVersion),
+    userId: strOrNull(r.userId),
+    userName: strOrNull(r.userName),
+    routes: texts(r.routes),
+    versions: texts(r.versions),
+  };
+}
+
+export function toAdminClientErrors(raw: unknown): AdminClientErrors {
+  const r = obj(raw);
+  return { ...toPage(r, toAdminClientError), hits: num(r.hits), users: num(r.users) };
+}
+
 /** {rows, total} de la base → Page<T> (total nunca menor que las filas). */
 export function toPage<T>(raw: unknown, row: (x: unknown) => T): Page<T> {
   const r = obj(raw);
@@ -492,6 +562,28 @@ export const fetchAdminSystem = async (): Promise<AdminSystem | null> => toAdmin
 export const fetchAdminScanStats = async (days: number): Promise<AdminScanStats | null> =>
   toAdminScanStats(await rpc('admin_scan_stats', { p_days: days }));
 
+export interface AdminClientErrorsQuery {
+  /** Días hacia atrás (1–90; la base guarda 30). */
+  days: number;
+  /** Busca en el mensaje, la pantalla y la ruta; o una huella exacta. */
+  search?: string;
+  kind?: ClientErrorKind;
+  /** Página, desde 0. */
+  page: number;
+  /** Filas por página (1–100). */
+  pageSize: number;
+}
+
+export const fetchAdminClientErrors = async (q: AdminClientErrorsQuery): Promise<AdminClientErrors> =>
+  toAdminClientErrors(
+    await rpc('admin_client_errors', {
+      p_days: q.days,
+      p_search: cleanSearch(q.search) || null,
+      p_kind: q.kind || null,
+      ...pageArgs(q.page, q.pageSize),
+    }),
+  );
+
 // ---------- Lecturas (hooks) ----------
 
 /**
@@ -580,6 +672,25 @@ export function useAdminScanStats(enabled: boolean, days: 30 | 90): Live<AdminSc
   return useAdminQuery(enabled ? keys.adminScan(days) : null, () => fetchAdminScanStats(days), null, [tags.admin, tags.adminStats]);
 }
 
+/** Etiqueta de caché de los errores de los teléfonos (se invalida al borrar un grupo). */
+export const ADMIN_ERRORS_TAG = 'admin:errors';
+const EMPTY_ERRORS: AdminClientErrors = { rows: [], total: 0, hits: 0, users: 0 };
+
+/** Errores de los teléfonos agrupados, lo más reciente primero. `page` desde 0; `pageSize` 1–100. */
+export function useAdminClientErrors(
+  enabled: boolean,
+  q: { days: number; search?: string; kind?: ClientErrorKind; page: number; pageSize: number },
+): Live<AdminClientErrors> {
+  const search = cleanSearch(q.search).toLowerCase();
+  const days = Math.min(90, Math.max(1, Math.floor(Number.isFinite(q.days) ? q.days : 7)));
+  const { p_limit, p_offset } = pageArgs(q.page, q.pageSize);
+  const key = enabled ? `admin:errors:${listKey([days, q.kind ?? '', p_offset, p_limit, search])}` : null;
+  return useAdminQuery(key, () => fetchAdminClientErrors({ days, search, kind: q.kind, page: p_offset / p_limit, pageSize: p_limit }), EMPTY_ERRORS, [
+    tags.admin,
+    ADMIN_ERRORS_TAG,
+  ]);
+}
+
 // ---------- Acciones ----------
 
 /** Bloquea la cuenta: no puede escribir nada (require_uid falla con 'bloqueada'). No a sí mismo ni a un superadmin. */
@@ -649,6 +760,13 @@ export async function sendAnnouncement(input: AnnouncementInput): Promise<{ reci
   });
   invalidate(tags.adminAudit, tags.adminSystem, tags.adminStats);
   return { recipients: num(n) };
+}
+
+/** Borra un grupo de errores de los teléfonos (ya se arregló) o todos (sin huella). Devuelve cuántos reportes. */
+export async function clearClientErrors(fingerprint: string | null): Promise<number> {
+  const n = await rpc<number>('admin_clear_client_errors', { p_fingerprint: fingerprint });
+  invalidate(ADMIN_ERRORS_TAG, tags.adminAudit);
+  return num(n);
 }
 
 /** Cuántas cuentas recibirían el anuncio (para mostrarlo antes de mandar). */

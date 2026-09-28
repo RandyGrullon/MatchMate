@@ -13,21 +13,30 @@ import { EventWizard } from './create/EventWizard';
 import RacketEventPage from './EventPage';
 import { isNightType, parseNightConfig } from './logic/night';
 import { isPointsMatch, matchTime } from './logic/results';
-import { parseTourneyConfig } from './logic/tourney';
+import { signupBlurb, signupPhase } from './logic/signup';
+import { parseTourneyConfig, tourneyStarted } from './logic/tourney';
 import { addDays, timeLabel, todayIn } from './logic/time';
 import { useMySide } from './match/MatchDetail';
 import { useRacket } from './sport';
 
-/** Qué se dice del evento en la lista: «Ronda 3 de 7», «8 parejas», «2 categorías». */
-function eventLine(e: RacketEvent, side: readonly [string, string]): string {
+/** Qué se dice del evento en la lista: «Ronda 3 de 7», «8 parejas», «2 categorías» (y la inscripción abierta). */
+function eventLine(e: RacketEvent, side: readonly [string, string], today: string, now = Date.now()): string {
   if (isNightType(e.type)) {
     const c = parseNightConfig(e.config, e.type);
-    const state = c.closed ? 'terminada' : c.round ? `ronda ${c.round} de ${c.rounds}` : `${c.rounds} rondas`;
+    const started = c.round > 0 || c.closed;
+    const blurb = c.signup ? signupBlurb(c.signup, c.players.length, signupPhase(c.signup, { started, date: e.date, today, now })) : null;
+    const state = c.closed ? 'terminada' : c.round ? `ronda ${c.round} de ${c.rounds}` : (blurb ?? `${c.rounds} rondas`);
     return `${c.players.length} jugadores · ${state}`;
   }
   if (e.type === 'torneo') {
-    const n = parseTourneyConfig(e.config).categories.length;
-    return `${n} ${n === 1 ? 'categoría' : 'categorías'} · ${e.playerCount} ${e.playerCount === 1 ? side[0] : side[1]}`;
+    const t = parseTourneyConfig(e.config);
+    const n = t.categories.length;
+    const line = `${n} ${n === 1 ? 'categoría' : 'categorías'} · ${e.playerCount} ${e.playerCount === 1 ? side[0] : side[1]}`;
+    if (!t.signup || !n) return line;
+    // El cupo es por categoría: en la lista, el de todo el torneo.
+    const total = { ...t.signup, cap: t.signup.cap != null ? t.signup.cap * n : null };
+    const blurb = signupBlurb(total, e.playerCount, signupPhase(t.signup, { started: tourneyStarted(t), date: e.date, today, now }));
+    return blurb ? `${line} · ${blurb}` : line;
   }
   return `${e.playerCount} ${e.playerCount === 1 ? side[0] : side[1]}`;
 }
@@ -155,7 +164,7 @@ function EventList({ events, today, side, doubles }: { events: RacketEvent[]; to
               <span className="block truncate font-medium">{e.name || label}</span>
               <span className="block truncate text-xs text-muted">
                 {label}
-                {e.startTime ? ` · ${timeLabel(e.startTime)}` : ''} · {custom?.line ?? eventLine(e, side)}
+                {e.startTime ? ` · ${timeLabel(e.startTime)}` : ''} · {custom?.line ?? eventLine(e, side, today)}
               </span>
             </div>
             <ChevronRight className="size-4 shrink-0 text-muted" />

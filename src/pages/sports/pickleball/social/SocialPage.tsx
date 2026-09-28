@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { CheckCircle2, Download, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Download, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
 import { useMatches, type Match } from '../../../../lib/data/matches';
 import { saveNightRound, savePointsResult, updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
@@ -14,7 +14,10 @@ import { BackLink } from '../../../../components/BackLink';
 import { Stepper, appOrigin } from '../../racket/bits';
 import { exportNightExcel } from '../../racket/excel';
 import { levelText, useLevels } from '../../racket/levels';
-import { nightRounds, type NightRound, type NextRound } from '../../racket/logic/night';
+import { NIGHT_MAX_PLAYERS, nightRounds, type NightRound, type NextRound } from '../../racket/logic/night';
+import type { SignupSettings } from '../../racket/logic/signup';
+import { SignupSettingsModal } from '../../racket/signup/SignupFields';
+import { SignupPanel } from '../../racket/signup/SignupPanel';
 import { timeLabel } from '../../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../../racket/match/MatchDetail';
 import { useNames } from '../../racket/names';
@@ -72,13 +75,15 @@ export function SocialPage({ event }: { event: RacketEvent }) {
   }, [cfg.players, rounds]);
   const table = useMemo(() => socialTable(people, rounds), [people, rounds]);
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores'>(null);
+  const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores' | 'inscripcion'>(null);
   const title = event.name || 'Round robin';
 
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={title} onBack={param.close} />;
 
   const current = rounds.at(-1) ?? null;
   const finished = cfg.closed || (!!current && current.round >= cfg.rounds && current.done);
+  // Con la primera ronda ya no se apunta nadie más (el admin sigue cambiando jugadores a mano).
+  const started = !!current || cfg.round > 0 || cfg.closed;
   const requested = search.get('ver') as Tab | null;
   const tab: Tab = requested ?? (current ? 'canchas' : isAdmin ? 'canchas' : 'jugadores');
   const setTab = (t: Tab) => setSearch({ ver: t }, { replace: true });
@@ -199,6 +204,11 @@ export function SocialPage({ event }: { event: RacketEvent }) {
           <Button size="sm" icon={<Users className="size-4" />} onClick={() => setEditing('jugadores')}>
             Jugadores
           </Button>
+          {!started && (
+            <Button size="sm" icon={<ClipboardList className="size-4" />} onClick={() => setEditing('inscripcion')}>
+              Inscripción
+            </Button>
+          )}
           {cfg.closed ? (
             <Button size="sm" icon={<LockOpen className="size-4" />} onClick={() => void close(false)} loading={busy}>
               Volver a abrir
@@ -217,6 +227,16 @@ export function SocialPage({ event }: { event: RacketEvent }) {
             Borrar
           </Button>
         </div>
+      )}
+
+      {cfg.signup && !started && (
+        <SignupPanel
+          event={event}
+          settings={cfg.signup}
+          lists={[{ category: null, name: null, listed: cfg.players }]}
+          started={started}
+          onEdit={isAdmin ? () => setEditing('inscripcion') : undefined}
+        />
       )}
 
       {mine && !finished && <MyCourt match={mine.match} round={current!.round} onOpen={() => param.open(mine.id)} onScore={() => param.openCourt(mine.id)} />}
@@ -295,6 +315,21 @@ export function SocialPage({ event }: { event: RacketEvent }) {
 
       <SettingsModal open={editing === 'ajustes'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Guardado')) && setEditing(null)} />
       <PlayersModal open={editing === 'jugadores'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Jugadores guardados')) && setEditing(null)} />
+      {isAdmin && (
+        <SignupSettingsModal
+          open={editing === 'inscripcion'}
+          value={cfg.signup ?? null}
+          busy={busy}
+          unit={['jugador', 'jugadores']}
+          defaultCap={Math.max(4, cfg.courts.length * 4)}
+          maxCap={NIGHT_MAX_PLAYERS}
+          tz={league.tz}
+          onClose={() => setEditing(null)}
+          onSave={async (s: SignupSettings | null) =>
+            (await saveConfig(s ? { ...cfg, signup: s } : cfg, s?.open ? 'Inscripción abierta' : 'Inscripción cerrada')) && setEditing(null)
+          }
+        />
+      )}
     </div>
   );
 }
@@ -586,12 +621,14 @@ function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg
   const { levels } = useLevels();
   const [players, setPlayers] = useState(cfg.players);
   const [mixed, setMixed] = useState(cfg.mixed);
+  const [rev, setRev] = useState(cfg.signup?.rev ?? 0);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
     setLastOpen(open);
     if (open) {
       setPlayers(cfg.players);
       setMixed(cfg.mixed);
+      setRev(cfg.signup?.rev ?? 0);
     }
   }
   return (
@@ -609,7 +646,13 @@ function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg
             onClick={() => {
               const lv = { ...cfg.levels };
               for (const p of players) if (levels[p] != null) lv[p] = levels[p];
-              onSave({ ...cfg, players, levels: lv, mixed: mixed ? mixed.filter((p) => players.includes(p)) : null });
+              onSave({
+                ...cfg,
+                players,
+                levels: lv,
+                mixed: mixed ? mixed.filter((p) => players.includes(p)) : null,
+                ...(cfg.signup ? { signup: { ...cfg.signup, rev } } : {}),
+              });
             }}
           >
             Guardar

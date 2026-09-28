@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StandingsTable, defaultColumns } from '../../../components/match';
+import { ShareButton, leadersShare, standingsShare } from '../../../components/share';
 import { Card, Tabs } from '../../../components/ui';
 import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
 import { TeamName } from '../team/TeamBits';
@@ -27,6 +28,22 @@ export default function BasketballStandings() {
   const [tab, setTab] = useState<'tabla' | 'anotadores'>('tabla');
   const table = basketballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
+  const columns = defaultColumns({ forLabel: 'PF', againstLabel: 'PC' });
+  const team = (id: string) => tl.teamOf(id);
+  // Imagen de la pestaña que se ve (tabla o anotadores) para mandar al grupo.
+  const shareCard = () =>
+    tab === 'tabla'
+      ? standingsShare({
+          title: tl.league.name,
+          subtitle: 'Tabla de posiciones',
+          sections: [{ rows: season.standings }],
+          columns,
+          nameOf: (id) => team(id)?.name ?? '(equipo borrado)',
+          rowExtra: (id) => ({ dot: team(id)?.color ?? null }),
+          nameLabel: 'Equipo',
+        })
+      : leadersShare({ title: tl.league.name, subtitle: 'Anotadores', rows: season.leaders, columns: SCORER_COLUMNS, nameOf: tl.nameOf, teamOf: team, limit: 20 });
+  const canShare = tab === 'tabla' ? season.standings.length > 0 : season.leaders.length > 0;
   return (
     <div className="flex flex-col gap-4">
       <Tabs
@@ -37,12 +54,17 @@ export default function BasketballStandings() {
         active={tab}
         onChange={setTab}
       />
+      {canShare && (
+        <div className="flex justify-end">
+          <ShareButton card={shareCard} />
+        </div>
+      )}
       {tab === 'tabla' ? (
         <>
           <StandingsTable
             rows={season.standings}
             nameOf={(id) => <TeamName team={tl.teamOf(id)} label="(equipo borrado)" />}
-            columns={defaultColumns({ forLabel: 'PF', againstLabel: 'PC' })}
+            columns={columns}
             highlight={mine}
             empty="Cuando haya partidos confirmados, la tabla sale aquí."
           />

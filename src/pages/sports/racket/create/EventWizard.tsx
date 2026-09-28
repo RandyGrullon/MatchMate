@@ -7,12 +7,14 @@ import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { Button, Field, Input, Modal, cx } from '../../../../components/ui';
 import { EventIcon, PickList, Stepper, eventTypeInfo } from '../bits';
 import { parseLeagueConfig, leagueConfigJson } from '../logic/league';
-import { newNightConfig, nightConfigJson, parseNightConfig, suggestRounds, type NightConfig, type NightFormat } from '../logic/night';
+import { NIGHT_MAX_PLAYERS, newNightConfig, nightConfigJson, parseNightConfig, suggestRounds, type NightConfig, type NightFormat } from '../logic/night';
+import { signupCap, type SignupSettings } from '../logic/signup';
 import { CATEGORY_IDS, newCategory, tourneyConfigJson, type TourneyConfig } from '../logic/tourney';
 import { todayIn } from '../logic/time';
 import { useLevels } from '../levels';
 import { useNames } from '../names';
 import { NightFields, NightPlayers } from '../night/NightForm';
+import { SignupFields } from '../signup/SignupFields';
 import { useRacket, type WizardTemplate } from '../sport';
 
 type Kind = 'americano' | 'mexicano' | 'liga' | 'torneo';
@@ -35,7 +37,9 @@ export function defaultName(kind: Kind, date: string, doubles: boolean): string 
 /**
  * «Nuevo»: plantillas del deporte (Americano de la noche, Mexicano, Liga de parejas, Torneo por categorías, y las
  * que agrega el deporte: liga por cajas, escalera, round robin social), y en 1–2 pasos más la noche queda lista
- * para empezar (jugadores, canchas, puntos y rondas) o la liga y el torneo listos para armar su calendario.
+ * para empezar (jugadores, canchas, puntos y rondas) o la liga y el torneo listos para armar su calendario. La
+ * noche y el torneo pueden abrir la inscripción «Me apunto» (cupo, fecha límite y lista de espera) en vez de, o
+ * además de, elegir a mano.
  */
 export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClose: () => void; lastNight?: RacketEvent | null }) {
   const { lid, base, league } = useLeagueCtx();
@@ -54,6 +58,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
   const [pairs, setPairs] = useState<string[]>([]);
   const [double, setDouble] = useState(false);
   const [cats, setCats] = useState(1);
+  const [signup, setSignup] = useState<SignupSettings | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -64,11 +69,13 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
     setDate(todayIn(league.tz));
     setName('');
     setPairs([]);
+    setSignup(null);
   }, [open, league.tz]);
 
   const pick = (k: Kind, from?: RacketEvent | null) => {
     setKind(k);
     setStep(1);
+    setSignup(null);
     if (k === 'americano' || k === 'mexicano') {
       const prev = from ? parseNightConfig(from.config, from.type) : null;
       const players = prev?.players ?? [];
@@ -104,7 +111,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
       if (kind === 'americano' || kind === 'mexicano') {
         const lv: Record<string, number> = {};
         for (const p of night.players) if (levels[p] != null) lv[p] = levels[p];
-        config = nightConfigJson({ ...night, format: kind, levels: lv, seed: `noche:${Date.now().toString(36)}` });
+        config = nightConfigJson({ ...night, format: kind, levels: lv, seed: `noche:${Date.now().toString(36)}`, ...(signup?.open ? { signup } : {}) });
       } else if (kind === 'liga') {
         config = leagueConfigJson(parseLeagueConfig({ pairs, double, startDate: date, times: [time], everyDays: 7, minutes: 90 }, date));
       } else {
@@ -114,6 +121,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
           categories: CATEGORY_IDS.slice(0, cats).map((id) => ({ ...newCategory(id), pairs: cats === 1 ? pairs : [] })),
           courts: [],
           points: 'standard',
+          ...(signup?.open ? { signup } : {}),
         };
         config = tourneyConfigJson(t);
       }
@@ -130,7 +138,18 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
 
   const isNight = kind === 'americano' || kind === 'mexicano';
   const lastStep = isNight ? 3 : 2;
-  const canNext = step === 1 ? !!date : step === 2 && isNight ? night.players.length >= 4 : true;
+  // Con «Me apunto» la noche se crea con los que haya (se llena sola).
+  const enoughPlayers = night.players.length >= 4 || !!signup?.open;
+  const canNext = step === 1 ? !!date : step === 2 && isNight ? enoughPlayers : true;
+  // Las rondas recomendadas cuentan con el cupo mientras la lista se llena.
+  const expected = signup?.open ? Math.min(NIGHT_MAX_PLAYERS, signupCap(signup)) : undefined;
+  const changeSignup = (s: SignupSettings | null) => {
+    setSignup(s);
+    if (!isNight) return;
+    const before = Math.max(night.players.length, signup?.open ? Math.min(NIGHT_MAX_PLAYERS, signupCap(signup)) : 0);
+    const after = Math.max(night.players.length, s?.open ? Math.min(NIGHT_MAX_PLAYERS, signupCap(s)) : 0);
+    setNight((c) => (c.rounds === suggestRounds(c.format, before, c.courts.length) ? { ...c, rounds: suggestRounds(c.format, after, c.courts.length) } : c));
+  };
 
   const builtIn: { k: Kind; title: string; text: string }[] = [
     ...(doubles
@@ -183,7 +202,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
                 Siguiente
               </Button>
             ) : (
-              <Button variant="primary" loading={busy} disabled={isNight && night.players.length < 4} onClick={() => void create()}>
+              <Button variant="primary" loading={busy} disabled={isNight && !enoughPlayers} onClick={() => void create()}>
                 Crear
               </Button>
             )}
@@ -266,7 +285,19 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
 
       {step === 2 && isNight && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">¿Quién juega esta noche? Si alguien llega tarde o se va, lo cambias antes de la ronda siguiente.</p>
+          <SignupFields
+            value={signup}
+            onChange={changeSignup}
+            unit={['jugador', 'jugadores']}
+            defaultCap={Math.max(4, night.courts.length * 4)}
+            maxCap={NIGHT_MAX_PLAYERS}
+            tz={league.tz}
+          />
+          <p className="text-sm text-muted">
+            {signup?.open
+              ? 'Los que se apunten entran solos a la lista. Si ya sabes de alguien (o no tiene la app), agrégalo aquí.'
+              : '¿Quién juega esta noche? Si alguien llega tarde o se va, lo cambias antes de la ronda siguiente.'}
+          </p>
           <NightPlayers
             value={night.players}
             levels={levels}
@@ -283,13 +314,20 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
             <b>{night.players.length}</b> jugadores · <b>{night.courts.length}</b> {night.courts.length === 1 ? 'cancha' : 'canchas'} · <b>{night.rounds}</b> rondas ·{' '}
             {night.points.mode === 'total' ? `a ${night.points.target} puntos` : `${night.points.minutes} minutos`}
           </p>
-          <NightFields value={night} onChange={setNight} parts={['rounds']} />
-          <p className="text-xs text-muted">Después de crearla, en la noche tocas «Empezar ronda 1» y a cada quien le llega su cancha.</p>
+          <NightFields value={night} onChange={setNight} parts={['rounds']} expected={expected} />
+          <p className="text-xs text-muted">
+            {signup?.open
+              ? 'Después de crearla, comparte el link para que se apunten. Cuando estén todos, tocas «Empezar ronda 1» (ahí se cierra la inscripción).'
+              : 'Después de crearla, en la noche tocas «Empezar ronda 1» y a cada quien le llega su cancha.'}
+          </p>
         </div>
       )}
 
       {step === 2 && !isNight && (
         <div className="flex flex-col gap-3">
+          {kind === 'torneo' && (
+            <SignupFields value={signup} onChange={changeSignup} unit={side} perCategory={cats > 1} defaultCap={8} tz={league.tz} />
+          )}
           {kind === 'torneo' && cats > 1 ? (
             <p className="rounded-xl bg-surface-2 px-3 py-3 text-sm">Las {side[1]} de cada categoría se eligen en el torneo, categoría por categoría.</p>
           ) : (

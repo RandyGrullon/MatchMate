@@ -1,9 +1,11 @@
 import { leagueSport } from '../sports/registry';
+import { isMatchSport, matchDetail, matchHref, matchTitle, type CalendarMatch } from './calendar';
+import type { Match } from './data/matches';
 import { toIsoDate } from './format';
 import { formatTime, parseSchedule } from './schedule';
 import type { LeagueFeed } from './data';
 import { isValidScore, slots } from './stats';
-import type { BowlingEvent, Entry, League, LiveScore, Submission } from './types';
+import type { BowlingEvent, Entry, League, LiveScore, Stamp, Submission } from './types';
 
 /** Minutos antes de la hora de la liga en que el evento ya sale como "en juego". */
 export const LIVE_EARLY_MIN = 30;
@@ -116,4 +118,90 @@ export function liveRows(event: Pick<BowlingEvent, 'games' | 'type'>, entries: E
     });
   }
   return rows.sort((a, b) => b.total - a.total || b.played - a.played);
+}
+
+// ---------- Partidos en vivo (raqueta y equipos) ----------
+
+/**
+ * Un partido «en vivo» que no publica nada hace más de 3 horas se quedó así (el teléfono del anotador se apagó o
+ * nadie lo terminó): ya no sale en «En juego ahora» (el admin lo arregla en la liga).
+ */
+export const LIVE_MATCH_STALE_MS = 3 * 60 * 60 * 1000;
+
+/** El turno del anotador dura 5 minutos desde que publicó (docs/partidos.md). */
+const LEASE_MS = 5 * 60 * 1000;
+
+/** Lo que «En juego ahora» necesita de un partido (sirve con `Match` de useLiveMatches y de useMyMatches). */
+export type LiveMatchLike = CalendarMatch & Pick<Match, 'score' | 'leaseUntil' | 'version'> & { updatedAt?: Stamp | null };
+
+export interface LiveMatchItem<M extends LiveMatchLike = LiveMatchLike> {
+  match: M;
+  league: League;
+  sport: string;
+  href: string;
+  /** Juego en este partido (sale primero). */
+  mine: boolean;
+  /** «Tigres vs. Leones». */
+  title: string;
+  /** «2-1», «6-4 3-2» (null si todavía no hay tantos). */
+  score: string | null;
+  /** «Jornada 3 · Cancha 2» (vacío si no hay). */
+  detail: string;
+}
+
+/** Lo último que se supo del partido (ms): su último cambio o su última publicación; 0 si no se sabe. */
+function lastActivity(m: LiveMatchLike): number {
+  const updated = m.updatedAt?.toMillis() ?? 0;
+  const lease = m.leaseUntil ? Date.parse(m.leaseUntil) - LEASE_MS : 0;
+  return Math.max(Number.isFinite(updated) ? updated : 0, Number.isFinite(lease) ? lease : 0);
+}
+
+/** El marcador corto para la lista: el texto del partido o el número grande de cada lado. */
+export function liveScoreText(score: Match['score']): string | null {
+  const text = typeof score?.text === 'string' ? score.text.trim() : '';
+  if (text) return text;
+  const sides = score?.sides;
+  return Array.isArray(sides) && sides.length === 2 && sides.every((n) => typeof n === 'number') ? `${sides[0]}-${sides[1]}` : null;
+}
+
+/**
+ * «En juego ahora» de los partidos: los que están en vivo en tus ligas de raqueta y equipos, los tuyos primero.
+ * `live` = los en vivo de tus ligas (useLiveMatches); `mine` = tus partidos (useMyMatches, que queda guardado y
+ * sirve sin señal). De un mismo partido manda la copia más nueva (`version`); tu lado sale de `mine`.
+ */
+export function liveMatches<M extends LiveMatchLike>(live: readonly M[], mine: readonly M[], leagues: readonly League[], now: number): LiveMatchItem<M>[] {
+  const mySide = new Map(mine.map((m) => [m.id, m.mySide ?? null] as const));
+  const byId = new Map<string, M>();
+  for (const m of [...live, ...mine]) {
+    const old = byId.get(m.id);
+    if (!old || m.version > old.version) byId.set(m.id, m);
+  }
+  const out: LiveMatchItem<M>[] = [];
+  for (const m of byId.values()) {
+    if (m.status !== 'live') continue;
+    const league = leagues.find((l) => l.id === m.leagueId);
+    if (!league) continue;
+    const sport = leagueSport(league);
+    if (!isMatchSport(sport)) continue;
+    const last = lastActivity(m);
+    if (last > 0 && now - last > LIVE_MATCH_STALE_MS) continue;
+    out.push({
+      match: m,
+      league,
+      sport,
+      href: matchHref(league.id, m, sport),
+      mine: mySide.has(m.id),
+      title: matchTitle(m),
+      score: liveScoreText(m.score),
+      detail: matchDetail(m, sport),
+    });
+  }
+  const at = (m: LiveMatchLike) => (m.scheduledAt ? Date.parse(m.scheduledAt) : Number.POSITIVE_INFINITY);
+  return out.sort(
+    (a, b) =>
+      Number(b.mine) - Number(a.mine) ||
+      at(a.match) - at(b.match) ||
+      a.league.name.localeCompare(b.league.name) ||
+      (a.match.id < b.match.id ? -1 : a.match.id > b.match.id ? 1 : 0),
+  );
 }

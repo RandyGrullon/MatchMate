@@ -18,6 +18,7 @@ import {
   type SocialRound,
 } from '../../../../sports/formats';
 import type { StandingRow } from '../../../../sports/types';
+import { parseSignup, signupJson, type SignupSettings } from './signup';
 
 export type NightFormat = 'americano' | 'mexicano';
 
@@ -60,6 +61,8 @@ export interface NightConfig {
   round: number;
   /** La noche terminó: no hay más rondas. */
   closed: boolean;
+  /** Inscripción «Me apunto» (cupo, fecha límite y lista de espera). Sin ella, la lista la arma el admin. */
+  signup?: SignupSettings;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -118,6 +121,8 @@ export function parseNightConfig(raw: unknown, type = 'americano'): NightConfig 
     out.planPlayers = strList(c.planPlayers);
     out.planFrom = int(c.planFrom, 1, 99, 1);
   }
+  const signup = parseSignup(c.signup);
+  if (signup) out.signup = signup;
   return out;
 }
 
@@ -143,6 +148,8 @@ export function nightConfigJson(c: NightConfig): Record<string, unknown> {
     out.planPlayers = c.planPlayers;
     out.planFrom = c.planFrom ?? 1;
   }
+  // La inscripción va con el `rev` que se leyó: si alguien se apuntó mientras tanto, la base no lo pierde.
+  if (c.signup) out.signup = signupJson(c.signup);
   return out;
 }
 

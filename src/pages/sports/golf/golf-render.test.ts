@@ -149,6 +149,22 @@ describe('pantallas del golf', () => {
     expect(out).toContain('Luis');
     expect(out).toContain('1 hoyo por enviar');
     expect(out).toContain('Hoyo listo');
+    expect(out).toContain('Modo campo');
+    expect(out).toContain('Pantalla completa, siempre encendida y con modo sol');
+    writeLog(emptyLog(eid));
+  });
+
+  it('modo campo: pantalla completa con modo sol y «Hoyo listo» fijo en el pie', () => {
+    writeLog({ ...emptyLog(eid), scope: 'g:1', hole: 7 });
+    const html = render(h(screens.Event), `/l/${lid}/e/${eid}?tab=tarjeta&campo=1`, 'player', '/l/:lid/e/:eventId');
+    const out = text(html);
+    expect(html).toContain('aria-label="Salir del modo campo"');
+    expect(html).toContain('aria-label="Modo sol (alto contraste)"');
+    expect(out).toContain('Hoyo 8');
+    expect(out).toContain('Hoyo listo');
+    // El pie (con «Hoyo listo») va después de los jugadores, fuera de lo que se desplaza.
+    expect(html.lastIndexOf('Hoyo listo')).toBeGreaterThan(html.lastIndexOf('Luis'));
+    expect(out).not.toContain('Pantalla completa, siempre encendida');
     writeLog(emptyLog(eid));
   });
 

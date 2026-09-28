@@ -22,7 +22,17 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260926000500_rpc.sql` | Todas las RPC y la lista explícita de permisos |
 | `migrations/20260926000600_realtime.sql` | Triggers que avisan por `private.emit` |
 | `migrations/20260926000700_realtime_storage_supabase.sql` | **Solo Supabase**: políticas de `realtime.messages` y del bucket `scoreboards` |
+| `migrations/20260926001000_scan.sql` · `001100_storage_supabase.sql` | Cupos de la lectura de fotos (`scan_*`) · bucket y políticas de Storage (solo Supabase) |
+| `migrations/20260926001200_push.sql` · `001300_cron_supabase.sql` | Cola de push y recordatorios del boliche · pg_cron `mm-recordatorios`, `mm-limpieza`, `mm-despierto` (solo Supabase) |
+| `migrations/20260927000100_partidos.sql` | Partidos de raqueta y equipos: lados, alineaciones, anotador con turno, confirmación del rival (48 h), W.O., equipos de temporada (ver `docs/partidos.md`) |
+| `migrations/20260927000400_golf.sql` · `000500_natacion.sql` | Golf (campos, rondas, tarjetas) · natación (clubes, nadadores, encuentros, series y tiempos) |
+| `migrations/20260927000600_padel.sql` · `000700_raqueta.sql` · `000800_baloncesto.sql` · `000900_futbol.sql` | Reglas de cada deporte (noches de puntos, cajas y escalera, convocatoria y mesa, sanciones) |
+| `migrations/20260927000690_padel_cron_supabase.sql` · `000790_raqueta_cron_supabase.sql` | **Solo Supabase**: quita el cron viejo del pádel · plazos vencidos de la escalera |
 | `migrations/20260927001100_consola.sql` | Consola del superadmin: visto por última vez, bloqueo de cuentas, auditoría, RPC `admin_*` y anuncios (ver «Consola del superadmin») |
+| `migrations/20260927001200_avisos.sql` · `001290_avisos_supabase.sql` | Recordatorios de partidos de todos los deportes (`private.match_reminders`, `match_reminders_sent`), de rondas de golf, encuentros de natación y noches; push de reclamos · pg_cron `mm-partidos` cada 15 min (solo Supabase) |
+| `migrations/20260927001300_liga.sql` | Avisos del admin a su liga (`league_announcements`, `league_announce`, `league_announce_reach`) e `invite_details` (lo que muestra la invitación) |
+| `migrations/20260927001400_inscripciones.sql` | «Me apunto» con cupo y lista de espera en noches y torneos de raqueta (`event_signups`, `join_signup`, `leave_signup`, `set_signup`) |
+| `migrations/20260927001500_cuenta.sql` | Mayores de 18 (`confirm_adult`), descargar mis datos (`export_my_data`), borrar la cuenta (`prepare_delete_account` + Edge Function `delete-account`) y errores de los teléfonos (`log_client_error`, `admin_client_errors`) |
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |

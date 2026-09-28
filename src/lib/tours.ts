@@ -1,8 +1,9 @@
 import type { TourStep } from '../components/Tour';
 
 /**
- * Textos de los tours guiados. El del Home es de toda la app (sirve para cualquier deporte); los de la liga,
- * el evento y Admin son de las pantallas del boliche: cada deporte trae los suyos con sus pantallas.
+ * Textos de los tours guiados. El del Home es de toda la app y no habla de ningún deporte (lo ve el de fútbol igual
+ * que el de boliche); los de la liga, el evento y Admin del boliche son de sus pantallas, y las ligas de los otros
+ * deportes tienen el suyo (`sportLeagueTour`, con los nombres de sus pestañas).
  * El color de la app se puede cambiar: los textos dicen «el botón del centro», no su color.
  */
 
@@ -16,17 +17,17 @@ export const HOME_TOUR: TourStep[] = [
   {
     target: 'en-juego',
     title: 'En juego ahora',
-    body: 'Cuando empieza una práctica o un torneo de tus ligas de boliche, aparece aquí. Toca "Anotar mis juegos" y anótalos mientras juegas.',
+    body: 'Lo que se está jugando ahora en tus ligas sale aquí. Tócalo para anotar mientras juegas o para ver cómo va.',
   },
   {
     target: 'proximos',
     title: 'Lo que viene',
-    body: 'Semana por semana, los eventos de todas tus ligas. En el boliche, las prácticas de cada semana salen solas según el horario: toca "Voy" para confirmar que vas.',
+    body: 'Semana por semana, lo que viene en todas tus ligas: partidos, rondas, encuentros, prácticas y torneos. Cuando te pidan confirmar, toca "Voy".',
   },
   {
     target: 'campana',
     title: 'Notificaciones',
-    body: 'Felicitaciones y comentarios a tus juegos, cuando aprueban lo que subiste, torneos nuevos… El número rojo son los nuevos.',
+    body: 'Avisos de tus ligas, resultados por confirmar, felicitaciones y comentarios… El número rojo son los nuevos.',
   },
   {
     target: 'config',
@@ -36,7 +37,7 @@ export const HOME_TOUR: TourStep[] = [
   {
     target: 'crear',
     title: 'El botón del centro: crear',
-    body: 'Crea tu liga (con su calendario, torneos y ranking) o un torneo suelto con equipos y clasificación, o únete con un código de invitación.',
+    body: 'Crea tu liga del deporte que juegues (con su calendario y su tabla) o un torneo suelto, o únete con un código de invitación.',
   },
   {
     target: 'unirse',
@@ -136,3 +137,39 @@ export const ADMIN_TOUR: TourStep[] = [
     body: 'Te avisa cuántos juegos esperan tu aprobación y cuántas sugerencias nuevas hay.',
   },
 ];
+
+/** Nombres de las pestañas de la liga (los del deporte; null = no la tiene). */
+export interface LeagueTabNames {
+  home: string;
+  feed: string | null;
+  standings: string | null;
+  profile: string;
+  /** La cuenta administra la liga (ve «Admin»). */
+  admin: boolean;
+}
+
+/**
+ * Tour de la liga de un deporte que no es el boliche: la portada, sus secciones con los nombres de sus pestañas
+ * (Calendario, Partidos, Tabla, Mi equipo; Rondas y Orden de mérito en golf; Encuentros y Puntos en natación…) y el
+ * buzón. Sin pines, prácticas ni fotos del marcador.
+ */
+export function sportLeagueTour(t: LeagueTabNames): TourStep[] {
+  const list = [t.home, t.feed, t.standings, t.profile, t.admin ? 'Admin' : null].filter(Boolean) as string[];
+  const names = list.length > 1 ? `${list.slice(0, -1).join(', ')} y ${list.at(-1)}` : (list[0] ?? '');
+  const steps: TourStep[] = [
+    {
+      target: 'portada',
+      title: 'Tu liga',
+      body: 'De qué deporte es, dónde juegan y cuántos son. Con "Invitar" mandas el link por WhatsApp.',
+    },
+    { target: 'secciones', title: 'Las secciones de la liga', body: `${names}. Desliza para ver todas.` },
+  ];
+  if (t.feed) steps.push({ target: 'tab-juegos', title: t.feed, body: 'Los resultados de todos, los de hoy y los pasados.' });
+  if (t.standings) steps.push({ target: 'tab-ranking', title: t.standings, body: 'Cómo va la temporada: quién va arriba y por cuánto.' });
+  steps.push(
+    { target: 'tab-perfil', title: t.profile, body: 'Lo tuyo en esta liga: tus resultados y tus números.' },
+    { target: 'buzon', title: 'Buzón de sugerencias', body: 'Deja una idea o una queja a los organizadores. Es anónimo: solo ven el mensaje.' },
+    { target: 'cambiar-liga', title: 'Cambia de liga', body: 'Si estás en varias ligas o torneos, cámbiate desde aquí.' },
+  );
+  return steps;
+}

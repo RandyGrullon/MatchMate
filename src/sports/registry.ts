@@ -12,7 +12,7 @@
  * Las reglas por defecto salen de los motores de cada familia (src/sports/racket, team, golf, swimming) y se
  * guardan en `leagues.rules` (jsonb) al crear la liga: tienen que ser JSON plano.
  */
-import { CircleDashed, CircleDot, Goal, Grid2x2, LandPlot, Shirt, Volleyball, Waves, type LucideIcon } from 'lucide-react';
+import { CircleDashed, CircleDot, Goal, Grid2x2, LandPlot, Waves, createLucideIcon, type LucideIcon } from 'lucide-react';
 import type { SceneId } from '../components/splash/scenes';
 import { DEFAULT_ALLOWANCE } from './golf/course';
 import { DEFAULT_MERIT_POINTS } from './golf/leaderboard';
@@ -81,6 +81,12 @@ export interface SportMeta {
   scene: SceneId;
   /** Orden en listas y en el selector (el mismo de `sport_status.sort_order`). */
   order: number;
+  /**
+   * Color de sus ligas (hex): la portada, las pestañas y los botones dentro de la liga (src/components/league/
+   * SportTheme.tsx; los tonos para claro y oscuro salen de lib/theme.ts). null = el color de la app (el boliche,
+   * que es el morado de siempre). El fútbol de campo y el de sala comparten el suyo.
+   */
+  color: string | null;
 }
 
 // ---------- Validación de reglas ----------
@@ -162,6 +168,26 @@ const validateSwimming = validator((r, e) => {
     e.push('Las categorías por edad no son válidas.');
 });
 
+// ---------- Iconos ----------
+// Lucide no trae pelota de tenis ni balón de baloncesto: se dibujan con su mismo trazo (24×24, línea de 2) con
+// createLucideIcon, así se ven igual que los demás y reciben las mismas props (className, size, strokeWidth).
+
+/** Pelota de tenis: el círculo y las dos costuras curvas. */
+export const TennisBall: LucideIcon = createLucideIcon('tennis-ball', [
+  ['circle', { cx: '12', cy: '12', r: '10', key: 'ball' }],
+  ['path', { d: 'M4.9 5a9.5 9.5 0 0 1 0 14', key: 'seam-l' }],
+  ['path', { d: 'M19.1 5a9.5 9.5 0 0 0 0 14', key: 'seam-r' }],
+]);
+
+/** Balón de baloncesto: el círculo, la cruz y las dos curvas de los lados. */
+export const Basketball: LucideIcon = createLucideIcon('basketball', [
+  ['circle', { cx: '12', cy: '12', r: '10', key: 'ball' }],
+  ['path', { d: 'M12 2v20', key: 'v' }],
+  ['path', { d: 'M2 12h20', key: 'h' }],
+  ['path', { d: 'M4.93 4.93c3.9 3.9 3.9 10.24 0 14.14', key: 'l' }],
+  ['path', { d: 'M19.07 4.93c-3.9 3.9-3.9 10.24 0 14.14', key: 'r' }],
+]);
+
 // ---------- Los deportes ----------
 
 const BOWLING_EVENTS: readonly EventTypeMeta[] = [
@@ -216,6 +242,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 0,
     scene: 'bowling',
     order: 1,
+    color: null,
   },
   padel: {
     ...racket('padel'),
@@ -239,6 +266,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 1,
     scene: 'padel',
     order: 2,
+    color: '#0d9488',
   },
   tennis: {
     ...racket('tennis'),
@@ -249,12 +277,13 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     short: 'Tenis',
     lower: 'tenis',
     group: 'tennis',
-    icon: Volleyball,
+    icon: TennisBall,
     units: { match: MATCH, score: 'sets', side: PLAYER },
     eventTypes: RACKET_FORMATS,
     phase: 3,
     scene: 'tennis',
     order: 3,
+    color: '#2563eb',
   },
   pickleball: {
     ...racket('pickleball'),
@@ -275,6 +304,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 3,
     scene: 'pickleball',
     order: 4,
+    color: '#db2777',
   },
   basketball: {
     id: 'basketball',
@@ -285,7 +315,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     lower: 'baloncesto',
     group: 'basketball',
     family: SPORT_FAMILY.basketball,
-    icon: Shirt,
+    icon: Basketball,
     venue: 'Cancha',
     venueHint: 'Cancha o club donde juegan',
     units: { match: MATCH, score: 'puntos', side: TEAM },
@@ -297,6 +327,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 4,
     scene: 'basketball',
     order: 5,
+    color: '#ea580c',
   },
   football: {
     id: 'football',
@@ -319,6 +350,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 5,
     scene: 'football',
     order: 6,
+    color: '#15803d',
   },
   futsal: {
     id: 'futsal',
@@ -341,6 +373,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 5,
     scene: 'football',
     order: 7,
+    color: '#15803d',
   },
   golf: {
     id: 'golf',
@@ -366,6 +399,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 6,
     scene: 'golf',
     order: 8,
+    color: '#4d7c0f',
   },
   swimming: {
     id: 'swimming',
@@ -392,6 +426,7 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     phase: 7,
     scene: 'swimming',
     order: 9,
+    color: '#0891b2',
   },
 };
 

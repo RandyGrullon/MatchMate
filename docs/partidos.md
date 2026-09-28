@@ -165,6 +165,16 @@ confirmar»** («Luis / Ana anotó 6-4 6-3. Confírmalo o reclama antes de 48 ho
 `/l/<liga>/juegos?partido=<id>` (tag `confirmar:<id>`). **La pantalla `Feed` del deporte debe abrir ese partido
 cuando llega `?partido=`** (y mostrar ahí `ConfirmResultBanner`).
 
+- **Reclamo:** al reclamar, los dueños y admins de la liga reciben «Reclamaron un resultado» y el lado que lo propuso
+  «Reclamaron tu resultado» (tag `reclamo:<id>`); quien reclama no recibe nada.
+- **Recordatorios** (`private.match_reminders`, cron `mm-partidos` cada 15 min, `20260927001200_avisos.sql`): «Partido
+  mañana…» el día antes (12 pm a 9 pm hora de la liga) y «Partido hoy a las 8:00 pm, Cancha 2» de 3 h a 10 min antes
+  (nunca antes de las 7 am), para todos los deportes de partidos. En equipos va a toda la plantilla según la
+  convocatoria. Se vuelve a mandar si reprograman. Las noches de puntos no (ya avisa `save_night_round`).
+- **La campana** (`src/lib/data/matchNotices.ts` + `buildMatchNotices` en `src/lib/notifications.ts`): partido de hoy,
+  resultado por confirmar, reclamo, cambio de hora o cancha, aplazado, «Ronda 3: te toca la Cancha 2» y retos de la
+  escalera. Los ids son los mismos tags del push: el aviso del teléfono se reemplaza, no se repite.
+
 ## 7. Modo cancha (`src/court`)
 
 El partido es una lista de jugadas; el marcador es `replay(lista)`; deshacer quita la última. La lista se guarda

@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   CheckCircle2,
+  ClipboardList,
   Download,
   Flag,
   Keyboard,
@@ -31,6 +32,7 @@ import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } f
 import { BackLink } from '../../../../components/BackLink';
 import { exportNightExcel } from '../excel';
 import {
+  NIGHT_MAX_PLAYERS,
   fmtPoints,
   nextNightRound,
   nightConfigJson,
@@ -52,9 +54,15 @@ import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { useNames } from '../names';
 import { useRacket } from '../sport';
 import { appOrigin, eventTypeInfo } from '../bits';
+import type { SignupSettings } from '../logic/signup';
+import { SignupSettingsModal } from '../signup/SignupFields';
+import { SignupPanel } from '../signup/SignupPanel';
 import { NightFields, NightPlayers } from './NightForm';
 
 type Tab = 'canchas' | 'tabla' | 'rondas' | 'jugadores';
+
+/** Cupo más grande de la inscripción de la noche (lo que se puede elegir a mano). */
+const NIGHT_SIGNUP_MAX = NIGHT_MAX_PLAYERS;
 
 const TABLE_COLUMNS: StandingsColumn[] = [
   { key: 'played', label: 'PJ', title: 'Partidos jugados', value: (r) => r.played },
@@ -69,7 +77,8 @@ const TABLE_COLUMNS: StandingsColumn[] = [
  * La noche de Americano o Mexicano. Jugadores: su cancha de la ronda (con compañero y rivales) y la tabla en
  * vivo. Organizador: la ronda actual de cada cancha, poner el marcador con dos números si no se anotó en vivo,
  * la siguiente ronda al instante, rehacer una ronda que no empezó, jugadores que llegan o se van, cerrar la
- * noche, compartir la tabla por WhatsApp y el Excel.
+ * noche, compartir la tabla por WhatsApp y el Excel. Antes de empezar, la inscripción «Me apunto» (cupo, fecha
+ * límite y lista de espera) si el admin la abrió; el admin sigue agregando a mano.
  */
 export function NightPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
@@ -86,13 +95,15 @@ export function NightPage({ event }: { event: RacketEvent }) {
   const rounds = useMemo(() => nightRounds(cfg, matches, now), [cfg, matches, now]);
   const table = useMemo(() => nightTable(cfg, rounds), [cfg, rounds]);
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores'>(null);
+  const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores' | 'inscripcion'>(null);
   const title = event.name || eventTypeInfo(event.type).label;
 
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={title} onBack={param.close} />;
 
   const current = rounds.at(-1) ?? null;
   const finished = cfg.closed || (!!current && current.round >= cfg.rounds && current.done);
+  // Como la base: la noche empezó al publicar una ronda o al cerrarse (ya nadie se apunta ni sube de la espera).
+  const started = !!current || cfg.round > 0 || cfg.closed;
   const requested = search.get('ver') as Tab | null;
   const tab: Tab = requested ?? (current ? 'canchas' : isAdmin ? 'canchas' : 'jugadores');
   const setTab = (t: Tab) => setSearch({ ver: t }, { replace: true });
@@ -221,6 +232,11 @@ export function NightPage({ event }: { event: RacketEvent }) {
           <Button size="sm" icon={<Users className="size-4" />} onClick={() => setEditing('jugadores')}>
             Jugadores
           </Button>
+          {!started && (
+            <Button size="sm" icon={<ClipboardList className="size-4" />} onClick={() => setEditing('inscripcion')}>
+              Inscripción
+            </Button>
+          )}
           {cfg.closed ? (
             <Button size="sm" icon={<LockOpen className="size-4" />} onClick={() => void closeNight(false)} loading={busy}>
               Volver a abrir
@@ -239,6 +255,16 @@ export function NightPage({ event }: { event: RacketEvent }) {
             Borrar
           </Button>
         </div>
+      )}
+
+      {cfg.signup && !started && (
+        <SignupPanel
+          event={event}
+          settings={cfg.signup}
+          lists={[{ category: null, name: null, listed: cfg.players }]}
+          started={started}
+          onEdit={isAdmin ? () => setEditing('inscripcion') : undefined}
+        />
       )}
 
       {mine && !finished && (
@@ -321,6 +347,21 @@ export function NightPage({ event }: { event: RacketEvent }) {
 
       <SettingsModal open={editing === 'ajustes'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Guardado')) && setEditing(null)} />
       <PlayersModal open={editing === 'jugadores'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Jugadores guardados')) && setEditing(null)} />
+      {isAdmin && (
+        <SignupSettingsModal
+          open={editing === 'inscripcion'}
+          value={cfg.signup ?? null}
+          busy={busy}
+          unit={['jugador', 'jugadores']}
+          defaultCap={Math.max(4, cfg.courts.length * 4)}
+          maxCap={NIGHT_SIGNUP_MAX}
+          tz={league.tz}
+          onClose={() => setEditing(null)}
+          onSave={async (s: SignupSettings | null) =>
+            (await saveConfig(s ? { ...cfg, signup: s } : cfg, s?.open ? 'Inscripción abierta' : 'Inscripción cerrada')) && setEditing(null)
+          }
+        />
+      )}
     </div>
   );
 }
@@ -373,6 +414,7 @@ function FirstRound({ cfg, busy, onStart, onPlayers }: { cfg: NightConfig; busy:
         {cfg.rounds} rondas. {cfg.format === 'mexicano' ? (cfg.firstRound === 'level' ? 'La ronda 1 va por nivel.' : 'La ronda 1 va al azar.') : 'Las parejas rotan sin repetir compañero.'}
       </p>
       {!next.ok && <p className="text-sm text-warn">{next.reason}</p>}
+      {cfg.signup?.open && <p className="text-sm text-muted">Al empezar la ronda 1 se cierra la inscripción y la lista de espera ya no sube sola.</p>}
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button variant="primary" className="h-12 flex-1 text-base" icon={<Play className="size-5" />} loading={busy} disabled={!next.ok} onClick={onStart}>
           Empezar ronda 1
@@ -605,10 +647,15 @@ function SettingsModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cf
 function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg: NightConfig; busy: boolean; onClose: () => void; onSave: (c: NightConfig) => void }) {
   const { levels } = useLevels();
   const [players, setPlayers] = useState(cfg.players);
+  // La versión de la lista que se abrió: si alguien se apunta mientras tanto, la base no lo pierde al guardar.
+  const [rev, setRev] = useState(cfg.signup?.rev ?? 0);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
     setLastOpen(open);
-    if (open) setPlayers(cfg.players);
+    if (open) {
+      setPlayers(cfg.players);
+      setRev(cfg.signup?.rev ?? 0);
+    }
   }
   return (
     <Modal
@@ -621,11 +668,11 @@ function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg
           <Button
             variant="primary"
             loading={busy}
-            disabled={players.length < 4}
+            disabled={players.length < 4 && !cfg.signup}
             onClick={() => {
               const lv = { ...cfg.levels };
               for (const p of players) if (levels[p] != null) lv[p] = levels[p];
-              onSave({ ...cfg, players, levels: lv });
+              onSave({ ...cfg, players, levels: lv, ...(cfg.signup ? { signup: { ...cfg.signup, rev } } : {}) });
             }}
           >
             Guardar

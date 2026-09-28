@@ -4,6 +4,7 @@
  */
 import type {
   AdminAuditEntry,
+  AdminClientErrors,
   AdminLeague,
   AdminOverview,
   AdminScanStats,
@@ -214,4 +215,50 @@ export const scan: AdminScanStats = {
   today: 420,
   dailyLimit: 500,
   perUserLimit: 20,
+};
+
+export const clientErrors: AdminClientErrors = {
+  total: 2,
+  hits: 12,
+  users: 5,
+  rows: [
+    {
+      fingerprint: '0123456789abcdef0123456789abcdef',
+      hits: 9,
+      reports: 4,
+      users: 4,
+      firstAt: daysAgo(2),
+      lastAt: daysAgo(0),
+      kind: 'render',
+      message: "TypeError: Cannot read properties of undefined (reading 'name')",
+      component: 'liga/ranking',
+      stack: "TypeError: Cannot read properties of undefined (reading 'name')\n    at Ranking (https://matchmate.vercel.app/assets/Ranking-abc.js:1:200)",
+      route: '/l/l1/ranking',
+      ua: 'Mozilla/5.0 (Linux; Android 10; SM-A105M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36 [app instalada]',
+      appVersion: 'index-AbC123',
+      userId: 'u-ana',
+      userName: 'Ana Pérez',
+      routes: ['/l/l1/ranking', '/l/l2/ranking'],
+      versions: ['index-AbC123'],
+    },
+    {
+      fingerprint: 'fedcba9876543210fedcba9876543210',
+      hits: 3,
+      reports: 1,
+      users: 1,
+      firstAt: daysAgo(1),
+      lastAt: daysAgo(1),
+      kind: 'chunk',
+      message: 'TypeError: Failed to fetch dynamically imported module: https://matchmate.vercel.app/assets/AdminPage-x1.js',
+      component: 'liga/admin',
+      stack: null,
+      route: '/l/l1/admin',
+      ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+      appVersion: null,
+      userId: null,
+      userName: null,
+      routes: ['/l/l1/admin'],
+      versions: [],
+    },
+  ],
 };

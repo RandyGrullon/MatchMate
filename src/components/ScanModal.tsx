@@ -11,6 +11,7 @@ import { useAction, useFeedback } from './feedback';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
 import { Badge, Button, Card, Modal, Select, Spinner, cx } from './ui';
+import { PRIVACY_PATH } from '../pages/legal/legal';
 
 interface RowDraft {
   key: string;
@@ -194,6 +195,17 @@ export function ScanModal({
           <PhotoPicker onPicked={onPicked} />
           <p className="text-xs text-muted">
             Sin foto los juegos quedan como borrador (vista previa) y no cuentan en promedio ni clasificación.
+          </p>
+          {/* Aviso de privacidad: la foto la lee Google en su plan gratis (Ley 172-13: decir a quién va y para qué). */}
+          <p className="flex gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-xs text-muted">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden="true" />
+            <span>
+              La foto la lee la IA de Google (Gemini, plan gratis), y Google puede usarla para mejorar sus productos. Toma solo la pantalla del
+              marcador, sin personas.{' '}
+              <a href={`${PRIVACY_PATH}#fotos`} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline underline-offset-2">
+                Más en Privacidad
+              </a>
+            </span>
           </p>
         </div>
       ) : (

@@ -1,12 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { Bell, CalendarDays, CheckCircle2, Globe, Inbox, Lightbulb, Lock, Megaphone, MessageCircle, PartyPopper, Trophy, XCircle } from 'lucide-react';
+import {
+  Bell,
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  CalendarX2,
+  CheckCircle2,
+  ClipboardCheck,
+  Globe,
+  Inbox,
+  Lightbulb,
+  Lock,
+  MapPin,
+  Megaphone,
+  MessageCircle,
+  PartyPopper,
+  ShieldAlert,
+  Swords,
+  Trophy,
+  XCircle,
+} from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { ensurePlayer, isJoining, useLeagueFeeds, useLeaguesByIds, useMyMemberships, type LeagueFeed } from '../lib/data';
+import { useMatchNotices } from '../lib/data/matchNotices';
 import { parseDate, toIsoDate } from '../lib/format';
-import { buildNotices, relativeTime, type Notice, type NoticeKind } from '../lib/notifications';
+import { buildNotices, emptyNoticesText, relativeTime, type Notice, type NoticeKind } from '../lib/notifications';
 import { notifyState, showSystemNotification, subscribePush } from '../lib/push';
 import type { League } from '../lib/types';
+import { sportsOf } from '../sports/registry';
 import { Button, Empty, Modal, cx } from './ui';
 
 interface NoticesState {
@@ -72,12 +94,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return toIsoDate(d);
   }, [today]);
   const feeds = useLeagueFeeds(memberships.data, since);
+  // Partidos (raqueta y equipos): por confirmar, reclamos, cambios de hora, rondas y retos. Nada si no juega esos deportes.
+  const matchNotices = useMatchNotices(user?.uid, memberships.data, leagues.data);
   const [seenAt, setSeenAt] = useState(() => readSeen(user?.uid));
   useEffect(() => setSeenAt(readSeen(user?.uid)), [user?.uid]);
+  // Lo que vence con la hora (las 48 h para confirmar, el partido de hoy) se recalcula aunque no llegue nada nuevo.
+  const tick = useTick(5 * 60_000);
 
-  const items = useMemo(() => buildNotices(feeds.data, leagues.data, today, Date.now()), [feeds.data, leagues.data, today]);
+  const items = useMemo(
+    () => buildNotices(feeds.data, leagues.data, today, Date.now(), matchNotices.data),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick: volver a calcular con la hora nueva
+    [feeds.data, leagues.data, today, matchNotices.data, tick],
+  );
   const unread = items.filter((n) => n.time > seenAt).length;
-  useSystemNotifications(user?.uid, items, !feeds.loading && !leagues.loading);
+  useSystemNotifications(user?.uid, items, !feeds.loading && !leagues.loading && !matchNotices.loading);
+  const emptyText = useMemo(() => emptyNoticesText(sportsOf(leagues.data)), [leagues.data]);
 
   // Visto hasta el aviso más nuevo (hora del servidor, no el reloj del teléfono, que puede ir adelantado).
   const newest = items.reduce((m, n) => Math.max(m, n.time), 0);
@@ -120,15 +151,39 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <NotificationsList open={listOpen && !!user} onClose={() => setListOpen(false)} items={items} newSince={newSince} />
+      <NotificationsList
+        open={listOpen && !!user}
+        onClose={() => setListOpen(false)}
+        items={items}
+        newSince={newSince}
+        emptyText={emptyText}
+      />
     </Ctx.Provider>
   );
 }
 
 export const useNotifications = () => useContext(Ctx);
 
-/** Avisos que también salen como notificación del teléfono (los de las prácticas los mandan los recordatorios). */
-const PHONE_KINDS = new Set<NoticeKind>(['torneo', 'aprobado', 'rechazado', 'por-aprobar', 'reaccion', 'comentario', 'sugerencia']);
+/**
+ * Avisos que también salen como notificación del teléfono. Los de las prácticas y el partido de hoy no: los mandan
+ * los recordatorios. Los de partidos usan el mismo tag que su push (confirmar:, reclamo:, ronda:, reto:), así el
+ * teléfono reemplaza la notificación en vez de repetirla.
+ */
+const PHONE_KINDS = new Set<NoticeKind>([
+  'torneo',
+  'aprobado',
+  'rechazado',
+  'por-aprobar',
+  'reaccion',
+  'comentario',
+  'sugerencia',
+  'por-confirmar',
+  'reclamo',
+  'cambio-hora',
+  'aplazado',
+  'ronda',
+  'reto',
+]);
 
 /**
  * Con permiso de notificaciones: el teléfono queda suscrito a los recordatorios (push) y, mientras la app
@@ -168,6 +223,21 @@ function useSystemNotifications(uid: string | undefined, items: Notice[], ready:
   }, [key, items, ready]);
 }
 
+/** Un número que cambia cada `every` ms mientras la app está a la vista (y al volver a ella). */
+function useTick(every: number) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => document.visibilityState === 'visible' && setTick((t) => t + 1);
+    const timer = setInterval(bump, every);
+    document.addEventListener('visibilitychange', bump);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', bump);
+    };
+  }, [every]);
+  return tick;
+}
+
 /**
  * La fecha de hoy, que cambia a medianoche aunque la app siga abierta (y al volver a ella):
  * así el torneo del día pasa a "¡Hoy es…!" sin esperar a que cambie algo en la liga.
@@ -199,6 +269,13 @@ const ICONS: Record<NoticeKind, { icon: ReactNode; tone: string }> = {
   reaccion: { icon: <PartyPopper className="size-5" />, tone: 'bg-accent-soft text-accent' },
   comentario: { icon: <MessageCircle className="size-5" />, tone: 'bg-ok-soft text-ok' },
   sugerencia: { icon: <Lightbulb className="size-5" />, tone: 'bg-warn-soft text-warn' },
+  'partido-hoy': { icon: <CalendarCheck className="size-5" />, tone: 'bg-accent-soft text-accent' },
+  'por-confirmar': { icon: <ClipboardCheck className="size-5" />, tone: 'bg-warn-soft text-warn' },
+  reclamo: { icon: <ShieldAlert className="size-5" />, tone: 'bg-danger-soft text-danger' },
+  'cambio-hora': { icon: <CalendarClock className="size-5" />, tone: 'bg-warn-soft text-warn' },
+  aplazado: { icon: <CalendarX2 className="size-5" />, tone: 'bg-warn-soft text-warn' },
+  ronda: { icon: <MapPin className="size-5" />, tone: 'bg-ok-soft text-ok' },
+  reto: { icon: <Swords className="size-5" />, tone: 'bg-accent-soft text-accent' },
 };
 
 /**
@@ -243,7 +320,20 @@ export function NotificationsBell({ variant = 'icon' }: { variant?: 'icon' | 'na
 }
 
 /** La lista de avisos. */
-function NotificationsList({ open, onClose, items, newSince }: { open: boolean; onClose: () => void; items: Notice[]; newSince: number }) {
+function NotificationsList({
+  open,
+  onClose,
+  items,
+  newSince,
+  emptyText,
+}: {
+  open: boolean;
+  onClose: () => void;
+  items: Notice[];
+  newSince: number;
+  /** De qué avisamos aquí (según los deportes de la cuenta). */
+  emptyText: string;
+}) {
   const navigate = useNavigate();
   const [now, setNow] = useState(() => Date.now());
 
@@ -263,7 +353,7 @@ function NotificationsList({ open, onClose, items, newSince }: { open: boolean; 
     <Modal open={open} onClose={onClose} title="Notificaciones" footer={<Button onClick={onClose}>Cerrar</Button>}>
       {items.length === 0 ? (
         <Empty icon={<Bell className="size-8" />} title="No tienes avisos">
-          Aquí te avisamos de torneos nuevos, prácticas de la semana y cuando aprueben tus juegos, con la liga de cada cosa.
+          {emptyText}
         </Empty>
       ) : (
         <ul className="-mx-2 flex flex-col">

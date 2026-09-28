@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { ArrowDown, ArrowUp, Download, GitFork, ListOrdered, Plus, Rows3, Settings2, Shuffle, Trash2, Trophy, Wand2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardList, Download, GitFork, ListOrdered, Plus, Rows3, Settings2, Shuffle, Trash2, Trophy, Wand2 } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
 import { createMatches, deleteMatch, setMatchSides, useMatches, type Match } from '../../../../lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
@@ -32,9 +32,12 @@ import {
   qualifiers,
   suggestGroups,
   tourneyConfigJson,
+  tourneyStarted,
   type TourneyCategory,
   type TourneyConfig,
 } from '../logic/tourney';
+import { SignupSettingsModal } from '../signup/SignupFields';
+import { SignupPanel } from '../signup/SignupPanel';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { levelText, useLevels } from '../levels';
 import { useNames, type Names } from '../names';
@@ -44,7 +47,9 @@ type View = 'grupos' | 'cuadro' | 'partidos';
 
 /**
  * Torneo por categorías: cada categoría con sus parejas sembradas por nivel, grupos en zigzag (todos contra
- * todos), cruces 1A–2B y cuadro con pases directos y 3.er lugar opcional (o cuadro directo sin grupos).
+ * todos), cruces 1A–2B y cuadro con pases directos y 3.er lugar opcional (o cuadro directo sin grupos). Antes de
+ * armar grupos o cuadro, la inscripción «Me apunto» por categoría (cupo, fecha límite y lista de espera) si el
+ * admin la abrió; el admin sigue eligiendo a mano en «Editar».
  */
 export function TourneyPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league } = useLeagueCtx();
@@ -68,8 +73,11 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
   const cat = cfg.categories.find((c) => c.id === catId) ?? cfg.categories[0] ?? null;
   const set = (patch: Record<string, string>) => setSearch({ ...Object.fromEntries(search), ...patch }, { replace: true });
 
-  const saveConfig = async (next: TourneyConfig) => {
-    await updateRacketEvent(lid, event.id, { config: tourneyConfigJson(next) });
+  const started = tourneyStarted(cfg) || matches.length > 0;
+  /** Guarda la configuración. `rev` = la versión de la lista que se editó (si alguien se apuntó mientras tanto, no se pierde). */
+  const saveConfig = async (next: TourneyConfig, rev?: number) => {
+    const signup = next.signup && rev != null ? { ...next.signup, rev } : next.signup;
+    await updateRacketEvent(lid, event.id, { config: tourneyConfigJson({ ...next, signup }) });
   };
   const withBusy = async (fn: () => Promise<void>, ok: string) => {
     setBusy(true);
@@ -145,6 +153,11 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
               Categoría
             </Button>
           )}
+          {!started && cfg.categories.length > 0 && (
+            <Button size="sm" icon={<ClipboardList className="size-4" />} onClick={() => setEditing('inscripcion')}>
+              Inscripción
+            </Button>
+          )}
           <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!matches.length}>
             Excel
           </Button>
@@ -152,6 +165,16 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
             Borrar
           </Button>
         </div>
+      )}
+
+      {cfg.signup && !started && cfg.categories.length > 0 && (
+        <SignupPanel
+          event={event}
+          settings={cfg.signup}
+          lists={cfg.categories.map((c) => ({ category: c.id, name: c.name, listed: c.pairs }))}
+          started={started}
+          onEdit={isAdmin ? () => setEditing('inscripcion') : undefined}
+        />
       )}
 
       {cfg.categories.length > 1 && <Chips items={cfg.categories.map((c) => ({ key: c.id, label: c.name }))} value={cat?.id ?? ''} onChange={(k) => set({ cat: k })} />}
@@ -196,11 +219,33 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
                     setEditing(null);
                   }, 'Categoría borrada')
           }
-          onSave={(c) =>
+          onSave={(c, rev) =>
             void withBusy(async () => {
-              await saveConfig(putCategory(c));
+              await saveConfig(putCategory(c), rev);
               setEditing(null);
             }, 'Categoría guardada')
+          }
+        />
+      )}
+
+      {isAdmin && (
+        <SignupSettingsModal
+          open={editing === 'inscripcion'}
+          value={cfg.signup ?? null}
+          busy={busy}
+          unit={side}
+          perCategory
+          defaultCap={8}
+          tz={league.tz}
+          onClose={() => setEditing(null)}
+          onSave={(s) =>
+            void withBusy(
+              async () => {
+                if (s) await saveConfig({ ...cfg, signup: s });
+                setEditing(null);
+              },
+              s?.open ? 'Inscripción abierta' : 'Inscripción cerrada',
+            )
           }
         />
       )}
@@ -468,13 +513,15 @@ function CategoryEditor({
   cat: TourneyCategory;
   busy: boolean;
   onClose: () => void;
-  onSave: (c: TourneyCategory) => void;
+  /** `rev` = la versión de la lista cuando se abrió (para no perder a quien se apunte mientras tanto). */
+  onSave: (c: TourneyCategory, rev: number | undefined) => void;
   onRemove?: () => void;
 }) {
   const { doubles, side } = useRacket();
   const names = useNames();
   const { levels, scale } = useLevels();
   const [draft, setDraft] = useState<TourneyCategory>(cat);
+  const [rev] = useState(cfg.signup?.rev);
   const locked = !!cat.groupsOf?.length || !!cat.seeds?.length;
   const taken = new Set(cfg.categories.filter((c) => c.id !== cat.id).flatMap((c) => c.pairs));
   const levelOf = (id: string) => {
@@ -509,7 +556,7 @@ function CategoryEditor({
             </Button>
           )}
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSave({ ...draft, name: draft.name.trim() || cat.name })}>
+          <Button variant="primary" loading={busy} onClick={() => onSave({ ...draft, name: draft.name.trim() || cat.name }, rev)}>
             Guardar
           </Button>
         </>

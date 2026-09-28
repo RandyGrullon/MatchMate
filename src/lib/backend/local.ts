@@ -8,6 +8,13 @@
  * La cuenta local es solo de demo: la contraseña se guarda con PBKDF2 en `auth.local_passwords`.
  */
 import { PGlite, type SerializerOptions, type Transaction } from '@electric-sql/pglite';
+import {
+  isDeleteConfirmation,
+  NOT_CONFIRMED as DELETE_NOT_CONFIRMED,
+  OWNED as DELETE_OWNED,
+  planBlocker,
+  SESSION as DELETE_SESSION,
+} from '../../../supabase/functions/delete-account/core';
 import { mapAuthError, toBackendError } from './errors';
 import { createIdbFileStore, createMemoryFileStore, toDataUrl, type FileStore } from './localFiles';
 import { hashPassword, verifyPassword } from './password';
@@ -478,6 +485,33 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
       'scan-bowling',
       () => {
         throw new BackendError('La lectura con IA no está disponible en modo local', 'validation');
+      },
+    ],
+    // «Borrar mi cuenta» (en Supabase, la Edge Function delete-account): la misma revisión como la cuenta
+    // (prepare_delete_account) y después, como superusuario, el borrado en auth.users que la base sigue en cascada.
+    [
+      'delete-account',
+      async (body, ctx) => {
+        const u = current;
+        const failure = (f: { code: string; message: string }, kind: 'auth' | 'validation' | 'conflict' | 'unknown') =>
+          new BackendError(f.message, kind, f.code);
+        if (!u || !ctx.session) throw failure(DELETE_SESSION, 'auth');
+        if (!isDeleteConfirmation(body)) throw failure(DELETE_NOT_CONFIRMED, 'validation');
+        const blocked = planBlocker(await ctx.backend.rpc('prepare_delete_account'));
+        if (blocked) throw failure(blocked, blocked.code === 'servidor' ? 'unknown' : 'conflict');
+        try {
+          await db.query('delete from auth.users where id = $1', [u.userId]);
+        } catch (e) {
+          const err = toBackendError(e);
+          // Justo quedó dueña de una liga (leagues.owner_id no deja).
+          if (err.code === '23503' || err.code === '23001') throw failure(DELETE_OWNED, 'conflict');
+          throw err;
+        }
+        if (current?.userId === u.userId) {
+          setCurrent(null);
+          emit('SIGNED_OUT', null);
+        }
+        return { deleted: true };
       },
     ],
     ...Object.entries(opts.handlers ?? {}),

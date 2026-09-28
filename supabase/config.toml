@@ -443,6 +443,12 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# delete-account («Borrar mi cuenta»): valida el JWT por dentro (auth.getClaims), revisa con
+# prepare_delete_account como la cuenta y borra con la API de administración (clave secreta).
+[functions.delete-account]
+enabled = true
+verify_jwt = false
+
 # MatchMate: apagado. Levanta 2 contenedores más (logflare y vector) y en Windows pide exponer Docker en el
 # puerto 2375; la app no lo usa. Encenderlo solo para ver los logs en Studio.
 [analytics]

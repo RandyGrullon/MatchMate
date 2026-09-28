@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { Check, ChevronRight, Compass, Crown, KeyRound, LogOut, Pencil, Settings } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
@@ -15,13 +15,20 @@ import { Avatar } from '../components/Avatar';
 import { useAction, useFeedback } from '../components/feedback';
 import { PasswordInput } from '../components/PasswordInput';
 import { Badge, Button, Card, Field, Input, ListSkeleton, Loading } from '../components/ui';
+import { AccountDataCard } from './legal/AccountDataCard';
 
-/** Configuración (engrane de arriba): nombre, correo, apariencia, mis ligas, superadmin y cerrar sesión. */
+/**
+ * Configuración (engrane de arriba): nombre, correo, apariencia, mis ligas, tus datos (privacidad, términos, bajar
+ * mis datos y borrar la cuenta), superadmin y cerrar sesión.
+ */
 export default function AccountPage() {
   const auth = useAuth();
   const create = useCreateMenu();
   const navigate = useNavigate();
   const run = useAction();
+  const { toast } = useFeedback();
+  // Borrando la cuenta: al cerrarse la sesión se va a Home (no al login).
+  const leaving = useRef(false);
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
   const [editing, setEditing] = useState(false);
@@ -29,7 +36,7 @@ export default function AccountPage() {
   const [busy, setBusy] = useState(false);
 
   if (auth.loading) return <Loading />;
-  if (!auth.user) return <Navigate to="/login?next=%2Fcuenta" replace />;
+  if (!auth.user) return <Navigate to={leaving.current ? '/' : '/login?next=%2Fcuenta'} replace />;
   const user = auth.user;
 
   async function saveName(e: FormEvent) {
@@ -53,6 +60,12 @@ export default function AccountPage() {
     await logout();
   }
 
+  function accountDeleted() {
+    rememberLeague(null);
+    toast('Tu cuenta se borró. Gracias por usar MatchMate.');
+    navigate('/', { replace: true });
+  }
+
   // Cuenta sin perfil (el registro no alcanzó a crearlo): se completa con el nombre.
   const needsProfile = !auth.profile;
 
@@ -60,7 +73,7 @@ export default function AccountPage() {
     <AppShell>
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-2">
-          <BackLink fallback="/" className="-ml-1.5" />
+          <BackLink fallback="/" className="-ml-2 flex size-11 items-center justify-center p-0" />
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Settings className="size-6 text-accent" /> Configuración
           </h1>
@@ -82,8 +95,8 @@ export default function AccountPage() {
             {!editing && !needsProfile && (
               <Button
                 variant="ghost"
-                size="sm"
                 aria-label="Cambiar nombre"
+                className="max-sm:size-11"
                 icon={<Pencil className="size-4" />}
                 onClick={() => {
                   setName(displayName(auth));
@@ -97,7 +110,7 @@ export default function AccountPage() {
               <Field label={needsProfile ? 'Completa tu cuenta: ¿cómo te llamas?' : 'Tu nombre'} className="flex-1">
                 <Input required maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
               </Field>
-              <Button type="submit" variant="primary" loading={busy} icon={<Check className="size-4" />}>
+              <Button type="submit" variant="primary" loading={busy} icon={<Check className="size-4" />} className="max-sm:h-11">
                 Guardar
               </Button>
             </form>
@@ -108,7 +121,7 @@ export default function AccountPage() {
         <AppearanceCard />
         <NotificationsCard />
         <Button
-          className="self-start"
+          className="self-start max-sm:h-11"
           icon={<Compass className="size-4" />}
           onClick={() => {
             resetTours();
@@ -125,7 +138,7 @@ export default function AccountPage() {
           ) : leagues.data.length === 0 ? (
             <Card className="p-4 text-sm text-muted">
               Todavía no estás en ninguna.{' '}
-              <button type="button" onClick={create.openMenu} className="font-medium text-accent">
+              <button type="button" onClick={create.openMenu} className="inline-flex min-h-11 items-center font-medium text-accent">
                 Crear o unirme a una liga
               </button>
             </Card>
@@ -134,7 +147,7 @@ export default function AccountPage() {
               {leagues.data.map((l) => {
                 const role = memberships.data.find((m) => m.leagueId === l.id)?.role;
                 return (
-                  <Link key={l.id} to={`/l/${l.id}`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+                  <Link key={l.id} to={`/l/${l.id}`} className="flex min-h-12 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
                     <span className="flex-1 truncate font-medium">{l.name}</span>
                     {role && <Badge tone={role === 'member' ? 'neutral' : 'accent'}>{roleLabel(role)}</Badge>}
                     <ChevronRight className="size-4 text-muted" />
@@ -145,6 +158,8 @@ export default function AccountPage() {
           )}
         </section>
 
+        <AccountDataCard onDeleting={(d) => (leaving.current = d)} onDeleted={accountDeleted} />
+
         {auth.isSuper && (
           <Link to="/superadmin" className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent-soft/50 px-4 py-3 font-medium text-accent">
             <Crown className="size-5" />
@@ -153,7 +168,7 @@ export default function AccountPage() {
           </Link>
         )}
 
-        <Button className="self-center text-danger" variant="ghost" icon={<LogOut className="size-4" />} onClick={signOut}>
+        <Button className="self-center text-danger max-sm:h-11" variant="ghost" icon={<LogOut className="size-4" />} onClick={signOut}>
           Cerrar sesión
         </Button>
       </div>
@@ -203,7 +218,7 @@ function PasswordCard() {
 
   if (!open && !recovering) {
     return (
-      <Button className="self-start" variant="ghost" icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>
+      <Button className="self-start max-sm:h-11" variant="ghost" icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>
         Cambiar contraseña
       </Button>
     );
@@ -222,8 +237,12 @@ function PasswordCard() {
         </Field>
         {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
-          {!recovering && <Button onClick={() => setOpen(false)}>Cancelar</Button>}
-          <Button type="submit" variant="primary" loading={busy} disabled={short || mismatch || !password2} icon={<Check className="size-4" />}>
+          {!recovering && (
+            <Button onClick={() => setOpen(false)} className="max-sm:h-11">
+              Cancelar
+            </Button>
+          )}
+          <Button type="submit" variant="primary" loading={busy} disabled={short || mismatch || !password2} icon={<Check className="size-4" />} className="max-sm:h-11">
             Guardar
           </Button>
         </div>

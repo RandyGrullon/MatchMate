@@ -51,6 +51,7 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'rsvps') return invalidate(tags.event(id));
   } else if (kind === 'league') {
     if (msg.event === 'events') return invalidate(tags.events(id));
+    if (msg.event === 'announcements') return invalidate(`announcements:${id}`);
     // Aprobar un envío también cambia las participaciones.
     if (msg.event === 'submissions') return invalidate(tags.subs(id), tags.entries(id), tags.feeds);
   } else if (kind === 'user') {
@@ -62,7 +63,7 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
 function poll(topic: string) {
   const [kind, id] = [topic.slice(0, topic.indexOf(':')), topic.slice(topic.indexOf(':') + 1)];
   if (kind === 'event') invalidate(tags.live(id), tags.eventEntries(id), tags.eventSubs(id), tags.event(id));
-  else if (kind === 'league') invalidate(tags.events(id), tags.subs(id));
+  else if (kind === 'league') invalidate(tags.events(id), tags.subs(id), `announcements:${id}`);
   else if (kind === 'user') invalidate(tags.feeds);
 }
 

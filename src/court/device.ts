@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useZoomLock } from '../lib/noZoom';
 
 /**
  * Lo del teléfono en la cancha: pantalla siempre encendida (Wake Lock), vibración corta (solo Android),
@@ -34,6 +35,8 @@ export interface WakeLockState {
  * pedir al volver. Donde no existe (iPhone con iOS viejo), `hint` = true para avisar.
  */
 export function useWakeLock(active: boolean): WakeLockState {
+  // En la cancha no se amplía con los dedos (un toque doble no debe hacer zoom).
+  useZoomLock(active);
   const [locked, setLocked] = useState(false);
   const [failed, setFailed] = useState(false);
   const supported = wakeLockSupported();

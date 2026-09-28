@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Repeat, Trophy } from 'lucide-react';
-import { upcomingCalendar, weekStart, type CalendarItem } from '../lib/calendar';
+import { upcomingCalendar, weekStart, type CalendarItem, type CalendarMatch } from '../lib/calendar';
 import { setRsvp } from '../lib/data';
 import { parseDate, toIsoDate } from '../lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
 import { useNow } from '../lib/useNow';
+import { SportIcon } from '../pages/sports/SportBits';
 import { useAction } from './feedback';
 import { useNotifications } from './Notifications';
-import { Card, cx } from './ui';
+import { Badge, Card, cx } from './ui';
 
 /** Semanas hacia adelante que se pueden ver. */
 const MAX_WEEKS = 8;
@@ -24,11 +25,24 @@ const short = (iso: string) => {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 };
 
+/** «1 partido», «2 eventos» (si hay de los dos, «3 cosas»). */
+function countLabel(items: readonly CalendarItem[]): string {
+  const n = items.length;
+  const matches = items.filter((i) => i.kind === 'match').length;
+  if (matches === n) return `${n} ${n === 1 ? 'partido' : 'partidos'}`;
+  if (matches === 0) return `${n} ${n === 1 ? 'evento' : 'eventos'}`;
+  return `${n} cosas`;
+}
+
+/** Color del puntito de cada día: torneo, partido o lo demás. */
+const dotTone = (it: CalendarItem) => (it.kind === 'match' ? 'bg-ok' : it.type === 'torneo' ? 'bg-warn' : 'bg-accent');
+
 /**
- * Home › Próximos: calendario semanal (lunes a domingo) de los eventos de todas tus ligas, de cualquier deporte.
- * En el boliche, las prácticas de cada semana salen según el horario de la liga aunque el admin todavía no las creó.
+ * Home › Próximos: calendario semanal (lunes a domingo) de todas tus ligas, de cualquier deporte: los eventos,
+ * tus partidos con fecha (`matches` = useMyMatches, a la hora de su liga) y, en el boliche, las prácticas de cada
+ * semana según el horario de la liga aunque el admin todavía no las creó.
  */
-export function WeekCalendar() {
+export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatch[] }) {
   const { feeds, leagues } = useNotifications();
   const now = useNow();
   const today = toIsoDate(now);
@@ -39,7 +53,7 @@ export function WeekCalendar() {
 
   const from = addDays(weekStart(today), 7 * week);
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
-  const items = upcomingCalendar(feeds, leagues, from, 7).filter((i) => i.date >= today);
+  const items = upcomingCalendar(feeds, leagues, from, 7, matches).filter((i) => i.date >= today);
   const shown = day ? items.filter((i) => i.date === day) : items;
   const byDay = days.map((d) => ({ date: d, items: shown.filter((i) => i.date === d) })).filter((g) => g.items.length);
 
@@ -76,7 +90,7 @@ export function WeekCalendar() {
                 disabled={past || !mine.length}
                 onClick={() => setDay(selected ? null : d)}
                 aria-pressed={selected}
-                aria-label={`${WEEKDAYS[i]} ${short(d)}${mine.length ? `: ${mine.length} ${mine.length === 1 ? 'evento' : 'eventos'}` : ''}`}
+                aria-label={`${WEEKDAYS[i]} ${short(d)}${mine.length ? `: ${countLabel(mine)}` : ''}`}
                 className={cx(
                   'flex flex-col items-center gap-0.5 py-2 transition',
                   selected ? 'bg-accent text-accent-fg' : d === today ? 'bg-accent-soft' : '',
@@ -88,7 +102,7 @@ export function WeekCalendar() {
                 <span className={cx('text-sm font-bold tabular-nums', d === today && !selected && 'text-accent')}>{parseDate(d).getDate()}</span>
                 <span className="flex h-1.5 gap-0.5">
                   {mine.slice(0, 3).map((it) => (
-                    <span key={it.key} className={cx('size-1.5 rounded-full', selected ? 'bg-accent-fg' : it.type === 'torneo' ? 'bg-warn' : 'bg-accent')} />
+                    <span key={it.key} className={cx('size-1.5 rounded-full', selected ? 'bg-accent-fg' : dotTone(it))} />
                   ))}
                 </span>
               </button>
@@ -105,9 +119,13 @@ export function WeekCalendar() {
                 <p className="px-4 pt-2.5 text-xs font-semibold text-muted first-letter:uppercase">
                   {g.date === today ? 'Hoy' : g.date === addDays(today, 1) ? 'Mañana' : `${WEEKDAYS[(parseDate(g.date).getDay() + 6) % 7]} ${short(g.date)}`}
                 </p>
-                {g.items.map((it) => (
-                  <Row key={it.key} item={it} onGoing={(going) => run(() => setRsvp(it.lid, it.eventId!, it.playerId!, going), going ? 'Confirmado: vas' : 'Listo')} />
-                ))}
+                {g.items.map((it) =>
+                  it.kind === 'match' ? (
+                    <MatchRow key={it.key} item={it} />
+                  ) : (
+                    <Row key={it.key} item={it} onGoing={(going) => run(() => setRsvp(it.lid, it.eventId!, it.playerId!, going), going ? 'Confirmado: vas' : 'Listo')} />
+                  ),
+                )}
               </div>
             ))}
           </div>
@@ -118,12 +136,11 @@ export function WeekCalendar() {
 }
 
 function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) => void }) {
-  const to = item.eventId ? `/l/${item.lid}/e/${item.eventId}` : `/l/${item.lid}`;
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
   const canRsvp = item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
   return (
     <div className="flex items-center gap-3 px-4 py-2">
-      <Link to={to} className="flex min-w-0 flex-1 items-center gap-3">
+      <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">
         <span className={cx('flex size-9 shrink-0 items-center justify-center rounded-xl', item.type === 'torneo' ? 'bg-warn-soft text-warn' : 'bg-accent-soft text-accent')}>
           {item.type === 'torneo' ? <Trophy className="size-4" /> : <CalendarDays className="size-4" />}
         </span>
@@ -154,5 +171,30 @@ function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) 
           </button>
         ))}
     </div>
+  );
+}
+
+/** Un partido tuyo: «vs. Tigres · 8:00 pm», la liga y dónde se juega; «En vivo» o «Suspendido» si toca. */
+function MatchRow({ item }: { item: CalendarItem }) {
+  return (
+    <Link to={item.href} className="flex items-center gap-3 px-4 py-2 transition hover:bg-surface-2">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-ok-soft text-ok">
+        <SportIcon sport={item.sport} className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">
+          {item.name}
+          {item.time && <span className="font-normal text-muted"> · {item.time}</span>}
+        </span>
+        <span className="block truncate text-xs text-muted">{[item.leagueName, item.detail].filter(Boolean).join(' · ')}</span>
+      </span>
+      {item.status === 'live' ? (
+        <Badge tone="ok">
+          <span className="live-dot" /> En vivo
+        </Badge>
+      ) : item.status === 'suspended' ? (
+        <Badge tone="warn">Suspendido</Badge>
+      ) : null}
+    </Link>
   );
 }

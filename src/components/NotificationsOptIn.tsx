@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Bell, BellOff, BellRing, CheckCircle2, Smartphone } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { notificationsText } from '../lib/notifications';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
 import { pushConfigured } from '../lib/pushKey';
+import { sportsOf } from '../sports/registry';
 import { useFeedback } from './feedback';
+import { useNotifications } from './Notifications';
 import { Button, Card } from './ui';
 
 const LATER_KEY = 'mm:avisos-despues';
@@ -18,8 +21,15 @@ function askedRecently(): boolean {
   }
 }
 
-const WHAT =
-  'Recordatorios de tus prácticas y torneos (el día antes, el mismo día y, si la liga tiene hora, poco antes de empezar), aunque la app esté cerrada. Con la app abierta o en segundo plano, también felicitaciones, comentarios y cuando aprueben tus juegos.';
+/**
+ * Qué avisamos, según los deportes de las ligas de la cuenta: «Partido hoy a las 8:00 pm, Cancha 2» y los
+ * resultados por confirmar en los deportes de partidos, las rondas de golf, los encuentros de natación, las
+ * prácticas y torneos del boliche (con solo boliche, el texto de siempre).
+ */
+function useWhat(): string {
+  const { leagues } = useNotifications();
+  return useMemo(() => notificationsText(sportsOf(leagues)), [leagues]);
+}
 
 function useEnable() {
   const { user } = useAuth();
@@ -45,6 +55,7 @@ function useEnable() {
 export function NotificationsPrompt() {
   const { user } = useAuth();
   const { state, busy, enable } = useEnable();
+  const what = useWhat();
   const [hidden, setHidden] = useState(askedRecently);
   if (!user || hidden || !isStandalone() || state !== 'default') return null;
 
@@ -65,7 +76,7 @@ export function NotificationsPrompt() {
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-semibold">¿Te avisamos?</p>
-          <p className="text-sm text-muted">{WHAT}</p>
+          <p className="text-sm text-muted">{what}</p>
         </div>
       </div>
       <div className="flex gap-2">
@@ -83,6 +94,7 @@ export function NotificationsPrompt() {
 /** Configuración › Notificaciones: cómo están y cómo activarlas. */
 export function NotificationsCard() {
   const { state, busy, enable } = useEnable();
+  const what = useWhat();
   const installed = isStandalone();
   return (
     <Card className="flex flex-col gap-3 p-5">
@@ -90,7 +102,7 @@ export function NotificationsCard() {
         <h2 className="flex items-center gap-2 font-semibold">
           <Bell className="size-5 text-accent" /> Notificaciones
         </h2>
-        <p className="text-sm text-muted">{WHAT}</p>
+        <p className="text-sm text-muted">{what}</p>
       </div>
       {state === 'granted' ? (
         <p className="flex items-center gap-1.5 text-sm font-medium text-ok">

@@ -1,13 +1,48 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { ListOrdered, Medal } from 'lucide-react';
-import { GENDER_LABEL, type MedalRow, type TeamScore } from '../../../sports/swimming';
+import { GENDER_LABEL, STATUS_LABEL, formatSwimTime, type MedalRow, type TeamScore } from '../../../sports/swimming';
+import type { SwimEventItem } from '../../../lib/data/swimming';
+import { ShareButton, medalPointsShare, type ShareTableSpec } from '../../../components/share';
 import { Card, Empty, Position, Select, cx } from '../../../components/ui';
-import { ClubTag, StatusBadge, TimeText, useSwim } from './bits';
-import { eventResults, groupLabel, meetScores, raceTitle, scores } from './logic';
+import { ClubTag, StatusBadge, TimeText, meetTitle, useSwim } from './bits';
+import { eventResults, groupLabel, meetScores, raceName, raceTitle, scores, type ResultGroup } from './logic';
 import type { MeetData } from './MeetPage';
 
 const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
+
+/**
+ * Imagen de una prueba para mandar al grupo: cada categoría con el puesto, el club, el tiempo (o DQ, «No
+ * salió») y los puntos (si el encuentro da puntos).
+ */
+export function raceShare(data: Pick<MeetData, 'meet' | 'clubs' | 'name'>, ev: SwimEventItem, groups: readonly ResultGroup[]): ShareTableSpec {
+  const { meet, clubs, name } = data;
+  const withPoints = scores(meet);
+  return {
+    kind: 'table',
+    title: meetTitle(meet),
+    subtitle: raceTitle(ev),
+    nameLabel: 'Nadador',
+    columns: [...(withPoints ? [{ label: 'Pts', optional: true }] : []), { label: 'Tiempo', strong: true }],
+    sections: groups.map((g) => ({
+      heading: `${GENDER_LABEL[g.gender]} · ${groupLabel(g.ageGroup)}`,
+      rows: g.rows.map((r) => {
+        const club = r.teamId ? clubs.get(r.teamId) : null;
+        const sub = [club?.name, r.tied ? 'empate' : null].filter(Boolean).join(' · ');
+        return {
+          rank: r.place,
+          name: name(r.swimmerId),
+          ...(sub ? { sub } : {}),
+          dot: club?.color ?? null,
+          dim: r.place == null,
+          values: [...(withPoints ? [r.points > 0 ? pts(r.points) : ''] : []), r.status === 'ok' ? formatSwimTime(r.time) : STATUS_LABEL[r.status]],
+        };
+      }),
+    })),
+    note: meet.finalizedAt ? undefined : 'Resultados provisionales hasta que el organizador finalice el encuentro.',
+    caption: `${meetTitle(meet)} · ${raceName(ev)}`,
+  };
+}
 
 /** Resultados por prueba y categoría: puesto, tiempo y puntos (DQ, DNS y DNF al final, sin puesto). */
 export function ResultsPanel({ data }: { data: MeetData }) {
@@ -40,7 +75,18 @@ export function ResultsPanel({ data }: { data: MeetData }) {
       )}
       {shown.map(({ ev, groups }) => (
         <section key={ev.id} className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold">{raceTitle(ev)}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="min-w-0 flex-1 text-sm font-semibold">{raceTitle(ev)}</h2>
+            <ShareButton
+              variant="ghost"
+              size="md"
+              iconOnly
+              className="-my-2 -mr-2"
+              label={`Compartir los resultados de ${raceName(ev)}`}
+              path={`${base}/e/${meet.id}?ver=resultados`}
+              card={() => raceShare(data, ev, groups)}
+            />
+          </div>
           {groups.map((g) => (
             <Card key={g.key} className="overflow-hidden">
               <p className="border-b border-line bg-surface-2 px-4 py-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
@@ -77,13 +123,28 @@ export function ResultsPanel({ data }: { data: MeetData }) {
 
 /** Puntos por club y medallero del encuentro. */
 export function ScoresPanel({ data }: { data: MeetData }) {
+  const { base } = useSwim();
   const { meet, events, entries, clubs } = data;
   const s = useMemo(() => meetScores(events, entries, meet.points), [events, entries, meet.points]);
   if (!s.clubs.length && !s.medals.length) {
     return <Empty icon={<Medal className="size-8" />} title="Todavía no hay puntos">Los puntos por club salen de los resultados de cada prueba.</Empty>;
   }
+  // Imagen de los puntos por club (con las medallas) para mandar al grupo.
+  const shareCard = () =>
+    medalPointsShare({
+      title: meetTitle(meet),
+      subtitle: meet.finalizedAt ? 'Puntos por club' : 'Puntos por club · Provisional',
+      rows: s.clubs.map((c) => ({ ...c, id: c.teamId })),
+      who: (id) => clubs.get(id) ?? { name: '(club borrado)' },
+      note: `Puntos por puesto: ${meet.points.join('-')}. En un empate se reparten.`,
+    });
   return (
     <div className="flex flex-col gap-4">
+      {s.clubs.length > 0 && (
+        <div className="flex justify-end">
+          <ShareButton path={`${base}/e/${meet.id}?ver=puntos`} card={shareCard} />
+        </div>
+      )}
       <ClubPointsCard rows={s.clubs} clubs={clubs} caption={`Puntos por puesto: ${meet.points.join('-')}. En un empate se reparten.`} />
       <MedalsCard rows={s.medals} clubs={clubs} />
       {!meet.finalizedAt && <p className="text-xs text-muted">Provisional hasta que el organizador finalice el encuentro.</p>}

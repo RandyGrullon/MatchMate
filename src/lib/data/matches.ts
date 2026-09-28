@@ -10,6 +10,7 @@ import {
   cachedQueries,
   currentOutbox,
   enqueue,
+  fetchLive,
   getUserId,
   invalidate,
   onOutbox,
@@ -22,7 +23,7 @@ import {
   type Live,
   type QueryDesc,
 } from './client';
-import { tags } from './keys';
+import { sortedKey, tags } from './keys';
 import { pendingOps } from './pending';
 import { chunks } from './rows';
 import type { Wire } from './stamp';
@@ -557,9 +558,76 @@ export function useMatch(lid: string | undefined, id: string | undefined, opts: 
   });
 }
 
+/** Clave de «mis partidos» desde `since` (la misma para la pantalla y la precarga). */
+export const myMatchesKey = (uid: string, since: string | null = null) => `${matchKeys.mine(uid)}:${since ?? ''}`;
+
 /** Mis partidos de todas mis ligas (Calendario, «Mis partidos»). `since` ISO: desde esa fecha (más los abiertos). */
 export function useMyMatches(uid: string | null | undefined, since: string | null = null): Live<Match[]> {
-  return useLive<Match[]>(uid ? `${matchKeys.mine(uid)}:${since ?? ''}` : null, uid ? { kind: 'myMatches' } : null, () => fetchMyMatches(since), {
+  return useLive<Match[]>(uid ? myMatchesKey(uid, since) : null, uid ? { kind: 'myMatches' } : null, () => fetchMyMatches(since), {
+    initial: [],
+    tags: [matchTags.mine],
+  });
+}
+
+// ---------- Home: en vivo en todas mis ligas ----------
+
+/** Cada cuánto se relee «En juego ahora» del Home mientras se ve (solo baja los partidos que cambiaron). */
+export const LIVE_MATCHES_POLL_MS = 45_000;
+
+/** Clave de los partidos en vivo de esas ligas (en cualquier orden). */
+export const liveMatchesKey = (lids: readonly string[]) => `matches:live:${sortedKey(lids)}`;
+
+/** Los partidos en vivo ahora en esas ligas (los ve quien ve la liga). Releer baja solo los que cambiaron. */
+export function fetchLiveMatches(lids: readonly string[]): Promise<Wire<Match>[]> {
+  const ids = [...new Set(lids)].sort();
+  if (!ids.length) return Promise.resolve([]);
+  return fetchMatchList(liveMatchesKey(ids), null, [
+    { col: 'league_id', op: 'in', value: ids },
+    { col: 'status', op: 'eq', value: 'live' },
+  ]);
+}
+
+/**
+ * «En juego ahora» del Home: los partidos en vivo en esas ligas (las de raqueta y equipos de la cuenta, jueguen o
+ * no). Se relee cada 45 s mientras se ve y al volver a la app. No se guarda en el teléfono: un «en vivo» viejo
+ * confunde (los partidos propios salen igual de `useMyMatches`, que sí se guarda).
+ */
+export function useLiveMatches(lids: readonly string[]): Live<Match[]> {
+  const ids = sortedKey(lids);
+  const list = ids ? ids.split(',') : [];
+  return useLive<Match[]>(ids ? liveMatchesKey(list) : null, ids ? { kind: 'liveMatches' } : null, () => fetchLiveMatches(list), {
+    initial: [],
+    tags: [matchTags.mine, ...list.flatMap((lid) => [tags.league(lid), matchTags.league(lid)])],
+    pollMs: LIVE_MATCHES_POLL_MS,
+    persist: false,
+  });
+}
+
+// ---------- Precarga (para abrir sin señal lo que nunca se abrió) ----------
+// Misma clave, tipo y etiquetas que los hooks de arriba: la pantalla encuentra lo precargado en la copia del teléfono.
+
+/** `useMatches` sin pantalla: la lista de la liga o del evento. */
+export function prefetchMatches(opts: { lid: string; eventId?: string | null }): Promise<Match[]> {
+  const { lid, eventId } = opts;
+  return fetchLive<Match[]>(
+    eventId ? matchKeys.event(eventId) : matchKeys.league(lid),
+    { kind: 'matches', lid, eventId: eventId ?? undefined },
+    () => (eventId ? fetchEventMatches(lid, eventId) : fetchLeagueMatches(lid)),
+    { initial: [], tags: [tags.league(lid), matchTags.league(lid), ...(eventId ? [matchTags.event(eventId)] : [])] },
+  );
+}
+
+/** `useMatch` sin pantalla: el partido completo (reglas y estado del anotador), lo que necesita la cancha. */
+export function prefetchMatch(lid: string, id: string): Promise<Match | null> {
+  return fetchLive<Match | null>(matchKeys.one(id), { kind: 'match', lid, id }, () => fetchMatch(lid, id), {
+    initial: null,
+    tags: [tags.league(lid), matchTags.league(lid), matchTags.one(id)],
+  });
+}
+
+/** `useMyMatches` sin pantalla (con el mismo `since`, la pantalla lo encuentra). */
+export function prefetchMyMatches(uid: string, since: string | null = null): Promise<Match[]> {
+  return fetchLive<Match[]>(myMatchesKey(uid, since), { kind: 'myMatches' }, () => fetchMyMatches(since), {
     initial: [],
     tags: [matchTags.mine],
   });

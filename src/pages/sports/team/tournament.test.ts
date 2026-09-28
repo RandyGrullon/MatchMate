@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, MatchSide } from '../../../lib/data/matches';
-import { advanceTournament, placeLabel, planTournament, tournamentBracket, tournamentDrafts, tournamentErrors, tournamentSeeds, tournamentSetupOf, type TournamentInput } from './tournament';
+import {
+  advanceTournament,
+  finishedGroupRanking,
+  placeLabel,
+  planTournament,
+  stageGroups,
+  tournamentBracket,
+  tournamentDrafts,
+  tournamentErrors,
+  tournamentSeeds,
+  tournamentSetupOf,
+  tournamentStep,
+  type TournamentInput,
+} from './tournament';
 
 const base = (p: Partial<TournamentInput> = {}): TournamentInput => ({
   teams: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'],
@@ -131,5 +144,55 @@ describe('pasar a la fase final', () => {
     ]);
     const done = [...knockout.slice(0, 2), ko('f', 'R2-1', 'F', 'E'), ko('p3', 'P3', 'A', 'B', { status: 'confirmed', winner: 1 })];
     expect(advanceTournament({ ...setup, rankings, knockout: done, now: later })).toEqual([]);
+  });
+});
+
+describe('el torneo sin liga', () => {
+  it('qué le toca al organizador: los equipos, armarlo o jugar', () => {
+    expect(tournamentStep(0, 0)).toBe('teams');
+    expect(tournamentStep(1, 0)).toBe('teams');
+    expect(tournamentStep(2, 0)).toBe('build');
+    expect(tournamentStep(0, 3)).toBe('play');
+  });
+
+  it('los partidos por fase en el orden en que se juegan (grupos, semifinales, 3.er lugar y final)', () => {
+    const plan = planTournament(base());
+    const drafts = tournamentDrafts(plan);
+    const ms = drafts.map((d, i) => ({
+      id: `m${i}`,
+      stage: d.stage ?? '',
+      bracketKey: d.bracketKey ?? null,
+      round: d.round ?? 0,
+      scheduledAt: d.scheduledAt ?? null,
+      court: d.court ?? '',
+      status: 'scheduled' as const,
+    }));
+    // Desordenados y con un anulado: igual salen en orden y sin el anulado.
+    const mixed = [...ms].reverse().concat({ ...ms[0], id: 'void', status: 'void' as never });
+    const groups = stageGroups(mixed);
+    expect(groups.map((g) => [g.stage, g.knockout, g.matches.length])).toEqual([
+      ['Grupo A', false, 6],
+      ['Grupo B', false, 6],
+      ['Semifinal', true, 2],
+      ['Tercer lugar', true, 1],
+      ['Final', true, 1],
+    ]);
+    const a = groups[0].matches.map((m) => m.scheduledAt!);
+    expect([...a].sort()).toEqual(a);
+    expect(groups.flatMap((g) => g.matches).some((m) => m.id === 'void')).toBe(false);
+    expect(stageGroups([{ ...ms[0], stage: '' }])[0].stage).toBe('Partidos');
+  });
+
+  it('la tabla de un grupo solo cuando todos sus partidos cuentan (los anulados no frenan)', () => {
+    const side = (s: 1 | 2, teamId: string) => ({ side: s, teamId, label: teamId, seed: null, players: [] }) as MatchSide;
+    const g = (id: string, a: string, b: string, p: Partial<Match> = {}) =>
+      ({ id, stage: 'Grupo A', bracketKey: null, status: 'confirmed', proposedAt: null, sides: [side(1, a), side(2, b)], ...p }) as Match;
+    const rank = (ms: Match[], ids: string[]) => [...ids].sort().concat(`(${ms.length})`);
+    const list = [g('1', 'T1', 'T2'), g('2', 'T2', 'T3', { status: 'void' }), g('3', 'T1', 'T3'), g('x', 'T1', 'T9', { stage: 'Grupo B' })];
+    expect(finishedGroupRanking(list, 'Grupo A', Date.now(), rank)).toEqual(['T1', 'T2', 'T3', '(3)']);
+    const pending = [...list, g('4', 'T2', 'T3', { status: 'finished', proposedAt: new Date().toISOString() })];
+    expect(finishedGroupRanking(pending, 'Grupo A', Date.now(), rank)).toBeNull();
+    expect(finishedGroupRanking(pending, 'Grupo A', Date.now() + 49 * 3600_000, rank)).not.toBeNull();
+    expect(finishedGroupRanking(list, 'Grupo C', Date.now(), rank)).toBeNull();
   });
 });

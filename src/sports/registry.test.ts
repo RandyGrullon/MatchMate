@@ -1,9 +1,13 @@
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { SCENE_FOR_SPORT } from '../components/splash/scenes';
+import { accentVars, contrast, parseHex } from '../lib/theme';
 import { countLabel, eventLabel, eventTitle, formatDate, joinList, sportLabel, typeLabel, venueLabel } from '../lib/format';
 import { DEFAULT_SPORT_STATUS } from './status';
 import { SPORT_FAMILY, type SportId } from './types';
 import {
+  Basketball,
   DEFAULT_SPORT,
   SPORT_GROUPS,
   SPORT_IDS,
@@ -16,6 +20,7 @@ import {
   leagueSport,
   sportMeta,
   sportsOf,
+  TennisBall,
 } from './registry';
 
 const ALL = Object.keys(SPORT_FAMILY) as SportId[];
@@ -59,6 +64,39 @@ describe('registro de deportes: contrato', () => {
     expect(SPORTS.bowling.venue).toBe('Bolera');
     expect(SPORTS.swimming.venue).toBe('Piscina');
     expect(SPORTS.bowling.units.score).toBe('pinos');
+  });
+
+  it('cada deporte con su icono (tenis: pelota de tenis; baloncesto: balón), dibujados con el trazo de lucide', () => {
+    const byIcon = new Map<unknown, SportId[]>();
+    for (const m of SPORT_LIST) byIcon.set(m.icon, [...(byIcon.get(m.icon) ?? []), m.id]);
+    // Solo el fútbol de campo y el de sala comparten (son el mismo deporte con dos modalidades).
+    expect([...byIcon.values()].filter((ids) => ids.length > 1)).toEqual([['football', 'futsal']]);
+    expect(SPORTS.tennis.icon).toBe(TennisBall);
+    expect(SPORTS.basketball.icon).toBe(Basketball);
+    for (const Icon of [TennisBall, Basketball]) {
+      const svg = renderToString(createElement(Icon, { className: 'size-4' }));
+      expect(svg).toMatch(/^<svg[^>]*viewBox="0 0 24 24"/);
+      expect(svg).toMatch(/class="lucide [^"]*size-4"/);
+      expect(svg).toContain('stroke-width="2"');
+      expect(svg).toContain('<circle cx="12" cy="12" r="10">');
+    }
+  });
+
+  it('color por deporte: el boliche usa el de la app; los demás, uno propio que se lee en claro y en oscuro', () => {
+    expect(SPORTS.bowling.color).toBeNull();
+    // Fútbol de campo y sala comparten el suyo; los demás son distintos entre sí.
+    expect(SPORTS.futsal.color).toBe(SPORTS.football.color);
+    const colors = SPORT_LIST.filter((m) => m.id !== 'bowling' && m.id !== 'futsal').map((m) => m.color);
+    expect(new Set(colors).size).toBe(colors.length);
+    for (const m of SPORT_LIST.filter((x) => x.id !== 'bowling')) {
+      expect(m.color).toMatch(/^#[0-9a-f]{6}$/);
+      const v = accentVars(m.color!)!;
+      expect(contrast(parseHex(v.light.accent)!, parseHex('#ffffff')!)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(parseHex(v.dark.accent)!, parseHex('#161922')!)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(parseHex(v.light.accent)!, parseHex(v.light.fg)!)).toBeGreaterThanOrEqual(4.5);
+      // Ninguno es el morado de la app (así se nota que es otra liga).
+      expect(m.color).not.toBe('#4338ca');
+    }
   });
 
   it('las reglas por defecto pasan su propia validación, son JSON plano y salen como copia nueva', () => {

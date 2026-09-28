@@ -35,6 +35,8 @@ vi.mock('../../lib/data/admin', async (importOriginal) => {
     useAdminAudit: (_enabled: boolean, q: { action?: string }) => page(q.action ? d.audit.filter((e) => e.action === q.action) : d.audit),
     useAdminSystem: () => live(d.system, null),
     useAdminScanStats: () => live(d.scan, null),
+    useAdminClientErrors: () => live(d.clientErrors, { rows: [], total: 0, hits: 0, users: 0 }),
+    clearClientErrors: async () => 2,
     blockUser: done,
     setUserSuperadmin: done,
     unblockUser: done,
@@ -108,7 +110,7 @@ function html(url: string): string {
     );
 }
 
-const SECTIONS = ['', '/cuentas', '/ligas', '/deportes', '/anuncios', '/fotos', '/sistema', '/auditoria', '/logo'];
+const SECTIONS = ['', '/cuentas', '/ligas', '/deportes', '/anuncios', '/fotos', '/sistema', '/errores', '/auditoria', '/logo'];
 
 describe('consola del superadmin', () => {
   it('guarda: sin superadmin no se dibuja la consola; secciones que no existen tampoco', () => {
@@ -123,7 +125,7 @@ describe('consola del superadmin', () => {
   it('el marco: menú con todas las secciones, avisos en Resumen y el selector del teléfono', () => {
     const out = render('/superadmin');
     expect(out).toContain('Consola');
-    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Auditoría', 'Marca']) expect(out).toContain(label);
+    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Auditoría', 'Marca']) expect(out).toContain(label);
     expect(out).toContain('Superadmin: Randy Dueño');
     expect(out).toContain('(1 avisos)');
   });
@@ -236,6 +238,29 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Fallaron (24 h)');
   });
 
+  it('errores: agrupados, con veces, cuentas, teléfono, rutas, versión y detalle', () => {
+    const out = render('/superadmin/errores');
+    expect(out).toContain('Lo que falla en los teléfonos');
+    expect(out).toContain("TypeError: Cannot read properties of undefined (reading 'name')");
+    expect(out).toContain('12 veces · 2 errores distintos · 5 cuentas');
+    expect(out).toContain('9 veces');
+    expect(out).toContain('4 cuentas');
+    expect(out).toContain('Android 10 · Chrome 128 · app instalada');
+    expect(out).toContain('iPhone iOS 17.4 · Safari 17');
+    expect(out).toContain('/l/l2/ranking');
+    expect(out).toContain('Versión index-AbC123');
+    expect(out).toContain('Pantalla');
+    expect(out).toContain('Actualización');
+    expect(out).toContain('Ver detalle');
+    expect(out).toContain('Cuenta borrada');
+    expect(out).toContain('Ya se arregló');
+    expect(out).toContain('Borrar todos');
+    const raw = html('/superadmin/errores');
+    expect(raw).toContain('href="/superadmin/cuentas?u=u-ana"');
+    // Filtro por tipo en el link.
+    expect(render('/superadmin/errores?t=chunk')).toContain('Una parte de la app que no bajó');
+  });
+
   it('auditoría: acciones, quién, sobre qué y el detalle', () => {
     const out = render('/superadmin/auditoria');
     expect(out).toContain('Bloqueo de cuenta');
@@ -259,7 +284,7 @@ describe('consola del superadmin', () => {
     for (const s of SECTIONS) {
       const out = render(`/superadmin${s}`);
       expect(out, s).toContain('Consola');
-      if (mode === 'error' && ['', '/cuentas', '/ligas', '/fotos', '/auditoria'].includes(s)) expect(out, s).toContain('Intentar de nuevo');
+      if (mode === 'error' && ['', '/cuentas', '/ligas', '/fotos', '/errores', '/auditoria'].includes(s)) expect(out, s).toContain('Intentar de nuevo');
     }
     if (mode === 'empty') {
       expect(render('/superadmin/cuentas')).toContain('Todavía nadie se ha registrado');
@@ -267,6 +292,7 @@ describe('consola del superadmin', () => {
       expect(render('/superadmin/ligas')).toContain('Todavía no hay ligas');
       expect(render('/superadmin/auditoria')).toContain('Todavía no hay nada en la auditoría');
       expect(render('/superadmin/anuncios')).toContain('Todavía no se ha mandado ningún anuncio');
+      expect(render('/superadmin/errores')).toContain('Sin errores en estos días');
     }
   });
 });

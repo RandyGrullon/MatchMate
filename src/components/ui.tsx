@@ -8,8 +8,10 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
-import { AlertTriangle, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Loader2, Lock, RotateCw, WifiOff, X } from 'lucide-react';
+import { LogoSpinner } from './Logo';
 
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(' ');
@@ -64,6 +66,14 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   return <input ref={ref} className={cx(control, 'h-10', className)} {...rest} />;
 });
 
+/** Texto de varias líneas con el mismo estilo de los campos. */
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
+  { className, ...rest },
+  ref,
+) {
+  return <textarea ref={ref} className={cx(control, 'resize-none py-2', className)} {...rest} />;
+});
+
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select className={cx(control, 'h-10 pr-8', className)} {...rest}>
@@ -111,16 +121,14 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cx('size-5 animate-spin text-muted', className)} />;
 }
 
-/** Bola de boliche rodando: carga de pantalla completa (sesión, pantallas). */
+/**
+ * Carga de pantalla completa (sesión, pantallas): el logo de MatchMate con las cabezas saltando. Sirve para todos
+ * los deportes y toma el color de la app (o el del deporte dentro de una liga).
+ */
 export function Loading({ label }: { label?: string }) {
   return (
     <div className="animate-fade-in flex flex-col items-center justify-center gap-3 py-20" role="status" aria-label={label ?? 'Cargando'}>
-      <svg viewBox="0 0 40 40" className="bowl-loader size-10" aria-hidden="true">
-        <circle cx="20" cy="20" r="18" fill="var(--accent)" />
-        <circle cx="15" cy="13" r="2.6" fill="var(--surface)" />
-        <circle cx="23" cy="12" r="2.6" fill="var(--surface)" />
-        <circle cx="20" cy="19" r="2.6" fill="var(--surface)" />
-      </svg>
+      <LogoSpinner className="size-10" />
       {label && <p className="text-sm text-muted">{label}</p>}
     </div>
   );
@@ -228,12 +236,54 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   );
 }
 
-/** Aviso cuando una lectura de Firestore falla (sin permiso o sin conexión) en vez de mostrar una lista vacía. */
-export function LoadError({ error }: { error: Error }) {
-  const denied = /permission|insufficient/i.test(error.message);
+/** El error es de permisos (reintentar no sirve). */
+export function isDeniedError(error: Error): boolean {
+  return (error as { kind?: string }).kind === 'permission' || /permission|insufficient|no_permitido/i.test(error.message);
+}
+
+/**
+ * Vuelve a pedir lo que falló de las pantallas abiertas (como al volver la señal), sin recargar la app: con 3G,
+ * recargar todo deja la pantalla en blanco un buen rato. La capa de datos se carga aparte: la UI no depende de ella.
+ */
+export async function retryFailedReads(): Promise<void> {
+  const { queryClient } = await import('../lib/data/client');
+  queryClient.onReconnect();
+}
+
+/**
+ * Aviso cuando una lectura falla (sin permiso o sin conexión) en vez de mostrar una lista vacía. Si no es de
+ * permisos, trae «Reintentar»: vuelve a pedir los datos (`onRetry`, o todo lo que falló en pantalla).
+ */
+export function LoadError({ error, onRetry }: { error: Error; onRetry?: () => unknown }) {
+  const denied = isDeniedError(error);
+  const [busy, setBusy] = useState(false);
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+  async function retry() {
+    setBusy(true);
+    try {
+      // Un momento mínimo girando: si falla de nuevo enseguida, que se note que sí lo intentó.
+      await Promise.all([onRetry ? onRetry() : retryFailedReads(), new Promise((r) => setTimeout(r, 700))]);
+    } catch (e) {
+      console.warn('[reintentar]', e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <Empty icon={<AlertTriangle className="size-8" />} title="No se pudieron cargar los datos">
-      {denied ? 'No tienes permiso para ver esto.' : 'Revisa tu conexión y recarga la página.'}
+    <Empty
+      icon={denied ? <Lock className="size-8" /> : offline ? <WifiOff className="size-8" /> : <AlertTriangle className="size-8" />}
+      title="No se pudieron cargar los datos"
+    >
+      {denied ? 'No tienes permiso para ver esto.' : offline ? 'No hay señal. Cuando vuelva, toca «Reintentar».' : 'Revisa tu conexión y toca «Reintentar».'}
+      {!denied && (
+        <div className="mt-4 flex justify-center">
+          <Button variant="primary" icon={<RotateCw className="size-4" />} loading={busy} onClick={retry}>
+            Reintentar
+          </Button>
+        </div>
+      )}
     </Empty>
   );
 }

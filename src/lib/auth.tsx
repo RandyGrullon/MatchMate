@@ -17,27 +17,44 @@ export interface AppUser {
   displayName: string | null;
 }
 
+/**
+ * El perfil con la marca de «tengo 18 años o más» (profiles.adult_confirmed_at): null = no lo ha dicho (entró con
+ * Google o viene de BowlingX); undefined = no se sabe todavía (copia vieja guardada en el teléfono).
+ */
+export interface AccountProfile extends UserProfile {
+  adultConfirmedAt?: string | null;
+}
+
 interface AuthState {
   user: AppUser | null;
   /** Perfil de la cuenta (tabla profiles); null mientras no exista. */
-  profile: UserProfile | null;
+  profile: AccountProfile | null;
   /** Superadmin (profiles.is_superadmin): ve y administra todas las ligas y las cuentas. */
   isSuper: boolean;
   loading: boolean;
   /** Entró con el link de «olvidé mi contraseña»: falta poner la nueva. */
   recovering: boolean;
+  /** Falta que diga «tengo 18 años o más» (una sola vez): la app muestra AdultGate. */
+  needsAdult?: boolean;
 }
 
-const initial: AuthState = { user: null, profile: null, isSuper: false, loading: true, recovering: false };
+const initial: AuthState = { user: null, profile: null, isSuper: false, loading: true, recovering: false, needsAdult: false };
 const Ctx = createContext<AuthState>(initial);
 
 const toAppUser = (s: Session): AppUser => ({ uid: s.userId, email: s.email, displayName: s.name });
 const sameUser = (u: AppUser | null, s: Session | null) =>
   (!u && !s) || (!!u && !!s && u.uid === s.userId && u.email === s.email && u.displayName === s.name);
 
+type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null };
+
 /** Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. */
-export async function fetchProfile(uid: string): Promise<UserProfile | null> {
-  const read = () => select<ProfileRow>({ table: 'profiles', columns: 'id,email,name,is_superadmin', filters: [{ col: 'id', op: 'eq', value: uid }] });
+export async function fetchProfile(uid: string): Promise<AccountProfile | null> {
+  const read = () =>
+    select<AccountProfileRow>({
+      table: 'profiles',
+      columns: 'id,email,name,is_superadmin,adult_confirmed_at',
+      filters: [{ col: 'id', op: 'eq', value: uid }],
+    });
   let rows = await read();
   if (!rows.length) {
     try {
@@ -48,7 +65,8 @@ export async function fetchProfile(uid: string): Promise<UserProfile | null> {
       console.warn('[perfil] no se pudo crear', e);
     }
   }
-  return rows[0] ? toProfile(rows[0]) : null;
+  const row = rows[0];
+  return row ? { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null } : null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -87,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const uid = session.user?.uid;
-  const profile = queryClient.useQuery<UserProfile | null>(uid ? keys.profile(uid) : null, () => fetchProfile(uid!), {
+  const profile = queryClient.useQuery<AccountProfile | null>(uid ? keys.profile(uid) : null, () => fetchProfile(uid!), {
     initial: null,
     tags: uid ? [tags.profile(uid)] : [],
   });
@@ -100,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuper: p?.superadmin === true,
       loading: !session.known || (!!uid && profile.loading),
       recovering: session.recovering,
+      // Solo con el perfil leído de la base (una copia vieja sin la marca no cuenta).
+      needsAdult: !!p && p.adultConfirmedAt === null,
     };
   }, [session, uid, profile.data, profile.loading]);
 
@@ -131,6 +151,43 @@ export const useAuth = () => useContext(Ctx);
 /** Nombre para mostrar de la cuenta (perfil, nombre del registro o el correo). */
 export const displayName = (a: Pick<AuthState, 'user' | 'profile'>) =>
   a.profile?.name || a.user?.displayName || a.user?.email?.split('@')[0] || 'Jugador';
+
+/**
+ * «Tengo 18 años o más» (la app es solo para adultos): lo guarda en el perfil la primera vez (profiles.
+ * adult_confirmed_at) y la app deja de preguntar. Quien se registra con correo ya lo marcó al crear la cuenta.
+ */
+export async function confirmAdult(uid: string): Promise<void> {
+  await rpc('confirm_adult');
+  const at = new Date().toISOString();
+  queryClient.setQueryData<AccountProfile | null>(keys.profile(uid), (old) => (old ? { ...old, adultConfirmedAt: old.adultConfirmedAt ?? at } : old ?? null));
+  invalidate(tags.profile(uid));
+}
+
+/** Registro con Google: la casilla «tengo 18 años o más» se marcó antes de ir a Google (vale 1 hora). */
+const ADULT_PENDING_KEY = 'mm:mayor-de-edad';
+const ADULT_PENDING_MS = 60 * 60 * 1000;
+
+/** Antes de ir a Google a registrarse: recuerda que marcó la casilla, para confirmarlo al volver sin preguntar. */
+export function rememberAdultForGoogle(now = Date.now()): void {
+  try {
+    localStorage.setItem(ADULT_PENDING_KEY, String(now));
+  } catch {
+    // Sin almacenamiento: al volver se le pregunta.
+  }
+}
+
+/** ¿Marcó la casilla antes de ir a Google (hace menos de 1 hora)? Se usa una sola vez. */
+export function takeAdultPending(now = Date.now()): boolean {
+  try {
+    const raw = localStorage.getItem(ADULT_PENDING_KEY);
+    if (raw == null) return false;
+    localStorage.removeItem(ADULT_PENDING_KEY);
+    const at = Number(raw);
+    return Number.isFinite(at) && now - at >= 0 && now - at < ADULT_PENDING_MS;
+  } catch {
+    return false;
+  }
+}
 
 /** `captcha`: token de Turnstile si el proyecto lo pide (src/components/Turnstile.tsx). */
 export const login = (email: string, password: string, captcha?: string) => getBackend().auth.signIn(email.trim(), password, captcha);

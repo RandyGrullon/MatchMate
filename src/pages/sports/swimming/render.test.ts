@@ -173,6 +173,23 @@ describe('pantallas de natación', () => {
     expect(puntos).toContain('Medallero');
   });
 
+  it('cronometrar: «Publicar serie» fijo encima de la barra de la app, y el modo piscina a pantalla completa', () => {
+    const html = render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`);
+    // La barra de abajo del teléfono mide unos 3.5 rem: la de publicar queda encima (antes: bottom-2, tapada).
+    expect(html).toMatch(/sticky bottom-\[calc\(4rem\+env\(safe-area-inset-bottom\)\)\][^"]*sm:bottom-2/);
+    expect(text(html)).toContain('Modo piscina');
+    const full = render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro&piscina=1`);
+    expect(full).toContain('aria-label="Salir del modo piscina"');
+    expect(full).toContain('aria-label="Modo sol (alto contraste)"');
+    const t = text(full);
+    expect(t).toContain('SALIDA');
+    expect(t).toContain('Publicar serie');
+    expect(t).toContain('Serie 2 de 2');
+    expect(t).not.toContain('Pantalla completa, siempre encendida');
+    // En la pantalla completa, publicar va en el pie (después de los carriles).
+    expect(full.lastIndexOf('Publicar serie')).toBeGreaterThan(full.lastIndexOf('Pedro Ruiz'));
+  });
+
   it('un visitante no ve el cronómetro ni las acciones del admin', () => {
     const c = ctx({ member: null, isAdmin: false, isOwner: false, canScore: false });
     const t = text(render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`, c));

@@ -8,6 +8,7 @@ import {
   MAX_BLOCK_REASON,
   isAnnouncementUrl,
   type AdminAuditEntry,
+  type AdminClientError,
   type AdminUser,
   type AdminUserFilter,
   type AnnouncementAudience,
@@ -158,6 +159,8 @@ export const AUDIT_ACTIONS: readonly { key: string; label: string }[] = [
   { key: 'announce', label: 'Anuncio' },
   { key: 'transfer_league', label: 'Traspaso de liga' },
   { key: 'delete_league', label: 'Liga borrada' },
+  { key: 'delete_account', label: 'Cuenta borrada' },
+  { key: 'clear_errors', label: 'Errores borrados' },
 ];
 
 export function auditActionLabel(action: string): string {
@@ -170,7 +173,7 @@ export function auditActionLabel(action: string): string {
 export type AuditTone = 'accent' | 'danger' | 'ok' | 'warn' | 'neutral';
 
 export function auditTone(action: string): AuditTone {
-  if (action === 'delete_league' || action === 'block_user') return 'danger';
+  if (action === 'delete_league' || action === 'block_user' || action === 'delete_account') return 'danger';
   if (action === 'unblock_user') return 'ok';
   if (action === 'announce') return 'accent';
   if (action === 'set_sport_status' || action === 'transfer_league') return 'warn';
@@ -218,6 +221,16 @@ export function auditSummary(e: Pick<AdminAuditEntry, 'action' | 'detail'> & { t
       const owner = str(d.ownerName);
       return `${name ? `Borró «${name}»` : 'Borró una liga'}${owner ? ` (de ${owner})` : ''}`;
     }
+    case 'delete_account':
+      // La persona borró su cuenta (Configuración): ya no hay nombre ni correo.
+      return 'La persona borró su cuenta';
+    case 'clear_errors': {
+      const n = numOrNull(d.deleted);
+      const what = n == null ? 'reportes de errores' : `${fmtNum(n)} ${n === 1 ? 'reporte' : 'reportes'} de errores`;
+      if (d.all === true) return `Vació los errores (${what})`;
+      const message = str(d.message);
+      return `Borró ${what}${message ? `: «${message.length > 80 ? `${message.slice(0, 79)}…` : message}»` : ''}`;
+    }
     default:
       return auditActionLabel(e.action);
   }
@@ -225,6 +238,9 @@ export function auditSummary(e: Pick<AdminAuditEntry, 'action' | 'detail'> & { t
 
 /** A dónde lleva el objetivo de una entrada (null = no hay a dónde ir). */
 export function auditTargetPath(e: Pick<AdminAuditEntry, 'targetType' | 'targetId' | 'action'>): string | null {
+  if (e.action === 'clear_errors') return '/superadmin/errores';
+  // Una cuenta borrada ya no se puede abrir.
+  if (e.action === 'delete_account') return null;
   if (!e.targetId) return e.targetType === 'sport' ? '/superadmin/deportes' : null;
   switch (e.targetType) {
     case 'user':
@@ -240,3 +256,61 @@ export function auditTargetPath(e: Pick<AdminAuditEntry, 'targetType' | 'targetI
 }
 
 export const TARGET_LABEL: Record<AdminAuditEntry['targetType'], string> = { user: 'Cuenta', league: 'Liga', sport: 'Deporte', app: 'App' };
+
+// ---------- Errores de los teléfonos ----------
+
+export const CLIENT_ERROR_KIND_LABEL: Record<AdminClientError['kind'], string> = {
+  error: 'Código',
+  promise: 'Promesa',
+  render: 'Pantalla',
+  chunk: 'Actualización',
+};
+
+/** Qué quiere decir cada tipo (ayuda del filtro). */
+export const CLIENT_ERROR_KIND_HELP: Record<AdminClientError['kind'], string> = {
+  error: 'Un error de código que nadie atrapó.',
+  promise: 'Una promesa que falló sin catch (casi siempre una lectura o escritura).',
+  render: 'Una pantalla que no se pudo dibujar: la persona vio el aviso de error.',
+  chunk: 'Una parte de la app que no bajó: versión nueva publicada o se cayó la señal.',
+};
+
+export function clientErrorTone(kind: AdminClientError['kind']): AuditTone {
+  if (kind === 'render') return 'danger';
+  if (kind === 'chunk') return 'neutral';
+  return 'warn';
+}
+
+const UA_BROWSERS: readonly (readonly [string, RegExp])[] = [
+  ['Samsung Internet', /SamsungBrowser\/(\d+)/],
+  ['Edge', /Edg(?:A|iOS)?\/(\d+)/],
+  ['Firefox', /(?:Firefox|FxiOS)\/(\d+)/],
+  ['Chrome', /(?:Chrome|CriOS)\/(\d+)/],
+  ['Safari', /Version\/(\d+)[^)]*Safari\//],
+  ['Safari', /Safari\/()/],
+];
+
+/**
+ * El teléfono en pocas palabras, del user agent: sistema y navegador (y si es la app instalada).
+ * «Android 10 · Chrome 128 · app instalada», «iPhone iOS 17.4 · Safari», «Windows · Edge 127».
+ */
+export function describeUa(ua: string | null | undefined): string {
+  if (!ua) return 'No se sabe';
+  const parts: string[] = [];
+  const android = /Android\s+([\d.]+)/.exec(ua);
+  const ios = /(iPhone|iPad|iPod)[^)]*OS\s+([\d_]+)/.exec(ua);
+  if (android) parts.push(`Android ${android[1]}`);
+  else if (ios) parts.push(`${ios[1]} iOS ${ios[2].replace(/_/g, '.')}`);
+  else if (/Windows/.test(ua)) parts.push('Windows');
+  else if (/Macintosh|Mac OS X/.test(ua)) parts.push('Mac');
+  else if (/Linux/.test(ua)) parts.push('Linux');
+  // El orden importa: Samsung y Edge también dicen «Chrome», y todos dicen «Safari».
+  for (const [name, re] of UA_BROWSERS) {
+    const m = re.exec(ua);
+    if (m) {
+      parts.push(m[1] ? `${name} ${m[1]}` : name);
+      break;
+    }
+  }
+  if (/\[app instalada\]/.test(ua)) parts.push('app instalada');
+  return parts.length ? parts.join(' · ') : ua.slice(0, 60);
+}

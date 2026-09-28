@@ -274,3 +274,64 @@ export function tournamentSetupOf(rules: unknown): TournamentSetup | null {
   if (!groups || !perGroup || groups * perGroup < 2) return null;
   return { groups, perGroup, thirdPlace: r.thirdPlace === true };
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// El «torneo sin liga» (la liga es el torneo): qué le toca al organizador y los partidos por fase.
+
+/** En qué va el torneo: faltan equipos, falta armarlo, o ya tiene partidos. */
+export type TournamentStep = 'teams' | 'build' | 'play';
+
+export function tournamentStep(teamCount: number, matchCount: number): TournamentStep {
+  if (matchCount > 0) return 'play';
+  return teamCount < 2 ? 'teams' : 'build';
+}
+
+export interface StageGroup<M> {
+  stage: string;
+  /** Fase de grupos (sin cuadro) o eliminatoria. */
+  knockout: boolean;
+  matches: M[];
+}
+
+type StageMatch = Pick<Match, 'id' | 'stage' | 'bracketKey' | 'round' | 'scheduledAt' | 'court' | 'status'>;
+
+const when = (m: StageMatch) => (m.scheduledAt ? Date.parse(m.scheduledAt) : Number.POSITIVE_INFINITY);
+
+/**
+ * Los partidos por fase, en el orden en que se juegan: primero los grupos (A, B…) y después la eliminatoria por
+ * ronda (semifinales, 3.er lugar, final). Dentro de cada fase, por hora y cancha. Los anulados no salen.
+ */
+export function stageGroups<M extends StageMatch>(matches: readonly M[]): StageGroup<M>[] {
+  const by = new Map<string, StageGroup<M>>();
+  for (const m of matches) {
+    if (m.status === 'void') continue;
+    const stage = m.stage.trim() || (m.bracketKey ? 'Eliminatoria' : 'Partidos');
+    const g = by.get(stage) ?? { stage, knockout: !!m.bracketKey, matches: [] };
+    g.knockout = g.knockout || !!m.bracketKey;
+    g.matches.push(m);
+    by.set(stage, g);
+  }
+  const first = (g: StageGroup<M>) => Math.min(...g.matches.map((m) => m.round ?? 0));
+  const earliest = (g: StageGroup<M>) => Math.min(...g.matches.map(when));
+  for (const g of by.values()) g.matches.sort((a, b) => when(a) - when(b) || (a.court ?? '').localeCompare(b.court ?? '', 'es') || a.id.localeCompare(b.id));
+  return [...by.values()].sort(
+    (a, b) =>
+      Number(a.knockout) - Number(b.knockout) ||
+      (a.knockout
+        ? first(a) - first(b) || Number(a.stage === 'Final') - Number(b.stage === 'Final') || earliest(a) - earliest(b)
+        : a.stage.localeCompare(b.stage, 'es', { numeric: true })),
+  );
+}
+
+type GroupMatch = Pick<Match, 'stage' | 'bracketKey' | 'status' | 'proposedAt' | 'sides'>;
+
+/**
+ * Tabla final de un grupo (ids en orden) con la tabla del deporte (`rank`: sus partidos y sus equipos), o null
+ * si el grupo todavía tiene partidos que no cuentan (por jugar, en juego o por confirmar). Los anulados no frenan.
+ */
+export function finishedGroupRanking<M extends GroupMatch>(matches: readonly M[], stage: string, now: number, rank: (ms: M[], teamIds: string[]) => string[]): string[] | null {
+  const ms = matches.filter((m) => m.stage.trim() === stage && !m.bracketKey);
+  if (!ms.length || !ms.every((m) => m.status === 'void' || isFinal(m, now))) return null;
+  const teamIds = [...new Set(ms.flatMap((m) => m.sides.map((s) => s.teamId)).filter((x): x is string => !!x))];
+  return rank(ms, teamIds);
+}

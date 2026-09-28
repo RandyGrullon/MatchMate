@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { CalendarRange, Camera, CircleHelp, Clock, Globe, Lock } from 'lucide-react';
+import { Baby, CalendarRange, Camera, CircleHelp, Clock, Globe, Lock } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { createLeague, createTournament, type LeagueInput } from '../lib/data';
 import { toIsoDate } from '../lib/format';
@@ -10,8 +10,9 @@ import { DEFAULT_SPORT, getSport, leagueSport, sportMeta } from '../sports/regis
 import { preselectedSport, useSportStatus } from '../sports/status';
 import type { SportId } from '../sports/types';
 import { SportPicker } from '../pages/sports/SportPicker';
-import { useAction } from './feedback';
-import { Button, Field, Input, Modal, cx } from './ui';
+import { useAction, useFeedback } from './feedback';
+import { Button, Field, Input, Modal, Select, cx } from './ui';
+import { DEFAULT_TZ, minorsLocked, timezoneOptions, tzOffset, withMinors } from './league/logic';
 
 /**
  * Lo que se manda al crear: los datos del formulario más el deporte (create_league / create_tournament
@@ -31,6 +32,8 @@ const empty = (contactName: string, kind: LeagueKind): LeagueInput => ({
   contactName,
   contactPhone: '',
   requirePhoto: true,
+  hasMinors: false,
+  tz: DEFAULT_TZ,
 });
 
 export const leagueInput = (l: League): LeagueInput => ({
@@ -44,12 +47,25 @@ export const leagueInput = (l: League): LeagueInput => ({
   contactName: l.contactName ?? '',
   contactPhone: l.contactPhone ?? '',
   requirePhoto: l.requirePhoto ?? true,
+  hasMinors: !!l.hasMinors,
+  tz: l.tz || DEFAULT_TZ,
 });
+
+/** Lo que cambia con «Liga con menores» (lo explica el formulario antes de activarla). */
+const MINORS_RULES = [
+  'La liga queda privada: solo entra quien tenga la invitación.',
+  'Los menores no tienen cuenta: los registra un admin, con el permiso de su papá, mamá o tutor.',
+  'Su año de nacimiento y sus datos solo los ven los admins; los demás ven su nombre y su categoría.',
+  'Sin fotos, sin «Me gusta» y sin comentarios en toda la liga.',
+];
 
 /**
  * Formulario de la liga (o del torneo sin liga): crear (queda como dueño) o editar sus datos.
  * El deporte se muestra arriba: al crear se puede volver a elegir (`onChangeSport`); al editar es solo
  * lectura (sin `sport`, se toma el de la liga abierta).
+ * Abajo, la zona horaria (recordatorios y el «hoy» de la liga) y «Liga con menores», que el admin enciende y no
+ * puede apagar (solo el superadmin, y la base exige que no quede ningún menor). Un torneo nuevo no las trae
+ * (create_tournament no las recibe): se cambian después en sus datos.
  */
 export function LeagueForm({
   id,
@@ -72,6 +88,8 @@ export function LeagueForm({
   onChangeSport?: () => void;
 }) {
   const ctx = useContext(LeagueContext);
+  const { isSuper } = useAuth();
+  const { confirm } = useFeedback();
   const sport = sportProp ?? (ctx ? leagueSport(ctx.league) : DEFAULT_SPORT);
   const meta = sportMeta(sport);
   const [form, setForm] = useState(initial);
@@ -83,6 +101,11 @@ export function LeagueForm({
   }, [initial]);
   const isTournament = form.kind === 'torneo';
   const set = <K extends keyof LeagueInput>(k: K, v: LeagueInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // Menores y zona horaria: al editar, y al crear una liga (el torneo nuevo no las lleva).
+  const advanced = !withDate;
+  const savedMinors = !creating && !!initial.hasMinors;
+  const minorsFixed = minorsLocked(savedMinors, isSuper);
+  const minors = !!form.hasMinors;
 
   function toggleSeason(on: boolean) {
     setHasSeason(on);
@@ -94,9 +117,23 @@ export function LeagueForm({
     }
   }
 
-  function submit(e: FormEvent) {
+  /** Con menores: privada y sin foto obligatoria (la base no deja otra cosa). */
+  function setMinors(on: boolean) {
+    setForm((f) => withMinors({ ...f, hasMinors: on }));
+  }
+
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    onSubmit({
+    // Encenderla en una liga que ya existe no tiene vuelta atrás para el admin: se confirma.
+    if (!creating && minors && !initial.hasMinors) {
+      const ok = await confirm({
+        title: '¿Activar «Liga con menores»?',
+        message: `${isTournament ? 'El torneo queda privado' : 'La liga queda privada'}, sin fotos ni comentarios, y después no la puedes apagar tú.`,
+        confirmText: 'Activar y guardar',
+      });
+      if (!ok) return;
+    }
+    const data = withMinors({
       ...form,
       // La foto del marcador (y su lectura con IA) es solo del boliche.
       requirePhoto: meta?.photos === false ? false : form.requirePhoto,
@@ -107,7 +144,9 @@ export function LeagueForm({
       seasonEnd: hasSeason ? form.seasonEnd : '',
       contactName: form.contactName.trim(),
       contactPhone: form.contactPhone.replace(/[^\d+]/g, ''),
-    }, date);
+    });
+    // El torneo nuevo no manda menores ni zona (create_tournament no las recibe).
+    onSubmit(advanced ? data : { ...data, hasMinors: undefined, tz: undefined }, date);
   }
 
   return (
@@ -141,7 +180,8 @@ export function LeagueForm({
           onClick={() => set('visibility', 'public' as Visibility)}
           icon={<Globe className="size-4" />}
           title="Pública"
-          text={isTournament ? 'Cualquiera lo ve y se une.' : 'Cualquiera la ve y se une.'}
+          text={minors ? 'Con menores no se puede.' : isTournament ? 'Cualquiera lo ve y se une.' : 'Cualquiera la ve y se une.'}
+          disabled={minors}
         />
       </fieldset>
       <Field label={meta?.venue ?? 'Lugar'} className="col-span-2">
@@ -188,7 +228,7 @@ export function LeagueForm({
       <Field label="WhatsApp">
         <Input type="tel" inputMode="tel" maxLength={20} value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="809 555 0000" />
       </Field>
-      {meta?.photos !== false && (
+      {meta?.photos !== false && !minors && (
         <label className="col-span-2 flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3">
           <input
             type="checkbox"
@@ -208,7 +248,81 @@ export function LeagueForm({
           </span>
         </label>
       )}
+      {advanced && (
+        <Field label="Zona horaria" className="col-span-2" hint="Con esta hora salen los recordatorios, los avisos y el «hoy» de la liga.">
+          <Select value={form.tz || DEFAULT_TZ} onChange={(e) => set('tz', e.target.value)}>
+            {timezoneOptions(form.tz).map((z) => {
+              const off = tzOffset(z.id);
+              return (
+                <option key={z.id} value={z.id}>
+                  {z.label}
+                  {off ? ` (${off})` : ''}
+                </option>
+              );
+            })}
+          </Select>
+        </Field>
+      )}
+      {advanced && (
+        <MinorsToggle on={minors} locked={minorsFixed} canTurnOff={savedMinors && isSuper} tournament={isTournament} onChange={setMinors} />
+      )}
     </form>
+  );
+}
+
+/** «Liga con menores», con lo que cambia explicado antes de activarla. */
+function MinorsToggle({
+  on,
+  locked,
+  canTurnOff,
+  tournament,
+  onChange,
+}: {
+  on: boolean;
+  locked: boolean;
+  canTurnOff: boolean;
+  tournament: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div className={cx('col-span-2 flex flex-col gap-2 rounded-xl border p-3', on ? 'border-accent bg-accent-soft/40' : 'border-line')}>
+      <label className={cx('flex items-start gap-3', locked ? 'cursor-not-allowed' : 'cursor-pointer')}>
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-[var(--accent)]"
+          checked={on}
+          disabled={locked}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-describedby="menores-reglas"
+        />
+        <span className="text-sm">
+          <span className="flex items-center gap-1.5 font-medium">
+            <Baby className="size-4 text-accent" /> {tournament ? 'Torneo con menores' : 'Liga con menores'}
+          </span>
+          <span className="text-muted">Para clubes con niños y jóvenes: natación, escuelitas, juveniles.</span>
+        </span>
+      </label>
+      <div id="menores-reglas" className="ml-7 text-xs text-muted">
+        {on ? (
+          <ul className="flex list-disc flex-col gap-1 pl-4">
+            {MINORS_RULES.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>Al activarla queda privada, sin fotos ni comentarios, y a los menores los registra un admin (no tienen cuenta).</p>
+        )}
+        {locked ? (
+          <p className="mt-2 flex items-start gap-1.5 font-medium text-fg">
+            <Lock className="mt-0.5 size-3.5 shrink-0" /> Ya está activada. Solo el equipo de MatchMate la puede apagar, y solo si no queda ningún menor.
+          </p>
+        ) : canTurnOff ? (
+          <p className="mt-2 font-medium text-fg">Como superadmin la puedes apagar, solo si no queda ningún menor en la liga.</p>
+        ) : (
+          on && <p className="mt-2 font-medium text-fg">Una vez guardada, no la puedes apagar tú.</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -319,14 +433,29 @@ function SchedulePicker({ value, onChange }: { value: string; onChange: (v: stri
   );
 }
 
-function Choice({ active, onClick, icon, title, text }: { active: boolean; onClick: () => void; icon: ReactNode; title: string; text: string }) {
+function Choice({
+  active,
+  onClick,
+  icon,
+  title,
+  text,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  title: string;
+  text: string;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      disabled={disabled}
       className={cx(
-        'flex flex-col items-start gap-1 rounded-xl border p-3 text-left text-sm transition',
+        'flex flex-col items-start gap-1 rounded-xl border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-50',
         active ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
       )}
     >
@@ -381,7 +510,9 @@ export function LeagueFormModal({
     const to = isTournament
       ? await run(async () => {
           const { lid, eid } = await createTournament(owner, input, date);
-          return `/l/${lid}/e/${eid}?tab=inscritos`;
+          // Equipos (baloncesto, fútbol, sala): el torneo se arma desde su inicio (equipos y relámpago); el evento
+          // que crea la base es solo el contenedor. Los demás van a inscribir en su evento.
+          return getSport(sport).family === 'team' ? `/l/${lid}` : `/l/${lid}/e/${eid}?tab=inscritos`;
         }, 'Torneo creado')
       : await run(async () => `/l/${await createLeague(owner, input)}/admin?tab=liga`, 'Liga creada');
     setBusy(false);

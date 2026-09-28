@@ -13,3 +13,6 @@ export async function shareLink(url: string, title: string): Promise<boolean> {
   await navigator.clipboard.writeText(url);
   return true;
 }
+
+// Imagen de las tablas y los resultados para WhatsApp (con el link): ver share/index.ts.
+export * from './share/index';

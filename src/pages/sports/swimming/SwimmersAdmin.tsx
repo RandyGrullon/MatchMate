@@ -224,7 +224,7 @@ export function SwimmerFormModal({ open, onClose, editing, fixedClub }: { open: 
             />
             <span className="text-sm">
               Es menor de 18 años (sin cuenta)
-              {!minorsOk && <span className="block text-xs text-muted">Para registrar menores, activa «Liga con menores» en Admin › Liga (la liga queda privada).</span>}
+              {!minorsOk && <span className="block text-xs text-muted">Para registrar menores, activa «Liga con menores» en Admin › Liga › Editar datos (la liga queda privada).</span>}
             </span>
           </label>
         )}

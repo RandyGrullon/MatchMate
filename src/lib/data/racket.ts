@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
+import type { RealtimeMessage } from '../backend/types';
 import { uuidv7 } from '../db/ids';
 import type { OutboxItem } from '../db/outbox';
 import type { Stamp } from '../types';
 import type { Side } from '../../sports/types';
-import { enqueue, invalidate, onOutbox, rpc, select, sentOrQueued, updateCached, useLive, useOutboxSnapshot, type Live } from './client';
+import { enqueue, getUserId, invalidate, onOutbox, queryClient, rpc, select, sentOrQueued, updateCached, useLive, useOutboxSnapshot, type Live } from './client';
 import { tags } from './keys';
-import { draftArg, matchTags, type FinishResult, type Match, type MatchDraft, type MatchStatus } from './matches';
+import { draftArg, matchTags, seasonTeamTag, type FinishResult, type Match, type MatchDraft, type MatchStatus } from './matches';
 import { pendingOps } from './pending';
 import type { Wire } from './stamp';
 import { useTopic } from './topics';
@@ -20,6 +21,8 @@ import { useTopic } from './topics';
  *   (players.attrs.level, Playtomic 0–7: solo arma la ronda 1 del mexicano y la siembra de los torneos).
  * - save_night_round (admin, con señal): publica una ronda de la noche.
  * - save_points_result (por la cola, sin señal también): termina o corrige un partido a puntos (admite empate).
+ * - Inscripciones «Me apunto» de americanos y torneos (20260927001400_inscripciones.sql): quién se apuntó y la
+ *   lista de espera (event_signups), apuntarse, bajarse y lo que hace el admin a mano. Con señal.
  */
 
 // ---------- Eventos con configuración ----------
@@ -225,6 +228,153 @@ export async function saveNightRound(lid: string, eventId: string, round: number
   const ids = await rpc<string[]>('save_night_round', { p_event: eventId, p_round: round, p_matches: matches, p_rests: [...rests] });
   invalidate(matchTags.league(lid), matchTags.event(eventId), matchTags.mine, tags.events(lid), tags.event(eventId));
   return ids ?? [];
+}
+
+// ---------- Inscripciones («Me apunto») ----------
+
+export type SignupStatus = 'in' | 'wait';
+
+/** Una inscripción: está en la lista ('in') o en la lista de espera ('wait'). */
+export interface EventSignup {
+  eventId: string;
+  /** El jugador (noche, torneo individual) o la pareja de la temporada (torneo de dobles). */
+  entrantId: string;
+  playerId: string | null;
+  teamId: string | null;
+  /** Categoría del torneo (null en la noche). */
+  category: string | null;
+  status: SignupStatus;
+  /** Turno: la espera va en este orden (y la lista, en el de la configuración). */
+  queue: number;
+  /** Cuándo entró a la espera (o se apuntó). ISO. */
+  queuedAt: string;
+  /** Cuándo subió de la espera a la lista. ISO o null. */
+  promotedAt: string | null;
+  createdBy: string | null;
+}
+
+export interface EventSignupRow {
+  event_id: string;
+  entrant_id: string;
+  player_id: string | null;
+  team_id: string | null;
+  category: string | null;
+  status: string;
+  queue_no: number | string | bigint;
+  queued_at: string;
+  promoted_at: string | null;
+  created_by: string | null;
+}
+
+const SIGNUP_COLUMNS = 'event_id,entrant_id,player_id,team_id,category,status,queue_no,queued_at,promoted_at,created_by';
+
+export function toSignup(r: EventSignupRow): EventSignup {
+  const queue = Number(r.queue_no);
+  return {
+    eventId: r.event_id,
+    entrantId: r.entrant_id,
+    playerId: r.player_id ?? null,
+    teamId: r.team_id ?? null,
+    category: r.category ?? null,
+    status: r.status === 'wait' ? 'wait' : 'in',
+    queue: Number.isFinite(queue) ? queue : 0,
+    queuedAt: typeof r.queued_at === 'string' ? r.queued_at : '',
+    promotedAt: typeof r.promoted_at === 'string' ? r.promoted_at : null,
+    createdBy: r.created_by ?? null,
+  };
+}
+
+export const signupKeys = { event: (eventId: string) => `racket:signups:${eventId}` };
+export const signupTag = (eventId: string) => `signups:${eventId}`;
+
+/** Inscripciones del evento, en turno (la espera en su orden). */
+export async function fetchSignups(lid: string, eventId: string): Promise<EventSignup[]> {
+  const rows = await select<EventSignupRow>({
+    table: 'event_signups',
+    columns: SIGNUP_COLUMNS,
+    filters: [
+      { col: 'league_id', op: 'eq', value: lid },
+      { col: 'event_id', op: 'eq', value: eventId },
+    ],
+    order: [{ col: 'queue_no', asc: true }],
+  });
+  return rows.map(toSignup).sort((a, b) => a.queue - b.queue);
+}
+
+/** Qué se vuelve a leer con cada aviso del tema del evento ('signups' {op}; null = consulta sin tiempo real). */
+export function signupMessageTags(eventId: string, msg: Pick<RealtimeMessage, 'event'> | null): string[] {
+  if (msg && msg.event !== 'signups') return [];
+  return [signupTag(eventId)];
+}
+
+/**
+ * Quién se apuntó y la lista de espera, al día mientras la pantalla está abierta (aviso 'signups' del evento; la
+ * lista misma vive en events.config y llega con el aviso de eventos de la liga). Sin cuenta: consulta cada 30–45 s.
+ */
+export function useSignups(lid: string | undefined, eventId: string | undefined, enabled = true): Live<EventSignup[]> {
+  const on = !!(lid && eventId && enabled);
+  queryClient.useTopic(
+    on ? `event:${eventId}` : null,
+    (msg) => {
+      if (eventId) invalidate(...signupMessageTags(eventId, msg));
+    },
+    {
+      onPoll: () => eventId && invalidate(signupTag(eventId)),
+      pollOnly: !getUserId(),
+      pollMs: getUserId() ? undefined : [30_000, 45_000],
+    },
+  );
+  return useLive<EventSignup[]>(on ? signupKeys.event(eventId!) : null, on ? { kind: 'racketSignups', lid, eventId } : null, () => fetchSignups(lid!, eventId!), {
+    initial: [],
+    tags: on ? [tags.league(lid!), signupTag(eventId!), tags.event(eventId!)] : [],
+  });
+}
+
+export interface JoinSignupResult {
+  status: SignupStatus;
+  /** Puesto en la lista, o en la espera. */
+  position: number;
+  entrantId: string;
+  category: string | null;
+}
+
+const afterSignup = (lid: string, eventId: string) => invalidate(signupTag(eventId), tags.events(lid), tags.event(eventId), tags.feeds);
+
+/**
+ * «Me apunto». Noche y torneo individual: con mi jugador. Torneo de dobles: con mi pareja (`team`, o la única que
+ * tengo) o con el compañero que elijo (`partner`: si esa pareja no existe, se crea). `category` en un torneo con
+ * varias. En una liga pública, si no soy miembro entro a la liga en el mismo paso. Si hay cupo entro a la lista;
+ * si no, a la espera. Errores: 'cerrado' (cerrada, pasó la fecha límite o ya empezó), 'duplicado' (alguien de la
+ * pareja ya está apuntado), 'invalido'.
+ */
+export async function joinSignup(lid: string, eventId: string, opts: { category?: string | null; partner?: string | null; team?: string | null } = {}): Promise<JoinSignupResult> {
+  const r = await rpc<{ status: string; position: number; entrant_id: string; category: string | null }>('join_signup', {
+    p_event: eventId,
+    ...(opts.category ? { p_category: opts.category } : {}),
+    ...(opts.partner ? { p_partner: opts.partner } : {}),
+    ...(opts.team ? { p_team: opts.team } : {}),
+  });
+  afterSignup(lid, eventId);
+  // Pudo entrar a la liga (o crear la pareja): miembros, jugadores y parejas.
+  invalidate(tags.leagues, tags.members, tags.leagueMembers(lid), tags.players(lid), seasonTeamTag(lid));
+  return { status: r?.status === 'wait' ? 'wait' : 'in', position: Number(r?.position) || 0, entrantId: r?.entrant_id ?? '', category: r?.category ?? null };
+}
+
+/** «Ya no puedo»: me bajo de la lista o de la espera (el admin: a cualquiera). Si dejo un cupo, entra el primero de la espera. */
+export async function leaveSignup(lid: string, eventId: string, entrant?: string | null): Promise<boolean> {
+  const out = await rpc<boolean>('leave_signup', { p_event: eventId, ...(entrant ? { p_entrant: entrant } : {}) });
+  afterSignup(lid, eventId);
+  return out === true;
+}
+
+/**
+ * Admin: 'in' mete al inscrito en la lista (aunque pase el cupo; si esperaba, le llega el push), 'wait' lo pone al
+ * final de la espera y null lo saca. `category` lo pone en esa categoría del torneo. Devuelve cómo quedó.
+ */
+export async function setSignup(lid: string, eventId: string, entrant: string, status: SignupStatus | null, category?: string | null): Promise<SignupStatus | null> {
+  const out = await rpc<string | null>('set_signup', { p_event: eventId, p_entrant: entrant, p_status: status, ...(category ? { p_category: category } : {}) });
+  afterSignup(lid, eventId);
+  return out === 'in' || out === 'wait' ? out : null;
 }
 
 // ---------- Resultado a puntos (por la cola) ----------
