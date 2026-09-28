@@ -176,6 +176,8 @@ additional_redirect_urls = [
   "http://127.0.0.1:5173/**",
   "http://localhost:4173",
   "http://localhost:4173/**",
+  "http://localhost:5190",
+  "http://localhost:5190/**",
   "https://matchmate.vercel.app",
   "https://matchmate.vercel.app/**",
 ]
@@ -248,7 +250,8 @@ enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# MatchMate: 1 minuto también en producción (este archivo se sube con `supabase config push`).
+max_frequency = "1m0s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
@@ -325,8 +328,9 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# Como viene en Supabase (la app todavía no la usa, pero no se apaga).
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]
