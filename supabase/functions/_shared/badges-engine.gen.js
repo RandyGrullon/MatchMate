@@ -2,8 +2,8 @@
 // GENERADO por scripts/badges/bundle.mjs (pnpm badges:bundle): no se edita a mano.
 // El motor de las insignias (src/badges/edge.ts y lo que importa: 66 archivos) en un solo ESM sin imports para la
 // Edge Function supabase/functions/insignias (Deno). src/badges/bundle.test.ts falla si quedó viejo.
-// fuente: sha256-50c062a9c81aaf67a1cce8ec755e51ab1d159f7fac20d144e8d287c96d0208e3
-// salida: sha256-9f8cd1b965b70b86d7dc15f4e5d7d855488d9363a9b20bc563395002b7c28088
+// fuente: sha256-e804bd4840e3d81742384894440f7891c7a7e3707897494dbc3468c800f8c642
+// salida: sha256-e195a98585913f47721d542b54a7d8565037119996f0519224fce6ad91832253
 // ---
 //#region src/sports/types.ts
 const SPORT_FAMILY = {
@@ -3198,11 +3198,28 @@ function entryLine(entry, event, includeDrafts = false) {
 		high: counted.length ? Math.max(...counted) : 0
 	};
 }
+/**
+* La regla EFECTIVA del individual de un torneo (la del dueño: con handicap). Sin regla escrita, 'hcp'; sin handicap
+* (0 %) o en una práctica, 'scratch' aunque la regla diga 'hcp'. Es la que usan la clasificación, los premios del
+* torneo (private.prize_bowling_rank) y las insignias automáticas.
+*/
+function individualRule(event) {
+	return event.type === "torneo" && event.hcpPercent > 0 && (event.individualRankBy ?? "hcp") === "hcp" ? "hcp" : "scratch";
+}
+/** La regla EFECTIVA de los equipos (la del dueño: por scratch). Con handicap solo si la regla lo dice y hay handicap. */
+function teamRule(event) {
+	return event.type === "torneo" && event.hcpPercent > 0 && (event.teamRankBy ?? "scratch") === "hcp" ? "hcp" : "scratch";
+}
 /** Valor con el que se ordena la clasificación individual (regla del evento). */
 function individualValue(event) {
 	const isTorneo = event.type === "torneo";
-	const useHcp = isTorneo && event.hcpPercent > 0 && (event.individualRankBy ?? "hcp") === "hcp";
+	const useHcp = individualRule(event) === "hcp";
 	return (l) => isTorneo ? useHcp ? l.total : l.scratch : l.avg;
+}
+/** Valor con el que se ordena la clasificación por equipos (la gemela de individualValue). */
+function teamValue(event) {
+	const useHcp = teamRule(event) === "hcp";
+	return (t) => useHcp ? t.total : t.scratch;
 }
 function teamLines(event, lines) {
 	return Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order).map(([teamId, team]) => {
@@ -3754,27 +3771,39 @@ function cappedPlayingHcp(card, round, index) {
 * la fecha y la hora de la liga ('2026-10-08' y '20:00' en Santo Domingo). Sin librerías: Intl.
 */
 const DEFAULT_TZ = "America/Santo_Domingo";
+const formatters = /* @__PURE__ */ new Map();
+const formatterOf = (tz) => {
+	let fmt = formatters.get(tz);
+	if (!fmt) {
+		fmt = new Intl.DateTimeFormat("en-US", {
+			timeZone: tz,
+			hourCycle: "h23",
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit"
+		});
+		formatters.set(tz, fmt);
+	}
+	return fmt;
+};
 const parts = (ts, tz) => {
 	const out = {};
-	const fmt = new Intl.DateTimeFormat("en-US", {
-		timeZone: tz,
-		hourCycle: "h23",
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit"
-	});
-	for (const p of fmt.formatToParts(ts)) if (p.type !== "literal") out[p.type] = Number(p.value);
+	for (const p of formatterOf(tz).formatToParts(ts)) if (p.type !== "literal") out[p.type] = Number(p.value);
 	return out;
 };
+const badZones = /* @__PURE__ */ new Set();
 const safeTz = (tz) => {
 	const z = tz || "America/Santo_Domingo";
+	if (formatters.has(z)) return z;
+	if (badZones.has(z)) return DEFAULT_TZ;
 	try {
-		new Intl.DateTimeFormat("en-US", { timeZone: z });
+		formatterOf(z);
 		return z;
 	} catch {
+		badZones.add(z);
 		return DEFAULT_TZ;
 	}
 };
@@ -8050,8 +8079,7 @@ function teamWinFor(kit, ev) {
 	const { event, lines } = eventTable(kit, ev);
 	const teams = teamLines(event, lines).filter((t) => t.members.length >= (paramOf(TEAM_WIN, "minMembers", "bowling") ?? 2));
 	if (teams.length < (paramOf(TEAM_WIN, "minTeams", "bowling") ?? 3)) return [];
-	const useHcp = event.hcpPercent > 0 && (event.teamRankBy ?? "scratch") === "hcp";
-	const v = (t) => useHcp ? t.total : t.scratch;
+	const v = teamValue(event);
 	const out = [];
 	for (const team of topWithTies(teams, (a, b) => v(b) - v(a)).winners) for (const m of team.members) out.push(awardOf(TEAM_WIN, playerHolderOf(m.entry.playerId, ev.league_id), "bowling", 0, periodKey.event(ev.id), "firme", [`entry:${m.entry.id}`], {
 		...eventContext(kit, ev),
@@ -13196,4 +13224,4 @@ function withPushLabels(decisions) {
 }
 //#endregion
 export { evaluateJob, pushLabel, withPushLabels };
-export const SOURCE_HASH = "sha256-50c062a9c81aaf67a1cce8ec755e51ab1d159f7fac20d144e8d287c96d0208e3";
+export const SOURCE_HASH = "sha256-e804bd4840e3d81742384894440f7891c7a7e3707897494dbc3468c800f8c642";

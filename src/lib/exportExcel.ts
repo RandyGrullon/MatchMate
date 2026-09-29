@@ -1,6 +1,6 @@
 import type { SheetData } from 'write-excel-file/browser';
 import { eventLabel } from './format';
-import { category, entryLine, MIN_RANK_GAMES, playerStats, rank, teamLines } from './stats';
+import { category, entryLine, individualRule, individualValue, MIN_RANK_GAMES, playerStats, rank, teamLines, teamRule, teamValue } from './stats';
 import type { BowlingEvent, Entry, Player } from './types';
 
 const head = (labels: string[]) => labels.map((value) => ({ value, fontWeight: 'bold' as const, backgroundColor: '#E8E7FB' }));
@@ -18,9 +18,10 @@ export async function exportEventToExcel(event: BowlingEvent, entries: Entry[], 
   const sheets: { data: SheetData; sheet: string; columns: { width: number }[]; stickyRowsCount: number }[] = [];
 
   if (isTorneo) {
-    const useHcp = event.hcpPercent > 0 && (event.individualRankBy ?? 'hcp') === 'hcp';
+    // Cada tabla con su regla (la del dueño: individual con handicap, equipos por scratch); en negrita, lo que ordena.
+    const useHcp = individualRule(event) === 'hcp';
     const teamName = (id: string | null) => (id && event.teams?.[id]?.name) || '';
-    const ranked = rank(lines, (l) => (useHcp ? l.total : l.scratch));
+    const ranked = rank(lines, individualValue(event));
     sheets.push({
       sheet: 'Individual',
       stickyRowsCount: 1,
@@ -35,16 +36,16 @@ export async function exportEventToExcel(event: BowlingEvent, entries: Entry[], 
           { value: l.entry.average },
           { value: l.hcp },
           ...l.scores.map((s) => ({ value: s ?? undefined })),
-          { value: l.scratch },
-          { value: l.total, fontWeight: 'bold' as const },
+          { value: l.scratch, fontWeight: useHcp ? undefined : ('bold' as const) },
+          { value: l.total, fontWeight: useHcp ? ('bold' as const) : undefined },
         ]),
       ],
     });
 
-    const teamHcp = event.hcpPercent > 0 && (event.teamRankBy ?? 'scratch') === 'hcp';
+    const teamHcp = teamRule(event) === 'hcp';
     const teams = rank(
       teamLines(event, lines).filter((t) => t.members.length),
-      (t) => (teamHcp ? t.total : t.scratch),
+      teamValue(event),
     );
     if (teams.length) {
       sheets.push({

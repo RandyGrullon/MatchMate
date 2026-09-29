@@ -4,10 +4,12 @@ import { nextTuesday, toIsoDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { DEFAULT_CUTS } from '../lib/stats';
 import type { BowlingEvent, EventType, RankBy } from '../lib/types';
+import { bowlingRuleText } from '../prizes/catalog';
 import { useAction } from './feedback';
 import { Button, Field, Input, Modal, Select } from './ui';
 
-const defaults = (type: EventType): EventInput => ({
+/** Un evento nuevo. El torneo nace con la regla del dueño: individual con handicap y equipos por scratch. */
+export const defaults = (type: EventType): EventInput => ({
   type,
   name: '',
   date: type === 'practica' ? nextTuesday() : toIsoDate(new Date()),
@@ -21,6 +23,20 @@ const defaults = (type: EventType): EventInput => ({
   teamSize: type === 'torneo' ? 3 : 0,
   announcement: '',
 });
+
+/**
+ * Debajo de las dos reglas: con qué se entregan los premios del torneo, con los valores elegidos («Los premios siguen
+ * esta regla: Equipos por scratch, Individual con handicap.») y, con 0 %, lo que queda por scratch.
+ */
+export function RuleLine({ form }: { form: Pick<EventInput, 'individualRankBy' | 'teamRankBy' | 'hcpPercent'> }) {
+  const { rule, note } = bowlingRuleText({ individualRankBy: form.individualRankBy, teamRankBy: form.teamRankBy, hcpPercent: Math.round(form.hcpPercent) || 0 });
+  return (
+    <p className="col-span-2 -mt-2 text-xs text-muted" aria-live="polite">
+      {rule}
+      {note && <span className="block font-medium text-warn">{note}</span>}
+    </p>
+  );
+}
 
 export function EventFormModal({
   open,
@@ -147,6 +163,7 @@ export function EventFormModal({
                 <option value="hcp">Con handicap</option>
               </Select>
             </Field>
+            <RuleLine form={form} />
             <fieldset className="col-span-2 flex flex-col gap-1.5">
               <legend className="mb-1.5 text-xs font-medium text-muted">Categorías por promedio (D es lo de abajo)</legend>
               <div className="grid grid-cols-3 gap-2">

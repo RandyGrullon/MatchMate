@@ -1,4 +1,4 @@
-import type { BowlingEvent, Entry, Player } from './types';
+import type { BowlingEvent, Entry, Player, RankBy } from './types';
 
 export const MAX_SCORE = 300;
 
@@ -86,11 +86,31 @@ export function rank<T>(rows: T[], value: (r: T) => number): { row: T; pos: numb
   });
 }
 
+/**
+ * La regla EFECTIVA del individual de un torneo (la del dueño: con handicap). Sin regla escrita, 'hcp'; sin handicap
+ * (0 %) o en una práctica, 'scratch' aunque la regla diga 'hcp'. Es la que usan la clasificación, los premios del
+ * torneo (private.prize_bowling_rank) y las insignias automáticas.
+ */
+export function individualRule(event: Pick<BowlingEvent, 'type' | 'hcpPercent' | 'individualRankBy'>): RankBy {
+  return event.type === 'torneo' && event.hcpPercent > 0 && (event.individualRankBy ?? 'hcp') === 'hcp' ? 'hcp' : 'scratch';
+}
+
+/** La regla EFECTIVA de los equipos (la del dueño: por scratch). Con handicap solo si la regla lo dice y hay handicap. */
+export function teamRule(event: Pick<BowlingEvent, 'type' | 'hcpPercent' | 'teamRankBy'>): RankBy {
+  return event.type === 'torneo' && event.hcpPercent > 0 && (event.teamRankBy ?? 'scratch') === 'hcp' ? 'hcp' : 'scratch';
+}
+
 /** Valor con el que se ordena la clasificación individual (regla del evento). */
 export function individualValue(event: BowlingEvent) {
   const isTorneo = event.type === 'torneo';
-  const useHcp = isTorneo && event.hcpPercent > 0 && (event.individualRankBy ?? 'hcp') === 'hcp';
+  const useHcp = individualRule(event) === 'hcp';
   return (l: Line) => (isTorneo ? (useHcp ? l.total : l.scratch) : l.avg);
+}
+
+/** Valor con el que se ordena la clasificación por equipos (la gemela de individualValue). */
+export function teamValue(event: Pick<BowlingEvent, 'type' | 'hcpPercent' | 'teamRankBy'>) {
+  const useHcp = teamRule(event) === 'hcp';
+  return (t: Pick<TeamLine, 'scratch' | 'total'>) => (useHcp ? t.total : t.scratch);
 }
 
 /** Posición de una participación en su evento (solo juegos verificados). */
@@ -138,6 +158,32 @@ export function teamLines(event: BowlingEvent, lines: Line[]): TeamLine[] {
         teamHcp: members.reduce((a, m) => a + m.hcp, 0),
       };
     });
+}
+
+/** La clasificación oficial de un torneo: equipos e individual, cada uno con su regla. */
+export interface BowlingStandings {
+  /** Los equipos del evento con al menos un jugador que jugó (vacío en una práctica), por `teamValue`. */
+  teams: { row: TeamLine; pos: number }[];
+  /** Los jugadores con al menos un juego que cuenta, por `individualValue`. */
+  individual: { row: Line; pos: number }[];
+  /** Juegos anotados sin verificar (no cuentan todavía: pueden cambiar el podio). */
+  pending: number;
+}
+
+/**
+ * La clasificación con la que se premia (docs/premios-torneo.md §5.1): solo juegos verificados (con foto), ranking de
+ * competición (1, 2, 2, 4), equipos por su regla (la del dueño: scratch) e individual por la suya (con handicap). Es lo
+ * mismo que calcula el servidor en private.prize_bowling_rank (una prueba los compara).
+ */
+export function bowlingStandings(event: BowlingEvent, entries: readonly Entry[]): BowlingStandings {
+  const mine = entries.filter((e) => e.eventId === event.id);
+  const all = mine.map((e) => entryLine(e, event));
+  const lines = all.filter((l) => l.games > 0);
+  return {
+    teams: event.type === 'torneo' ? rank(teamLines(event, lines).filter((t) => t.members.length > 0), teamValue(event)) : [],
+    individual: rank(lines, individualValue(event)),
+    pending: all.reduce((n, l) => n + l.pending, 0),
+  };
 }
 
 export interface PlayerStats {

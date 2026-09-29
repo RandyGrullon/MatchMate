@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { balancedTeams, bestMatch, calcHandicap, category, entryLine, firstFreeSlot, playerStats, rank, teamLines } from './stats';
+import { balancedTeams, bestMatch, bowlingStandings, calcHandicap, category, entryLine, firstFreeSlot, individualRule, individualValue, playerStats, rank, teamLines, teamRule, teamValue } from './stats';
 import type { BowlingEvent, Entry } from './types';
 
 const torneo: BowlingEvent = {
@@ -143,5 +143,76 @@ describe('categorías', () => {
     const avgs = [230, 205, 201, 190, 185, 180, 165, 150, 140];
     const teams = balancedTeams(avgs, 3, (a) => a, (a) => category(a));
     for (const t of teams) expect(new Set(t.map((a) => category(a))).size).toBe(3);
+  });
+});
+
+describe('la regla del boliche: equipos por scratch, individual con handicap (docs/premios-torneo.md §5.1)', () => {
+  const two: BowlingEvent = {
+    ...torneo,
+    teams: { a: { name: 'Los Strikers', order: 1 }, b: { name: 'Los Spares', order: 2 }, c: { name: 'Sin juegos', order: 3 } },
+  };
+  // Ana (prom. 200, hcp 18) y Luis (prom. 120, hcp 90) en A; Pedro (prom. 190, hcp 27) y Rosa (prom. 180, hcp 36) en B.
+  const entries: Entry[] = [
+    entry({ id: 'e1', playerId: 'ana', teamId: 'a', average: 200, scores: [220, 210, 230], photos: ['f', 'f', 'f'] }),
+    entry({ id: 'e2', playerId: 'luis', teamId: 'a', average: 120, scores: [130, 120, 125], photos: ['f', 'f', 'f'] }),
+    entry({ id: 'e3', playerId: 'pedro', teamId: 'b', average: 190, scores: [200, 190, 195], photos: ['f', 'f', 'f'] }),
+    entry({ id: 'e4', playerId: 'rosa', teamId: 'b', average: 180, scores: [190, 185, 180], photos: ['f', 'f', 'f'] }),
+    // Un borrador (sin foto) no cuenta, pero se avisa; otro evento no entra.
+    entry({ id: 'e5', playerId: 'tono', teamId: null, average: 150, scores: [300, null, null], photos: [null, null, null] }),
+    entry({ id: 'e6', eventId: 'otro', playerId: 'gina', teamId: 'a', average: 150, scores: [250, 250, 250], photos: ['f', 'f', 'f'] }),
+  ];
+
+  it('las reglas efectivas: sin escribir, individual con handicap y equipos por scratch; 0 % o práctica, scratch', () => {
+    expect([individualRule(two), teamRule(two)]).toEqual(['hcp', 'scratch']);
+    expect([individualRule({ ...two, individualRankBy: 'scratch' }), teamRule({ ...two, teamRankBy: 'hcp' })]).toEqual(['scratch', 'hcp']);
+    expect([individualRule({ ...two, hcpPercent: 0 }), teamRule({ ...two, hcpPercent: 0, teamRankBy: 'hcp' })]).toEqual(['scratch', 'scratch']);
+    expect([individualRule({ ...two, type: 'practica' }), teamRule({ ...two, type: 'practica', teamRankBy: 'hcp' })]).toEqual(['scratch', 'scratch']);
+  });
+
+  it('teamValue es la gemela de individualValue', () => {
+    const t = { scratch: 1200, total: 1500 };
+    expect(teamValue(two)(t)).toBe(1200);
+    expect(teamValue({ ...two, teamRankBy: 'hcp' })(t)).toBe(1500);
+    expect(teamValue({ ...two, teamRankBy: 'hcp', hcpPercent: 0 })(t)).toBe(1200);
+  });
+
+  it('bowlingStandings: equipos por scratch, individual con handicap, solo verificados y sin equipos vacíos', () => {
+    const st = bowlingStandings(two, entries);
+    // Scratch: A 660 + 375 = 1035; B 585 + 555 = 1140. Con handicap A ganaría (1035 + 324 = 1359 contra 1140 + 189).
+    expect(st.teams.map(({ row, pos }) => [row.name, pos, row.scratch])).toEqual([
+      ['Los Spares', 1, 1140],
+      ['Los Strikers', 2, 1035],
+    ]);
+    // Individual con handicap: Ana 660 + 54 = 714; Rosa 555 + 108 = 663; Luis 375 + 270 = 645; Pedro 585 + 81 = 666.
+    expect(st.individual.map(({ row, pos }) => [row.entry.playerId, pos, row.total])).toEqual([
+      ['ana', 1, 714],
+      ['pedro', 2, 666],
+      ['rosa', 3, 663],
+      ['luis', 4, 645],
+    ]);
+    expect(st.pending).toBe(1);
+    // Al revés: equipos con handicap, individual por scratch.
+    const rev = bowlingStandings({ ...two, individualRankBy: 'scratch', teamRankBy: 'hcp' }, entries);
+    expect(rev.teams.map(({ row, pos }) => [row.name, pos])).toEqual([
+      ['Los Strikers', 1],
+      ['Los Spares', 2],
+    ]);
+    expect(rev.individual.map(({ row }) => row.entry.playerId)).toEqual(['ana', 'pedro', 'rosa', 'luis']);
+    expect(rev.individual.map(({ row }) => row.scratch)).toEqual([660, 585, 555, 375]);
+  });
+
+  it('da el mismo orden que la clasificación y el Excel de siempre (misma regla, los mismos juegos)', () => {
+    const st = bowlingStandings(two, entries);
+    const lines = entries.filter((e) => e.eventId === two.id).map((e) => entryLine(e, two)).filter((l) => l.games > 0);
+    expect(st.individual.map(({ row, pos }) => [row.entry.id, pos])).toEqual(rank(lines, individualValue(two)).map(({ row, pos }) => [row.entry.id, pos]));
+    expect(st.teams.map(({ row, pos }) => [row.teamId, pos])).toEqual(
+      rank(teamLines(two, lines).filter((t) => t.members.length), (t) => t.scratch).map(({ row, pos }) => [row.teamId, pos]),
+    );
+  });
+
+  it('empates comparten lugar; una práctica no tiene equipos', () => {
+    const tie = [entry({ id: 'x1', playerId: 'a', scores: [200, 200, 200], photos: ['f', 'f', 'f'] }), entry({ id: 'x2', playerId: 'b', scores: [210, 190, 200], photos: ['f', 'f', 'f'] })];
+    expect(bowlingStandings({ ...two, hcpPercent: 0 }, tie).individual.map((r) => r.pos)).toEqual([1, 1]);
+    expect(bowlingStandings({ ...two, type: 'practica' }, entries).teams).toEqual([]);
   });
 });

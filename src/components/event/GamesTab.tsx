@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CalendarCheck, Camera, CheckCircle2, Grid3x3, Plus, ScanLine, UserPlus, Users, X } from 'lucide-react';
 import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame, updateEntry } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
-import { entryLine, slots, type Line } from '../../lib/stats';
+import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
 import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
 import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
@@ -16,6 +16,34 @@ interface Group {
   key: string;
   title: string | null;
   lines: Line[];
+}
+
+/**
+ * El total del encabezado de un equipo con su regla (docs/premios-torneo.md §5.1): con equipos por scratch (la del
+ * dueño) el número grande son los pinos y el total con handicap va al lado, en gris; con equipos por handicap, el
+ * total con handicap (como antes). `hcp` null = no hay otro número que mostrar.
+ */
+export function groupTotal(event: BowlingEvent, lines: readonly Line[]): { main: number; hcp: number | null } {
+  let scratch = 0;
+  let withHcp = 0;
+  for (const l of lines) {
+    for (const s of l.scores) {
+      if (s == null) continue;
+      scratch += s;
+      withHcp += s + l.hcp;
+    }
+  }
+  if (teamRule(event) === 'hcp' || withHcp === scratch) return { main: withHcp, hcp: null };
+  return { main: scratch, hcp: withHcp };
+}
+
+export function TeamTotal({ total }: { total: { main: number; hcp: number | null } }) {
+  return (
+    <span className="text-xs text-muted tabular-nums">
+      Total <b className="text-fg">{total.main}</b>
+      {total.hcp != null && <span> · con hcp {total.hcp}</span>}
+    </span>
+  );
 }
 
 /**
@@ -148,17 +176,13 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
         </Empty>
       ) : (
         groups.map((g) => {
-          const perGame = Array.from({ length: event.games }, (_, i) =>
-            g.lines.reduce((s, l) => (l.scores[i] != null ? s + l.scores[i]! + l.hcp : s), 0),
-          );
+          const total = groupTotal(event, g.lines);
           return (
             <Card key={g.key} className="overflow-hidden">
               {g.title && (
                 <div className="flex items-center justify-between border-b border-line bg-surface-2/60 px-4 py-2">
                   <h3 className="text-sm font-semibold">{g.title}</h3>
-                  <span className="text-xs text-muted tabular-nums">
-                    Total <b className="text-fg">{perGame.reduce((a, b) => a + b, 0)}</b>
-                  </span>
+                  <TeamTotal total={total} />
                 </div>
               )}
               <div className="hidden items-center gap-3 px-4 pt-2 text-[11px] font-medium text-muted sm:flex">

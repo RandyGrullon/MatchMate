@@ -17,7 +17,7 @@
  */
 import { frameStats } from '../../lib/bowling';
 import { toEntry, toEvent } from '../../lib/data/rows';
-import { category, DEFAULT_CUTS, entryLine, individualValue, teamLines, type Line, type TeamLine } from '../../lib/stats';
+import { category, DEFAULT_CUTS, entryLine, individualValue, teamLines, teamValue, type Line, type TeamLine } from '../../lib/stats';
 import type { BowlingEvent } from '../../lib/types';
 import { badgeDef, badgesOfEvaluator, paramOf, thresholdOf } from '../catalog';
 import type { EvaluatorSet } from '../engine';
@@ -420,8 +420,7 @@ export function teamWinFor(kit: Kit, ev: SnapEvent): BadgeDecision[] {
   const { event, lines } = eventTable(kit, ev);
   const teams = teamLines(event, lines).filter((t) => t.members.length >= (paramOf(TEAM_WIN, 'minMembers', 'bowling') ?? 2));
   if (teams.length < (paramOf(TEAM_WIN, 'minTeams', 'bowling') ?? 3)) return [];
-  const useHcp = event.hcpPercent > 0 && (event.teamRankBy ?? 'scratch') === 'hcp';
-  const v = (t: TeamLine) => (useHcp ? t.total : t.scratch);
+  const v: (t: TeamLine) => number = teamValue(event);
   const out: BadgeDecision[] = [];
   for (const team of topWithTies(teams, (a, b) => v(b) - v(a)).winners) {
     for (const m of team.members) {

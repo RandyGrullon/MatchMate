@@ -45,6 +45,7 @@ import { Tour } from '../components/Tour';
 import { EVENT_TOUR } from '../lib/tours';
 import { MyGamesPanel } from '../components/event/MyGamesPanel';
 import { EventBadges } from '../components/badges/LeagueBadges';
+import { EventPrizes } from '../components/event/EventPrizes';
 import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
@@ -286,7 +287,10 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         />
       )}
 
-      {/* El podio con sus insignias, cuando ya se dieron (a los 3 días del evento). */}
+      {/* Los premios que eligió la liga (equipos por scratch, individual con handicap): se ven desde que se crea el torneo. */}
+      {isTorneo && <EventPrizes event={ev} entries={entries.data} players={players.data} now={now} />}
+
+      {/* El podio con sus insignias oficiales, cuando ya se dieron (a los 3 días del evento). */}
       {!upcoming && <EventBadges eventId={ev.id} date={ev.date} />}
 
       {tabs.length > 0 && <Tabs items={tabs} active={tab} onChange={(k) => setParams({ tab: k }, { replace: true })} />}

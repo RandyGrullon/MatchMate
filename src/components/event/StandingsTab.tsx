@@ -2,8 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Eye, Flame, Hash, Trophy, Users } from 'lucide-react';
 import { useLeagueCtx } from '../../lib/league';
-import { entryLine, rank, teamLines, type Line } from '../../lib/stats';
+import { entryLine, individualRule, rank, teamLines, teamRule, type Line } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player, RankBy } from '../../lib/types';
+import { bowlingTitle } from '../../prizes/catalog';
 import { AnimatedNumber, Card, Empty, Position, cx } from '../ui';
 
 function Toggle<K extends string>({ value, options, onChange }: { value: K; options: { key: K; label: string }[]; onChange: (k: K) => void }) {
@@ -41,9 +42,10 @@ export function StandingsTab({
   const { base, myPlayerId } = useLeagueCtx();
   const isTorneo = event.type === 'torneo';
   const hasHcp = isTorneo && event.hcpPercent > 0;
-  // Parten de la regla del torneo (2025: individual con handicap, equipos scratch) y se pueden alternar para mirar.
-  const [indMode, setIndMode] = useState<RankBy>(hasHcp ? (event.individualRankBy ?? 'hcp') : 'scratch');
-  const [teamMode, setTeamMode] = useState<RankBy>(hasHcp ? (event.teamRankBy ?? 'scratch') : 'scratch');
+  // Parten de la regla del torneo (la del dueño: individual con handicap, equipos por scratch) y se pueden alternar
+  // para mirar. Los títulos dicen con qué se está ordenando.
+  const [indMode, setIndMode] = useState<RankBy>(individualRule(event));
+  const [teamMode, setTeamMode] = useState<RankBy>(teamRule(event));
   const [preview, setPreview] = useState(false);
   const byId = new Map(players.map((p) => [p.id, p]));
   const nameOf = (l: Line) => byId.get(l.entry.playerId)?.name ?? '(jugador borrado)';
@@ -59,7 +61,6 @@ export function StandingsTab({
     { key: 'hcp', label: 'Con handicap' },
     { key: 'scratch', label: 'Scratch' },
   ];
-  const official = (mode: RankBy, rule: RankBy | undefined, fallback: RankBy) => mode === (rule ?? fallback);
 
   const best = lines.reduce<{ score: number; line: Line | null }>(
     (acc, l) => (l.high > acc.score ? { score: l.high, line: l } : acc),
@@ -96,9 +97,9 @@ export function StandingsTab({
           {isTorneo && teams.length > 0 && (
             <section className="flex flex-col gap-2">
               <SectionHeader
-                title="Equipos"
+                title={bowlingTitle('equipo', teamHcp ? 'hcp' : 'scratch')}
                 toggle={hasHcp && <Toggle value={teamMode} onChange={setTeamMode} options={modeOptions} />}
-                unofficial={hasHcp && !official(teamMode, event.teamRankBy, 'scratch')}
+                unofficial={hasHcp && teamMode !== teamRule(event)}
               />
               <Card className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -145,9 +146,9 @@ export function StandingsTab({
 
           <section className="flex flex-col gap-2">
             <SectionHeader
-              title={isTorneo ? 'Individual' : 'Resultados de la práctica'}
+              title={isTorneo ? bowlingTitle('individual', useHcp ? 'hcp' : 'scratch') : 'Resultados de la práctica'}
               toggle={hasHcp && <Toggle value={indMode} onChange={setIndMode} options={modeOptions} />}
-              unofficial={hasHcp && !official(indMode, event.individualRankBy, 'hcp')}
+              unofficial={hasHcp && indMode !== individualRule(event)}
             />
             <Card className="overflow-x-auto">
               <table className="w-full text-sm">
