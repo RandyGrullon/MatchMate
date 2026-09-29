@@ -57,6 +57,8 @@ const RPC_AUTHENTICATED = [
   // Social: seguir, perfil público, juegos con me gusta y avisos.
   'follow_list', 'follow_user', 'following_games', 'profile_games', 'profile_stats', 'public_profile', 'set_game_like',
   'social_notices', 'unfollow_user',
+  // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
+  'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

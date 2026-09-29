@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Trash2,
+  UserCheck,
   UserMinus,
   Users,
 } from 'lucide-react';
@@ -56,8 +57,10 @@ import { useAction, useFeedback } from '../components/feedback';
 import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, TopLoader, cx } from '../components/ui';
 import { AnnouncePanel } from '../components/league/Announce';
 import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
+import { usePendingClaimCount } from '../components/claims/data';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
+const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 
 type Tab = string;
@@ -85,11 +88,15 @@ export default function AdminPage() {
   const screens = useSportScreens(bowling ? null : sport);
   const pending = useSubmissions(isAdmin && bowling ? lid : undefined, 'pendiente').data.length;
   const newSuggestions = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
+  // Reclamos de jugadores sin cuenta («ese soy yo»): todos los deportes.
+  const uid = useAuth().user?.uid;
+  const claims = usePendingClaimCount(isAdmin ? lid : null, uid);
   const generic: AdminTab[] = [
     { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
     // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
     ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
     { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
+    { key: 'reclamos', label: 'Reclamos', icon: <UserCheck className="size-4" />, count: claims },
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
     { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
   ];
@@ -170,6 +177,8 @@ function AdminTabs({
             <ApprovalsPage />
           ) : tab === 'miembros' ? (
             <MembersPanel accountsOf={accountsOf} />
+          ) : tab === 'reclamos' ? (
+            <ClaimsPanel />
           ) : tab === 'buzon' ? (
             <SuggestionsPanel />
           ) : (

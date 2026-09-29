@@ -16,6 +16,7 @@ describe('errores de la base', () => {
     ['P0001', 'no_permitido', 'permission'],
     ['P0001', 'no_existe', 'not_found'],
     ['P0001', 'duplicado', 'conflict'],
+    ['P0001', 'conflicto: Juegos en el mismo evento (1)', 'conflict'],
     ['P0001', 'invalido', 'validation'],
     ['P0001', 'cerrado', 'validation'],
     ['PGRST116', 'x', 'not_found'],

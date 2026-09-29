@@ -71,7 +71,11 @@ export interface GenericNotice {
   icon?: SocialIcon;
   lid?: string | null;
   sport?: string | null;
+  /** Filtro donde sale (por defecto Social). P. ej. «Reclamo por aprobar» va en Admin. */
+  category?: NoticeCategory;
 }
+
+const CATEGORY_NAMES: Record<NoticeCategory, true> = { partidos: true, ligas: true, social: true, admin: true };
 
 /** Categoría de cada tipo de aviso (el reclamo al organizador va en Admin: lo decide `buildMatchNotices`). */
 const KIND_CATEGORY: Record<NoticeKind, NoticeCategory> = {
@@ -380,7 +384,7 @@ function fromGeneric(g: GenericNotice, byId: Map<string, League>): Notice | null
   return {
     id: g.id,
     kind: 'social',
-    category: 'social',
+    category: g.category && CATEGORY_NAMES[g.category] === true ? g.category : 'social',
     title,
     body: typeof g.body === 'string' ? g.body.trim() : '',
     lid: league?.id ?? '',

@@ -28,6 +28,7 @@ import type { LeagueTabNames } from '../lib/tours';
 import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { dispatchLeague, useSportScreens } from '../sports/screens';
 import { SportBadge } from '../pages/sports/SportBits';
+import { usePendingClaimCount } from './claims/data';
 import { useNotifications } from './Notifications';
 import { useCreateMenu } from './CreateMenu';
 import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
@@ -111,6 +112,8 @@ export default function LeagueShell() {
   // Los envíos por aprobar son del boliche; los otros deportes confirman los resultados en sus partidos.
   const pending = useSubmissions(ctx?.isAdmin && ready && bowling ? lid : undefined, 'pendiente').data.length;
   const newNotes = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
+  // Reclamos de jugadores sin cuenta por aprobar (todos los deportes).
+  const claims = usePendingClaimCount(ctx?.isAdmin && ready ? lid : null, user?.uid);
 
   // La pestaña activa siempre a la vista (en el celular no caben todas).
   const tabsRef = useRef<HTMLElement>(null);
@@ -191,7 +194,7 @@ export default function LeagueShell() {
     ...(names.feed ? [{ to: `${base}/juegos`, label: names.feed, icon: icons.feed, tour: 'tab-juegos' }] : []),
     ...(names.standings ? [{ to: `${base}/ranking`, label: names.standings, icon: icons.standings, tour: 'tab-ranking' }] : []),
     { to: `${base}/perfil`, label: names.profile, icon: icons.profile, tour: 'tab-perfil' },
-    ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: pending + newNotes, tour: 'tab-admin' }] : []),
+    ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: pending + newNotes + claims, tour: 'tab-admin' }] : []),
   ];
   const home = isLeagueHome(pathname, base);
 

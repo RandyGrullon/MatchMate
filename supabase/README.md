@@ -35,6 +35,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001500_cuenta.sql` | Mayores de 18 (`confirm_adult`), descargar mis datos (`export_my_data`), borrar la cuenta (`prepare_delete_account` + Edge Function `delete-account`) y errores de los teléfonos (`log_client_error`, `admin_client_errors`) |
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
+| `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -73,7 +74,8 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `42501` | `bloqueada` | La cuenta está bloqueada por el superadmin: no escribe nada (leer sí). El cliente la muestra como «Tu cuenta está bloqueada. Escríbele al equipo de MatchMate.» (código `bloqueada`) | `permission` |
 | `P0001` | `invalido` | Dato que no sirve (nombre vacío, pinos fuera de 0–300, clave de patch desconocida…) | `validation` |
 | `P0001` | `no_existe` | La liga, evento, jugador, envío… no existe (o no es de esa liga) | `not_found` |
-| `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador), op_id de otra cuenta u otra función | `conflict` |
+| `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador) o ya lo pidió otra cuenta, op_id de otra cuenta u otra función | `conflict` |
+| `P0001` | `conflicto: <qué choca> (n), …` | Aprobar un reclamo: los dos jugadores estuvieron en el mismo evento, partido, ronda, prueba, escalera o inscripción (o en equipos distintos de la temporada). No cambia nada; el admin quita lo repetido y aprueba otra vez | `conflict` |
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
 | `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s) o demasiados códigos malos | `rate_limited` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
@@ -222,7 +224,7 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `transfer_ownership(p_league, p_user) → void` | dueño o superadmin | Otro miembro pasa a dueño; el anterior queda admin. `no_existe` si no es miembro. Es el camino para poder borrar la cuenta de un dueño. |
 | `renew_invite_code(p_league) → text` | admin | Código nuevo; el anterior deja de servir. |
 | `invite_preview(p_code text) → setof {league_id, name, sport, kind, visibility}` | **cualquiera, también sin cuenta** | = `getInvite`. Código malo: ninguna fila. Más de 30 códigos malos por hora (por cuenta o IP): `rate_limited`. Mayúsculas/espacios no importan. Llamar con `select * from`. |
-| `join_league(p_league uuid=null, p_code text=null, p_prefer uuid=null) → {league_id, player_id} \| null` | con sesión | Pública: sin código. Privada: con su código (o solo `p_code`, desde el link). Ya miembro: igual (idempotente). Deja listo su jugador (ver `ensure_my_player`; `p_prefer` = «¿eres tú?»). Código malo: **devuelve null** (cuenta el intento). Privada sin código: `no_permitido`. 10 códigos malos por hora: `rate_limited`. |
+| `join_league(p_league uuid=null, p_code text=null, p_prefer uuid=null) → {league_id, player_id, claim_id} \| null` | con sesión | Pública: sin código. Privada: con su código (o solo `p_code`, desde el link). Ya miembro: igual (idempotente). Deja listo su jugador (ver `ensure_my_player`; `p_prefer` = «¿eres tú?» deja un reclamo; `claim_id` = su reclamo pendiente en la liga, o null). Código malo: **devuelve null** (cuenta el intento). Privada sin código: `no_permitido`. 10 códigos malos por hora: `rate_limited`. |
 
 ### Miembros y roles
 
@@ -238,14 +240,18 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
 | RPC | Quién | Qué hace |
 |---|---|---|
-| `ensure_my_player(p_league, p_prefer uuid=null) → uuid` | miembro | Su jugador: el que tiene; si no, `p_prefer` si está libre; si no, el único jugador libre con su mismo nombre normalizado (sin acentos, como `normalizeName`); si no, uno nuevo con su `display_name`. Nunca crea dos (bloquea la membresía). Reemplaza `ensurePlayer` y `createOwnPlayer`. |
-| `claim_player(p_player) → uuid` | miembro sin jugador | Reclama un jugador libre de su liga. `duplicado` (ya tiene jugador o el jugador tiene cuenta), `invalido` (menor), `no_permitido` (otra liga). |
+| `ensure_my_player(p_league, p_prefer uuid=null) → uuid` | miembro | Su jugador: el que tiene; si no, uno nuevo con su `display_name`. Si eligió un jugador libre (`p_prefer`, no menor, sin otro pedido) o hay un único libre con su mismo nombre normalizado (sin acentos, como `normalizeName`), además deja el **reclamo** de ese jugador (10 por día); un dueño o admin lo toma al momento (y se devuelve ese). Nunca crea dos (bloquea la membresía). Reemplaza `ensurePlayer` y `createOwnPlayer`. |
+| `claim_player(p_player) → uuid` | miembro | Igual que `request_player_claim(p_player)`: devuelve el id del **reclamo** (null si el jugador ya era suyo). Antes vinculaba al momento. |
+| `request_player_claim(p_player, p_note text=null) → uuid` | miembro de la liga del jugador | «Ese jugador soy yo»: pide un jugador libre de su liga (aunque ya tenga el suyo). Queda `pending` y les llega un push a los admins («<nombre> dice que es <jugador>», a `/l/<liga>/admin?tab=reclamos`). Pedirlo otra vez = el mismo; pedir otro cancela el anterior. Dueño o admin: aprobado al momento. `duplicado` (tiene cuenta o ya lo pidió otra), `invalido` (menor, nota > 300), `no_permitido` (otra liga), `rate_limited` (10 por día). |
+| `cancel_player_claim(p_claim) → void` | quien lo pidió | Lo retira (`cancelled`). Ya decidido: `invalido`. Salir de la liga también lo cancela. |
+| `decide_player_claim(p_claim, p_approve boolean, p_note text=null) → text` | dueño, admin o superadmin | Aprobar: el jugador queda con la cuenta y todo lo del jugador propio de la cuenta en la liga (juegos con felicitaciones y comentarios, envíos, «voy», en vivo, datos privados, nadador, partidos, plantillas, sanciones, golf, natación, escalera, inscripciones, me gusta y los ids dentro de partidos, eventos y rondas) pasa al reclamado; el propio se borra. Rechazar: queda igual, con la nota. Push a quien pidió. Devuelve el estado (ya decidido: cómo quedó). `conflicto: …` si chocan. |
+| `player_claim_conflicts(p_claim) → [{what, label, count}]` | dueño, admin o superadmin | Lo que chocaría al aprobar (vacío = se pueden juntar). |
 | `create_player(p_league, p_name, p_average_override double=null, p_is_minor=false, p_guardian_name=null, p_id=null) → uuid` | admin | Jugador sin cuenta. Menor: solo en liga con menores (`invalido`) y guarda el consentimiento (quién y cuándo). |
 | `update_player(p_player, p_patch) → void` | admin | Claves: `name, average_override, is_minor, attrs`. |
 | `set_player_private(p_player, p_birth_year=null, p_sex=null, p_guardian_name=null) → void` | admin | Datos que solo ven los admins. |
 | `delete_player(p_player) → void` | admin | Con sus participaciones, envíos, «voy», en vivo y social (cascada). |
 | `link_account_to_player(p_player, p_user) → {removed_old, old_player_id}` | admin | Une la cuenta (miembro) con un jugador libre. Del jugador anterior de la cuenta: envíos pendientes y «voy» pasan al nuevo; si nunca jugó un evento se borra (y pasan todos sus envíos), si jugó queda libre. `duplicado`, `invalido` (menor), `no_existe`. |
-| `unlink_account(p_player) → uuid` | admin, o la cuenta de ese jugador | Separa la cuenta y le da su jugador nuevo en el mismo momento (devuelve su id). Quita lo que publicó en vivo a nombre del jugador. `invalido` si no tenía cuenta. |
+| `unlink_account(p_player) → uuid` | admin, o la cuenta de ese jugador | Separa la cuenta y le da su jugador nuevo en el mismo momento (devuelve su id). Quita lo que publicó en vivo a nombre del jugador. `invalido` si no tenía cuenta. Nota: `ensure_my_player` ya no lo vuelve a vincular solo por el nombre (deja un reclamo). Si el admin vincula un jugador con `link_account_to_player`, su reclamo pendiente se cierra solo (aprobado si era de esa cuenta, rechazado si no). |
 
 ### Eventos, «voy» y equipos
 
@@ -356,8 +362,9 @@ El cron (`20260926001300_cron_supabase.sql`, solo Supabase) corre `private.cron_
 | `updateLeague` (y el nombre de la invitación) | `update_league` (la invitación lee el nombre de la liga) |
 | `deleteLeague` | `delete_league` |
 | `renewInviteCode` / `getInviteCode` / `getInvite` | `renew_invite_code` / `select league_secrets` / `invite_preview` |
-| `joinLeague(lid, user, code, prefer)` | `join_league(p_league, p_code, p_prefer)` |
+| `joinLeague(lid, user, code, prefer)` / `joinLeagueClaim` (también `claimId`) | `join_league(p_league, p_code, p_prefer)` |
 | `ensurePlayer`, `createOwnPlayer`, `claimPlayer` | `ensure_my_player`, `claim_player` |
+| `requestClaim` / `cancelClaim` / `decideClaim` / `fetchClaimConflicts` (`src/lib/data/claims.ts`) | `request_player_claim` / `cancel_player_claim` / `decide_player_claim` / `player_claim_conflicts` |
 | `removeMember` / `setMemberRole` / `setMemberScorer` / `setSuperadmin` | `remove_member` (o `leave_league`) / `set_member_role` / `set_member_scorer` / `set_superadmin` |
 | `createPlayer` / `updatePlayer` / `deletePlayer` | `create_player` / `update_player` (`averageOverride` → `average_override`) / `delete_player` |
 | `linkAccountToPlayer` / `unlinkAccount` | `link_account_to_player` / `unlink_account` |
@@ -392,6 +399,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `submission` | `{id, status}` | su envío fue aprobado o rechazado |
 | `user:<uid>` | `follow` | `{op, user}` | alguien lo empezó a seguir o lo dejó de seguir |
 | `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo |
+| `league:<id>` | `claims` | `{id, status}` | reclamos de jugadores de la liga (pedido, aprobado, rechazado, cancelado) |
+| `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa

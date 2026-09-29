@@ -29,8 +29,10 @@ const playersOf = (uid: string, lid = w.priv) =>
   db.admin<{ id: string; name: string }>('select id, name from public.players where league_id = $1 and user_id = $2', [lid, uid]);
 
 describe('vincular jugador', () => {
-  it('un miembro reclama un jugador libre (jugador + membresía juntos)', async () => {
-    expect(await db.rpc(w.u.ana, 'claim_player', { p_player: w.p.pedro })).toBe(w.p.pedro);
+  it('un miembro reclama un jugador libre y, cuando el admin lo aprueba, quedan jugador + membresía juntos', async () => {
+    const claim = await db.rpc<string>(w.u.ana, 'claim_player', { p_player: w.p.pedro });
+    expect(await ownerOf(w.p.pedro)).toBeNull();
+    expect(await db.rpc(w.u.sofi, 'decide_player_claim', { p_claim: claim, p_approve: true })).toBe('approved');
     expect(await ownerOf(w.p.pedro)).toBe(w.u.ana);
     expect(await db.asUser(w.u.ana, 'select player_id from public.memberships where league_id = $1 and user_id = $2', [w.priv, w.u.ana])).toEqual([
       { player_id: w.p.pedro },
@@ -54,7 +56,9 @@ describe('vincular jugador', () => {
 
   it('quien ya tiene jugador no crea otro', async () => {
     expect(await db.rpc(w.u.luis, 'ensure_my_player', { p_league: w.priv })).toBe(w.p.luis);
-    await fails(db.rpc(w.u.luis, 'claim_player', { p_player: w.p.pedro }), 'duplicado');
+    // Pedir otro jugador no le crea otro: queda el pedido (al aprobarlo se juntan en uno).
+    expect(await db.rpc(w.u.luis, 'claim_player', { p_player: w.p.pedro })).toBeTruthy();
+    expect(await ownerOf(w.p.pedro)).toBeNull();
     await fails(db.rpc(w.u.luis, 'create_player', { p_league: w.priv, p_name: 'Luis 2' }), DENIED);
     await fails(db.asUser(w.u.luis, `insert into public.players (league_id, user_id, name) values ($1, $2, 'Luis 2')`, [w.priv, w.u.luis]), '42501');
     expect(await playersOf(w.u.luis)).toHaveLength(1);

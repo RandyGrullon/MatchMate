@@ -214,22 +214,36 @@ export function useJoining(lid: string): boolean {
  */
 export async function joinLeague(
   lid: string,
-  _user: { uid: string; name: string },
+  user: { uid: string; name: string },
   code: string | null,
-  /** El jugador de la lista que dijo ser ("¿Eres tú? Crea tu cuenta"): se vincula si sigue sin cuenta. */
+  /** El jugador de la lista que dijo ser («¿Quién eres?»): queda el pedido para que el admin lo apruebe. */
   prefer: string | null = null,
 ): Promise<string | null> {
+  return (await joinLeagueClaim(lid, user, code, prefer)).playerId;
+}
+
+/**
+ * Igual que joinLeague, y además el pedido que quedó (join_league 'claim_id'): elegir un jugador libre (o tener
+ * el mismo nombre que uno) ya no vincula al momento; la cuenta juega con su propio jugador hasta que el dueño o
+ * un admin lo apruebe (src/lib/data/claims.ts). Un dueño o admin lo toma al momento (playerId = el elegido).
+ */
+export async function joinLeagueClaim(
+  lid: string,
+  _user: { uid: string; name: string },
+  code: string | null,
+  prefer: string | null = null,
+): Promise<{ playerId: string | null; claimId: string | null }> {
   setJoining(lid, true);
   try {
-    const r = await rpc<{ league_id: string; player_id: string | null } | null>('join_league', {
+    const r = await rpc<{ league_id: string; player_id: string | null; claim_id?: string | null } | null>('join_league', {
       p_league: lid,
       p_code: code ? code.trim().toUpperCase() : null,
       p_prefer: prefer,
     });
     if (!r) throw new BackendError('Ese código de invitación ya no sirve. Pide uno nuevo a un admin.', 'validation', 'invalid_code');
     afterJoin(lid);
-    invalidate(tags.players(lid), tags.leagueMembers(lid));
-    return r.player_id ?? null;
+    invalidate(tags.players(lid), tags.leagueMembers(lid), `claims:${lid}`, 'claims:me');
+    return { playerId: r.player_id ?? null, claimId: r.claim_id ?? null };
   } finally {
     setJoining(lid, false);
   }

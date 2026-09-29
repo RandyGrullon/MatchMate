@@ -23,6 +23,7 @@ export {
   isJoining,
   useJoining,
   joinLeague,
+  joinLeagueClaim,
   type LeagueInput,
 } from './data/leagues';
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { BadgeCheck, ExternalLink, Link2, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
-import { createPlayer, deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useLeagueMembers, usePlayers } from '../lib/data';
+import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useLeagueMembers, usePlayers } from '../lib/data';
 import { roleLabel, useLeagueCtx } from '../lib/league';
 import { playerStats, type PlayerStats } from '../lib/stats';
 import type { Entry, Member, Player } from '../lib/types';
@@ -11,6 +11,11 @@ import { Avatar } from '../components/Avatar';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, cx } from '../components/ui';
 import { leagueSport } from '../sports/registry';
 import { peopleWord } from '../components/league/logic';
+import { AddPlayerModal } from '../components/players/AddPlayerModal';
+import { SportStatFields } from '../components/players/SportStatFields';
+import { saveSportStats, usePlayerAttrs } from '../components/players/data';
+import { draftFromAttrs, emptyDraft, parseStats, statKind, statSummary, type StatDraft } from '../components/players/logic';
+import { PlayerClaimBadge } from '../components/claims/PlayerClaimBadge';
 
 export function useStatsByPlayer(entries: Entry[]) {
   return useMemo(() => {
@@ -44,10 +49,15 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const entries = useAllEntries(bowling ? lid : undefined);
   const stats = useStatsByPlayer(entries.data);
   const [q, setQ] = useState('');
+  const sport = leagueSport(league);
+  // El número del deporte de cada uno (nivel, Index, posición y dorsal): sale debajo del nombre.
+  const attrs = usePlayerAttrs(bowling ? undefined : lid);
   // Por id: el modal muestra el jugador en vivo (si alguien se vincula mientras está abierto, se ve).
-  const [editingId, setEditingId] = useState<string | 'new' | null>(null);
-  const editing = editingId === 'new' ? 'new' : (players.data.find((p) => p.id === editingId) ?? null);
-  const setEditing = (p: Player | 'new' | null) => setEditingId(p === 'new' ? 'new' : (p?.id ?? null));
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = editingId ? (players.data.find((p) => p.id === editingId) ?? null) : null;
+  const setEditing = (p: Player | null) => setEditingId(p?.id ?? null);
+  const [adding, setAdding] = useState(false);
+  const names = useMemo(() => players.data.map((p) => p.name), [players.data]);
 
   const filtered = players.data.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
 
@@ -69,12 +79,10 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
                 : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
           </p>
         </div>
-        {!accounts && (
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            <span className="hidden sm:inline">Nuevo jugador</span>
-            <span className="sm:hidden">Nuevo</span>
-          </Button>
-        )}
+        <Button variant={accounts ? 'secondary' : 'primary'} className="shrink-0" icon={<Plus className="size-4" />} onClick={() => setAdding(true)}>
+          <span className="hidden sm:inline">Agregar {people[0]}</span>
+          <span className="sm:hidden">Agregar</span>
+        </Button>
       </div>
 
       {players.data.length > 5 && (
@@ -109,6 +117,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
             const s = stats.get(p.id) ?? noStats;
             const avg = p.averageOverride ?? s.autoAverage;
             const account = p.uid ? memberByUid.get(p.uid) : undefined;
+            const summary = bowling ? null : statSummary(sport, attrs.data[p.id]);
             return (
               <div
                 key={p.id}
@@ -126,6 +135,13 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
                         </span>
                       )}
                     </div>
+                    {(!p.uid || summary) && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                        {!p.uid && <Badge>{p.isMinor ? 'Menor · sin cuenta' : 'Sin cuenta'}</Badge>}
+                        {!p.uid && !p.isMinor && <PlayerClaimBadge playerId={p.id} />}
+                        {summary && <span className="tabular-nums">{summary}</span>}
+                      </div>
+                    )}
                     {bowling && (
                       <div className="flex items-center gap-1.5 text-xs text-muted sm:hidden">
                         <span className="tabular-nums">Prom. {avg ?? '—'}</span>
@@ -184,11 +200,13 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
         </section>
       )}
 
+      <AddPlayerModal open={adding} onClose={() => setAdding(false)} existingNames={names} />
       <PlayerFormModal
-        player={editing === 'new' ? null : editing}
-        account={editing && editing !== 'new' && editing.uid ? memberByUid.get(editing.uid) ?? null : null}
-        open={editingId != null}
-        stats={editing && editing !== 'new' ? stats.get(editing.id) ?? noStats : noStats}
+        player={editing}
+        account={editing?.uid ? (memberByUid.get(editing.uid) ?? null) : null}
+        open={editing != null}
+        stats={editing ? (stats.get(editing.id) ?? noStats) : noStats}
+        attrs={editing ? attrs.data[editing.id] : undefined}
         members={members.data}
         players={players.data}
         onClose={() => setEditing(null)}
@@ -197,11 +215,13 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   );
 }
 
+/** Admin: editar un jugador (nombre, el número de su deporte) y su cuenta. Para agregar: AddPlayerModal. */
 function PlayerFormModal({
   open,
   player,
   account,
   stats,
+  attrs,
   members,
   players,
   onClose,
@@ -210,30 +230,46 @@ function PlayerFormModal({
   player: Player | null;
   account: Member | null;
   stats: PlayerStats;
+  attrs: unknown;
   members: Member[];
   players: Player[];
   onClose: () => void;
 }) {
   const { lid, league } = useLeagueCtx();
-  const bowling = leagueSport(league) === 'bowling';
+  const sport = leagueSport(league);
+  const bowling = sport === 'bowling';
+  const swimming = statKind(sport) === 'swimming';
   const run = useAction();
   const { confirm } = useFeedback();
   const [name, setName] = useState('');
-  const [avg, setAvg] = useState('');
+  const [draft, setDraft] = useState<StatDraft>(emptyDraft);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Se llena al abrir (o al cambiar de jugador); lo que llega en vivo después no pisa lo que se está escribiendo.
   useEffect(() => {
     if (!open) return;
     setName(player?.name ?? '');
-    setAvg(player?.averageOverride != null ? String(player.averageOverride) : '');
-  }, [open, player]);
+    setDraft(draftFromAttrs(sport, attrs, player?.averageOverride ?? null));
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, player?.id]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const averageOverride = avg.trim() === '' ? null : Math.min(300, Math.max(0, Math.round(+avg)));
+    if (!player) return;
+    const parsed = parseStats(sport, draft);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    const before = parseStats(sport, draftFromAttrs(sport, attrs, player.averageOverride ?? null));
+    setError(null);
     setBusy(true);
-    if (player) await run(() => updatePlayer(lid, player.id, { name: name.trim(), averageOverride }), 'Jugador actualizado');
-    else await run(() => createPlayer(lid, name, averageOverride), 'Jugador agregado');
+    await run(async () => {
+      await updatePlayer(lid, player.id, bowling ? { name: name.trim(), averageOverride: parsed.stats.averageOverride } : { name: name.trim() });
+      if (!bowling && !swimming) await saveSportStats(lid, sport, player.id, parsed.stats, before.ok ? before.stats : undefined);
+    }, 'Jugador actualizado');
     setBusy(false);
     onClose();
   }
@@ -257,7 +293,7 @@ function PlayerFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={player ? 'Editar jugador' : 'Nuevo jugador'}
+      title="Editar jugador"
       footer={
         <>
           {player && (
@@ -267,7 +303,7 @@ function PlayerFormModal({
           )}
           <Button onClick={onClose}>Cancelar</Button>
           <Button variant="primary" type="submit" form="player-form" loading={busy}>
-            {player ? 'Guardar' : 'Agregar'}
+            Guardar
           </Button>
         </>
       }
@@ -276,17 +312,22 @@ function PlayerFormModal({
         <Field label="Nombre">
           <Input required autoFocus maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
         </Field>
-        {bowling && (
-          <Field
-            label="Promedio fijo (opcional)"
-            hint={
+        {!swimming && (
+          <SportStatFields
+            sport={sport}
+            draft={draft}
+            onChange={setDraft}
+            averageHint={
               stats.autoAverage != null
                 ? `Calculado con sus juegos: ${stats.autoAverage} (${stats.games} juegos). Déjalo vacío para usar ese.`
                 : 'Sin juegos verificados todavía. Si no pones uno, empieza en 0.'
             }
-          >
-            <Input type="number" inputMode="numeric" min={0} max={300} value={avg} onChange={(e) => setAvg(e.target.value)} placeholder="Automático" />
-          </Field>
+          />
+        )}
+        {error && (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
         )}
       </form>
       {player && <AccountSection player={player} account={account} members={members} players={players} onDone={onClose} />}

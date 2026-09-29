@@ -38,7 +38,8 @@ Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, 
 - `profiles` nunca legible por `anon` (tiene correos). El superadmin se siembra por SQL; nadie puede ponerse
   `is_superadmin` (sin UPDATE directo de esa columna).
 - Errores: `raise exception '<codigo>' using errcode = 'P0001'` con códigos en español corto:
-  `no_permitido`, `rate_limited`, `invalido`, `no_existe`, `duplicado`, `cerrado`. `42501` para permisos.
+  `no_permitido`, `rate_limited`, `invalido`, `no_existe`, `duplicado`, `cerrado`, `conflicto: <qué choca>` (aprobar
+  un reclamo de jugador). `42501` para permisos.
 - Tiempo real: triggers llaman `private.emit(topic text, event text, payload jsonb)`. Si existe `realtime.send`
   (Supabase) lo usa con canal privado; si no (PGlite), `pg_notify('mm', json)`. Temas: `event:<id>`,
   `league:<id>`, `user:<id>`.
@@ -91,8 +92,22 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
+
+## Jugadores sin cuenta y reclamos
+
+- El admin agrega personas que no tienen cuenta desde Admin › Jugadores («Agregar jugador», uno o varios por nombre)
+  con el dato de su deporte: promedio (boliche), nivel (pádel 0–7, tenis NTRP, pickleball DUPR), Handicap Index
+  (golf), posición y dorsal (baloncesto y fútbol, en `players.attrs.team`); los nadadores, en Nadadores. Pantalla:
+  `src/components/players/`. RPC existentes: `create_player`, `update_player` (`attrs`), `golf_set_index`.
+- Si esa persona se crea una cuenta, dice «ese jugador soy yo» (al unirse en «¿Quién eres?», en la página del
+  jugador o en el aviso del Home de la liga) y queda un **reclamo** (`player_claims`, `pending`). Mientras, juega con
+  su propio jugador. El dueño o un admin lo aprueba en Admin › Reclamos (`?tab=reclamos`); al aprobar, el jugador
+  propio se junta con el reclamado (todo su historial) y se borra. Si los dos jugaron lo mismo: `conflicto`.
+  Un dueño o admin que reclama queda aprobado al momento. Los menores nunca se reclaman.
+- Migración `20260929000100_reclamos.sql`; cliente `src/lib/data/claims.ts` y `src/components/claims/`. Tiempo
+  real `claims` en `league:<id>` y `user:<id>`; push al admin y a quien pidió; avisos en la campana.
 
 ## Sin señal y errores
 

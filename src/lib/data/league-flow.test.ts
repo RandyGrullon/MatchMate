@@ -14,6 +14,7 @@ import { fetchMembership, fetchMyMemberships } from './members';
 import { addTeam, applyTeams, deleteTeam, renameTeam } from './teams';
 import { approveSubmission, fetchSubmissions, rejectSubmission, setSubmissionScan, submitGames } from './submissions';
 import { claimPlayer, createPlayer, ensurePlayer, fetchEffectiveAverages, fetchPlayers } from './players';
+import { decideClaim, fetchLeagueClaims, fetchMyClaims } from './claims';
 import { stamped, type Wire } from './stamp';
 import { openWorld, type TestWorld } from './testkit';
 import type { BowlingEvent, Entry, League, Submission } from '../types';
@@ -88,9 +89,9 @@ describe('liga completa con la base de verdad (PGlite + RLS)', () => {
     expect(await getInviteCode(lid)).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
   });
 
-  it('unirse con el código: sin código no se ve la liga; con él queda su jugador (reclama el del mismo nombre)', async () => {
+  it('unirse con el código: sin código no se ve la liga; con él queda su jugador (pide el del mismo nombre y el dueño lo aprueba)', async () => {
     const code = (await getInviteCode(lid))!;
-    // El admin ya tenía a "Ana Perez" en la lista (sin cuenta): al unirse se vincula sola por el nombre.
+    // El admin ya tenía a "Ana Perez" en la lista (sin cuenta): al unirse queda el pedido por el nombre.
     const listed = await createPlayer(lid, 'Ana Perez', 190);
     await w.as('ana@x.com');
     expect(await fetchLeague(lid)).toBeNull();
@@ -98,14 +99,21 @@ describe('liga completa con la base de verdad (PGlite + RLS)', () => {
     expect(invite).toMatchObject({ id: code, leagueId: lid, leagueName: 'Liga de los martes' });
     expect(await getInvite('ZZZZZZZZ')).toBeNull();
     await expect(joinLeague(lid, { uid: anaId, name: 'Ana' }, 'ZZZZZZZZ')).rejects.toThrow(/código/);
-    anaPlayer = (await joinLeague(lid, { uid: anaId, name: 'Ana' }, code))!;
-    expect(anaPlayer).toBe(listed);
+    const own = (await joinLeague(lid, { uid: anaId, name: 'Ana' }, code))!;
+    expect(own).not.toBe(listed);
+    const [pending] = await fetchMyClaims(anaId);
+    expect(pending).toMatchObject({ playerId: listed, status: 'pending' });
+    await w.as('rosa@x.com');
+    expect((await fetchLeagueClaims(lid)).map((c) => c.id)).toEqual([pending.id]);
+    expect(await decideClaim(lid, pending.id, true)).toBe('approved');
+    await w.as('ana@x.com');
+    anaPlayer = listed;
     expect((await fetchLeague(lid))?.name).toBe('Liga de los martes');
     const mine = await fetchMyMemberships(anaId);
     expect(mine).toEqual([expect.objectContaining({ leagueId: lid, role: 'member', playerId: listed })]);
     // Idempotente: volver a pedir su jugador da el mismo.
     expect(await ensurePlayer(lid, anaId, 'Ana')).toBe(listed);
-    await expect(claimPlayer(lid, anaId, listed)).resolves.toBeUndefined();
+    await expect(claimPlayer(lid, anaId, listed)).resolves.toBeNull();
   });
 
   it('práctica con «Voy», +1 juego (sin sumar dos veces) y en vivo', async () => {

@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { CalendarDays, CalendarRange, Clock, Info, LogIn, MapPin, MessageCircle, UserPlus, UserRound } from 'lucide-react';
 import { displayName, useAuth } from '../../lib/auth';
-import { joinLeague } from '../../lib/data/leagues';
+import { joinLeagueClaim } from '../../lib/data/leagues';
 import { usePlayers } from '../../lib/data/players';
 import { formatDate, formatDateLong } from '../../lib/format';
 import { useLeagueCtx, whatsappUrl } from '../../lib/league';
@@ -10,7 +10,7 @@ import type { League } from '../../lib/types';
 import { useAction, useFeedback } from '../feedback';
 import { Button, Card, cx } from '../ui';
 import { freePlayers, guessPlayer, infoRows, joinLabel, peopleWord, type InfoKey, type InfoRow } from './logic';
-import { WhoAreYouModal, type WhoChoice } from './WhoAreYou';
+import { joinClaimMessage, WhoAreYouModal, type WhoChoice } from './WhoAreYou';
 
 const ICONS: Record<InfoKey, ReactNode> = {
   venue: <MapPin className="size-4" />,
@@ -115,11 +115,12 @@ export function JoinLeagueCard() {
   async function join(choice: WhoChoice) {
     if (!auth.user) return navigate(`/login?next=${next}`);
     setBusy(true);
-    const pid = await run(() => joinLeague(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, choice), `Te uniste a ${league.name}`);
+    const r = await run(() => joinLeagueClaim(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, choice), `Te uniste a ${league.name}`);
     setBusy(false);
-    if (pid === undefined) return;
+    if (r === undefined) return;
     setAsking(false);
-    if (choice && pid && pid !== choice) toast(`Ese ${people[0]} ya lo tomó otra cuenta: te dejamos uno nuevo. Si eras tú, avísale al admin.`);
+    const said = joinClaimMessage(choice, free.find((p) => p.id === choice)?.name ?? null, r.playerId, r.claimId);
+    if (said) toast(said);
   }
 
   function start() {

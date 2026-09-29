@@ -18,6 +18,7 @@ import { Stat } from '../components/event/StandingsTab';
 import { UserLink, userPath } from '../components/social/UserLink';
 import { BackLink } from '../components/BackLink';
 import { SuggestionBox } from '../components/SuggestionBox';
+import { ClaimPlayerButton } from '../components/claims/ClaimPlayerButton';
 
 /** Página del jugador en la liga: sus números, torneos y prácticas. En una liga pública se ve sin login. */
 export default function PlayerPage({ playerId: own }: { playerId?: string }) {
@@ -169,6 +170,8 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
               <UserPlus className="size-4" /> ¿Eres tú? Crea tu cuenta
             </Link>
           )}
+          {/* Un miembro con cuenta que ve a un jugador sin cuenta: «¿Eres tú? Reclamar» (lo aprueba el admin). */}
+          {user && unclaimed && !p.isMinor && <ClaimPlayerButton player={p} />}
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

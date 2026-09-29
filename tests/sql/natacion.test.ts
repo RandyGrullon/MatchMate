@@ -349,7 +349,9 @@ describe('menor por el año de nacimiento (aunque no lo marquen)', () => {
     // Quien ya cumple 18 este año deja de ser menor y puede tener cuenta.
     const grown = await kid(s, 'Grande', 18, 'M', s.clubA);
     await db.rpc(w.u.org, 'update_player', { p_player: grown, p_patch: { is_minor: false } });
-    expect(await db.rpc(w.u.nuevo, 'claim_player', { p_player: grown })).toBe(grown);
+    const req = await db.rpc<string>(w.u.nuevo, 'claim_player', { p_player: grown });
+    expect(await db.rpc(w.u.org, 'decide_player_claim', { p_claim: req, p_approve: true })).toBe('approved');
+    expect(await db.admin('select user_id from public.players where id = $1', [grown])).toEqual([{ user_id: w.u.nuevo }]);
     // Salir de la liga (la cuenta se suelta sola) nunca falla.
     await db.admin('delete from public.league_members where league_id = $1 and user_id = $2', [s.lid, w.u.nuevo]);
     expect(await db.admin('select user_id from public.players where id = $1', [grown])).toEqual([{ user_id: null }]);

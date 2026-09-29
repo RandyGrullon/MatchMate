@@ -220,9 +220,11 @@ describe('invite_details y «¿Quién eres?»', () => {
     await fails(db.rpc(w.u.nuevo, 'invite_details', { p_code: 'ABCD2345' }), 'bloqueada');
   });
 
-  it('elegir «soy Pedro» al unirse vincula ese jugador (no crea otro)', async () => {
+  it('elegir «soy Pedro» al unirse deja el pedido; al aprobarlo queda un solo jugador', async () => {
     const r = await db.rpc<Json>(w.u.nuevo, 'join_league', { p_code: 'ABCD2345', p_prefer: w.p.pedro });
-    expect(r).toEqual({ league_id: w.priv, player_id: w.p.pedro });
+    expect(r).toMatchObject({ league_id: w.priv });
+    expect(r.player_id).not.toBe(w.p.pedro);
+    expect(await db.rpc(w.u.org, 'decide_player_claim', { p_claim: r.claim_id, p_approve: true })).toBe('approved');
     expect(await db.count('public.players', 'league_id = $1', [w.priv])).toBe(2);
     // Ya no sale como libre para el siguiente.
     expect(await db.rpc<Json>(w.u.extra, 'invite_details', { p_code: 'ABCD2345' })).toMatchObject({ players: [], members: 5 });
@@ -237,7 +239,9 @@ describe('invite_details y «¿Quién eres?»', () => {
   it('en una liga pública, los jugadores libres se leen directo (sin código)', async () => {
     const rows = await db.asUser<{ id: string }>(w.u.nuevo, 'select id from public.players where league_id = $1 and user_id is null and not is_minor', [w.pub]);
     expect(rows.map((r) => r.id)).toEqual([w.p.p1]);
-    expect(await db.rpc<Json>(w.u.nuevo, 'join_league', { p_league: w.pub, p_prefer: w.p.p1 })).toEqual({ league_id: w.pub, player_id: w.p.p1 });
+    const r = await db.rpc<Json>(w.u.nuevo, 'join_league', { p_league: w.pub, p_prefer: w.p.p1 });
+    expect(r).toMatchObject({ league_id: w.pub });
+    expect(await db.admin('select player_id, status from public.player_claims where id = $1', [r.claim_id])).toEqual([{ player_id: w.p.p1, status: 'pending' }]);
   });
 });
 

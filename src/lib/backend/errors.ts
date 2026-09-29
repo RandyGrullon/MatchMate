@@ -23,6 +23,7 @@ const P0001_KINDS: Record<string, BackendErrorKind> = {
   no_permitido: 'permission',
   no_existe: 'not_found',
   duplicado: 'conflict',
+  conflicto: 'conflict',
 };
 
 /** Primera palabra del mensaje de una RPC: 'invalido: nombre' → 'invalido'. */

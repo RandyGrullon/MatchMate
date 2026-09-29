@@ -267,13 +267,17 @@ describe('invitaciones con límite de intentos', () => {
     ]);
   });
 
-  it('unirse con un jugador preferido o con el mismo nombre conserva sus juegos', async () => {
-    const r = await db.rpc<{ player_id: string }>(w.u.nuevo, 'join_league', { p_league: w.priv, p_code: 'ABCD2345', p_prefer: w.p.pedro });
-    expect(r.player_id).toBe(w.p.pedro);
-    // Mismo nombre normalizado (sin acentos ni mayúsculas): se vincula solo.
+  it('unirse con un jugador preferido o con el mismo nombre deja el pedido (el admin lo aprueba y conserva sus juegos)', async () => {
+    const r = await db.rpc<{ player_id: string; claim_id: string }>(w.u.nuevo, 'join_league', { p_league: w.priv, p_code: 'ABCD2345', p_prefer: w.p.pedro });
+    expect(r.player_id).not.toBe(w.p.pedro);
+    expect(await db.rpc(w.u.org, 'decide_player_claim', { p_claim: r.claim_id, p_approve: true })).toBe('approved');
+    expect(await db.admin('select user_id from public.players where id = $1', [w.p.pedro])).toEqual([{ user_id: w.u.nuevo }]);
+    // Mismo nombre normalizado (sin acentos ni mayúsculas): también queda pedido.
     const jose = await player(db, w.pub, 'José  Peña');
     const u = await db.createUser('jose@x.com', 'jose pena');
-    expect(await db.rpc(u, 'join_league', { p_league: w.pub })).toEqual({ league_id: w.pub, player_id: jose });
+    const rj = await db.rpc<{ player_id: string; claim_id: string }>(u, 'join_league', { p_league: w.pub });
+    expect(rj.player_id).not.toBe(jose);
+    expect(await db.admin('select player_id, status from public.player_claims where id = $1', [rj.claim_id])).toEqual([{ player_id: jose, status: 'pending' }]);
     // Dos jugadores libres con el mismo nombre: no adivina, crea uno nuevo.
     await player(db, w.pub, 'Ana');
     await player(db, w.pub, 'ANA');

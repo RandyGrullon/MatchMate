@@ -84,13 +84,19 @@ export async function deletePlayer(lid: string, id: string, _uid?: string | null
   invalidate(tags.entries(lid), tags.subs(lid), tags.events(lid), tags.social(lid));
 }
 
-/** La cuenta (la de la sesión) se vincula con un jugador de la liga que todavía no tiene cuenta. */
-export async function claimPlayer(lid: string, _uid: string, playerId: string) {
-  await rpc('claim_player', { p_player: playerId });
+/**
+ * La cuenta (la de la sesión) pide ser un jugador de la liga que todavía no tiene cuenta: queda el pedido y lo
+ * aprueba el dueño o un admin (un admin lo toma al momento). Devuelve el id del pedido (null si ya era suyo).
+ * Para la pantalla, mejor requestClaim de ./claims (actualiza la caché y trae la nota).
+ */
+export async function claimPlayer(lid: string, _uid: string, playerId: string): Promise<string | null> {
+  const id = await rpc<string | null>('claim_player', { p_player: playerId });
   afterPlayer(lid);
+  invalidate(`claims:${lid}`, 'claims:me');
+  return id ?? null;
 }
 
-/** El jugador de la cuenta en la liga (lo vincula o lo crea la base). */
+/** El jugador de la cuenta en la liga (el que tiene o uno nuevo; lo crea la base). */
 export async function createOwnPlayer(lid: string, _uid: string, _name: string): Promise<string> {
   const id = await rpc<string>('ensure_my_player', { p_league: lid });
   afterPlayer(lid);
@@ -102,8 +108,9 @@ const ensuring = new Map<string, Promise<string>>();
 
 /**
  * La cuenta juega en la liga con su propia cuenta. La base decide (en una transacción, sin crear dos): el
- * que ya tiene; si no, el preferido si está libre; si no, el único jugador libre con su mismo nombre; si no,
- * uno nuevo. `fresh` queda por compatibilidad (la base ya crea el del dueño al crear la liga).
+ * que ya tiene; si no, uno nuevo. Si eligió un jugador libre (`prefer`) o hay un único libre con su mismo
+ * nombre, además queda el pedido de ese jugador para que el dueño o un admin lo apruebe (un admin lo toma al
+ * momento y se devuelve ese). `fresh` queda por compatibilidad (la base ya crea el del dueño al crear la liga).
  */
 export function ensurePlayer(
   lid: string,

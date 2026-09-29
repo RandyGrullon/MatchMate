@@ -10,7 +10,8 @@ begin;
 -- «OK <paso>» y el resumen del final los lista. El primer fallo corta todo con «FAIL <paso>: …».
 --
 -- Recorre: boliche de punta a punta (liga, código, unirse, práctica y torneo con equipos, save_game,
--- add_practice_game, en vivo, envíos sin foto, aprobar y rechazar, lo que lee el ranking), pádel (partidos, resultado
+-- add_practice_game, en vivo, envíos sin foto, aprobar y rechazar, lo que lee el ranking, el reclamo «ese jugador
+-- sin cuenta soy yo» que aprueba el dueño), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, la consola del superadmin y los permisos que TIENEN
 -- que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
@@ -107,7 +108,7 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100'];
   v_missing text[];
   v_bowling text;
 begin
@@ -508,6 +509,64 @@ begin
   d := public.export_my_data();
   assert d ->> 'format' = 'matchmate-mis-datos' and (d -> 'account' ->> 'id')::uuid = pg_temp.id('u_ana'), 'FAIL cuenta: export_my_data';
   perform pg_temp.ok('ranking: promedio global de Ana por sus membresías = 180; export_my_data');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 2.12 Reclamos: Beto se une diciendo «soy Smoke Invitado» (el jugador sin cuenta que anotó el dueño, con su juego
+-- de 150). Queda pendiente con su propio jugador (marca «voy» con él); Luis no lo puede aprobar; el dueño lo aprueba y
+-- Beto queda como Smoke Invitado con todo junto (su «voy» y el juego del invitado).
+select set_config('request.jwt.claims', pg_temp.jwt('beto'), true);
+set local role authenticated;
+do $$
+declare
+  v_guest uuid := pg_temp.id('bowl_p_guest');
+  r jsonb;
+begin
+  r := public.join_league(p_code => pg_temp.val('bowl_code'), p_prefer => v_guest);
+  assert (r ->> 'player_id')::uuid <> v_guest and r ->> 'claim_id' is not null, format('FAIL reclamos: join_league %s', r);
+  assert (select p.user_id from public.players p where p.id = v_guest) is null, 'FAIL reclamos: se lo llevó sin aprobar';
+  assert (select c.status = 'pending' and c.player_id = v_guest from public.player_claims c where c.id = (r ->> 'claim_id')::uuid),
+    'FAIL reclamos: Beto no ve su pedido pendiente';
+  perform public.set_rsvp(p_event => pg_temp.id('bowl_tour'), p_going => true);
+  perform pg_temp.put('bowl_p_beto', r ->> 'player_id');
+  perform pg_temp.put('bowl_claim', r ->> 'claim_id');
+  perform pg_temp.ok('reclamos: Beto se une eligiendo al invitado: queda pendiente y juega con su propio jugador');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('luis'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select count(*) from public.player_claims c where c.id = pg_temp.id('bowl_claim')) = 0, 'FAIL reclamos: un miembro lee pedidos ajenos';
+  perform pg_temp.must_fail('reclamos: un miembro no aprueba',
+    format('select public.decide_player_claim(p_claim => %L, p_approve => true)', pg_temp.id('bowl_claim')), array['no_permitido', '42501']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v_guest uuid := pg_temp.id('bowl_p_guest');
+  v_mine uuid := pg_temp.id('bowl_p_beto');
+  v_claim uuid := pg_temp.id('bowl_claim');
+begin
+  assert (select count(*) from public.player_claims c where c.id = v_claim and c.status = 'pending') = 1, 'FAIL reclamos: el dueño no ve el pedido';
+  assert public.player_claim_conflicts(p_claim => v_claim) = '[]'::jsonb, 'FAIL reclamos: conflictos inesperados';
+  assert public.decide_player_claim(p_claim => v_claim, p_approve => true) = 'approved', 'FAIL reclamos: aprobar';
+  assert (select p.user_id from public.players p where p.id = v_guest) = pg_temp.id('u_beto'), 'FAIL reclamos: el invitado no quedó de Beto';
+  assert (select count(*) from public.players p where p.id = v_mine) = 0, 'FAIL reclamos: quedó el jugador propio de Beto';
+  assert (select count(*) from public.event_rsvps r where r.event_id = pg_temp.id('bowl_tour') and r.player_id = v_guest and r.going) = 1,
+    'FAIL reclamos: el «voy» de Beto no pasó al invitado';
+  assert (select count(*) from public.entries e where e.player_id = v_guest and 150 = any (e.scores)) = 1, 'FAIL reclamos: el juego del invitado';
+  assert (select m.player_id from public.memberships m where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_beto')) = v_guest,
+    'FAIL reclamos: la membresía de Beto no apunta al invitado';
+  assert public.decide_player_claim(p_claim => v_claim, p_approve => false) = 'approved', 'FAIL reclamos: decidir dos veces';
+  perform pg_temp.ok('reclamos: el dueño ve el pedido, lo aprueba y Beto queda como el invitado con todo junto');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
@@ -1023,7 +1082,8 @@ set local role authenticated;
 do $$
 begin
   perform public.set_rsvp(p_event => pg_temp.id('bowl_tour'), p_going => true);
-  assert (select count(*) from public.event_rsvps r where r.event_id = pg_temp.id('bowl_tour')) = 2, 'FAIL bloqueo: desbloqueado no escribe';
+  assert (select count(*) from public.event_rsvps r where r.event_id = pg_temp.id('bowl_tour') and r.player_id = pg_temp.id('bowl_p_luis') and r.going) = 1,
+    'FAIL bloqueo: desbloqueado no escribe';
   perform pg_temp.ok('bloqueo: Luis desbloqueado vuelve a escribir');
 end $$;
 reset role;

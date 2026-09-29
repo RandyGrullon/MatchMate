@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { Eye, LogIn, RotateCcw, UserPlus, UserRound } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
-import { ensurePlayer, joinLeague, useJoining } from '../lib/data';
+import { ensurePlayer, joinLeagueClaim, useJoining } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
-import { useAction } from '../components/feedback';
+import { useAction, useFeedback } from '../components/feedback';
+import { joinClaimMessage } from '../components/league/WhoAreYou';
 import { Button, Empty, PageSkeleton } from '../components/ui';
 import PlayerPage from './PlayerPage';
 
@@ -47,8 +48,9 @@ function NotMember() {
   const { lid, league } = useLeagueCtx();
   const auth = useAuth();
   const run = useAction();
+  const { toast } = useFeedback();
   const [busy, setBusy] = useState(false);
-  // Vino de "¿Eres tú? Crea tu cuenta" en la página de un jugador: se une como ese jugador (si sigue libre).
+  // Vino de "¿Eres tú? Crea tu cuenta" en la página de un jugador: se une y pide ser ese jugador (lo aprueba el admin).
   const [params] = useSearchParams();
   const soy = params.get('soy');
   if (league.visibility === 'private') {
@@ -60,8 +62,10 @@ function NotMember() {
   }
   async function join() {
     setBusy(true);
-    await run(() => joinLeague(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, soy), `Te uniste a ${league.name}`);
+    const r = await run(() => joinLeagueClaim(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, soy), `Te uniste a ${league.name}`);
     setBusy(false);
+    const said = r && joinClaimMessage(soy, null, r.playerId, r.claimId);
+    if (said) toast(said);
   }
   return (
     <Empty icon={<UserPlus className="size-8" />} title={`Únete a ${league.name}`}>

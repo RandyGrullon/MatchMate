@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Baby, Globe, Lock, LogIn, Ticket, Trophy, UserPlus, Users } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
-import { getInvite, getInviteDetails, joinLeague, useLeague, type InviteDetails } from '../lib/data/leagues';
+import { getInvite, getInviteDetails, joinLeagueClaim, useLeague, type InviteDetails } from '../lib/data/leagues';
 import { useMembership } from '../lib/data/members';
 import type { Invite } from '../lib/types';
 import { sportMeta } from '../sports/registry';
@@ -14,7 +14,7 @@ import { Badge, Button, Card, Empty, Loading } from '../components/ui';
 import { INFO_FORMAT, InfoItem, InfoList } from '../components/league/LeagueInfo';
 import { countLabel, guessPlayer, infoRows, joinLabel, peopleWord } from '../components/league/logic';
 import { SportTheme } from '../components/league/SportTheme';
-import { WhoAreYouList, type WhoChoice } from '../components/league/WhoAreYou';
+import { joinClaimMessage, WhoAreYouList, type WhoChoice } from '../components/league/WhoAreYou';
 import { SportBadge } from './sports/SportBits';
 
 interface Found {
@@ -128,13 +128,14 @@ export default function JoinPage() {
   async function join() {
     if (!invite || !auth.user) return;
     setBusy(true);
-    const pid = await run(
-      () => joinLeague(invite.leagueId, { uid: auth.user!.uid, name: displayName(auth) }, invite.id, picked),
+    const r = await run(
+      () => joinLeagueClaim(invite.leagueId, { uid: auth.user!.uid, name: displayName(auth) }, invite.id, picked),
       `¡Bienvenido a ${invite.leagueName}!`,
     );
     setBusy(false);
-    if (pid === undefined) return;
-    if (picked && pid && pid !== picked) toast(`Ese ${people[0]} ya lo tomó otra cuenta: te dejamos uno nuevo. Si eras tú, avísale al admin.`);
+    if (r === undefined) return;
+    const said = joinClaimMessage(picked, pickedName, r.playerId, r.claimId);
+    if (said) toast(said);
     navigate(`/l/${invite.leagueId}`);
   }
 
