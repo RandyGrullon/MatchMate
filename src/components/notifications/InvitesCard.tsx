@@ -5,6 +5,7 @@ import { respondErrorText, respondInvite, useMyInvites, type LeagueInvite } from
 import { relativeTime } from '../../lib/notifications';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { useFeedback } from '../feedback';
+import { LeagueLogo } from '../home/LeagueCard';
 import { Badge, Button, Card } from '../ui';
 import { invitedByLine, leagueTypeLabel, respondedText } from './inviteText';
 
@@ -54,9 +55,11 @@ export function InvitesCard({ uid, now }: { uid: string; now: number }) {
             return (
               <li key={inv.id} className="flex flex-col gap-3 px-4 py-3.5">
                 <div className="flex items-start gap-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <SportIcon sport={inv.sport} className="size-5" />
-                  </span>
+                  <LeagueLogo path={inv.logoPath} className="size-10 rounded-xl">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                      <SportIcon sport={inv.sport} className="size-5" />
+                    </span>
+                  </LeagueLogo>
                   <div className="min-w-0 flex-1">
                     <p className="leading-snug font-semibold break-words">{inv.leagueName || 'Una liga'}</p>
                     <p className="text-sm text-muted">

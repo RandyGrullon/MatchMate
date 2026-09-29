@@ -38,7 +38,7 @@ export function createFakeBackend(): FakeBackend {
       resendConfirmation: unsupported,
       updatePassword: unsupported,
     },
-    storage: { upload: unsupported, signedUrl: unsupported, remove: unsupported },
+    storage: { upload: unsupported, signedUrl: unsupported, publicUrl: unsupported, remove: unsupported },
     select: async () => [],
     invoke: unsupported,
     async rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {

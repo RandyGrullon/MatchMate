@@ -1,8 +1,9 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CalendarClock, ChevronRight, Globe, Lock, MapPin, Repeat, Trophy, Users } from 'lucide-react';
 import type { CalendarItem } from '../../lib/calendar';
 import { roleLabel } from '../../lib/league';
+import { useLogo } from '../../lib/logos';
 import type { League, Member } from '../../lib/types';
 import { leagueSport, sportMeta } from '../../sports/registry';
 import { SportBadge, SportIcon } from '../../pages/sports/SportBits';
@@ -22,18 +23,58 @@ export function LeagueMeta({ league, className }: { league: Pick<League, 'venue'
   );
 }
 
-/** El cuadrito de la liga en el color de su deporte: el trofeo si es torneo; si no, el ícono del deporte. */
-export function LeagueIcon({ league, size = 'md' }: { league: Pick<League, 'id' | 'sport' | 'kind'>; size?: 'md' | 'lg' }) {
+/**
+ * El logo de la liga (imagen pública, src/lib/logos.ts) con el tamaño y las esquinas de `className`; mientras llega
+ * su URL, un cuadro vacío de ese mismo tamaño (la pantalla no salta cuando aparece); sin logo o si no carga,
+ * `children` (el ícono de siempre).
+ */
+export function LeagueLogo({ path, className, children }: { path?: string | null; className: string; children?: ReactNode }) {
+  const { url, pending } = useLogo(path);
+  const [broken, setBroken] = useState<string | null>(null);
+  if (pending) return <span aria-hidden="true" className={cx('block shrink-0 border border-line bg-surface-2', className)} />;
+  if (!url || broken === url) return <>{children}</>;
+  return (
+    <img
+      src={url}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      onError={() => setBroken(url)}
+      className={cx('shrink-0 border border-line bg-surface-2 object-cover', className)}
+    />
+  );
+}
+
+const ICON_BOX = {
+  sm: 'size-7 rounded-lg',
+  md: 'size-10 rounded-xl',
+  lg: 'size-12 rounded-2xl',
+  xl: 'size-16 rounded-2xl',
+} as const;
+const ICON_GLYPH = { sm: 'size-4', md: 'size-5', lg: 'size-5', xl: 'size-8' } as const;
+
+/**
+ * El cuadrito de la liga: su logo si tiene; si no, en el color de su deporte, el trofeo si es torneo o el ícono
+ * del deporte.
+ */
+export function LeagueIcon({
+  league,
+  size = 'md',
+}: {
+  league: Pick<League, 'id' | 'sport' | 'kind' | 'logoPath'>;
+  size?: keyof typeof ICON_BOX;
+}) {
   const sport = leagueSport(league);
   return (
-    <SportTint sport={sport} className="shrink-0">
-      <span
-        className={cx('flex items-center justify-center bg-accent-soft text-accent', size === 'lg' ? 'size-12 rounded-2xl' : 'size-10 rounded-xl')}
-        aria-hidden="true"
-      >
-        {league.kind === 'torneo' ? <Trophy className="size-5" /> : <SportIcon sport={sport} className="size-5" />}
-      </span>
-    </SportTint>
+    <LeagueLogo path={league.logoPath} className={ICON_BOX[size]}>
+      <SportTint sport={sport} className="shrink-0">
+        <span className={cx('flex items-center justify-center bg-accent-soft text-accent', ICON_BOX[size])} aria-hidden="true">
+          {league.kind === 'torneo' ? <Trophy className={ICON_GLYPH[size]} /> : <SportIcon sport={sport} className={ICON_GLYPH[size]} />}
+        </span>
+      </SportTint>
+    </LeagueLogo>
   );
 }
 

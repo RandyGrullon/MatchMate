@@ -5,8 +5,12 @@ import { SPORTS } from '../../sports/registry';
 import type { SportStatus } from '../../sports/status';
 import type { SportId } from '../../sports/types';
 import { SportSplash } from '../splash/SportSplash';
-import { Badge, Button } from '../ui';
+import { Badge, Button, cx } from '../ui';
 import { SportTint } from './SportTint';
+
+/** Link con cara de botón secundario (el de «Juego suelto»). */
+const secondaryLink =
+  'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-fg transition select-none hover:bg-surface-2 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
 
 /** «2 ligas tuyas · 5 públicas», «Ninguna liga tuya todavía». */
 export function heroCountsLabel(mine: number, publicCount: number): string {
@@ -17,7 +21,8 @@ export function heroCountsLabel(mine: number, publicCount: number): string {
 
 /**
  * La portada del Home de un deporte, en su color: su animación, el nombre, cuántas ligas tengo y cuántas públicas
- * hay, «Crear liga de <deporte>» (con el deporte ya marcado) y volver a «Todos los deportes».
+ * hay, «Crear liga de <deporte>» (con el deporte ya marcado) y volver a «Todos los deportes». En el boliche, además,
+ * «Juego suelto» (anotar juegos fuera de una liga; sin cuenta, la página pide entrar).
  */
 export function SportHero({
   sport,
@@ -37,6 +42,13 @@ export function SportHero({
   onCreate: (kind: 'liga' | 'torneo') => void;
 }) {
   const meta = SPORTS[sport];
+  const SoloIcon = meta.icon;
+  const solo =
+    sport === 'bowling' ? (
+      <Link to="/juegos-sueltos?nuevo=1" className={secondaryLink} aria-label="Anotar un juego suelto de boliche">
+        <SoloIcon className="size-4" aria-hidden="true" /> Juego suelto
+      </Link>
+    ) : null;
   return (
     <SportTint sport={sport}>
       <section
@@ -59,8 +71,15 @@ export function SportHero({
         </div>
         <div className="flex flex-col gap-2 p-4">
           {canCreate ? (
-            <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[1fr_auto]">
-              <Button variant="primary" className="h-11 min-w-0" icon={<Plus className="size-4" />} onClick={() => onCreate('liga')} data-tour="crear-deporte">
+            // Con «Juego suelto» (boliche): en el teléfono, crear arriba y los otros dos lado a lado.
+            <div className={cx('grid gap-2', solo ? 'grid-cols-2 sm:grid-cols-[1fr_auto_auto]' : 'grid-cols-1 min-[400px]:grid-cols-[1fr_auto]')}>
+              <Button
+                variant="primary"
+                className={cx('h-11 min-w-0', solo && 'col-span-2 sm:col-span-1')}
+                icon={<Plus className="size-4" />}
+                onClick={() => onCreate('liga')}
+                data-tour="crear-deporte"
+              >
                 <span className="truncate">Crear liga de {meta.lower}</span>
               </Button>
               <Button
@@ -71,9 +90,13 @@ export function SportHero({
               >
                 Torneo
               </Button>
+              {solo}
             </div>
           ) : (
-            signedIn && <p className="text-sm text-muted">Crear ligas de {meta.lower} se abre pronto. Mientras, puedes unirte a las que ya hay.</p>
+            <>
+              {signedIn && <p className="text-sm text-muted">Crear ligas de {meta.lower} se abre pronto. Mientras, puedes unirte a las que ya hay.</p>}
+              {solo}
+            </>
           )}
           <Link
             to="/"

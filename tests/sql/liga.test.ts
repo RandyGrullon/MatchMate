@@ -177,6 +177,7 @@ describe('invite_details y «¿Quién eres?»', () => {
       sport: 'bowling',
       kind: 'liga',
       visibility: 'private',
+      logoPath: null,
       venue: 'Bolera',
       schedule: 'Martes 7 pm',
       seasonStart: '2026-01-01',

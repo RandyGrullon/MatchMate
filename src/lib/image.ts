@@ -144,3 +144,64 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binary)}`;
 }
+
+// ---------- Logo de la liga ----------
+
+/** Lado del logo guardado (px): cuadrado. */
+export const LOGO_SIDE = 256;
+/** Tope del logo guardado, en bytes (el bucket `logos` acepta hasta 256 kB). */
+export const MAX_LOGO_BYTES = 120_000;
+
+export interface CompressedLogo {
+  blob: Blob;
+  /** 'image/webp', o 'image/jpeg' si el navegador no sabe hacer WebP. */
+  contentType: StoredImageType;
+  /** Lado del cuadrado (px). */
+  side: number;
+}
+
+/**
+ * El cuadrado del centro de la imagen (lo que se recorta para el logo): `sx`/`sy` desde dónde, `crop` el lado que
+ * se toma y `side` el lado que sale (siempre `out`, aunque la imagen sea más chica).
+ */
+export function logoCrop(width: number, height: number, out = LOGO_SIDE): { sx: number; sy: number; crop: number; side: number } {
+  const crop = Math.max(1, Math.min(width, height));
+  return { sx: Math.max(0, Math.floor((width - crop) / 2)), sy: Math.max(0, Math.floor((height - crop) / 2)), crop, side: out };
+}
+
+/**
+ * El logo listo para subir: el cuadrado del centro, de 256 × 256, en WebP (o JPEG si el navegador no sabe hacer
+ * WebP), siempre sobre fondo blanco: un logo transparente (letras negras sobre nada) se vería en modo claro y
+ * desaparecería en el oscuro, y así sale igual lo suba quien lo suba. Hasta 120 kB: baja la calidad y, si hace falta,
+ * el lado.
+ */
+export async function compressLogo(file: Blob): Promise<CompressedLogo> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  try {
+    const { sx, sy, crop } = logoCrop(bitmap.width, bitmap.height);
+    const encode = async (side: number, quality: number) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = side;
+      canvas.height = side;
+      const ctx = canvas.getContext('2d')!;
+      ctx.imageSmoothingQuality = 'high';
+      // Fondo blanco (es el lienzo del archivo, no un color de la pantalla): lo transparente queda blanco.
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, side, side);
+      ctx.drawImage(bitmap, sx, sy, crop, crop, 0, 0, side, side);
+      let blob: Blob | null = null;
+      if (webpOk !== false) {
+        blob = await toBlob(canvas, 'image/webp', quality);
+        webpOk = blob?.type === 'image/webp';
+        if (!webpOk) blob = null;
+      }
+      if (!blob) blob = await toBlob(canvas, 'image/jpeg', quality);
+      if (!blob) throw new Error('No se pudo preparar el logo.');
+      return { blob, side, size: blob.size, contentType: (blob.type === 'image/webp' ? 'image/webp' : 'image/jpeg') as StoredImageType };
+    };
+    const out = await fitImage(encode, { maxSide: LOGO_SIDE, quality: 0.85, minQuality: 0.5, max: MAX_LOGO_BYTES, floor: 128 });
+    return { blob: out.blob, contentType: out.contentType, side: out.side };
+  } finally {
+    bitmap.close();
+  }
+}

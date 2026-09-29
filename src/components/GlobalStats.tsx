@@ -1,13 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CalendarCheck, CalendarDays, ChevronRight, CircleHelp, Flame, Globe, Hash, Layers, Sigma, Target, Trophy } from 'lucide-react';
 import { frameStats } from '../lib/bowling';
 import { usePlayerAcrossLeagues } from '../lib/data';
+import { soloAsEntry, useMySoloSessions, type SoloSession } from '../lib/data/solo';
 import { eventLabel, formatDate } from '../lib/format';
-import { playerStats } from '../lib/stats';
+import { playerStats, type PlayerStats } from '../lib/stats';
 import type { BowlingEvent, Entry, League, Member } from '../lib/types';
 import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { Stat } from './event/StandingsTab';
+import { LeagueIcon } from './home/LeagueCard';
 import { ScoreChart, type ChartPoint } from './ScoreChart';
 import { Badge, Card, LoadError, StatsSkeleton } from './ui';
 
@@ -45,12 +47,17 @@ export function splitBySport(memberships: Member[], leagues: League[]): { bowlin
 }
 
 /**
- * Perfil global › Mis estadísticas: los números del boliche sumando sus ligas y, aparte, las ligas de los
- * otros deportes con un link al perfil de cada una (cada deporte cuenta lo suyo: sets, goles, golpes, marcas).
+ * Perfil global › Mis estadísticas: los números del boliche sumando sus ligas y sus juegos sueltos y, aparte, las
+ * ligas de los otros deportes con un link al perfil de cada una (cada deporte cuenta lo suyo: sets, goles, golpes,
+ * marcas).
  */
 export function ProfileStats({ memberships, leagues }: { memberships: Member[]; leagues: League[] }) {
   const { bowling, others } = useMemo(() => splitBySport(memberships, leagues), [memberships, leagues]);
-  const showBowling = bowling.length > 0 || others.length === 0;
+  const solo = useMySoloSessions();
+  const hasSolo = solo.data.length > 0;
+  const showBowling = bowling.length > 0 || others.length === 0 || hasSolo;
+  const what = hasSolo ? 'ligas, torneos y juegos sueltos' : 'ligas y torneos';
+  const where = others.length ? `Tus ${what} de boliche juntos.` : `Todas tus ${what} juntos.`;
   return (
     <>
       {showBowling && (
@@ -58,11 +65,10 @@ export function ProfileStats({ memberships, leagues }: { memberships: Member[]; 
           <div>
             <h2 className="text-lg font-bold tracking-tight">{others.length ? 'Mis estadísticas de boliche' : 'Mis estadísticas'}</h2>
             <p className="text-sm text-muted">
-              {others.length ? 'Tus ligas y torneos de boliche juntos.' : 'Todas tus ligas y torneos juntos.'} Solo cuentan los juegos que ya cuentan en cada
-              liga.
+              {where} Solo cuentan los juegos que ya cuentan en cada liga.
             </p>
           </div>
-          <GlobalStats memberships={bowling} leagues={leagues} />
+          <GlobalStats memberships={bowling} leagues={leagues} solo={solo.data} soloLoading={solo.loading} />
         </section>
       )}
       {others.length > 0 && <SportLeagues leagues={others} alone={!showBowling} />}
@@ -107,11 +113,26 @@ function SportLeagues({ leagues, alone }: { leagues: SportLeagueLink[]; alone: b
  * Perfil global del boliche: puntaje y promedio de la cuenta sumando todas sus ligas (y torneos sin liga), y los
  * de cada liga. La cuenta es su jugador en cada liga. Solo cuentan los juegos verificados, igual que en cada liga.
  * Recibe solo las membresías del boliche (ver `splitBySport`): los otros deportes no tienen pinos ni promedio.
+ * Los juegos sueltos (`solo`: sin liga ni foto) suman al total, a la gráfica y a cada año, y tienen su fila en «Por
+ * liga»; el promedio y el ranking de cada liga siguen siendo solo de la liga.
  */
-export function GlobalStats({ memberships, leagues }: { memberships: Member[]; leagues: League[] }) {
+export function GlobalStats({
+  memberships,
+  leagues,
+  solo = [],
+  soloLoading = false,
+}: {
+  memberships: Member[];
+  leagues: League[];
+  solo?: SoloSession[];
+  soloLoading?: boolean;
+}) {
   const links = memberships.filter((m) => m.playerId).map((m) => ({ lid: m.leagueId, playerId: m.playerId! }));
   const across = usePlayerAcrossLeagues(links);
+  const leagueOf = useMemo(() => new Map(leagues.map((l) => [l.id, l])), [leagues]);
   const nameOf = useMemo(() => new Map(leagues.map((l) => [l.id, l.name])), [leagues]);
+  // Del más viejo al más nuevo, como los de las ligas.
+  const soloOld = useMemo(() => [...solo].reverse(), [solo]);
 
   const played = useMemo<Played[]>(
     () =>
@@ -124,7 +145,8 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
     [across.data],
   );
 
-  if (!links.length) {
+  if (!links.length && !solo.length) {
+    if (soloLoading) return <StatsSkeleton />;
     // Recién unido: su jugador se está creando (si no aparece, "Mis juegos" lo vuelve a intentar).
     if (memberships.length) {
       return (
@@ -139,47 +161,69 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
     }
     return (
       <Card className="p-4 text-sm text-muted">
-        Únete a una liga o crea la tuya: aquí verás tus números de todas tus ligas juntas.
+        Únete a una liga, crea la tuya o{' '}
+        <Link to="/juegos-sueltos" className="font-medium text-accent">
+          anota un juego suelto
+        </Link>
+        : aquí verás tus números de todo junto.
       </Card>
     );
   }
   if (across.error) return <LoadError error={across.error} />;
-  if (across.loading) return <StatsSkeleton />;
+  if (across.loading || (soloLoading && !solo.length)) return <StatsSkeleton />;
 
-  const all = playerStats(played.map((p) => p.entry));
-  // Strikes y spares de los juegos anotados por cuadros que cuentan.
-  const frames = played.flatMap(({ entry }) =>
-    Object.entries(entry.frames ?? {})
-      .filter(([i]) => entry.scores?.[+i] != null && entry.photos?.[+i] != null)
-      .map(([, f]) => frameStats(f.rolls)),
-  );
+  const soloEntries = soloOld.map(soloAsEntry);
+  const all = playerStats([...played.map((p) => p.entry), ...soloEntries]);
+  // Strikes y spares de los juegos anotados por cuadros que cuentan (los sueltos cuentan todos).
+  const frames = [
+    ...played.flatMap(({ entry }) =>
+      Object.entries(entry.frames ?? {})
+        .filter(([i]) => entry.scores?.[+i] != null && entry.photos?.[+i] != null)
+        .map(([, f]) => frameStats(f.rolls)),
+    ),
+    ...solo.flatMap((s) =>
+      Object.entries(s.frames ?? {})
+        .filter(([i]) => s.scores[+i] != null)
+        .map(([, f]) => frameStats(f.rolls)),
+    ),
+  ];
   const strikes = frames.reduce((n, f) => n + f.strikes, 0);
   const spares = frames.reduce((n, f) => n + f.spares, 0);
   const counted = played.filter(({ entry }) => entry.scores?.some((s, i) => s != null && entry.photos?.[i] != null));
   const tournaments = counted.filter((p) => p.event.type === 'torneo').length;
   const practices = counted.length - tournaments;
 
-  // Últimos 30 juegos que cuentan, de todas las ligas, del más viejo al más nuevo.
-  const points: ChartPoint[] = played
-    .flatMap(({ lid, entry, event }) =>
+  // Últimos 30 juegos que cuentan, de todas las ligas y los sueltos, del más viejo al más nuevo.
+  const points: ChartPoint[] = [
+    ...played.flatMap(({ lid, entry, event }) =>
       (entry.scores ?? []).flatMap((s, i) =>
         s != null && entry.photos?.[i]
-          ? [{ score: s, label: `${nameOf.get(lid) ?? 'Liga'} · ${eventLabel(event)} · J${i + 1} · ${formatDate(event.date)}` }]
+          ? [{ date: event.date, score: s, label: `${nameOf.get(lid) ?? 'Liga'} · ${eventLabel(event)} · J${i + 1} · ${formatDate(event.date)}` }]
           : [],
       ),
-    )
-    .slice(-30);
+    ),
+    ...soloOld.flatMap((s) =>
+      s.scores.map((score, i) => ({
+        date: s.playedOn,
+        score,
+        label: `${['Juego suelto', s.venue.trim()].filter(Boolean).join(' · ')} · J${i + 1} · ${formatDate(s.playedOn)}`,
+      })),
+    ),
+  ]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-30)
+    .map(({ score, label }) => ({ score, label }));
 
   // Por liga con los mismos juegos que el total (así las ligas suman el global); también las que no tienen juegos.
   const perLeague = links
     .map(({ lid }) => ({ lid, name: nameOf.get(lid) ?? 'Liga', stats: playerStats(played.filter((p) => p.lid === lid).map((p) => p.entry)) }))
     .sort((a, b) => b.stats.games - a.stats.games || a.name.localeCompare(b.name));
+  const soloStats = solo.length ? playerStats(soloEntries) : null;
 
-  const byYear = new Map<string, Entry[]>();
-  for (const p of played) {
-    const y = p.event.date.slice(0, 4);
-    byYear.set(y, [...(byYear.get(y) ?? []), p.entry]);
-  }
+  const byYear = new Map<string, Pick<Entry, 'scores' | 'photos'>[]>();
+  const addYear = (date: string, e: Pick<Entry, 'scores' | 'photos'>) => byYear.set(date.slice(0, 4), [...(byYear.get(date.slice(0, 4)) ?? []), e]);
+  for (const p of played) addYear(p.event.date, p.entry);
+  soloOld.forEach((s, i) => addYear(s.playedOn, soloEntries[i]));
   const years = [...byYear.entries()].sort(([a], [b]) => b.localeCompare(a));
 
   return (
@@ -194,15 +238,24 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs">
-        <Badge tone="accent">
-          <Globe className="size-3" /> {perLeague.length} {perLeague.length === 1 ? 'liga' : 'ligas'}
-        </Badge>
-        <Badge>
-          <Trophy className="size-3" /> {tournaments} {tournaments === 1 ? 'torneo' : 'torneos'}
-        </Badge>
-        <Badge>
-          <CalendarDays className="size-3" /> {practices} {practices === 1 ? 'práctica' : 'prácticas'}
-        </Badge>
+        {links.length > 0 && (
+          <>
+            <Badge tone="accent">
+              <Globe className="size-3" /> {perLeague.length} {perLeague.length === 1 ? 'liga' : 'ligas'}
+            </Badge>
+            <Badge>
+              <Trophy className="size-3" /> {tournaments} {tournaments === 1 ? 'torneo' : 'torneos'}
+            </Badge>
+            <Badge>
+              <CalendarDays className="size-3" /> {practices} {practices === 1 ? 'práctica' : 'prácticas'}
+            </Badge>
+          </>
+        )}
+        {soloStats && (
+          <Badge>
+            <Target className="size-3" /> {soloStats.games} {soloStats.games === 1 ? 'juego suelto' : 'juegos sueltos'}
+          </Badge>
+        )}
         {frames.length > 0 && (
           <>
             <Badge tone="accent">{strikes} strikes</Badge>
@@ -232,23 +285,17 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
         <h3 className="text-sm font-semibold text-muted">Por liga</h3>
         <Card className="divide-y divide-line overflow-hidden">
           {perLeague.map(({ lid, name, stats }) => (
-            <Link key={lid} to={`/l/${lid}/perfil`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{name}</div>
-                <div className="text-xs text-muted tabular-nums">
-                  {stats.games} {stats.games === 1 ? 'juego' : 'juegos'}
-                  {stats.pins > 0 && ` · puntaje ${stats.pins.toLocaleString('es-DO')}`}
-                  {stats.high > 0 && ` · mejor ${stats.high}`}
-                  {stats.pending > 0 && ` · ${stats.pending} por verificar`}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-lg font-bold tabular-nums">{stats.autoAverage ?? '—'}</div>
-                <div className="text-[11px] text-muted">promedio</div>
-              </div>
-              <ChevronRight className="size-4 text-muted" />
-            </Link>
+            <StatsRow
+              key={lid}
+              to={`/l/${lid}/perfil`}
+              icon={<LeagueIcon league={leagueOf.get(lid) ?? { id: lid, sport: 'bowling', kind: 'liga' }} />}
+              name={name}
+              stats={stats}
+            />
           ))}
+          {soloStats && (
+            <StatsRow to="/juegos-sueltos" icon={<LeagueIcon league={SOLO_ICON} />} name="Juegos sueltos" stats={soloStats} />
+          )}
         </Card>
       </section>
 
@@ -283,5 +330,31 @@ export function GlobalStats({ memberships, leagues }: { memberships: Member[]; l
         </section>
       )}
     </div>
+  );
+}
+
+/** El cuadrito de «Juegos sueltos» en «Por liga»: el del boliche (no hay liga con logo). */
+const SOLO_ICON = { id: 'juegos-sueltos', sport: 'bowling', kind: 'liga' } as const;
+
+/** Una fila de «Por liga»: juegos, puntaje, mejor juego y promedio, y abre sus números. */
+function StatsRow({ to, icon, name, stats }: { to: string; icon: ReactNode; name: string; stats: PlayerStats }) {
+  return (
+    <Link to={to} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+      {icon}
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{name}</div>
+        <div className="text-xs text-muted tabular-nums">
+          {stats.games} {stats.games === 1 ? 'juego' : 'juegos'}
+          {stats.pins > 0 && ` · puntaje ${stats.pins.toLocaleString('es-DO')}`}
+          {stats.high > 0 && ` · mejor ${stats.high}`}
+          {stats.pending > 0 && ` · ${stats.pending} por verificar`}
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="text-lg font-bold tabular-nums">{stats.autoAverage ?? '—'}</div>
+        <div className="text-[11px] text-muted">promedio</div>
+      </div>
+      <ChevronRight className="size-4 text-muted" />
+    </Link>
   );
 }

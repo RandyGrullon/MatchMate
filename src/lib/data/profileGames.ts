@@ -4,18 +4,20 @@ import { BackendError } from '../backend/types';
 import { getUserId, invalidate, queryClient, remember, rpc, type Live } from './client';
 import { peopleKeys, peopleTags, patchPaged, usePaged, type Paged } from './follows';
 import { tags } from './keys';
+import { soloTags } from './solo';
 
 /**
  * Los juegos del perfil (de todos los deportes), los de las cuentas que sigo (el inicio), los números por deporte
  * y los me gusta. La base decide qué se ve (20260928000200_social.sql): solo ligas que la cuenta que mira puede
- * leer y nunca las que tienen menores.
+ * leer y nunca las que tienen menores. Los juegos sueltos de boliche compartidos (sin liga, 20260929000300_sueltos_logos.sql)
+ * salen como otro tipo de juego: 'solo'.
  *
  * RPC: profile_games, following_games, profile_stats, set_game_like.
  */
 
 // ---------- Tipos ----------
 
-export type GameKind = 'bowling' | 'match' | 'golf' | 'swim';
+export type GameKind = 'bowling' | 'match' | 'golf' | 'swim' | 'solo';
 
 export interface BowlingGameDetail {
   /** Pinos de cada juego anotado. */
@@ -63,6 +65,17 @@ export interface SwimGameDetail {
   place: number | null;
 }
 
+/** Juego suelto de boliche (de ninguna liga ni torneo). */
+export interface SoloGameDetail {
+  /** «Juego suelto». */
+  title: string;
+  /** Bolera (null si no la puso). */
+  venue: string | null;
+  scores: number[];
+  series: number;
+  high: number;
+}
+
 interface GameBase {
   /** Clave única en las listas (y cursor de las páginas). En un partido: `m:<partido>:<jugador>`. */
   key: string;
@@ -87,11 +100,20 @@ interface GameBase {
   likedByMe: boolean;
 }
 
+/** Un juego suelto no es de ninguna liga: sin jugador ni liga, y la ruta solo la tiene su dueño (null para los demás). */
+interface SoloBase extends Omit<GameBase, 'playerId' | 'leagueId' | 'leagueName' | 'url'> {
+  playerId: null;
+  leagueId: null;
+  leagueName: null;
+  url: string | null;
+}
+
 export type ProfileGame =
   | (GameBase & { kind: 'bowling'; detail: BowlingGameDetail })
   | (GameBase & { kind: 'match'; detail: MatchGameDetail })
   | (GameBase & { kind: 'golf'; detail: GolfGameDetail })
-  | (GameBase & { kind: 'swim'; detail: SwimGameDetail });
+  | (GameBase & { kind: 'swim'; detail: SwimGameDetail })
+  | (SoloBase & { kind: 'solo'; detail: SoloGameDetail });
 
 /** Números por deporte de una cuenta (lo que ve la cuenta que mira). */
 export interface ProfileStats {
@@ -202,8 +224,10 @@ export async function setGameLike(game: Pick<ProfileGame, 'kind' | 'id' | 'playe
     patchGameLikes(game, () => ({ likes: res.likes, likedByMe: res.liked }));
     return res;
   } finally {
-    // Los me gusta recibidos del dueño; en el boliche el me gusta es una reacción de la liga.
-    const extra = game.kind === 'bowling' ? [tags.social(game.leagueId), tags.feeds] : [];
+    // Los me gusta recibidos del dueño; en el boliche el me gusta es una reacción de la liga. Un juego suelto no
+    // tiene liga: su número sale también en la lista de juegos sueltos del dueño.
+    const extra =
+      game.kind === 'bowling' && game.leagueId ? [tags.social(game.leagueId), tags.feeds] : game.kind === 'solo' ? [soloTags.user(game.userId)] : [];
     // Si salió bien, las listas ya tienen lo del servidor: solo el perfil y las reacciones de la liga.
     if (ok) {
       queryClient.invalidateKey(peopleKeys.profile(game.userId));
@@ -222,7 +246,8 @@ const RESULT_TEXT: Record<'win' | 'loss' | 'draw', string> = { win: 'Ganó', los
 /** Resumen corto del juego para la tarjeta: «Serie 400 · alto 210», «Ganó 6-4 6-3 vs Otra / Nuevo», «78 golpes · 18 hoyos», «50 m libre · 28.45 · 2.º». */
 export function gameSummary(g: ProfileGame): string {
   switch (g.kind) {
-    case 'bowling': {
+    case 'bowling':
+    case 'solo': {
       const n = g.detail.scores.length;
       if (!n) return 'Sin juegos anotados';
       return n === 1 ? `${g.detail.series} pinos` : `Serie ${g.detail.series} · alto ${g.detail.high}`;

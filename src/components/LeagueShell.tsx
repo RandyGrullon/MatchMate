@@ -31,6 +31,7 @@ import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
 import { dispatchLeague, useSportScreens } from '../sports/screens';
 import { SportBadge } from '../pages/sports/SportBits';
 import { usePendingClaimCount } from './claims/data';
+import { LeagueLogo } from './home/LeagueCard';
 import { useNotifications } from './Notifications';
 import { useCreateMenu } from './CreateMenu';
 import { InviteSheet } from './invite/InviteSheet';
@@ -160,6 +161,7 @@ export default function LeagueShell() {
       aria-label={`${ctx.league.name}: cambiar de liga`}
       data-tour="cambiar-liga"
     >
+      <LeagueLogo path={ctx.league.logoPath} className="mr-0.5 size-6 rounded-md" />
       <span className="truncate">{ctx.league.name}</span>
       <ChevronDown className="size-4 shrink-0 text-muted" />
     </button>
@@ -298,13 +300,18 @@ function LeagueSwitcher({ open, onClose, current }: { open: boolean; onClose: ()
             onClick={onClose}
             className={cx('flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-surface-2', l.id === current && 'bg-accent-soft')}
           >
-            {l.kind === 'torneo' ? (
-              <Trophy className="size-4 text-muted" />
-            ) : l.visibility === 'private' ? (
-              <Lock className="size-4 text-muted" />
-            ) : (
-              <Globe className="size-4 text-muted" />
-            )}
+            {/* Su logo si tiene; si no, si es torneo, privada o pública. */}
+            <span className="flex size-7 shrink-0 items-center justify-center" aria-hidden="true">
+              <LeagueLogo path={l.logoPath} className="size-7 rounded-lg">
+                {l.kind === 'torneo' ? (
+                  <Trophy className="size-4 text-muted" />
+                ) : l.visibility === 'private' ? (
+                  <Lock className="size-4 text-muted" />
+                ) : (
+                  <Globe className="size-4 text-muted" />
+                )}
+              </LeagueLogo>
+            </span>
             <span className="flex-1 truncate font-medium">{l.name}</span>
             {multi && <SportBadge sport={leagueSport(l)} />}
             {l.id === current && <Check className="size-4 text-accent" />}

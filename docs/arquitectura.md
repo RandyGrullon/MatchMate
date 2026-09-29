@@ -58,10 +58,20 @@ Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, 
   siempre dice en qué deporte estás; entrar a una liga lo cambia al de la liga. Con deporte, Home, Eventos y Avisos
   son de ese deporte y la app toma su color. Rutas: `/` Home de todos (si hay deporte activo manda a `/d/:sport`;
   volver atrás hasta `/` sí quita el deporte), `/d/:sport` Home del deporte, `/ligas` Eventos, `/avisos` página de
-  avisos, `/u/:userId` perfil público, `/perfil` el propio, `/buscar` buscar personas (nombre o @usuario) e
-  `/invitacion/:inviteId` una invitación a una liga (ahí llevan el push y el aviso de la campana). «Home» de la
-  barra: fuera del Home del deporte va a él; en él, quita el deporte y va a `/`. Para ir al Home de todos:
-  `setActiveSport(null)` y luego `/`.
+  avisos, `/u/:userId` perfil público, `/perfil` el propio, `/buscar` buscar personas (nombre o @usuario),
+  `/invitacion/:inviteId` una invitación a una liga (ahí llevan el push y el aviso de la campana),
+  `/juegos-sueltos` los juegos de boliche sin liga ni torneo, `/acerca` qué es MatchMate y `/contacto` cómo
+  escribirnos. «Home» de la barra: fuera del Home del deporte va a él; en él, quita el deporte y va a `/`. Para ir
+  al Home de todos: `setActiveSport(null)` y luego `/`.
+- **Barra** (`navSections` en `src/components/Shell.tsx`): con cuenta Home · Eventos · (Crear) · Avisos · Perfil;
+  sin cuenta Home · Contáctanos · (Crear) · Entrar · Acerca de (mientras se lee la sesión guardada se quedan las de
+  con cuenta). Con cuenta, /acerca y /contacto están al final de /cuenta. Las dos páginas no guardan nada:
+  «Escribir el correo» abre un `mailto:` con el asunto y el mensaje listos.
+- **Volver a donde iba** (`src/lib/auth.tsx`, clave `mm:despues-de-entrar`): quien abre /login?next=<ruta> sin
+  cuenta (una invitación, una liga) deja la ruta guardada 24 h (solo rutas de la app: `afterLoginPath`); viaja en
+  el `redirectTo` de Google y en el `emailRedirectTo` del correo de confirmar, y `ResumeAfterLogin` (dentro del
+  router) va ahí una sola vez al abrirse la sesión (también en otra pestaña) y la borra. Con el link de recuperar
+  la contraseña no se mueve.
 - Cola sin conexión solo para lo de cancha: anotar juegos/puntos, en vivo, «Voy», +1 juego, envíos.
   El resto lee en línea con copia persistida para ver sin señal.
 - Textos en español dominicano sencillo, comentarios en español (como BowlingX); identificadores en inglés.
@@ -80,7 +90,9 @@ ni el backend:
 ## Pantallas por deporte
 
 - `src/sports/registry.ts`: datos de cada deporte (nombre, familia, ícono, cancha/pista, reglas por defecto y su
-  validación, tipos de evento, si usa fotos). `src/sports/status.ts` lee `sport_status` (abierto o beta).
+  validación, tipos de evento, si usa fotos). `src/sports/status.ts` lee `sport_status` (abierto, beta o cerrado).
+  Desde `20260929000300_sueltos_logos.sql` todos están abiertos (y `DEFAULT_SPORT_STATUS` también); la consola del
+  superadmin puede volver a poner uno en beta (solo él lo ve y crea ligas) o cerrarlo.
 - `src/sports/screens.tsx` es el contrato: cada deporte exporta por defecto un `SportScreens`
   (`Home`, `Event`, `Standings?`, `Feed?`, `MyProfile?`, `Player?`, `adminTabs?`, `tabs?`) desde
   `src/pages/sports/<sportId>/screens.tsx`. La app lo encuentra sola con `import.meta.glob`: las rutas de la liga
@@ -94,8 +106,9 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `legal` (aceptación de los términos), `reports` (reportes de contenido), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
-cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `legal` (aceptación de los términos), `reports` (reportes de contenido), `solo` (juegos sueltos de boliche), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`). Fuera de la carpeta,
+`src/lib/logos.ts` (logo de ligas y torneos).
 
 ## Jugadores sin cuenta y reclamos
 
@@ -298,6 +311,50 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   saber quién reportó y sin los de lo suyo; sale solo si la liga tuvo alguno). Un reporte cerrado no se vuelve a
   decidir (`cerrado`). «Descargar mis datos» trae también los reportes que hizo la cuenta (`my_reports`).
   Migración `20260929000900_legal.sql`.
+
+## Juegos sueltos (boliche sin liga)
+
+- `solo_sessions`: los juegos de boliche de una cuenta fuera de una liga o torneo (fecha, bolera, nota, de 1 a 10
+  juegos de 0 a 300, cuadros opcionales con el formato de `entries.frames` y `shared`: si sale en el perfil). Cada
+  cuenta lee los suyos. `save_solo_session` crea o cambia (idempotente con `p_op_id`, 200 por día),
+  `delete_solo_session` borra y `solo_sessions_of` lee (de otra cuenta, solo los compartidos y si se ve). Sin
+  tombstone: el tiempo real `solo` en `user:<dueño>` hace volver a leer. Los ids borrados quedan en
+  `private.solo_deleted`: un guardado viejo de la cola de otro teléfono no revive uno borrado (`no_existe`).
+- Lo social: los compartidos salen en el perfil y en el inicio de quien sigue como juego `solo` (sin liga; «Ver»
+  solo para su dueño), cuentan en `public_profile` y en el boliche de `profile_stats`, y reciben me gusta
+  (`set_game_like('solo')`, tabla `solo_likes`: `game_likes` exige liga y jugador) con su aviso en la campana.
+- Cliente `src/lib/data/solo.ts`: guardar va por la cola sin conexión (grupo `solo`, una clave de colapso por
+  juego) y se ve de una, encima de lo del servidor; borrar necesita señal salvo uno que no ha salido del teléfono.
+  `soloSummary` usa las cuentas de `src/lib/stats.ts` (todos los juegos cuentan: no hay foto que verificar).
+- Pantalla `/juegos-sueltos` (`src/pages/SoloGamesPage.tsx`: números y lista por mes; `?juego=<id>` abre uno,
+  `?nuevo=1` uno nuevo) con la hoja `src/components/solo/SoloGameSheet.tsx` (cuadros con `ScoreEntryModal`). Se
+  llega desde Crear (sin deporte o en el boliche), la portada del Home del boliche y /perfil. Mis estadísticas
+  (`GlobalStats`) los suman al total, a la gráfica y a cada año, con su fila «Juegos sueltos» en «Por liga»; el
+  promedio y el ranking de cada liga siguen siendo solo de la liga.
+
+## Logo de ligas y torneos
+
+- `leagues.logo_path` ('<liga>/<uuid>.webp|jpg|png', con CHECK) en el bucket **público** `logos` (256 kB, WebP,
+  JPEG o PNG; `20260929000310_logos_supabase.sql`, solo Supabase): cualquiera con el link lo ve (la página de
+  privacidad lo dice). Cada subida se reserva antes con `begin_logo_upload` (admin de la liga, 30 por día) y Storage
+  solo acepta rutas reservadas, por quien las reservó, sin bloquear y por un día (`private.can_upload_logo_path`):
+  nadie guarda archivos en el bucket sin pasar por el límite. Cada logo es un archivo nuevo (sin UPDATE).
+- `set_league_logo` (admin; solo una ruta reservada, que se usa una vez; null lo quita, y eso cuenta en los mismos
+  30 por día) devuelve el anterior para borrarlo de Storage. Lo que deja de usarse (el anterior, el de una liga
+  borrada, las reservas sin usar de un día: `private.logo_uploads_cleanup`, a diario con pg_cron) va a
+  `private.storage_purge_queue` con bucket `logos`, y mientras está ahí cualquier cuenta sin bloquear lo puede borrar
+  (`private.can_remove_logo_path`). Lo que ve quien todavía no es de la liga trae el logo: `invite_preview` (columna
+  `logo_path`), `invite_details`, `my_league_invites`, `league_invite_details` y la consola (`admin_league_row`).
+- Cliente `src/lib/logos.ts`: `compressLogo` (en `src/lib/image.ts`: el cuadrado del centro a 256 px, WebP o JPEG,
+  siempre sobre blanco para que un logo transparente se vea en claro y en oscuro, ≤ 120 kB), `uploadLeagueLogo`
+  (reserva, sube, `set_league_logo`, borra el anterior), `removeLeagueLogo` y `useLogo` (URL pública con
+  `storage.publicUrl`, recordada en memoria; mientras llega, un cuadro vacío del mismo tamaño). Borrar la liga borra
+  su archivo después, solo si la liga se borró (`deleteLeagueWithLogo`).
+- `LeagueIcon` / `LeagueLogo` (`src/components/home/LeagueCard.tsx`) lo muestran en las filas de ligas, el
+  encabezado y el cambiador de liga de `LeagueShell`, la portada, el Home de la liga de boliche, /unirse,
+  /invitacion, la tarjeta de invitaciones de /avisos, «Seguir en» del Home y «Por liga» de Mis estadísticas; sin
+  logo (o si no carga), el ícono de siempre. Se pone en Admin › Liga (en un torneo, › Datos) y, opcional, al crear.
+- Migración `20260929000300_sueltos_logos.sql` (también abre todos los deportes y trae los juegos sueltos).
 
 ## Sin señal y errores
 

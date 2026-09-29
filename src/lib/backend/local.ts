@@ -207,6 +207,8 @@ async function ensureLocalAuth(db: PGlite): Promise<boolean> {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BUCKET = /^[a-z0-9][a-z0-9_-]*$/;
+/** Bucket público de los logos de las ligas (src/lib/logos.ts): sus políticas se revisan aquí también. */
+const LOGOS = 'logos';
 
 interface LocalUser {
   userId: string;
@@ -450,30 +452,47 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
     if (url) URL.revokeObjectURL(url);
     objectUrls.delete(key);
   };
+  /** Un blob: URL por archivo, el mismo cada vez (se suelta al reemplazarlo o borrarlo); en Node, un data: URL. */
+  const fileUrl = async (bucket: string, path: string) => {
+    const key = fileKey(bucket, path);
+    const file = await files.get(key);
+    if (!file) throw new BackendError('No existe el archivo.', 'not_found', 'NoSuchKey');
+    if (!isBrowser() || typeof URL.createObjectURL !== 'function') return toDataUrl(file);
+    let url = objectUrls.get(key);
+    if (!url) {
+      url = URL.createObjectURL(new Blob([file.data], { type: file.contentType }));
+      objectUrls.set(key, url);
+    }
+    return url;
+  };
   const storage: BackendStorage = {
     async upload(bucket, path, data, contentType) {
       const key = fileKey(bucket, path);
       // Como las políticas de Storage: sin cuenta no se sube nada.
       if (!current) throw new BackendError('Entra a tu cuenta para subir archivos.', 'permission', '403');
+      // Logos: como mm_logos_upload (20260929000310_logos_supabase.sql), solo un admin de esa liga en su carpeta.
+      if (bucket === LOGOS) {
+        const ok = await asUser((tx) => tx.query<{ ok: boolean }>('select private.can_upload_logo_path($1) as ok', [path]));
+        if (!ok.rows[0]?.ok) throw new BackendError('new row violates row-level security policy', 'permission', '403');
+      }
       await files.put(key, { data: await data.arrayBuffer(), contentType });
       dropUrl(key);
     },
-    async signedUrl(bucket, path) {
-      const key = fileKey(bucket, path);
-      const file = await files.get(key);
-      if (!file) throw new BackendError('No existe el archivo.', 'not_found', 'NoSuchKey');
-      if (!isBrowser() || typeof URL.createObjectURL !== 'function') return toDataUrl(file);
-      // Un blob: URL por archivo, el mismo cada vez (se suelta al reemplazarlo o borrarlo).
-      let url = objectUrls.get(key);
-      if (!url) {
-        url = URL.createObjectURL(new Blob([file.data], { type: file.contentType }));
-        objectUrls.set(key, url);
-      }
-      return url;
-    },
+    signedUrl: (bucket, path) => fileUrl(bucket, path),
+    // Bucket público (logos): lo mismo, también sin cuenta.
+    publicUrl: (bucket, path) => fileUrl(bucket, path),
     async remove(bucket, paths) {
-      const keys = paths.map((p) => fileKey(bucket, p));
+      let keys = paths.map((p) => fileKey(bucket, p));
       if (!current) throw new BackendError('Entra a tu cuenta para borrar archivos.', 'permission', '403');
+      // Logos: como mm_logos_delete, los de las ligas que administra y los que ya no usa nadie (en la cola de Storage);
+      // los demás se saltan sin error, igual que Storage.
+      if (bucket === LOGOS) {
+        const ok = await asUser((tx) =>
+          tx.query<{ path: string }>('select p as path from unnest($1::text[]) as p where private.can_remove_logo_path(p)', [paths]),
+        );
+        const allowed = new Set(ok.rows.map((r) => r.path));
+        keys = keys.filter((_, i) => allowed.has(paths[i]));
+      }
       await files.delete(keys);
       keys.forEach(dropUrl);
     },

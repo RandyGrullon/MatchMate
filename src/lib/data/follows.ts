@@ -338,11 +338,12 @@ export type SocialNoticeRow =
       at: string;
       userId: string;
       name: string;
-      gameKind: 'bowling' | 'match' | 'golf' | 'swim';
+      gameKind: 'bowling' | 'match' | 'golf' | 'swim' | 'solo';
       id: string;
-      playerId: string;
-      leagueId: string;
-      leagueName: string;
+      /** null en un juego suelto (no es de ninguna liga). */
+      playerId: string | null;
+      leagueId: string | null;
+      leagueName: string | null;
       sport: string | null;
       url: string;
     };
@@ -361,7 +362,7 @@ export interface SocialNotice {
   sport: string | null;
 }
 
-const GAME_NOUN: Record<string, string> = { bowling: 'tu juego', match: 'tu partido', golf: 'tu ronda', swim: 'tu prueba' };
+const GAME_NOUN: Record<string, string> = { bowling: 'tu juego', match: 'tu partido', golf: 'tu ronda', swim: 'tu prueba', solo: 'tu juego suelto' };
 
 const cleanName = (name: unknown) => (typeof name === 'string' && name.trim() ? name.trim() : 'Alguien');
 

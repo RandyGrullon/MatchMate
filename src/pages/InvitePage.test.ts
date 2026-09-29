@@ -8,6 +8,7 @@ import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeagueInviteDetails } from '../lib/data/invites';
+import { primeLogoUrl } from '../lib/logos';
 import { FeedbackProvider } from '../components/feedback';
 
 const state = vi.hoisted(() => ({
@@ -42,6 +43,7 @@ const invite = (extra: Partial<LeagueInviteDetails> = {}): LeagueInviteDetails =
   league: {
     id: 'l1',
     name: 'Liga Norte',
+    logoPath: null,
     sport: 'bowling',
     kind: 'liga',
     visibility: 'private',
@@ -128,6 +130,16 @@ describe('pantalla de una invitación', () => {
     expect(out.match(/type="radio"/g)).toHaveLength(3);
     expect(text(out)).toContain('Aceptar como Beto Ruiz');
     expect(text(out)).toContain('No estoy en la lista');
+  });
+
+  it('pendiente con logo: la imagen de la liga en vez del ícono del deporte', () => {
+    expect(render()).not.toContain('<img');
+    const path = 'l1/0199a1b2-c3d4-7e5f-8a9b-000000000001.webp';
+    primeLogoUrl(path, 'https://x/logos/l1.webp');
+    show(invite({ league: { ...invite().league, logoPath: path } }));
+    const out = render();
+    expect(out).toContain('src="https://x/logos/l1.webp"');
+    expect(text(out)).toContain('Liga Norte');
   });
 
   it('un torneo sin quien invitó (ya no tiene cuenta)', () => {

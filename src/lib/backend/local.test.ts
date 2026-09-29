@@ -372,6 +372,7 @@ describe('backend local (PGlite)', () => {
       await b.storage.upload('scoreboards', 'l1/p1.webp', blob, 'image/webp');
       const url = await b.storage.signedUrl('scoreboards', 'l1/p1.webp', 60);
       expect(url).toBe(`data:image/webp;base64,${btoa(String.fromCharCode(1, 2, 3, 250))}`);
+      expect(await b.storage.publicUrl('scoreboards', 'l1/p1.webp')).toBe(url);
       await b.storage.remove('scoreboards', ['l1/p1.webp']);
       await expectError(b.storage.signedUrl('scoreboards', 'l1/p1.webp'), 'not_found');
       await expectError(b.storage.upload('scoreboards', '../fuera.webp', blob, 'image/webp'), 'validation');

@@ -42,6 +42,8 @@ export interface LeagueRow {
   require_photo: boolean;
   has_minors: boolean;
   tz: string;
+  /** Falta en filas guardadas en el teléfono antes del logo. */
+  logo_path?: string | null;
   created_at: string;
 }
 
@@ -191,6 +193,7 @@ export const toLeague = (r: LeagueRow): Wire<League> => ({
   sport: r.sport,
   hasMinors: r.has_minors,
   tz: r.tz,
+  logoPath: r.logo_path ?? null,
   createdAt: r.created_at ?? null,
 });
 

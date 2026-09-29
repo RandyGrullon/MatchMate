@@ -13,6 +13,7 @@ import { AppRouter } from './components/GestureGuards';
 import { NotificationsProvider } from './components/Notifications';
 import { CreateMenuProvider } from './components/CreateMenu';
 import { PwaPrompts } from './components/PwaPrompts';
+import { ResumeAfterLogin } from './components/ResumeAfterLogin';
 import { AppShell } from './components/Shell';
 import { Loading, TopLoader } from './components/ui';
 
@@ -26,6 +27,7 @@ const LeagueShell = lazy(() => import('./components/LeagueShell'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const SportHomePage = lazy(() => import('./pages/SportHomePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const SoloGamesPage = lazy(() => import('./pages/SoloGamesPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const PeopleSearchPage = lazy(() => import('./pages/PeopleSearchPage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
@@ -39,6 +41,8 @@ const SuperAdminPage = lazy(() => import('./pages/SuperAdminPage'));
 const SplashPreviewPage = lazy(() => import('./pages/SplashPreviewPage'));
 const PrivacyPage = lazy(() => import('./pages/legal/PrivacyPage'));
 const TermsPage = lazy(() => import('./pages/legal/TermsPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
 const LeagueHome = lazy(() => import('./pages/LeagueHomePage'));
 const EventPage = lazy(() => import('./pages/EventPage'));
 const PlayerPage = lazy(() => import('./pages/PlayerPage'));
@@ -138,6 +142,8 @@ export default function App() {
                       {/* Home de un deporte (la app queda en ese deporte). */}
                       <Route path="/d/:sport" element={<Screen area="deporte" framed><SportHomeRoute /></Screen>} />
                       <Route path="/avisos" element={<Screen area="avisos" framed><NotificationsPage /></Screen>} />
+                      {/* Juegos de boliche fuera de una liga o torneo (?juego=<id> abre uno; ?nuevo=1, uno nuevo). */}
+                      <Route path="/juegos-sueltos" element={<Screen area="juegos-sueltos" framed><SoloGamesPage /></Screen>} />
                       <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
                       <Route path="/buscar" element={<Screen area="buscar" framed><PeopleSearchPage /></Screen>} />
                       {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}
@@ -151,6 +157,9 @@ export default function App() {
                       <Route path="/cuenta" element={<Screen area="cuenta" framed><AccountPage /></Screen>} />
                       <Route path="/privacidad" element={<Screen area="privacidad" framed><PrivacyPage /></Screen>} />
                       <Route path="/terminos" element={<Screen area="terminos" framed><TermsPage /></Screen>} />
+                      {/* Sin cuenta, la barra lleva aquí en lugar de Perfil y Eventos (con cuenta, desde Configuración). */}
+                      <Route path="/acerca" element={<Screen area="acerca" framed><AboutPage /></Screen>} />
+                      <Route path="/contacto" element={<Screen area="contacto" framed><ContactPage /></Screen>} />
                       <Route path="/superadmin" element={<Screen area="superadmin" framed><SuperAdminPage /></Screen>} />
                       {/* La ruta fija gana a la de sección: /superadmin/marca sigue siendo la página del logo. */}
                       <Route
@@ -184,6 +193,8 @@ export default function App() {
                 </Suspense>
               </CreateMenuProvider>
             </NotificationsProvider>
+            {/* Después de entrar o crear la cuenta, sigue a donde iba (una invitación, una liga). */}
+            <ResumeAfterLogin />
             <PwaPrompts />
           </AppRouter>
         </FeedbackProvider>

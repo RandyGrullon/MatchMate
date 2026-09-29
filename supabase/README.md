@@ -41,6 +41,8 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929000600_organizador.sql` | Organizador (ver «Organizador»): ligas públicas vivas y más activas primero (`public_leagues_feed`, también sin cuenta) y tope de 5 ligas o torneos por día y 20 cada 30 días por cuenta (trigger `leagues_quota`); pendientes del admin (`league_pending`); juntar jugadores repetidos (`merge_league_players`, `merge_league_players_preview`); menores con tutor, teléfono y permiso en todos los deportes (`create_player` con `p_guardian_phone` y `p_consent`, `set_player_minor`, `player_private.guardian_phone`); suspender un día (`suspend_day_preview`, `suspend_day`); pistas del boliche (`event_lanes`, `assign_lanes`, `set_player_lane`, `clear_lanes`, `publish_lanes`) |
 | `migrations/20260929000700_temporadas.sql` | Temporadas con historia y campeones (`seasons`, `season_awards`, `teams.season_id`, `close_season`, `start_season`, `league_seasons`, `league_champions`), playoffs con series al mejor de 1/3/5/7 (`playoffs`, `playoff_series`, `matches.series_id`, `create_playoffs`, `delete_playoffs`, `sync_playoffs`), lo que el boliche necesita para marcar récords (`bowling_game_context`) y «¿Dónde juego esta semana?» (`public_agenda`, también sin cuenta). Redefine `private.check_free_players`, `private.claim_conflicts` y `private.merge_players` (la de `000600`, con las pistas, y además premios y tablas guardadas por temporada), `league_announce` / `league_announce_reach` (el aviso automático de fin de temporada, `league_announcements.automatic`, no cuenta para el tope diario) y `private.push_category` (`temporada:` en `liga`, «Tus ligas») |
 | `migrations/20260929000900_legal.sql` | Términos y privacidad con versión y aceptación guardada (`legal_acceptances`, `accept_legal`, el trigger `on_auth_user_legal` del registro, `admin_legal_stats`) y reportes de contenido (`reports`, `report_content`, `resolve_report`, `list_reports`, `my_reports`; push a los superadmins). Ver «Términos, privacidad y reportes» |
+| `migrations/20260929000300_sueltos_logos.sql` | Todos los deportes `open`. Juegos sueltos del boliche (`solo_sessions`, `solo_likes`, `save_solo_session`, `delete_solo_session`, `solo_sessions_of`; los compartidos salen en lo social como kind `solo`). Logo de la liga (`leagues.logo_path`, `begin_logo_upload` (la reserva de cada subida, `private.logo_uploads`), `set_league_logo`, `private.can_upload_logo_path`, `private.can_remove_logo_path`, lo que ya no se usa a `storage_purge_queue` con su `bucket`; `logoPath` en `invite_details`, `my_league_invites`, `league_invite_details` y la consola; `invite_preview` con `logo_path`). Redefine `private.social_items`, `social_likes`, `social_games`, `forget_user`, `admin_league_row`, `public_profile`, `profile_stats`, `set_game_like`, `social_notices`, `invite_details`, `my_league_invites`, `league_invite_details` e `invite_preview` |
+| `migrations/20260929000310_logos_supabase.sql` | **Solo Supabase**: bucket público `logos` y sus políticas (la prueba `logos.test.ts` corre este archivo en PGlite) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -101,7 +103,8 @@ o superadmin. **Admin** = dueño o admin de la liga, o superadmin. Toda tabla qu
 ### `sport_status` — todos (también sin cuenta)
 `id` text (`bowling`, `padel`, `tennis`, `pickleball`, `basketball`, `football`, `futsal`, `golf`, `swimming`),
 `family` (`series`|`racket`|`team`), `status` (`open`|`beta`|`closed`), `sort_order`, `updated_at`.
-Hoy solo `bowling` está `open`; los demás `beta` (solo el superadmin crea ligas de ellos).
+Desde `20260929000300_sueltos_logos.sql` todos están `open`. El superadmin puede poner uno en `beta` (solo él crea
+ligas de ese deporte) o `closed` (nadie) con `set_sport_status`.
 
 ### `profiles` — con sesión: el propio (el superadmin, todos). Sin cuenta: nunca (tiene el correo)
 `id` (= auth.users.id), `email`, `name` (1–60), `is_superadmin`, `adult_confirmed_at`, `firebase_uid`,
@@ -123,8 +126,10 @@ falta está activa. Se cambia con `set_push_prefs` (la app la lee con el perfil:
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
 `venue` (≤80), `schedule` (≤80), `season_start` date|null, `season_end` date|null (en la app `''` = null),
 `contact_name` (≤60), `contact_phone` (`^[0-9+]{0,20}$`), `require_photo`, `has_minors`,
-`tz` (zona IANA, por defecto `America/Santo_Domingo`), `rules` jsonb (reglas del deporte), `created_at`, `updated_at`.
-`League.ownerUid` = `owner_id`, `requirePhoto` = `require_photo`, etc.
+`tz` (zona IANA, por defecto `America/Santo_Domingo`), `rules` jsonb (reglas del deporte), `created_at`, `updated_at`,
+`logo_path` (null o `'<id de la liga>/<uuid>.webp|.jpg|.png'` en el bucket público `logos`; CHECK: solo rutas de su
+propia liga; se cambia con `set_league_logo`).
+`League.ownerUid` = `owner_id`, `requirePhoto` = `require_photo`, `logoPath` = `logo_path`, etc.
 
 ### `league_secrets` — admins de esa liga
 `league_id`, `invite_code` (8 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`), `updated_at`. = `getInviteCode`.
@@ -258,14 +263,27 @@ copiados), `wins_a`/`wins_b`, `winner`|null, `bye` (pase directo), `next_series`
 que cambia quién ganó una serie cuando la serie siguiente ya empezó (un juego no anulado con resultado o anotador)
 falla con `cerrado: serie` y no cambia nada: el admin anula primero esos juegos. Reabrir una final (anular su último
 juego) con otro playoff en curso en la temporada: `invalido: playoff`.
+### `solo_sessions` — con sesión: las propias (el superadmin, todas)
+Juegos sueltos del boliche (fuera de una liga o torneo). `id` (lo puede poner el teléfono), `user_id`, `sport`
+(`bowling`), `played_on` date, `venue` (≤ 80), `note` (≤ 300), `scores` smallint[] (1–10 juegos de 0 a 300, sin null),
+`frames` jsonb|null (como `entries.frames`: `{"<juego desde 0>": {rolls, masks}}`, < 16 KB), `shared` (sale en el
+perfil y en el inicio de quien lo sigue; por defecto true), `created_at`, `updated_at`. Índice `(user_id, played_on
+desc, id desc)`. Sin tombstones (no son de una liga): el tiempo real `user:<uid>` `solo` avisa qué cambió. Los de otra
+cuenta se leen con `solo_sessions_of`. Salen en `export_my_data` (tabla `solo_sessions`).
+
+### `solo_likes` — con sesión: los que di y los de mis juegos sueltos (el superadmin, todos)
+`session_id`, `user_id`, `created_at`; clave `(session_id, user_id)`. Se escribe con `set_game_like('solo', …)`. Se
+borran con el juego o con la cuenta (cascada).
 
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
 `urgency`, `claimed_at`, `attempts`, `last_status`, `sent_at`). Esquema `private` (no expuesto): `op_log`, `paces`,
-`rate_limits`, `storage_purge_queue` (`path`, `queued_at`, `claimed_at`, `attempts`), `heartbeat`, `scan_usage`, `scan_days`,
-`scan_minutes`, `scan_cache`, `push_once` (recordatorios que ya salieron), `storage_alerts` (alertas de espacio) y
-`league_creations` (ligas y torneos creados por cada cuenta en los últimos 30 días, para el tope).
+`rate_limits`, `storage_purge_queue` (`path`, `bucket`: `scoreboards` o `logos`, `queued_at`, `claimed_at`,
+`attempts`), `heartbeat`, `scan_usage`, `scan_days`, `scan_minutes`, `scan_cache`, `push_once` (recordatorios que ya
+salieron), `storage_alerts` (alertas de espacio), `league_creations` (ligas y torneos creados por cada cuenta en los
+últimos 30 días, para el tope), `solo_deleted` (ids de juegos sueltos borrados) y `logo_uploads` (subidas de logo
+reservadas).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -301,7 +319,9 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `delete_league(p_league) → void` | dueño o superadmin | Borra todo (cascada). Deja un tombstone de la liga; los archivos de fotos van a la cola de Storage. `no_existe`. |
 | `transfer_ownership(p_league, p_user) → void` | dueño o superadmin | Otro miembro pasa a dueño; el anterior queda admin. `no_existe` si no es miembro. Es el camino para poder borrar la cuenta de un dueño. |
 | `renew_invite_code(p_league) → text` | admin | Código nuevo; el anterior deja de servir. |
-| `invite_preview(p_code text) → setof {league_id, name, sport, kind, visibility}` | **cualquiera, también sin cuenta** | = `getInvite`. Código malo: ninguna fila. Más de 30 códigos malos por hora (por cuenta o IP): `rate_limited`. Mayúsculas/espacios no importan. Llamar con `select * from`. |
+| `begin_logo_upload(p_league, p_path text) → void` | admin | Reserva la ruta `'<p_league>/<uuid>.webp\|.jpg\|.png'` antes de subirla al bucket `logos` (Storage no acepta nada sin reservar). Nueva: ni reservada, ni en la cola de Storage, ni el logo de ahora. Vale un día. `no_existe`, `no_permitido`, `invalido`, `rate_limited` (30 por día, se use o no). |
+| `set_league_logo(p_league, p_path text) → text` | admin | Pone el logo (una ruta que reservó esa cuenta con `begin_logo_upload` hace menos de un día; se usa una vez) o lo quita (`p_path` null). Devuelve la ruta anterior para borrarla de Storage (null si no había o si es la misma: no cambia nada); la anterior ya queda en `private.storage_purge_queue`. `no_existe`, `no_permitido`, `invalido` (otra liga, otra forma o sin reservar), `rate_limited` (quitarlo cuenta en los mismos 30 por día). |
+| `invite_preview(p_code text) → setof {league_id, name, sport, kind, visibility, logo_path}` | **cualquiera, también sin cuenta** | = `getInvite`. Código malo: ninguna fila. Más de 30 códigos malos por hora (por cuenta o IP): `rate_limited`. Mayúsculas/espacios no importan. Llamar con `select * from`. |
 | `join_league(p_league uuid=null, p_code text=null, p_prefer uuid=null) → {league_id, player_id, claim_id} \| null` | con sesión | Pública: sin código. Privada: con su código (o solo `p_code`, desde el link). Ya miembro: igual (idempotente). Deja listo su jugador (ver `ensure_my_player`; `p_prefer` = «¿eres tú?» deja un reclamo; `claim_id` = su reclamo pendiente en la liga, o null). Código malo: **devuelve null** (cuenta el intento). Privada sin código: `no_permitido`. 10 códigos malos por hora: `rate_limited`. |
 
 ### Miembros y roles
@@ -409,11 +429,21 @@ menores** (juegos, me gusta recibidos, deportes y números). `follows` directo: 
 | `follow_user(p_user) → {following, followers}` | con sesión | Idempotente. No a uno mismo (`invalido`), ni a quien no existe (`no_existe`), bloqueado o que no se ve (`no_permitido`). 60 cambios por hora (`rate_limited`). Push «te empezó a seguir» uno por persona y día. |
 | `unfollow_user(p_user) → {following, followers}` | con sesión | Idempotente; cuenta en el mismo ritmo. |
 | `follow_list(p_user, p_kind 'followers'\|'following', p_limit=30, p_before, p_before_id) → [{id, name, username, at, isFollowing, followsYou, isMe}]` | con sesión | Vacía si no se ve; solo lista a quien ve quien mira. Hasta 50. |
-| `public_profile(p_user) → {id, name, username, since, sports, followers, following, likesReceived, gamesCount, isFollowing, followsYou, isMe}` | con sesión | `null` si no existe o no se ve. |
-| `profile_games(p_user, p_limit=20, p_before, p_before_key, p_sport) → [juego]` · `following_games(p_sport, p_limit, p_before, p_before_key)` | con sesión | Juegos (boliche, partidos, golf, natación) más nuevos primero, con `likes`, `likedByMe` y `detail`. |
-| `profile_stats(p_user) → {bowling, matches, golf, swim}` | con sesión | Números por deporte (boliche: solo juegos verificados). |
-| `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores) | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`. 300 cambios por hora. |
-| `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). |
+| `public_profile(p_user) → {id, name, username, since, sports, followers, following, likesReceived, gamesCount, isFollowing, followsYou, isMe}` | con sesión | `null` si no existe o no se ve. Los juegos sueltos compartidos cuentan en `gamesCount`, sus me gusta en `likesReceived` y ponen `bowling` en `sports`. |
+| `profile_games(p_user, p_limit=20, p_before, p_before_key, p_sport) → [juego]` · `following_games(p_sport, p_limit, p_before, p_before_key)` | con sesión | Juegos (boliche, partidos, golf, natación y juegos sueltos compartidos) más nuevos primero, con `likes`, `likedByMe` y `detail`. Juego suelto: `kind` `solo`, `key` `j:<id>`, `playerId`/`leagueId`/`leagueName`/`eventId`/`eventType` null, `sport` `bowling`, `eventName` `'Juego suelto'`, `eventDate` = el día que jugó, `at` = ese día a mediodía (hora de RD), `url` `'/juegos-sueltos?juego=<id>'` solo para su dueño (null para los demás), `detail` `{title: 'Juego suelto', venue (null si no dijo), scores, series, high}`. Con `p_sport`, solo si es `bowling`. |
+| `profile_stats(p_user) → {bowling, matches, golf, swim}` | con sesión | Números por deporte (boliche: solo juegos verificados de las ligas, y cada juego suelto compartido como una sesión más con todos sus juegos). |
+| `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores); `solo`: el juego es compartido y se ve a su dueño | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`, `solo` (juego suelto: `public.solo_likes`; también el propio; quitarlo se puede siempre, pero de uno que ya no se ve devuelve `{likes: 0, liked: false}`). 300 cambios por hora. |
+| `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). Me gusta en un juego suelto mío: `{kind: 'like', …, gameKind: 'solo', id, playerId: null, leagueId: null, leagueName: null, sport: 'bowling', url: '/juegos-sueltos?juego=<id>'}`. |
+
+**Juegos sueltos** (`20260929000300_sueltos_logos.sql`) — boliche fuera de una liga o torneo. Todas con sesión y
+`require_uid`. Contrato del cliente: `src/lib/data/solo.ts`. Juego suelto = `{id, userId, playedOn, venue, note,
+scores, frames, shared, createdAt, updatedAt, likes, likedByMe}`.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `save_solo_session(p_id uuid, p_played_on date, p_scores jsonb, p_frames jsonb=null, p_venue text='', p_note text='', p_shared boolean=true, p_op_id uuid=null) → uuid` | la cuenta | Crea (con el id del teléfono, o uno nuevo si `p_id` es null) o cambia uno suyo (lo reemplaza todo); devuelve el id. `p_played_on` de hace 10 años hasta mañana (hora de RD); `p_scores` 1–10 enteros de 0 a 300 (sin null, textos ni decimales); `p_frames` null o `{"<juego desde 0>": {…}}` solo con juegos que existen (`{}` = null); bolera ≤ 80 y nota ≤ 300, recortadas. `invalido`, `no_permitido` (el id es de otra cuenta, también para el superadmin), `no_existe` (ese id ya se borró: un guardado viejo de la cola no lo revive), `rate_limited` (200 por día). Con `p_op_id`: reintentar devuelve el mismo id sin repetir nada (la cola sin conexión). |
+| `delete_solo_session(p_id) → void` | su dueño o el superadmin | Con sus me gusta; el id queda en `private.solo_deleted` (no se vuelve a crear). `no_existe`, `no_permitido`. |
+| `solo_sessions_of(p_user=null, p_limit=50, p_before date=null, p_before_id uuid=null) → [juego suelto]` | con sesión | `p_user` null = los míos (todos). De otra cuenta: solo los compartidos y si se ve (si no, `[]`). Del más nuevo al más viejo (`playedOn` y `id`), hasta 500 por página; la siguiente con `p_before` = `playedOn` y `p_before_id` = `id` del último. |
 
 **Personas e invitaciones** (`20260929000200_invitaciones.sql`) — todas con sesión y `require_uid`. Contrato del
 cliente: `src/lib/data/people.ts` y `src/lib/data/invites.ts`. Persona = `{id, name, username, isFollowing,
@@ -425,8 +455,8 @@ followsYou, inLeague, invited}`.
 | `invite_to_league(p_league, p_users uuid[]) → {sent, results: [{userId, status}]}` | miembro de una liga pública; en una privada (también con menores) dueño, admin o superadmin | Hasta 50 cuentas distintas (en su orden; `invalido` si ninguna o más). Cada una: `unavailable` (uno mismo, no existe o bloqueada), `member`, `pending` (ya tiene una que vale; la que ya no vale se cancela y se manda la nueva), `declined` (la rechazó hace menos de 7 días), `rate_limited` (no cupo en el límite de hoy) o `sent` (push «<nombre> te invitó a <liga>» a `/invitacion/<id>`, tag `invitacion:<id>`, vale 7 días; uno por persona y día de quien invita: invitar, retirar y volver a invitar, o a otra liga, no manda otro). `no_existe`, `no_permitido`, `rate_limited` (100 enviadas por día; se mira con cada una, con candado). |
 | `respond_league_invite(p_invite, p_accept boolean, p_prefer uuid=null) → {status, leagueId[, playerId, claimId]}` | la cuenta invitada | Aceptar: entra de miembro con su jugador (`p_prefer` = «¿Quién eres?»: deja el reclamo, como `join_league`; `claimId` = su reclamo pendiente o null) y push a quien invitó («<nombre> aceptó tu invitación»). Si ya no vale (quien invitó está bloqueado, o la liga no es pública y quien invitó ya no es admin de ella: `private.invite_ok`), queda `cancelled` sin entrar. Rechazar: `declined`. Ya decidida: `{status, leagueId}` sin cambiar nada (sin `playerId`). `no_existe` (no es suya), `invalido` (`p_accept` null). |
 | `cancel_league_invite(p_invite) → void` | quien invitó o admin de la liga | La deja `cancelled`. Ya decidida: nada. `no_existe`, `no_permitido`. |
-| `my_league_invites() → [{id, leagueId, leagueName, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt}]` | con sesión | Mis invitaciones pendientes que todavía valen, la más nueva primero (hasta 50). |
-| `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
+| `my_league_invites() → [{id, leagueId, leagueName, logoPath, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt}]` | con sesión | Mis invitaciones pendientes que todavía valen, la más nueva primero (hasta 50). |
+| `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, logoPath, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
 
 ### Temporadas, playoffs y agenda
 
@@ -555,7 +585,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `league:<id>` | `submissions` | `{op, ids}` | envíos de la liga (aprobaciones) |
 | `user:<uid>` | `submission` | `{id, status}` | su envío fue aprobado o rechazado |
 | `user:<uid>` | `follow` | `{op, user}` | alguien lo empezó a seguir o lo dejó de seguir |
-| `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo |
+| `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo (`kind` `solo`: un juego suelto) |
+| `user:<uid>` | `solo` | `{id, op}` | uno de sus juegos sueltos se creó, cambió o se borró |
 | `league:<id>` | `claims` | `{id, status}` | reclamos de jugadores de la liga (pedido, aprobado, rechazado, cancelado) |
 | `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
 | `user:<uid>` | `invites` | `{id, status, league_id}` | una invitación a una liga que recibió o que mandó (nueva, aceptada, rechazada, cancelada) |
@@ -573,6 +604,17 @@ cuenta. Nadie puede enviar (no hay política de INSERT). Borrar una liga no mand
 Bucket privado `scoreboards`, 1 MB, `image/webp` o `image/jpeg`. Leer: quien ve la liga. Subir: admin,
 anotador o miembro con jugador en una liga sin menores (`private.can_upload_photo_path`). Borrar: admins
 de la liga. Sin actualizar. En local, `BackendStorage` guarda el archivo por su cuenta; `photos.path` es la clave.
+
+Bucket **público** `logos` (`20260929000310_logos_supabase.sql`), 256 kB, `image/webp`, `image/jpeg` o `image/png`:
+el logo de cada liga o torneo en `'<liga>/<uuid>.webp|.jpg'` (cada logo nuevo es un archivo nuevo). Se muestra con la
+URL pública (cualquiera con el link lo ve). Subir: dueño o admin de la liga sin bloquear, solo en una ruta que
+reservó con `begin_logo_upload` (30 por día; `private.can_upload_logo_path`): nadie guarda archivos sin pasar por ese
+límite. Leer por la API (listar, y lo que Storage pide para borrar) y borrar: los admins de la liga sin bloquear y,
+de lo que ya no usa nadie (en `private.storage_purge_queue` con bucket `logos`), cualquier cuenta sin bloquear
+(`private.can_remove_logo_path`). Sin actualizar. Después de subir, `set_league_logo`; la ruta anterior que devuelve se
+borra de Storage. Lo que deja de usarse (el anterior, el de una liga borrada y las reservas sin usar de un día, que
+pasa a diario `private.logo_uploads_cleanup` con pg_cron) queda en la cola; al borrar la liga, el teléfono borra su
+logo justo después.
 
 ## Consola del superadmin
 
@@ -783,7 +825,11 @@ vale): `merge_players` con lo mismo más los premios y las tablas guardadas, y `
   llama `anon`, pero leen con la RLS de quien llama (no son security definer).
 - Nadie tiene INSERT/UPDATE/DELETE en ninguna tabla; `profiles` sin UPDATE directo (más estricto que permisos por
   columna) y un trigger impide que una sesión de usuario cambie `is_superadmin`, `email` o `firebase_uid`.
-- `league_id` de las tablas hijas verificado con FK compuestas; `photos.path` atado a su liga e id.
+- De `private`, `authenticated` solo ejecuta lo que llaman las políticas de RLS y Storage (`admin_leagues`,
+  `can_remove_logo_path`, `can_upload_logo_path`, `can_upload_photo_path`, `is_super`, `my_leagues`,
+  `photo_admin_leagues`, `readable_leagues`); `anon`, solo `readable_leagues`.
+- `league_id` de las tablas hijas verificado con FK compuestas; `photos.path` atado a su liga e id;
+  `leagues.logo_path` solo con rutas de su propia liga (CHECK).
 - Deporte fijo (trigger); dueño solo por `transfer_ownership` (trigger); `leagues.owner_id` ON DELETE RESTRICT.
 - Menores: `is_minor` exige `has_minors` (trigger), sin cuenta (CHECK), liga privada sin foto obligatoria (CHECK),
   sin social ni fotos (RPC), `has_minors` solo sube (salvo superadmin y sin menores).

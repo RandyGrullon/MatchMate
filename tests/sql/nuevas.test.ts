@@ -98,6 +98,8 @@ describe('deporte', () => {
   });
 
   it('un deporte en beta solo lo crea el superadmin; cerrado, nadie', async () => {
+    // Todos están abiertos (20260929000300_sueltos_logos.sql): el superadmin pone el pádel en beta.
+    await db.rpc(w.u.dios, 'set_sport_status', { p_sport: 'padel', p_status: 'beta' });
     await fails(db.rpc(w.u.nuevo, 'create_league', { p_name: 'Pádel', p_sport: 'padel' }), DENIED);
     const r = await db.rpc<{ league_id: string }>(w.u.dios, 'create_league', { p_name: 'Pádel', p_sport: 'padel' });
     expect(await db.admin('select sport from public.leagues where id = $1', [r.league_id])).toEqual([{ sport: 'padel' }]);
@@ -258,12 +260,12 @@ describe('invitaciones con límite de intentos', () => {
     expect(await db.rpc(w.u.otra, 'join_league', { p_code: 'ABCD2345' })).toMatchObject({ league_id: w.priv });
   });
 
-  it('invite_preview: solo id, nombre, deporte y tipo; 30 malos por hora', async () => {
+  it('invite_preview: solo id, nombre, deporte, tipo y logo; 30 malos por hora', async () => {
     for (let i = 0; i < 30; i++) expect(await db.rpcRows(ANON, 'invite_preview', { p_code: `MAL${i}` })).toEqual([]);
     await fails(db.rpcRows(ANON, 'invite_preview', { p_code: 'ABCD2345' }), 'rate_limited');
     // Con cuenta el límite es de la cuenta.
     expect(await db.rpcRows(w.u.luis, 'invite_preview', { p_code: 'ABCD2345' })).toEqual([
-      { league_id: w.priv, name: 'Liga del Banco', sport: 'bowling', kind: 'liga', visibility: 'private' },
+      { league_id: w.priv, name: 'Liga del Banco', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null },
     ]);
   });
 

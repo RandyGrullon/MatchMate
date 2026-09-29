@@ -11,6 +11,7 @@
 import { useMemo } from 'react';
 import type { SportStatus } from '../../sports/status';
 import type { ClientErrorKind } from '../errorReport';
+import { deleteLeagueWithLogo } from '../logos';
 import type { LeagueKind, LeagueRole, Visibility } from '../types';
 import { backend, invalidate, queryClient, rpc, type Live } from './client';
 import { keys, tags } from './keys';
@@ -98,6 +99,8 @@ export interface AdminLeague {
   kind: LeagueKind;
   visibility: Visibility;
   hasMinors: boolean;
+  /** Logo de la liga (bucket público `logos`) o null. */
+  logoPath: string | null;
   ownerId: string;
   ownerName: string;
   ownerEmail: string | null;
@@ -395,6 +398,7 @@ export function toAdminLeague(raw: unknown): AdminLeague {
     kind: oneOf(r.kind, KINDS, 'liga'),
     visibility: oneOf(r.visibility, VISIBILITIES, 'private'),
     hasMinors: bool(r.hasMinors),
+    logoPath: strOrNull(r.logoPath),
     ownerId: str(r.ownerId),
     ownerName: str(r.ownerName),
     ownerEmail: strOrNull(r.ownerEmail),
@@ -784,7 +788,8 @@ export async function transferLeague(leagueId: string, userId: string): Promise<
 
 /** Borra una liga de cualquiera (queda en la auditoría). */
 export async function adminDeleteLeague(leagueId: string): Promise<void> {
-  await rpc('delete_league', { p_league: leagueId });
+  // El archivo del logo se borra después, si la liga se borró (la base ya lo dejó en la cola de Storage).
+  await deleteLeagueWithLogo(leagueId, () => rpc('delete_league', { p_league: leagueId }));
   invalidate(
     tags.adminLeagues,
     tags.adminUsers,

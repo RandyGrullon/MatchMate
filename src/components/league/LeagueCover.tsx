@@ -3,10 +3,11 @@ import { CircleHelp, Globe, Lock, MapPin, Share2, Trophy, Users } from 'lucide-r
 import { usePlayers } from '../../lib/data/players';
 import { useLeagueCtx } from '../../lib/league';
 import { sportMeta } from '../../sports/registry';
+import { LeagueIcon } from '../home/LeagueCard';
 import { InviteSheet } from '../invite/InviteSheet';
 import { canInviteTo } from '../invite/logic';
 import { SportSplash } from '../splash/SportSplash';
-import { Button } from '../ui';
+import { Button, cx } from '../ui';
 import { countLabel, peopleWord } from './logic';
 
 /**
@@ -24,6 +25,7 @@ export function LeagueCover() {
   const isPublic = league.visibility === 'public';
   const canInvite = canInviteTo(league, isAdmin, !!member);
   const count = players.data.length;
+  const hasLogo = !!league.logoPath;
 
   return (
     <section
@@ -32,6 +34,12 @@ export function LeagueCover() {
       data-tour="portada"
     >
       <div className="flex items-center gap-2 py-3 pr-2 pl-4 sm:py-4 sm:pl-5">
+        {/* Con logo, el logo grande a la izquierda (en el teléfono ocupa el lugar de la escena). */}
+        {hasLogo && (
+          <div className="mr-1 shrink-0">
+            <LeagueIcon league={league} size="xl" />
+          </div>
+        )}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
             <Icon className="size-3.5" aria-hidden="true" />
@@ -69,7 +77,10 @@ export function LeagueCover() {
         </div>
         {meta && (
           // El ancho va por --sp-w (sin `width`): más chica en el teléfono para que quepa el nombre.
-          <SportSplash scene={meta.scene} word={false} className="pointer-events-none -my-1 shrink-0 [--sp-w:104px] sm:[--sp-w:136px]" />
+          // Con logo, la escena solo en pantallas anchas (en una envoltura: la escena trae su propio `display`).
+          <div className={cx('flex shrink-0', hasLogo && 'max-sm:hidden')}>
+            <SportSplash scene={meta.scene} word={false} className="pointer-events-none -my-1 shrink-0 [--sp-w:104px] sm:[--sp-w:136px]" />
+          </div>
         )}
       </div>
       <InviteSheet league={league} lid={lid} isAdmin={isAdmin} member={!!member} open={inviting} onClose={() => setInviting(false)} />

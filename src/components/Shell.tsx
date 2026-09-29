@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarDays, House, LogIn, Plus, Settings, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
+import { CalendarDays, House, Info, LogIn, MessageCircle, Plus, Settings, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { backendMode } from '../lib/backend';
 import { homeTarget, setActiveSport, useActiveSport } from '../lib/sportContext';
@@ -55,11 +55,10 @@ export function Brand({ to = '/', compact, className }: { to?: string; compact?:
 /** Arriba a la derecha: campana de avisos y configuración de la cuenta (o "Entrar"). */
 export function TopActions() {
   const { user } = useAuth();
-  const location = useLocation();
+  const login = useLoginLink();
   if (!user) {
-    const next = encodeURIComponent(location.pathname + location.search);
     return (
-      <Link to={`/login?next=${next}`} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-medium hover:bg-surface-2 sm:h-9">
+      <Link to={login} className="inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-medium hover:bg-surface-2 sm:h-9">
         <LogIn className="size-4" /> Entrar
       </Link>
     );
@@ -89,25 +88,52 @@ export function TopActions() {
 }
 
 /** Secciones de la app (abajo en el celular, arriba en la computadora). */
-interface SectionDef {
-  key: 'home' | 'events' | 'profile';
+export interface SectionDef {
+  key: 'home' | 'events' | 'profile' | 'contact' | 'about';
   to: string;
   label: string;
   icon: LucideIcon;
   match: (p: string) => boolean;
 }
 
-const SECTIONS: readonly SectionDef[] = [
-  // Home: el general (/) y el de cada deporte (/d/:sport).
-  { key: 'home', to: '/', label: 'Home', icon: House, match: (p) => p === '/' || p.startsWith('/d/') },
-  // Eventos = tus ligas y las públicas; dentro de una liga se sigue en Eventos.
-  { key: 'events', to: '/ligas', label: 'Eventos', icon: CalendarDays, match: (p) => p.startsWith('/ligas') || p.startsWith('/l/') || p.startsWith('/unirse') },
-  { key: 'profile', to: '/perfil', label: 'Perfil', icon: UserRound, match: (p) => p.startsWith('/perfil') },
-];
+// Home: el general (/) y el de cada deporte (/d/:sport).
+const HOME: SectionDef = { key: 'home', to: '/', label: 'Home', icon: House, match: (p) => p === '/' || p.startsWith('/d/') };
+// Eventos = tus ligas y las públicas; dentro de una liga se sigue en Eventos.
+const EVENTS: SectionDef = {
+  key: 'events',
+  to: '/ligas',
+  label: 'Eventos',
+  icon: CalendarDays,
+  match: (p) => p.startsWith('/ligas') || p.startsWith('/l/') || p.startsWith('/unirse'),
+};
+const PROFILE: SectionDef = { key: 'profile', to: '/perfil', label: 'Perfil', icon: UserRound, match: (p) => p.startsWith('/perfil') };
+// Sin cuenta, Eventos y Perfil no dicen mucho: en su lugar, cómo escribirnos y qué es MatchMate.
+const CONTACT: SectionDef = { key: 'contact', to: '/contacto', label: 'Contáctanos', icon: MessageCircle, match: (p) => p.startsWith('/contacto') };
+const ABOUT: SectionDef = { key: 'about', to: '/acerca', label: 'Acerca de', icon: Info, match: (p) => p.startsWith('/acerca') };
 
-function useSection() {
+/**
+ * Las tres secciones, en orden: con cuenta Home · Eventos · Perfil; sin cuenta Home · Contáctanos · Acerca de. Las
+ * ligas públicas se siguen viendo sin cuenta desde el Home.
+ */
+export function navSections(signedIn: boolean): readonly [SectionDef, SectionDef, SectionDef] {
+  return signedIn ? [HOME, EVENTS, PROFILE] : [HOME, CONTACT, ABOUT];
+}
+
+/** Secciones de quien usa la app. Mientras se lee la sesión guardada se quedan las de con cuenta (no parpadean). */
+function useSections() {
+  const { user, loading } = useAuth();
+  return navSections(!!user || loading);
+}
+
+function useSection(sections: readonly SectionDef[]) {
   const { pathname } = useLocation();
-  return SECTIONS.find((s) => s.match(pathname))?.key ?? null;
+  return sections.find((s) => s.match(pathname))?.key ?? null;
+}
+
+/** «Entrar» con la pantalla actual como `next`: al entrar (o crear la cuenta) vuelve aquí. */
+function useLoginLink() {
+  const location = useLocation();
+  return `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 }
 
 /**
@@ -148,8 +174,10 @@ function DesktopLink({ section, current }: { section: SectionDef; current: boole
   );
 }
 
-function DesktopNav() {
-  const active = useSection();
+/** Arriba en la computadora: Crear · Home · Eventos · Perfil (sin cuenta: Crear · Home · Contáctanos · Acerca de). */
+export function DesktopNav() {
+  const sections = useSections();
+  const active = useSection(sections);
   const create = useCreateMenu();
   return (
     <nav className="hidden gap-1 sm:flex" aria-label="Secciones" data-tour="nav">
@@ -161,7 +189,7 @@ function DesktopNav() {
       >
         <Plus className="size-4" /> Crear
       </button>
-      {SECTIONS.map((s) => (
+      {sections.map((s) => (
         <DesktopLink key={s.key} section={s} current={active === s.key} />
       ))}
     </nav>
@@ -185,17 +213,22 @@ function BottomLink({ section, current }: { section: SectionDef; current: boolea
   );
 }
 
-/** Barra de abajo en el teléfono: Home · Eventos · (Crear) · Notificaciones · Perfil. */
-function BottomNav() {
-  const active = useSection();
+/**
+ * Barra de abajo en el teléfono: Home · Eventos · (Crear) · Notificaciones · Perfil. Sin cuenta:
+ * Home · Contáctanos · (Crear) · Entrar · Acerca de.
+ */
+export function BottomNav() {
+  const sections = useSections();
+  const active = useSection(sections);
   const { user } = useAuth();
+  const login = useLoginLink();
   const create = useCreateMenu();
-  const [home, events, profile] = SECTIONS;
+  const [home, second, last] = sections;
   return (
     <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur sm:hidden" aria-label="Secciones" data-tour="nav">
       <div className="grid grid-cols-5 items-end">
-        <BottomLink section={home} current={active === 'home'} />
-        <BottomLink section={events} current={active === 'events'} />
+        <BottomLink section={home} current={active === home.key} />
+        <BottomLink section={second} current={active === second.key} />
         {/* Crear: el círculo del centro, un poco más grande y levantado. */}
         <div className="flex justify-center">
           <button
@@ -211,12 +244,12 @@ function BottomNav() {
         {user ? (
           <NotificationsBell variant="nav" />
         ) : (
-          <Link to="/login" className="flex min-h-14 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted">
+          <Link to={login} className="flex min-h-14 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted">
             <LogIn className="size-5" />
             Entrar
           </Link>
         )}
-        <BottomLink section={profile} current={active === 'profile'} />
+        <BottomLink section={last} current={active === last.key} />
       </div>
     </nav>
   );
@@ -225,7 +258,8 @@ function BottomNav() {
 /**
  * Marco de toda la app: arriba la marca (en la computadora), el deporte en que estás (siempre: toca para cambiar),
  * lo del medio (p. ej. la liga), la campana y la configuración; debajo, opcionalmente, las pestañas de la liga; abajo
- * en el celular: Home · Eventos · Crear · Notificaciones · Perfil.
+ * en el celular: Home · Eventos · Crear · Notificaciones · Perfil (sin cuenta: Home · Contáctanos · Crear · Entrar ·
+ * Acerca de).
  */
 export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNode; subnav?: ReactNode; children: ReactNode; wide?: boolean }) {
   const location = useLocation();

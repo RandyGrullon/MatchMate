@@ -346,6 +346,32 @@ describe('perfil público', () => {
     expect(await games(w.u.extra, w.u.org)).toEqual([]);
   });
 
+  it('juegos sueltos compartidos (20260929000300_sueltos_logos.sql): entre los de las ligas, por su día', async () => {
+    const [{ id }] = await db.admin<{ id: string }>(
+      `insert into public.solo_sessions (user_id, played_on, scores, venue) values ($1, '2026-09-21', '{200,180}', 'Bolera Sur') returning id`,
+      [w.u.luis],
+    );
+    await db.admin(`insert into public.solo_sessions (user_id, played_on, scores, shared) values ($1, '2026-09-23', '{100}', false)`, [w.u.luis]);
+    // Partido (25 sept), práctica del Banco (22), juego suelto (21) y Copa Abierta (20); el que no es compartido, no.
+    const list = await games(w.u.ana, w.u.luis);
+    expect(list.map((g) => g.kind)).toEqual(['match', 'bowling', 'solo', 'bowling']);
+    expect(list[2]).toMatchObject({
+      key: `j:${id}`,
+      id,
+      playerId: null,
+      leagueId: null,
+      sport: 'bowling',
+      url: null,
+      detail: { title: 'Juego suelto', venue: 'Bolera Sur', scores: [200, 180], series: 380, high: 200 },
+    });
+    expect(await profile(w.u.ana, w.u.luis)).toMatchObject({ gamesCount: 4 });
+    // En los números del boliche es una sesión más, con todos sus juegos.
+    expect((await db.rpc<Json>(w.u.otra, 'profile_stats', { p_user: w.u.luis })).bowling).toEqual({ sessions: 2, series: [[200, 180], [190, 210]] });
+    // Y en el inicio de quien lo sigue (sin el Banco, que otra no ve).
+    await follow(w.u.otra, w.u.luis);
+    expect((await db.rpc<Game[]>(w.u.otra, 'following_games', {})).map((g) => g.kind)).toEqual(['match', 'solo', 'bowling']);
+  });
+
   it('estadísticas por deporte', async () => {
     const s = await db.rpc<Json>(w.u.otra, 'profile_stats', { p_user: w.u.luis });
     expect(s).toEqual({

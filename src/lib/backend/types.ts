@@ -24,6 +24,8 @@ export type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'USER_U
 /**
  * `captchaToken`: el de Cloudflare Turnstile (src/components/Turnstile.tsx) cuando el proyecto de Supabase tiene
  * «Captcha protection» activado. Sin eso, se omite. El backend local lo ignora.
+ * `next`: ruta de la app a la que vuelve el link de Google o el del correo (p. ej. `/unirse/ABC123`, la invitación
+ * que se estaba abriendo); sin ella, al inicio. Solo rutas que empiezan con una '/'. El backend local la ignora.
  */
 export interface BackendAuth {
   getSession(): Promise<Session | null>;
@@ -32,14 +34,14 @@ export interface BackendAuth {
    * Crea la cuenta. Devuelve null si hay que confirmar el correo antes de entrar.
    * `meta`: datos extra del registro que guarda el perfil (p. ej. `{ adult: true }` = marcó «tengo 18 años o más»).
    */
-  signUp(email: string, password: string, name: string, meta?: Record<string, unknown>, captchaToken?: string): Promise<Session | null>;
+  signUp(email: string, password: string, name: string, meta?: Record<string, unknown>, captchaToken?: string, next?: string): Promise<Session | null>;
   signIn(email: string, password: string, captchaToken?: string): Promise<Session>;
   /** Google: en Supabase redirige (o usa Google Identity Services); en local no está disponible. */
-  signInWithGoogle(): Promise<void>;
+  signInWithGoogle(next?: string): Promise<void>;
   signOut(): Promise<void>;
   resetPassword(email: string, captchaToken?: string): Promise<void>;
   /** Vuelve a mandar el correo para confirmar la cuenta (p. ej. cuentas traídas de BowlingX sin confirmar). */
-  resendConfirmation(email: string, captchaToken?: string): Promise<void>;
+  resendConfirmation(email: string, captchaToken?: string, next?: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
 }
 
@@ -94,6 +96,8 @@ export interface BackendStorage {
   upload(bucket: string, path: string, data: Blob, contentType: string): Promise<void>;
   /** URL temporal para ver el archivo (en local, un blob: o data: URL). */
   signedUrl(bucket: string, path: string, expiresInSeconds?: number): Promise<string>;
+  /** URL fija de un archivo de un bucket público (p. ej. `logos`): la ve cualquiera con el link (en local, blob: o data:). */
+  publicUrl(bucket: string, path: string): Promise<string>;
   remove(bucket: string, paths: string[]): Promise<void>;
 }
 

@@ -74,7 +74,9 @@ describe('visibilidad', () => {
     expect(await db.asUser(w.u.luis, 'select invite_code from public.league_secrets where league_id = $1', [w.priv])).toHaveLength(0);
     // Con el código se ve a qué liga invita, sin cuenta.
     const preview = await db.rpcRows(ANON, 'invite_preview', { p_code: 'ABCD2345' });
-    expect(preview).toEqual([{ league_id: w.priv, name: 'Liga del Banco', sport: 'bowling', kind: 'liga', visibility: 'private' }]);
+    expect(preview).toEqual([
+      { league_id: w.priv, name: 'Liga del Banco', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null },
+    ]);
     // Pero los códigos no se listan.
     await fails(db.asAnon('select invite_code from public.league_secrets'), '42501');
   });

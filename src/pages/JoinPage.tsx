@@ -7,6 +7,7 @@ import { useMembership } from '../lib/data/members';
 import type { Invite } from '../lib/types';
 import { sportMeta } from '../sports/registry';
 import { BackLink } from '../components/BackLink';
+import { LeagueLogo } from '../components/home/LeagueCard';
 import { AppShell } from '../components/Shell';
 import { SportSplash } from '../components/splash/SportSplash';
 import { useAction, useFeedback } from '../components/feedback';
@@ -29,7 +30,15 @@ async function findInvite(code: string, signedIn: boolean): Promise<Found> {
     try {
       const details = await getInviteDetails(code);
       const invite: Invite | null = details
-        ? { id: code.trim().toUpperCase(), leagueId: details.leagueId, leagueName: details.name, sport: details.sport, kind: details.kind, visibility: details.visibility }
+        ? {
+            id: code.trim().toUpperCase(),
+            leagueId: details.leagueId,
+            leagueName: details.name,
+            sport: details.sport,
+            kind: details.kind,
+            visibility: details.visibility,
+            logoPath: details.logoPath,
+          }
         : null;
       return { invite, details };
     } catch (e) {
@@ -144,13 +153,16 @@ export default function JoinPage() {
       <BackLink fallback="/" className="-ml-1.5 mb-3" />
       <SportTheme sport={invite.sport}>
         <Card className="mx-auto flex max-w-md flex-col items-center gap-4 p-6 text-center">
-          {meta ? (
-            <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
-          ) : (
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-              <Ticket className="size-7" />
-            </div>
-          )}
+          {/* El logo de la liga si tiene (se ve también sin cuenta); si no, la escena del deporte. */}
+          <LeagueLogo path={invite.logoPath} className="size-24 rounded-3xl">
+            {meta ? (
+              <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
+            ) : (
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                <Ticket className="size-7" />
+              </div>
+            )}
+          </LeagueLogo>
           <div className="flex flex-col items-center gap-1.5">
             <p className="text-sm text-muted">Te invitaron {torneo ? 'al torneo' : 'a la liga'}</p>
             <h1 className="text-xl font-bold tracking-tight">{invite.leagueName}</h1>

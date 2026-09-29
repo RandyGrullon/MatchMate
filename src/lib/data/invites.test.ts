@@ -19,6 +19,7 @@ const invite = (over: Partial<LeagueInvite> = {}): LeagueInvite => ({
   id: 'i1',
   leagueId: 'L1',
   leagueName: 'Liga de los martes',
+  logoPath: null,
   sport: 'padel',
   kind: 'liga',
   visibility: 'public',

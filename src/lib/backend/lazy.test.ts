@@ -22,7 +22,12 @@ function fakeBackend() {
       resetPassword: vi.fn(async () => undefined),
       updatePassword: vi.fn(async () => undefined),
     },
-    storage: { upload: vi.fn(async () => undefined), signedUrl: vi.fn(async () => 'data:x'), remove: vi.fn(async () => undefined) },
+    storage: {
+      upload: vi.fn(async () => undefined),
+      signedUrl: vi.fn(async () => 'data:x'),
+      publicUrl: vi.fn(async () => 'data:logo'),
+      remove: vi.fn(async () => undefined),
+    },
     select: vi.fn(async () => [{ a: 1 }]),
     rpc: vi.fn(async () => 7),
     subscribe: (_t: string, cb: (m: RealtimeMessage) => void) => {
@@ -47,6 +52,7 @@ describe('backend perezoso', () => {
     expect(n).toBe(7);
     expect(await lazy.auth.getSession()).toMatchObject({ userId: 'u' });
     expect(await lazy.storage.signedUrl('b', 'p')).toBe('data:x');
+    expect(await lazy.storage.publicUrl('logos', 'l/x.webp')).toBe('data:logo');
     expect(await lazy.invoke('fn', {})).toBe('ok');
     expect(f.b.rpc).toHaveBeenCalledWith('f', { p: 1 });
     expect(load).toHaveBeenCalledTimes(1);

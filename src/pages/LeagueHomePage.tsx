@@ -10,6 +10,7 @@ import { entryLine, eventPosition } from '../lib/stats';
 import type { BowlingEvent, EventType } from '../lib/types';
 import { Announcements } from '../components/AnnouncementCard';
 import { EventFormModal } from '../components/EventFormModal';
+import { LeagueIcon } from '../components/home/LeagueCard';
 import { LiveBoard } from '../components/LiveBoard';
 import { LiveActions } from '../components/LiveNow';
 import { useNotifications } from '../components/Notifications';
@@ -208,7 +209,7 @@ function LeagueEvents() {
   );
 }
 
-/** Datos de la liga: dónde y cuándo juegan, y la temporada. */
+/** Datos de la liga: dónde y cuándo juegan, y la temporada. Si tiene logo, arriba el logo con el nombre. */
 function LeagueHeader() {
   const { league } = useLeagueCtx();
   const season =
@@ -218,8 +219,7 @@ function LeagueHeader() {
     league.schedule && { icon: <Clock className="size-3.5" />, text: league.schedule },
     season && { icon: <CalendarRange className="size-3.5" />, text: season },
   ].filter(Boolean) as { icon: ReactNode; text: string }[];
-  if (!bits.length) return null;
-  return (
+  const details = bits.length > 0 && (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
       {bits.map((b) => (
         <span key={b.text} className="inline-flex items-center gap-1">
@@ -229,6 +229,18 @@ function LeagueHeader() {
       ))}
     </div>
   );
+  if (league.logoPath) {
+    return (
+      <div className="flex items-center gap-3">
+        <LeagueIcon league={league} size="xl" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-lg leading-tight font-extrabold tracking-tight break-words sm:text-xl">{league.name}</h1>
+          {details}
+        </div>
+      </div>
+    );
+  }
+  return details || null;
 }
 
 /**

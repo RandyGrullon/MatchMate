@@ -9,6 +9,7 @@ import { toPushPrefs, type PushPrefs } from './data/pushPrefs';
 import { createdAfterMark, CURRENT_LEGAL, forgetLegalForGoogle, needsLegal, type LegalAccepted } from './legal';
 import { toProfile, type ProfileRow } from './data/rows';
 import { asBackendError } from './db/errors';
+import { safeAppPath } from './notifications';
 import { hideSplash } from './splash';
 import type { UserProfile } from './types';
 
@@ -251,6 +252,99 @@ function forgetGoogleMarks(): void {
   forgetLegalForGoogle();
 }
 
+// ---------- A dónde iba antes de entrar ----------
+
+/**
+ * Quien abre una invitación (/unirse/<código>, /invitacion/<id>) o una liga (/l/<id>) sin cuenta y va a entrar o a
+ * crearse una no la pierde: al llegar a /login con `?next=` la ruta se guarda en el teléfono (vale 24 horas), viaja
+ * en el link de Google y en el del correo para confirmar, y al abrirse la sesión (también en otra pestaña, al
+ * confirmar el correo) la app va ahí una sola vez y la borra (src/components/ResumeAfterLogin.tsx).
+ */
+export const AFTER_LOGIN_KEY = 'mm:despues-de-entrar';
+export const AFTER_LOGIN_MS = 24 * 60 * 60 * 1000;
+
+type AfterLoginStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+function afterLoginStorage(): AfterLoginStorage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿Sirve como destino después de entrar? Solo rutas de la app (safeAppPath: nunca otra página), sin caracteres
+ * raros; ni Home (ahí se llega igual) ni la de entrar (sería un círculo).
+ */
+export function afterLoginPath(path: string | null | undefined): string | null {
+  const p = safeAppPath(path);
+  // eslint-disable-next-line no-control-regex
+  if (!p || p.length > 300 || /[\\\u0000-\u001f\u007f]/.test(p)) return null;
+  const route = p.split(/[?#]/)[0];
+  if (route === '/' || route === '/login' || route.startsWith('/login/')) return null;
+  return p;
+}
+
+/** Guarda a dónde iba (lo más nuevo gana). false = no es una ruta que sirva o no hay almacenamiento. */
+export function saveAfterLogin(path: string | null | undefined, now = Date.now(), store: AfterLoginStorage | null = afterLoginStorage()): boolean {
+  const p = afterLoginPath(path);
+  if (!p || !store) return false;
+  try {
+    store.setItem(AFTER_LOGIN_KEY, JSON.stringify({ path: p, at: now }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * /login sin cuenta: guarda a dónde iba (`next`) o, si no iba a ningún lado que sirva (sin `next`, Home, una ruta
+ * que no es de la app), borra lo guardado antes: entrar desde otro lado va a Home, no a una invitación vieja (en un
+ * teléfono compartido, la de otra persona). Devuelve la ruta que quedó (o null).
+ */
+export function syncAfterLogin(next: string | null | undefined, now = Date.now(), store: AfterLoginStorage | null = afterLoginStorage()): string | null {
+  const p = afterLoginPath(next);
+  if (p && saveAfterLogin(p, now, store)) return p;
+  clearAfterLogin(store);
+  return null;
+}
+
+export function clearAfterLogin(store: AfterLoginStorage | null = afterLoginStorage()): void {
+  try {
+    store?.removeItem(AFTER_LOGIN_KEY);
+  } catch {
+    // sin almacenamiento: no hay nada que borrar
+  }
+}
+
+/** A dónde iba, si lo guardó hace menos de 24 horas. Lo vencido o dañado se borra. */
+export function readAfterLogin(now = Date.now(), store: AfterLoginStorage | null = afterLoginStorage()): string | null {
+  if (!store) return null;
+  try {
+    const raw = store.getItem(AFTER_LOGIN_KEY);
+    if (raw == null) return null;
+    const saved = JSON.parse(raw) as { path?: unknown; at?: unknown } | null;
+    const at = typeof saved?.at === 'number' ? saved.at : NaN;
+    const path = afterLoginPath(typeof saved?.path === 'string' ? saved.path : null);
+    if (path && now - at >= 0 && now - at < AFTER_LOGIN_MS) return path;
+  } catch {
+    // copia dañada: se borra abajo
+  }
+  clearAfterLogin(store);
+  return null;
+}
+
+/** Lo lee y lo borra (se usa una sola vez, al abrirse la sesión). */
+export function takeAfterLogin(now = Date.now(), store: AfterLoginStorage | null = afterLoginStorage()): string | null {
+  const path = readAfterLogin(now, store);
+  if (path) clearAfterLogin(store);
+  return path;
+}
+
+/** A dónde vuelve el link de Google o el del correo: la ruta que se pasa o la guardada; sin ninguna, al inicio. */
+const returnPath = (next?: string | null): string | undefined => afterLoginPath(next) ?? readAfterLogin() ?? undefined;
+
 /** `captcha`: token de Turnstile si el proyecto lo pide (src/components/Turnstile.tsx). */
 export const login = (email: string, password: string, captcha?: string) => getBackend().auth.signIn(email.trim(), password, captcha);
 
@@ -262,7 +356,8 @@ export const logout = () => getBackend().auth.signOut();
  */
 /**
  * `adult`: marcó «tengo 18 años o más» (queda en profiles.adult_confirmed_at). `terms`: marcó «Acepto los Términos
- * y la Política de privacidad» (la base guarda la aceptación de las versiones vigentes al crear la cuenta).
+ * y la Política de privacidad» (la base guarda la aceptación de las versiones vigentes al crear la cuenta). `next`: a
+ * dónde iba (el link del correo vuelve ahí; sin él, a lo guardado con saveAfterLogin o al inicio).
  */
 export async function signUp(
   name: string,
@@ -271,15 +366,23 @@ export async function signUp(
   adult = false,
   captcha?: string,
   terms = false,
+  next?: string | null,
 ): Promise<{ needsConfirm: boolean }> {
   const meta = { ...(adult ? { adult: true } : {}), ...(terms ? { legal: { ...CURRENT_LEGAL } } : {}) };
-  const s = await getBackend().auth.signUp(email.trim(), password, name.trim(), Object.keys(meta).length ? meta : undefined, captcha);
+  const s = await getBackend().auth.signUp(
+    email.trim(),
+    password,
+    name.trim(),
+    Object.keys(meta).length ? meta : undefined,
+    captcha,
+    returnPath(next),
+  );
   return { needsConfirm: !s };
 }
 
 /** Vuelve a mandar el correo de confirmación (cuentas sin confirmar, p. ej. las traídas de BowlingX). */
-export async function resendConfirmation(email: string, captcha?: string) {
-  await getBackend().auth.resendConfirmation(email.trim(), captcha);
+export async function resendConfirmation(email: string, captcha?: string, next?: string | null) {
+  await getBackend().auth.resendConfirmation(email.trim(), captcha, returnPath(next));
 }
 
 /**
@@ -301,10 +404,10 @@ export async function renameProfile(user: Pick<AppUser, 'uid'>, name: string) {
 }
 
 /**
- * Entrar o registrarse con Google (si no tenía cuenta, se crea). En Supabase va a Google y vuelve; en el modo
- * local no hay Google y el error lo dice.
+ * Entrar o registrarse con Google (si no tenía cuenta, se crea). En Supabase va a Google y vuelve (a `next`, a lo
+ * guardado con saveAfterLogin o al inicio); en el modo local no hay Google y el error lo dice.
  */
-export const loginWithGoogle = () => getBackend().auth.signInWithGoogle();
+export const loginWithGoogle = (next?: string | null) => getBackend().auth.signInWithGoogle(returnPath(next));
 
 /** Manda el correo para poner una contraseña nueva (el link abre /cuenta?recuperar=1). */
 export const resetPassword = (email: string, captcha?: string) => getBackend().auth.resetPassword(email.trim(), captcha);

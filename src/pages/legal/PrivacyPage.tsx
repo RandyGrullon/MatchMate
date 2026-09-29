@@ -193,7 +193,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           'Para leerla, la app se la manda a Gemini, la inteligencia artificial de Google, en su plan gratis. En ese plan Google puede guardar lo que recibe, usarlo para mejorar sus productos, y personas de Google pueden revisarlo.',
           'Por eso: toma la foto solo a la pantalla del marcador. Sin caras, sin personas y sin nada personal.',
           'La lectura solo propone los números: un admin los revisa antes de que cuenten.',
-          'Si subes un logo o una imagen de tu liga o equipo, donde la app lo permita, se ve junto a la liga igual que su nombre. Usa solo imágenes tuyas o con permiso, sin personas ni datos personales.',
+          'Si subes un logo o una imagen de tu liga o equipo, donde la app lo permita, se ve junto a la liga igual que su nombre. Es una imagen pública: la puede ver cualquiera que tenga el link, aunque no tenga cuenta. Usa solo imágenes tuyas o con permiso, sin personas ni datos personales.',
           'En las ligas con menores no se suben fotos.',
           'Las fotos se quedan mientras exista la liga. El admin puede borrar las viejas cuando quiera, y se borran si se borra la liga.',
         ]}

@@ -19,7 +19,8 @@ const strokeText = (s: string) => (STROKE_LABEL as Record<string, string>)[s] ??
 /**
  * Tarjeta de un juego para el perfil y el inicio (de cualquier deporte): quién (si `showUser`), el deporte, la liga
  * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo), el me gusta y «Reportar» (no en los tuyos).
- * Tocar «Ver» abre el juego en su liga.
+ * Tocar «Ver» abre el juego en su liga. Un juego suelto (sin liga) lleva la bolera en vez de la liga, «Ver» solo para
+ * su dueño y no se reporta como juego (no es de una liga: se reporta la cuenta desde su perfil).
  */
 export function GameCard({
   game,
@@ -39,7 +40,9 @@ export function GameCard({
   mine?: boolean;
 }) {
   const date = gameDateLabel(game.eventDate, today ?? toIsoDate(new Date()));
-  const where = [game.leagueName, game.eventName].filter((s) => s && s.trim()).join(' · ');
+  const title = game.kind === 'solo' ? game.detail.title || game.eventName || 'Juego suelto' : game.eventName || game.leagueName || 'Juego';
+  const sub = game.kind === 'solo' ? game.detail.venue : game.eventName ? game.leagueName : null;
+  const where = (game.kind === 'solo' ? [title, game.detail.venue] : [game.leagueName, game.eventName]).filter((s) => s && s.trim()).join(' · ');
   return (
     <Card className="flex flex-col gap-3 px-4 pt-3.5 pb-1.5" style={{ '--i': i } as CSSProperties}>
       <div className="flex items-start gap-3">
@@ -49,8 +52,8 @@ export function GameCard({
           </UserLink>
         ) : (
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{game.eventName || game.leagueName || 'Juego'}</p>
-            {game.eventName && game.leagueName && <p className="truncate text-xs text-muted">{game.leagueName}</p>}
+            <p className="truncate text-sm font-semibold">{title}</p>
+            {sub && sub.trim() && <p className="truncate text-xs text-muted">{sub}</p>}
           </div>
         )}
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -64,14 +67,16 @@ export function GameCard({
       <div className="-mx-2 flex items-center justify-between border-t border-line pt-1">
         <LikeButton game={game} />
         <div className="flex items-center">
-          <ReportButton kind="game" targetId={game.id} ownerId={game.userId} />
-          <Link
-            to={game.url}
-            className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft"
-            aria-label={`Ver el juego: ${gameSummary(game)}`}
-          >
-            Ver <ChevronRight className="size-4" aria-hidden="true" />
-          </Link>
+          {game.kind !== 'solo' && <ReportButton kind="game" targetId={game.id} ownerId={game.userId} />}
+          {game.url && (
+            <Link
+              to={game.url}
+              className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft"
+              aria-label={`Ver el juego: ${gameSummary(game)}`}
+            >
+              Ver <ChevronRight className="size-4" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </div>
     </Card>
@@ -88,6 +93,39 @@ function Big({ value, note }: { value: ReactNode; note: string }) {
   );
 }
 
+/**
+ * Los pinos de cada juego del boliche (200 o más, resaltado; si no, el color de su marca: «Récord personal» o «+15
+ * sobre tu promedio»); `verified[k] === false` se ve más claro.
+ */
+export function ScoreChips({
+  scores,
+  verified,
+  marks,
+}: {
+  scores: readonly number[];
+  verified?: readonly boolean[];
+  marks?: readonly (GameMark | null)[] | null;
+}) {
+  return (
+    <>
+      {scores.map((s, k) => (
+        <span
+          key={k}
+          className={cx(
+            'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
+            s >= 200 ? 'bg-accent text-accent-fg' : (markedChip(marks?.[k]) ?? 'bg-surface-2'),
+            verified?.[k] === false && 'opacity-70',
+          )}
+          title={`Juego ${k + 1}${verified?.[k] === false ? ' (sin verificar)' : ''}`}
+        >
+          {s >= 200 ? <Flame className="mr-0.5 size-3" aria-hidden="true" /> : <MarkIcon mark={marks?.[k]} className="mr-0.5 size-3" />}
+          {s}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function GameBody({ game, marks, mine }: { game: ProfileGame; marks?: (GameMark | null)[] | null; mine?: boolean }) {
   switch (game.kind) {
     case 'bowling': {
@@ -98,20 +136,7 @@ function GameBody({ game, marks, mine }: { game: ProfileGame; marks?: (GameMark 
         <div className="flex flex-col gap-1.5">
           <div className="flex items-end gap-3">
             <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-              {d.scores.map((s, k) => (
-                <span
-                  key={k}
-                  className={cx(
-                    'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
-                    s >= 200 ? 'bg-accent text-accent-fg' : (markedChip(marks?.[k]) ?? 'bg-surface-2'),
-                    d.verified[k] === false && 'opacity-70',
-                  )}
-                  title={`Juego ${k + 1}${d.verified[k] === false ? ' (sin verificar)' : ''}`}
-                >
-                  {s >= 200 ? <Flame className="mr-0.5 size-3" aria-hidden="true" /> : <MarkIcon mark={marks?.[k]} className="mr-0.5 size-3" />}
-                  {s}
-                </span>
-              ))}
+              <ScoreChips scores={d.scores} verified={d.verified} marks={marks} />
               {allVerified && (
                 <span className="inline-flex items-center gap-1 self-center text-[11px] font-medium text-ok">
                   <BadgeCheck className="size-3.5" aria-hidden="true" /> Verificado
@@ -121,6 +146,18 @@ function GameBody({ game, marks, mine }: { game: ProfileGame; marks?: (GameMark 
             <Big value={d.scores.length > 1 ? d.series : d.high} note={d.scores.length > 1 ? `Serie · alto ${d.high}` : 'Pinos'} />
           </div>
           <MarksLine marks={marks} mine={mine} />
+        </div>
+      );
+    }
+    case 'solo': {
+      const d = game.detail;
+      if (!d.scores.length) return <p className="text-sm text-muted">Sin juegos anotados</p>;
+      return (
+        <div className="flex items-end gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            <ScoreChips scores={d.scores} />
+          </div>
+          <Big value={d.scores.length > 1 ? d.series : d.high} note={d.scores.length > 1 ? `Serie · alto ${d.high}` : 'Pinos'} />
         </div>
       );
     }

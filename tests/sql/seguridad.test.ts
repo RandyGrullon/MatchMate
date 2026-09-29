@@ -72,6 +72,8 @@ const RPC_AUTHENTICATED = [
   // Temporadas, campeones, playoffs, marcas del boliche y «¿Dónde juego esta semana?».
   'close_season', 'start_season', 'league_seasons', 'league_champions', 'create_playoffs', 'delete_playoffs', 'sync_playoffs',
   'bowling_game_context', 'public_agenda',
+  // Juegos sueltos del boliche y el logo de la liga.
+  'save_solo_session', 'delete_solo_session', 'solo_sessions_of', 'begin_logo_upload', 'set_league_logo',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -228,7 +230,10 @@ describe('nada abierto por accidente', () => {
     );
     expect(rows).toEqual([
       { who: 'anon', fn: 'readable_leagues' },
-      ...['admin_leagues', 'can_upload_photo_path', 'is_super', 'my_leagues', 'photo_admin_leagues', 'readable_leagues'].map((fn) => ({
+      ...[
+        'admin_leagues', 'can_remove_logo_path', 'can_upload_logo_path', 'can_upload_photo_path', 'is_super', 'my_leagues',
+        'photo_admin_leagues', 'readable_leagues',
+      ].map((fn) => ({
         who: 'authenticated',
         fn,
       })),
