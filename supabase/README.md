@@ -36,6 +36,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
 | `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
+| `migrations/20260929000200_invitaciones.sql` | `@usuario` de cada cuenta (`profiles.username`, `set_username`, `username_status`), buscar personas (`search_people`) e invitaciones a una liga (`league_invites`, `invite_to_league`, `respond_league_invite`, `cancel_league_invite`, `my_league_invites`, `league_invite_details`). Redefine `private.social_can_see` (con sesión se ve cualquier cuenta sin bloquear; sus juegos siguen filtrados por liga), `public_profile` y `follow_list` (con `username`) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -74,7 +75,8 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `42501` | `bloqueada` | La cuenta está bloqueada por el superadmin: no escribe nada (leer sí). El cliente la muestra como «Tu cuenta está bloqueada. Escríbele al equipo de MatchMate.» (código `bloqueada`) | `permission` |
 | `P0001` | `invalido` | Dato que no sirve (nombre vacío, pinos fuera de 0–300, clave de patch desconocida…) | `validation` |
 | `P0001` | `no_existe` | La liga, evento, jugador, envío… no existe (o no es de esa liga) | `not_found` |
-| `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador) o ya lo pidió otra cuenta, op_id de otra cuenta u otra función | `conflict` |
+| `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador, `@usuario`) o ya lo pidió otra cuenta, op_id de otra cuenta u otra función | `conflict` |
+| `P0001` | `reservado` | Ese `@usuario` no se puede usar (`set_username`: `admin`, `soporte`, `matchmate`…) | `validation` |
 | `P0001` | `conflicto: <qué choca> (n), …` | Aprobar un reclamo: los dos jugadores estuvieron en el mismo evento, partido, ronda, prueba, escalera o inscripción (o en equipos distintos de la temporada). No cambia nada; el admin quita lo repetido y aprueba otra vez | `conflict` |
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
 | `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s) o demasiados códigos malos | `rate_limited` |
@@ -103,6 +105,13 @@ Hoy solo `bowling` está `open`; los demás `beta` (solo el superadmin crea liga
 o `full_name` de Google, o lo de antes de la @ del correo, recortado a 60; `adult: true` llena
 `adult_confirmed_at`). Otros miembros se ven por `league_members.display_name`.
 Consola: `last_seen_at` (lo pone `touch_seen`), `blocked_at` y `blocked_reason` (≤ 200; la cuenta ve si está bloqueada).
+**`username`** (el `@usuario`, obligatorio y único): 3–20 letras minúsculas, números, `_` y `.` (el punto no va al
+principio ni al final, ni dos seguidos: `^[a-z0-9_][a-z0-9_.]{1,18}[a-z0-9_]$` sin `..`). Se pone solo al crear el
+perfil (trigger `profiles_username`): el nombre sin acentos ni símbolos (`ñ` → `n`, hasta 15); si no llega a 3,
+`jugador` (nunca del correo: el `@usuario` lo ve cualquiera con sesión). Si ya está tomado o es reservado (`admin`, `soporte`,
+`matchmate`, `buscar`, `invitacion`…: `private.username_reserved`), con 4 números al final. Se cambia con
+`set_username` (5 cambios por día, contados con candado: `private.rate_take`). De otras cuentas sale en `public_profile`, `follow_list`, `search_people` y las
+invitaciones.
 
 ### `leagues` — liga visible
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
@@ -185,6 +194,12 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `event_rsvps` `'<event_id>:<player_id>'`, `league_members` `'<league_id>:<user_id>'`, `live_states`
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 
+### `league_invites` — la cuenta invitada, quien invitó y los admins de la liga (el superadmin, todas)
+`id`, `league_id`, `user_id` (la cuenta invitada), `invited_by` (null si se borró su cuenta), `status`
+(`pending`|`accepted`|`declined`|`cancelled`), `created_at`, `updated_at`, `decided_at` (null mientras está pendiente).
+Una pendiente por liga y cuenta. Se escribe solo con las RPC de invitaciones (abajo). Unirse por otro camino (código,
+liga pública) la deja `accepted`; salir de la liga (o que lo saquen) deja `cancelled` las que mandó esa cuenta.
+
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
@@ -210,6 +225,8 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 |---|---|---|
 | `ensure_profile() → void` | la cuenta | Crea su perfil si el trigger no pudo (idempotente). |
 | `rename_profile(p_name text) → void` | la cuenta | Nombre 1–60 (recortado). `invalido`. |
+| `set_username(p_username text) → text` | la cuenta | Su `@usuario` (sin espacios alrededor, en minúsculas y sin una `@` al principio); devuelve cómo quedó. El mismo que ya tiene: nada. `invalido` (formato), `reservado`, `duplicado` (lo tiene otra cuenta), `rate_limited` (5 cambios por día). |
+| `username_status(p_username text) → text` | la cuenta | Mientras se escribe: `mine` (el suyo), `ok`, `taken`, `invalid` o `reserved`, normalizado igual. 600 por hora (`rate_limited`). |
 | `set_superadmin(p_user uuid, p_value boolean) → void` | superadmin | `no_existe`. El primero se siembra por SQL. |
 | `set_sport_status(p_sport text, p_status text) → void` | superadmin | `open`\|`beta`\|`closed`. `no_existe`. |
 
@@ -318,20 +335,34 @@ Subir primero el archivo a Storage, bucket `scoreboards`, ruta `'<league_id>/<ph
 
 
 **Social (perfiles, seguir y me gusta)** — todas con sesión y `require_uid` (una cuenta bloqueada no sigue ni da me
-gusta). Una cuenta «se ve» si es la propia, comparte una liga, es miembro de una liga pública o una de las dos sigue
-a la otra (el superadmin, todas). De lo que se ve solo sale lo de ligas que quien mira puede leer y **sin menores**.
-`follows` directo: cada cuenta lee solo sus filas.
+gusta). Una cuenta «se ve» si es la propia, comparte una liga, es miembro de una liga pública, una de las dos sigue
+a la otra o, desde `20260929000200_invitaciones.sql`, si no está bloqueada (con sesión se busca y se abre cualquier
+cuenta sin bloquear; el superadmin ve todas). De lo que se ve solo sale lo de ligas que quien mira puede leer y **sin
+menores** (juegos, me gusta recibidos, deportes y números). `follows` directo: cada cuenta lee solo sus filas.
 
 | RPC | Quién | Qué hace |
 |---|---|---|
 | `follow_user(p_user) → {following, followers}` | con sesión | Idempotente. No a uno mismo (`invalido`), ni a quien no existe (`no_existe`), bloqueado o que no se ve (`no_permitido`). 60 cambios por hora (`rate_limited`). Push «te empezó a seguir» uno por persona y día. |
 | `unfollow_user(p_user) → {following, followers}` | con sesión | Idempotente; cuenta en el mismo ritmo. |
-| `follow_list(p_user, p_kind 'followers'\|'following', p_limit=30, p_before, p_before_id) → [{id, name, at, isFollowing, followsYou, isMe}]` | con sesión | Vacía si no se ve; solo lista a quien ve quien mira. Hasta 50. |
-| `public_profile(p_user) → {id, name, since, sports, followers, following, likesReceived, gamesCount, isFollowing, followsYou, isMe}` | con sesión | `null` si no existe o no se ve. |
+| `follow_list(p_user, p_kind 'followers'\|'following', p_limit=30, p_before, p_before_id) → [{id, name, username, at, isFollowing, followsYou, isMe}]` | con sesión | Vacía si no se ve; solo lista a quien ve quien mira. Hasta 50. |
+| `public_profile(p_user) → {id, name, username, since, sports, followers, following, likesReceived, gamesCount, isFollowing, followsYou, isMe}` | con sesión | `null` si no existe o no se ve. |
 | `profile_games(p_user, p_limit=20, p_before, p_before_key, p_sport) → [juego]` · `following_games(p_sport, p_limit, p_before, p_before_key)` | con sesión | Juegos (boliche, partidos, golf, natación) más nuevos primero, con `likes`, `likedByMe` y `detail`. |
 | `profile_stats(p_user) → {bowling, matches, golf, swim}` | con sesión | Números por deporte (boliche: solo juegos verificados). |
 | `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores) | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`. 300 cambios por hora. |
 | `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). |
+
+**Personas e invitaciones** (`20260929000200_invitaciones.sql`) — todas con sesión y `require_uid`. Contrato del
+cliente: `src/lib/data/people.ts` y `src/lib/data/invites.ts`. Persona = `{id, name, username, isFollowing,
+followsYou, inLeague, invited}`.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `search_people(p_query=null, p_league uuid=null, p_limit=30) → [persona]` | con sesión; con `p_league`: miembro de esa liga o superadmin (`no_permitido`) | Hasta 50, nunca la propia ni bloqueadas. Consulta (recortada a 60, en minúsculas, sin una `@` al principio) vacía: las cuentas que sigo, la más reciente primero. 1 letra: `[]`. Si no: `@usuario` que empieza con lo escrito o nombre que lo contiene (sin acentos; por nombre solo con 2 letras o números o más), en este orden: `@usuario` exacto, cuentas que sigo, `@usuario` que empieza así, nombre que empieza así y el resto por nombre. `inLeague` / `invited` (invitación pendiente a `p_league`): false sin `p_league`. 600 búsquedas por hora (`rate_limited`; la lista de quienes sigo no cuenta). |
+| `invite_to_league(p_league, p_users uuid[]) → {sent, results: [{userId, status}]}` | miembro de una liga pública; en una privada (también con menores) dueño, admin o superadmin | Hasta 50 cuentas distintas (en su orden; `invalido` si ninguna o más). Cada una: `unavailable` (uno mismo, no existe o bloqueada), `member`, `pending` (ya tiene una que vale; la que ya no vale se cancela y se manda la nueva), `declined` (la rechazó hace menos de 7 días), `rate_limited` (no cupo en el límite de hoy) o `sent` (push «<nombre> te invitó a <liga>» a `/invitacion/<id>`, tag `invitacion:<id>`, vale 7 días; uno por persona y día de quien invita: invitar, retirar y volver a invitar, o a otra liga, no manda otro). `no_existe`, `no_permitido`, `rate_limited` (100 enviadas por día; se mira con cada una, con candado). |
+| `respond_league_invite(p_invite, p_accept boolean, p_prefer uuid=null) → {status, leagueId[, playerId, claimId]}` | la cuenta invitada | Aceptar: entra de miembro con su jugador (`p_prefer` = «¿Quién eres?»: deja el reclamo, como `join_league`; `claimId` = su reclamo pendiente o null) y push a quien invitó («<nombre> aceptó tu invitación»). Si ya no vale (quien invitó está bloqueado, o la liga no es pública y quien invitó ya no es admin de ella: `private.invite_ok`), queda `cancelled` sin entrar. Rechazar: `declined`. Ya decidida: `{status, leagueId}` sin cambiar nada (sin `playerId`). `no_existe` (no es suya), `invalido` (`p_accept` null). |
+| `cancel_league_invite(p_invite) → void` | quien invitó o admin de la liga | La deja `cancelled`. Ya decidida: nada. `no_existe`, `no_permitido`. |
+| `my_league_invites() → [{id, leagueId, leagueName, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt}]` | con sesión | Mis invitaciones pendientes que todavía valen, la más nueva primero (hasta 50). |
+| `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
 
 ### Push
 
@@ -401,6 +432,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo |
 | `league:<id>` | `claims` | `{id, status}` | reclamos de jugadores de la liga (pedido, aprobado, rechazado, cancelado) |
 | `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
+| `user:<uid>` | `invites` | `{id, status, league_id}` | una invitación a una liga que recibió o que mandó (nueva, aceptada, rechazada, cancelada) |
+| `league:<id>` | `invites` | `{id, status}` | invitaciones a la liga |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa

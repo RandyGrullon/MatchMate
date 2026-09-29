@@ -59,6 +59,9 @@ const RPC_AUTHENTICATED = [
   'social_notices', 'unfollow_user',
   // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
   'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
+  // @usuario, buscar personas e invitaciones a una liga.
+  'set_username', 'username_status', 'search_people', 'invite_to_league', 'respond_league_invite', 'cancel_league_invite',
+  'my_league_invites', 'league_invite_details',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
