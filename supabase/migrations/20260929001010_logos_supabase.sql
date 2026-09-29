@@ -4,7 +4,7 @@
 --
 -- Cómo lo usa la app (src/lib/logos.ts):
 -- - comprime el logo (cuadrado de 256 px sobre blanco, WebP o JPEG, ≤ 120 kB), reserva la ruta '<liga>/<uuid>.webp'
---   (o '.jpg') con begin_logo_upload (20260929000300_sueltos_logos.sql: admin de la liga, 30 por día) y la sube;
+--   (o '.jpg') con begin_logo_upload (20260929001000_sueltos_logos.sql: admin de la liga, 30 por día) y la sube;
 --   después llama set_league_logo con esa ruta y borra el anterior que devuelve;
 -- - lo muestra con la URL pública (getPublicUrl): el bucket es público, cualquiera con el link lo ve (un logo no es un
 --   dato privado; la página de privacidad lo dice);

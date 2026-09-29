@@ -470,7 +470,7 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
       const key = fileKey(bucket, path);
       // Como las políticas de Storage: sin cuenta no se sube nada.
       if (!current) throw new BackendError('Entra a tu cuenta para subir archivos.', 'permission', '403');
-      // Logos: como mm_logos_upload (20260929000310_logos_supabase.sql), solo un admin de esa liga en su carpeta.
+      // Logos: como mm_logos_upload (20260929001010_logos_supabase.sql), solo un admin de esa liga en su carpeta.
       if (bucket === LOGOS) {
         const ok = await asUser((tx) => tx.query<{ ok: boolean }>('select private.can_upload_logo_path($1) as ok', [path]));
         if (!ok.rows[0]?.ok) throw new BackendError('new row violates row-level security policy', 'permission', '403');

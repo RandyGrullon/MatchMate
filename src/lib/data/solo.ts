@@ -14,7 +14,7 @@ import { useTopic } from './topics';
 /**
  * Juegos sueltos: los juegos de boliche de una cuenta que no son de ninguna liga ni torneo (una tarde en la bolera
  * con los panas). Fecha, bolera, nota, de 1 a 10 juegos (con cuadros si se anotaron tiro por tiro) y si salen en el
- * perfil. La base: public.solo_sessions (20260929000300_sueltos_logos.sql); cada cuenta lee los suyos y, de otra
+ * perfil. La base: public.solo_sessions (20260929001000_sueltos_logos.sql); cada cuenta lee los suyos y, de otra
  * cuenta que se ve, solo los compartidos.
  *
  * Guardar va por la cola sin conexión (grupo 'solo', una clave por juego): se ve de una en la lista y, sin señal,

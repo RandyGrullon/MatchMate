@@ -26,7 +26,7 @@ import {
 const ALL = Object.keys(SPORT_FAMILY) as SportId[];
 
 // Filas que deja la base en sport_status (todas las migraciones, en orden), para comparar con el registro: lo que
-// siembran y después los cambios de estado de todos a la vez (p. ej. 20260929000300 abrió los que estaban en beta).
+// siembran y después los cambios de estado de todos a la vez (p. ej. 20260929001000 abrió los que estaban en beta).
 const migrations = import.meta.glob<string>('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true });
 function seededSports(): { id: string; family: string; status: string; order: number }[] {
   const rows: { id: string; family: string; status: string; order: number }[] = [];

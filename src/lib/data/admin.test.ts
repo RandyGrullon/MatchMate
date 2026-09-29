@@ -369,7 +369,7 @@ describe('con la base de verdad', () => {
     await rpc('rename_profile', { p_name: 'Beto' });
 
     await w.as('jefe@x.com');
-    // Todos los deportes están abiertos (20260929000300_sueltos_logos.sql): el superadmin pone uno en beta y lo abre.
+    // Todos los deportes están abiertos (20260929001000_sueltos_logos.sql): el superadmin pone uno en beta y lo abre.
     await setSportStatus('padel', 'beta');
     expect((await fetchAdminSystem())?.sportStatus.find((s) => s.sport === 'padel')?.status).toBe('beta');
     await setSportStatus('padel', 'open');

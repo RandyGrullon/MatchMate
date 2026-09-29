@@ -1,5 +1,5 @@
 /**
- * Logo de ligas y torneos (20260929000300_sueltos_logos.sql y el Storage de 20260929000310_logos_supabase.sql):
+ * Logo de ligas y torneos (20260929001000_sueltos_logos.sql y el Storage de 20260929001010_logos_supabase.sql):
  * leagues.logo_path, begin_logo_upload (la reserva de cada subida), set_league_logo, private.can_upload_logo_path y
  * private.can_remove_logo_path, la cola de Storage de lo que ya no se usa, lo que ve quien todavía no es de la liga
  * (invite_preview, invite_details, my_league_invites, league_invite_details) y la consola (admin_leagues). Las
@@ -333,14 +333,14 @@ describe('private.can_remove_logo_path (las políticas de leer y borrar)', () =>
   });
 });
 
-describe('Storage (20260929000310_logos_supabase.sql, solo Supabase), probado en PGlite', () => {
+describe('Storage (20260929001010_logos_supabase.sql, solo Supabase), probado en PGlite', () => {
   const put = (who: string, name: string) => db.as(who, `insert into storage.objects (bucket_id, name) values ('logos', $1)`, [name]);
   const del = (who: string, name: string) => db.as(who, `delete from storage.objects where bucket_id = 'logos' and name = $1 returning name`, [name]);
   const list = (who: string) => db.as<{ name: string }>(who, `select name from storage.objects where bucket_id = 'logos' order by name`);
 
   beforeEach(async () => {
     // El archivo entero: crea el bucket y las políticas. Después, lo que Supabase ya trae: RLS y permisos.
-    await db.pg.exec(readFileSync(join(MIGRATIONS_DIR, '20260929000310_logos_supabase.sql'), 'utf8'));
+    await db.pg.exec(readFileSync(join(MIGRATIONS_DIR, '20260929001010_logos_supabase.sql'), 'utf8'));
     await db.pg.exec(`
       alter table storage.objects enable row level security;
       grant select, insert, delete on storage.objects to authenticated;
@@ -357,7 +357,7 @@ describe('Storage (20260929000310_logos_supabase.sql, solo Supabase), probado en
       { policyname: 'mm_logos_upload', cmd: 'INSERT' },
     ]);
     // Correrlo otra vez no duplica nada.
-    await db.pg.exec(readFileSync(join(MIGRATIONS_DIR, '20260929000310_logos_supabase.sql'), 'utf8'));
+    await db.pg.exec(readFileSync(join(MIGRATIONS_DIR, '20260929001010_logos_supabase.sql'), 'utf8'));
     expect(await db.count('pg_policies', `tablename = 'objects' and policyname like 'mm_logos_%'`)).toBe(3);
     expect(await db.count('storage.buckets', `id = 'logos'`)).toBe(1);
   });

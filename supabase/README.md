@@ -41,8 +41,8 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929000600_organizador.sql` | Organizador (ver «Organizador»): ligas públicas vivas y más activas primero (`public_leagues_feed`, también sin cuenta) y tope de 5 ligas o torneos por día y 20 cada 30 días por cuenta (trigger `leagues_quota`); pendientes del admin (`league_pending`); juntar jugadores repetidos (`merge_league_players`, `merge_league_players_preview`); menores con tutor, teléfono y permiso en todos los deportes (`create_player` con `p_guardian_phone` y `p_consent`, `set_player_minor`, `player_private.guardian_phone`); suspender un día (`suspend_day_preview`, `suspend_day`); pistas del boliche (`event_lanes`, `assign_lanes`, `set_player_lane`, `clear_lanes`, `publish_lanes`) |
 | `migrations/20260929000700_temporadas.sql` | Temporadas con historia y campeones (`seasons`, `season_awards`, `teams.season_id`, `close_season`, `start_season`, `league_seasons`, `league_champions`), playoffs con series al mejor de 1/3/5/7 (`playoffs`, `playoff_series`, `matches.series_id`, `create_playoffs`, `delete_playoffs`, `sync_playoffs`), lo que el boliche necesita para marcar récords (`bowling_game_context`) y «¿Dónde juego esta semana?» (`public_agenda`, también sin cuenta). Redefine `private.check_free_players`, `private.claim_conflicts` y `private.merge_players` (la de `000600`, con las pistas, y además premios y tablas guardadas por temporada), `league_announce` / `league_announce_reach` (el aviso automático de fin de temporada, `league_announcements.automatic`, no cuenta para el tope diario) y `private.push_category` (`temporada:` en `liga`, «Tus ligas») |
 | `migrations/20260929000900_legal.sql` | Términos y privacidad con versión y aceptación guardada (`legal_acceptances`, `accept_legal`, el trigger `on_auth_user_legal` del registro, `admin_legal_stats`) y reportes de contenido (`reports`, `report_content`, `resolve_report`, `list_reports`, `my_reports`; push a los superadmins). Ver «Términos, privacidad y reportes» |
-| `migrations/20260929000300_sueltos_logos.sql` | Todos los deportes `open`. Juegos sueltos del boliche (`solo_sessions`, `solo_likes`, `save_solo_session`, `delete_solo_session`, `solo_sessions_of`; los compartidos salen en lo social como kind `solo`). Logo de la liga (`leagues.logo_path`, `begin_logo_upload` (la reserva de cada subida, `private.logo_uploads`), `set_league_logo`, `private.can_upload_logo_path`, `private.can_remove_logo_path`, lo que ya no se usa a `storage_purge_queue` con su `bucket`; `logoPath` en `invite_details`, `my_league_invites`, `league_invite_details` y la consola; `invite_preview` con `logo_path`). Redefine `private.social_items`, `social_likes`, `social_games`, `forget_user`, `admin_league_row`, `public_profile`, `profile_stats`, `set_game_like`, `social_notices`, `invite_details`, `my_league_invites`, `league_invite_details` e `invite_preview` |
-| `migrations/20260929000310_logos_supabase.sql` | **Solo Supabase**: bucket público `logos` y sus políticas (la prueba `logos.test.ts` corre este archivo en PGlite) |
+| `migrations/20260929001000_sueltos_logos.sql` | Todos los deportes `open`. Juegos sueltos del boliche (`solo_sessions`, `solo_likes`, `save_solo_session`, `delete_solo_session`, `solo_sessions_of`; los compartidos salen en lo social como kind `solo`). Logo de la liga (`leagues.logo_path`, `begin_logo_upload` (la reserva de cada subida, `private.logo_uploads`), `set_league_logo`, `private.can_upload_logo_path`, `private.can_remove_logo_path`, lo que ya no se usa a `storage_purge_queue` con su `bucket`; `logoPath` en `invite_details`, `my_league_invites`, `league_invite_details` y la consola; `invite_preview` con `logo_path`). Redefine `private.social_items`, `social_likes`, `social_games`, `forget_user`, `admin_league_row`, `public_profile`, `profile_stats`, `set_game_like`, `social_notices`, `invite_details`, `my_league_invites`, `league_invite_details` e `invite_preview` |
+| `migrations/20260929001010_logos_supabase.sql` | **Solo Supabase**: bucket público `logos` y sus políticas (la prueba `logos.test.ts` corre este archivo en PGlite) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -103,7 +103,7 @@ o superadmin. **Admin** = dueño o admin de la liga, o superadmin. Toda tabla qu
 ### `sport_status` — todos (también sin cuenta)
 `id` text (`bowling`, `padel`, `tennis`, `pickleball`, `basketball`, `football`, `futsal`, `golf`, `swimming`),
 `family` (`series`|`racket`|`team`), `status` (`open`|`beta`|`closed`), `sort_order`, `updated_at`.
-Desde `20260929000300_sueltos_logos.sql` todos están `open`. El superadmin puede poner uno en `beta` (solo él crea
+Desde `20260929001000_sueltos_logos.sql` todos están `open`. El superadmin puede poner uno en `beta` (solo él crea
 ligas de ese deporte) o `closed` (nadie) con `set_sport_status`.
 
 ### `profiles` — con sesión: el propio (el superadmin, todos). Sin cuenta: nunca (tiene el correo)
@@ -435,7 +435,7 @@ menores** (juegos, me gusta recibidos, deportes y números). `follows` directo: 
 | `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores); `solo`: el juego es compartido y se ve a su dueño | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`, `solo` (juego suelto: `public.solo_likes`; también el propio; quitarlo se puede siempre, pero de uno que ya no se ve devuelve `{likes: 0, liked: false}`). 300 cambios por hora. |
 | `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). Me gusta en un juego suelto mío: `{kind: 'like', …, gameKind: 'solo', id, playerId: null, leagueId: null, leagueName: null, sport: 'bowling', url: '/juegos-sueltos?juego=<id>'}`. |
 
-**Juegos sueltos** (`20260929000300_sueltos_logos.sql`) — boliche fuera de una liga o torneo. Todas con sesión y
+**Juegos sueltos** (`20260929001000_sueltos_logos.sql`) — boliche fuera de una liga o torneo. Todas con sesión y
 `require_uid`. Contrato del cliente: `src/lib/data/solo.ts`. Juego suelto = `{id, userId, playedOn, venue, note,
 scores, frames, shared, createdAt, updatedAt, likes, likedByMe}`.
 
@@ -605,7 +605,7 @@ Bucket privado `scoreboards`, 1 MB, `image/webp` o `image/jpeg`. Leer: quien ve 
 anotador o miembro con jugador en una liga sin menores (`private.can_upload_photo_path`). Borrar: admins
 de la liga. Sin actualizar. En local, `BackendStorage` guarda el archivo por su cuenta; `photos.path` es la clave.
 
-Bucket **público** `logos` (`20260929000310_logos_supabase.sql`), 256 kB, `image/webp`, `image/jpeg` o `image/png`:
+Bucket **público** `logos` (`20260929001010_logos_supabase.sql`), 256 kB, `image/webp`, `image/jpeg` o `image/png`:
 el logo de cada liga o torneo en `'<liga>/<uuid>.webp|.jpg'` (cada logo nuevo es un archivo nuevo). Se muestra con la
 URL pública (cualquiera con el link lo ve). Subir: dueño o admin de la liga sin bloquear, solo en una ruta que
 reservó con `begin_logo_upload` (30 por día; `private.can_upload_logo_path`): nadie guarda archivos sin pasar por ese

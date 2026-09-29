@@ -231,7 +231,7 @@ describe('auditoría', () => {
     ]);
     expect(rows.every((r) => r.actor_id === w.u.dios)).toBe(true);
     expect(rows[0].detail).toMatchObject({ value: true, before: false, name: 'sofi', email: 'sofi@x.com' });
-    // Todos los deportes están abiertos desde 20260929000300_sueltos_logos.sql.
+    // Todos los deportes están abiertos desde 20260929001000_sueltos_logos.sql.
     expect(rows[1].detail).toEqual({ from: 'open', to: 'closed' });
     expect(rows[2].detail).toMatchObject({ reason: 'spam', name: 'luis' });
     expect(rows[3].detail).toMatchObject({ wasBlocked: true, reason: 'spam' });

@@ -14,7 +14,7 @@
 --    profile_stats, y se les da me gusta con set_game_like('solo'). Los me gusta van en public.solo_likes
 --    (game_likes exige liga y jugador) y salen en social_notices como los de partidos, golf y natación.
 -- 3. Logo: leagues.logo_path ('<liga>/<uuid>.webp|jpg|png' en el bucket público 'logos', que crea
---    20260929000310_logos_supabase.sql). Cada subida se reserva antes con begin_logo_upload (admin de la liga, 30 por
+--    20260929001010_logos_supabase.sql). Cada subida se reserva antes con begin_logo_upload (admin de la liga, 30 por
 --    día): Storage solo acepta rutas reservadas (private.can_upload_logo_path) y set_league_logo solo pone una
 --    reservada (o quita el logo) y devuelve el anterior para que el teléfono lo borre de Storage. El archivo que deja
 --    de usarse (cambiado, quitado, de una liga borrada o una reserva que no se usó en un día) va a
@@ -814,7 +814,7 @@ end $$;
 -- =====================================================================
 -- 3. Logo de la liga o torneo
 -- =====================================================================
--- El archivo va en el bucket público 'logos' (20260929000310_logos_supabase.sql) en '<liga>/<uuid>.webp|.jpg|.png':
+-- El archivo va en el bucket público 'logos' (20260929001010_logos_supabase.sql) en '<liga>/<uuid>.webp|.jpg|.png':
 -- cada logo nuevo es un archivo nuevo (nunca se reemplaza uno). null = sin logo.
 alter table public.leagues add column logo_path text
   check (logo_path is null or logo_path ~ ('^' || id::text || '/[0-9a-f-]{36}\.(webp|jpg|png)$'));
@@ -947,7 +947,7 @@ end $$;
 create trigger leagues_logo_purge after update of logo_path or delete on public.leagues
   for each row execute function private.queue_logo_purge();
 
--- Limpieza diaria (la programa 20260929000310_logos_supabase.sql): las reservas de hace más de un día que no se usaron
+-- Limpieza diaria (la programa 20260929001010_logos_supabase.sql): las reservas de hace más de un día que no se usaron
 -- van a la cola de Storage (si se subió algo, sobra). Devuelve cuántas.
 create function private.logo_uploads_cleanup(p_now timestamptz default now()) returns integer
 language plpgsql security definer set search_path = '' as $$

@@ -9,7 +9,7 @@ import { soloTags } from './solo';
 /**
  * Los juegos del perfil (de todos los deportes), los de las cuentas que sigo (el inicio), los números por deporte
  * y los me gusta. La base decide qué se ve (20260928000200_social.sql): solo ligas que la cuenta que mira puede
- * leer y nunca las que tienen menores. Los juegos sueltos de boliche compartidos (sin liga, 20260929000300_sueltos_logos.sql)
+ * leer y nunca las que tienen menores. Los juegos sueltos de boliche compartidos (sin liga, 20260929001000_sueltos_logos.sql)
  * salen como otro tipo de juego: 'solo'.
  *
  * RPC: profile_games, following_games, profile_stats, set_game_like.

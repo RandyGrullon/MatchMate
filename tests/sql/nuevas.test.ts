@@ -98,7 +98,7 @@ describe('deporte', () => {
   });
 
   it('un deporte en beta solo lo crea el superadmin; cerrado, nadie', async () => {
-    // Todos están abiertos (20260929000300_sueltos_logos.sql): el superadmin pone el pádel en beta.
+    // Todos están abiertos (20260929001000_sueltos_logos.sql): el superadmin pone el pádel en beta.
     await db.rpc(w.u.dios, 'set_sport_status', { p_sport: 'padel', p_status: 'beta' });
     await fails(db.rpc(w.u.nuevo, 'create_league', { p_name: 'Pádel', p_sport: 'padel' }), DENIED);
     const r = await db.rpc<{ league_id: string }>(w.u.dios, 'create_league', { p_name: 'Pádel', p_sport: 'padel' });

@@ -5,7 +5,7 @@
  * - closed: nadie crea nuevas (las que existen siguen).
  *
  * Se guarda una copia en el teléfono para abrir sin señal. Mientras no hay nada, vale lo mismo que dejan las
- * migraciones: todos abiertos (20260929000300_sueltos_logos.sql abrió los que estaban en beta). El superadmin
+ * migraciones: todos abiertos (20260929001000_sueltos_logos.sql abrió los que estaban en beta). El superadmin
  * todavía puede poner uno en beta o cerrarlo desde su consola. Una prueba compara las dos cosas.
  */
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
@@ -19,7 +19,7 @@ export type SportStatusMap = Record<SportId, SportStatus>;
 
 export const SPORT_STATUS_LABEL: Record<SportStatus, string> = { open: 'Abierto', beta: 'Beta', closed: 'Cerrado' };
 
-/** Lo que dejan las migraciones (sembrado en 20260926000200_schema.sql, abierto en 20260929000300_sueltos_logos.sql). */
+/** Lo que dejan las migraciones (sembrado en 20260926000200_schema.sql, abierto en 20260929001000_sueltos_logos.sql). */
 export const DEFAULT_SPORT_STATUS: Readonly<SportStatusMap> = Object.fromEntries(SPORT_IDS.map((id) => [id, 'open'])) as SportStatusMap;
 
 const isStatus = (v: unknown): v is SportStatus => v === 'open' || v === 'beta' || v === 'closed';

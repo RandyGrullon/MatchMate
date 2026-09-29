@@ -346,7 +346,7 @@ describe('perfil público', () => {
     expect(await games(w.u.extra, w.u.org)).toEqual([]);
   });
 
-  it('juegos sueltos compartidos (20260929000300_sueltos_logos.sql): entre los de las ligas, por su día', async () => {
+  it('juegos sueltos compartidos (20260929001000_sueltos_logos.sql): entre los de las ligas, por su día', async () => {
     const [{ id }] = await db.admin<{ id: string }>(
       `insert into public.solo_sessions (user_id, played_on, scores, venue) values ($1, '2026-09-21', '{200,180}', 'Bolera Sur') returning id`,
       [w.u.luis],

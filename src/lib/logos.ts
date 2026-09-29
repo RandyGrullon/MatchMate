@@ -8,7 +8,7 @@ import { compressLogo, type CompressedLogo } from './image';
 import type { LeagueKind } from './types';
 
 /**
- * Logo de una liga o torneo (20260929000300_sueltos_logos.sql y 20260929000310_logos_supabase.sql).
+ * Logo de una liga o torneo (20260929001000_sueltos_logos.sql y 20260929001010_logos_supabase.sql).
  * CONTRATO:
  * - El archivo va en el bucket PÚBLICO `logos`, en '<liga>/<uuid>.webp' (o '.jpg'): cualquiera con el link lo ve
  *   (se muestra también sin cuenta: invitaciones, ligas públicas). La página de privacidad lo dice.

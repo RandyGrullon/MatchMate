@@ -1,5 +1,5 @@
 /**
- * Juegos sueltos del boliche (20260929000300_sueltos_logos.sql): los juegos de una cuenta que no son de ninguna liga
+ * Juegos sueltos del boliche (20260929001000_sueltos_logos.sql): los juegos de una cuenta que no son de ninguna liga
  * ni torneo (save_solo_session, delete_solo_session, solo_sessions_of), lo que se ve de otras cuentas, los me gusta y
  * cómo entran en lo social (profile_games, following_games, public_profile, profile_stats, social_notices), la cola
  * sin conexión (p_op_id), el tiempo real y los datos de la cuenta. También: todos los deportes quedan abiertos.

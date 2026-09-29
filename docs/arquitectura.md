@@ -91,7 +91,7 @@ ni el backend:
 
 - `src/sports/registry.ts`: datos de cada deporte (nombre, familia, ícono, cancha/pista, reglas por defecto y su
   validación, tipos de evento, si usa fotos). `src/sports/status.ts` lee `sport_status` (abierto, beta o cerrado).
-  Desde `20260929000300_sueltos_logos.sql` todos están abiertos (y `DEFAULT_SPORT_STATUS` también); la consola del
+  Desde `20260929001000_sueltos_logos.sql` todos están abiertos (y `DEFAULT_SPORT_STATUS` también); la consola del
   superadmin puede volver a poner uno en beta (solo él lo ve y crea ligas) o cerrarlo.
 - `src/sports/screens.tsx` es el contrato: cada deporte exporta por defecto un `SportScreens`
   (`Home`, `Event`, `Standings?`, `Feed?`, `MyProfile?`, `Player?`, `adminTabs?`, `tabs?`) desde
@@ -335,7 +335,7 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
 ## Logo de ligas y torneos
 
 - `leagues.logo_path` ('<liga>/<uuid>.webp|jpg|png', con CHECK) en el bucket **público** `logos` (256 kB, WebP,
-  JPEG o PNG; `20260929000310_logos_supabase.sql`, solo Supabase): cualquiera con el link lo ve (la página de
+  JPEG o PNG; `20260929001010_logos_supabase.sql`, solo Supabase): cualquiera con el link lo ve (la página de
   privacidad lo dice). Cada subida se reserva antes con `begin_logo_upload` (admin de la liga, 30 por día) y Storage
   solo acepta rutas reservadas, por quien las reservó, sin bloquear y por un día (`private.can_upload_logo_path`):
   nadie guarda archivos en el bucket sin pasar por el límite. Cada logo es un archivo nuevo (sin UPDATE).
@@ -354,7 +354,7 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   encabezado y el cambiador de liga de `LeagueShell`, la portada, el Home de la liga de boliche, /unirse,
   /invitacion, la tarjeta de invitaciones de /avisos, «Seguir en» del Home y «Por liga» de Mis estadísticas; sin
   logo (o si no carga), el ícono de siempre. Se pone en Admin › Liga (en un torneo, › Datos) y, opcional, al crear.
-- Migración `20260929000300_sueltos_logos.sql` (también abre todos los deportes y trae los juegos sueltos).
+- Migración `20260929001000_sueltos_logos.sql` (también abre todos los deportes y trae los juegos sueltos).
 
 ## Sin señal y errores
 
