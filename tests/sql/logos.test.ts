@@ -2,7 +2,8 @@
  * Logo de ligas y torneos (20260929001000_sueltos_logos.sql y el Storage de 20260929001010_logos_supabase.sql):
  * leagues.logo_path, begin_logo_upload (la reserva de cada subida), set_league_logo, private.can_upload_logo_path y
  * private.can_remove_logo_path, la cola de Storage de lo que ya no se usa, lo que ve quien todavía no es de la liga
- * (invite_preview, invite_details, my_league_invites, league_invite_details), la consola (admin_leagues) y la cola
+ * (invite_preview, invite_details, my_league_invites, league_invite_details), las ligas públicas y la agenda
+ * (public_leagues_feed, public_agenda, también sin cuenta), la consola (admin_leagues) y la cola
  * por bucket que vacía purge-photos (purge_queue_take y purge_queue_done con p_bucket). Las políticas del bucket
  * 'logos' se prueban en PGlite con el storage.objects mínimo del shim, como consola.test.ts.
  *
@@ -315,6 +316,23 @@ describe('quién ve el logo', () => {
     expect(await db.rpc<Json>(w.u.nuevo, 'league_invite_details', { p_invite: mine.id })).toMatchObject({
       status: 'cancelled',
       league: { logoPath: path, venue: null },
+    });
+  });
+
+  it('las ligas públicas y «¿Dónde juego esta semana?», también sin cuenta (public_leagues_feed, public_agenda)', async () => {
+    const path = logo(w.pub);
+    await putLogo(w.u.otro, w.pub, path);
+    const feed = await db.rpc<Json[]>(ANON, 'public_leagues_feed', {});
+    expect(feed.find((l) => l.id === w.pub)).toMatchObject({ name: 'Liga Abierta', logoPath: path });
+    const [{ d }] = await db.admin<{ d: string }>(`select to_char((now() at time zone 'America/Santo_Domingo')::date + 3, 'YYYY-MM-DD') as d`);
+    const ev = await db.rpc<string>(w.u.otro, 'create_event', { p_league: w.pub, p_type: 'practica', p_date: d });
+    const agenda = await db.rpc<Json>(ANON, 'public_agenda', { p_from: d, p_days: 1 });
+    expect(agenda.items.find((i: Json) => i.eventId === ev)).toMatchObject({ leagueId: w.pub, logoPath: path });
+    // Sin logo: null.
+    await setLogo(w.u.otro, w.pub, null);
+    expect((await db.rpc<Json[]>(ANON, 'public_leagues_feed', {})).find((l) => l.id === w.pub)).toMatchObject({ logoPath: null });
+    expect((await db.rpc<Json>(w.u.luis, 'public_agenda', { p_from: d, p_days: 1 })).items.find((i: Json) => i.eventId === ev)).toMatchObject({
+      logoPath: null,
     });
   });
 

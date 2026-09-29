@@ -52,6 +52,8 @@ export interface PublicFeedItem {
   name: string;
   sport: string;
   kind: LeagueKind;
+  /** Logo (bucket público `logos`) o null; una base de antes de 20260929001000 no lo trae. */
+  logoPath?: string | null;
   venue: string | null;
   schedule: string | null;
   members: number | null;
@@ -81,6 +83,7 @@ export const toPublicLeague = (r: PublicFeedItem): Wire<PublicLeague> => ({
   sport: r.sport,
   hasMinors: false,
   createdAt: r.createdAt ?? null,
+  logoPath: r.logoPath ?? null,
   members: r.members ?? 0,
   players: r.players ?? 0,
   activity: r.activity ?? 0,

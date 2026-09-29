@@ -346,7 +346,8 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   (`private.can_remove_logo_path`); si nadie lo borra, lo borra la Edge Function `purge-photos` al otro día (la cola
   es por bucket: `purge_queue_take` / `purge_queue_done` con `p_bucket`, las fotos si no se dice). Lo que ve quien
   todavía no es de la liga trae el logo: `invite_preview` (columna `logo_path`), `invite_details`,
-  `my_league_invites`, `league_invite_details` y la consola (`admin_league_row`).
+  `my_league_invites`, `league_invite_details` y la consola (`admin_league_row`); también las ligas públicas y la
+  agenda, con y sin cuenta (`public_leagues_feed` y `public_agenda` traen `logoPath`).
 - Cliente `src/lib/logos.ts`: `compressLogo` (en `src/lib/image.ts`: el cuadrado del centro a 256 px, WebP o JPEG,
   siempre sobre blanco para que un logo transparente se vea en claro y en oscuro, ≤ 120 kB), `uploadLeagueLogo`
   (reserva, sube, `set_league_logo`, borra el anterior), `removeLeagueLogo` y `useLogo` (URL pública con
@@ -354,7 +355,8 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   su archivo después, solo si la liga se borró (`deleteLeagueWithLogo`).
 - `LeagueIcon` / `LeagueLogo` (`src/components/home/LeagueCard.tsx`) lo muestran en las filas de ligas, el
   encabezado y el cambiador de liga de `LeagueShell`, la portada, el Home de la liga de boliche, /unirse,
-  /invitacion, la tarjeta de invitaciones de /avisos, «Seguir en» del Home y «Por liga» de Mis estadísticas; sin
+  /invitacion, la tarjeta de invitaciones de /avisos, «Seguir en» del Home, «Por liga» de Mis estadísticas, las
+  ligas públicas y «¿Dónde juego esta semana?» (/agenda); sin
   logo (o si no carga), el ícono de siempre. Se pone en Admin › Liga (en un torneo, › Datos) y, opcional, al crear.
 - Migración `20260929001000_sueltos_logos.sql` (también abre todos los deportes y trae los juegos sueltos).
 

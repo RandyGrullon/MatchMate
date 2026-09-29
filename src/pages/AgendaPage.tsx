@@ -23,6 +23,7 @@ import {
 } from '../components/agenda/logic';
 import { BackLink } from '../components/BackLink';
 import { useAction, useFeedback } from '../components/feedback';
+import { LeagueLogo } from '../components/home/LeagueCard';
 import { SportTint } from '../components/home/SportTint';
 import { useJoinFlow } from '../components/league/WhoAreYou';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
@@ -229,11 +230,13 @@ export function AgendaCard({
   return (
     <Card className="flex flex-col gap-3 p-4" style={{ '--i': i } as CSSProperties}>
       <div className="flex items-start gap-3">
-        <SportTint sport={item.sport} className="shrink-0">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
-            <SportIcon sport={item.sport} className="size-5" />
-          </span>
-        </SportTint>
+        <LeagueLogo path={item.logoPath} className="size-10 rounded-xl">
+          <SportTint sport={item.sport} className="shrink-0">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+              <SportIcon sport={item.sport} className="size-5" />
+            </span>
+          </SportTint>
+        </LeagueLogo>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold">{agendaTitle(item)}</p>
           <p className="truncate text-xs text-muted">{item.leagueName}</p>

@@ -28,6 +28,8 @@ export interface AgendaItem {
   leagueName: string;
   sport: string;
   leagueKind: string;
+  /** Logo de la liga (bucket público `logos`) o null; una base de antes de 20260929001000 no lo trae. */
+  logoPath?: string | null;
   type: string;
   name: string;
   /** YYYY-MM-DD */

@@ -56,6 +56,8 @@ describe('ligas públicas (sin base)', () => {
       sport: 'padel',
       hasMinors: false,
       createdAt: '2026-08-01T12:00:00.000Z',
+      // Sin logoPath (una base de antes de 20260929001000_sueltos_logos.sql): sin logo.
+      logoPath: null,
       members: 12,
       players: 24,
       activity: 9,
@@ -63,6 +65,29 @@ describe('ligas públicas (sin base)', () => {
       nextEventDate: '2026-09-29',
       lastActivityAt: '2026-09-27T01:00:00.000Z',
     });
+  });
+
+  it('toPublicLeague: con logo, la ruta del bucket logos', () => {
+    const path = 'L1/0199a1b2-c3d4-7e5f-8a9b-000000000001.webp';
+    expect(
+      toPublicLeague({
+        id: 'L1',
+        name: 'Liga del Naco',
+        sport: 'padel',
+        kind: 'liga',
+        logoPath: path,
+        venue: null,
+        schedule: null,
+        members: null,
+        players: null,
+        activity: null,
+        nextEventAt: null,
+        nextEventDate: null,
+        lastActivityAt: null,
+        seasonEnd: null,
+        createdAt: null,
+      }),
+    ).toMatchObject({ id: 'L1', logoPath: path });
   });
 
   it('el tope de ligas nuevas sale con sus números; los demás errores quedan igual', () => {

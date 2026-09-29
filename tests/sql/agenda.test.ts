@@ -111,6 +111,8 @@ describe('qué sale', () => {
       leagueName: 'Liga Abierta',
       sport: 'bowling',
       leagueKind: 'liga',
+      // El logo de la liga (20260929001000_sueltos_logos.sql): sin logo, null.
+      logoPath: null,
       type: 'torneo',
       name: 'Copa de octubre',
       date: tue,

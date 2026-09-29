@@ -23,6 +23,8 @@
 --    20260929000500_avisos_telefono.sql pasa a ser por bucket (purge_queue_take y purge_queue_done con p_bucket,
 --    'scoreboards' por defecto). Lo que ve quien todavía no es de la liga trae el logo: invite_preview (columna
 --    logo_path), invite_details, my_league_invites y league_invite_details (logoPath), y la consola (admin_league_row).
+-- 4. El logo también en las ligas públicas y en «¿Dónde juego esta semana?», con y sin cuenta: public_leagues_feed
+--    y public_agenda traen logoPath.
 --
 -- Corre después de las de la entrega 5 (000500 a 000900): ninguna cambió las funciones sociales, de invitaciones o
 -- de la consola que se redefinen aquí.
@@ -31,8 +33,9 @@
 -- set_game_like, social_notices (20260928000200_social.sql), invite_details (20260927001300_liga.sql),
 -- my_league_invites y league_invite_details (20260929000200_invitaciones.sql); private.photo_unqueue_purge
 -- (20260929000500_avisos_telefono.sql: solo saca de la cola las rutas del bucket de las fotos). invite_preview,
--- purge_queue_take y purge_queue_done se borran y se crean de nuevo (una columna o un argumento más). Contrato del
--- cliente: src/lib/data/solo.ts y src/lib/logos.ts.
+-- purge_queue_take y purge_queue_done se borran y se crean de nuevo (una columna o un argumento más);
+-- public_leagues_feed (20260929000600_organizador.sql) y public_agenda (20260929000700_temporadas.sql), con logoPath.
+-- Contrato del cliente: src/lib/data/solo.ts y src/lib/logos.ts.
 
 -- =====================================================================
 -- 1. Todos los deportes abiertos
@@ -1197,6 +1200,202 @@ language sql stable set search_path = '' as $$
   left join public.profiles o on o.id = l.owner_id
   where l.id = p_league
 $$;
+
+-- =====================================================================
+-- 4. El logo en las ligas públicas y en «¿Dónde juego esta semana?»
+-- =====================================================================
+-- Las tarjetas de las ligas públicas y de la agenda (también sin cuenta) muestran el logo como las demás: el mismo
+-- archivo público del bucket 'logos'. Las dos funciones son iguales a su última versión (public_leagues_feed de
+-- 20260929000600_organizador.sql, public_agenda de 20260929000700_temporadas.sql) y además traen 'logoPath' (la
+-- ruta en el bucket o null). create or replace: se quedan sus permisos (con y sin cuenta).
+
+-- [{id, name, sport, kind, logoPath, venue, schedule, members, players, activity, nextEventAt, nextEventDate,
+--   lastActivityAt, seasonEnd, createdAt}]: ver 20260929000600_organizador.sql.
+create or replace function public.public_leagues_feed(p_sport text default null, p_query text default null,
+                                                      p_limit integer default 30, p_offset integer default 0) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_key text;
+  v_q text := private.normalize_name(left(coalesce(p_query, ''), 60));
+  v_limit integer := private.clamp_int(p_limit, 1, 50, 30);
+  v_offset integer := private.clamp_int(p_offset, 0, 5000, 0);
+begin
+  if auth.uid() is null then
+    v_key := private.rate_key('feed');
+    if private.rate_blocked(v_key, private.feed_anon_limit(), interval '10 minutes') then
+      perform private.fail('rate_limited');
+    end if;
+    perform private.rate_hit(v_key, interval '10 minutes');
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', s.id, 'name', s.name, 'sport', s.sport, 'kind', s.kind, 'logoPath', s.logo_path, 'venue', s.venue,
+             'schedule', s.schedule,
+             'members', s.members, 'players', (select count(*) from public.players p where p.league_id = s.id)::integer,
+             'activity', s.activity, 'nextEventAt', private.iso(s.next_at), 'nextEventDate', (s.next_at at time zone s.tz)::date,
+             'lastActivityAt', private.iso(private.league_last_activity(s.id)), 'seasonEnd', s.season_end,
+             'createdAt', private.iso(s.created_at))
+           order by s.activity desc, s.members desc, s.created_at desc, s.id)
+      from (
+        -- Solo la página pedida lleva jugadores y última actividad (lo demás hace falta para ordenar).
+        select a.*
+          from (
+            select l.id, l.name, l.sport, l.kind, l.logo_path, l.venue, l.schedule, l.season_end, l.tz, l.created_at,
+                   (select count(*) from public.league_members m where m.league_id = l.id)::integer as members,
+                   private.league_activity30(l.id, t.today) as activity,
+                   least(
+                     (select min((e.date + coalesce(e.start_time, time '00:00')) at time zone l.tz) from public.events e
+                       where e.league_id = l.id and e.date >= t.today),
+                     (select min(m.scheduled_at) from public.matches m
+                       where m.league_id = l.id and m.status in ('scheduled', 'live')
+                         and m.scheduled_at >= (t.today::timestamp at time zone l.tz))) as next_at,
+                   -- Terminada: la temporada ya pasó; un torneo, 7 días después de su último evento o partido.
+                   coalesce(case when l.kind = 'torneo'
+                                 then coalesce(greatest(
+                                        (select max(e.date) from public.events e where e.league_id = l.id),
+                                        (select max((m.scheduled_at at time zone l.tz)::date) from public.matches m
+                                          where m.league_id = l.id and m.status <> 'void')),
+                                      l.season_end) < t.today - 7
+                                 else l.season_end < t.today end, false) as finished
+              from public.leagues l
+             cross join lateral (select (now() at time zone l.tz)::date as today) t
+             where l.visibility = 'public' and not l.has_minors
+               and (p_sport is null or l.sport = p_sport)
+               and (v_q = '' or private.normalize_name(l.name || ' ' || l.venue) like '%' || v_q || '%')
+          ) a
+         where not a.finished
+         order by a.activity desc, a.members desc, a.created_at desc, a.id
+         offset v_offset limit v_limit
+      ) s), '[]'::jsonb);
+end $$;
+
+-- {from, days, items: [{eventId, leagueId, leagueName, sport, leagueKind, logoPath, type, name, date, time, …}]}: ver
+-- 20260929000700_temporadas.sql.
+create or replace function public.public_agenda(p_sport text default null, p_from date default null, p_days integer default 14) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := auth.uid();
+  v_from date := coalesce(p_from, (now() at time zone 'America/Santo_Domingo')::date);
+  v_days integer := coalesce(p_days, 14);
+  v_key text;
+  v_items jsonb := '[]'::jsonb;
+  v_count integer := 0;
+  v_kind text;
+  v_cap integer;
+  v_taken integer;
+  v_left integer;
+  v_wait integer;
+  v_cats jsonb;
+  v_mine boolean;
+  e record;
+begin
+  if v_days not between 1 and 31 or v_from not between '2000-01-01'::date and '2200-01-01'::date then
+    perform private.fail('invalido');
+  end if;
+  if p_sport is not null and not exists (select 1 from public.sport_status s where s.id = p_sport) then
+    perform private.fail('invalido');
+  end if;
+  if v_uid is null then
+    v_key := private.rate_key('agenda');
+    if private.rate_blocked(v_key, 60, interval '10 minutes') then
+      perform private.fail('rate_limited');
+    end if;
+    perform private.rate_hit(v_key, interval '10 minutes');
+  end if;
+
+  for e in
+    select ev.id, ev.league_id, ev.type, ev.name, ev.date, ev.start_time, ev.config, lg.name as league_name, lg.sport,
+           lg.kind, lg.logo_path, lg.venue, st.minutes as sched_minutes, st.label as sched_label,
+           case
+             when lg.sport = 'bowling' and ev.type in ('torneo', 'practica') then 'rsvp'
+             when lg.sport = 'golf' and exists (select 1 from public.golf_rounds r where r.event_id = ev.id and r.status = 'abierta') then 'golf'
+             when private.signup_kind(ev.league_id, ev.type) is not null and jsonb_typeof(ev.config -> 'signup') = 'object' then 'signup'
+           end as how
+      from public.events ev
+      join public.leagues lg on lg.id = ev.league_id
+      join public.sport_status ss on ss.id = lg.sport
+      left join lateral private.event_start(ev.date, lg.schedule) st on ev.start_time is null
+     where lg.visibility = 'public' and not lg.has_minors and ss.status <> 'closed'
+       and (p_sport is null or lg.sport = p_sport)
+       and ev.date >= greatest(v_from, (now() at time zone lg.tz)::date) and ev.date < v_from + v_days
+     order by ev.date,
+              coalesce(extract(hour from ev.start_time)::integer * 60 + extract(minute from ev.start_time)::integer, st.minutes) nulls last,
+              lg.name, ev.id
+  loop
+    continue when e.how is null;
+    v_cap := null;
+    v_taken := null;
+    v_left := null;
+    v_wait := null;
+    v_cats := null;
+    if e.how = 'rsvp' then
+      v_taken := (select count(*) from public.event_rsvps r where r.event_id = e.id and r.going);
+      v_mine := v_uid is not null and exists (select 1 from public.event_rsvps r join public.players p on p.id = r.player_id
+                                               where r.event_id = e.id and r.going and p.user_id = v_uid);
+    elsif e.how = 'golf' then
+      v_taken := (select count(*) from public.golf_cards c where c.event_id = e.id);
+      v_mine := v_uid is not null and exists (select 1 from public.golf_cards c join public.players p on p.id = c.player_id
+                                               where c.event_id = e.id and p.user_id = v_uid);
+    else
+      v_kind := private.signup_kind(e.league_id, e.type);
+      continue when not coalesce((e.config #>> '{signup,open}')::boolean, false)
+                 or (e.config #>> '{signup,until}' is not null and (e.config #>> '{signup,until}')::timestamptz <= now())
+                 or private.signup_started(e.id, v_kind, e.config);
+      if jsonb_typeof(e.config #> '{signup,cap}') = 'number' then
+        v_cap := private.signup_cap(e.config -> 'signup');
+      end if;
+      v_wait := (select count(*) from public.event_signups s where s.event_id = e.id and s.status = 'wait');
+      -- Sin tope no se sabe cuántos lugares quedan (null); con tope, nunca menos de 0.
+      if v_kind = 'night' then
+        v_taken := (select count(*) from private.signup_roster(v_kind, e.config) x);
+        v_left := case when v_cap is not null then greatest(v_cap - v_taken, 0) end;
+      else
+        select jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name, 'cap', v_cap, 'taken', c.taken,
+                                            'spotsLeft', case when v_cap is not null then greatest(v_cap - c.taken, 0) end) order by c.n),
+               sum(c.taken), case when v_cap is not null then sum(greatest(v_cap - c.taken, 0)) end
+          into v_cats, v_taken, v_left
+          from (select y ->> 'id' as id, coalesce(nullif(y ->> 'name', ''), y ->> 'id') as name, n,
+                       (select count(*) from private.signup_roster(v_kind, e.config) x where x.category = y ->> 'id')::integer as taken
+                  from jsonb_array_elements(case when jsonb_typeof(e.config -> 'categories') = 'array' then e.config -> 'categories' else '[]'::jsonb end)
+                       with ordinality as a (y, n)
+                 where jsonb_typeof(y) = 'object' and y ->> 'id' is not null) c;
+        continue when v_cats is null;
+      end if;
+      continue when v_cap is not null and v_left <= 0;
+      v_mine := v_uid is not null and (
+        exists (select 1 from public.event_signups s where s.event_id = e.id and private.signup_mine(s.entrant_id))
+        or exists (select 1 from private.signup_roster(v_kind, e.config) x
+                    where x.entrant ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' and private.signup_mine(x.entrant::uuid)));
+    end if;
+    v_items := v_items || jsonb_build_array(jsonb_build_object(
+      'eventId', e.id,
+      'leagueId', e.league_id,
+      'leagueName', e.league_name,
+      'sport', e.sport,
+      'leagueKind', e.kind,
+      'logoPath', e.logo_path,
+      'type', e.type,
+      'name', e.name,
+      'date', to_char(e.date, 'YYYY-MM-DD'),
+      'time', coalesce(to_char(e.start_time, 'HH24:MI'),
+                       case when e.sched_minutes is not null
+                            then lpad((e.sched_minutes / 60)::text, 2, '0') || ':' || lpad((e.sched_minutes % 60)::text, 2, '0') end),
+      'timeLabel', coalesce(nullif(private.format_time(to_char(e.start_time, 'HH24:MI')), ''), e.sched_label),
+      'venue', e.venue,
+      'join', e.how,
+      'cap', v_cap,
+      'taken', v_taken,
+      'spotsLeft', v_left,
+      'waitlist', v_wait,
+      'until', case when e.how = 'signup' then e.config #>> '{signup,until}' end,
+      'categories', v_cats,
+      'mine', coalesce(v_mine, false),
+      'url', '/l/' || e.league_id::text || '/e/' || e.id::text));
+    v_count := v_count + 1;
+    exit when v_count >= 100;
+  end loop;
+  return jsonb_build_object('from', to_char(v_from, 'YYYY-MM-DD'), 'days', v_days, 'items', v_items);
+end $$;
 
 -- =====================================================================
 -- Permisos: las RPC solo con sesión (invite_preview también sin cuenta); las ayudas, nadie de la app salvo las de
