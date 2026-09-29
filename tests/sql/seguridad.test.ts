@@ -59,6 +59,14 @@ const RPC_AUTHENTICATED = [
   'social_notices', 'unfollow_user',
   // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
   'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
+  // Avisos al teléfono: preferencias de cada cuenta y el espacio del plan gratis en la consola.
+  'set_push_prefs', 'admin_storage_usage',
+].sort();
+
+/** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
+const RPC_SERVICE_ONLY = [
+  'claim_push_batch', 'finish_push_batch', 'migration_sync_passwords', 'ping', 'purge_queue_done', 'purge_queue_take',
+  'scan_begin', 'scan_finish', 'scan_next_model', 'storage_orphans',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
@@ -132,6 +140,21 @@ describe('nada abierto por accidente', () => {
         where n.nspname in ('public', 'private') and not coalesce('search_path=""' = any (p.proconfig), false)`,
     );
     expect(loose).toEqual([]);
+  });
+
+  it('las RPC de solo service_role: exactamente las de la lista, y ni anon ni authenticated las ejecutan', async () => {
+    const rows = await db.admin<{ fn: string }>(
+      `select p.proname as fn from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and has_function_privilege('service_role', p.oid, 'execute')
+          and not has_function_privilege('authenticated', p.oid, 'execute') and not has_function_privilege('anon', p.oid, 'execute')
+        order by 1`,
+    );
+    expect(rows.map((r) => r.fn)).toEqual(RPC_SERVICE_ONLY);
+    for (const fn of ['purge_queue_take', 'storage_orphans']) {
+      await fails(db.as(ANON, `select * from public.${fn}()`), '42501');
+      await fails(db.as(w.u.dios, `select * from public.${fn}()`), '42501');
+      expect(await db.as(SERVICE, `select * from public.${fn}()`)).toEqual([]);
+    }
   });
 
   it('anon y authenticated no tienen permisos de escritura en ninguna tabla ni secuencia', async () => {

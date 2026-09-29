@@ -12,6 +12,9 @@ import { ANON, DENIED, SERVICE, TestDb, fails } from './harness';
 
 let db: TestDb;
 
+/** Las dos que recorren miles de casos (o una semana de cron cada 15 minutos): con toda la suite en paralelo pasan de 30 s. */
+const SLOW = 120_000;
+
 beforeAll(async () => {
   db = await TestDb.open();
 });
@@ -155,7 +158,7 @@ describe('recordatorios: el SQL da lo mismo que src/lib/reminders.ts', () => {
     expect([...slots].sort()).toEqual(['dia-antes', 'mismo-dia', 'una-hora']);
     expect(expectedDue.some((r) => r.title === 'Recuerda: mañana es el torneo Copa Navidad')).toBe(true);
     expect(cases.length).toBeGreaterThan(10000);
-  });
+  }, SLOW);
 
   it('la fecha y el minuto en la zona de cada liga (también en los cambios de horario)', async () => {
     const zones = ['America/Santo_Domingo', 'America/New_York', 'Europe/Madrid', 'Asia/Kolkata', 'Asia/Kathmandu', 'Pacific/Kiritimati', 'Pacific/Pago_Pago'];
@@ -326,7 +329,7 @@ describe('enqueue_due_reminders: el cron de BowlingX con la hora de cada liga', 
     const count = await db.count('public.push_outbox');
     for (const t of ticks.slice(0, 200)) await db.admin('select private.enqueue_due_reminders($1)', [new Date(t).toISOString()]);
     expect(await db.count('public.push_outbox')).toBe(count);
-  });
+  }, SLOW);
 
   it('con el cron atrasado sale solo el que toca ahora; si mueven el evento a otro día, vuelve a avisar', async () => {
     const org = await db.createUser('org@x.com', 'org');

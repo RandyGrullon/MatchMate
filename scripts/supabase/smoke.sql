@@ -108,7 +108,8 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
+    '20260929000500', '20260929000510'];
   v_missing text[];
   v_bowling text;
 begin
@@ -445,6 +446,11 @@ begin
            where o.user_id = pg_temp.id('u_ana') and o.tag like 'aviso:%' and o.subscription_id is not null and o.urgency = 'high') = 1,
     'FAIL avisos: el aviso no quedó en push_outbox para el teléfono de Ana';
   perform pg_temp.ok('avisos: el aviso quedó en push_outbox, repartido al teléfono (pg_net solo lo mandaría con COMMIT)');
+  assert (select string_agg(split_part(o.title, ' en ', 1), ' | ' order by o.title) from public.push_outbox o
+           where o.user_id = pg_temp.id('u_ana') and o.tag like 'envio:%')
+         = 'Aprobaron tus juegos: serie de 480 | Aprobaron tus juegos: serie de 780',
+    'FAIL avisos: a Ana no le llegó el push de sus dos envíos aprobados';
+  perform pg_temp.ok('avisos: los envíos aprobados de Ana le llegan al teléfono («Aprobaron tus juegos: serie de 780…»)');
 end $$;
 
 -- 2.10 Luis ve el ranking: las mismas lecturas que hace la app (events.ts, entries.ts, players.ts, members.ts, feeds.ts).
@@ -509,6 +515,11 @@ begin
   d := public.export_my_data();
   assert d ->> 'format' = 'matchmate-mis-datos' and (d -> 'account' ->> 'id')::uuid = pg_temp.id('u_ana'), 'FAIL cuenta: export_my_data';
   perform pg_temp.ok('ranking: promedio global de Ana por sus membresías = 180; export_my_data');
+  d := public.set_push_prefs(p_prefs => '{"social": false}');
+  assert d = '{"liga": true, "social": false, "resultados": true, "recordatorios": true}'::jsonb, format('FAIL avisos: set_push_prefs %s', d);
+  assert (select p.push_prefs from public.profiles p) = '{"social": false}'::jsonb, 'FAIL avisos: Ana no lee sus preferencias en su perfil';
+  d := public.set_push_prefs(p_prefs => '{"social": true}');
+  perform pg_temp.ok('avisos: Ana apaga y prende los avisos sociales (set_push_prefs) y los lee en su perfil');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
@@ -972,6 +983,9 @@ begin
   perform pg_temp.must_fail('permisos: un miembro no llama admin_users', 'select public.admin_users()', array['no_permitido']);
   perform pg_temp.must_fail('permisos: un miembro no llama admin_system', 'select public.admin_system()', array['no_permitido']);
   perform pg_temp.must_fail('permisos: un miembro no llama admin_audit_log', 'select public.admin_audit_log()', array['no_permitido']);
+  perform pg_temp.must_fail('permisos: un miembro no llama admin_storage_usage', 'select public.admin_storage_usage()', array['no_permitido']);
+  perform pg_temp.must_fail('permisos: un miembro no toma la cola de fotos por borrar (solo purge-photos)',
+    'select * from public.purge_queue_take()', array['42501']);
   perform pg_temp.must_fail('permisos: un miembro no bloquea cuentas',
     format('select public.admin_block_user(p_user => %L)', pg_temp.id('u_luis')), array['no_permitido']);
   perform pg_temp.must_fail('permisos: un miembro no manda anuncios a toda la app',
@@ -1197,6 +1211,9 @@ begin
   l := public.admin_leagues(p_search => pg_temp.val('tag'));
   assert (l ->> 'total')::integer >= 5, format('FAIL consola: admin_leagues encontró %s ligas de la prueba', l ->> 'total');
   assert (select count(*) from public.profiles p where p.email like 'smoke-%@example.invalid') >= 6, 'FAIL consola: el superadmin no lee los perfiles';
+  o := public.admin_storage_usage();
+  assert (o ->> 'dbLimit')::bigint = 524288000 and (o ->> 'storageLimit')::bigint = 1073741824 and (o ->> 'dbBytes')::bigint > 0
+         and o ? 'storagePct' and o ? 'lastAlertAt' and o ? 'purgePending', format('FAIL consola: admin_storage_usage %s', o);
   perform pg_temp.ok(format('consola: admin_overview, admin_system (backend %s, %s migraciones, %s tareas de cron), admin_users y admin_leagues',
                             s ->> 'backend',
                             case when jsonb_typeof(s -> 'migrations') = 'array' then jsonb_array_length(s -> 'migrations')::text else '-' end,

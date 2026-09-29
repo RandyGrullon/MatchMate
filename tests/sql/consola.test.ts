@@ -76,6 +76,8 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   ['admin_unblock_user', { p_user: w.u.luis }],
   ['admin_announce', ANNOUNCE],
   ['admin_count_recipients', { p_audience: { kind: 'all' } }],
+  // Espacio del plan gratis (20260929000500_avisos_telefono.sql).
+  ['admin_storage_usage', {}],
 ];
 
 describe('permisos', () => {

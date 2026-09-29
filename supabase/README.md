@@ -36,6 +36,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
 | `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
+| `migrations/20260929000500_avisos_telefono.sql` · `000510_avisos_telefono_supabase.sql` | Avisos al teléfono (ver «Avisos al teléfono»): preferencias (`profiles.push_prefs`, `set_push_prefs`, filtro `push_outbox_prefs`), `private.queue_push`, push de envíos aprobados o rechazados, felicitaciones, me gusta, comentarios y resultado confirmado; recordatorios de después del juego y de partidos sin resultado; el «¿Vas?» ya no le llega a quien marcó «voy» (redefine `private.enqueue_due_reminders`); cola de fotos por borrar y archivos huérfanos (`purge_queue_take`, `purge_queue_done`, `storage_orphans` para la Edge Function `purge-photos`); espacio del plan gratis y su alerta (`admin_storage_usage`) · pg_cron `mm-despues-del-juego`, `mm-partidos-sin-resultado`, `mm-limpiar-fotos`, `mm-alerta-espacio` (solo Supabase) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -103,6 +104,8 @@ Hoy solo `bowling` está `open`; los demás `beta` (solo el superadmin crea liga
 o `full_name` de Google, o lo de antes de la @ del correo, recortado a 60; `adult: true` llena
 `adult_confirmed_at`). Otros miembros se ven por `league_members.display_name`.
 Consola: `last_seen_at` (lo pone `touch_seen`), `blocked_at` y `blocked_reason` (≤ 200; la cuenta ve si está bloqueada).
+Avisos: `push_prefs` jsonb (`{}` por defecto) con `resultados`, `social`, `recordatorios` y `liga` en `true`/`false`: la que
+falta está activa. Se cambia con `set_push_prefs` (la app la lee con el perfil: `select name, push_prefs`).
 
 ### `leagues` — liga visible
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
@@ -189,7 +192,8 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
 `urgency`, `claimed_at`, `attempts`, `last_status`, `sent_at`). Esquema `private` (no expuesto): `op_log`, `paces`,
-`rate_limits`, `storage_purge_queue`, `heartbeat`, `scan_usage`, `scan_days`, `scan_minutes`, `scan_cache`.
+`rate_limits`, `storage_purge_queue` (`path`, `queued_at`, `claimed_at`, `attempts`), `heartbeat`, `scan_usage`, `scan_days`,
+`scan_minutes`, `scan_cache`, `push_once` (recordatorios que ya salieron) y `storage_alerts` (alertas de espacio).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -339,6 +343,7 @@ a la otra (el superadmin, todas). De lo que se ve solo sale lo de ligas que quie
 |---|---|---|
 | `upsert_push_subscription(p_endpoint, p_p256dh, p_auth, p_ua='') → uuid` | la cuenta | Solo `https://` de FCM, Apple, Mozilla o `*.notify.windows.com` (23514). El mismo teléfono con otra cuenta pasa a la cuenta nueva. |
 | `delete_push_subscription(p_endpoint) → boolean` | la cuenta | Solo las suyas. |
+| `set_push_prefs(p_prefs jsonb) → {resultados, social, recordatorios, liga}` | la cuenta | Solo las que cambian, con `true`/`false` (otra clave, otro tipo o algo que no sea objeto: `invalido`). Devuelve las cuatro como quedaron. Ver «Avisos al teléfono». |
 
 ### Servicio (solo `service_role`, la clave secreta: Edge Functions, cron y GitHub Actions)
 
@@ -350,9 +355,32 @@ a la otra (el superadmin, todas). De lo que se ve solo sale lo de ligas que quie
 | `scan_finish(p_user, p_key, p_model=null, p_result=null, p_refund=false) → void` | `scan-bowling` | Guarda el resultado en la caché; `p_refund` devuelve el cupo del día si ningún modelo respondió. |
 | `claim_push_batch(p_limit=50) → setof (id, endpoint, p256dh, auth, title, body, url, tag, urgency, ttl)` | `send-push` | Toma hasta 100 mensajes (los aparta 3 min y sube `attempts`); `ttl` = lo que le queda al aviso. |
 | `finish_push_batch(p_results jsonb) → jsonb` | `send-push` | `[{id, outcome, status}]` con `sent`/`expired` (listo), `gone` (borra el teléfono), `retry` (otra vez en 3 min), `failed` (no se reintenta; 3 seguidos borran el teléfono). Devuelve `{remaining, chained}`; si queda cola pide el siguiente lote con pg_net. |
+| `purge_queue_take(p_limit=500) → setof (path)` | `purge-photos` | Toma hasta `p_limit` (1–1000) rutas de `private.storage_purge_queue` (fotos borradas, también por borrar un evento o una liga) y las aparta 10 min (sube `attempts`; a los 10 intentos ya no se toman). Antes saca de la cola las rutas que otra vez tienen fila en `photos` (la misma foto registrada de nuevo; el trigger `photos_unqueue_purge` también las saca al registrarla): esas no se borran. |
+| `purge_queue_done(p_paths text[]) → int` | `purge-photos` | Las rutas ya borradas del bucket `scoreboards` salen de la cola. Devuelve cuántas. |
+| `storage_orphans(p_limit=500) → setof (path)` | `purge-photos` | Archivos de `scoreboards` sin fila en `photos` y subidos hace más de 30 días, lo que `private.op_log` recuerda una operación (la app sube el archivo antes de la RPC que registra la foto, y esa RPC puede esperar semanas en la cola del teléfono; si la subió hace más de 7 días, la vuelve a subir antes de la RPC). Sin esquema `storage`: ninguno. |
 
-El cron (`20260926001300_cron_supabase.sql`, solo Supabase) corre `private.cron_reminders()` cada 15 min
-(`private.enqueue_due_reminders(now)` + `send-push`), `private.cleanup_old_rows()` a diario y un ping a `send-push`.
+**Tareas de pg_cron** (solo Supabase; las funciones corren también en PGlite y tienen pruebas):
+
+| Tarea | Cuándo (UTC) | Qué corre | Archivo |
+|---|---|---|---|
+| `mm-recordatorios` | cada 15 min | `private.cron_reminders()` = `enqueue_due_reminders(now)` + `send-push` | `20260926001300_cron_supabase.sql` |
+| `mm-limpieza` | 08:30 | `private.cleanup_old_rows()` | `20260926001300_cron_supabase.sql` |
+| `mm-despierto` | 14:00 | ping a `send-push` | `20260926001300_cron_supabase.sql` |
+| `mm-escaleras` | cada 15 min | `private.ladder_expire_all()` (plazos vencidos de la escalera) | `20260927000790_raqueta_cron_supabase.sql` |
+| `mm-consola-limpieza` | 08:40 | `private.console_cleanup()` | `20260927001190_consola_supabase.sql` |
+| `mm-partidos` | cada 15 min | `private.cron_match_reminders()` | `20260927001290_avisos_supabase.sql` |
+| `mm-despues-del-juego` | 13:00 (9:00 am en RD) | `private.remind_after_bowling()` | `20260929000510_avisos_telefono_supabase.sql` |
+| `mm-partidos-sin-resultado` | cada hora, minuto 17 | `private.remind_missing_results()` | `20260929000510_avisos_telefono_supabase.sql` |
+| `mm-limpiar-fotos` | 08:30 | `private.kick_function('purge-photos')`: la Edge Function `purge-photos` por pg_net | `20260929000510_avisos_telefono_supabase.sql` |
+| `mm-alerta-espacio` | 12:00 | `private.check_storage_alert()` | `20260929000510_avisos_telefono_supabase.sql` |
+
+Las que llaman Edge Functions usan pg_net y los secretos de Vault `project_url` y `cron_secret` (el mismo secreto es
+`CRON_SECRET` en las funciones y va en la cabecera `x-cron-secret`).
+
+**Edge Functions**: `send-push` (cola de push), `scan-bowling` (lectura de fotos), `delete-account` (borrar la cuenta) y
+`purge-photos` (cada día: `purge_queue_take` → borra del bucket `scoreboards` → `purge_queue_done`; después
+`storage_orphans` y los borra también; lógica en `functions/purge-photos/core.ts`, pruebas en
+`src/lib/purgePhotosFunction.test.ts`). Las que llama el cron revisan `x-cron-secret`.
 
 ## De `data.ts` a la base
 
@@ -445,6 +473,7 @@ kind, ownerId, ownerName, members, players, events} y `transfer_league` {name, s
 | `admin_audit_log(p_action=null, p_limit=50, p_offset=0) → {rows: AdminAuditEntry[], total}` | superadmin | Lo más nuevo primero, con el nombre de quién lo hizo. |
 | `admin_system() → AdminSystem` | superadmin | Migraciones (`supabase_migrations`), último `ping`, tareas de pg_cron con su última corrida, cola de push, deportes con sus ligas. Lo que no existe (PGlite) sale null. |
 | `admin_scan_stats(p_days=30) → AdminScanStats` | superadmin | Lecturas por día (1–90), por modelo (`scan_minutes`, 3 días) y las 10 cuentas que más leen (`scan_usage`, 7 días). |
+| `admin_storage_usage() → {dbBytes, dbLimit, storageBytes, storageLimit, dbPct, storagePct, lastAlertAt, purgePending}` | superadmin | Uso del plan gratis (`private.storage_usage()`: base 500 MB con `pg_database_size`, archivos 1 GB con `metadata.size` de `storage.objects`; porcentajes con un decimal), la última alerta de espacio (ISO o null) y cuántas rutas faltan por borrar del bucket. `admin_overview` no cambia. |
 | `admin_block_user(p_user, p_reason=null) → void` | superadmin | Motivo ≤ 200. `invalido` (a sí mismo o motivo largo), `no_permitido` (superadmin), `no_existe`. Otra vez: cambia el motivo, no la hora. |
 | `admin_unblock_user(p_user) → void` | superadmin | `no_existe`. |
 | `admin_count_recipients(p_audience jsonb) → int` | superadmin | Cuántas cuentas recibirían el anuncio. |
@@ -458,6 +487,62 @@ Deportes: `set_sport_status`. Índices nuevos: `profiles` por fecha de registro,
 `private.can_upload_photo`, `private.can_scan`, `public.sync_ladder`, `set_superadmin`, `set_sport_status`,
 `delete_league` y `transfer_ownership`. Un cambio a esas funciones en su archivo original queda tapado por esta:
 hay que hacerlo aquí (o en una migración nueva después).
+
+## Avisos al teléfono
+
+`20260929000500_avisos_telefono.sql` (pruebas: `tests/sql/avisos-telefono.test.ts`). Todo entra por `push_outbox` (una
+fila por cuenta que `push_outbox_fanout` reparte a sus 5 teléfonos más nuevos) y sale con `send-push`.
+
+**Preferencias.** `profiles.push_prefs` (`set_push_prefs`). El trigger `push_outbox_prefs` descarta la fila de cada
+teléfono si la cuenta apagó la categoría de su tag, también en los avisos que ya existían:
+
+| Categoría | Tags |
+|---|---|
+| `resultados` | `envio:` (envíos del boliche), `confirmar:` (resultado por confirmar), `resultado:` (confirmado), `reclamo:` |
+| `social` | `reaccion:` (felicitaciones y me gusta), `comentario:`, `seguir:` |
+| `recordatorios` | `recordatorio:` (boliche, golf, natación, noches), `partido:`, `despues:`, `sinresultado:` |
+| `liga` | `aviso:` (avisos del admin a su liga) |
+
+Sin categoría (salen siempre): `claim:`, inscripciones, escalera, `ronda:`, `anuncio:` (superadmin) y `espacio`.
+
+**Encolar**: `private.queue_push(p_user, p_category, p_title, p_body, p_url, p_tag, p_ttl, p_group_title=null) → boolean`.
+No encola si la cuenta está bloqueada, no tiene teléfonos o apagó la categoría; no repite un tag que sigue sin
+mandar; con `p_group_title` le cambia el texto al que todavía espera («Ana y 2 más…»). Nunca falla (warning) y llama a
+`send-push` (salvo dentro de un lote: `mm.push_batch = 'on'`, y se llama una vez al final). Urgencia `normal`.
+
+**Qué avisa** (solo lo que hace una cuenta con sesión: la importación de BowlingX y el SQL a mano no avisan; nunca a
+uno mismo):
+
+| Cuándo | A quién | Texto | Tag · link |
+|---|---|---|---|
+| Envío del boliche aprobado | cuenta del jugador y quien lo envió, si sigue en la liga (no quien lo revisa) | «Aprobaron tus juegos: serie de 650 en <liga>» · «Aprobaron tu juego de 210 en <liga>» (quien lo envió por otro: «Aprobaron los juegos de <jugador>: …»); texto: «Práctica del 22 de septiembre.» | `envio:<envío>` · `/l/<liga>/e/<evento>` |
+| Envío rechazado | igual | «No aprobaron tus juegos del 22 de septiembre» (un juego: «tu juego»); texto: «<liga>. Motivo: «<nota>»» o «<liga>. Si crees que es un error, habla con el admin.» | `envio:<envío>` · evento o `/l/<liga>` |
+| Felicitación o me gusta (boliche) | cuenta del jugador | «Ana te felicitó por tu serie de 650» · «A Ana le gustó tu juego»; juntos: «Ana y 3 más te felicitaron…», «A Ana y 3 más les gustó tu juego», mezclados «Ana y 3 más reaccionaron a…» | `reaccion:<participación>` · `/l/<liga>/juegos?juego=<participación>` |
+| Comentario (boliche) | cuenta del jugador | «Ana comentó tu juego: «<los primeros 80>»» (si el anterior espera, sale el último; si ya salió, el siguiente después de 30 minutos) | `comentario:<participación>` |
+| Me gusta en partido, golf o natación | cuenta del jugador | «A Ana le gustó tu partido» (ronda, prueba), juntos igual | `reaccion:<juego>[:<jugador>]` |
+| Resultado confirmado (o reclamo resuelto) | lado que lo anotó (raqueta: jugadores y pareja; equipos: capitán y delegado) y quien lo anotó, si sigue en la liga; no quien confirma | «Confirmaron el resultado»; texto «A contra B: 6-4 6-3. Ya cuenta en la tabla.» (o «El organizador resolvió el reclamo.») | `resultado:<partido>` · `/l/<liga>/juegos?partido=<partido>` |
+
+Me gusta y felicitaciones: como mucho un aviso nuevo por juego cada 6 horas (mientras el anterior espera, se le cambia
+el texto). Proponer un resultado («Tienes un resultado por confirmar», `confirmar:`) y reclamarlo («Reclamaron un
+resultado», `reclamo:`) ya avisaban desde `partidos.sql` y `avisos.sql`.
+
+**Recordatorios** (funciones de `private`, las corre pg_cron; `p_now` para las pruebas; devuelven cuántos salieron):
+
+- `remind_after_bowling(p_now)`: eventos del boliche de ayer (hora de la liga), a cada jugador con cuenta que marcó
+  «voy» y no tiene ningún juego anotado en el evento ni un envío de ese evento o fecha: «¿Cómo te fue anoche? Sube tus
+  juegos de <liga>», link `/l/<liga>/e/<evento>?anotar=1`, tag `despues:<evento>:<jugador>`. Una vez (`private.push_once`).
+- `remind_missing_results(p_now)`: partidos programados (o en vivo sin anotador activo) de los últimos 3 días que
+  empezaron hace 3 horas o más, sin resultado y que no son noches de americano o mexicano: «¿Cómo quedó A vs B?» a
+  quienes lo pueden anotar desde un lado (raqueta: jugadores y pareja; equipos: capitán y delegado) y al anotador;
+  tag `sinresultado:<partido>`. Una vez por partido. De 10:00 pm a 8:00 am (hora de la liga) no avisa ni deja la marca:
+  el partido de las 9:00 pm sale en la corrida de las 8 de la mañana.
+- `enqueue_due_reminders(p_now)` (el de siempre del boliche): el del día antes («¿Vas? Confírmalo en la app.») ya no
+  le llega a quien marcó «voy» en ese evento.
+
+**Espacio.** `private.storage_usage()` y `private.check_storage_alert(p_now)`: si la base o los archivos van por el 70 %
+o más del plan gratis y no se avisó en 3 días (`private.storage_alerts`), push a cada superadmin «El espacio de
+MatchMate va por 72 %» con el link `/superadmin/sistema`. Solo cuenta como aviso si se encoló al menos un push (sin
+ningún superadmin con teléfono, lo intenta otra vez al día siguiente). El correo queda para cuando haya SMTP.
 
 ## Seguridad (lo que prueban `tests/sql/seguridad.test.ts` y `nuevas.test.ts`)
 
