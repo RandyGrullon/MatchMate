@@ -272,16 +272,20 @@ describe('reportar', () => {
     await fails(report(w.u.luis, 'comment', randomUUID()), 'no_existe');
     await fails(report(w.u.luis, 'game', randomUUID()), 'no_existe');
     await fails(report(w.u.luis, 'user', randomUUID()), 'no_existe');
-    // extra no comparte liga con luis (que solo está en la privada) ni se siguen: no lo ve.
+    // extra no comparte liga con luis (que solo está en la privada) ni se siguen. Desde 20260929000200_invitaciones.sql
+    // con sesión se ve cualquier cuenta sin bloquear (se busca y se abre su perfil, con «Reportar»); bloqueada, no.
+    await db.admin('update public.profiles set blocked_at = now() where id = $1', [w.u.luis]);
     await fails(report(w.u.extra, 'user', w.u.luis), 'no_existe');
+    await db.admin('update public.profiles set blocked_at = null where id = $1', [w.u.luis]);
     // Lo propio no.
     await fails(report(w.u.luis, 'comment', c), 'invalido');
     await fails(report(w.u.luis, 'user', w.u.luis), 'invalido');
     await fails(report(w.u.luis, 'game', w.e1Luis), 'invalido');
     await fails(report(w.u.org, 'league', w.priv), 'invalido');
-    // La liga pública la ve cualquiera con sesión.
+    // La liga pública y una cuenta sin bloquear las ve cualquiera con sesión.
     expect(await report(w.u.extra, 'league', w.pub, 'spam')).toBeTruthy();
-    expect(await db.count('public.reports')).toBe(1);
+    expect(await report(w.u.extra, 'user', w.u.luis, 'spam')).toBeTruthy();
+    expect(await db.count('public.reports')).toBe(2);
   });
 
   it('juegos, avisos y cuentas: con la liga que toca (una cuenta, sin liga)', async () => {
@@ -373,6 +377,18 @@ describe('reportar', () => {
     await member(db, w.priv, w.u.dios, 'member', 'dios');
     await report(w.u.dios, 'comment', c2, 'otro');
     expect((await db.admin<{ user_id: string }>('select distinct user_id from public.push_outbox where tag = $1', [`reporte:comment:${c2}`])).map((r) => r.user_id)).toEqual([w.u.dios2]);
+  });
+
+  it('el push de un reporte no tiene categoría (avisos al teléfono): le llega al superadmin aunque apague todas', async () => {
+    // Moderar es parte de ser superadmin (como el aviso de espacio), no una preferencia: 'reporte:' sale siempre.
+    expect(await db.admin(`select private.push_category($1) as c`, ['reporte:comment:x'])).toEqual([{ c: null }]);
+    await phone(w.u.dios, 'dios');
+    await db.rpc(w.u.dios, 'set_push_prefs', { p_prefs: { resultados: false, social: false, recordatorios: false, liga: false } });
+    const c = await comment(w.u.luis, 'Spam spam');
+    await report(w.u.ana, 'comment', c, 'menores');
+    expect(
+      await db.admin('select user_id, title from public.push_outbox where tag = $1 and subscription_id is not null', [`reporte:comment:${c}`]),
+    ).toEqual([{ user_id: w.u.dios, title: 'Nuevo reporte: riesgo para un menor' }]);
   });
 });
 

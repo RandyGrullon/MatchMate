@@ -76,13 +76,17 @@ describe('con la base de verdad', () => {
     await expect(select({ table: 'profiles', columns: 'id,nada', filters: [{ col: 'id', op: 'eq', value: ana }] })).rejects.toMatchObject({ code: '42703' });
 
     const base = w.b as Backend;
-    /** La base de antes de esas migraciones: sin esas columnas. 42703 nombra la primera que falta, como Postgres. */
+    /**
+     * La base de antes de esas migraciones: sin esas columnas. 42703 nombra la primera que falta, como Postgres. Solo
+     * cuentan las lecturas del perfil (fetchProfile lee a la vez qué términos aceptó, de legal_acceptances).
+     */
     const without = async (missing: string[], check: (profile: AccountProfile | null) => void) => {
       const reads: string[] = [];
       const old = new Proxy(base, {
         get(target, prop) {
           if (prop === 'select')
             return async (q: { table: string; columns?: string }) => {
+              if (q.table !== 'profiles') return target.select(q);
               reads.push(q.columns ?? '*');
               const col = (q.columns ?? '').split(',').find((c) => missing.includes(c));
               if (col) throw new BackendError(`column profiles.${col} does not exist`, 'unknown', '42703');
@@ -107,7 +111,10 @@ describe('con la base de verdad', () => {
         expect(profile).toMatchObject({ id: ana, name: 'Ana', username: 'ana', adultConfirmedAt: null });
         expect(profile && 'pushPrefs' in profile).toBe(false);
       }),
-    ).toEqual(['id,email,name,is_superadmin,adult_confirmed_at,username,push_prefs', 'id,email,name,is_superadmin,adult_confirmed_at,username']);
+    ).toEqual([
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username',
+    ]);
 
     // Antes de 20260929000200 (tampoco username): el perfil igual, con el @usuario vacío.
     expect(
@@ -116,9 +123,9 @@ describe('con la base de verdad', () => {
         expect(profile && 'pushPrefs' in profile).toBe(false);
       }),
     ).toEqual([
-      'id,email,name,is_superadmin,adult_confirmed_at,username,push_prefs',
-      'id,email,name,is_superadmin,adult_confirmed_at,push_prefs',
-      'id,email,name,is_superadmin,adult_confirmed_at',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,push_prefs',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at',
     ]);
 
     // Otro error no se tapa.
