@@ -40,10 +40,10 @@
 --    (boliche con «Voy», rondas de golf abiertas, noches y torneos de raqueta con inscripción abierta y cupo).
 --
 -- Ojo: redefine (create or replace, mismos permisos) private.check_free_players (el jugador solo choca con otro
--- equipo de la MISMA temporada), private.claim_conflicts (igual), private.merge_players (pasa también premios y
--- tablas guardadas) y public.league_announce / public.league_announce_reach (el aviso automático de fin de
--- temporada, league_announcements.automatic, no cuenta para el tope diario). Un cambio a esas funciones en su
--- archivo original queda tapado por este.
+-- equipo de la MISMA temporada), private.claim_conflicts (igual), private.merge_players (la de
+-- 20260929000600_organizador.sql, que mueve las pistas, y además premios y tablas guardadas) y public.league_announce /
+-- public.league_announce_reach (el aviso automático de fin de temporada, league_announcements.automatic, no cuenta
+-- para el tope diario). Un cambio a esas funciones en su archivo original queda tapado por este.
 --
 -- Nadie escribe directo: todo por RPC. Tiempo real por private.emit a league:<liga>:
 --   'seasons'  {op, ids: temporadas}   temporadas y sus premios
@@ -583,6 +583,8 @@ $$;
 -- Pasa todo lo de p_from (el jugador propio de la cuenta) a p_into (el reclamado) y borra p_from. Si algo choca,
 -- 'conflicto: <qué>' y no cambia nada. Al final revisa en el catálogo que ninguna tabla con FK a players quede
 -- apuntando a p_from (una tabla nueva que no esté aquí frena la unión en vez de perder datos al borrarlo).
+-- Es la de 20260929000600_organizador.sql (que ya mueve las pistas del boliche, event_lanes) más los premios y las
+-- tablas guardadas de las temporadas: esta la tapa, así que un cambio a la unión va aquí (o en una migración después).
 create or replace function private.merge_players(p_from uuid, p_into uuid, p_league uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -604,13 +606,16 @@ begin
        c as (update public.comments x set player_id = p_into where x.player_id = p_from returning 1)
   update public.entries e set player_id = p_into where e.player_id = p_from;
   update public.submissions s set player_id = p_into where s.player_id = p_from;
-  -- «Voy» y en vivo: si los dos tienen, queda el del reclamado.
+  -- «Voy», en vivo y pistas: si los dos tienen, queda el del reclamado.
   delete from public.event_rsvps a where a.player_id = p_from
      and exists (select 1 from public.event_rsvps c where c.event_id = a.event_id and c.player_id = p_into);
   update public.event_rsvps r set player_id = p_into where r.player_id = p_from;
   delete from public.live_states a where a.player_id = p_from
      and exists (select 1 from public.live_states c where c.event_id = a.event_id and c.player_id = p_into);
   update public.live_states s set player_id = p_into, subject_key = 'p:' || v_into where s.player_id = p_from;
+  delete from public.event_lanes a where a.player_id = p_from
+     and exists (select 1 from public.event_lanes c where c.event_id = a.event_id and c.player_id = p_into);
+  update public.event_lanes x set player_id = p_into where x.player_id = p_from;
   -- Datos privados (año, sexo, tutor) y ficha de nadador: se queda la del reclamado si tiene.
   if exists (select 1 from public.player_private x where x.player_id = p_into) then
     delete from public.player_private x where x.player_id = p_from;

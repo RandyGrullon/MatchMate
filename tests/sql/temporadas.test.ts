@@ -381,7 +381,7 @@ describe('leer temporadas y campeones', () => {
   });
 });
 
-describe('reclamos con temporadas', () => {
+describe('reclamos y juntar jugadores con temporadas', () => {
   it('los premios y la tabla guardada pasan al jugador reclamado; equipos de otra temporada no chocan', async () => {
     const h = await hoops();
     const guest = await player(db, h.lid, 'Ana G.');
@@ -402,6 +402,22 @@ describe('reclamos con temporadas', () => {
     expect(await db.rpc(w.u.org, 'decide_player_claim', { p_claim: id, p_approve: true })).toBe('approved');
     expect(await db.admin('select player_id, name from public.season_awards where season_id = $1', [s1.id])).toEqual([{ player_id: guest, name: 'Ana' }]);
     expect((await seasons(h.lid))[0].standings).toEqual({ rows: [{ player: guest, points: 30 }] });
+  });
+
+  it('juntar dos jugadores (Admin › Jugadores): el premio, la tabla guardada y la pista del que se va pasan al que queda', async () => {
+    const dup = await player(db, w.priv, 'Pedro P.');
+    // La pista del boliche (20260929000600_organizador.sql): solo el que se va tiene en ese evento.
+    const ev = await event(db, w.priv, 'torneo', '2026-09-15', 3, 'Copa');
+    await db.admin('insert into public.event_lanes (event_id, player_id, league_id, lane) values ($1, $2, $3, 7)', [ev, dup, w.priv]);
+    const s = await active(w.priv);
+    await close(w.u.sofi, s.id, [{ kind: 'mas_mejorado', player_id: dup }], { rows: [{ playerId: dup, average: 170 }] });
+    await db.rpc(w.u.sofi, 'merge_league_players', { p_league: w.priv, p_keep: w.p.pedro, p_drop: dup });
+    expect(await db.count('public.players', 'id = $1', [dup])).toBe(0);
+    expect(await db.admin('select kind, player_id, name from public.season_awards where season_id = $1', [s.id])).toEqual([
+      { kind: 'mas_mejorado', player_id: w.p.pedro, name: 'Pedro P.' },
+    ]);
+    expect((await seasons(w.priv))[0].standings).toEqual({ rows: [{ playerId: w.p.pedro, average: 170 }] });
+    expect(await db.admin('select player_id, lane from public.event_lanes where event_id = $1', [ev])).toEqual([{ player_id: w.p.pedro, lane: 7 }]);
   });
 
   it('un jugador de la temporada pasada en otro equipo no choca con el de esta', async () => {
