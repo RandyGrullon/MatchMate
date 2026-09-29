@@ -18,6 +18,8 @@ import { Button, Card, Field, Input, Loading, Tabs } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { PasswordInput } from '../components/PasswordInput';
 import { captchaEnabled, Turnstile } from '../components/Turnstile';
+import { AcceptTermsBox } from '../components/AcceptTermsBox';
+import { rememberLegalForGoogle } from '../lib/legal';
 import { PRIVACY_PATH, TERMS_PATH } from './legal/legal';
 
 type Mode = 'entrar' | 'registro' | 'recuperar';
@@ -45,6 +47,8 @@ export default function LoginPage() {
   const [password2, setPassword2] = useState('');
   // «Tengo 18 años o más»: obligatorio para crear la cuenta (las ligas con menores las lleva un adulto).
   const [adult, setAdult] = useState(false);
+  // «Acepto los Términos y la Política de privacidad»: obligatorio para crear la cuenta (queda guardado con la versión).
+  const [terms, setTerms] = useState(false);
   const [busy, setBusy] = useState<'correo' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Qué correo se mandó: para confirmar la cuenta nueva o para poner otra contraseña.
@@ -91,7 +95,7 @@ export default function LoginPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (signingUp && (password !== password2 || password.length < MIN_PASSWORD || !adult)) return;
+    if (signingUp && (password !== password2 || password.length < MIN_PASSWORD || !adult || !terms)) return;
     if (needCaptcha && !captcha) {
       setError('Espera la casilla de Cloudflare que comprueba que no eres un robot.');
       return;
@@ -105,7 +109,7 @@ export default function LoginPage() {
         await resetPassword(email, token);
         setSent('recuperar');
       } else if (signingUp) {
-        const { needsConfirm } = await signUp(name, email, password, adult, token);
+        const { needsConfirm } = await signUp(name, email, password, adult, token, terms);
         if (needsConfirm) setSent('confirmar');
       } else {
         await login(email, password, token);
@@ -141,11 +145,12 @@ export default function LoginPage() {
 
   /** Con Google sirve igual para entrar o registrarse: si no tenía cuenta, se crea. */
   async function google() {
-    if (signingUp && !adult) return;
+    if (signingUp && (!adult || !terms)) return;
     setBusy('google');
     setError(null);
-    // Marcó «tengo 18 años o más»: al volver de Google se guarda solo (sin preguntar otra vez).
+    // Marcó «tengo 18 años o más» y «Acepto…»: al volver de Google se guarda solo (sin preguntar otra vez).
     if (signingUp && adult) rememberAdultForGoogle();
+    if (signingUp && terms) rememberLegalForGoogle();
     try {
       await loginWithGoogle();
     } catch (err) {
@@ -220,7 +225,8 @@ export default function LoginPage() {
                 onChange={switchMode}
               />
               {adultBox}
-              <Button onClick={google} loading={busy === 'google'} disabled={!!busy || (signingUp && !adult)} icon={<GoogleIcon />} className="max-sm:h-11">
+              {signingUp && <AcceptTermsBox checked={terms} onChange={setTerms} />}
+              <Button onClick={google} loading={busy === 'google'} disabled={!!busy || (signingUp && (!adult || !terms))} icon={<GoogleIcon />} className="max-sm:h-11">
                 {signingUp ? 'Registrarme con Google' : 'Entrar con Google'}
               </Button>
               <div className="flex items-center gap-3 text-xs text-muted">
@@ -255,7 +261,7 @@ export default function LoginPage() {
                   type="submit"
                   variant="primary"
                   loading={busy === 'correo'}
-                  disabled={!!busy || (signingUp && (mismatch || short || !password2 || !adult))}
+                  disabled={!!busy || (signingUp && (mismatch || short || !password2 || !adult || !terms))}
                   icon={signingUp ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
                   className="max-sm:h-11"
                 >

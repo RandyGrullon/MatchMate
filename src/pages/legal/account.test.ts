@@ -1,7 +1,7 @@
 /**
- * La cuenta y sus datos desde la app (src/pages/legal/account.ts y la marca de 18 años de auth.tsx): de lo que
- * manda la base al plan de borrado, los mensajes, y de punta a punta con la base de verdad y el borrado del modo
- * local (el manejador `delete-account` de src/lib/backend/local.ts).
+ * La cuenta y sus datos desde la app (src/pages/legal/account.ts, la marca de 18 años de auth.tsx y aceptar los
+ * términos de src/lib/data/legal.ts): de lo que manda la base al plan de borrado, los mensajes, y de punta a punta
+ * con la base de verdad y el borrado del modo local (el manejador `delete-account` de src/lib/backend/local.ts).
  */
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -9,8 +9,11 @@ import { BLOCKED_MESSAGE } from '../../lib/backend/errors';
 import { BackendError } from '../../lib/backend/types';
 import { confirmAdult, fetchProfile, rememberAdultForGoogle, takeAdultPending } from '../../lib/auth';
 import { transferLeague } from '../../lib/data/admin';
-import { backend } from '../../lib/data/client';
+import { backend, rpc } from '../../lib/data/client';
+import { acceptLegal, fetchLegalAccepted, isLegalVersionMismatch, legalErrorMessage, legalMismatchText } from '../../lib/data/legal';
 import { createLeague, joinLeague } from '../../lib/data/leagues';
+import { reportContent } from '../../lib/data/reports';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../../lib/legal';
 import { openWorld, type TestWorld } from '../../lib/data/testkit';
 import { accountErrorMessage, deleteMyAccount, DELETE_WORD, fetchDeletePlan, fetchMyData, myDataFileName, toDeletePlan } from './account';
 
@@ -52,19 +55,25 @@ describe('de la base al plan', () => {
     expect(accountErrorMessage(new Error('x'))).toBe('No se pudo completar. Intenta de nuevo.');
   });
 
-  it('registro con Google: la casilla marcada antes de ir vale una vez y por 1 hora', () => {
+  it('registro con Google: la casilla marcada antes de ir vale una vez, por 1 hora y solo para la cuenta nueva', () => {
     const store = new Map<string, string>();
     globalThis.localStorage = {
       getItem: (k: string) => store.get(k) ?? null,
       setItem: (k: string, v: string) => void store.set(k, v),
       removeItem: (k: string) => void store.delete(k),
     } as Storage;
-    expect(takeAdultPending()).toBe(false);
+    // La cuenta que crea la base al volver de Google (un minuto después de marcar la casilla).
+    const fresh = new Date(1_000 + 60_000).toISOString();
+    expect(takeAdultPending(fresh)).toBe(false);
     rememberAdultForGoogle(1_000);
-    expect(takeAdultPending(1_000 + 59 * 60_000)).toBe(true);
-    expect(takeAdultPending(1_000 + 60_000)).toBe(false);
+    expect(takeAdultPending(fresh, 1_000 + 59 * 60_000)).toBe(true);
+    expect(takeAdultPending(fresh, 1_000 + 60_000)).toBe(false);
     rememberAdultForGoogle(1_000);
-    expect(takeAdultPending(1_000 + 61 * 60_000)).toBe(false);
+    expect(takeAdultPending(fresh, 1_000 + 61 * 60_000)).toBe(false);
+    // Otra cuenta que ya existía (entra otra persona en el mismo teléfono): no, y la marca se gasta.
+    rememberAdultForGoogle(Date.parse('2026-09-29T12:00:00Z'));
+    expect(takeAdultPending('2026-01-01T00:00:00.000Z', Date.parse('2026-09-29T12:10:00Z'))).toBe(false);
+    expect(takeAdultPending('2026-09-29T12:01:00.000Z', Date.parse('2026-09-29T12:10:00Z'))).toBe(false);
   });
 });
 
@@ -98,13 +107,38 @@ describe('con la base de verdad', () => {
     expect((await fetchProfile(beto))?.adultConfirmedAt).toBe(at);
   });
 
-  it('bajar mis datos: su cuenta, sus ligas y su jugador', async () => {
+  it('términos: si la base tiene otras versiones la app lo reconoce (LegalGate deja seguir); con las vigentes se guarda', async () => {
     await w.as('beto@x.com');
+    // Como si la app se hubiera publicado antes que la migración: la base no conoce estas fechas.
+    const err = await rpc('accept_legal', { p_terms: '2099-01-01', p_privacy: '2099-01-01' }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(isLegalVersionMismatch(err)).toBe(true);
+    expect(legalMismatchText()).toContain(`términos ${TERMS_VERSION}, privacidad ${PRIVACY_VERSION}`);
+    // Lo demás no se confunde con eso y sale en palabras simples.
+    for (const e of [new BackendError(BLOCKED_MESSAGE, 'permission', 'bloqueada'), new BackendError('Failed to fetch', 'network'), new Error('x')]) {
+      expect(isLegalVersionMismatch(e)).toBe(false);
+    }
+    expect(legalErrorMessage(new BackendError('Failed to fetch', 'network'))).toMatch(/Sin conexión/);
+    expect(legalErrorMessage(new BackendError(BLOCKED_MESSAGE, 'permission', 'bloqueada'))).toBe(BLOCKED_MESSAGE);
+    expect(await fetchLegalAccepted(beto)).toEqual({ terms: null, privacy: null });
+    await acceptLegal(beto);
+    expect(await fetchLegalAccepted(beto)).toEqual({ terms: TERMS_VERSION, privacy: PRIVACY_VERSION });
+  });
+
+  it('bajar mis datos: su cuenta, sus ligas, su jugador y sus reportes', async () => {
+    await w.as('beto@x.com');
+    expect((await fetchMyData()).reports).toEqual([]);
+    const rid = await reportContent({ kind: 'league', targetId: lid, reason: 'spam', note: 'Solo anuncios' });
     const d = await fetchMyData();
     expect(d.format).toBe('matchmate-mis-datos');
     expect(d.account).toMatchObject({ id: beto, email: 'beto@x.com' });
     expect((d.leagues as { leagueId: string }[]).map((l) => l.leagueId)).toEqual([lid]);
     expect(d.players).toHaveLength(1);
+    // Los reportes no tienen user_id (export_my_data no los ve): los trae my_reports, sin quién los atendió.
+    expect(d.reports).toEqual([expect.objectContaining({ id: rid, kind: 'league', targetId: lid, reason: 'spam', note: 'Solo anuncios', status: 'open' })]);
+    expect(JSON.stringify(d.reports)).not.toMatch(/handledBy|reporter|targetOwner/);
   });
 
   it('borrar: la dueña primero pasa su liga; sin la palabra no se borra; después sí y se cierra la sesión', async () => {

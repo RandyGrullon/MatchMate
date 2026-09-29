@@ -4,7 +4,9 @@ import { FilePenLine } from 'lucide-react';
 import { BackLink } from '../../components/BackLink';
 import { AppShell } from '../../components/Shell';
 import { Card, cx } from '../../components/ui';
-import { LEGAL_CONTACT, LEGAL_DRAFT, isPlaceholder, legalDate, PRIVACY_PATH, TERMS_PATH } from './legal';
+import { useAuth } from '../../lib/auth';
+import type { LegalDocKey } from '../../lib/legal';
+import { LEGAL_CONTACT, LEGAL_DOCS, LEGAL_DRAFT, isPlaceholder, legalDate, PRIVACY_PATH, TERMS_PATH } from './legal';
 
 export interface LegalSection {
   /** Ancla (#id): el aviso de las fotos lleva a #fotos, Configuración a #derechos… */
@@ -13,7 +15,7 @@ export interface LegalSection {
   body: ReactNode;
 }
 
-/** Un dato que falta llenar (mientras sea borrador se ve marcado). */
+/** Un dato que falta llenar (se ve marcado; la consola › Legal los lista). */
 export function Fill({ children }: { children: string }) {
   if (!isPlaceholder(children)) return <>{children}</>;
   return <mark className="rounded bg-warn-soft px-1 text-warn">{children}</mark>;
@@ -47,11 +49,14 @@ export function Sub({ children }: { children: ReactNode }) {
 }
 
 /**
- * Página de un texto legal: título, aviso de borrador, fecha, índice con anclas y las secciones. Se lee sin
- * cuenta (y sin haber dicho «tengo 18 años o más»).
+ * Página de un texto legal: título, versión y desde cuándo rige, índice con anclas y las secciones. Se lee sin
+ * cuenta (y sin haber dicho «tengo 18 años o más» ni aceptado la versión nueva). El aviso de borrador (falta la
+ * revisión de un abogado) solo lo ve el superadmin.
  */
-export function LegalDoc({ title, icon, lead, sections }: { title: string; icon: ReactNode; lead: ReactNode; sections: LegalSection[] }) {
+export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon: ReactNode; lead: ReactNode; sections: LegalSection[] }) {
   const { hash } = useLocation();
+  const { isSuper } = useAuth();
+  const { title, version, effective } = LEGAL_DOCS[doc];
 
   // El router no baja solo a la sección del link (#fotos): se hace aquí, cuando ya está dibujada.
   useEffect(() => {
@@ -77,17 +82,19 @@ export function LegalDoc({ title, icon, lead, sections }: { title: string; icon:
               {title}
             </h1>
           </div>
-          {LEGAL_DRAFT && (
+          <p className="text-xs font-medium text-muted">
+            Versión {legalDate(version)} · vigente desde {legalDate(effective)}
+          </p>
+          {LEGAL_DRAFT && isSuper && (
             <div role="note" className="flex gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
               <FilePenLine className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
               <p>
-                <b>Borrador para revisar con un abogado.</b> Este texto todavía no es el final: puede cambiar antes de abrir MatchMate a
-                otros clubes. Lo marcado en amarillo falta por completar.
+                <b>Borrador.</b> Pendiente: revisión por un abogado dominicano. Lo marcado en amarillo falta por completar (la lista está
+                en la consola › Legal). Solo tú ves este aviso.
               </p>
             </div>
           )}
           <div className="text-sm text-muted">{lead}</div>
-          <p className="text-xs text-muted">Última actualización: {legalDate()}</p>
         </header>
 
         <Card className="p-4">
