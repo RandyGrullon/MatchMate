@@ -4,7 +4,7 @@
  * Puro: sin React ni backend. Usa los motores de src/sports/formats (americano, mexicano, social).
  */
 import type { Match, MatchDraft } from '../../../../lib/data/matches';
-import { isFinal } from '../../../../lib/data/matches';
+import { isFinal } from '../../../../lib/data/matchCore';
 import {
   americanoRoundsForAll,
   americanoSchedule,
