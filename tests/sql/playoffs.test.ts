@@ -327,6 +327,38 @@ describe('las series', () => {
   });
 });
 
+describe('con el organizador (20260929000600_organizador.sql)', () => {
+  it('Pendientes no cuenta un juego sin fecha; suspender su día lo aplaza o lo mueve sin programar otro juego de la serie', async () => {
+    const h = await hoops();
+    const po = await create(h, [h.t.a, h.t.b], [3]);
+    const [fin] = await series(po);
+    const [g1] = await open(fin.id);
+    const pending = async () => (await db.rpc<{ overdue: { count: number } }>(w.u.org, 'league_pending', { p_league: h.lid })).overdue.count;
+    // Recién armada la llave: el juego no tiene fecha y no está «vencido».
+    expect(await pending()).toBe(0);
+    const [{ d, nd }] = await db.admin<{ d: string; nd: string }>(
+      `select to_char((now() at time zone 'America/Santo_Domingo')::date + 1, 'YYYY-MM-DD') as d,
+              to_char((now() at time zone 'America/Santo_Domingo')::date + 3, 'YYYY-MM-DD') as nd`,
+    );
+    const at = (day: string) => db.admin(`update public.matches set scheduled_at = ($2::date + time '20:00') at time zone 'America/Santo_Domingo' where id = $1`, [g1.id, day]);
+    // Con fecha: suspender el día lo mueve a la nueva fecha (sigue siendo el juego 1).
+    await at(d);
+    expect(await db.rpc(w.u.org, 'suspend_day', { p_league: h.lid, p_date: d, p_reason: 'Lluvia', p_new_date: nd })).toMatchObject({
+      matches: { moved: 1, postponed: 0 },
+    });
+    expect((await games(fin.id)).map((g) => [g.id, g.status])).toEqual([[g1.id, 'scheduled']]);
+    // Sin nueva fecha: queda aplazado y la serie no programa otro juego.
+    expect(await db.rpc(w.u.org, 'suspend_day', { p_league: h.lid, p_date: nd, p_reason: 'Lluvia' })).toMatchObject({
+      matches: { moved: 0, postponed: 1 },
+    });
+    expect((await games(fin.id)).map((g) => [g.id, g.status])).toEqual([[g1.id, 'postponed']]);
+    expect(await one(po, 1, 1)).toMatchObject({ wins_a: 0, wins_b: 0, winner: null });
+    // Un juego de la serie con fecha que ya pasó y sin resultado sí sale en Pendientes.
+    await db.admin(`update public.matches set status = 'scheduled', scheduled_at = now() - interval '1 day' where id = $1`, [g1.id]);
+    expect(await pending()).toBe(1);
+  });
+});
+
 describe('quién puede qué', () => {
   it('solo el admin arma o borra; datos que no sirven no crean nada', async () => {
     const h = await hoops();
