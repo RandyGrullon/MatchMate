@@ -20,8 +20,8 @@ notificaciones.
 | Golf | 6 | Tarjeta por hoyos, índice de dificultad y ventajas |
 | Natación | 7 | Series y tiempos |
 
-Mientras un deporte no esté abierto queda en **beta**: existe en la base, pero solo el superadmin puede crear
-ligas de él (lo decide la tabla `sport_status`, no la pantalla).
+Todos los deportes están abiertos. El superadmin puede poner uno en **beta** (existe en la base, pero solo él
+crea ligas de él) o cerrarlo: lo decide la tabla `sport_status`, no la pantalla.
 
 Lo que ya hace (heredado de BowlingX): cuentas con correo o Google; ligas públicas o privadas con invitación
 por link, QR o código; torneos sueltos; roles de dueño, admin, anotador y superadmin; cada cuenta juega como su

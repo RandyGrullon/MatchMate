@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, Check, ChevronRight, Compass, Crown, KeyRound, LogOut, Pencil, Settings } from 'lucide-react';
+import { AtSign, Check, ChevronRight, Compass, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Settings } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
@@ -21,7 +21,7 @@ import { AccountDataCard } from './legal/AccountDataCard';
 
 /**
  * Configuración (engrane de arriba): nombre, @usuario, correo, apariencia, mis ligas, tus datos (privacidad,
- * términos, bajar mis datos y borrar la cuenta), superadmin y cerrar sesión.
+ * términos, bajar mis datos y borrar la cuenta), superadmin, cerrar sesión y, abajo, Acerca de y Contáctanos.
  */
 export default function AccountPage() {
   const auth = useAuth();
@@ -193,6 +193,16 @@ export default function AccountPage() {
         <Button className="self-center text-danger max-sm:h-11" variant="ghost" icon={<LogOut className="size-4" />} onClick={signOut}>
           Cerrar sesión
         </Button>
+
+        {/* Lo que sin cuenta está en la barra de abajo. */}
+        <nav aria-label="Sobre MatchMate" className="-mt-2 flex flex-wrap justify-center gap-x-6 border-t border-line pt-2 text-sm">
+          <Link to="/acerca" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-muted hover:text-fg">
+            <Info className="size-4" aria-hidden="true" /> Acerca de MatchMate
+          </Link>
+          <Link to="/contacto" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-muted hover:text-fg">
+            <MessageCircle className="size-4" aria-hidden="true" /> Contáctanos
+          </Link>
+        </nav>
       </div>
     </AppShell>
   );

@@ -65,6 +65,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'claims') return invalidate('claims:me', tags.members, tags.feeds);
     // Me invitaron, o una que mandé se aceptó, rechazó o retiró (aceptar también cambia mis membresías).
     if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds);
+    // Un juego suelto mío cambió en otro teléfono (etiquetas de src/lib/data/solo.ts; también mi perfil).
+    if (msg.event === 'solo') return invalidate(`solo:${id}`, `people:${id}`);
   }
 }
 

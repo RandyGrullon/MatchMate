@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { ArrowLeft, KeyRound, LogIn, MailCheck, UserPlus } from 'lucide-react';
 import {
+  afterLoginPath,
   authErrorMessage,
   isEmailNotConfirmed,
   login,
@@ -11,6 +12,7 @@ import {
   resendConfirmation,
   resetPassword,
   signUp,
+  syncAfterLogin,
   useAuth,
 } from '../lib/auth';
 import { pendingByUser } from '../lib/db/outbox';
@@ -63,9 +65,18 @@ export default function LoginPage() {
       .catch(() => undefined);
   }, []);
 
-  // A dónde volver sin entrar: la pantalla de la que vino (si es de la app) o Home.
+  // A dónde volver (sin entrar, o al entrar): la pantalla de la que vino (si es de la app) o Home.
   const nextParam = params.get('next');
-  const back = nextParam?.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+  const target = afterLoginPath(nextParam);
+  const back = target ?? '/';
+
+  // Sin cuenta: se guarda a dónde iba (p. ej. una invitación). Si crea la cuenta con Google o confirma el correo en
+  // otra pestaña, al abrirse la sesión la app sigue ahí (ResumeAfterLogin) en lugar de quedarse en Home. Sin `next`
+  // (o a Home) se borra lo guardado antes: una invitación vieja no se lleva a quien entra desde otro lado.
+  const signedOut = !loading && !user;
+  useEffect(() => {
+    if (signedOut) syncAfterLogin(target);
+  }, [signedOut, target]);
 
   if (user && !busy) {
     if (loading) return <Loading />;
@@ -105,7 +116,7 @@ export default function LoginPage() {
         await resetPassword(email, token);
         setSent('recuperar');
       } else if (signingUp) {
-        const { needsConfirm } = await signUp(name, email, password, adult, token);
+        const { needsConfirm } = await signUp(name, email, password, adult, token, target);
         if (needsConfirm) setSent('confirmar');
       } else {
         await login(email, password, token);
@@ -128,7 +139,7 @@ export default function LoginPage() {
     setBusy('correo');
     setError(null);
     try {
-      await resendConfirmation(email, captcha ?? undefined);
+      await resendConfirmation(email, captcha ?? undefined, target);
       setUnconfirmed(false);
       setSent('confirmar');
     } catch (err) {
@@ -147,7 +158,7 @@ export default function LoginPage() {
     // Marcó «tengo 18 años o más»: al volver de Google se guarda solo (sin preguntar otra vez).
     if (signingUp && adult) rememberAdultForGoogle();
     try {
-      await loginWithGoogle();
+      await loginWithGoogle(target);
     } catch (err) {
       setError(authErrorMessage(err) || null);
     } finally {
@@ -182,7 +193,7 @@ export default function LoginPage() {
               <p className="font-semibold">Revisa tu correo</p>
               <p className="text-sm text-muted">
                 {sent === 'confirmar'
-                  ? `Te mandamos un link a ${email.trim()} para confirmar tu cuenta. Ábrelo y después entra con tu correo y contraseña.`
+                  ? `Te mandamos un link a ${email.trim()} para confirmar tu cuenta. Ábrelo y después entra con tu correo y contraseña.${target ? ' Al entrar sigues donde ibas.' : ''}`
                   : `Si ${email.trim()} tiene cuenta, te llegará un link para poner una contraseña nueva.`}
               </p>
               <Button onClick={() => switchMode('entrar')} className="max-sm:h-11">

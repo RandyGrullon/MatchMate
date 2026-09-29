@@ -111,9 +111,9 @@ Primero staging, y cuando staging esté bien, producción.
 
 **Comprobar**, en cada proyecto:
 - *Table Editor* muestra `leagues`, `players`, `events`, `entries`, `submissions`… (unas 20 tablas).
-- *SQL Editor* › `select id, status from public.sport_status order by sort_order;` › `bowling` sale `open` y
-  los demás `beta`.
-- *Storage* muestra el bucket privado `scoreboards`.
+- *SQL Editor* › `select id, status from public.sport_status order by sort_order;` › todos salen `open` (desde
+  `20260929000300_sueltos_logos.sql`; la consola del superadmin puede volver a poner uno en `beta` o cerrarlo).
+- *Storage* muestra el bucket privado `scoreboards` y el público `logos` (los logos de las ligas).
 - *Advisors › Security Advisor* › *Rerun*: puede avisar «security definer function executable by authenticated»
   en las RPC. Es a propósito (cada una valida permisos por dentro). Cualquier otro aviso, pásaselo a Claude.
 
