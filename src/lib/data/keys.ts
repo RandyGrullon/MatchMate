@@ -47,6 +47,8 @@ export const keys = {
   adminLeagues: (q: string) => `admin:leagues:${q}`,
   adminAudit: (q: string) => `admin:audit:${q}`,
   adminSystem: 'admin:system',
+  /** Espacio del plan gratis (admin_storage_usage). */
+  adminStorage: 'admin:storage',
   adminScan: (days: number) => `admin:scan:${days}`,
 };
 

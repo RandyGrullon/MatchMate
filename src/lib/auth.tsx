@@ -4,6 +4,7 @@ import type { AuthEvent, Session } from './backend/types';
 import { touchSeenDaily } from './data/admin';
 import { invalidate, queryClient, rpc, select, setDataUser } from './data/client';
 import { keys, tags } from './data/keys';
+import { toPushPrefs, type PushPrefs } from './data/pushPrefs';
 import { toProfile, type ProfileRow } from './data/rows';
 import { asBackendError } from './db/errors';
 import { hideSplash } from './splash';
@@ -23,6 +24,11 @@ export interface AppUser {
  */
 export interface AccountProfile extends UserProfile {
   adultConfirmedAt?: string | null;
+  /**
+   * Qué avisos quiere en el teléfono (profiles.push_prefs, src/lib/data/pushPrefs.ts). undefined = no se sabe: copia
+   * vieja guardada en el teléfono o base que todavía no las tiene.
+   */
+  pushPrefs?: PushPrefs;
 }
 
 interface AuthState {
@@ -45,16 +51,24 @@ const toAppUser = (s: Session): AppUser => ({ uid: s.userId, email: s.email, dis
 const sameUser = (u: AppUser | null, s: Session | null) =>
   (!u && !s) || (!!u && !!s && u.uid === s.userId && u.email === s.email && u.displayName === s.name);
 
-type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null };
+type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; push_prefs?: unknown };
 
-/** Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. */
+const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at';
+
+/**
+ * Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. Si la base todavía no
+ * tiene push_prefs (42703: la app salió antes que la migración), se lee sin esa columna en vez de quedarse sin perfil.
+ */
 export async function fetchProfile(uid: string): Promise<AccountProfile | null> {
-  const read = () =>
-    select<AccountProfileRow>({
-      table: 'profiles',
-      columns: 'id,email,name,is_superadmin,adult_confirmed_at',
-      filters: [{ col: 'id', op: 'eq', value: uid }],
-    });
+  const query = (columns: string) => select<AccountProfileRow>({ table: 'profiles', columns, filters: [{ col: 'id', op: 'eq', value: uid }] });
+  const read = async () => {
+    try {
+      return await query(`${PROFILE_COLUMNS},push_prefs`);
+    } catch (e) {
+      if (asBackendError(e)?.code !== '42703') throw e;
+      return query(PROFILE_COLUMNS);
+    }
+  };
   let rows = await read();
   if (!rows.length) {
     try {
@@ -66,7 +80,10 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
     }
   }
   const row = rows[0];
-  return row ? { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null } : null;
+  if (!row) return null;
+  const profile: AccountProfile = { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null };
+  if (row.push_prefs !== undefined) profile.pushPrefs = toPushPrefs(row.push_prefs);
+  return profile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

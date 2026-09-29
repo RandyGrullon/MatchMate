@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Bell, BellOff, BellRing, CheckCircle2, Smartphone, X } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { PUSH_CATEGORIES, setPushPref, type PushCategory, type PushPrefs } from '../lib/data/pushPrefs';
 import { notificationsText } from '../lib/notifications';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
 import { pushConfigured } from '../lib/pushKey';
 import { sportsOf } from '../sports/registry';
-import { useFeedback } from './feedback';
+import { useAction, useFeedback } from './feedback';
 import { useNotifications } from './Notifications';
 import { Button, Card, cx } from './ui';
 
@@ -97,7 +98,68 @@ export function NotificationsPrompt() {
   );
 }
 
-/** Configuración › Notificaciones: cómo están y cómo activarlas. */
+/**
+ * Qué te avisamos (Configuración › Notificaciones): un interruptor por categoría, para todos los teléfonos de la cuenta
+ * (profiles.push_prefs). Cambia al tocar; si no se pudo guardar, vuelve a como estaba y lo dice. Sin las preferencias
+ * en el perfil (copia vieja o base sin la migración) no se muestra.
+ */
+function PushPrefsList() {
+  const { user, profile } = useAuth();
+  const run = useAction();
+  // Lo que se tocó y todavía no confirma la base (se ve al momento).
+  const [pending, setPending] = useState<Partial<PushPrefs>>({});
+  const saved = profile?.pushPrefs;
+  if (!user || !saved) return null;
+  const prefs: PushPrefs = { ...saved, ...pending };
+
+  async function toggle(key: PushCategory) {
+    if (!user || pending[key] !== undefined) return;
+    setPending((p) => ({ ...p, [key]: !prefs[key] }));
+    await run(() => setPushPref(user.uid, key, !prefs[key]));
+    setPending((p) => {
+      const next = { ...p };
+      delete next[key];
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col border-t border-line pt-3">
+      <p className="text-sm font-semibold">Qué te avisamos</p>
+      <p className="text-xs text-muted">En todos tus teléfonos. Los anuncios de MatchMate y lo que espera tu respuesta (como «soy este jugador») llegan siempre.</p>
+      <ul className="mt-1 divide-y divide-line">
+        {PUSH_CATEGORIES.map((c) => {
+          const on = prefs[c.key];
+          return (
+            <li key={c.key}>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={on}
+                aria-busy={pending[c.key] !== undefined || undefined}
+                onClick={() => void toggle(c.key)}
+                className="flex min-h-14 w-full items-center gap-3 py-2 text-left transition active:scale-[0.99]"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{c.label}</span>
+                  <span className="block text-xs text-muted">{c.hint}</span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={cx('flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors', on ? 'bg-accent' : 'bg-surface-2 ring-1 ring-line ring-inset')}
+                >
+                  <span className={cx('size-5 rounded-full bg-white shadow-sm transition-transform', on && 'translate-x-5')} />
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** Configuración › Notificaciones: cómo están, cómo activarlas y qué te avisamos. */
 export function NotificationsCard() {
   const { state, busy, enable } = useEnable();
   const what = useWhat();
@@ -128,6 +190,7 @@ export function NotificationsCard() {
           Activar notificaciones
         </Button>
       )}
+      <PushPrefsList />
     </Card>
   );
 }
