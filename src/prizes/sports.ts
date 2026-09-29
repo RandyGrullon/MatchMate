@@ -360,6 +360,21 @@ export function racketTourneyProvider(categories: readonly RacketPrizeCategory[]
   };
 }
 
+/**
+ * El torneo de raqueta terminó (el reporte dice «Resultados finales» y el admin ve el botón grande del reporte): cada
+ * categoría que se juega (con 2 o más inscritos, o con grupos o cuadro) tiene su 1.º, 2.º y 3.er lugar con los
+ * partidos que ya cuentan.
+ */
+export function racketTourneyFinished(
+  categories: readonly (RacketPrizeCategory & { pairs: readonly string[]; groupsOf?: readonly (readonly string[])[] })[],
+  matches: readonly BracketMatch[],
+  names: BracketNames,
+  now: number,
+): boolean {
+  const playing = categories.filter((c) => c.pairs.length >= 2 || !!c.groupsOf?.length || (c.seeds?.length ?? 0) >= 2);
+  return playing.length > 0 && playing.every((c) => ([1, 2, 3] as const).every((p) => racketTourneyPlace(c, p, matches, names, now).status !== 'sin_resultado'));
+}
+
 /** Nombres para los podios de equipos. */
 export interface TeamNames extends BracketNames {
   teamName: (teamId: string) => string;
@@ -411,6 +426,10 @@ export function teamKoProvider(leagueMatches: readonly BracketMatch[], names: Te
 /** ¿Ya cuenta la final del relámpago? (lo mismo que `knockoutPodium` distinto de null). */
 export const teamKoFinished = (leagueMatches: readonly BracketMatch[], now: number): boolean =>
   teamKoPlace(1, leagueMatches, { nameOf: () => '', rosterOf: () => [], teamName: () => '' }, now).status !== 'sin_resultado';
+
+/** El relámpago terminó del todo (el reporte dice «Resultados finales»): cuentan la final y, si se juega, el 3.er lugar. */
+export const teamKoComplete = (leagueMatches: readonly BracketMatch[], now: number): boolean =>
+  ([1, 3] as const).every((p) => teamKoPlace(p, leagueMatches, { nameOf: () => '', rosterOf: () => [], teamName: () => '' }, now).status !== 'sin_resultado');
 
 /**
  * Un lugar de un playoff terminado (`private.prize_playoff_place`; si no terminó, sin resultado): 1.º el campeón, 2.º

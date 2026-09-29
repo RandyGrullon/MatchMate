@@ -77,6 +77,7 @@ function FootballTournament({ tl, title, date, announcement, event }: { tl: Team
       positions={FOOTBALL_POSITIONS}
       rankGroup={rankGroup}
       renderMatch={(m) => <FootballMatchCard tl={tl} match={m} now={now} />}
+      footballSeason={season}
     />
   );
 }

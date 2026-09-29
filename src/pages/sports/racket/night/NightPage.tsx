@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router';
 import {
   CheckCircle2,
   ClipboardList,
-  Download,
   Flag,
   Keyboard,
   LayoutGrid,
@@ -26,11 +25,12 @@ import { saveNightRound, savePointsResult, updateRacketEvent, useWithPendingPoin
 import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
+import { racketNightComp } from '../../../../prizes/sports';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { MatchCard, ResultEntryModal, StandingsTable, pointsResultParser, whatsappShareUrl, type StandingsColumn } from '../../../../components/match';
 import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
-import { exportNightExcel } from '../excel';
+import { ReportButton } from '../../../../components/tournamentReport/ReportButton';
 import {
   NIGHT_MAX_PLAYERS,
   fmtPoints,
@@ -83,7 +83,7 @@ const TABLE_COLUMNS: StandingsColumn[] = [
  */
 export function NightPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
-  const { leagueRules } = useRacket();
+  const { sport, leagueRules } = useRacket();
   const names = useNames();
   const param = useMatchParam();
   const [search, setSearch] = useSearchParams();
@@ -190,11 +190,15 @@ export function NightPage({ event }: { event: RacketEvent }) {
     url: `${appOrigin()}${base}/e/${event.id}?ver=tabla`,
   });
 
-  const excel = () =>
-    exportNightExcel({ title, date: event.date, rounds, table, nameOf: names.nameOf }).catch((e) => {
-      console.error(e);
-      toast('No se pudo hacer el Excel', 'error');
-    });
+  // Reporte de la noche (PDF o Excel), para todos: el podio, las rondas y la tabla que se ven aquí.
+  const report = {
+    report: () =>
+      import('../../../../lib/report/racket').then((m) =>
+        m.racketNightReport({ lid, league, event, title, cfg, rounds, table, nameOf: names.nameOf, finished, now }),
+      ),
+    comp: racketNightComp(lid, event, sport),
+    disabled: (q.loading && !matches.length) || names.loading,
+  };
 
   const mine = current?.matches.find((m) => [...m.side1, ...m.side2].includes(myPlayerId ?? '')) ?? null;
   const resting = !!myPlayerId && !!current?.rests.includes(myPlayerId);
@@ -223,6 +227,7 @@ export function NightPage({ event }: { event: RacketEvent }) {
             {cfg.courts.length === 1 ? 'cancha' : 'canchas'}
           </p>
         </div>
+        <ReportButton {...report} />
       </div>
 
       {isAdmin && (
@@ -249,9 +254,6 @@ export function NightPage({ event }: { event: RacketEvent }) {
               </Button>
             )
           )}
-          <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!rounds.length}>
-            Excel
-          </Button>
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
             Borrar
           </Button>
@@ -279,6 +281,9 @@ export function NightPage({ event }: { event: RacketEvent }) {
           </p>
         </Card>
       )}
+
+      {/* Terminada la noche, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {isAdmin && finished && rounds.length > 0 && <ReportButton {...report} look="card" />}
 
       <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
 

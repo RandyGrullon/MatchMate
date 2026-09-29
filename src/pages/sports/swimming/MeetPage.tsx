@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { FileSpreadsheet, ListChecks, ListOrdered, Lock, LockOpen, Medal, Pencil, Rows3, Timer, Trash2, Trophy, Users, Waves } from 'lucide-react';
+import { ListChecks, ListOrdered, Lock, LockOpen, Medal, Pencil, Rows3, Timer, Trash2, Trophy, Users, Waves } from 'lucide-react';
 import {
   deleteMeet,
   finalizeMeet,
@@ -15,6 +15,8 @@ import {
 } from '../../../lib/data/swimming';
 import { formatDateLong } from '../../../lib/format';
 import { BackLink } from '../../../components/BackLink';
+import { ReportButton } from '../../../components/tournamentReport/ReportButton';
+import { swimComp } from '../../../prizes/sports';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
 import { clubMap, meetTitle, useNames, useSwim } from './bits';
@@ -121,9 +123,11 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
       return;
     await run(() => finalizeMeet(lid, meet.id, closing), closing ? 'Encuentro finalizado' : 'Encuentro abierto otra vez');
   };
-  const exportExcel = async () => {
-    const { exportMeetToExcel } = await import('./excel');
-    await run(() => exportMeetToExcel(data));
+  // Reporte del encuentro (PDF o Excel), para todos: se arma al tocar, con los resultados y los puntos de la app.
+  const report = {
+    report: () => import('../../../lib/report/swimming').then((m) => m.swimReport({ lid, league, title: meetTitle(meet), data })),
+    comp: swimComp(lid, meet),
+    disabled: entries.loading || players.loading,
   };
 
   return (
@@ -148,6 +152,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
             {events.data.length > 0 && <Badge>{events.data.length} pruebas</Badge>}
           </div>
         </div>
+        <ReportButton {...report} />
       </div>
 
       {meet.announcement && (
@@ -164,9 +169,6 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
           <Button size="sm" icon={meet.finalizedAt ? <LockOpen className="size-4" /> : <Trophy className="size-4" />} onClick={toggleFinal}>
             {meet.finalizedAt ? 'Volver a abrir' : 'Finalizar'}
           </Button>
-          <Button size="sm" icon={<FileSpreadsheet className="size-4" />} onClick={exportExcel} disabled={!events.data.length}>
-            Excel
-          </Button>
           {!standalone && (
             <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={remove}>
               Borrar
@@ -174,6 +176,9 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
           )}
         </div>
       )}
+
+      {/* Finalizado el encuentro, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {isAdmin && !!meet.finalizedAt && <ReportButton {...report} look="card" />}
 
       <MeetPrizes data={data} />
 
