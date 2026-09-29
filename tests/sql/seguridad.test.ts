@@ -59,6 +59,11 @@ const RPC_AUTHENTICATED = [
   'social_notices', 'unfollow_user',
   // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
   'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
+  // Insignias: el perfil, destacadas, ocultar, visto, el modo de la liga, el aval y el retiro por fraude.
+  'mark_badges_seen', 'profile_badges', 'review_badge', 'set_badge_hidden', 'set_badges_auto', 'set_featured_badges',
+  'super_revoke_badge',
+  // Insignias, el motor: los avisos de la cuenta (y hazañas por confirmar) y el historial (superadmin).
+  'badge_notices', 'badges_backfill',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
