@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { chosenFeatured, featuredModel, profileCount, viewLeagueAward } from '../../components/badges/logic';
 import { unitsTaken } from '../../components/badges/maker/design';
 import { changeOf, deliveredText, initialPicks, payloadOf, planDelivery, prizesGiven, togglePlayer } from '../../prizes/award';
 import { bowlingComp, prizeTitle } from '../../prizes/catalog';
 import { bowlingPodium, refsOf } from '../../prizes/providers';
 import type { BowlingEvent } from '../types';
+import { fetchProfileBadges, setFeaturedBadges, setLeagueBadgeHidden } from './badges';
 import { fetchEntriesOfEvents } from './entries';
 import { fetchEvent } from './events';
 import { fetchLeagueBadges, saveLeagueBadge, type LeagueBadge } from './leagueBadges';
@@ -198,6 +200,57 @@ describe('premios del torneo del boliche (capa de datos)', () => {
     const again = await deliverTournamentPrizes(prize, payload, false);
     expect(again).toMatchObject({ added: 0, revoked: 0, unchanged: 4 });
     expect(deliveredText(again, 0)).toBe('No había nada que cambiar.');
+  });
+
+  it('en el perfil: el premio dice su lugar y su competencia, cuenta, sale solo arriba y se destaca; ana lo ve (liga pequeña)', async () => {
+    const pedro = await w.as('pedro@x.com');
+    const mine = (await fetchProfileBadges(pedro))!;
+    const prizes = mine.leagueAwards.filter((a) => a.prizeSlotId);
+    expect(prizes).toHaveLength(2);
+    const solo = prizes.find((a) => a.prize?.category === 'individual')!;
+    expect(solo.prize).toEqual({
+      slotId: prize.slots[1].id,
+      verified: true,
+      place: 1,
+      placeLabel: '1.er lugar',
+      category: 'individual',
+      title: 'Individual (handicap)',
+      competition: 'Copa Aniversario',
+    });
+    // Liga nueva y de 4 cuentas, pero el orden lo verificó el servidor: los demás lo ven.
+    expect(solo.onProfile).toBe(true);
+    expect(viewLeagueAward(solo).headline).toBe('Campeón · Copa Aniversario · Liga Los Pinos');
+    expect(profileCount(mine)).toBeGreaterThanOrEqual(2);
+    // Sin elegir: arriba sale solo el premio (una vez por diseño).
+    const auto = featuredModel(mine);
+    expect(auto.auto).toBe(true);
+    expect(auto.items[0]).toMatchObject({ kind: 'liga' });
+    expect(auto.items.filter((i) => i.kind === 'liga')).toHaveLength(1);
+
+    // Lo destaca.
+    expect(await setFeaturedBadges([solo.id])).toEqual([solo.id]);
+    const after = (await fetchProfileBadges(pedro))!;
+    expect(after.featured).toEqual([solo.id]);
+    expect(after.featuredLeague).toEqual([solo.id]);
+    expect(chosenFeatured(after).map((i) => [i.kind, i.id])).toEqual([['liga', solo.id]]);
+
+    // Ana (miembro) lo ve destacado con su lugar y su competencia.
+    await w.as('ana@x.com');
+    const seen = (await fetchProfileBadges(pedro))!;
+    expect(seen.isMe).toBe(false);
+    expect(seen.featured).toEqual([solo.id]);
+    expect(seen.featuredLeague).toEqual([solo.id]);
+    expect(seen.leagueAwards.find((a) => a.id === solo.id)).toMatchObject({ onProfile: true, note: null, prize: { competition: 'Copa Aniversario', placeLabel: '1.er lugar' } });
+    expect(featuredModel(seen)).toMatchObject({ auto: false, items: [{ kind: 'liga', id: solo.id, title: 'Campeón · Copa Aniversario · Liga Los Pinos' }] });
+
+    // Oculto sale de las destacadas; al mostrarlo no vuelve solo.
+    await w.as('pedro@x.com');
+    await setLeagueBadgeHidden(solo, true);
+    expect((await fetchProfileBadges(pedro))!.featured).toEqual([]);
+    await setLeagueBadgeHidden(solo, false);
+    const back = (await fetchProfileBadges(pedro))!;
+    expect(back.featured).toEqual([]);
+    expect(back.leagueAwards.find((a) => a.id === solo.id)).toMatchObject({ hidden: false, onProfile: true });
   });
 
   it('corregir: desmarcar quita; un ref que el servidor no tiene es «podio_cambio»; un lugar entregado no se cambia al elegir', async () => {

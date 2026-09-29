@@ -575,6 +575,11 @@ Se usa el mismo camino que `award_league_badge`, sin nada nuevo en push ni en la
 - **En la app:** `badge_notices.leagueAwards`/`leagueUnseen` ya los trae. `BadgeUnlockHost` abre el `UnlockModal` de
   celebración y el perfil los muestra en el estante de la liga, con la nota «1.er lugar · Individual (handicap) ·
   Torneo Aniversario» (la nota la ven el jugador y los admins).
+- **En el perfil de otras cuentas** (`20260929001300_insignias_perfil.sql`): un premio con el orden verificado sale
+  para quien ve la liga (sin menores) aunque sea pequeña o nueva, si en su competencia jugaron 2+ cuentas distintas
+  (`league_badge_awards.prize_accounts`, que cuenta la base al entregar y se queda aunque se borre la competencia). Si
+  jugó una sola cuenta (un torneo armado con jugadores sin cuenta), o el premio no tiene el orden verificado, sigue la
+  regla de siempre: 6+ cuentas y 14+ días (docs/insignias.md §5.8).
 - **Tiempo real:** `emit_league_badges` avisa por `league:` y por `user:`. Las tablas de premios avisan `badges`
   `kind 'premio'` (§3.4).
 - **Corrección:** quien pierde el premio no recibe aviso (igual que «Deshacer»). Quien lo gana recibe el push normal.
@@ -586,7 +591,9 @@ Se usa el mismo camino que `award_league_badge`, sin nada nuevo en push ni en la
 - **Se quedan las dos.** Un ganador en una liga (`kind='liga'`) puede tener la oficial «Podio · Primer lugar»
   (`event_podium`, `badge_awards`) y el premio de la liga «Campeón» (`league_badge_awards`). Son tablas distintas y
   listas distintas del perfil (`awards` y `leagueAwards`). El premio de la liga nunca cuenta para la rareza ni los
-  totales, así que no hay doble conteo.
+  rankings. El total del perfil suma las dos listas, pero dice cuántas son de sus ligas («20 de MatchMate · 4 de sus
+  ligas») y el premio lleva la marca «LIGA»; en las destacadas que salen solas va primero
+  (`20260929001300_insignias_perfil.sql`, docs/insignias.md §6.1).
 - **Pueden no coincidir, y está bien.**
   - La automática tiene mínimos: 6 jugadores en el boliche y `podiumLevels` (sin podio con menos de 4).
   - Llega 72 h después en el boliche, y con `require_photo` saca a quien tenga juegos sin verificar.
