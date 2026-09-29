@@ -43,12 +43,14 @@
 -- equipo de la MISMA temporada), private.claim_conflicts (igual), private.merge_players (la de
 -- 20260929000600_organizador.sql, que mueve las pistas, y además premios y tablas guardadas) y public.league_announce /
 -- public.league_announce_reach (el aviso automático de fin de temporada, league_announcements.automatic, no cuenta
--- para el tope diario). Un cambio a esas funciones en su archivo original queda tapado por este.
+-- para el tope diario). Un cambio a esas funciones en su archivo original queda tapado por este. También redefine
+-- private.push_category (la de 20260929000600_organizador.sql y además 'temporada', de 'liga': «Tus ligas»).
 --
 -- Nadie escribe directo: todo por RPC. Tiempo real por private.emit a league:<liga>:
 --   'seasons'  {op, ids: temporadas}   temporadas y sus premios
 --   'playoffs' {op, ids: playoffs}     playoffs y sus series (los juegos avisan como cualquier partido)
--- El aviso de fin de temporada sale como los de league_announce ('announcements').
+-- El aviso de fin de temporada sale como los de league_announce ('announcements'); su push (tag 'temporada:<id>') es
+-- de 'liga' («Tus ligas» en las preferencias; private.push_category, al final).
 
 -- =====================================================================
 -- Tablas
@@ -1454,6 +1456,34 @@ begin
 end $$;
 
 -- =====================================================================
+-- El aviso de fin de temporada en las preferencias del teléfono
+-- =====================================================================
+-- Igual que en 20260929000600_organizador.sql (la última) y además 'temporada' (close_season): «Terminó <temporada>:
+-- campeón …» es un aviso de la liga como los de league_announce ('aviso'), así que se apaga con 'liga' («Tus ligas»).
+-- Un tag nuevo que se pueda apagar va aquí (o en una migración después de esta), con su categoría.
+create or replace function private.push_category(p_tag text) returns text
+language sql immutable set search_path = '' as $$
+  select case split_part(coalesce(p_tag, ''), ':', 1)
+    when 'envio' then 'resultados'
+    when 'confirmar' then 'resultados'
+    when 'resultado' then 'resultados'
+    when 'reclamo' then 'resultados'
+    when 'reaccion' then 'social'
+    when 'comentario' then 'social'
+    when 'seguir' then 'social'
+    when 'recordatorio' then 'recordatorios'
+    when 'partido' then 'recordatorios'
+    when 'despues' then 'recordatorios'
+    when 'sinresultado' then 'recordatorios'
+    when 'pista' then 'recordatorios'
+    when 'aviso' then 'liga'
+    when 'temporada' then 'liga'
+    when 'invitacion' then 'liga'
+    when 'invitacion-ok' then 'liga'
+  end
+$$;
+
+-- =====================================================================
 -- Permisos: cerrado todo lo de esta migración; las RPC, solo con sesión (public_agenda también sin cuenta); las
 -- lecturas que corren con la RLS de quien llama (no son security definer), con y sin cuenta
 -- =====================================================================
@@ -1466,7 +1496,7 @@ declare
     'active_season', 'current_season', 'season_cover', 'playoff_round_name', 'seed_order', 'playoff_format',
     'season_on_league', 'season_follow_league', 'season_cover_events', 'season_cover_matches', 'season_cover_row',
     'team_season_fill', 'emit_league_rows', 'check_free_players', 'claim_conflicts', 'merge_players',
-    'playoff_new_game', 'playoff_refresh', 'playoff_on_match'
+    'playoff_new_game', 'playoff_refresh', 'playoff_on_match', 'push_category'
   ];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname, p.proname

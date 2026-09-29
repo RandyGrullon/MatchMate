@@ -208,6 +208,21 @@ describe('cerrar la temporada', () => {
     ]);
   });
 
+  it('el push del cierre es de «Tus ligas» (push_category: liga): con esa categoría apagada no llega; con otras apagadas, sí', async () => {
+    expect(await db.admin(`select private.push_category($1) as c`, ['temporada:x'])).toEqual([{ c: 'liga' }]);
+    await phone(w.u.luis);
+    await phone(w.u.ana);
+    await db.rpc(w.u.luis, 'set_push_prefs', { p_prefs: { liga: false } });
+    await db.rpc(w.u.ana, 'set_push_prefs', { p_prefs: { social: false, resultados: false, recordatorios: false } });
+    const s = await active(w.priv);
+    await close(w.u.sofi, s.id, [{ kind: 'campeon', player_id: w.p.luis }]);
+    expect(await db.admin('select user_id from public.push_outbox where tag = $1', [`temporada:${s.id}`])).toEqual([{ user_id: w.u.ana }]);
+    // El aviso queda en el historial de la liga igual (cuenta a quién se le mandó).
+    expect(await db.admin('select recipients, automatic from public.league_announcements where league_id = $1', [w.priv])).toEqual([
+      { recipients: 2, automatic: true },
+    ]);
+  });
+
   it('sin campeón el aviso solo dice que terminó; los premios de equipo llevan el nombre del equipo', async () => {
     const h = await hoops();
     await close(w.u.org, (await active(h.lid)).id, [{ kind: 'fair_play', team_id: h.leones }]);
