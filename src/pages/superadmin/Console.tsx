@@ -15,8 +15,8 @@ import AuditSection from './AuditSection';
 import ErrorsSection from './ErrorsSection';
 import BrandSection from './BrandSection';
 
-// La galería de insignias (todo el catálogo dibujado) se descarga solo al abrirla.
-const BadgesGallery = lazy(() => import('./BadgesGallery'));
+// Insignias (revisar, motor y la galería de todo el catálogo dibujado) se descarga solo al abrirla.
+const BadgesSection = lazy(() => import('./BadgesSection'));
 
 export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   resumen: OverviewSection,
@@ -29,7 +29,7 @@ export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   errores: ErrorsSection,
   auditoria: AuditSection,
   logo: BrandSection,
-  insignias: BadgesGallery,
+  insignias: BadgesSection,
 };
 
 /** La consola con la sección elegida. Quien la usa ya pasó la guarda de superadmin (SuperAdminPage). */

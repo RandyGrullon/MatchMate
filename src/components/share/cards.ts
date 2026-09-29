@@ -1,3 +1,4 @@
+import type { BadgeLook } from '../../badges/visual/types';
 import { INK, medalColor, toneColors, type ShareTone } from './palette';
 import { ellipsize, estimateWidth, wrapLines, type Align, type Measure, type Scene, type SceneNode, type TextNode, type Weight } from './scene';
 
@@ -97,7 +98,29 @@ export interface ShareResultSpec extends CardBase {
   big?: boolean;
 }
 
-export type ShareCard = ShareTableSpec | ShareResultSpec;
+/**
+ * Una insignia (docs/insignias.md §4.9): 540 × 675 (sale a 1080 × 1350, 4:5 para WhatsApp e Instagram). `title` es
+ * el nombre de la insignia. La nota del creador nunca va aquí.
+ */
+export interface ShareBadgeSpec extends CardBase {
+  kind: 'badge';
+  look: BadgeLook;
+  /** «Oro · Octubre 2026». */
+  levelLine: string;
+  /** Color de la cinta del nivel (se lee sobre blanco). */
+  levelColor: string;
+  description: string;
+  /** Quién la ganó y dónde. */
+  player: string;
+  league?: string;
+  /** «Solo el 4 % de los jugadores de boliche la tiene» u «Otorgada por Liga Los Pinos · 12 oct 2026». */
+  footnote?: string;
+}
+
+export type ShareCard = ShareTableSpec | ShareResultSpec | ShareBadgeSpec;
+
+/** Alto de la tarjeta de una insignia. */
+export const BADGE_CARD_HEIGHT = 675;
 
 /** Lo que rodea la imagen: el deporte, su color, la fecha y el link. */
 export interface CardFrame {
@@ -143,6 +166,7 @@ const divider = (x: number, y: number, w: number): SceneNode => ({ t: 'rect', x,
 
 /** Arma la imagen (Scene). `measure` mide los textos (en el teléfono, el canvas). */
 export function buildScene(card: ShareCard, frame: CardFrame, measure: Measure = estimateWidth): Scene {
+  if (card.kind === 'badge') return badgeScene(card, frame, measure);
   const W = CARD_WIDTH;
   const front: SceneNode[] = [];
   const top = header(front, card, frame, measure);
@@ -386,4 +410,57 @@ function note(out: SceneNode[], s: string | undefined, x: number, y: number, w: 
     out.push(text(x + 16, y, line, 12, 500, INK.muted));
   }
   return y + 8;
+}
+
+/**
+ * La tarjeta de una insignia (§4.9): arriba, en el color del deporte, el logo y «MatchMate · Boliche» (y la fecha);
+ * el cuadro blanco con la insignia a 240, el nombre, el nivel en el color de su cinta, la descripción (2 renglones),
+ * quién la ganó y en qué liga, y la rareza o quién la otorgó; abajo, el link.
+ */
+function badgeScene(card: ShareBadgeSpec, frame: CardFrame, measure: Measure): Scene {
+  const W = CARD_WIDTH;
+  const H = BADGE_CARD_HEIGHT;
+  const cx = W / 2;
+  const inner = W - 2 * M - 48;
+  const nodes: SceneNode[] = [
+    { t: 'circle', cx: W - 36, cy: 12, r: 124, color: INK.onColor, opacity: 0.08 },
+    { t: 'circle', cx: 26, cy: H - 10, r: 112, color: INK.onColor, opacity: 0.07 },
+  ];
+
+  // Arriba: logo, «MatchMate · Boliche» y la fecha.
+  const logo = 30;
+  nodes.push({ t: 'logo', x: HX, y: 20, size: logo, tile: INK.onColor, ink: frame.color });
+  const wx = HX + logo + 9;
+  const base = 41;
+  const mw = measure('Match', 18, 800);
+  nodes.push(text(wx, base, 'Match', 18, 800, INK.onColor), text(wx + mw, base, 'Mate', 18, 800, INK.onColor, 'left', 0.72));
+  const brandEnd = wx + mw + measure('Mate', 18, 800);
+  const dateW = frame.date ? measure(frame.date, 12, 600) + 12 : 0;
+  const sport = frame.sportLabel.trim();
+  if (sport) nodes.push(text(brandEnd + 6, base - 1, ellipsize(`· ${sport}`, W - HX - dateW - brandEnd - 12, 15, 600, measure), 15, 600, INK.onColor, 'left', 0.85));
+  if (frame.date) nodes.push(text(W - HX, base - 1, frame.date, 12, 600, INK.onColor, 'right', 0.85));
+
+  // El cuadro blanco.
+  const top = 72;
+  const bottom = 616;
+  nodes.push({ t: 'rect', x: M, y: top, w: W - 2 * M, h: bottom - top, r: 24, color: INK.surface });
+  nodes.push({ t: 'badge', x: cx - 120, y: 88, size: 240, look: card.look });
+
+  // Nombre: 30/800 en un renglón (más chico si no cabe).
+  const name = card.title.trim() || 'Insignia';
+  const nameSize = [30, 26, 22].find((s) => measure(name, s, 800) <= inner) ?? 22;
+  nodes.push(text(cx, 368, ellipsize(name, inner, nameSize, 800, measure), nameSize, 800, INK.text, 'center'));
+  if (card.levelLine) nodes.push(text(cx, 398, ellipsize(card.levelLine, inner, 16, 700, measure), 16, 700, card.levelColor, 'center'));
+  wrapLines(card.description, inner, 16, 500, measure, 2).forEach((line, i) => nodes.push(text(cx, 432 + i * 22, line, 16, 500, INK.muted, 'center')));
+  nodes.push(divider(M + 40, 486, W - 2 * M - 80));
+  nodes.push(text(cx, 518, ellipsize(card.player, inner, 20, 700, measure), 20, 700, INK.text, 'center'));
+  if (card.league) nodes.push(text(cx, 542, ellipsize(card.league, inner, 14, 500, measure), 14, 500, INK.muted, 'center'));
+  if (card.footnote) nodes.push(text(cx, 580, ellipsize(card.footnote, inner, 13, 600, measure), 13, 600, card.levelColor, 'center'));
+
+  // Abajo, el link.
+  if (frame.link) {
+    const link = ellipsize(linkLabel(frame.link), W - 2 * HX, 13, 500, measure);
+    if (link !== '…') nodes.push(text(cx, 650, link, 13, 500, INK.onColor, 'center', 0.9));
+  }
+  return { width: W, height: H, background: frame.color, nodes };
 }

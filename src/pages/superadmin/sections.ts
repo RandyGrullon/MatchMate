@@ -26,7 +26,7 @@ export const SECTIONS: readonly SectionMeta[] = [
   { key: 'errores', label: 'Errores', hint: 'Lo que falla en los teléfonos: qué pantalla, cuántas veces, a cuántas cuentas y en qué teléfono.', icon: Bug },
   { key: 'auditoria', label: 'Auditoría', hint: 'Todo lo que se hizo desde esta consola, con quién y cuándo.', icon: ScrollText },
   { key: 'logo', label: 'Marca', hint: 'Logo y animaciones de apertura de cada deporte.', icon: Palette },
-  { key: 'insignias', label: 'Insignias', hint: 'Todo el catálogo en cada nivel, con formas, tamaños, estados y la animación, en claro y en oscuro.', icon: Award },
+  { key: 'insignias', label: 'Insignias', hint: 'Hazañas por confirmar, reportes y palabras bloqueadas; el motor (cola, historial y rareza) y la galería del catálogo.', icon: Award },
 ];
 
 export const DEFAULT_SECTION: SectionKey = 'resumen';

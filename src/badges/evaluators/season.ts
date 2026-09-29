@@ -727,7 +727,11 @@ export const seasonStaff: Evaluator = (job, snap, now) => {
   if (!found) return [];
   const { season, league } = found;
   const w = { from: season.starts_on, to: season.ends_on };
-  const ctx = { ...leagueCtx(kit, league.id), season: { id: season.id, name: season.name }, window: [w.from, w.to] as [string, string] };
+  // Son de cuenta: en una liga con menores no dicen ni la liga, ni la temporada, ni el club (§1.5, como Liga en marcha).
+  const minors = league.has_minors;
+  const ctx = minors
+    ? { league: { id: league.id, name: 'Liga juvenil privada' }, window: [w.from, w.to] as [string, string] }
+    : { ...leagueCtx(kit, league.id), season: { id: season.id, name: season.name }, window: [w.from, w.to] as [string, string] };
   const out: BadgeDecision[] = [];
 
   // Temporada organizada: 8+ fechas y 8+ jugadores activos (4+ cuentas); al dueño y a los admins con 5+ días de
@@ -757,7 +761,7 @@ export const seasonStaff: Evaluator = (job, snap, now) => {
         (kit.snap.swim_entries ?? []).filter((e) => e.club_id === club.id && e.status !== 'dns' && !!meets.get(e.event_id)?.finalized_at && inWin(kit.events.get(e.event_id)?.date, w)).map((e) => e.player_id),
       );
       if (swimmers.size >= (paramOf(cb, 'minSwimmers', 'swimming') ?? 5)) {
-        out.push(awardOf(cb, userHolderOf(coach), 'swimming', 0, periodKey.season(season.id), 'firme', [], { ...ctx, values: { n: swimmers.size, club: club.name } }));
+        out.push(awardOf(cb, userHolderOf(coach), 'swimming', 0, periodKey.season(season.id), 'firme', [], { ...ctx, values: minors ? { n: swimmers.size } : { n: swimmers.size, club: club.name } }));
       }
     }
   }

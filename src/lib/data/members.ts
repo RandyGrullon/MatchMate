@@ -5,7 +5,7 @@ import { toMember, toProfile, type MembershipRow, type ProfileRow } from './rows
 
 export { memberId } from './rows';
 
-const MEMBER_COLUMNS = 'league_id,user_id,role,is_scorer,display_name,player_id';
+const MEMBER_COLUMNS = 'league_id,user_id,role,is_scorer,display_name,player_id,badge_maker';
 
 export async function fetchMembership(lid: string, uid: string): Promise<Member | null> {
   const rows = await select<MembershipRow>({

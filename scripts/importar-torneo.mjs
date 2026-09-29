@@ -1,5 +1,5 @@
 // Carga un torneo histórico (JSON sacado del Excel) dentro de una liga de MatchMate.
-// Los juegos quedan verificados como "importado" (resultado auditado, sin foto).
+// Los juegos quedan anotados sin foto ("sin-foto"): "importado" solo lo escribe el importador de BowlingX.
 //
 //   node scripts/importar-torneo.mjs scripts/datos/torneo-2025.json --liga <id-de-la-liga> [--reemplazar]
 //

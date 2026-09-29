@@ -84,7 +84,7 @@ export interface Kit {
   bowling: () => readonly BowlingGame[];
   /** Filas ya otorgadas de un dueño (y key, y deporte si se pide). */
   existing: (holder: BadgeHolder, key?: string, sport?: BadgeSport) => BadgeAwardRow[];
-  /** Solo cuenta el historial verificado de ese jugador (reclamo que se aprobó a sí mismo, §1.6). */
+  /** Solo cuenta el historial verificado de ese jugador (se vinculó él mismo, §1.6: `players[].verified_only`). */
   verifiedOnly: (playerId: string) => boolean;
 }
 
@@ -219,8 +219,8 @@ function buildKit(job: BadgeJob, snap: BadgeSnapshot, now: number): Kit {
     return (snap.awards ?? []).filter((a) => (a.player_id ?? a.user_id) === h && (!key || a.badge_key === key) && (!sport || a.sport === sport));
   };
 
-  const payloadVerified = job.kind === 'vinculo' && job.payload?.verified_only === true ? new Set(payloadPlayers(job)) : new Set<string>();
-  const verifiedOnly = (p: string) => players.get(p)?.verified_only === true || payloadVerified.has(p);
+  // La foto marca a cada jugador que se vinculó él mismo, en todos los trabajos (badge_snapshot, §1.6).
+  const verifiedOnly = (p: string) => players.get(p)?.verified_only === true;
 
   return {
     job,

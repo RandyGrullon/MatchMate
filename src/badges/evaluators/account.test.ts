@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate } from '../engine';
-import type { ActivityDay, BadgeSnapshot, SnapCheer, SnapServiceAct } from '../snapshot';
+import type { ActivityDay, SnapCheer, SnapServiceAct } from '../snapshot';
 import { act, snapLeague, snapMember, snapProfile } from '../testkit';
 import { addDays } from '../rules/periods';
 import { FILLER, gives, job, NOW, of, player, row, snap, world } from './fixtures';
@@ -18,7 +18,7 @@ const days = (p: string, dates: string[]): ActivityDay[] => dates.map((d) => act
 /** `n` fechas, dos por semana (martes y jueves) desde `from`. */
 const twiceAWeek = (from: string, n: number) => Array.from({ length: n }, (_, i) => addDays(from, Math.floor(i / 2) * 7 + (i % 2) * 2));
 
-function runAccount(activity: ActivityDay[], over: Partial<BadgeSnapshot> = {}) {
+function runAccount(activity: ActivityDay[], over: Parameters<typeof world>[1] = {}) {
   const j = job('cuenta', { league_id: null, user_id: 'u1' });
   return evaluate(j, snap(j, world('bowling', { leagues: LEAGUES, players: ME, activity, ...over })), NOW);
 }
@@ -100,14 +100,32 @@ describe('community', () => {
       cheer('x9', '2026-06-12T15:00:00.000Z', 'NOPE', 'u-x9'),
       cheer('c0', '2026-06-13T15:00:00.000Z'),
     ];
-    const nine = runAccount([], { cheers: [...base, ...extra], members });
+    // Los felicitados jugaron en la liga real (su primer día basta; SQL manda los primeros días de cada uno).
+    const acts = [...others.map((p) => act(p.id, '2026-05-03', { league_id: 'L', user_id: p.user_id })), act('x9', '2026-05-03', { league_id: 'NOPE', user_id: 'u-x9' })];
+    const nine = runAccount(acts, { cheers: [...base, ...extra], members });
     expect(of(nine, 'good_vibes')).toEqual([]);
-    const ten = runAccount([], { cheers: [...base, ...extra, cheer('c11', '2026-06-20T15:00:00.000Z', 'L', null)], members });
+    const ten = runAccount(acts, { cheers: [...base, ...extra, cheer('c11', '2026-06-20T15:00:00.000Z', 'L', null)], members });
     expect(of(ten, 'good_vibes').map((d) => d.level)).toEqual([1]);
     expect(of(ten, 'good_vibes')[0].context.values).toMatchObject({ n: 10, meses: 2 });
     // Todo en un mismo mes no llega (el bronce pide 2 meses).
-    const oneMonth = runAccount([], { cheers: [...base, cheer('c11', '2026-06-20T15:00:00.000Z', 'L', null)].map((c) => ({ ...c, at: '2026-06-01T15:00:00.000Z' })), members });
+    const oneMonth = runAccount(acts, { cheers: [...base, cheer('c11', '2026-06-20T15:00:00.000Z', 'L', null)].map((c) => ({ ...c, at: '2026-06-01T15:00:00.000Z' })), members });
     expect(of(oneMonth, 'good_vibes')).toEqual([]);
+    // Sin un día activo no cuenta (que falte `active` no quiere decir que jugó).
+    const idle = runAccount(acts.filter((a) => a.player_id !== 'c11'), { cheers: [...base, ...extra, cheer('c11', '2026-06-20T15:00:00.000Z', 'L', null)], members });
+    expect(of(idle, 'good_vibes')).toEqual([]);
+  });
+
+  it('Buena vibra no se farmea con jugadores inventados en una liga de uno (no es real): juegan y se felicitan, y nada', () => {
+    const fake = snapLeague('FAKE', { sport: 'bowling', owner_id: 'u1' });
+    const ghosts = Array.from({ length: 80 }, (_, i) => `g${i}`);
+    const acts = ghosts.map((g) => act(g, '2026-03-03', { league_id: 'FAKE', user_id: null }));
+    const cheers: SnapCheer[] = ghosts.map((g, i) => ({ league_id: 'FAKE', player_id: g, user_id: null, at: `2026-0${3 + (i % 6)}-10T15:00:00.000Z` }));
+    const members = [snapMember('L', 'u1', 'member'), snapMember('FAKE', 'u1', 'owner')];
+    const farm = runAccount(acts, { leagues: [...LEAGUES, fake], real: ['L', 'T', 'F', 'G'], cheers, members });
+    expect(of(farm, 'good_vibes')).toEqual([]);
+    // La misma liga, ya real (4 cuentas establecidas que no son la suya): sí.
+    const real = runAccount(acts, { leagues: [...LEAGUES, fake], cheers, members });
+    expect(of(real, 'good_vibes').map((d) => d.level)).toEqual([1, 2, 3]);
   });
 
   it('Raíces BowlingX: cuenta que venía de BowlingX y jugó al menos un día en MatchMate', () => {

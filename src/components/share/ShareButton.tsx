@@ -72,7 +72,7 @@ export function ShareButton({
     if (!c) return;
     const here = typeof location !== 'undefined' ? location : undefined;
     const link = url ?? (path && here ? `${here.origin}${path}` : here?.href);
-    const kind = c.kind === 'result' ? 'resultado' : 'tabla';
+    const kind = c.kind === 'result' ? 'resultado' : c.kind === 'badge' ? 'insignia' : 'tabla';
     setOpen({
       card: c,
       frame: shareFrame(sport ?? (ctx ? leagueSport(ctx.league) : null), link, ctx?.league.tz),

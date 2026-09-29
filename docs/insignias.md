@@ -1,6 +1,7 @@
 # Insignias: diseño final
 
-> **Estado:** diseño listo para implementar; todavía no hay código. Base: worktree `matchmate-insignias` en `9005c6e`.
+> **Estado:** implementado (pasos 1 a 10 de §7; ver «Estado de la implementación» al final de §7). Base: worktree
+> `matchmate-insignias` en `9005c6e`.
 > Este documento junta en una sola decisión tres propuestas (catálogo por deporte, insignias por tiempo y
 > comportamiento, sistema visual y creador) y el mapa de datos. Donde chocaban, se eligió una y se dice por qué
 > (§8). Los identificadores (tablas, columnas, keys, funciones, archivos) van en inglés. Los textos que ve el
@@ -337,7 +338,7 @@ servidor cada noche (§3.8).
 
 | key | Nombre | Descripción | Deporte | Categoría | Niveles y umbrales | Periodo · ámbito | Criterio exacto y fuente | Rareza | Def. |
 |---|---|---|---|---|---|---|---|---|---|
-| `debut` | Debut. Por deporte: «Primera línea» (boliche), «Debut en la cancha» (raqueta y equipos), «Primera ronda» (golf), «Primera prueba» (natación) | «¡Arrancaste! Tu primer {juego/partido/ronda/prueba} de {deporte} ya cuenta.» | todos | Bienvenida | único | siempre · cuenta | Primera actividad válida (§1.7.2) del deporte en una LR. Fuente: `entries`; `matches` + `match_players`/`score.lines`; `golf_cards`; `swim_entries`. | C | 1 |
+| `debut` | Debut. Por deporte: «Primera línea» (boliche), «Debut en la cancha» (raqueta y equipos), «Primera ronda» (golf), «Primera prueba» (natación) | «¡Arrancaste! Tu primer {juego/partido} de {deporte} ya cuenta.» (golf: «Tu primera ronda de golf…»; natación: «Tu primera prueba de natación…») | todos | Bienvenida | único | siempre · cuenta | Primera actividad válida (§1.7.2) del deporte en una LR. Fuente: `entries`; `matches` + `match_players`/`score.lines`; `golf_cards`; `swim_entries`. | C | 1 |
 | `month_streak` | Constancia | «{n} meses seguidos jugando. ¡Tú no paras!» | todos (suma deportes) | Constancia | B 3 · P 6 · O 12 · Pt 24 · D 36 meses seguidos | siempre · cuenta | Meses activos consecutivos (§1.7.3) en LR, cualquier deporte, meses de `America/Santo_Domingo`. **Comodín:** un mes inactivo en cualquier ventana de 12 meses no rompe la racha (no suma). Se evalúa el día 3 por el mes anterior. Fuente: días activos (§3.2). | C · PC · R · E · L | 5 |
 | `mileage` | Kilometraje | «{n} días jugando en MatchMate.» | todos | Lealtad | B 50 · P 150 · O 300 días ponderados | siempre · cuenta | Suma de días ponderados en LR (golf y natación valen 2; máximo 4 por semana ISO). Solo días de hace 48 h o más. | PC · R · E | 3 |
 | `strong_start` | Arranque con todo | «Jugaste {n} días en tu primer mes. ¡Llegaste pa' quedarte!» | todos | Bienvenida | único | primeros 30 días · cuenta | Al menos 4 días activos en LR dentro de los 30 días desde el **primer día activo** de la cuenta (no desde el registro). Se revisa cada noche hasta el día 31. | C | 1 |
@@ -479,7 +480,7 @@ el mes** (§1.7.4), `kind='liga'` y, las que comparan con otros, `badges_auto='t
 | `team_of_month` | Equipo del mes | «{Equipo} fue el equipo del mes en {liga}, y tú jugaste {3} de sus {4} partidos.» | baloncesto, fútbol, sala | Resultados | único, ×N | mes · liga | 4+ equipos con 2+ partidos T2 en el mes; cada candidato con 3+. Puntos de `rules.table` (por defecto 3/1/0). Desempates: puntos por partido, diferencia de goles o puntos, a favor. Va a quien apareció en 50 %+ de los partidos del equipo. Si el equipo no registró alineación en todo el mes: la plantilla anterior al primer partido, y la evidencia dice «según plantilla». Fuente: `matches`, `match_sides`, `team_players`, `match_players`, `score.lines`, `leagues.rules`. | R | 1 |
 | `top_scorer_month` | Bota de oro del mes (baloncesto: Más puntos del mes) | «Metiste {6} goles en {mes}, lo más de {liga}.» / «Anotaste {58} puntos en {mes}…» | baloncesto, fútbol, sala | Resultados | único, ×N | mes · liga | `goals` (sin autogoles ni penales de tanda) o `pts` de líneas TS, en 2+ partidos. Mínimo: fútbol 3 goles, sala 4. Desempate: por partido. | E | 1 |
 | `clean_sheet_month` | Valla menos vencida del mes | «Tu portería fue la menos batida de {liga} en {mes}.» | fútbol, sala | Resultados | único, ×N | mes · liga | Portero (`keeper=1`) en 2+ partidos T2 con al menos una valla invicta (`conceded=0`). Menos goles recibidos por partido. Desempates: más vallas invictas, más partidos. | E | 1 |
-| `personal_best_month` | Tu mejor mes | «{Octubre} fue tu mejor mes en {boliche}: +{6} sobre tu mejor mes anterior.» | boliche, golf | Mejora | único, ×N | mes · cuenta | **Boliche:** media del mes (9+ juegos B1) mayor que la de todos tus meses anteriores que calificaron (3+ meses anteriores). **Golf:** diferencial medio del mes (2+ tarjetas G2) menor que el de todos los anteriores (3+). | PC | 1 |
+| `personal_best_month` | Tu mejor mes | «En {octubre de 2026} tuviste tu mejor mes en {boliche}: +{6} sobre tu mejor mes anterior.» | boliche, golf | Mejora | único, ×N | mes · cuenta | **Boliche:** media del mes (9+ juegos B1) mayor que la de todos tus meses anteriores que calificaron (3+ meses anteriores). **Golf:** diferencial medio del mes (2+ tarjetas G2) menor que el de todos los anteriores (3+). | PC | 1 |
 | `box_top_month` | Cima de tu caja | «Terminaste en la cima de la caja {3} en {mes}.» | pádel, tenis, pickleball | Resultados | único, ×N | mes de cajas · liga | Se evalúa **al cerrar el mes** de la liga por cajas (§3.3), con la foto de `config.months[n]` tomada antes de la poda (raq:313-338). Caja con 3+ jugadores, cada uno con 2+ partidos R1 del mes (`round = n`). Primero por victorias; desempate por diferencia de juegos; empates comparten. Tú con al menos `minToPromote` partidos. El servidor recalcula la caja con `src/sports/formats/box.ts`; no usa lo que calculó el teléfono. | PC | 1 |
 | `box_promoted` | Subiste de caja | «Subiste a la caja {2} para {noviembre}.» | pádel, tenis, pickleball | Mejora | único, ×N | mes de cajas · liga | En la misma foto hay `{id: tú, move: 'sube'}` y el servidor, recalculando con `box.ts`, también te sube. Solo en ligas con peso para el mes. | PC | 1 |
 | `ladder_top` | Número 1 | «Cerraste {mes} en el puesto 1 de la escalera de {liga}.» | pádel, tenis, pickleball | Resultados | único, ×N | mes · liga | Foto de `ladder_rungs` el día 1 (§3.3): `position=1`, **y** durante el mes ganaste como retador al puesto 1 o lo defendiste en un reto jugado, con partido R2. Así no cuenta que el admin te ponga primero con `set_ladder`. Escalera con 8+ peldaños. | E | 1 |
@@ -647,15 +648,19 @@ cambios en resultados ──trigger──▶ private.badge_queue ◀── priva
   Helpers nuevos: `isSplit(mask)` (tabla de pinos vecinos), `golfDifferential(card, round)`, `cappedIndex(...)`,
   `activeDays(...)`, `realLeagueMonths(...)`.
 - **Motor:** `src/badges/engine.ts` exporta `evaluate(job, snapshot, now): BadgeDecision[]`, sin E/S. Decisiones:
-  `award`, `revoke`, `progress`, `review` (pedir aval). Pruebas con Vitest y fixtures.
+  `award`, `revoke`, `progress`, `review` (pedir aval). `decide(job, snapshot, now)` (lo que corre la Edge Function)
+  suma antes `adopt`: cada copia de respaldo de la foto cuyo jugador ya tiene cuenta pasa a la cuenta (§1.6). Pruebas
+  con Vitest y fixtures.
 - **Bundle para Deno:** Deno exige `.ts` en los imports y el `tsc` de la app no lo acepta (por eso
-  `scan-core.ts` es un solo archivo). `scripts/badges/bundle.mjs` usa esbuild (viene con Vite) y genera
-  `supabase/functions/_shared/badges-engine.gen.js`: un solo ESM sin imports, con un hash del código fuente en la
-  cabecera. `npm run badges:bundle`; la prueba `src/badges/bundle.test.ts` falla si el archivo está viejo.
+  `scan-core.ts` es un solo archivo). `scripts/badges/bundle.mjs` usa rolldown (viene con Vite 8) y genera, desde
+  `src/badges/edge.ts`, `supabase/functions/_shared/badges-engine.gen.js`: un solo ESM sin imports, con un hash del
+  código fuente en la cabecera. `pnpm badges:bundle`; la prueba `src/badges/bundle.test.ts` falla si el archivo está
+  viejo. `edge.ts` pone además `context.name` y `context.level_name` (los nombres del push).
 - **Edge Function `supabase/functions/insignias/`** (`index.ts` arma dependencias; `core.ts` hace el trabajo, como
-  `send-push`): valida `CRON_SECRET`; toma hasta 25 trabajos con `private.badge_claim(25)`; por cada uno pide
-  `private.badge_snapshot(job)`, corre `evaluate` y llama `private.badge_apply(job, decisiones)`. Corta a los 100 s;
-  si queda cola, se vuelve a llamar con `private.kick_badges()` (como `finish_push_batch`).
+  `send-push`): valida `CRON_SECRET`; toma hasta 25 trabajos con `badge_claim`, de a 5; por cada uno pide
+  `badge_snapshot(job)`, corre `evaluate` y llama `badge_apply(job, decisiones)` (si algo falla, `badge_fail`). Corta
+  a los 100 s o con ~1,2 s de CPU del motor (Supabase corta a los 2 s de CPU); `badge_finish` avisa y, si queda cola,
+  se vuelve a llamar con `private.kick_badges()` (como `finish_push_batch`).
 - **Plan gratis de Supabase:** 2 tareas de pg_cron (una cada 10 min, una diaria) y cadenas cortas: unas 4.500
   invocaciones al mes, lejos del límite.
 
@@ -744,7 +749,7 @@ create table public.badge_progress (
   sport text not null,
   value numeric not null,
   target numeric not null,
-  next_level smallint not null check (next_level between 1 and 5),
+  next_level smallint not null check (next_level between 0 and 5),   -- 0: única con meta («Arranque con todo»)
   updated_at timestamptz not null default now(),
   primary key (holder, badge_key, sport),
   foreign key (player_id, league_id) references public.players (id, league_id) on delete cascade,
@@ -912,10 +917,13 @@ perform cron.schedule('mm-insignias-diario', '30 4 * * *', 'select private.badge
 ### 3.5 Historial (primera corrida)
 
 1. **En seco primero:** `badges_backfill(p_league uuid default null, p_dry_run boolean default true)` (RPC del
-   superadmin) encola
-   trabajos `historial` por liga (las ligas grandes, por deporte y año). En seco no escribe en `badge_awards`: deja
-   en `private.badge_dry_runs` cuántos tendrían cada key, deporte y nivel sobre la base de jugadores activos. El
-   superadmin lo compara con la rareza objetivo (§1.7.9) y ajusta umbrales en el catálogo antes de la corrida real.
+   superadmin, botón «Correr en seco» en Consola › Insignias › Motor) encola un trabajo `historial` por liga (su
+   carrera, sus eventos, meses y años, y lo de cuenta de sus jugadores sin cuenta) y uno por cada cuenta con jugadores
+   en esas ligas (`user:<id>`: kilometraje, constancia, fijo del mes, tu año, comunidad). En seco no escribe en
+   `badge_awards`: deja en `private.badge_dry_runs` cuántos tendrían cada key, deporte y nivel sobre la base de
+   jugadores activos. La consola lo compara con la rareza objetivo (§1.7.9: «En su rango», «Sale muy fácil», «Sale muy
+   poco») y el superadmin ajusta umbrales en el catálogo antes de la corrida real («Correr de verdad»). Una liga que
+   no quepa en el tope de CPU de una llamada se parte con `payload.from`/`to` (por ahora a mano, en SQL).
 2. **Orden:** contadores y marcas de carrera en orden cronológico; después los meses pasados desde el primer mes con
    datos, con las mismas reglas de LR con las cuentas de entonces; después los años pasados.
 3. **Lo que no se puede reconstruir no se inventa:** no hay temporadas pasadas (no hay historial de temporadas: el
@@ -951,15 +959,18 @@ perform cron.schedule('mm-insignias-diario', '30 4 * * *', 'select private.badge
    - mover `badge_awards.player_id`, `badge_progress.player_id` y (desde la migración del creador)
      `league_badge_awards.player_id`, y añadirlas a la lista del guardia del catálogo (recl:250-261);
    - `badge_awards`: si choca la clave única, se queda la de `awarded_at` más viejo (y `firme` gana a `provisional`,
-     que gana a `en_revision`); la otra se borra. `hidden` queda en `true` solo si las dos lo estaban; `seen_at` es el
-     primero no nulo; se limpian de `profiles.featured_badges` los ids borrados;
+     que gana a `en_revision`); la otra se borra. `hidden` queda en `true` si alguna lo estaba (una copia visible por
+     defecto no destapa lo que el dueño ocultó, §1.4); `seen_at` es el primero no nulo; se limpian de `profiles.featured_badges` los ids borrados;
    - `badge_progress` de los dos se borra y se encola `vinculo`;
    - `league_badge_awards`: §5.2.
    - **Sin esto, cada aprobación de reclamo falla con `conflicto`.** Hay que tener una prueba SQL que apruebe un
      reclamo con insignias en los dos jugadores.
 2. **Vincular una cuenta** (`decide_player_claim`, `ensure_player`, `link_account_to_player`): no cambian. El
-   trigger de `players.user_id` encola `vinculo`, que hace lo de §1.6. Si el reclamo lo aprobó la misma cuenta que
-   reclamaba (`player_claims.decided_by = user_id`), el trabajo marca `context.verified_only = true`.
+   trigger de `players.user_id` encola `vinculo`, que hace lo de §1.6. Si la cuenta se vinculó ella misma (dueño o
+   admin: su reclamo al instante, `link_account_to_player` con su cuenta, `ensure_player`; o
+   `player_claims.decided_by = user_id`), queda anotado (`private.badge_self_links`) y la foto de **todo** trabajo marca
+   ese jugador con `verified_only` (no solo el `vinculo`). Lo que esa cuenta le dio con el creador o le confirmó con un
+   aval antes de vincularse se retira o vuelve a revisión (§5.8).
 3. **`unlink_account`** (rpc:672-696) y salir de la liga: no cambian; el trigger encola `vinculo` solo para
    recalcular progreso.
 4. **`export_my_data`** (cuenta:54-106): no cambia (encuentra `user_id` y `player_id` por el catálogo). Se añade una
@@ -1472,8 +1483,12 @@ admin saque a alguien (hoy «ni admin ni anotador»), y se ajusta el texto en `A
 - No suman a nada oficial: ni rareza, ni rankings, ni el total del perfil. Siempre dicen «Liga X» y llevan la
   pestaña «LIGA».
 - Una liga falsa (menos de 6 cuentas o menos de 14 días) puede dar insignias, pero solo se ven dentro de la liga.
-- Nadie se las da a sí mismo, así que el dueño de una liga de uno no puede fabricarse un «Campeón».
-- Los cupos los pone el servidor, no son solo etiquetas.
+- Nadie se las da a sí mismo, así que el dueño de una liga de uno no puede fabricarse un «Campeón». Tampoco dándoselo
+  a un jugador sin cuenta que después reclama (su reclamo se aprueba al instante), vincula o junta con el suyo: al
+  quedar el jugador con esa cuenta, lo que ella le dio se retira y los avales que ella le confirmó vuelven a revisión.
+- Los cupos los pone el servidor, no son solo etiquetas: periodo y división se comparan sin mayúsculas, tildes ni
+  signos («Temp 2026.» es «TEMP 2026»).
+- La lista de palabras bloqueadas trae una base desde el primer día.
 - Un diseño bloqueado no se puede cambiar después de darlo (no se puede dar «Campeón» y renombrarlo a un insulto).
 - Filtro de texto, reportes y escondite por el superadmin con registro.
 - Quien la recibe siempre la puede ocultar.
@@ -1566,10 +1581,15 @@ admin saque a alguien (hoy «ni admin ni anotador»), y se ajusta el texto en `A
 
 ### 6.6 Superadmin
 
-- `/superadmin/insignias`: la galería (§4.10).
-- Consola: avales de más de 14 días, reportes, trabajos fallidos (5+ intentos), corridas en seco contra la rareza
-  objetivo, tabla de rareza real, `super_revoke_badge`, esconder diseños del creador y la lista de palabras
-  bloqueadas.
+- `/superadmin/insignias` (`src/pages/superadmin/BadgesSection.tsx`), tres vistas:
+  - «Por revisar»: avales de más de 14 días (o sin quién los confirme) con «Confirmar» y «No se pudo confirmar»;
+    reportes abiertos y cerrados con «Esconder diseño» (`hide_league_badge`), «Retirar por fraude»
+    (`super_revoke_badge`) o «Dejarla» (`admin_resolve_badge_reports`); la lista de palabras bloqueadas
+    (`admin_blocked_terms`).
+  - «Motor» (`admin_badges_engine`, `admin_badge_jobs`): la cola por tipo, los trabajos fallidos (5+ intentos) con
+    «Reintentar» y «Borrar», el historial en seco y de verdad (`badges_backfill`), la corrida en seco contra la rareza
+    objetivo, la rareza real (`badge_stats`) y los últimos periodos que corrieron.
+  - «Galería» (§4.10).
 
 ---
 
@@ -1597,6 +1617,19 @@ del catálogo; la prueba de reclamos lo detecta si se olvida.
 | 9 | **`20260929001000_insignias_creador.sql`**: `league_badges`, `league_badge_awards`, `leagues.badge_makers`, `league_members.badge_maker`, `can_badges`, `badge_text_ok`, `blocked_terms`, `badge_reports`, RPC de §5.3, `league_badges_public`, `remove_member`, `merge_players` con la tabla nueva, `profile_badges` con las de liga, cargas de membresía. Pruebas: cupos, darse a sí mismo, diseño bloqueado, filtro de texto, fusión. | B | 1 | 2 días |
 | 10 | **UI del creador:** pestaña «Insignias» de Admin, editor con vista previa, dar insignia con sugerencias, deshacer, retirar, ocultar, permisos en Miembros y Ajustes. | C | 3, 9 | 3–4 días |
 | 11 | **Lanzamiento por fases:** boliche primero (es el único deporte `open`); cada deporte `beta` se enciende en el catálogo cuando se abre. Revisar la rareza real a las 2 y a las 6 semanas y ajustar. | todos | 8, 10 | — |
+
+**Estado de la implementación** (worktree `matchmate-insignias`, rama `entrega-insignias`). Las migraciones
+quedaron con otros números: `…0800` (paso 1), `…0810_insignias_motor.sql` (paso 5), `…0820_insignias_creador.sql`
+(paso 9), `…0880_insignias_temporadas.sql` (lo que depende de `public.seasons`, de la migración de temporadas
+`…0700`, que trae `close_season` y `season_awards`) y `…0890_insignias_cron_supabase.sql` (paso 6). Hecho de punta
+a punta: pasos 1 a 7, 9 y 10; del 8, la corrida en seco funciona en local (`tests/sql/insignias-funcion.test.ts`) y
+se corre desde la consola; falta hacerla sobre la copia de producción y calibrar. Pendiente, a propósito:
+- «Empate múltiple: este mes no hubo {figura}» (§6.2): el motor lo detecta (`topWithTies`) pero no hay dónde
+  guardarlo para la portada (haría falta una tabla de notas por liga y periodo).
+- «Cerrar temporada» en Ajustes (§6.5): es de la migración de temporadas (`close_season`).
+- El escudo «Título vigente» sale en la tabla del boliche (`RankingPage`); las tablas de raqueta, equipos y golf
+  todavía no lo muestran.
+- Partir el historial de una liga grande por año (§3.5) es a mano.
 
 **Tiempo:** uno detrás del otro son unos 22–26 días de trabajo. Con las tres corrientes a la vez (y el paso 4 en dos
 personas) son **unos 10–12 días**:

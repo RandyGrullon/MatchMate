@@ -1,4 +1,5 @@
 import {
+  Award,
   Bell,
   CalendarCheck,
   CalendarClock,
@@ -54,10 +55,11 @@ const KINDS: Record<NoticeKind, Look> = {
   social: { icon: Heart, tone: DANGER },
 };
 
-/** Los sociales de afuera: te siguieron, les gustó tu juego o lo comentaron. */
+/** Los sociales de afuera: te siguieron, les gustó tu juego, lo comentaron o te ganaste una insignia. */
 const SOCIAL: Record<SocialIcon, Look> = {
   follow: { icon: UserPlus, tone: ACCENT },
   like: { icon: Heart, tone: DANGER },
+  badge: { icon: Award, tone: WARN },
   comment: { icon: MessageCircle, tone: OK },
 };
 

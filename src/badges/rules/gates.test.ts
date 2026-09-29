@@ -73,6 +73,9 @@ describe('liga real', () => {
     expect(isRealLeagueMonth({ league: minors, months: [six], profiles: ps, members }, '2026-10')).toBe(true);
     expect(isRealLeagueMonth({ league: minors, months: [six], profiles: ps, members: members.slice(1) }, '2026-10')).toBe(false);
     expect(isRealLeagueMonth({ league: minors, months: [month('2026-10', [], ['k1', 'k2'])], profiles: ps, members }, '2026-10')).toBe(false);
+    // Para las insignias de cuenta, la cuenta evaluada no es una de las 2 de staff (dueño + su otra cuenta de admin).
+    expect(isRealLeagueMonth({ league: minors, months: [six], profiles: ps, members, exclude: 'a' }, '2026-10')).toBe(false);
+    expect(isRealLeagueMonth({ league: minors, months: [six], profiles: ps, members: [...members, snapMember('L', 'd', 'admin')], exclude: 'a' }, '2026-10')).toBe(true);
   });
 
   it('filtro de varias ligas', () => {

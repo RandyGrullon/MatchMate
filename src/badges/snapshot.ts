@@ -60,7 +60,8 @@ export interface SnapPlayer {
   is_minor: boolean;
   created_at: string;
   /**
-   * La cuenta lo reclamó y el reclamo lo aprobó ella misma (owner o admin, §1.6): para las insignias de cuenta, de
+   * La cuenta se vinculó ella misma con este jugador (owner o admin: su reclamo al instante, link_account_to_player o
+   * ensure_player; private.badge_verified_only, §1.6): en todo trabajo, para las insignias de cuenta, de
    * este jugador solo cuenta el historial verificado (boliche B2, golf G2, natación W1, y partidos R2 o T2 que
    * confirmó una cuenta del otro lado).
    */
@@ -292,7 +293,10 @@ export interface SnapCheer {
   /** Su cuenta (null = sin cuenta): una persona con cuenta cuenta una vez entre ligas. */
   user_id: string | null;
   at: string;
-  /** El felicitado tiene al menos un día activo (§2.12 `good_vibes`). Falta = sí. */
+  /**
+   * `false` = el felicitado no cuenta aunque tenga días. El motor no se fía de que falte: que tenga un día activo en una
+   * liga real lo mira él con la actividad de la foto (SQL manda los primeros días de cada felicitado).
+   */
   active?: boolean;
 }
 

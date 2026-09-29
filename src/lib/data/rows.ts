@@ -42,6 +42,10 @@ export interface LeagueRow {
   require_photo: boolean;
   has_minors: boolean;
   tz: string;
+  /** 20260929000800_insignias.sql. */
+  badges_auto?: string;
+  /** 20260929000820_insignias_creador.sql. */
+  badge_makers?: string;
   created_at: string;
 }
 
@@ -52,6 +56,8 @@ export interface MembershipRow {
   is_scorer: boolean;
   display_name: string;
   player_id: string | null;
+  /** 20260929000820_insignias_creador.sql. */
+  badge_maker?: boolean;
 }
 
 export interface ProfileRow {
@@ -189,6 +195,8 @@ export const toLeague = (r: LeagueRow): Wire<League> => ({
   sport: r.sport,
   hasMinors: r.has_minors,
   tz: r.tz,
+  ...(r.badges_auto === 'todas' || r.badges_auto === 'sin_titulos' || r.badges_auto === 'ninguna' ? { badgesAuto: r.badges_auto } : {}),
+  ...(r.badge_makers === 'owner' || r.badge_makers === 'admins' || r.badge_makers === 'chosen' ? { badgeMakers: r.badge_makers } : {}),
   createdAt: r.created_at ?? null,
 });
 
@@ -200,6 +208,7 @@ export const toMember = (r: MembershipRow): Member => ({
   role: r.role,
   playerId: r.player_id ?? null,
   scorer: r.is_scorer,
+  ...(r.badge_maker ? { badgeMaker: true } : {}),
 });
 
 export const toProfile = (r: ProfileRow): UserProfile => ({

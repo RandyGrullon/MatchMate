@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, evaluatorsOf, permitted, rowKey, settle, type EvaluatorSet } from './engine';
-import { job, NOW, row, snap, world } from './evaluators/fixtures';
+import { decide, evaluate, evaluatorsOf, permitted, rowKey, settle, type EvaluatorSet } from './engine';
+import { job, NOW, player, row, snap, world } from './evaluators/fixtures';
 import type { Evaluator } from './evaluators/kit';
 import type { BadgeSnapshot } from './snapshot';
 import { snapLeague } from './testkit';
-import type { AwardDecision, BadgeDecision, ProgressDecision, ReviewDecision, RevokeDecision } from './types';
+import type { AdoptDecision, AwardDecision, BadgeDecision, ProgressDecision, ReviewDecision, RevokeDecision } from './types';
 
 const give = (over: Partial<AwardDecision> = {}): AwardDecision => ({
   kind: 'award',
@@ -185,5 +185,64 @@ describe('evaluate: reparte por tipo de trabajo', () => {
     expect(evaluatorsOf('swim_meet')).toHaveLength(1);
     expect(evaluatorsOf('debut').length).toBeGreaterThanOrEqual(3);
     expect(evaluatorsOf('event_podium').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('decide: las copias de respaldo pasan a la cuenta (§1.6)', () => {
+  // p1 jugó sin cuenta y ganó copias de respaldo de insignias de cuenta; ahora es de u1. p2 sigue sin cuenta.
+  const games = row({ badge_key: 'bowling_games', sport: 'bowling', level: 1, period_key: '-', player_id: 'p1', league_id: 'L', status: 'firme' });
+  const clean = row({ badge_key: 'bowling_clean_game', sport: 'bowling', level: 0, period_key: 'g:x1:0', player_id: 'p1', league_id: 'L' });
+  const loose = row({ badge_key: 'bowling_games', sport: 'bowling', level: 1, period_key: '-', player_id: 'p2', league_id: 'L' });
+  const counter = { player_id: 'p1', user_id: null, league_id: 'L', badge_key: 'bowling_games', sport: 'bowling' as const, value: 40, target: 100, next_level: 2 as const, updated_at: NOW };
+  const adopted = (r: typeof games, user = 'u1'): AdoptDecision => ({
+    kind: 'adopt',
+    badge_key: r.badge_key,
+    sport: r.sport,
+    level: r.level,
+    period_key: r.period_key,
+    player_id: r.player_id!,
+    league_id: r.league_id!,
+    user_id: user,
+  });
+  const linked = (awards = [games, clean, loose], extra: Parameters<typeof world>[1] = {}) =>
+    world('bowling', { players: [player('p1', 'L', 'u1'), player('p2', 'L')], awards, progress: [counter], ...extra });
+
+  it('las de cuenta del jugador pasan a su cuenta y su progreso de jugador se borra; las de liga se quedan', () => {
+    const j = job('vinculo', { user_id: 'u1', ref: 'player:p1', payload: { players: ['p1'] } });
+    expect(decide(j, snap(j, linked()), NOW, [])).toEqual([adopted(games), { ...progress(), player_id: 'p1', user_id: null, league_id: 'L', value: 40, target: 100, next_level: null }]);
+    // Cualquier trabajo que vea la copia la mueve (si el vínculo falló, el siguiente la arregla); los avisos no.
+    const r = job('resultado', { ref: 'entry:x1' });
+    expect(decide(r, snap(r, linked()), NOW, []).filter((d) => d.kind === 'adopt')).toEqual([adopted(games)]);
+    expect(decide(job('aviso'), snap(job('aviso'), linked()), NOW, [])).toEqual([]);
+    // evaluate solo trae lo de los evaluadores.
+    expect(evaluate(j, snap(j, linked()), NOW, [])).toEqual([]);
+  });
+
+  it('va antes que lo que se le da a la cuenta, y lo que retiraba la fila movida ya no sale', () => {
+    const toAccount = give({ badge_key: 'bowling_games', level: 2, period_key: '-', player_id: null, user_id: 'u1', league_id: null, status: 'firme', refs: [] });
+    const families: EvaluatorSet[] = [{ bowling_career: () => [toAccount, pull({ ...give(), badge_key: 'bowling_games', level: 1, period_key: '-', status: 'firme' } as AwardDecision)] }];
+    const j = job('vinculo', { user_id: 'u1', ref: 'player:p1', payload: { players: ['p1'] } });
+    const rows = [{ ...games, status: 'provisional' as const }];
+    const out = decide(j, snap(j, linked(rows)), NOW, families);
+    expect(out.map((d) => d.kind)).toEqual(['adopt', 'award', 'progress']);
+    expect(out[1]).toEqual(toAccount);
+  });
+
+  it('se vinculó él mismo (solo lo verificado): se junta lo que la cuenta ya tiene, lo provisional se retira y lo firme se queda', () => {
+    // Lo dice la foto (players[].verified_only), no el trabajo: la Edge Function pasa el trabajo tal cual sale de la cola.
+    const j = job('vinculo', { user_id: 'u1', ref: 'player:p1', payload: { players: ['p1'] } });
+    const same = row({ ...games, player_id: null, league_id: null, user_id: 'u1' });
+    const provisional = row({ badge_key: 'bowling_games', sport: 'bowling', level: 2, period_key: '-', player_id: 'p1', league_id: 'L', status: 'provisional' });
+    const firm = row({ badge_key: 'mileage', sport: 'all', level: 1, period_key: '-', player_id: 'p1', league_id: 'L', status: 'firme' });
+    const self = { players: [player('p1', 'L', 'u1', { verified_only: true }), player('p2', 'L')] };
+    const out = decide(j, snap(j, linked([games, same, provisional, firm], { progress: [], ...self })), NOW, []);
+    expect(out).toEqual([adopted(games), { kind: 'revoke', badge_key: 'bowling_games', sport: 'bowling', player_id: 'p1', user_id: null, league_id: 'L', level: 2, period_key: '-', reason: 'evidencia' }]);
+    // Un flag en el payload ya no cuenta (no es de dónde lo lee): sin marca en la foto, se adopta todo.
+    const flagged = job('vinculo', { user_id: 'u1', ref: 'player:p1', payload: { players: ['p1'], verified_only: true } });
+    expect(decide(flagged, snap(flagged, linked([games, same, provisional, firm], { progress: [] })), NOW, []).filter((d) => d.kind === 'adopt')).toHaveLength(3);
+    // Lo mismo en cualquier otro trabajo con el jugador marcado en la foto.
+    const r = job('resultado');
+    const marked = world('bowling', { players: [player('p1', 'L', 'u1', { verified_only: true })], awards: [firm] });
+    expect(decide(r, snap(r, marked), NOW, [])).toEqual([]);
   });
 });

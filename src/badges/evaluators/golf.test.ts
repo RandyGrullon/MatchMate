@@ -249,6 +249,18 @@ describe('podio de golf', () => {
     expect(of(ds, 'event_podium')).toEqual([]);
   });
 
+  it('el historial de la liga da los podios; el de una cuenta (sin liga) no: su foto no trae la historia de los demás', () => {
+    const f = field(6, { closed_at: '2026-11-10T20:00:00.000Z' });
+    const w = world('golf', { players: f.players, ...f.parts });
+    const league = job('historial');
+    expect(of(evaluate(league, snap(league, w), NOW), 'event_podium').map((d) => [d.player_id, d.level])).toEqual([
+      ['g1', 3],
+      ['g2', 2],
+    ]);
+    const account = job('historial', { league_id: null, user_id: 'u1', ref: 'user:u1' });
+    expect(of(evaluate(account, snap(account, w), NOW), 'event_podium')).toEqual([]);
+  });
+
   it('torneo de varias rondas: tabla acumulada de quienes jugaron todas (`gt:<id>`)', () => {
     const a = field(5, { tournament_id: 'T', round_no: 1 }, 'R1', '2026-11-07');
     const b = field(5, { tournament_id: 'T', round_no: 2 }, 'R2', '2026-11-08');

@@ -205,6 +205,17 @@ describe('temporada: natación', () => {
     const ds = evaluate(j, snap(j, w), NOW);
     expect(of(ds, 'coach_board').map((d) => `${d.user_id}:${d.period_key}`)).toEqual(['u-coach:s:S1']);
     expect(of(ds, 'coach_board')[0].context.values).toEqual({ n: 6, club: 'Delfines' });
+    // En una liga con menores es de cuenta pero no nombra la liga, ni la temporada, ni el club (§1.5).
+    const kids = world('swimming', {
+      leagues: [snapLeague('L', { sport: 'swimming', has_minors: true, name: 'Escuelita' })],
+      players: [...W.map((p) => player(p, 'L', `u-${p}`)), coach],
+      seasons: [SEASON],
+      swim_clubs: [{ id: 'CL', league_id: 'L', name: 'Delfines Sub-10', coach_id: 'coach' }],
+      ...data,
+    });
+    const [minor] = of(evaluate(j, snap(j, kids), NOW), 'coach_board');
+    expect(minor.context).toMatchObject({ league: { id: 'L', name: 'Liga juvenil privada' }, values: { n: 6 } });
+    expect(JSON.stringify(minor.context)).not.toMatch(/Delfines|Escuelita|Temporada/);
   });
 });
 

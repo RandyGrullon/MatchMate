@@ -180,7 +180,8 @@ const ratio = (a: string, b: string) => contrastRatio(a, b).toFixed(2);
  * estados, la animación de desbloqueo, todo el catálogo en cada nivel, los íconos del creador y los colores de liga,
  * en claro y en oscuro. Para aprobar el dibujo y revisar un cambio de forma, ícono o umbral.
  */
-export default function BadgesGallery() {
+/** `tabs`: el selector de vista de la sección (BadgesSection); va junto al del tema. */
+export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
   const [choice, setChoice] = useState<ModeChoice>('ambos');
   const [sport, setSport] = useState<SportFilter>('todos');
   const [replay, setReplay] = useState(0);
@@ -212,7 +213,12 @@ export default function BadgesGallery() {
       <SectionHeader
         title="Insignias"
         hint={sectionMeta('insignias').hint}
-        actions={<Segmented label="Tema de la galería" options={MODE_OPTIONS} value={choice} onChange={setChoice} size="sm" />}
+        actions={
+          <>
+            {tabs}
+            <Segmented label="Tema de la galería" options={MODE_OPTIONS} value={choice} onChange={setChoice} size="sm" />
+          </>
+        }
       />
 
       <Panel title="Metales" subtitle="§4.3 · El metal dice el nivel. El texto de la cinta pasa 7:1 y el borde 3:1 contra toda superficie.">

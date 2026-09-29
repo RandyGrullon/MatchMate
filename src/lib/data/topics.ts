@@ -56,11 +56,15 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'submissions') return invalidate(tags.subs(id), tags.entries(id), tags.feeds);
     // Reclamos «ese jugador soy yo» (etiquetas de claimTags en ./claims): al aprobar cambian los jugadores.
     if (msg.event === 'claims') return invalidate(`claims:${id}`, tags.players(id), tags.entries(id));
+    // Insignias que se ven en la liga (etiqueta badgeTags.league de ./badges): premios del mes, página del jugador.
+    if (msg.event === 'badges') return invalidate(`badges:l:${id}`);
   } else if (kind === 'user') {
     if (msg.event === 'submission') return invalidate(tags.feeds);
     // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
     if (msg.event === 'follow' || msg.event === 'like') return invalidate('people:notices', `people:${id}`, tags.feeds);
     if (msg.event === 'claims') return invalidate('claims:me', tags.members, tags.feeds);
+    // Mis insignias (etiqueta badgeTags.mine de ./badges): la vitrina, el aviso de desbloqueo y lo por confirmar.
+    if (msg.event === 'badges') return invalidate('badges:me');
   }
 }
 

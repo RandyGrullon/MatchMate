@@ -4,6 +4,7 @@ import { CloudUpload, Flag, Maximize, Minimize, MoreVertical, PauseCircle, Sun, 
 import { useFeedback, saveErrorMessage } from '../components/feedback';
 import { Button, Field, Input, Modal, cx } from '../components/ui';
 import { courtVars, isIOS, useFullscreen, useSunMode, useWakeLock } from './device';
+import { useHoldBadgeUnlock } from '../components/badges/hold';
 import { LeaseBanner } from './LeaseBanner';
 import type { CourtController } from './useCourt';
 
@@ -51,6 +52,8 @@ export function CourtLayout({
 }) {
   const [sun, setSun] = useSunMode();
   const wake = useWakeLock(true);
+  // El aviso de una insignia nueva espera a que se cierre esta pantalla.
+  useHoldBadgeUnlock();
   const full = useFullscreen();
   const { toast } = useFeedback();
   const [hideHint, setHideHint] = useState(false);

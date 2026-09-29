@@ -161,6 +161,16 @@ export const AUDIT_ACTIONS: readonly { key: string; label: string }[] = [
   { key: 'delete_league', label: 'Liga borrada' },
   { key: 'delete_account', label: 'Cuenta borrada' },
   { key: 'clear_errors', label: 'Errores borrados' },
+  // Insignias (docs/insignias.md §6.6).
+  { key: 'review_badge', label: 'Aval de insignia' },
+  { key: 'revoke_badge', label: 'Insignia retirada (fraude)' },
+  { key: 'badges_backfill', label: 'Historial de insignias' },
+  { key: 'badge_jobs', label: 'Trabajos del motor' },
+  { key: 'hide_league_badge', label: 'Diseño escondido' },
+  { key: 'hide_league_badge_award', label: 'Insignia de liga oculta' },
+  { key: 'revoke_league_badge', label: 'Insignia de liga retirada' },
+  { key: 'resolve_badge_reports', label: 'Reportes cerrados' },
+  { key: 'blocked_terms', label: 'Palabras bloqueadas' },
 ];
 
 export function auditActionLabel(action: string): string {
@@ -173,7 +183,8 @@ export function auditActionLabel(action: string): string {
 export type AuditTone = 'accent' | 'danger' | 'ok' | 'warn' | 'neutral';
 
 export function auditTone(action: string): AuditTone {
-  if (action === 'delete_league' || action === 'block_user' || action === 'delete_account') return 'danger';
+  if (action === 'delete_league' || action === 'block_user' || action === 'delete_account' || action === 'revoke_badge') return 'danger';
+  if (action === 'hide_league_badge' || action === 'revoke_league_badge' || action === 'badges_backfill') return 'warn';
   if (action === 'unblock_user') return 'ok';
   if (action === 'announce') return 'accent';
   if (action === 'set_sport_status' || action === 'transfer_league') return 'warn';

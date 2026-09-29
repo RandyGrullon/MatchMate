@@ -6,12 +6,14 @@
 export { ShareButton, shareDate, shareFrame } from './ShareButton';
 export { ShareImageModal } from './ShareImageModal';
 export {
+  BADGE_CARD_HEIGHT,
   CARD_WIDTH,
   DEFAULT_MAX_ROWS,
   buildScene,
   linkLabel,
   shareCaption,
   type CardFrame,
+  type ShareBadgeSpec,
   type ShareCard,
   type ShareColumn,
   type ShareResultSide,
@@ -33,6 +35,7 @@ export {
 } from './adapters';
 export { resultShare, type ResultShareOptions, type ShareMatch } from './match';
 export { golfBoardShare, thruLabel, toParLabel, type GolfBoardRowLike } from './golf';
+export { badgeShare, type BadgeShareInput } from './badge';
 export { SPORT_COLORS, sportColor } from './palette';
 export { canShareFiles, copyText, downloadFile, shareFile, shareFileName, type ShareOutcome } from './actions';
 export { renderCardPng } from './paint';

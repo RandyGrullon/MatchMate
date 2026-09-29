@@ -62,8 +62,10 @@ export function isRealLeagueMonth(input: RealLeagueInput, month: string): boolea
     m.players.forEach((p) => players.add(p));
   }
   if (league.has_minors) {
+    // La cuenta que se evalúa tampoco cuenta entre el staff (como entre las 4 cuentas): un dueño con otra cuenta de
+    // admin y menores inventados no hace real su propia liga.
     const staff = (input.members ?? []).filter(
-      (x) => x.league_id === league.id && (x.role === 'owner' || x.role === 'admin') && isEstablished(profiles.get(x.user_id), end),
+      (x) => x.league_id === league.id && (x.role === 'owner' || x.role === 'admin') && x.user_id !== exclude && isEstablished(profiles.get(x.user_id), end),
     );
     return staff.length >= MINORS_STAFF && players.size >= MINORS_PLAYERS;
   }

@@ -301,7 +301,8 @@ export const JOB_KINDS: readonly JobKind[] = [
 /**
  * Un trabajo de la cola (fila de `private.badge_queue`). `ref` dice qué tocó: 'entry:<id>', 'match:<id>',
  * 'card:<id>', 'meet:<event>', 'season:<id>', '2026-10'… `payload` guarda lo que después no se puede leer (la
- * foto del mes de cajas, los jugadores de un borrado, `verified_only` de un reclamo).
+ * foto del mes de cajas, los jugadores de un borrado). Si un jugador se vinculó él mismo, lo dice la foto
+ * (`players[].verified_only`), no el trabajo.
  */
 export interface BadgeJob {
   id: number;
@@ -373,5 +374,25 @@ export interface ProgressDecision extends DecisionBase {
   next_level: Level | null;
 }
 
-/** Lo que devuelve `evaluate(job, snapshot, now)`; lo aplica `private.badge_apply` en una transacción. */
+/** Lo que devuelven los evaluadores; `evaluate` lo asienta y lo aplica `private.badge_apply` en una transacción. */
 export type BadgeDecision = AwardDecision | ReviewDecision | RevokeDecision | ProgressDecision;
+
+/**
+ * Pasar la copia de respaldo de una insignia de cuenta (la que ganó el jugador cuando no tenía cuenta, §1.6) a la
+ * cuenta que ahora lo tiene. `badge_apply` la mueve (`player_id` y `league_id` nulos, `user_id` la cuenta) o, si la
+ * cuenta ya tenía la misma fila, deja una sola (la mejor, con el `awarded_at` más viejo) sin aviso nuevo. Solo la
+ * arma el motor (`adoptions` en engine.ts), nunca un evaluador.
+ */
+export interface AdoptDecision {
+  kind: 'adopt';
+  badge_key: string;
+  sport: BadgeSport;
+  level: Level;
+  period_key: string;
+  player_id: string;
+  league_id: string;
+  user_id: string;
+}
+
+/** Lo que devuelve `evaluate(job, snapshot, now)`: las adopciones primero y después lo de los evaluadores. */
+export type EngineDecision = BadgeDecision | AdoptDecision;

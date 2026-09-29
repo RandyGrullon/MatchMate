@@ -164,8 +164,9 @@ describe('racket_career', () => {
     expect(of(all, 'racket_matches').filter((d) => d.user_id === 'u1').map((d) => d.level)).toEqual([1]);
     const verified = run(join(...official), { players: PLAYERS.map((p) => (p.id === 'p1' ? { ...p, verified_only: true } : p)) }, j);
     expect(of(verified, 'racket_matches').filter((d) => d.user_id === 'u1')).toEqual([]);
-    const rival = run(join(...official), { players: PLAYERS.map((p) => (p.id === 'p1' ? { ...p, verified_only: true } : p)) }, job('vinculo', { user_id: 'u1', payload: { players: ['p1'], verified_only: true } }));
-    expect(of(rival, 'racket_matches').filter((d) => d.user_id === 'u1')).toEqual([]);
+    // Y en cualquier trabajo (un resultado nuevo), no solo en el vínculo: la marca viene en la foto.
+    const later = run(join(...official), { players: PLAYERS.map((p) => (p.id === 'p1' ? { ...p, verified_only: true } : p)) }, job('resultado', { ref: 'match:v9' }));
+    expect(of(later, 'racket_matches').filter((d) => d.user_id === 'u1')).toEqual([]);
   });
 
   it('una liga que no es real no suma', () => {

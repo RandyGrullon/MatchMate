@@ -402,7 +402,11 @@ export function golfPodiumFor(kit: Kit, rounds: readonly SnapGolfRound[], period
   return out;
 }
 
-/** Rondas o torneos del trabajo; en el historial, todos los que ya pasaron su gracia (24 h desde el cierre). */
+/**
+ * Rondas o torneos del trabajo; en el historial de una liga, todos los suyos que ya pasaron su gracia (24 h desde el
+ * cierre). El historial de una cuenta (sin liga) no da podios: su foto no trae la historia de los demás (su índice
+ * topado) y el de la liga ya los da.
+ */
 function scopedCompetitions(kit: Kit): { rounds: SnapGolfRound[]; period: string }[] {
   const all = kit.snap.golf_rounds ?? [];
   const graceMs = (paramOf(PODIUM, 'graceHours', 'golf') ?? 24) * 3_600_000;
@@ -411,7 +415,7 @@ function scopedCompetitions(kit: Kit): { rounds: SnapGolfRound[]; period: string
   const tournaments = new Set(refIds(kit.job, 'gt'));
   const singles: SnapGolfRound[] = [];
   for (const r of all) {
-    const pick = historial ? !kit.job.league_id || r.league_id === kit.job.league_id : refs.has(r.event_id);
+    const pick = historial ? !!kit.job.league_id && r.league_id === kit.job.league_id : refs.has(r.event_id);
     if (!pick) continue;
     if (r.tournament_id) tournaments.add(r.tournament_id);
     else singles.push(r);

@@ -226,18 +226,21 @@ export function tableCrew(kit: Kit, userId: string): BadgeDecision[] {
 
 /**
  * Buena vibra (§2.12): personas distintas (una cuenta cuenta una vez) que la cuenta felicitó, que no son jugadores
- * suyos, tienen un día activo y juegan en una liga donde la cuenta es miembro; los niveles piden 2, 3 o 6 meses
- * distintos. Nunca en ligas con menores. Quitar la reacción después no la retira.
+ * suyos, tienen un día activo en una liga real (sin contar a la cuenta entre sus 4: jugadores inventados en una liga
+ * de uno no cuentan) y juegan en una liga donde la cuenta es miembro; los niveles piden 2, 3 o 6 meses distintos.
+ * Nunca en ligas con menores. Quitar la reacción después no la retira.
  */
 export function goodVibes(kit: Kit, userId: string): BadgeDecision[] {
   const d = def('good_vibes');
   const memberOf = new Set((kit.snap.members ?? []).filter((m) => m.user_id === userId).map((m) => m.league_id));
   const own = new Set([...kit.players.values()].filter((p) => p.user_id === userId).map((p) => p.id));
+  const active = new Set<string>();
+  for (const a of kit.activity()) if (!active.has(a.player_id) && realOn(kit, a.league_id, a.date, { user: userId })) active.add(a.player_id);
   const people = new Set<string>();
   const months = new Set<string>();
   const steps: Step[] = [];
   for (const c of [...(kit.snap.cheers ?? [])].sort((a, b) => a.at.localeCompare(b.at))) {
-    if (own.has(c.player_id) || c.user_id === userId || c.active === false || !memberOf.has(c.league_id) || kit.leagues.get(c.league_id)?.has_minors) continue;
+    if (own.has(c.player_id) || c.user_id === userId || c.active === false || !active.has(c.player_id) || !memberOf.has(c.league_id) || kit.leagues.get(c.league_id)?.has_minors) continue;
     const date = localDate(c.at, BADGE_TZ) ?? c.at.slice(0, 10);
     const person = c.user_id ?? c.player_id;
     const fresh = !people.has(person);

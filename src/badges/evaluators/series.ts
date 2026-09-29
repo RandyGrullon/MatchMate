@@ -68,7 +68,7 @@ export function targetIds(kit: Kit): string[] {
   if (snap.targets) return [...new Set(snap.targets)];
   const ids = new Set<string>(payloadPlayers(job));
   const players = snap.players ?? [];
-  if (job.kind === 'historial') for (const p of players) if (!job.league_id || p.league_id === job.league_id) ids.add(p.id);
+  if (job.kind === 'historial' && job.league_id) for (const p of players) if (p.league_id === job.league_id) ids.add(p.id);
   if (job.user_id) for (const p of players) if (p.user_id === job.user_id) ids.add(p.id);
   for (const id of refIds(job, 'player')) ids.add(id);
   // 'entry:<id>' o 'entry:<id>:<g>' (un juego).

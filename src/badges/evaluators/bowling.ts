@@ -352,7 +352,10 @@ export function eventTable(kit: Kit, ev: SnapEvent): EventTable {
   return table;
 }
 
-/** Torneos de boliche del trabajo: el del ref, o en el historial todos los que ya pasaron su gracia (3 días). */
+/**
+ * Torneos de boliche del trabajo: el del ref, o en el historial de una liga todos los suyos que ya pasaron su gracia
+ * (3 días). El historial de una cuenta (sin liga) no da títulos de eventos: los da el de la liga, con la liga entera.
+ */
 function scopedEvents(kit: Kit): SnapEvent[] {
   const graceDays = Math.ceil((paramOf(PODIUM, 'graceHours', 'bowling') ?? 72) / 24);
   const refs = jobEvents(kit);
@@ -361,7 +364,7 @@ function scopedEvents(kit: Kit): SnapEvent[] {
     (e) =>
       e.type === 'torneo' &&
       kit.sportOf(e.league_id) === 'bowling' &&
-      (historial ? (!kit.job.league_id || e.league_id === kit.job.league_id) && addDays(e.date, graceDays) <= kit.today : refs.has(e.id)),
+      (historial ? !!kit.job.league_id && e.league_id === kit.job.league_id && addDays(e.date, graceDays) <= kit.today : refs.has(e.id)),
   );
 }
 

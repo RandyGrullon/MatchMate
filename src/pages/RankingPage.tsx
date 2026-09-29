@@ -9,6 +9,7 @@ import { AnimatedNumber, Card, Empty, ListSkeleton, LoadError, Position, Tabs, c
 import { Avatar } from '../components/Avatar';
 import { LeagueExcelButton } from '../components/LeagueExcelButton';
 import { ShareButton, type ShareTableSpec } from '../components/share';
+import { TitleMark, useCurrentTitle } from '../components/badges/LeagueBadges';
 
 type Metric = 'promedio' | 'juego' | 'serie' | 'asistencia';
 
@@ -35,6 +36,8 @@ export default function RankingPage() {
   const [params, setParams] = useSearchParams();
   const events = useEvents(lid);
   const players = usePlayers(lid);
+  // El campeón de la última temporada cerrada lleva el escudo «Título vigente» (§6.2 de docs/insignias.md).
+  const title = useCurrentTitle();
 
   const years = useMemo(() => [...new Set(events.data.map((e) => e.date.slice(0, 4)))].sort().reverse(), [events.data]);
   const year = params.get('anio') && years.includes(params.get('anio')!) ? params.get('anio')! : years[0];
@@ -141,6 +144,7 @@ export default function RankingPage() {
                     <Position pos={p.pos} />
                     <Avatar name={p.row.name} className={p.pos === 1 ? 'size-14 text-lg' : 'size-11 text-sm'} />
                     <span className="line-clamp-2 text-xs font-medium">{p.row.name}</span>
+                    <TitleMark title={title} playerId={p.row.playerId} />
                     <span className="text-xl font-bold">
                       <AnimatedNumber value={current.value(p.row)} />
                     </span>
@@ -162,7 +166,10 @@ export default function RankingPage() {
                   >
                     <Position pos={pos} />
                     <Avatar name={row.name} className="size-8 text-xs" />
-                    <span className="min-w-0 flex-1 truncate font-medium">{row.name}</span>
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      <span className="truncate font-medium">{row.name}</span>
+                      <TitleMark title={title} playerId={row.playerId} />
+                    </span>
                     <span className="text-xs text-muted">{row.games} juegos</span>
                     <span className="w-12 text-right text-base font-bold tabular-nums">{current.value(row)}</span>
                   </Link>

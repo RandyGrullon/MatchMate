@@ -14,6 +14,8 @@
  *   (pasa a `en_revision`) o una en revisión que ya no lo pide (vuelve a provisional);
  * - nunca revive lo que se retiró por aval rechazado o por fraude (solo vuelve lo que se retiró por evidencia);
  * - si un evaluador da una fila y otro la retira, gana dar.
+ * `decide` (lo que corre la Edge Function) suma antes las adopciones (`adoptions`): las copias de respaldo de
+ * jugadores que ahora tienen cuenta pasan a la cuenta (§1.6).
  */
 import { allowedBy, badgeDef, evaluatorsFor } from './catalog';
 import { BOWLING_EVALUATORS } from './evaluators/bowling';
@@ -22,7 +24,18 @@ import { GOLF_EVALUATORS } from './evaluators/golf';
 import type { Evaluator } from './evaluators/kit';
 import { SWIM_EVALUATORS } from './evaluators/swim';
 import type { BadgeSnapshot } from './snapshot';
-import type { AwardDecision, BadgeAwardRow, BadgeDecision, BadgeJob, EvaluatorId, ProgressDecision, ReviewDecision, RevokeDecision } from './types';
+import type {
+  AdoptDecision,
+  AwardDecision,
+  BadgeAwardRow,
+  BadgeDecision,
+  BadgeJob,
+  EngineDecision,
+  EvaluatorId,
+  ProgressDecision,
+  ReviewDecision,
+  RevokeDecision,
+} from './types';
 import type { SportId } from '../sports/types';
 
 /** Lo que aporta una familia: sus evaluadores por id del catálogo. */
@@ -61,6 +74,78 @@ export function evaluate(job: BadgeJob, snapshot: BadgeSnapshot, now: number | s
   const raw: BadgeDecision[] = [];
   for (const id of evaluatorsFor(job.kind)) for (const run of evaluatorsOf(id, families)) raw.push(...run(job, snapshot, t));
   return settle(snapshot, raw);
+}
+
+/**
+ * Todo lo que decide el motor para un trabajo (lo que corre la Edge Function, edge.ts): `evaluate` más las
+ * adopciones de las copias de respaldo (§1.6). Las adopciones van primero: así lo que se le da a la cuenta encuentra
+ * la fila ya movida y no se avisa dos veces.
+ */
+export function decide(job: BadgeJob, snapshot: BadgeSnapshot, now: number | string = snapshot.now, families: readonly EvaluatorSet[] = FAMILIES): EngineDecision[] {
+  if (job.kind === 'aviso') return [];
+  const settled = evaluate(job, snapshot, now, families);
+  const { adopt, drop, cleanup } = adoptions(snapshot, settled);
+  return [...adopt, ...settled.filter((d) => d.kind === 'progress' || !drop.has(rowKey(d))), ...cleanup];
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Copias de respaldo que pasan a la cuenta (§1.6)
+
+/**
+ * Las copias de respaldo de la foto cuyo jugador ya tiene cuenta: filas de insignias de ámbito cuenta guardadas en
+ * el jugador (`player_id` + `league_id`). Cada una pasa a la cuenta (`adopt`) y su progreso de jugador se borra
+ * (la cuenta lleva el suyo). Si el jugador se vinculó él mismo (`players[].verified_only`, §1.6), solo
+ * cuenta lo verificado: pasa solo lo que la cuenta ya tiene o gana en esta corrida (se juntan); las demás
+ * provisionales se retiran y las firmes se quedan en el jugador. `drop` son las filas del jugador que ya no hay que
+ * tocar (se movieron o se retiran aquí).
+ */
+export function adoptions(
+  snapshot: BadgeSnapshot,
+  settled: readonly BadgeDecision[],
+): { adopt: AdoptDecision[]; drop: Set<string>; cleanup: BadgeDecision[] } {
+  const players = new Map((snapshot.players ?? []).map((p) => [p.id, p]));
+  // La foto marca a cada jugador que se vinculó él mismo (badge_snapshot, en todos los trabajos).
+  const verifiedOnly = (p: string) => players.get(p)?.verified_only === true;
+  const accountOf = (playerId: string | null, leagueId: string | null, key: string): string | null => {
+    if (!playerId || !leagueId || badgeDef(key)?.scope !== 'cuenta') return null;
+    const p = players.get(playerId);
+    return p?.user_id && p.league_id === leagueId ? p.user_id : null;
+  };
+  const accountRows = new Set<string>();
+  for (const a of snapshot.awards ?? []) if (a.user_id && a.status !== 'revocada') accountRows.add(rowKey(a));
+  for (const d of settled) if ((d.kind === 'award' || d.kind === 'review') && d.user_id) accountRows.add(rowKey(d));
+
+  const adopt: AdoptDecision[] = [];
+  const drop = new Set<string>();
+  const cleanup: BadgeDecision[] = [];
+  for (const a of snapshot.awards ?? []) {
+    const user = accountOf(a.player_id, a.league_id, a.badge_key);
+    if (!user || !a.player_id || !a.league_id) continue;
+    const merges = accountRows.has(rowKey({ ...a, player_id: null, user_id: user }));
+    if (verifiedOnly(a.player_id) && !merges) {
+      if (a.status === 'provisional' || a.status === 'en_revision') {
+        cleanup.push(revokeOf(a));
+        drop.add(rowKey(a));
+      }
+      continue;
+    }
+    adopt.push({
+      kind: 'adopt',
+      badge_key: a.badge_key,
+      sport: a.sport,
+      level: a.level,
+      period_key: a.period_key,
+      player_id: a.player_id,
+      league_id: a.league_id,
+      user_id: user,
+    });
+    drop.add(rowKey(a));
+  }
+  for (const p of snapshot.progress ?? []) {
+    if (!accountOf(p.player_id, p.league_id, p.badge_key)) continue;
+    cleanup.push({ kind: 'progress', player_id: p.player_id, user_id: null, league_id: p.league_id, badge_key: p.badge_key, sport: p.sport, value: p.value, target: p.target, next_level: null });
+  }
+  return { adopt, drop, cleanup };
 }
 
 // ---------------------------------------------------------------------------------------------------------

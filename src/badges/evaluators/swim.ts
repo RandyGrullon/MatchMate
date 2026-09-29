@@ -279,11 +279,14 @@ export function recordsFor(kit: Kit, meet: SnapSwimMeet): BadgeDecision[] {
   return out;
 }
 
-/** Encuentros del trabajo: el del ref (`meet:` o `event:`), o en el historial todos los finalizados de la liga. */
+/**
+ * Encuentros del trabajo: el del ref (`meet:` o `event:`), o en el historial de una liga todos sus finalizados. El
+ * historial de una cuenta (sin liga) no da medallas ni récords: los da el de la liga, con la liga entera.
+ */
 function scopedMeets(kit: Kit): SnapSwimMeet[] {
   const refs = jobEvents(kit);
   const historial = kit.job.kind === 'historial';
-  return (kit.snap.swim_meets ?? []).filter((m) => !!m.finalized_at && (historial ? !kit.job.league_id || m.league_id === kit.job.league_id : refs.has(m.event_id)));
+  return (kit.snap.swim_meets ?? []).filter((m) => !!m.finalized_at && (historial ? !!kit.job.league_id && m.league_id === kit.job.league_id : refs.has(m.event_id)));
 }
 
 export const swimMeet: Evaluator = (job, snap, now) => {

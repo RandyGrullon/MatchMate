@@ -87,8 +87,17 @@ const GENERAL: BadgeDef[] = [
       golf: 'Primera ronda',
       swimming: 'Primera prueba',
     },
-    description: '¡Arrancaste! Tu primer {unidad} de {deporte} ya cuenta.',
-    how: 'Juega tu primer {unidad} de {deporte} en una liga.',
+    // Golf y natación cuentan en femenino (ronda, prueba): «tu primera», y en natación se nada.
+    description: {
+      default: '¡Arrancaste! Tu primer {unidad} de {deporte} ya cuenta.',
+      golf: '¡Arrancaste! Tu primera ronda de golf ya cuenta.',
+      swimming: '¡Arrancaste! Tu primera prueba de natación ya cuenta.',
+    },
+    how: {
+      default: 'Juega tu primer {unidad} de {deporte} en una liga.',
+      golf: 'Juega tu primera ronda de golf en una liga.',
+      swimming: 'Nada tu primera prueba en una liga.',
+    },
     compare: 'none',
     levels: one('C'),
     evaluator: 'debut',
@@ -1510,7 +1519,7 @@ const MONTHLY: BadgeDef[] = [
     shape: 'medal',
     icon: 'sparkles',
     name: 'Tu mejor mes',
-    description: '{mes} fue tu mejor mes en {deporte}: {valor} sobre tu mejor mes anterior.',
+    description: 'En {mes} tuviste tu mejor mes en {deporte}: {valor} sobre tu mejor mes anterior.',
     how: 'Ten el mejor mes de tu historia (con 3 o más meses anteriores para comparar).',
     compare: 'none',
     levels: one('PC'),
