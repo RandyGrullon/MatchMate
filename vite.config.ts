@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -30,6 +31,11 @@ export default defineConfig({
       },
     }),
   ],
+  // jsPDF (el PDF del reporte del torneo) trae html2canvas, dompurify y canvg para doc.html() y los SVG, que no se usan:
+  // van a un archivo vacío (src/lib/report/unused.ts) y no salen en la app.
+  resolve: {
+    alias: [{ find: /^(html2canvas|dompurify|canvg)$/, replacement: fileURLToPath(new URL('./src/lib/report/unused.ts', import.meta.url)) }],
+  },
   // PGlite (Postgres en el navegador, solo para el modo local de desarrollo y demo) trae su propio WASM.
   optimizeDeps: { exclude: ['@electric-sql/pglite'] },
   build: {

@@ -46,6 +46,10 @@ import { EVENT_TOUR } from '../lib/tours';
 import { MyGamesPanel } from '../components/event/MyGamesPanel';
 import { EventBadges } from '../components/badges/LeagueBadges';
 import { EventPrizes } from '../components/event/EventPrizes';
+import { ReportButton } from '../components/tournamentReport/ReportButton';
+import { todayIn } from '../badges/rules/periods';
+import { bowlingComp } from '../prizes/catalog';
+import { bowlingFinished } from '../prizes/ready';
 import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
@@ -178,6 +182,20 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   const props = { event: ev, entries: entries.data, players: players.data };
 
+  // Reporte del torneo (PDF o Excel), para todos; el boliche se arma al tocar, con la clasificación oficial.
+  const leagueToday = todayIn(now.getTime(), league.tz);
+  const report = isTorneo
+    ? {
+        report: () =>
+          import('../lib/report/bowling').then((m) =>
+            m.bowlingReport({ lid, league, event: ev, entries: entries.data, players: players.data, today: leagueToday }),
+          ),
+        comp: bowlingComp(lid, ev),
+        disabled: entries.loading || players.loading,
+      }
+    : null;
+  const finished = isTorneo && !entries.loading && bowlingFinished(ev, entries.data, leagueToday);
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start gap-3">
@@ -211,24 +229,28 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           title="Compartir"
           icon={<Share2 className="size-5" />}
         />
+        {report && <ReportButton {...report} />}
         {isAdmin && (
           <>
-            <Button
-              variant="ghost"
-              loading={exporting}
-              onClick={async () => {
-                setExporting(true);
-                await run(async () => {
-                  const { exportEventToExcel } = await import('../lib/exportExcel');
-                  await exportEventToExcel(ev, entries.data, players.data);
-                  return true;
-                }, 'Excel descargado');
-                setExporting(false);
-              }}
-              aria-label="Exportar a Excel"
-              title="Exportar a Excel"
-              icon={<FileSpreadsheet className="size-5" />}
-            />
+            {/* La práctica sigue con su Excel de siempre (el torneo lo trae en el reporte). */}
+            {!isTorneo && (
+              <Button
+                variant="ghost"
+                loading={exporting}
+                onClick={async () => {
+                  setExporting(true);
+                  await run(async () => {
+                    const { exportEventToExcel } = await import('../lib/exportExcel');
+                    await exportEventToExcel(ev, entries.data, players.data);
+                    return true;
+                  }, 'Excel descargado');
+                  setExporting(false);
+                }}
+                aria-label="Exportar a Excel"
+                title="Exportar a Excel"
+                icon={<FileSpreadsheet className="size-5" />}
+              />
+            )}
             <Button variant="ghost" onClick={() => setEditing(true)} aria-label="Configurar" title="Configurar" icon={<Settings className="size-5" />} />
           </>
         )}
@@ -286,6 +308,9 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           }}
         />
       )}
+
+      {/* Terminado el torneo, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {report && isAdmin && finished && <ReportButton {...report} look="card" />}
 
       {/* Los premios que eligió la liga (equipos por scratch, individual con handicap): se ven desde que se crea el torneo. */}
       {isTorneo && <EventPrizes event={ev} entries={entries.data} players={players.data} now={now} />}

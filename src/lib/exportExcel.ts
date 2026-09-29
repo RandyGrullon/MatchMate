@@ -1,21 +1,20 @@
 import type { SheetData } from 'write-excel-file/browser';
 import { eventLabel } from './format';
+import { excelHead as head, type ExcelSheet } from './report/sheets';
 import { category, entryLine, individualRule, individualValue, MIN_RANK_GAMES, playerStats, rank, teamLines, teamRule, teamValue } from './stats';
 import type { BowlingEvent, Entry, Player } from './types';
 
-const head = (labels: string[]) => labels.map((value) => ({ value, fontWeight: 'bold' as const, backgroundColor: '#E8E7FB' }));
-
 /**
- * Descarga el torneo (o la práctica) en Excel, como el del torneo 2025: hoja individual y hoja de equipos.
- * Solo cuentan los juegos verificados, igual que la clasificación.
+ * Las hojas del Excel del torneo (o de la práctica), como el del torneo 2025: hoja individual y hoja de equipos (la
+ * práctica: resultados). Solo cuentan los juegos verificados, igual que la clasificación. Puro: el reporte del torneo
+ * (report/bowling.ts) usa la hoja «Equipos» como detalle.
  */
-export async function exportEventToExcel(event: BowlingEvent, entries: Entry[], players: Player[]) {
-  const { default: writeExcelFile } = await import('write-excel-file/browser');
+export function bowlingEventSheets(event: BowlingEvent, entries: readonly Entry[], players: readonly Player[]): ExcelSheet[] {
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? '(jugador borrado)';
   const isTorneo = event.type === 'torneo';
   const lines = entries.map((e) => entryLine(e, event)).filter((l) => l.games > 0);
   const games = Array.from({ length: event.games }, (_, i) => `Juego ${i + 1}`);
-  const sheets: { data: SheetData; sheet: string; columns: { width: number }[]; stickyRowsCount: number }[] = [];
+  const sheets: ExcelSheet[] = [];
 
   if (isTorneo) {
     // Cada tabla con su regla (la del dueño: individual con handicap, equipos por scratch); en negrita, lo que ordena.
@@ -86,7 +85,13 @@ export async function exportEventToExcel(event: BowlingEvent, entries: Entry[], 
     });
   }
 
-  await writeExcelFile(sheets).toFile(`${eventLabel(event)} - ${event.date}.xlsx`);
+  return sheets;
+}
+
+/** Descarga el torneo (o la práctica) en Excel. */
+export async function exportEventToExcel(event: BowlingEvent, entries: Entry[], players: Player[]) {
+  const { default: writeExcelFile } = await import('write-excel-file/browser');
+  await writeExcelFile(bowlingEventSheets(event, entries, players)).toFile(`${eventLabel(event)} - ${event.date}.xlsx`);
 }
 
 /** Qué parte de la liga se descarga: una temporada (fechas) o toda la historia. */

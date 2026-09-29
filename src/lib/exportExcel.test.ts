@@ -73,3 +73,15 @@ describe('Excel de la liga', () => {
     ]);
   });
 });
+
+describe('Excel del torneo del boliche', () => {
+  it('hojas puras: el torneo con «Individual» y «Equipos»; la práctica, «Resultados»', async () => {
+    const { bowlingEventSheets } = await import('./exportExcel');
+    const torneo = { ...ev('t1', '2026-03-10', 'torneo'), teams: { T1: { name: 'Strikers', order: 1 } } } as BowlingEvent;
+    const list = [{ ...entry('t1', 'a', [200, 210, 220]), teamId: 'T1' }, entry('t1', 'b', [150, 160, 170])];
+    const sheets = bowlingEventSheets(torneo, list, players);
+    expect(sheets.map((s) => s.sheet)).toEqual(['Individual', 'Equipos']);
+    expect(sheets[1].data.slice(1).map((r) => values(r as { value?: unknown }[]))).toEqual([[1, 'Strikers', 'Ana', 200, 210, 220, 630, 0, 630]]);
+    expect(bowlingEventSheets(ev('p1', '2026-03-03'), [entry('p1', 'a', [200, 200, 200])], players).map((s) => s.sheet)).toEqual(['Resultados']);
+  });
+});

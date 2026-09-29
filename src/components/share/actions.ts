@@ -55,8 +55,8 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Nombre del archivo: «tabla-liga-de-padel-2026-09-27.png» (sin tildes ni símbolos). */
-export function shareFileName(parts: readonly (string | null | undefined)[], date: Date = new Date()): string {
+/** Nombre del archivo: «tabla-liga-de-padel-2026-09-27.png» (sin tildes ni símbolos; `ext` para otro tipo: 'pdf', 'xlsx'). */
+export function shareFileName(parts: readonly (string | null | undefined)[], date: Date = new Date(), ext = 'png'): string {
   const slug = parts
     .filter(Boolean)
     .join(' ')
@@ -68,5 +68,5 @@ export function shareFileName(parts: readonly (string | null | undefined)[], dat
     .slice(0, 60)
     .replace(/-+$/, '');
   const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  return `${slug || 'matchmate'}-${day}.png`;
+  return `${slug || 'matchmate'}-${day}.${ext}`;
 }
