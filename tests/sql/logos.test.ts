@@ -2,8 +2,9 @@
  * Logo de ligas y torneos (20260929001000_sueltos_logos.sql y el Storage de 20260929001010_logos_supabase.sql):
  * leagues.logo_path, begin_logo_upload (la reserva de cada subida), set_league_logo, private.can_upload_logo_path y
  * private.can_remove_logo_path, la cola de Storage de lo que ya no se usa, lo que ve quien todavía no es de la liga
- * (invite_preview, invite_details, my_league_invites, league_invite_details) y la consola (admin_leagues). Las
- * políticas del bucket 'logos' se prueban en PGlite con el storage.objects mínimo del shim, como consola.test.ts.
+ * (invite_preview, invite_details, my_league_invites, league_invite_details), la consola (admin_leagues) y la cola
+ * por bucket que vacía purge-photos (purge_queue_take y purge_queue_done con p_bucket). Las políticas del bucket
+ * 'logos' se prueban en PGlite con el storage.objects mínimo del shim, como consola.test.ts.
  *
  * Mundo (fixture): liga privada del Banco (org dueño, sofi admin, luis y ana miembros; código ABCD2345) y liga
  * pública Abierta de otro. Cuentas sin liga: nuevo, otra y extra; dios es superadmin.
@@ -12,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ANON, DENIED, MIGRATIONS_DIR, TestDb, fails } from './harness';
+import { ANON, DENIED, MIGRATIONS_DIR, SERVICE, TestDb, fails } from './harness';
 import { makeWorld, type World } from './fixture';
 
 let db: TestDb;
@@ -244,6 +245,44 @@ describe('lo que ya no se usa va a la cola de Storage (bucket logos)', () => {
     expect(await reservations()).toEqual([{ path: fresh }]);
     expect(await canUpload(w.u.sofi, stale)).toBe(false);
     expect(await db.admin<{ n: number }>('select private.logo_uploads_cleanup() as n')).toEqual([{ n: 0 }]);
+  });
+
+  it('purge-photos la vacía por bucket: sin p_bucket solo las fotos (nunca un logo); con p_bucket logos, solo los logos', async () => {
+    const a = logo(w.priv);
+    const b = logo(w.priv);
+    await putLogo(w.u.sofi, w.priv, a);
+    await putLogo(w.u.sofi, w.priv, b);
+    await db.admin(`insert into private.storage_purge_queue (path) values ('foto/x.webp')`);
+    const take = (sql: string) => db.as<{ path: string }>(SERVICE, `select path from ${sql} order by path`);
+    expect(await take('public.purge_queue_take()')).toEqual([{ path: 'foto/x.webp' }]);
+    expect(await take(`public.purge_queue_take(p_bucket => 'logos')`)).toEqual([{ path: a }]);
+    // Hecho en el bucket de las fotos no saca el logo; en el suyo, sí.
+    expect(await db.as(SERVICE, 'select public.purge_queue_done($1) as n', [[a]])).toEqual([{ n: 0 }]);
+    expect(await db.as(SERVICE, `select public.purge_queue_done($1, 'logos') as n`, [[a]])).toEqual([{ n: 1 }]);
+    expect(await queued()).toEqual([]);
+    expect(await db.as(SERVICE, `select public.purge_queue_done($1, 'scoreboards') as n`, [['foto/x.webp']])).toEqual([{ n: 1 }]);
+    // Otro bucket: invalido. Y siguen siendo solo de service_role.
+    await fails(db.as(SERVICE, `select * from public.purge_queue_take(p_bucket => 'otro')`), 'invalido');
+    await fails(db.as(SERVICE, `select public.purge_queue_done('{}', 'otro')`), 'invalido');
+    for (const sql of [`select * from public.purge_queue_take(p_bucket => 'logos')`, `select public.purge_queue_done('{}', 'logos')`]) {
+      await fails(db.as(w.u.dios, sql), DENIED);
+      await fails(db.asAnon(sql), DENIED);
+    }
+  });
+
+  it('un logo que es otra vez el de una liga no se entrega (sale de la cola); una foto con esa ruta no lo saca de la cola', async () => {
+    const a = logo(w.priv);
+    await putLogo(w.u.sofi, w.priv, a);
+    await db.admin(`insert into private.storage_purge_queue (path, bucket) values ($1, 'logos')`, [a]);
+    expect(await db.as(SERVICE, `select path from public.purge_queue_take(p_bucket => 'logos')`)).toEqual([]);
+    expect(await queued()).toEqual([]);
+    // photo_unqueue_purge solo saca rutas del bucket de las fotos.
+    const id = randomUUID();
+    const b = `${w.priv}/${id}.webp`;
+    await db.admin(`insert into private.storage_purge_queue (path, bucket) values ($1, 'logos')`, [b]);
+    await db.admin('insert into public.photos (id, league_id, path) values ($1, $2, $3)', [id, w.priv, b]);
+    expect(await queued()).toEqual(sorted([b]));
+    expect(await db.as(SERVICE, `select path from public.purge_queue_take(p_bucket => 'logos')`)).toEqual([{ path: b }]);
   });
 });
 

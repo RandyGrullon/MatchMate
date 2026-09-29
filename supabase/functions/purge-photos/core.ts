@@ -7,17 +7,26 @@
  * Cada llamada (la hace pg_net una vez al día desde el cron 'mm-limpiar-fotos', 20260929000510_avisos_telefono_supabase.sql):
  * 1. exige la cabecera `x-cron-secret` igual al secreto CRON_SECRET (el mismo que está en Vault como 'cron_secret');
  *    la función va con verify_jwt = false;
- * 2. toma hasta 500 rutas de private.storage_purge_queue (`purge_queue_take`, solo service_role: fotos borradas, también
- *    al borrar un evento o una liga), las borra del bucket 'scoreboards' con la API de Storage (de a 100) y las saca de
- *    la cola (`purge_queue_done`). Las de un grupo que Storage no aceptó se quedan: se vuelven a tomar al otro día (a los
- *    10 intentos la base deja de darlas);
- * 3. pide los archivos huérfanos (`storage_orphans`: en el bucket hace más de 30 días y sin fila en photos) y los borra.
+ * 2. vacía private.storage_purge_queue bucket por bucket (`purge_queue_take` y `purge_queue_done`, solo service_role):
+ *    primero 'scoreboards' (fotos borradas, también al borrar un evento o una liga) y después 'logos' (el logo cambiado
+ *    o quitado, el de una liga borrada, las reservas sin usar; 20260929001000_sueltos_logos.sql). De cada uno toma
+ *    hasta 500 rutas, las borra de ESE bucket con la API de Storage (de a 100) y las saca de la cola. Las de un grupo
+ *    que Storage no aceptó se quedan: se vuelven a tomar al otro día (a los 10 intentos la base deja de darlas). Las
+ *    fotos se piden sin `p_bucket` (la base lo pone en 'scoreboards'): así sirve igual con una base de antes de 001000;
+ *    ahí la llamada de los logos falla (se registra) y las fotos se borran igual;
+ * 3. pide los archivos huérfanos (`storage_orphans`: en 'scoreboards' hace más de 30 días y sin fila en photos) y los
+ *    borra. Los logos no tienen huérfanos: cada subida se reserva antes y lo que no se usa entra a la cola.
  *
  * El registro va en JSON (una línea por cosa que pasó y el resumen al final), solo con números: nunca rutas ni ids.
  */
 
 /** El bucket de las fotos del marcador (20260926001100_storage_supabase.sql). */
 export const BUCKET = 'scoreboards';
+/** El bucket público de los logos de las ligas (20260929001010_logos_supabase.sql). */
+export const LOGOS_BUCKET = 'logos';
+/** Los buckets de la cola, en el orden en que se vacían (la cola dice de cuál es cada ruta). */
+export const PURGE_BUCKETS = [BUCKET, LOGOS_BUCKET] as const;
+export type PurgeBucket = (typeof PURGE_BUCKETS)[number];
 /** Rutas por llamada, de la cola y de huérfanos (la base da de 1 a 1000). */
 export const TAKE_LIMIT = 500;
 /** Rutas por cada DELETE a Storage. */
@@ -46,10 +55,12 @@ export interface PurgeDeps {
 
 /** Lo que devuelve cada llamada (y lo que va al registro). */
 export interface PurgeCounts {
-  /** Rutas tomadas de la cola. */
+  /** Rutas tomadas de la cola (de los dos buckets). */
   queued: number;
-  /** De esas, borradas del bucket (o que ya no estaban) y sacadas de la cola. */
+  /** De esas, borradas de su bucket (o que ya no estaban) y sacadas de la cola. */
   purged: number;
+  /** De las borradas, cuántas eran logos. */
+  logos: number;
   /** Huérfanos que dio la base. */
   orphans: number;
   /** De esos, borrados del bucket. */
@@ -124,16 +135,21 @@ export function chunk<T>(items: readonly T[], size = REMOVE_CHUNK): T[][] {
 }
 
 /**
- * Borra `paths` del bucket de a `size`, un grupo a la vez. Devuelve las que salieron bien y cuántas no. Nunca lanza:
- * un grupo que falla no frena a los demás.
+ * Borra `paths` del bucket (`bucket`, las fotos si no se dice) de a `size`, un grupo a la vez. Devuelve las que
+ * salieron bien y cuántas no. Nunca lanza: un grupo que falla no frena a los demás.
  */
-export async function removeInChunks(storage: StorageClient, paths: readonly string[], size = REMOVE_CHUNK): Promise<{ removed: string[]; failed: number; statuses: (number | null)[] }> {
+export async function removeInChunks(
+  storage: StorageClient,
+  paths: readonly string[],
+  size = REMOVE_CHUNK,
+  bucket: PurgeBucket = BUCKET,
+): Promise<{ removed: string[]; failed: number; statuses: (number | null)[] }> {
   const removed: string[] = [];
   const statuses: (number | null)[] = [];
   let failed = 0;
   for (const group of chunk(paths, size)) {
     try {
-      await storage.remove(BUCKET, group);
+      await storage.remove(bucket, group);
       removed.push(...group);
     } catch (e) {
       failed += group.length;
@@ -144,7 +160,7 @@ export async function removeInChunks(storage: StorageClient, paths: readonly str
 }
 
 export function emptyPurgeCounts(): PurgeCounts {
-  return { queued: 0, purged: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
+  return { queued: 0, purged: 0, logos: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
 }
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -192,29 +208,34 @@ export async function handlePurgeRequest(req: Request, deps: PurgeDeps): Promise
   const counts = emptyPurgeCounts();
   let ok = true;
 
-  // 1. La cola de lo borrado.
-  try {
-    const { paths, skipped } = pathsOf(await db.rpc<unknown>('purge_queue_take', { p_limit: input.limit }));
-    counts.queued = paths.length + skipped;
-    counts.failed += skipped;
-    if (paths.length) {
-      const r = await removeInChunks(storage, paths);
-      counts.failed += r.failed;
-      if (r.failed) log('warn', 'storage', { failed: r.failed, statuses: r.statuses });
-      if (r.removed.length) {
-        // Si no se puede avisar, se vuelven a tomar mañana: borrar otra vez lo que ya no está no es error.
-        try {
-          await db.rpc<number>('purge_queue_done', { p_paths: r.removed });
-          counts.purged = r.removed.length;
-        } catch (e) {
-          ok = false;
-          log('error', 'queue_done', { removed: r.removed.length, status: statusOf(e) });
+  // 1. La cola de lo borrado, bucket por bucket: cada ruta se borra solo del bucket del que la dio la base.
+  for (const bucket of PURGE_BUCKETS) {
+    // Las fotos, sin p_bucket (la base pone 'scoreboards'): también con una base de antes de los logos.
+    const which = bucket === BUCKET ? {} : { p_bucket: bucket };
+    try {
+      const { paths, skipped } = pathsOf(await db.rpc<unknown>('purge_queue_take', { p_limit: input.limit, ...which }));
+      counts.queued += paths.length + skipped;
+      counts.failed += skipped;
+      if (paths.length) {
+        const r = await removeInChunks(storage, paths, REMOVE_CHUNK, bucket);
+        counts.failed += r.failed;
+        if (r.failed) log('warn', 'storage', { bucket, failed: r.failed, statuses: r.statuses });
+        if (r.removed.length) {
+          // Si no se puede avisar, se vuelven a tomar mañana: borrar otra vez lo que ya no está no es error.
+          try {
+            await db.rpc<number>('purge_queue_done', { p_paths: r.removed, ...which });
+            counts.purged += r.removed.length;
+            if (bucket === LOGOS_BUCKET) counts.logos += r.removed.length;
+          } catch (e) {
+            ok = false;
+            log('error', 'queue_done', { bucket, removed: r.removed.length, status: statusOf(e) });
+          }
         }
       }
+    } catch (e) {
+      ok = false;
+      log('error', 'take', { bucket, status: statusOf(e) });
     }
-  } catch (e) {
-    ok = false;
-    log('error', 'take', { status: statusOf(e) });
   }
 
   // 2. Los archivos sin fila en photos.

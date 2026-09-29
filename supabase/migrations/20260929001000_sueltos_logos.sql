@@ -19,14 +19,20 @@
 --    reservada (o quita el logo) y devuelve el anterior para que el teléfono lo borre de Storage. El archivo que deja
 --    de usarse (cambiado, quitado, de una liga borrada o una reserva que no se usó en un día) va a
 --    private.storage_purge_queue con bucket 'logos'; mientras está ahí cualquier cuenta sin bloquear lo puede borrar
---    (private.can_remove_logo_path). Lo que ve quien todavía no es de la liga trae el logo: invite_preview (columna
+--    (private.can_remove_logo_path) y, si no, lo borra la Edge Function purge-photos: la cola de
+--    20260929000500_avisos_telefono.sql pasa a ser por bucket (purge_queue_take y purge_queue_done con p_bucket,
+--    'scoreboards' por defecto). Lo que ve quien todavía no es de la liga trae el logo: invite_preview (columna
 --    logo_path), invite_details, my_league_invites y league_invite_details (logoPath), y la consola (admin_league_row).
 --
+-- Corre después de las de la entrega 5 (000500 a 000900): ninguna cambió las funciones sociales, de invitaciones o
+-- de la consola que se redefinen aquí.
 -- Redefine (create or replace, desde su última versión): private.social_items, social_likes, social_games,
 -- forget_user y admin_league_row; public.public_profile (20260929000200_invitaciones.sql), profile_stats,
 -- set_game_like, social_notices (20260928000200_social.sql), invite_details (20260927001300_liga.sql),
--- my_league_invites y league_invite_details (20260929000200_invitaciones.sql). invite_preview se borra y se crea
--- de nuevo (devuelve una columna más). Contrato del cliente: src/lib/data/solo.ts y src/lib/logos.ts.
+-- my_league_invites y league_invite_details (20260929000200_invitaciones.sql); private.photo_unqueue_purge
+-- (20260929000500_avisos_telefono.sql: solo saca de la cola las rutas del bucket de las fotos). invite_preview,
+-- purge_queue_take y purge_queue_done se borran y se crean de nuevo (una columna o un argumento más). Contrato del
+-- cliente: src/lib/data/solo.ts y src/lib/logos.ts.
 
 -- =====================================================================
 -- 1. Todos los deportes abiertos
@@ -959,6 +965,75 @@ begin
   select count(*)::integer into n from gone;
   return n;
 end $$;
+
+-- ---------- La cola de Storage con dos buckets (la vacía la Edge Function purge-photos) ----------
+-- 20260929000500_avisos_telefono.sql la hizo solo para las fotos: purge_queue_take / purge_queue_done no sabían de
+-- buckets y purge-photos borraba todo de 'scoreboards' (un logo se habría sacado de la cola sin borrarse nunca). Ahora
+-- cada llamada es de un bucket: p_bucket, 'scoreboards' si no se dice (la versión de purge-photos de antes sigue igual
+-- y nunca toma un logo). Cambian los argumentos: se borran y se crean de nuevo, otra vez solo para service_role.
+-- storage_orphans sigue siendo solo de 'scoreboards' (los logos no tienen huérfanos: cada subida se reserva antes).
+
+-- Una foto que se vuelve a registrar con la misma ruta sale de la cola, pero solo del bucket de las fotos.
+create or replace function private.photo_unqueue_purge() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  delete from private.storage_purge_queue q where q.path = new.path and q.bucket = 'scoreboards';
+  return null;
+end $$;
+
+-- Toma hasta p_limit rutas (1–1000; 500 por defecto) del bucket p_bucket ('scoreboards' o 'logos'; 'invalido' si es
+-- otro) para borrarlas de ese bucket. Antes saca las que se volvieron a usar y nunca se borran: una foto con fila otra
+-- vez en public.photos, un logo que es otra vez el de una liga.
+drop function public.purge_queue_take(integer);
+create function public.purge_queue_take(p_limit integer default 500, p_bucket text default 'scoreboards')
+returns table (path text)
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p_bucket is null or p_bucket not in ('scoreboards', 'logos') then
+    perform private.fail('invalido');
+  end if;
+  if p_bucket = 'scoreboards' then
+    delete from private.storage_purge_queue q
+     where q.bucket = 'scoreboards' and exists (select 1 from public.photos p where p.path = q.path);
+  else
+    delete from private.storage_purge_queue q
+     where q.bucket = 'logos' and exists (select 1 from public.leagues l where l.logo_path = q.path);
+  end if;
+  return query
+  with picked as (
+    select q.path
+      from private.storage_purge_queue q
+     where q.bucket = p_bucket and q.attempts < 10 and (q.claimed_at is null or q.claimed_at < now() - interval '10 minutes')
+     order by q.queued_at, q.path
+     limit private.clamp_int(p_limit, 1, 1000, 500)
+       for update of q skip locked
+  )
+  update private.storage_purge_queue q set claimed_at = now(), attempts = q.attempts + 1
+    from picked x
+   where q.path = x.path
+  returning q.path;
+end $$;
+
+-- Las rutas ya borradas de ese bucket salen de la cola (las de otro bucket con la misma ruta se quedan). Devuelve
+-- cuántas.
+drop function public.purge_queue_done(text[]);
+create function public.purge_queue_done(p_paths text[], p_bucket text default 'scoreboards') returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_n integer;
+begin
+  if p_bucket is null or p_bucket not in ('scoreboards', 'logos') then
+    perform private.fail('invalido');
+  end if;
+  delete from private.storage_purge_queue q where q.path = any (coalesce(p_paths, '{}')) and q.bucket = p_bucket;
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+revoke execute on function public.purge_queue_take(integer, text) from public, anon, authenticated;
+revoke execute on function public.purge_queue_done(text[], text) from public, anon, authenticated;
+grant execute on function public.purge_queue_take(integer, text) to service_role;
+grant execute on function public.purge_queue_done(text[], text) to service_role;
 
 -- Igual que en 20260926000500_rpc.sql y además logo_path. Cambia lo que devuelve: se borra y se crea de nuevo.
 drop function public.invite_preview(text);

@@ -343,8 +343,10 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   30 por día) devuelve el anterior para borrarlo de Storage. Lo que deja de usarse (el anterior, el de una liga
   borrada, las reservas sin usar de un día: `private.logo_uploads_cleanup`, a diario con pg_cron) va a
   `private.storage_purge_queue` con bucket `logos`, y mientras está ahí cualquier cuenta sin bloquear lo puede borrar
-  (`private.can_remove_logo_path`). Lo que ve quien todavía no es de la liga trae el logo: `invite_preview` (columna
-  `logo_path`), `invite_details`, `my_league_invites`, `league_invite_details` y la consola (`admin_league_row`).
+  (`private.can_remove_logo_path`); si nadie lo borra, lo borra la Edge Function `purge-photos` al otro día (la cola
+  es por bucket: `purge_queue_take` / `purge_queue_done` con `p_bucket`, las fotos si no se dice). Lo que ve quien
+  todavía no es de la liga trae el logo: `invite_preview` (columna `logo_path`), `invite_details`,
+  `my_league_invites`, `league_invite_details` y la consola (`admin_league_row`).
 - Cliente `src/lib/logos.ts`: `compressLogo` (en `src/lib/image.ts`: el cuadrado del centro a 256 px, WebP o JPEG,
   siempre sobre blanco para que un logo transparente se vea en claro y en oscuro, ≤ 120 kB), `uploadLeagueLogo`
   (reserva, sube, `set_league_logo`, borra el anterior), `removeLeagueLogo` y `useLogo` (URL pública con

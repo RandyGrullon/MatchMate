@@ -352,7 +352,7 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Fotos (Storage) 75 %');
     expect(out).toContain('768 MB de 1 GB');
     expect(out).toContain('Último aviso de espacio');
-    expect(out).toContain('Fotos por quitar del bucket 12');
+    expect(out).toContain('Fotos y logos por quitar de Storage 12');
     expect(html('/superadmin/sistema')).toContain('aria-valuetext="75 % (768 MB de 1 GB)"');
   });
 

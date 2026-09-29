@@ -149,7 +149,7 @@ export interface AdminStorageUsage {
   storagePct: number;
   /** La última alerta de espacio que salió (ISO), o null. */
   lastAlertAt: string | null;
-  /** Fotos borradas que faltan por quitar del bucket (las quita purge-photos cada día). */
+  /** Fotos y logos que ya no se usan y faltan por quitar de Storage (los quita purge-photos cada día). */
   purgePending: number;
 }
 
@@ -726,7 +726,7 @@ export function useAdminScanStats(enabled: boolean, days: 30 | 90): Live<AdminSc
   return useAdminQuery(enabled ? keys.adminScan(days) : null, () => fetchAdminScanStats(days), null, [tags.admin, tags.adminStats]);
 }
 
-/** Espacio del plan gratis (base y archivos) con la última alerta y las fotos por quitar del bucket. */
+/** Espacio del plan gratis (base y archivos) con la última alerta y lo que falta por quitar de Storage. */
 export function useAdminStorageUsage(enabled: boolean): Live<AdminStorageUsage | null> {
   return useAdminQuery(enabled ? keys.adminStorage : null, fetchAdminStorageUsage, null, [tags.admin, tags.adminSystem, tags.adminStats]);
 }

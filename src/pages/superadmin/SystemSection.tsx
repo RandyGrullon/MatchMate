@@ -317,7 +317,7 @@ function StorageUsage({ usage, local }: { usage: AdminStorageUsage; local: boole
             'Ninguno'
           )}
         </Fact>
-        <Fact label="Fotos por quitar del bucket">{fmtNum(usage.purgePending)}</Fact>
+        <Fact label="Fotos y logos por quitar de Storage">{fmtNum(usage.purgePending)}</Fact>
       </dl>
     </div>
   );
