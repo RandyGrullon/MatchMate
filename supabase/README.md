@@ -48,6 +48,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929001120_insignias_creador.sql` | Insignias de la liga, el creador (ver «Insignias de la liga (creador)» en RPC): `leagues.badge_makers`, `league_members.badge_maker`, `league_badges` (diseños), `league_badge_awards` (otorgamientos), el filtro de texto (`private.badge_text_ok` con `private.blocked_terms`), los reportes (`private.badge_reports`), su RLS y 16 RPC. Redefine `private.merge_badges` (también las de liga), `profile_badges` y `badge_notices` (+ las del creador), `remove_member` (un admin no saca a quien diseña insignias) y la vista `memberships` (+ `badge_maker`) |
 | `migrations/20260929001180_insignias_temporadas.sql` | Insignias de temporada: solo hace algo si existe `public.seasons` (`…000700_temporadas.sql`, que corre antes: siempre se aplica): redefine `private.badge_season_rows` (temporadas y premios para la foto) y encola `temporada` cuando una temporada queda `closed` |
 | `migrations/20260929001190_insignias_cron_supabase.sql` | **Solo Supabase**: pg_cron `mm-insignias` cada 10 min (`private.cron_badges()`: avisos y, si hay cola, la Edge Function `insignias` con pg_net) y `mm-insignias-diario` a las 04:30 UTC (`private.badges_daily(now())`). Quita las dos por nombre antes de programarlas (`tests/sql/insignias-funcion.test.ts` lo corre contra un pg_cron de mentira) |
+| `migrations/20260929001200_premios_torneo.sql` | Premios del torneo (ver «Premios del torneo» en RPC y `docs/premios-torneo.md`): `tournament_prizes` (una premiación por competencia: evento, torneo de golf o playoff) y `tournament_prize_slots` (la insignia de cada lugar del podio), `league_badge_awards.prize_slot_id` y `prize_verified` con el índice único `league_badge_awards_once` también por lugar premiado, su RLS, tombstones y tiempo real, y 4 RPC (`set_tournament_prizes`, `tournament_podium`, `deliver_tournament_prizes`, `close_tournament_prizes`). El servidor calcula el podio del boliche (equipos por scratch, individual con handicap: la regla efectiva del evento, como `src/lib/stats.ts`), de los cuadros de raqueta, del torneo relámpago y de los playoffs. Redefine `award_league_badge` (sus cupos y topes no cuentan los premios), `private.merge_badges` (dos premios de lugares distintos se quedan los dos), `private.badge_link_guard` (no retira un premio con el orden verificado), `revoke_league_badge_award` (un premio cerrado solo lo quita el dueño) y `create_event` (un torneo nuevo del boliche nace con `individual_rank_by = 'hcp'` y `team_rank_by = 'scratch'`) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -92,6 +93,7 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
 | `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s), demasiados códigos malos, más de 5 ligas o torneos nuevos por día (20 cada 30 días) o demasiados avisos | `rate_limited` |
 | `P0001` | `texto_bloqueado` · `a_si_mismo` · `cupo_lleno` · `ya_dada` · `no_activa` · `limite: activas` · `limite: total` · `limite: jugador` · `limite: liga` | Insignias de la liga (ver «Insignias de la liga (creador)») | `validation` |
+| `P0001` | `ya_entregado` · `sin_resultado` · `podio_cambio` | Premios del torneo (ver «Premios del torneo»); `cerrado` también: premios cerrados o con más de 14 días, solo el dueño corrige | `validation` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
 | `23503` | | FK: el id no existe o es de otra liga | `validation` |
 | `23505` | | Único repetido (p. ej. un `p_id` que ya existe) | `conflict` |
@@ -227,7 +229,8 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 `badge_awards` deja tombstone solo si es de una liga (`league_id` no null: las fusiones de jugadores).
 `league_badges` y `league_badge_awards` dejan tombstone al borrarse (un diseño que nunca se dio, o en cascada al
-borrar el jugador).
+borrar el jugador). `tournament_prizes` y `tournament_prize_slots` también (quitar los premios, o en cascada al borrar
+el evento, el torneo de golf, el playoff o el diseño que nunca se dio).
 
 ### `badge_awards` — las propias; de la liga visible, provisionales o firmes y no ocultas (admins: también ocultas); superadmin todas
 Insignias automáticas otorgadas (las escribe el motor). `id`, `badge_key` (`^[a-z][a-z0-9_]{1,39}$`, del catálogo
@@ -262,11 +265,29 @@ Diseños del creador de insignias de la liga (§5 de `docs/insignias.md`). `id`,
 ### `league_badge_awards` — liga visible: vigentes y no ocultas; el jugador: también las suyas ocultas; admins de la liga y superadmin: todas (también retiradas)
 Otorgamientos del creador. Se leen **solo estas columnas** (permiso por columna; pedir otra o `*` da `42501`):
 `id`, `badge_id`, `league_id`, `player_id`, `team_id` (con `by_team`; null si se borró el equipo), `period` (≤10),
-`division` (≤16), `awarded_at`, `revoked_at` (retirada: deshacer, el dueño o una fusión), `hidden`, `updated_at`.
-`note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` salen por `league_badge_holders` (nota: el jugador y
-los admins; lo demás, admins), `profile_badges` y `badge_notices` (lo propio). Única vigente por
-`(badge_id, player_id, period, division)`. Nunca cuentan en las oficiales, la rareza ni el total del perfil.
+`division` (≤16), `awarded_at`, `revoked_at` (retirada: deshacer, el dueño o una fusión), `hidden`, `updated_at`,
+`prize_slot_id` (…1200: el lugar premiado de un torneo del que salió; null = la dio una persona; sin FK: si el torneo
+se borra, la insignia se queda), `prize_verified` (…1200: el servidor comprobó el orden; no se lee desde la app). `note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` salen por
+`league_badge_holders` (nota: el jugador y los admins; lo demás, admins), `profile_badges` y `badge_notices` (lo
+propio). Única vigente por `(badge_id, player_id, period, division, prize_slot_id)` (el mismo «Campeón · OCT 2026» se
+gana en dos torneos, o por equipos y en individual del mismo). Nunca cuentan en las oficiales, la rareza ni el total del
+perfil. Sincroniza por `(league_id, updated_at)`.
+
+### `tournament_prizes` — liga visible (también sin cuenta en una pública)
+Premios del torneo (…1200): una premiación por competencia. `id`, `league_id`, `scope` (`evento`|`golf_torneo`|
+`playoff`) con exactamente una de `event_id`, `golf_tournament_id`, `playoff_id` (única por competencia; borrar la
+competencia la borra), `period` (≤10: la cinta de las insignias que se entregan; por defecto el mes, «OCT 2026»),
+`closed_at`, `closed_by` («Cerrar premios»: desde ahí solo el dueño corrige), `created_by`, `created_at`, `updated_at`.
 Sincroniza por `(league_id, updated_at)`.
+
+### `tournament_prize_slots` — liga visible (también sin cuenta en una pública)
+Un lugar premiado. `id`, `prize_id`, `league_id`, `category` (`equipo`|`individual`|`pareja`), `division` (`''`; raqueta:
+id de la categoría del torneo; natación `F`|`M`; golf `gross`|`neto`), `label` (≤16: lo que se copia a
+`league_badge_awards.division`, p. ej. «Categoría A», «Femenino», «Gross»), `place` (1–3), `badge_id` (un diseño de
+`league_badges` de la liga; si el diseño se borra antes de darse, el lugar se va con él), `winners` (foto para mostrar,
+`[{ref, name, teamId, players: [id]}]`), `verified` (el servidor comprobó el orden al entregar), `delivered_at` (la
+primera entrega: de ahí corren los 14 días), `delivered_by`, `updated_at`. Único por `(prize_id, category, division,
+place)`. Sin FK a `players`. Sincroniza por `(league_id, updated_at)`.
 
 ### `league_invites` — la cuenta invitada, quien invitó y los admins de la liga (el superadmin, todas)
 `id`, `league_id`, `user_id` (la cuenta invitada), `invited_by` (null si se borró su cuenta), `status`
@@ -415,7 +436,7 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
 | RPC | Quién | Qué hace |
 |---|---|---|
-| `create_event(p_league, p_type, p_date date, p_name='', p_games=3, p_hcp_base=0, p_hcp_percent=0, p_individual_rank_by=null, p_team_rank_by=null, p_category_cuts int[]={200,175,160}, p_team_size=0, p_announcement='', p_start_time time=null, p_config jsonb='{}', p_id=null) → uuid` | admin | Boliche: tipo `torneo`\|`practica`, 1–10 juegos, cortes 0–300. |
+| `create_event(p_league, p_type, p_date date, p_name='', p_games=3, p_hcp_base=0, p_hcp_percent=0, p_individual_rank_by=null, p_team_rank_by=null, p_category_cuts int[]={200,175,160}, p_team_size=0, p_announcement='', p_start_time time=null, p_config jsonb='{}', p_id=null) → uuid` | admin | Boliche: tipo `torneo`\|`practica`, 1–10 juegos, cortes 0–300. Un torneo del boliche sin regla escrita nace con `individual_rank_by = 'hcp'` y `team_rank_by = 'scratch'` (…1200: la regla del dueño, lo mismo que ya se leía con null; se cambia con `update_event`). |
 | `update_event(p_event, p_patch) → void` | admin | Claves: `type, name, date, start_time, games, hcp_base, hcp_percent, individual_rank_by, team_rank_by, category_cuts, team_size, announcement, config`. |
 | `delete_event(p_event) → void` | admin | Con participaciones, envíos, fotos, equipos, «voy», en vivo y social. |
 | `add_practice_game(p_event, p_expected int=null, p_op_id=null) → int` | jugador de la liga o admin; solo prácticas | +1 juego (hasta 10: `invalido`). `p_expected` = los juegos que veía el teléfono: si otro ya sumó, no suma otra vez. Devuelve los juegos. Torneo: `no_permitido`. |
@@ -615,7 +636,7 @@ plural). Error: `texto_bloqueado` («Ese texto no se puede usar.»). El teléfon
 | `archive_league_badge(p_id, p_archived boolean) → text` | `can_badges` | `archivada` o `activa` (`limite: activas`). Escondida: `no_permitido`. |
 | `delete_league_badge(p_id) → void` | `can_badges` | Solo si nunca se dio (`ya_dada`: se archiva). Deja tombstone. |
 | `award_league_badge(p_badge, p_players uuid[], p_team uuid=null, p_period text=null, p_division text=null, p_note text=null, p_notify boolean=true) → {awards, notified}` | `can_badges` | Da un diseño `activa` (`no_activa`) a 1–30 jugadores de la liga (`no_existe`; repetidos cuentan uno). `by_team`: `p_team` obligatorio (equipo de la liga) y los jugadores de su plantilla (`team_players`); sin `by_team`, `p_team` null (`invalido`). `p_period` null = el `period_text` del diseño (`''` = sin periodo; ≤10), `p_division` ≤16, `p_note` ≤140. Su propio jugador: `a_si_mismo` («No puedes darte insignias a ti mismo. Pídele a otro admin o al dueño.»). Ya la tiene vigente con ese periodo y división: `duplicado`. Cupo por insignia, periodo y división: Única 1, Selecta 3, Abierta 20 jugadores (con `by_team`, equipos): `cupo_lleno`. 15 vigentes por jugador, liga y año (zona de la liga): `limite: jugador`. 60 por liga en 30 días: `limite: liga`; 60 por cuenta por hora: `rate_limited` (esos dos cuentan también las retiradas). `p_notify`: push a cada jugador con cuenta no bloqueada, nunca en ligas con menores: «¡Tienes una insignia nueva!» · «Liga Los Pinos te dio “Campeón · TEMP 2026”. Tócala para verla.», `url` `/u/<cuenta>?tab=insignias`, `tag` `insignia:<otorgamiento>`. `awards`: `[{id, badgeId, leagueId, playerId, teamId, period, division, note, awardedBy, awardedAt, hidden, revokedAt}]` en el orden de `p_players`; `notified` = jugadores avisados. |
-| `revoke_league_badge_award(p_award, p_reason text=null) → void` | dueño o superadmin, cuando sea; quien la dio, en 24 h y con `can_badges` | «Deshacer» y «Quitar»: `revoked_at`, `revoked_by`, motivo privado ≤140. Sin push (si el push aún no salió, se quita de la cola). Ya retirada: nada. El superadmin que no es el dueño: auditoría `revoke_league_badge`. |
+| `revoke_league_badge_award(p_award, p_reason text=null) → void` | dueño o superadmin, cuando sea; quien la dio, en 24 h y con `can_badges` | «Deshacer» y «Quitar»: `revoked_at`, `revoked_by`, motivo privado ≤140. Sin push (si el push aún no salió, se quita de la cola). Ya retirada: nada. El superadmin que no es el dueño: auditoría `revoke_league_badge`. Un premio del torneo con la premiación cerrada o el lugar entregado hace más de 14 días: solo el dueño (`cerrado`, …1200). |
 | `set_league_badge_hidden(p_award, p_hidden boolean) → boolean` | el jugador (su cuenta) o superadmin (auditoría `hide_league_badge_award`) | Ocultar o mostrar en su perfil. `invalido` (null). |
 | `mark_league_badges_seen(p_ids uuid[]) → int` | el jugador | Hasta 50 (`invalido`); las ajenas, retiradas o vistas se ignoran. |
 | `league_badge_holders(p_badge) → {badge, canGive, awards}` | quien ve la liga (una escondida: solo sus admins; si no, `no_existe`) | «Quién la tiene». `badge`: `LeagueBadge` (+ `openReports` para los admins). `canGive`: puede darla ahora. `awards`: `[{id, playerId, playerName, userId, teamId, teamName, period, division, awardedAt, hidden, revokedAt, note, awardedBy, awardedByName, revokedBy, revokeReason, canUndo}]`, más nuevas primero. Admins y superadmin: todas (ocultas y retiradas) con todo. Los demás: vigentes y no ocultas (y las suyas ocultas); `note` solo en las suyas; `awardedBy`, `awardedByName`, `revokedBy` y `revokeReason` null. `canUndo`: puede deshacerla o retirarla. |
@@ -633,6 +654,68 @@ ocultas. La propia: todas las vigentes. Nunca las de un diseño escondido. Al ju
 se retira con motivo `fusión` (sin push); todas pasan al jugador que queda. `export_my_data` saca `league_badge_awards`
 de sus jugadores (la encuentra sola por `player_id`). **Ojo:** esta migración redefine `profile_badges`, `badge_notices`,
 `remove_member`, `private.merge_badges` y la vista `memberships` (misma firma): un cambio a esas va aquí o después.
+
+### Premios del torneo
+
+`20260929001200_premios_torneo.sql` (pruebas: `tests/sql/premios-torneo.test.ts`; diseño: `docs/premios-torneo.md`).
+Alguien de la liga elige qué diseño del creador (`league_badges`) se lleva cada lugar del podio de una competencia y,
+cuando termina, un admin lo entrega: las insignias van a `league_badge_awards` con `prize_slot_id` (perfil, avisos,
+push, ocultar, fusiones y «Descargar mis datos» como cualquier insignia de la liga). Un premio no es un regalo: no usa
+el cupo del diseño (Única/Selecta/Abierta) ni los topes del creador (15, 60, 60). **Elegir** = `can_badges`;
+**entregar**, ver el podio y cerrar = admin de la liga o `can_badges`. Todas con sesión y `require_uid`. Topes: 24
+lugares por competencia, 3 unidades por lugar, 100 jugadores por unidad, 300 por llamada; 30 llamadas por hora por cuenta
+entre guardar y entregar (`rate_limited`).
+
+Qué premia cada competencia (`private.prize_allowed`; `kind` de `tournament_podium`):
+
+| Competencia (`scope`, ref) | `kind` | Categorías (`division`) | Orden |
+|---|---|---|---|
+| Boliche, evento `torneo` (`evento`) | `bowling` | `equipo` (si el evento tiene equipos o `team_size > 0`) e `individual` | servidor: equipos por la suma del scratch (o del total con handicap si `team_rank_by = 'hcp'`), individual por el total con handicap (o scratch si `individual_rank_by = 'scratch'`); con `hcp_percent = 0`, todo scratch. Solo juegos con foto (como `entryLine`); en un equipo reciben los que jugaron. Desde el día del torneo |
+| Raqueta, torneo por categorías (`evento`, type `torneo`) | `racket_tourney` | por categoría de `config.categories` (`division` = su id): `pareja` si la liga juega en dobles (pádel siempre; si no, `rules.match.doubles`, y sin eso pickleball sí y tenis no), si no `individual` | servidor: la final `<cat>-R<rondas>-1` (rondas de `seeds`), 2.º quien la perdió (por W.O.: vacío), 3.º el ganador de `<cat>-P3` o, sin P3, los dos semifinalistas |
+| Noches de americano o mexicano y social de pickleball (`evento`) | `racket_night` | `individual` | teléfono; desde el día de la noche |
+| Torneo relámpago de baloncesto, fútbol o sala (`evento` de una liga `kind = 'torneo'`: solo el del torneo, el primero de tipo `torneo` de la liga) | `team_ko` | `equipo` | servidor: la final (único partido de la ronda `R<n>` más alta de la liga, sin playoff ni anulados) y el ganador de `P3` |
+| Playoff (`playoff`, `playoffs.id`) | `playoff` | `equipo` | servidor: campeón, rival de la final y los que perdieron la ronda anterior; con `status = 'finished'` |
+| Golf, ronda suelta (`evento`) o torneo de varias rondas (`golf_torneo`, `golf_tournaments.id`) | `golf` | `individual` con `''` (la competencia de la ronda), `gross` y `neto` | teléfono; todas las rondas `cerrada` |
+| Natación, encuentro o torneo (`evento`; `control` no) | `swim` | `equipo` (club) e `individual` con `''`, `F` y `M` | teléfono; encuentro finalizado |
+
+Unidades (`ref`, texto): `t:<teams.id>` (equipo del evento de boliche, equipo o pareja de temporada; el otorgamiento
+lleva ese `team_id`), `p:<players.id>`, `c:<swim_clubs.id>` y `s:<match_id>:<lado>` (lado de raqueta sin pareja y con
+más de un jugador). Un equipo de temporada (relámpago, playoffs) son quienes jugaron de su lado en partidos que cuentan
+más su plantilla, pero solo quien ya estaba cuando quedó el resultado de su último partido (`team_players.created_at` ≤
+propuesto o confirmado, lo primero): entrar al campeón después de la final no da el premio. Un lado de raqueta sin
+alineación usa la plantilla de su pareja con la misma regla.
+
+Formas JSON:
+- **`TournamentPrize`** (`private.prize_json`): `{id, leagueId, scope, refId, period, closedAt, closedBy, createdAt,
+  updatedAt, slots: [{id, category, division, label, place, badgeId, title, winners: [{ref, name, teamId, players:
+  [id]}], verified, deliveredAt, deliveredBy, editableUntil, updatedAt}]}` (lugares: equipos, parejas, individual;
+  división; lugar). `title` = «Equipos (scratch)», «Individual (handicap)», «Parejas · Categoría A», «Individual ·
+  Gross», «Clubes», «Individual · Femenino»… (el boliche con la regla efectiva del evento). `editableUntil` = primera
+  entrega + 14 días.
+- **Podio** (`tournament_podium`): `{prizeId, kind, verified, slots: [{slotId, verified, status, finished, units:
+  [{ref, name, teamId, players: [{id, name, played?}]}], holders: [{awardId, playerId, teamId}], withdrawn: [playerId]}]}`
+  (`played` en equipos y lados de raqueta: si apareció en la alineación; con alineaciones, la pantalla marca por
+  defecto solo a quienes jugaron).
+  `status`: `listo` · `vacio` (nadie en ese lugar: empate en el anterior, final por W.O.) · `sin_resultado` (todavía no
+  cuenta) · `empate_multiple` (más de 3 empatados: no se entrega sola) · `telefono` (golf, natación, noches: lo arma
+  el teléfono). `finished` = ya se puede entregar. `holders` = quién lo tiene vigente; `withdrawn` = a quién se lo
+  quitaron a mano y hoy no lo tiene (la pantalla lo deja desmarcado).
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `set_tournament_prizes(p_league, p_scope text, p_ref uuid, p_period text, p_slots jsonb) → TournamentPrize \| null` | `can_badges` | Guarda el **conjunto completo** de lugares (crea la premiación si no existe: una por competencia, reintentar no duplica). `p_slots = [{category, division?, label?, place, badge_id}]` (0–24; `label` null o sin la clave: el de la división). Lo que no viene se borra; `[]` borra la premiación (devuelve null). `p_period` null = la que tiene (al crear: el mes de la competencia). `no_existe` (liga, competencia o diseño de otra liga), `invalido` (competencia sin premios, clave, tipo, categoría o división que no admite, lugar repetido), `no_activa` (diseño nuevo o cambiado que no está activo), `texto_bloqueado`, `ya_entregado` (un lugar con insignias vigentes no cambia de diseño ni de `label` ni se borra, y la cinta no cambia: primero se quita con `deliver_tournament_prizes`), `rate_limited`. |
+| `tournament_podium(p_prize) → podio` | admin o `can_badges` | La vista previa de «Entregar premios» (la misma cuenta que usa la entrega). `no_existe`, `no_permitido`. |
+| `deliver_tournament_prizes(p_prize, p_podium jsonb, p_notify boolean=true) → {added, revoked, unchanged, notified, prize: TournamentPrize}` | admin o `can_badges` | Entrega o corrige por **estado deseado** de los lugares que vienen: `p_podium = [{slot_id, units: [{ref, players: [uuid]}]}]` (`name` y `teamId` se aceptan y se ignoran). `units: []` quita. Otra vez lo mismo: nada. Lo que sobra se retira (`revoke_reason` «Corrección del podio», sin aviso; su push pendiente sale de la cola) y lo que falta se da (`team_id`, `period` = la cinta, `division` = `label`, `note` «1.er lugar · Individual (handicap) · Copa», `awarded_by`, `prize_slot_id`, `prize_verified`). Orden verificado (boliche, cuadros, relámpago, playoffs): los `ref` = los del podio del servidor y los jugadores un subconjunto de los suyos (desmarcar sí, agregar no), si no `podio_cambio`; quien entrega puede estar en el podio. Sin orden verificado (golf, natación, noches): `p:` solo con ese jugador, `c:` con nadadores de ese club, todos que jugaron (golf: tarjeta con golpes y sin DQ; natación: prueba con tiempo y sin DQ/DNS/DNF; noches: partido no anulado), si no `invalido`; su propio jugador: `a_si_mismo`. Dar: `sin_resultado` si todavía no se puede, `no_activa` si el diseño no está activo. Cambiar un lugar entregado hace más de 14 días o una premiación cerrada: solo el dueño (`cerrado`). Push a los que reciben con cuenta no bloqueada (nunca en ligas con menores): «¡Tienes una insignia nueva!» · «Liga del Banco: te llevas “Campeón” por el 1.er lugar en Copa. Tócala para verla.», `tag` `insignia:<otorgamiento>`. `no_existe` (premiación o lugar), `invalido`, `rate_limited`. |
+| `close_tournament_prizes(p_prize) → void` | admin o `can_badges` | «Cerrar premios»: desde ahí solo el dueño corrige. Ya cerrada: nada. No se reabre. |
+
+Tiempo real: las dos tablas avisan `badges` `{op, ids, kind: 'premio'}` por `league:<liga>` (el cliente invalida las
+insignias de la liga con cualquier `badges`); los otorgamientos avisan como siempre. Las insignias automáticas
+(`event_podium`, `bowling_team_win`…) no cambian y conviven con el premio. **Ojo:** esta migración redefine
+`award_league_badge`, `private.merge_badges` (chocan solo dos del mismo lugar premiado; la foto `winners` pasa al
+jugador que queda), `private.badge_link_guard` (no retira un premio con `league_badge_awards.prize_verified`: la marca va
+en el otorgamiento y sigue aunque se borre la competencia), `revoke_league_badge_award` (un premio de una premiación
+cerrada, o de un lugar entregado hace más de 14 días, solo lo quita el dueño: `cerrado`) y `create_event` (misma
+firma).
 
 ### Push
 

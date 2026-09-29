@@ -84,6 +84,8 @@ const RPC_AUTHENTICATED = [
   'award_league_badge', 'revoke_league_badge_award', 'set_league_badge_hidden', 'mark_league_badges_seen',
   'league_badge_holders', 'report_league_badge', 'report_badge', 'hide_league_badge', 'admin_badge_reports',
   'admin_resolve_badge_reports', 'admin_blocked_terms',
+  // Premios del torneo: la insignia de cada lugar del podio, el podio que calcula el servidor, entregar y cerrar.
+  'set_tournament_prizes', 'tournament_podium', 'deliver_tournament_prizes', 'close_tournament_prizes',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

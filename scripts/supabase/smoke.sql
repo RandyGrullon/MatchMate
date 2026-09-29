@@ -14,8 +14,9 @@ begin;
 -- sin cuenta soy yo» que aprueba el dueño, los pendientes del organizador y las pistas), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
--- términos y reportar, juegos sueltos y el logo de la liga, la consola del superadmin y los permisos que TIENEN que
--- fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
+-- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo, la consola del
+-- superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando
+-- admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -112,7 +113,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190'];
+    '20260929001190', '20260929001200'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1720,6 +1721,75 @@ begin
     format('select public.save_league_badge(p_league => %L, p_id => null, p_design => %L)', pg_temp.val('bowl'),
            '{"name": "Smoke X", "shape": "shield", "palette": "oro", "icon": "trophy", "limit_kind": "unica"}'),
     array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9g. Premios del torneo (20260929001200): un torneo nuevo del boliche nace con individual por handicap y equipos por
+-- scratch; el dueño elige la insignia del campeón, ve el podio que calcula el servidor y se entrega el suyo (con el
+-- orden verificado el admin que ganó puede); Ana no entrega
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v_ev uuid;
+  e_owner uuid;
+  e_ana uuid;
+  v_slot uuid;
+  v_units jsonb;
+  p jsonb;
+  q jsonb;
+  d jsonb;
+begin
+  -- Ayer en UTC: en la zona de la liga es hoy o ayer, así que el torneo ya cuenta.
+  v_ev := public.create_event(p_league => pg_temp.id('bowl'), p_type => 'torneo', p_date => current_date - 1,
+                              p_name => 'Smoke Premio', p_games => 1, p_hcp_base => 230, p_hcp_percent => 80);
+  assert (select e.individual_rank_by = 'hcp' and e.team_rank_by = 'scratch' from public.events e where e.id = v_ev),
+    'FAIL premios: un torneo nuevo del boliche no nació con individual por handicap y equipos por scratch';
+  perform public.add_entries(p_event => v_ev, p_players => jsonb_build_array(
+    jsonb_build_object('player_id', pg_temp.id('bowl_p_owner'), 'average', 180),
+    jsonb_build_object('player_id', pg_temp.id('bowl_p_ana'), 'average', 170)));
+  select x.id into e_owner from public.entries x where x.event_id = v_ev and x.player_id = pg_temp.id('bowl_p_owner');
+  select x.id into e_ana from public.entries x where x.event_id = v_ev and x.player_id = pg_temp.id('bowl_p_ana');
+  -- Con handicap: el dueño 250 + 40 = 290, Ana 240 + 48 = 288.
+  perform public.save_game(p_entry => e_owner, p_game => 0, p_score => 250);
+  perform public.save_game(p_entry => e_ana, p_game => 0, p_score => 240);
+  -- La «Smoke Campeón» de 9f (Única, ya dada a Ana): el premio del torneo no usa su cupo.
+  p := public.set_tournament_prizes(p_league => pg_temp.id('bowl'), p_scope => 'evento', p_ref => v_ev, p_period => null,
+         p_slots => jsonb_build_array(jsonb_build_object('category', 'individual', 'place', 1, 'badge_id', pg_temp.id('badge_design'))));
+  v_slot := (p -> 'slots' -> 0 ->> 'id')::uuid;
+  assert p -> 'slots' -> 0 ->> 'title' = 'Individual (handicap)', format('FAIL premios: set_tournament_prizes %s', p);
+  q := public.tournament_podium(p_prize => (p ->> 'id')::uuid);
+  assert q -> 'slots' -> 0 ->> 'status' = 'listo' and q -> 'slots' -> 0 -> 'units' -> 0 ->> 'ref' = 'p:' || pg_temp.val('bowl_p_owner'),
+    format('FAIL premios: tournament_podium %s', q);
+  v_units := (select jsonb_agg(jsonb_build_object('ref', u ->> 'ref',
+                                                  'players', (select jsonb_agg(x -> 'id') from jsonb_array_elements(u -> 'players') x)))
+                from jsonb_array_elements(q -> 'slots' -> 0 -> 'units') u);
+  d := public.deliver_tournament_prizes(p_prize => (p ->> 'id')::uuid,
+         p_podium => jsonb_build_array(jsonb_build_object('slot_id', v_slot, 'units', v_units)));
+  assert (d ->> 'added')::integer = 1, format('FAIL premios: deliver_tournament_prizes %s', d);
+  d := public.deliver_tournament_prizes(p_prize => (p ->> 'id')::uuid,
+         p_podium => jsonb_build_array(jsonb_build_object('slot_id', v_slot, 'units', v_units)));
+  assert (d ->> 'added')::integer = 0 and (d ->> 'unchanged')::integer = 1, format('FAIL premios: entregar otra vez %s', d);
+  assert (select count(*) from public.league_badge_awards a
+           where a.prize_slot_id = v_slot and a.revoked_at is null and a.player_id = pg_temp.id('bowl_p_owner')) = 1,
+    'FAIL premios: el dueño no tiene su premio';
+  perform pg_temp.put('prize', p ->> 'id');
+  perform pg_temp.ok('premios: el dueño elige el premio del campeón (set_tournament_prizes), ve el podio (tournament_podium) y se entrega el suyo (deliver_tournament_prizes, otra vez no cambia nada)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select count(*) from public.tournament_prize_slots s where s.prize_id = pg_temp.id('prize')) = 1,
+    'FAIL premios: Ana no lee los premios de su liga';
+  perform pg_temp.must_fail('premios: un miembro no entrega premios',
+    format('select public.tournament_podium(p_prize => %L)', pg_temp.val('prize')), array['no_permitido']);
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

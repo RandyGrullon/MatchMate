@@ -48,6 +48,7 @@ async function footprint(db: PGlite): Promise<Record<string, number>> {
     'public.seasons', 'public.season_awards', 'public.playoffs', 'public.playoff_series', 'public.solo_sessions',
     'public.solo_likes', 'private.logo_uploads', 'private.op_log', 'private.rate_limits', 'public.badge_awards',
     'public.league_badges', 'public.league_badge_awards', 'private.badge_queue', 'private.badge_reports',
+    'public.tournament_prizes', 'public.tournament_prize_slots',
   ];
   const out: Record<string, number> = {};
   for (const t of tables) out[t] = (await db.query<{ n: number }>(`select count(*)::int as n from ${t}`)).rows[0].n;
@@ -140,6 +141,8 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK insignias: Ana ve la insignia en su perfil',
       'OK insignias: un miembro no diseña insignias de la liga [falla como debe: no_permitido]',
       'OK consola: el motor de insignias (admin_badges_engine) y sus reportes (admin_badge_reports)',
+      'OK premios: el dueño elige el premio del campeón',
+      'OK premios: un miembro no entrega premios [falla como debe: no_permitido]',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }
