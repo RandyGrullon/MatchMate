@@ -10,6 +10,7 @@ import { leagueSport, sportsOf } from '../sports/registry';
 import { openSports, useSportStatus } from '../sports/status';
 import { SportBadge, SportIcon } from './sports/SportBits';
 import { useCreateMenu } from '../components/CreateMenu';
+import { AgendaLinkCard } from '../components/home/AgendaLinkCard';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { JoinCodeCard } from '../components/home/JoinCodeCard';
 import { LiveSection, NextUpCard } from '../components/home/LiveSection';
@@ -64,6 +65,7 @@ export default function HomePage() {
           <Section title="Elige tu deporte" icon={<LayoutGrid className="size-4" aria-hidden="true" />}>
             <SportPickerRow sports={sports} counts={counts} status={status} />
           </Section>
+          <AgendaLinkCard />
           <Section title="Ligas públicas" icon={<Compass className="size-4" aria-hidden="true" />} action={<SectionLink to="/ligas">Ver todas</SectionLink>}>
             {publics.loading && !publics.data.length ? (
               <ListSkeleton rows={3} />
@@ -130,6 +132,8 @@ export default function HomePage() {
         )}
 
         <WeekAgenda feeds={act.feeds} leagues={act.leagues} matches={act.mine} today={act.today} showSport={manySports} />
+
+        <AgendaLinkCard />
 
         <Section
           title="Tus ligas y torneos"

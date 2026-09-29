@@ -9,6 +9,7 @@ import { SPORTS } from '../sports/registry';
 import { useSportStatus } from '../sports/status';
 import type { SportId } from '../sports/types';
 import { useCreateMenu } from '../components/CreateMenu';
+import { AgendaLinkCard } from '../components/home/AgendaLinkCard';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { JoinCodeCard } from '../components/home/JoinCodeCard';
 import { LiveSection, NextUpCard } from '../components/home/LiveSection';
@@ -111,6 +112,8 @@ function SportHome({ sport }: { sport: SportId }) {
             <FollowingSlot sport={sport} />
           </>
         )}
+
+        <AgendaLinkCard sport={sport} />
 
         <Section
           title={`Ligas públicas de ${meta.lower}`}
