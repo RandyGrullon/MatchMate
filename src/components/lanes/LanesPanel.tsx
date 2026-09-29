@@ -110,9 +110,11 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
     await run(async () => {
       let order: string[] | null = null;
       if (activeMode !== 'azar') {
+        // El mismo promedio que toma el handicap de este evento: el de su temporada (src/lib/bowlingSeason.ts).
         const averages = await fetchEffectiveAverages(
           lid,
           candidates.map((id) => ({ id, averageOverride: byId.get(id)?.averageOverride ?? null })),
+          { date: event.date, eventId: event.id },
         );
         order = orderByAverage(candidates, averages, players);
       }

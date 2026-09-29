@@ -212,9 +212,9 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
 - **Pistas del boliche** (`src/lib/data/lanes.ts`, `src/lib/lanes.ts`, `src/components/lanes/`): pestaña «Pistas» del
   evento para el admin y el anotador (números como «5-9», «5 a 9» o «3, 5 y 7» con el teclado de texto, que en el
   iPhone sí tiene guion y coma; jugadores por pista, por promedio / por equipo / al azar;
-  «Mover a…» por jugador, «Copiar para WhatsApp», «Publicar y avisar», «Borrar pistas»). El promedio es el de la app
-  (`fetchEffectiveAverages`) y va como `p_order`. El jugador ve «Tu pista: 7 · con Ana y Luis» (`MyLane`) en el
-  evento, en el tablero en vivo y la próxima práctica de la liga (una sola vez si esa práctica ya está en vivo), y en
+  «Mover a…» por jugador, «Copiar para WhatsApp», «Publicar y avisar», «Borrar pistas»). El promedio es el del handicap
+  de ese evento (`fetchEffectiveAverages` con su fecha: el de su temporada) y va como `p_order`. El jugador ve
+  «Tu pista: 7 · con Ana y Luis» (`MyLane`) en el evento, en el tablero en vivo y la próxima práctica de la liga (una sola vez si esa práctica ya está en vivo), y en
   las tarjetas del Home (en juego y tu próximo evento), solo después de la primera publicación. Tiempo real `lanes` en `event:<id>` (`topics.ts`).
 
 ## Temporadas, playoffs y agenda
