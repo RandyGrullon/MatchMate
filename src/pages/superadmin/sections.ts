@@ -3,9 +3,9 @@
  * La sección va en la ruta: /superadmin/<clave>. /superadmin solo = Resumen.
  * «Marca» usa la clave `logo` porque /superadmin/marca es la página de logo y animaciones (SplashPreviewPage).
  */
-import { Bug, LayoutDashboard, Megaphone, Palette, ScanLine, ScrollText, Server, Trophy, Users, Volleyball, type LucideIcon } from 'lucide-react';
+import { Award, Bug, LayoutDashboard, Megaphone, Palette, ScanLine, ScrollText, Server, Trophy, Users, Volleyball, type LucideIcon } from 'lucide-react';
 
-export type SectionKey = 'resumen' | 'cuentas' | 'ligas' | 'deportes' | 'anuncios' | 'fotos' | 'sistema' | 'errores' | 'auditoria' | 'logo';
+export type SectionKey = 'resumen' | 'cuentas' | 'ligas' | 'deportes' | 'anuncios' | 'fotos' | 'sistema' | 'errores' | 'auditoria' | 'logo' | 'insignias';
 
 export interface SectionMeta {
   key: SectionKey;
@@ -26,6 +26,7 @@ export const SECTIONS: readonly SectionMeta[] = [
   { key: 'errores', label: 'Errores', hint: 'Lo que falla en los teléfonos: qué pantalla, cuántas veces, a cuántas cuentas y en qué teléfono.', icon: Bug },
   { key: 'auditoria', label: 'Auditoría', hint: 'Todo lo que se hizo desde esta consola, con quién y cuándo.', icon: ScrollText },
   { key: 'logo', label: 'Marca', hint: 'Logo y animaciones de apertura de cada deporte.', icon: Palette },
+  { key: 'insignias', label: 'Insignias', hint: 'Todo el catálogo en cada nivel, con formas, tamaños, estados y la animación, en claro y en oscuro.', icon: Award },
 ];
 
 export const DEFAULT_SECTION: SectionKey = 'resumen';

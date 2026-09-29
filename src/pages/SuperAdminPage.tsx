@@ -7,7 +7,7 @@ import { sectionFromParam } from './superadmin/sections';
 /**
  * Consola del dueño de la app (solo superadmin): /superadmin y /superadmin/<sección>.
  * Resumen, cuentas, ligas y torneos, deportes, anuncios, lectura de fotos, sistema (con el respaldo completo),
- * auditoría y marca. Las piezas viven en src/pages/superadmin/. Los demás vuelven a Eventos.
+ * auditoría, marca e insignias (la galería). Las piezas viven en src/pages/superadmin/. Los demás vuelven a Eventos.
  */
 export default function SuperAdminPage() {
   const auth = useAuth();

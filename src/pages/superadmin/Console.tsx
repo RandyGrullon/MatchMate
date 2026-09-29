@@ -1,5 +1,6 @@
-import { useMemo, type ComponentType } from 'react';
+import { lazy, Suspense, useMemo, type ComponentType } from 'react';
 import { useAdminOverview } from '../../lib/data/admin';
+import { Loading } from '../../components/ui';
 import { healthAlerts, urgentCount } from './alerts';
 import { ConsoleShell } from './ConsoleShell';
 import type { SectionKey } from './sections';
@@ -14,6 +15,9 @@ import AuditSection from './AuditSection';
 import ErrorsSection from './ErrorsSection';
 import BrandSection from './BrandSection';
 
+// La galería de insignias (todo el catálogo dibujado) se descarga solo al abrirla.
+const BadgesGallery = lazy(() => import('./BadgesGallery'));
+
 export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   resumen: OverviewSection,
   cuentas: UsersSection,
@@ -25,6 +29,7 @@ export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   errores: ErrorsSection,
   auditoria: AuditSection,
   logo: BrandSection,
+  insignias: BadgesGallery,
 };
 
 /** La consola con la sección elegida. Quien la usa ya pasó la guarda de superadmin (SuperAdminPage). */
@@ -35,7 +40,9 @@ export function Console({ section }: { section: SectionKey }) {
   const View = SECTION_VIEWS[section];
   return (
     <ConsoleShell section={section} badges={{ resumen: urgent }}>
-      <View />
+      <Suspense fallback={<Loading />}>
+        <View />
+      </Suspense>
     </ConsoleShell>
   );
 }

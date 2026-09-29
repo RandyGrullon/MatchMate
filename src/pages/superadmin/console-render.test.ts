@@ -110,7 +110,7 @@ function html(url: string): string {
     );
 }
 
-const SECTIONS = ['', '/cuentas', '/ligas', '/deportes', '/anuncios', '/fotos', '/sistema', '/errores', '/auditoria', '/logo'];
+const SECTIONS = ['', '/cuentas', '/ligas', '/deportes', '/anuncios', '/fotos', '/sistema', '/errores', '/auditoria', '/logo', '/insignias'];
 
 describe('consola del superadmin', () => {
   it('guarda: sin superadmin no se dibuja la consola; secciones que no existen tampoco', () => {
@@ -125,7 +125,7 @@ describe('consola del superadmin', () => {
   it('el marco: menú con todas las secciones, avisos en Resumen y el selector del teléfono', () => {
     const out = render('/superadmin');
     expect(out).toContain('Consola');
-    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Auditoría', 'Marca']) expect(out).toContain(label);
+    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Auditoría', 'Marca', 'Insignias']) expect(out).toContain(label);
     expect(out).toContain('Superadmin: Randy Dueño');
     expect(out).toContain('(1 avisos)');
   });
@@ -277,6 +277,12 @@ describe('consola del superadmin', () => {
     const out = render('/superadmin/logo');
     expect(out).toContain('Logo y animaciones de apertura');
     expect(out).toContain('Abrir la marca');
+  });
+
+  it('insignias: la galería se descarga al abrirla (mientras, la consola con el cargando)', () => {
+    const out = render('/superadmin/insignias');
+    expect(out).toContain('Consola');
+    expect(out).toContain('Insignias');
   });
 
   it.each(['loading', 'error', 'empty'] as const)('cada sección se dibuja %s', (mode) => {
