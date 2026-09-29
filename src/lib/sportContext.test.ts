@@ -132,7 +132,16 @@ describe('deporte en que estás: rutas', () => {
 });
 
 describe('qué deportes se ofrecen', () => {
-  const status = { ...DEFAULT_SPORT_STATUS, padel: 'open' as const, golf: 'closed' as const };
+  // Hoy todos están abiertos; aquí la consola puso casi todos en beta (boliche y pádel abiertos, golf cerrado).
+  const beta = Object.fromEntries(Object.keys(DEFAULT_SPORT_STATUS).map((id) => [id, 'beta' as const])) as unknown as typeof DEFAULT_SPORT_STATUS;
+  const status = { ...beta, bowling: 'open' as const, padel: 'open' as const, golf: 'closed' as const };
+
+  it('hoy, sin nada en beta: todos a cualquier cuenta', () => {
+    const normal = offeredSports({ status: DEFAULT_SPORT_STATUS, isSuper: false });
+    expect(normal).toHaveLength(9);
+    expect(normal).toEqual(offeredSports({ status: DEFAULT_SPORT_STATUS, isSuper: true }));
+    expect(normal[0]).toBe('bowling');
+  });
 
   it('los abiertos; los de beta solo al superadmin', () => {
     expect(offeredSports({ status, isSuper: false })).toEqual(['bowling', 'padel']);

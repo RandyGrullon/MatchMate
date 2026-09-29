@@ -25,15 +25,20 @@ import {
 
 const ALL = Object.keys(SPORT_FAMILY) as SportId[];
 
-// Filas que siembra la base en sport_status (todas las migraciones), para comparar con el registro.
+// Filas que deja la base en sport_status (todas las migraciones, en orden), para comparar con el registro: lo que
+// siembran y después los cambios de estado de todos a la vez (p. ej. 20260929000300 abrió los que estaban en beta).
 const migrations = import.meta.glob<string>('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true });
 function seededSports(): { id: string; family: string; status: string; order: number }[] {
   const rows: { id: string; family: string; status: string; order: number }[] = [];
-  for (const sql of Object.values(migrations)) {
+  const files = Object.entries(migrations).sort(([a], [b]) => a.localeCompare(b));
+  for (const [, sql] of files) {
     for (const m of sql.matchAll(/insert into public\.sport_status\s*\(id, family, status, sort_order\)\s*values([\s\S]*?);/gi)) {
       for (const t of m[1].matchAll(/\(\s*'([a-z_]+)'\s*,\s*'([a-z]+)'\s*,\s*'([a-z]+)'\s*,\s*(\d+)\s*\)/g)) {
         rows.push({ id: t[1], family: t[2], status: t[3], order: Number(t[4]) });
       }
+    }
+    for (const u of sql.matchAll(/update public\.sport_status\s+set status\s*=\s*'([a-z]+)'\s+where status\s*=\s*'([a-z]+)'\s*;/gi)) {
+      for (const r of rows) if (r.status === u[2]) r.status = u[1];
     }
   }
   return rows;

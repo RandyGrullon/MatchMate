@@ -321,9 +321,10 @@ describe('con la base de verdad', () => {
     await rpc('rename_profile', { p_name: 'Beto' });
 
     await w.as('jefe@x.com');
-    await setSportStatus('padel', 'open');
-    expect((await fetchAdminSystem())?.sportStatus.find((s) => s.sport === 'padel')?.status).toBe('open');
+    // Todos los deportes están abiertos (20260929000300_sueltos_logos.sql): el superadmin pone uno en beta y lo abre.
     await setSportStatus('padel', 'beta');
+    expect((await fetchAdminSystem())?.sportStatus.find((s) => s.sport === 'padel')?.status).toBe('beta');
+    await setSportStatus('padel', 'open');
     await setUserSuperadmin(beto, true);
     expect((await fetchAdminUser(beto))?.superadmin).toBe(true);
     await setUserSuperadmin(beto, false);
@@ -355,6 +356,6 @@ describe('con la base de verdad', () => {
       'block_user',
     ]);
     expect(log.rows.every((r) => r.actorId === jefe && r.actorName === 'Jefe')).toBe(true);
-    expect((await fetchAdminAudit({ action: 'set_sport_status', page: 1, pageSize: 1 })).rows.map((r) => r.detail)).toEqual([{ from: 'beta', to: 'open' }]);
+    expect((await fetchAdminAudit({ action: 'set_sport_status', page: 1, pageSize: 1 })).rows.map((r) => r.detail)).toEqual([{ from: 'open', to: 'beta' }]);
   });
 });
