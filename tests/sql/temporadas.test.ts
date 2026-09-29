@@ -223,6 +223,24 @@ describe('cerrar la temporada', () => {
     ]);
   });
 
+  it('«Suspender un día» (20260929000600_organizador.sql) sigue saliendo como aviso del admin: el automático no le quita lugar y él sí gasta el tope', async () => {
+    const s = await active(w.priv);
+    await close(w.u.sofi, s.id);
+    const [{ d }] = await db.admin<{ d: string }>(`select to_char((now() at time zone 'America/Santo_Domingo')::date + 1, 'YYYY-MM-DD') as d`);
+    await start(w.u.sofi, w.priv, { p_name: 'Temporada nueva', p_starts_on: d });
+    await event(db, w.priv, 'practica', d);
+    for (const body of ['uno', 'dos']) await db.rpc(w.u.sofi, 'league_announce', { p_league: w.priv, p_body: body });
+    expect(await db.rpc(w.u.sofi, 'league_announce_reach', { p_league: w.priv })).toMatchObject({ sentToday: 2, dailyLimit: 3 });
+    const r = await db.rpc(w.u.sofi, 'suspend_day', { p_league: w.priv, p_date: d, p_reason: 'Lluvia' });
+    expect(r).toMatchObject({ events: { cancelled: 1 }, announced: true, skipped: null });
+    expect(await db.rpc(w.u.sofi, 'league_announce_reach', { p_league: w.priv })).toMatchObject({ sentToday: 3 });
+    await fails(db.rpc(w.u.sofi, 'league_announce', { p_league: w.priv, p_body: 'cuatro' }), 'rate_limited');
+    expect(await db.admin('select automatic, count(*)::int as n from public.league_announcements where league_id = $1 group by 1 order by 1', [w.priv])).toEqual([
+      { automatic: false, n: 3 },
+      { automatic: true, n: 1 },
+    ]);
+  });
+
   it('sin campeón el aviso solo dice que terminó; los premios de equipo llevan el nombre del equipo', async () => {
     const h = await hoops();
     await close(w.u.org, (await active(h.lid)).id, [{ kind: 'fair_play', team_id: h.leones }]);
