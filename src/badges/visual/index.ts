@@ -5,6 +5,7 @@
 export type { BadgeLook, BadgeLookTier, BadgeShape, BadgeSize, BadgeState, BadgeTier, PeriodRibbon } from './types';
 export {
   BRAND_FIELD,
+  LEAGUE_TAB,
   SURFACES,
   TIERS,
   TIER_LABEL,

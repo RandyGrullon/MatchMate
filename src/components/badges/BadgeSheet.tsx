@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { CalendarDays, Eye, EyeOff, Flag, Hourglass, Lock, MapPin, MessageSquareQuote, MoreHorizontal, Share2, Sparkles, Star, StarOff, Trophy } from 'lucide-react';
+import { CalendarDays, Eye, EyeOff, Flag, Hourglass, Lock, MapPin, MessageSquareQuote, MoreHorizontal, Share2, Sparkles, Star, StarOff, Trophy, Users } from 'lucide-react';
 import { Insignia, UnlockInsignia, tierDot } from '../../badges/visual';
 import { reportBadge, setBadgeHidden, setFeaturedBadges, setLeagueBadgeHidden, type BadgeStat } from '../../lib/data/badges';
 import { useAction, useFeedback } from '../feedback';
@@ -135,6 +135,12 @@ export function BadgeSheetBody({
               <EyeOff className="size-4" aria-hidden="true" /> Solo tú la ves
             </p>
           )}
+          {/* La tuya que los demás todavía no ven en tu perfil (liga nueva o pequeña, o con menores). */}
+          {own && !tile.hidden && !tile.onProfile && (
+            <p className="flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-sm font-medium text-muted">
+              <MapPin className="size-4" aria-hidden="true" /> Por ahora solo se ve en tu liga
+            </p>
+          )}
           {v.description && <p className="text-sm text-muted">{v.description}</p>}
         </div>
         <dl className="grid gap-2.5 rounded-xl border border-line p-3 text-sm">
@@ -143,15 +149,30 @@ export function BadgeSheetBody({
               {v.leagueName}
             </Link>
           </Row>
-          {v.detail && (
-            <Row icon={<Trophy className="size-4" aria-hidden="true" />} label="Por">
-              {v.detail}
-            </Row>
+          {v.prizeLine ? (
+            <>
+              <Row icon={<Trophy className="size-4" aria-hidden="true" />} label="Premio del torneo">
+                {v.prizeLine}
+              </Row>
+              {v.award.teamName && (
+                <Row icon={<Users className="size-4" aria-hidden="true" />} label="Equipo">
+                  {v.award.teamName}
+                </Row>
+              )}
+            </>
+          ) : (
+            v.detail && (
+              <Row icon={<Trophy className="size-4" aria-hidden="true" />} label={v.prize ? 'Premio del torneo' : 'Por'}>
+                {v.detail}
+              </Row>
+            )
           )}
           <Row icon={<CalendarDays className="size-4" aria-hidden="true" />} label="Cuándo">
             {v.date}
           </Row>
-          {own && v.award.note && (
+          {/* La nota de un premio es su propia línea («1.er lugar · … · Copa de Octubre»): con la fila del premio sobra;
+              sin la competencia (se borró), es lo único que dice el lugar. */}
+          {own && v.award.note && !v.prizeLine && (
             <Row icon={<MessageSquareQuote className="size-4" aria-hidden="true" />} label="Nota de tu liga">
               {v.award.note}
             </Row>
@@ -161,7 +182,7 @@ export function BadgeSheetBody({
           <ul className="flex flex-col divide-y divide-line rounded-xl border border-line text-sm" aria-label="Veces">
             {tile.views.slice(0, MAX_TIMES).map((x) => (
               <li key={x.award.id} className="flex items-center gap-2 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate">{x.detail ?? x.name}</span>
+                <span className="min-w-0 flex-1 truncate">{x.prize?.competition ?? x.detail ?? x.name}</span>
                 <span className="shrink-0 text-xs text-muted">{x.date}</span>
               </li>
             ))}
@@ -278,8 +299,10 @@ export interface BadgeSheetProps {
   onClose: () => void;
   /** Tu vitrina: niveles, progreso y las acciones del dueño. */
   own?: boolean;
-  /** Ids de las destacadas (tu vitrina). */
+  /** Ids de las que se ven debajo de tu nombre (tu vitrina): las elegidas o, si no elegiste, las que salen solas. */
   featured?: readonly string[];
+  /** `featured` son las que salen solas (no elegiste ninguna): destacar o quitar una deja fijas las demás. */
+  featuredAuto?: boolean;
   stats?: readonly BadgeStat[];
   progress?: ReadonlyMap<string, ProgressModel>;
   /** Quién la ganó (sale en la tarjeta para compartir). */
@@ -307,6 +330,7 @@ export function BadgeSheet({
   onClose,
   own,
   featured = [],
+  featuredAuto = false,
   stats = [],
   progress,
   playerName = '',
@@ -327,17 +351,22 @@ export function BadgeSheet({
 
   const tile = subject?.kind === 'award' ? subject.tile : null;
   const leagueTile = subject?.kind === 'league' ? subject.tile : null;
-  const ids = tile ? tile.views.map((v) => v.award.id) : [];
+  const ids = (tile?.views ?? leagueTile?.views ?? []).map((v) => v.award.id);
   const isFeatured = ids.some((id) => featured.includes(id));
+  // Si salen solas y es la única, quitarla no cambia nada (volvería a salir sola): sin el botón.
+  const canToggleFeatured = !(isFeatured && featuredAuto && featured.length <= 1);
+  // Una de la liga se destaca si los demás la ven en tu perfil (o ya está, para quitarla).
+  const canFeatureLeague = !!leagueTile && !leagueTile.hidden && (leagueTile.onProfile || isFeatured) && canToggleFeatured;
 
   const toggleFeatured = async () => {
-    if (!tile) return;
+    const top = tile?.top.award.id ?? leagueTile?.top.award.id;
+    if (!top) return;
     let next: string[];
     if (isFeatured) next = featured.filter((id) => !ids.includes(id));
     else if (featured.length >= 3) {
       toast('Ya tienes 3 destacadas. Quita una para poner esta.', 'error');
       return;
-    } else next = [...featured, tile.top.award.id];
+    } else next = [...featured, top];
     setBusy('featured');
     await run(() => setFeaturedBadges(next), isFeatured ? 'Quitada de destacadas' : 'Destacada en tu perfil');
     setBusy(null);
@@ -409,6 +438,16 @@ export function BadgeSheet({
           {leagueTile.hidden ? 'Mostrar en mi perfil' : 'Ocultar de mi perfil'}
         </Button>
       )}
+      {own && canFeatureLeague && (
+        <Button
+          className="h-11"
+          loading={busy === 'featured'}
+          icon={isFeatured ? <StarOff className="size-4" /> : <Star className="size-4" />}
+          onClick={() => void toggleFeatured()}
+        >
+          {isFeatured ? 'Quitar de destacadas' : 'Destacar en mi perfil'}
+        </Button>
+      )}
       {canShare ? (
         <Button className="h-11" variant="primary" icon={<Share2 className="size-4" />} onClick={share}>
           Compartir
@@ -428,7 +467,7 @@ export function BadgeSheet({
           Ocultar de mi perfil
         </Button>
       )}
-      {own && tile.bucket === 'ok' && (
+      {own && tile.bucket === 'ok' && canToggleFeatured && (
         <Button
           className="h-11"
           loading={busy === 'featured'}

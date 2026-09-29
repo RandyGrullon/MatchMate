@@ -143,6 +143,8 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK consola: el motor de insignias (admin_badges_engine) y sus reportes (admin_badge_reports)',
       'OK premios: el dueño elige el premio del campeón',
       'OK premios: un miembro no entrega premios [falla como debe: no_permitido]',
+      'OK insignias en el perfil: el dueño destaca su premio del torneo',
+      'OK insignias en el perfil: un miembro no lee prize_accounts [falla como debe',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }

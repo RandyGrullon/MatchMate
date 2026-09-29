@@ -1006,7 +1006,7 @@ perform cron.schedule('mm-insignias-diario', '30 4 * * *', 'select private.badge
 
 | RPC (public, `security definer`, con `require_uid`) | Quién | Qué revisa |
 |---|---|---|
-| `profile_badges(p_user)` | quien puede ver el perfil | Devuelve las de cuenta y las de liga visibles: `status` provisional o firme, no ocultas, de ligas que pasan `private.social_league_ok` (sin menores, cuenta no bloqueada), más las del creador de ligas que pasan `league_badges_public` (§5.7) |
+| `profile_badges(p_user)` | quien puede ver el perfil | Devuelve las de cuenta y las de liga visibles: `status` provisional o firme, no ocultas, de ligas que pasan `private.social_league_ok` (sin menores, cuenta no bloqueada), más las del creador de ligas que pasan `league_badges_public` (§5.7; un premio del torneo verificado que jugaron 2+ cuentas solo pide `social_league_ok`, §5.8) |
 | `set_badge_hidden(p_award, p_hidden)` | el dueño | También sirve de «Mostrar en mi perfil» para las privadas por defecto |
 | `mark_badges_seen(p_ids uuid[])` | el dueño | Hasta 50 ids |
 | `set_featured_badges(p_ids uuid[])` | el dueño | Hasta 3; suyas, visibles, no de ligas con menores |
@@ -1251,8 +1251,9 @@ PNG de la galería con resvg; el generador de colores probado con 500 colores al
 
 ## 5. Creador de insignias
 
-Las insignias de liga las diseña y las da una persona. **Nunca cuentan** para las oficiales, la rareza, los rankings
-ni el total del perfil; siempre dicen de qué liga son.
+Las insignias de liga las diseña y las da una persona. **Nunca cuentan** para las oficiales, la rareza ni los
+rankings; siempre dicen de qué liga son. Sí suman al total del perfil y se pueden destacar (§6.1,
+`20260929001300_insignias_perfil.sql`), con la marca «LIGA».
 
 ### 5.1 Permisos
 
@@ -1466,7 +1467,7 @@ perfil. No se le manda notificación.», con motivo privado opcional.
 | Editar después del primer otorgamiento | solo descripción y estado |
 | Borrar un diseño | solo si nunca se dio; si no, archivar |
 | Reportes | 5 por día por cuenta; van a la cola de la consola del superadmin |
-| Sale en el perfil público | solo si la liga pasa `private.league_badges_public(league)`: `social_league_ok`, 6+ cuentas miembro no bloqueadas y 14+ días de creada |
+| Sale en el perfil público | solo si la liga pasa `private.league_badges_public(league)`: `social_league_ok`, 6+ cuentas miembro no bloqueadas y 14+ días de creada. Un premio del torneo con el orden verificado por el servidor (`prize_verified`) de una competencia que jugaron 2+ cuentas distintas (`prize_accounts`, contado al entregar) solo pide `social_league_ok` (`private.league_award_public`, `20260929001300_insignias_perfil.sql`) |
 | Largos | nombre 3–28 · arriba ≤ 14 · abajo ≤ 10 · descripción ≤ 140 · nota ≤ 140 · división ≤ 16 · motivo ≤ 140 |
 | Caracteres | letras con áéíóúüñ, números, espacio y `. , : ; ! ¡ ? ¿ ' " & # / ( ) + -`. **Sin emoji** (así canvas y SVG pintan igual) |
 | Bloqueado | URL, correo o `@` (`http`, `www.`, `.com`, `.do`); 7+ dígitos (teléfonos); el mismo carácter 4+ veces; palabras de `private.blocked_terms` después de normalizar (minúsculas, sin tildes, leetspeak `0→o 1→i 3→e 4→a 5→s @→a`, sin separadores). `src/components/badges/text.ts` da la respuesta al instante en el teléfono; `private.badge_text_ok` decide |
@@ -1480,12 +1481,21 @@ admin saque a alguien (hoy «ni admin ni anotador»), y se ajusta el texto en `A
 
 ### 5.8 Por qué no se puede abusar
 
-- No suman a nada oficial: ni rareza, ni rankings, ni el total del perfil. Siempre dicen «Liga X» y llevan la
-  pestaña «LIGA».
-- Una liga falsa (menos de 6 cuentas o menos de 14 días) puede dar insignias, pero solo se ven dentro de la liga.
-- Nadie se las da a sí mismo, así que el dueño de una liga de uno no puede fabricarse un «Campeón». Tampoco dándoselo
-  a un jugador sin cuenta que después reclama (su reclamo se aprueba al instante), vincula o junta con el suyo: al
-  quedar el jugador con esa cuenta, lo que ella le dio se retira y los avales que ella le confirmó vuelven a revisión.
+- No suman a nada oficial: ni rareza ni rankings (el total del perfil sí las cuenta, aparte: «20 de MatchMate · 4 de
+  sus ligas»). Siempre dicen «Liga X» y llevan la pestaña «LIGA».
+- Una liga falsa (menos de 6 cuentas o menos de 14 días) puede dar insignias, pero solo se ven dentro de la liga. La
+  excepción es un premio del torneo cuyo orden comprobó el servidor (boliche, cuadros, relámpago, playoffs) en una
+  competencia que jugaron al menos 2 cuentas distintas no bloqueadas: sale para quien ve la liga aunque sea pequeña o
+  nueva (`20260929001300_insignias_perfil.sql`). El orden verificado solo dice que el servidor ordenó lo que le dieron
+  (quien entrega puede estar en el podio y un admin escribe los resultados), así que no basta solo: hace falta que
+  jugara otra cuenta. Los jugadores sin cuenta no cuentan.
+- Nadie se las da a sí mismo con «Dar insignia», y un premio del torneo de una competencia en la que solo jugó su
+  cuenta (con jugadores sin cuenta) no sale fuera de la liga, así que el dueño de una liga de uno no puede fabricarse
+  un «Campeón» público. Tampoco dándoselo a un jugador sin cuenta que después reclama (su reclamo se aprueba al
+  instante), vincula o junta con el suyo: al quedar el jugador con esa cuenta, lo que ella le dio se retira (salvo un
+  premio con el orden verificado, que sigue sin salir afuera si jugó una sola cuenta) y los avales que ella le confirmó
+  vuelven a revisión. Con otra cuenta de su lado (dos cuentas que se ponen de acuerdo) sí podría; es lo mismo que
+  pasa con las 6 cuentas de una liga falsa, y queda el reporte.
 - Los cupos los pone el servidor, no son solo etiquetas: periodo y división se comparan sin mayúsculas, tildes ni
   signos («Temp 2026.» es «TEMP 2026»).
 - La lista de palabras bloqueadas trae una base desde el primer día.
@@ -1510,16 +1520,28 @@ miden por scratch y el individual con handicap (la regla del torneo). Todo el di
 
 - **Pestaña nueva «Insignias»** (ícono `Award`) al lado de Juegos y Estadísticas (`ProfileView.tsx:160-167`). Se
   abre con `?tab=insignias` (lo usan los push).
-- **Destacadas:** hasta 3 insignias a 40 px debajo del nombre (`profiles.featured_badges`). Si el dueño no eligió
-  ninguna, él ve «Elige hasta 3 para mostrar aquí»; los demás no ven nada.
-- **Contador:** «{24} insignias»: solo las oficiales, desbloqueadas y visibles (nunca las de liga).
+- **Destacadas:** hasta 3 insignias a 40 px debajo del nombre (`profiles.featured_badges`): automáticas o de sus
+  ligas (del creador o premios del torneo), estas con la marca «LIGA». Si el dueño no eligió ninguna, salen solas (las
+  arma el teléfono con `profile_badges`, sin guardar nada): primero los premios del torneo, más nuevos primero; después
+  las demás de sus ligas; después las automáticas más raras (rareza medida o, sin base, la del catálogo) y de nivel más
+  alto. Una por diseño o insignia, y de la liga solo las que los demás ven en el perfil (`onProfile`). Si eligió y
+  quien mira no ve ninguna de las que eligió (`profile_badges.hasChosen`), no sale nada: nunca unas que el dueño no
+  eligió. El dueño tiene el lápiz para elegirlas; mientras salen solas lo dice debajo («Salen solas · toca el lápiz
+  para elegirlas») y el elegidor abre con esas marcadas (guardar sin cambios no las deja fijas). El elegidor ofrece
+  «MatchMate» y «De mis ligas» (premios primero); quitar todas y guardar vuelve a que salgan solas.
+- **Contador:** «{24} insignias»: las oficiales desbloqueadas y visibles más las de sus ligas sin ocultar, con la
+  línea «20 de MatchMate · 4 de sus ligas» si tiene de sus ligas.
 - **Filtros:** chips «Todas», uno por cada deporte que juega la cuenta, y «Cuenta» (las de varios deportes).
 - **Secciones:**
   1. **«Próximas»** (solo el dueño): las 3 bloqueadas más cerca de su siguiente nivel según `badge_progress`, a 64 px
      con el arco de progreso y «Te faltan 3 juegos».
   2. **«MatchMate»:** las oficiales, por deporte y luego por categoría (Resultados, Marcas, Hitos, Constancia,
      Asistencia, Juego limpio, Comunidad), en grilla de 64 px (4 por fila), con el nombre, el nivel y «×N» debajo.
-  3. **«De mis ligas»:** las del creador, agrupadas por liga, con la pestaña «LIGA».
+  3. **«De mis ligas»:** las del creador y los premios del torneo, agrupadas por liga, con la pestaña «LIGA». Un
+     premio dice su competencia («Copa de Octubre»); en el detalle, «Premio del torneo: 1.er lugar · Individual
+     (handicap) · Copa de Octubre». En el propio, la que los demás todavía no ven en el perfil (liga nueva o pequeña,
+     un premio de una competencia de una sola cuenta, o con menores) dice «Solo en tu liga», en su propio cuadro
+     aunque sea del mismo diseño que otras que sí se ven (el cuadro nunca mezcla las dos).
 - **«Ver bloqueadas»** (solo el dueño): muestra en silueta todas las del catálogo de los deportes que juega, con
   progreso donde lo hay y el criterio en palabras simples al tocarlas. **Nadie más ve bloqueadas ni progreso.**
 - **Privadas y ocultas** (solo el dueño): salen atenuadas con «Solo tú la ves · Mostrar».
@@ -1554,7 +1576,8 @@ miden por scratch y el individual con handicap (la regla del torneo). Todo el di
 - **Niveles** (solo el dueño): «Bronce · 3 mar 2026», «Plata · 12 ago 2026», «Oro: te faltan 12».
 - **Repetibles:** la lista de veces, con fecha y evento.
 - **Del creador:** «Otorgada por Liga Los Pinos · 12 oct 2026» y la nota (la ven el dueño y los admins); quién la
-  dio (solo admins).
+  dio (solo admins). Un premio del torneo: «Premio del torneo» con el lugar, la categoría y la competencia. El dueño
+  la puede destacar si los demás la ven en su perfil.
 - **Acciones del dueño:** «Compartir», «Destacar en mi perfil» o «Quitar de destacadas», «Ocultar de mi perfil» o
   «Mostrar en mi perfil». Un admin de la liga puede «Compartir» una de su liga para anunciarla. Cualquier miembro
   puede «Reportar» en el menú ⋯.

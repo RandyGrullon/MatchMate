@@ -1,10 +1,28 @@
 import type { ReactNode } from 'react';
-import { Insignia, type BadgeLook, type BadgeState } from '../../badges/visual';
+import { Insignia, LEAGUE_TAB, type BadgeLook, type BadgeState } from '../../badges/visual';
 import { cx } from '../ui';
 
 /**
+ * La pestaña «LIGA» chiquita (las de la liga a 40 y 64 px, donde el dibujo no la lleva: §4.6). Va encima del dibujo,
+ * con `className` para ponerla; es solo visual (el nombre accesible ya dice la liga).
+ */
+export function LeagueMark({ className }: { className?: string }) {
+  return (
+    <span
+      className={cx('pointer-events-none rounded px-1 text-[9px] leading-3.5 font-extrabold tracking-wide text-white shadow-sm ring-1 ring-white', className)}
+      style={{ background: LEAGUE_TAB }}
+      aria-hidden="true"
+    >
+      LIGA
+    </span>
+  );
+}
+
+/**
  * Una insignia de la grilla (64 px, 4 por fila en un teléfono de 375 px): el dibujo con su estado, el nombre, el nivel
- * (o «Te faltan 3 juegos») y «×N» en las repetibles. Todo el cuadro es el botón (44 px o más).
+ * (o «Te faltan 3 juegos») y «×N» en las repetibles. Todo el cuadro es el botón (44 px o más). `league`: una de la
+ * liga, con la pestaña «LIGA» abajo a la izquierda (arriba a la izquierda va «Nueva», que es tan ancha que con la
+ * pestaña arriba se tocaban; abajo a la derecha, «×N»).
  */
 export function BadgeTile({
   look,
@@ -16,6 +34,7 @@ export function BadgeTile({
   label,
   onOpen,
   pressed,
+  league,
 }: {
   look: BadgeLook;
   state?: BadgeState;
@@ -29,6 +48,8 @@ export function BadgeTile({
   onOpen?: () => void;
   /** Se elige (destacadas): el estado va en aria-pressed. */
   pressed?: boolean;
+  /** Es de la liga (del creador o un premio del torneo). */
+  league?: boolean;
 }) {
   return (
     <button
@@ -51,6 +72,7 @@ export function BadgeTile({
             Nueva
           </span>
         )}
+        {league && <LeagueMark className="absolute bottom-0 -left-1" />}
       </span>
       <span className="line-clamp-2 w-full text-xs leading-tight font-semibold break-words text-fg">{name}</span>
       {sub && <span className="line-clamp-2 w-full text-[11px] leading-tight text-muted">{sub}</span>}

@@ -9,13 +9,13 @@ import { describe, expect, it } from 'vitest';
 import type { BadgeAward, BadgeReview, LeagueBadgeAward, ProfileBadges } from '../../lib/data/badges';
 import { FeedbackProvider } from '../feedback';
 import { NoticeIcon } from '../notifications/NoticeIcon';
-import { BadgeSheetBody } from './BadgeSheet';
+import { BadgeSheet, BadgeSheetBody } from './BadgeSheet';
 import { BadgesAutoChoice, badgesAutoOf } from './BadgesSettings';
 import { BadgeTile } from './BadgeTile';
 import { AttendanceFold, TitleShield, WinnersList } from './LeagueBadgePanels';
 import { currentTitle, playerPageId } from './LeagueBadges';
-import { emptyOwnText, groupTiles, leagueShelves, lockedModels, monthAwards, progressByBadge, reviewModel, unlockPlan, viewAward, yearRecap } from './logic';
-import { BadgesTabView, featuredViews, tabModel } from './ProfileBadges';
+import { emptyOwnText, featurableLeagueTiles, featuredModel, groupTiles, leagueShelves, lockedModels, monthAwards, progressByBadge, reviewModel, unlockPlan, viewAward, yearRecap } from './logic';
+import { BadgesTabView, FeaturedChoices, FeaturedRow, pickerSave, pickerStart, tabModel } from './ProfileBadges';
 import { ReviewRow } from './ReviewsPanel';
 import { UnlockContent, YearRecapCard } from './UnlockModal';
 
@@ -82,12 +82,32 @@ const leagueAward: LeagueBadgeAward = {
   note: 'Por tu garra',
   seenAt: null,
   badge: { id: 'B1', name: 'MVP de la noche', description: 'La figura del americano.', shape: 'star', palette: 'oro', color: null, icon: 'flame', topText: '', periodText: '' },
+  prizeSlotId: null,
+  prize: null,
+  onProfile: true,
+};
+
+/** Un premio del torneo: «Campeón» del 1.er lugar individual de la Copa de Octubre. */
+const prizeAward: LeagueBadgeAward = {
+  ...leagueAward,
+  id: 'PZ',
+  badgeId: 'B9',
+  period: 'OCT 2026',
+  division: 'Individual',
+  teamName: null,
+  awardedAt: '2026-10-02T12:00:00Z',
+  note: '1.er lugar · Individual (handicap) · Copa de Octubre',
+  badge: { id: 'B9', name: 'Campeón', description: 'Ganó el torneo.', shape: 'shield', palette: 'oro', color: null, icon: 'trophy', topText: 'CAMPEÓN', periodText: 'OCT 2026' },
+  prizeSlotId: 'S1',
+  prize: { slotId: 'S1', verified: true, place: 1, placeLabel: '1.er lugar', category: 'individual', title: 'Individual (handicap)', competition: 'Copa de Octubre' },
 };
 
 const profile = (isMe: boolean): ProfileBadges => ({
   userId: 'u1',
   isMe,
   featured: [figure.id],
+  featuredLeague: [],
+  hasChosen: true,
   truncated: false,
   awards: [
     figure,
@@ -118,6 +138,16 @@ describe('grilla', () => {
     expect(html).toContain('min-h-11');
   });
 
+  it('una de la liga nueva: «Nueva» arriba y la marca LIGA abajo a la izquierda (no se tocan; ×N abajo a la derecha)', () => {
+    const v = viewAward(aw({ key: 'bowling_split', scope: 'liga' }))!;
+    const html = render(h(BadgeTile, { look: v.look, state: 'new', name: 'Campeón', label: 'Campeón, nueva', count: 2, league: true, onOpen: noop }));
+    const tag = (word: string) => html.match(new RegExp('<span class="([^"]*)"[^>]*>' + word + '</span>'))?.[1] ?? '';
+    expect(tag('Nueva')).toContain('-top-1');
+    expect(tag('LIGA')).toContain('bottom-0');
+    expect(tag('LIGA')).toContain('-left-1');
+    expect(tag('LIGA')).not.toContain('top-');
+  });
+
   it('una nueva dice «Nueva» en palabras (no solo el brillo); elegida en destacadas, aria-pressed', () => {
     const v = viewAward(aw({ key: 'bowling_split', scope: 'liga' }))!;
     const html = render(h(BadgeTile, { look: v.look, state: 'new', name: v.name, label: `${v.label}, nueva`, onOpen: noop }));
@@ -134,7 +164,9 @@ describe('pestaña Insignias del perfil', () => {
   it('la propia: contador, Próximas, secciones, ocultas y en revisión, de mis ligas, bloqueadas y retiradas', () => {
     const model = tabModel(profile(true), progress, ['bowling'], NOW);
     const t = text(render(h(BadgesTabView, { ...props, model })));
-    expect(t).toContain('4 insignias');
+    // El total cuenta la de su liga.
+    expect(t).toContain('5 insignias');
+    expect(t).toContain('4 de MatchMate · 1 de tus ligas');
     expect(t).toContain('Próximas');
     expect(t).toContain('Te faltan 3 juegos');
     expect(t).toContain('MatchMate');
@@ -158,7 +190,8 @@ describe('pestaña Insignias del perfil', () => {
   it('la de otra cuenta: sin Próximas, bloqueadas, ocultas ni retiradas', () => {
     const model = tabModel(profile(false), [], ['bowling'], NOW);
     const t = text(render(h(BadgesTabView, { ...props, model })));
-    expect(t).toContain('4 insignias');
+    expect(t).toContain('5 insignias');
+    expect(t).toContain('4 de MatchMate · 1 de sus ligas');
     expect(t).not.toContain('Próximas');
     expect(t).not.toContain('Ver bloqueadas');
     expect(t).not.toContain('Solo tú la ves');
@@ -166,8 +199,11 @@ describe('pestaña Insignias del perfil', () => {
   });
 
   it('vacía', () => {
-    const empty: ProfileBadges = { userId: 'u', isMe: false, featured: [], truncated: false, awards: [], leagueAwards: [] };
-    expect(text(render(h(BadgesTabView, { ...props, model: tabModel(empty, [], [], NOW) })))).toContain('Todavía no tiene insignias.');
+    const empty: ProfileBadges = { userId: 'u', isMe: false, featured: [], featuredLeague: [], hasChosen: false, truncated: false, awards: [], leagueAwards: [] };
+    const none = text(render(h(BadgesTabView, { ...props, model: tabModel(empty, [], [], NOW) })));
+    expect(none).toContain('Todavía no tiene insignias.');
+    expect(none).toContain('0 insignias');
+    expect(none).not.toContain('de sus ligas');
     const mine = text(render(h(BadgesTabView, { ...props, sports: ['golf'], model: tabModel({ ...empty, isMe: true }, [], ['golf'], NOW) })));
     expect(mine).toContain('Juega tu primera ronda en una liga y te llega la primera.');
     expect(emptyOwnText(['swimming'])).toBe('Nada tu primera prueba en una liga y te llega la primera.');
@@ -175,9 +211,141 @@ describe('pestaña Insignias del perfil', () => {
     expect(emptyOwnText(['bowling', 'golf'])).toBe('Juega tu primer juego en una liga y te llega la primera.');
   });
 
-  it('las destacadas que se ven, en su orden', () => {
-    expect(featuredViews(profile(false)).map((v) => v.name)).toEqual(['Figura del mes']);
-    expect(featuredViews(null)).toEqual([]);
+  it('un premio del torneo en «De sus ligas»: con la competencia, la marca LIGA y todo en el nombre accesible', () => {
+    const data = { ...profile(false), leagueAwards: [prizeAward, leagueAward] };
+    const html = render(h(BadgesTabView, { ...props, model: tabModel(data, [], ['bowling'], NOW) }));
+    const t = text(html);
+    expect(t).toContain('6 insignias');
+    expect(t).toContain('Campeón');
+    expect(t).toContain('Copa de Octubre');
+    expect(html).toContain('1.er lugar · Individual (handicap) · Copa de Octubre, de Liga Los Pinos');
+    expect(html.match(/>LIGA</g)).toHaveLength(2);
+  });
+
+  it('la tuya que los demás todavía no ven: «Solo en tu liga»', () => {
+    const data = { ...profile(true), leagueAwards: [{ ...leagueAward, onProfile: false }] };
+    const html = render(h(BadgesTabView, { ...props, model: tabModel(data, [], ['bowling'], NOW) }));
+    expect(text(html)).toContain('Solo en tu liga');
+    expect(html).toContain(', solo en tu liga"');
+  });
+});
+
+describe('destacadas debajo del nombre', () => {
+  it('las elegidas, en su orden (automáticas y de la liga, con la marca LIGA); tocar una la abre', () => {
+    const data = { ...profile(false), featured: [prizeAward.id, figure.id], featuredLeague: [prizeAward.id], leagueAwards: [prizeAward, leagueAward] };
+    const model = featuredModel(data);
+    expect(model.items.map((i) => i.view.name)).toEqual(['Campeón', 'Figura del mes']);
+    const html = render(h(FeaturedRow, { model, own: false, canPick: false, onPick: noop }));
+    expect(html).toContain('width="40"');
+    expect(html).toContain(`href="/?tab=insignias&amp;insignia=${prizeAward.id}"`);
+    expect(html).toContain('title="Campeón · Copa de Octubre · Liga Los Pinos"');
+    expect(html.match(/>LIGA</g)).toHaveLength(1);
+    // Los demás no ven el lápiz.
+    expect(html).not.toContain('Cambiar las destacadas');
+  });
+
+  it('sin elegir salen solas (el premio primero); el dueño puede elegirlas', () => {
+    const data = { ...profile(true), featured: [], hasChosen: false, leagueAwards: [leagueAward, prizeAward] };
+    const model = featuredModel(data);
+    expect(model.auto).toBe(true);
+    expect(model.items.map((i) => i.view.name).slice(0, 2)).toEqual(['Campeón', 'MVP de la noche']);
+    expect(model.items).toHaveLength(3);
+    const html = render(h(FeaturedRow, { model, own: true, canPick: true, onPick: noop }));
+    expect(html).toContain('aria-label="Elegir tus destacadas"');
+    // El dueño sabe que salieron solas; los demás no ven la nota, ni el dueño cuando las eligió.
+    expect(text(html)).toContain('Salen solas · toca el lápiz para elegirlas');
+    expect(text(render(h(FeaturedRow, { model, own: false, canPick: false, onPick: noop })))).not.toContain('Salen solas');
+    expect(text(render(h(FeaturedRow, { model: featuredModel(profile(true)), own: true, canPick: true, onPick: noop })))).not.toContain('Salen solas');
+    // Sin ninguna que se pueda mostrar: el dueño ve la invitación; los demás, nada.
+    const empty = { items: [], auto: true };
+    expect(text(render(h(FeaturedRow, { model: empty, own: true, canPick: true, onPick: noop })))).toContain('Elige hasta 3 para mostrar aquí');
+    expect(renderToString(h(MemoryRouter, null, h(FeaturedRow, { model: empty, own: false, canPick: false, onPick: noop })))).toBe('');
+    expect(featuredModel(null)).toEqual({ items: [], auto: true });
+  });
+
+  it('el elegidor: MatchMate y De mis ligas (con la marca LIGA), las elegidas con su número', () => {
+    const data = { ...profile(true), featured: [prizeAward.id], featuredLeague: [prizeAward.id], leagueAwards: [prizeAward, { ...leagueAward, id: 'SMALL', badgeId: 'B3', onProfile: false }] };
+    const tiles = groupTiles(data.awards, { own: true, now: NOW }).filter((t) => t.bucket === 'ok');
+    const leagueTiles = featurableLeagueTiles(data, NOW);
+    const html = render(h(FeaturedChoices, { tiles, leagueTiles, picked: data.featured, onToggle: noop }));
+    const t = text(html);
+    expect(t).toContain('MatchMate');
+    expect(t).toContain('De mis ligas');
+    expect(t).toContain('Copa de Octubre · Liga Los Pinos');
+    // La de una liga que los demás todavía no ven no se ofrece.
+    expect(leagueTiles).toHaveLength(1);
+    expect(html).toContain(', destacada 1"');
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    expect(html.match(/>LIGA</g)).toHaveLength(1);
+  });
+});
+
+describe('elegidor de destacadas: abre con lo que se ve y no guarda si nada cambió', () => {
+  it('sin elegir abre con las que salen solas marcadas; elegidas, con las elegidas', () => {
+    const auto = { ...profile(true), featured: [], hasChosen: false, leagueAwards: [leagueAward, prizeAward] };
+    const shown = featuredModel(auto);
+    expect(pickerStart(auto, shown)).toEqual(shown.items.map((i) => i.id));
+    expect(pickerStart(auto, shown)[0]).toBe(prizeAward.id);
+    const chosen = profile(true);
+    expect(pickerStart(chosen, featuredModel(chosen))).toEqual([figure.id]);
+    // Las que salen solas se ven marcadas en el elegidor (el premio, primero).
+    const leagueTiles = featurableLeagueTiles(auto, NOW);
+    const tiles = groupTiles(auto.awards, { own: true, now: NOW }).filter((t) => t.bucket === 'ok');
+    const html = render(h(FeaturedChoices, { tiles, leagueTiles, picked: pickerStart(auto, shown), onToggle: noop }));
+    expect(html.match(/aria-pressed="true"/g)).toHaveLength(3);
+    expect(html).toContain('Copa de Octubre, de Liga Los Pinos, destacada 1"');
+  });
+
+  it('guardar: sin cambios no llama a la base; quitar todas las que salen solas tampoco; cambiar sí', () => {
+    expect(pickerSave(['a', 'b'], ['a', 'b'], true)).toEqual({ save: false });
+    expect(pickerSave(['a', 'b'], ['a', 'b'], false)).toEqual({ save: false });
+    expect(pickerSave(['a', 'b'], [], true)).toEqual({ save: false });
+    expect(pickerSave(['a', 'b'], ['b', 'a'], true)).toEqual({ save: true, done: 'Destacadas guardadas' });
+    expect(pickerSave(['a'], ['a', 'c'], false)).toEqual({ save: true, done: 'Destacadas guardadas' });
+    // Quitar las elegidas: vuelven a salir solas (y se dice así, no «Ya no tienes destacadas»).
+    expect(pickerSave(['a'], [], false)).toEqual({ save: true, done: 'Listo: ahora salen solas' });
+  });
+});
+
+describe('detalle de una de la liga: destacar desde el pie (dueño)', () => {
+  type LeagueTile = ReturnType<typeof leagueShelves>[number]['tiles'][number];
+  const sheet = (tile: LeagueTile, featured: string[], featuredAuto = false, own = true) =>
+    text(render(h(BadgeSheet, { subject: { kind: 'league', tile }, onClose: noop, own, featured, featuredAuto })));
+  const tileOf = (a: LeagueBadgeAward) => leagueShelves([a], { own: true, now: NOW })[0].tiles[0];
+
+  it('se ve en tu perfil: «Destacar en mi perfil»; ya destacada: «Quitar de destacadas»', () => {
+    const t = sheet(tileOf(prizeAward), []);
+    expect(t).toContain('Destacar en mi perfil');
+    expect(t).toContain('Ocultar de mi perfil');
+    expect(sheet(tileOf(prizeAward), [prizeAward.id])).toContain('Quitar de destacadas');
+  });
+
+  it('solo en tu liga: no se ofrece destacar (si ya estaba, se puede quitar); oculta, tampoco', () => {
+    const small = tileOf({ ...leagueAward, onProfile: false });
+    const t = sheet(small, []);
+    expect(t).toContain('Por ahora solo se ve en tu liga');
+    expect(t).not.toContain('Destacar en mi perfil');
+    expect(t).not.toContain('Quitar de destacadas');
+    expect(sheet(small, [leagueAward.id])).toContain('Quitar de destacadas');
+    const hidden = sheet(tileOf({ ...leagueAward, hidden: true, onProfile: false }), []);
+    expect(hidden).toContain('Mostrar en mi perfil');
+    expect(hidden).not.toContain('Destacar en mi perfil');
+  });
+
+  it('las que salen solas: la que ya sale dice «Quitar de destacadas» (si es la única, sin botón: volvería a salir)', () => {
+    expect(sheet(tileOf(prizeAward), [prizeAward.id, figure.id], true)).toContain('Quitar de destacadas');
+    const only = sheet(tileOf(prizeAward), [prizeAward.id], true);
+    expect(only).not.toContain('Quitar de destacadas');
+    expect(only).not.toContain('Destacar en mi perfil');
+    // Otra que no sale: se puede destacar (se suma a las que ya se ven).
+    expect(sheet(tileOf(leagueAward), [prizeAward.id], true)).toContain('Destacar en mi perfil');
+  });
+
+  it('de otra cuenta: sin acciones del dueño', () => {
+    const t = sheet(leagueShelves([prizeAward], { own: false, now: NOW })[0].tiles[0], [], false, false);
+    expect(t).not.toContain('Destacar en mi perfil');
+    expect(t).not.toContain('Ocultar de mi perfil');
+    expect(t).toContain('Cerrar');
   });
 });
 
@@ -228,7 +396,29 @@ describe('detalle', () => {
     expect(own).toContain('MVP de la noche');
     expect(own).toContain('Otorgada por Liga Los Pinos · 4 oct 2026');
     expect(own).toContain('Por tu garra');
+    expect(own).not.toContain('Premio del torneo');
+    expect(own).not.toContain('Por ahora solo se ve en tu liga');
     expect(text(render(h(BadgeSheetBody, { subject: { kind: 'league', tile } })))).not.toContain('Por tu garra');
+  });
+
+  it('un premio del torneo: el lugar, la categoría y la competencia', () => {
+    const tile = leagueShelves([prizeAward], { own: false, now: NOW })[0].tiles[0];
+    const t = text(render(h(BadgeSheetBody, { subject: { kind: 'league', tile } })));
+    expect(t).toContain('Campeón');
+    expect(t).toContain('Premio del torneo');
+    expect(t).toContain('1.er lugar · Individual (handicap) · Copa de Octubre');
+    expect(t).toContain('Liga Los Pinos');
+    // En el propio, la nota del premio (su misma línea) no se repite; sin la competencia, la nota dice el lugar.
+    const mine = text(render(h(BadgeSheetBody, { subject: { kind: 'league', tile: leagueShelves([prizeAward], { own: true, now: NOW })[0].tiles[0] }, own: true })));
+    expect(mine.split('1.er lugar · Individual (handicap) · Copa de Octubre')).toHaveLength(2);
+    expect(mine).not.toContain('Nota de tu liga');
+    const gone = { ...prizeAward, prize: { ...prizeAward.prize!, place: null, placeLabel: null, category: null, title: null, competition: null } };
+    const orphan = text(render(h(BadgeSheetBody, { subject: { kind: 'league', tile: leagueShelves([gone], { own: true, now: NOW })[0].tiles[0] }, own: true })));
+    expect(orphan).toContain('Nota de tu liga');
+    expect(orphan).toContain('1.er lugar · Individual (handicap) · Copa de Octubre');
+    // La tuya que los demás todavía no ven en tu perfil.
+    const small = leagueShelves([{ ...leagueAward, onProfile: false }], { own: true, now: NOW })[0].tiles[0];
+    expect(text(render(h(BadgeSheetBody, { subject: { kind: 'league', tile: small }, own: true })))).toContain('Por ahora solo se ve en tu liga');
   });
 });
 
