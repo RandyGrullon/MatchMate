@@ -7,6 +7,7 @@ import RacketEventPage from './EventPage';
 import RacketFeed from './Feed';
 import RacketHome from './Home';
 import { RacketMyProfile, RacketPlayerPage } from './Profile';
+import { useRacketSeasonTable } from './seasonTable';
 import { RacketProvider, type RacketExtensions } from './sport';
 import RacketStandings from './Standings';
 
@@ -27,6 +28,7 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     return W;
   };
   const doubles = sport !== 'tennis';
+  const extras = ext ?? {};
   return {
     Home: wrap(RacketHome),
     Event: wrap(() => <RacketEventPage />),
@@ -34,6 +36,8 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     Feed: wrap(RacketFeed),
     MyProfile: wrap(RacketMyProfile),
     Player: wrap(RacketPlayerPage),
+    // Admin › Temporada: la tabla para cerrarla (fuera de RacketProvider: recibe el deporte).
+    useSeasonTable: (season) => useRacketSeasonTable(season, sport, extras),
     adminTabs: [{ key: 'parejas', label: doubles ? 'Parejas y niveles' : 'Jugadores y niveles', icon: Users, Component: wrap(PairsAdmin) }],
     tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mis partidos' },
   };

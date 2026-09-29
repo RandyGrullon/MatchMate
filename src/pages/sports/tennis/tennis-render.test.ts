@@ -192,7 +192,7 @@ const text = (html: string) =>
 
 describe('pantallas de tenis', () => {
   it('el contrato: pantallas, pestaña del admin y nombres', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => [t.key, t.label])).toEqual([['parejas', 'Jugadores y niveles']]);
   });
 

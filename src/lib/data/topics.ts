@@ -56,6 +56,10 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'submissions') return invalidate(tags.subs(id), tags.entries(id), tags.feeds);
     // Reclamos «ese jugador soy yo» (etiquetas de claimTags en ./claims): al aprobar cambian los jugadores.
     if (msg.event === 'claims') return invalidate(`claims:${id}`, tags.players(id), tags.entries(id));
+    // Temporadas y sus premios (etiqueta de seasonTags en ./seasons).
+    if (msg.event === 'seasons') return invalidate(`seasons:${id}`);
+    // Playoffs y sus llaves (etiqueta de playoffTags en ./playoffs); sus juegos avisan como cualquier partido.
+    if (msg.event === 'playoffs') return invalidate(`playoffs:${id}`);
   } else if (kind === 'user') {
     if (msg.event === 'submission') return invalidate(tags.feeds);
     // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
@@ -68,7 +72,7 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
 function poll(topic: string) {
   const [kind, id] = [topic.slice(0, topic.indexOf(':')), topic.slice(topic.indexOf(':') + 1)];
   if (kind === 'event') invalidate(tags.live(id), tags.eventEntries(id), tags.eventSubs(id), tags.event(id));
-  else if (kind === 'league') invalidate(tags.events(id), tags.subs(id), `announcements:${id}`);
+  else if (kind === 'league') invalidate(tags.events(id), tags.subs(id), `announcements:${id}`, `playoffs:${id}`);
   else if (kind === 'user') invalidate(tags.feeds);
 }
 

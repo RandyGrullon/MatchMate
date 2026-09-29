@@ -26,6 +26,8 @@ export interface SeasonTeam {
   name: string;
   color: string | null;
   order: number;
+  /** Temporada del equipo (ligas de equipos; las parejas de raqueta no llevan: null). */
+  seasonId?: string | null;
   /** Ordenada: capitán, delegado, luego por dorsal. */
   roster: RosterEntry[];
   createdAt: Stamp | null;
@@ -38,6 +40,7 @@ export interface SeasonTeamRow {
   name: string;
   sort_order: number;
   color: string | null;
+  season_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +66,7 @@ export function toSeasonTeam(row: SeasonTeamRow, players: readonly TeamPlayerRow
     name: row.name,
     color: row.color ?? null,
     order: row.sort_order ?? 0,
+    seasonId: row.season_id ?? null,
     roster: players
       .filter((p) => p.team_id === row.id)
       .map((p): RosterEntry => ({ playerId: p.player_id, jersey: p.jersey ?? null, position: p.position ?? null, role: p.role ?? 'player' }))
@@ -81,7 +85,7 @@ export async function fetchSeasonTeams(lid: string): Promise<Wire<SeasonTeam>[]>
   const [teams, players] = await Promise.all([
     select<SeasonTeamRow>({
       table: 'teams',
-      columns: 'id,league_id,name,sort_order,color,created_at,updated_at',
+      columns: 'id,league_id,name,sort_order,color,season_id,created_at,updated_at',
       filters: [byLeague, { col: 'event_id', op: 'is', value: null }],
       order: [{ col: 'sort_order' }, { col: 'name' }],
     }),

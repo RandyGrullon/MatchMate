@@ -1,19 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { CalendarDays, ChevronRight, Flag, LandPlot, Lock, Medal, Plus, Trophy } from 'lucide-react';
-import { useEvents, usePlayers } from '../../../lib/data';
-import { useGolfCourses, useGolfRounds, useGolfRules, useGolfSeason, useGolfTournaments, type GolfRoundDoc } from '../../../lib/data/golf';
+import { useEvents } from '../../../lib/data';
+import { useGolfCourses, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '../../../lib/data/golf';
+import { useLeagueSeasons } from '../../../lib/data/seasons';
 import { eventLabel, formatDate, toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
+import { currentSeason } from '../../../lib/seasons';
 import type { BowlingEvent } from '../../../lib/types';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Position, cx } from '../../../components/ui';
 import GolfEvent from './GolfEvent';
 import { RoundForm } from './RoundForm';
-import { formatLabel, meritEvents, nineLabel, seasonMerit } from './logic';
-
-/** Dentro de la temporada de la liga (sin fechas = todo). */
-export const inSeasonDate = (league: { seasonStart?: string; seasonEnd?: string }, date: string | undefined) =>
-  !!date && (!league.seasonStart || date >= league.seasonStart) && (!league.seasonEnd || date <= league.seasonEnd);
+import { formatLabel, nineLabel } from './logic';
+import { useGolfMerit } from './seasonTable';
 
 /**
  * Inicio de la liga de golf: rondas de hoy y las próximas, resultados y lo primero del orden de mérito.
@@ -131,19 +130,12 @@ function RoundList({
   );
 }
 
-/** Los 5 primeros del orden de mérito de la temporada. */
+/** Los 5 primeros del orden de mérito de la temporada de ahora (las mismas rondas que Orden de mérito). */
 function MeritPreview() {
-  const { lid, base, league } = useLeagueCtx();
-  const season = useGolfSeason(lid);
-  const rounds = useGolfRounds(lid);
-  const rules = useGolfRules(lid);
-  const events = useEvents(lid);
-  const players = usePlayers(lid);
-  const merit = useMemo(() => {
-    const dates = new Map(events.data.map((e) => [e.id, e.date] as const));
-    const evs = meritEvents(season.data, rounds.data, (id) => inSeasonDate(league, dates.get(id)));
-    return seasonMerit(evs, rules.data.meritPoints).filter((m) => m.points > 0);
-  }, [season.data, rounds.data, rules.data, events.data, league]);
+  const { lid, base } = useLeagueCtx();
+  const seasons = useLeagueSeasons(lid);
+  const { merit: all, players } = useGolfMerit(currentSeason(seasons.data));
+  const merit = useMemo(() => all.filter((m) => m.points > 0), [all]);
   if (!merit.length) return null;
   const nameOf = (id: string) => players.data.find((p) => p.id === id)?.name ?? '(jugador borrado)';
   return (

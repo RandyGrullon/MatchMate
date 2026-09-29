@@ -4,10 +4,12 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { compareMatches } from '../../../lib/data/matches';
 import { StandingsTable, defaultColumns, type StandingsColumn } from '../../../components/match';
 import { ShareButton, leadersShare, standingsShare, type ShareTableSpec } from '../../../components/share';
-import { Badge, Card, Empty, Tabs } from '../../../components/ui';
+import { Badge, Card, Empty, ListSkeleton, LoadError, Tabs } from '../../../components/ui';
+import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import type { FootballTotals } from '../../../sports/team/stats';
 import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
 import { SectionHead, TeamName } from '../team/TeamBits';
+import { isPlayoffMatch } from '../team/playoffs';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { CardIcon } from './bits';
 import { FootballMatchCard, matchLink } from './FootballGames';
@@ -93,16 +95,41 @@ function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTable
   }
 }
 
-/** Tabla, goleadores, tarjetas, vallas invictas y disciplina de la temporada (/l/:lid/ranking; `?ver=disciplina`). */
+/**
+ * Tabla, goleadores, tarjetas, vallas invictas y disciplina de la temporada (/l/:lid/ranking; `?ver=disciplina`).
+ * Arriba, la temporada (?temporada=): la activa se calcula con sus equipos y sus partidos (sin los del playoff en la
+ * tabla); una cerrada muestra sus premios y la tabla que se guardó al cerrarla (sin tabla guardada, se calcula como
+ * la activa).
+ */
 export default function FootballStandings() {
   const tl = useTeamLeague();
-  const season = useFootballSeason(tl);
+  const picked = useStandingsSeason();
+  const season = useFootballSeason(tl, picked.selected ?? tl.season);
   const [params] = useSearchParams();
   const initial = params.get('ver') as Tab | null;
   const [tab, setTab] = useState<Tab>(initial && TABS.includes(initial) ? initial : 'tabla');
   const canShare = !!shareCard(tl, season, tab);
+  const label = picked.seasons.length > 1 ? picked.selected?.name : null;
+  // Sin las temporadas no se sabe qué partidos son de cuál: nada de una tabla con todas mezcladas.
+  if (picked.error) return <LoadError error={picked.error} />;
+  if (picked.loading) return <ListSkeleton rows={6} />;
+  if (picked.closed) {
+    // Mis equipos de esa temporada (y yo) salen resaltados en la tabla guardada.
+    const mineThen = [...tl.allTeams.data.filter((t) => t.roster.some((r) => r.playerId === tl.myPlayerId)).map((t) => t.id), ...(tl.myPlayerId ? [tl.myPlayerId] : [])];
+    return (
+      <div className="flex flex-col gap-4">
+        <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
+        <ClosedSeasonView
+          season={picked.closed}
+          highlight={mineThen}
+          footer={season.matches.length > 0 && <ExcelButton tl={tl} season={season} label={picked.closed.name} />}
+        />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
+      <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
       <Tabs
         items={[
           { key: 'tabla', label: 'Tabla' },
@@ -154,7 +181,7 @@ export default function FootballStandings() {
         />
       )}
       {tab === 'disciplina' && <DisciplineTab tl={tl} season={season} />}
-      {tl.matches.data.length > 0 && <ExcelButton tl={tl} season={season} />}
+      {season.matches.length > 0 && <ExcelButton tl={tl} season={season} label={label} />}
     </div>
   );
 }
@@ -162,7 +189,8 @@ export default function FootballStandings() {
 function TableTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
   const table = footballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
-  const knockout = tl.matches.data.filter((m) => m.bracketKey).sort(compareMatches);
+  // El cuadro del torneo relámpago de la temporada (los juegos del playoff tienen su pestaña).
+  const knockout = season.matches.filter((m) => m.bracketKey && !isPlayoffMatch(m)).sort(compareMatches);
   const name = (id: string) => <TeamName team={tl.teamOf(id)} label="(equipo borrado)" />;
   const order = table.tiebreak.map((k) => TIEBREAK_LABEL[k].toLowerCase());
   return (
@@ -199,7 +227,7 @@ function TableTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
 /** Suspendidos, amarillas que van para la próxima suspensión, sanciones y quien jugó suspendido. */
 function DisciplineTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
   const cfg = disciplineFrom(tl.rules.data);
-  const byId = new Map(tl.matches.data.map((m) => [m.id, m] as const));
+  const byId = new Map(season.matches.map((m) => [m.id, m] as const));
   const matchText = (id: string) => {
     const m = byId.get(id);
     if (!m) return 'partido borrado';

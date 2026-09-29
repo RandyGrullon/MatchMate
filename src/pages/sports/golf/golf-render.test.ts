@@ -135,7 +135,7 @@ afterEach(() => queryClient.invalidateAll());
 
 describe('pantallas del golf', () => {
   it('el contrato: pantallas, pestaña de admin y nombres de pestañas', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => t.key)).toEqual(['campos']);
     expect(screens.tabs).toMatchObject({ home: 'Rondas', feed: null });
   });

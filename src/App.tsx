@@ -28,6 +28,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
+const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const JoinPage = lazy(() => import('./pages/JoinPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
@@ -42,6 +43,7 @@ const LeagueProfilePage = lazy(() => import('./pages/LeagueProfilePage'));
 const RankingPage = lazy(() => import('./pages/RankingPage'));
 const GamesFeedPage = lazy(() => import('./pages/GamesFeedPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
+const SeasonsPage = lazy(() => import('./components/season/SeasonsPage'));
 
 /** Un torneo sin liga no tiene ranking de temporada: vuelve al torneo. */
 function LeagueRanking() {
@@ -127,6 +129,8 @@ export default function App() {
                       <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
                       <Route path="/ligas" element={<Screen area="ligas" framed><LeaguesPage /></Screen>} />
+                      {/* «¿Dónde juego esta semana?»: lo abierto en las ligas públicas (con y sin cuenta). */}
+                      <Route path="/agenda" element={<Screen area="agenda" framed><AgendaPage /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />
                       <Route path="/perfil" element={<Screen area="perfil" framed><ProfilePage /></Screen>} />
                       <Route path="/cuenta" element={<Screen area="cuenta" framed><AccountPage /></Screen>} />
@@ -151,6 +155,9 @@ export default function App() {
                         <Route path="ranking" element={<Screen area="liga/ranking"><SportRoute slot="Standings" bowling={<LeagueRanking />} /></Screen>} />
                         <Route path="juegos" element={<Screen area="liga/juegos"><SportRoute slot="Feed" bowling={<GamesFeedPage />} /></Screen>} />
                         <Route path="perfil" element={<Screen area="liga/perfil"><SportRoute slot="MyProfile" bowling={<LeagueProfilePage />} /></Screen>} />
+                        {/* Playoffs de las ligas de equipos (los otros deportes vuelven al inicio de la liga). */}
+                        <Route path="playoffs" element={<Screen area="liga/playoffs"><SportRoute slot="Playoffs" bowling={<Navigate to=".." replace />} /></Screen>} />
+                        <Route path="temporadas" element={<Screen area="liga/temporadas"><SeasonsPage /></Screen>} />
                         <Route path="admin" element={<Screen area="liga/admin"><AdminPage /></Screen>} />
                         <Route path="e/:eventId" element={<Screen area="liga/evento"><EventPage /></Screen>} />
                         <Route path="j/:playerId" element={<Screen area="liga/jugador"><SportRoute slot="Player" bowling={<PlayerRoute />} /></Screen>} />

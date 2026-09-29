@@ -9,9 +9,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match, type MatchSide } from '../../../lib/data/matches';
+import { seasonKeys } from '../../../lib/data/seasons';
 import { seasonTeamKeys, type SeasonTeam } from '../../../lib/data/seasonTeams';
 import { teamSportKeys, type MatchOfficial, type MatchRsvp } from '../../../lib/data/teamSports';
 import { LeagueContext, type LeagueCtx } from '../../../lib/league';
+import type { Season } from '../../../lib/seasons';
 import type { League, Member, Player } from '../../../lib/types';
 import { FeedbackProvider } from '../../../components/feedback';
 import screens from './screens';
@@ -135,10 +137,25 @@ const matches = [done, live, next];
 const official: MatchOfficial = { matchId: 'm3', userId: 'u-otra', name: 'Otra' };
 const rsvps: MatchRsvp[] = [{ matchId: 'm3', playerId: 'p2', side: 1, status: 'yes', setBy: 'u-ana', at: null }];
 
+/** La temporada en curso (sin ella, las tablas no salen: no se sabe qué partidos son de cuál). */
+const activeSeason: Season = {
+  id: 's1',
+  name: 'Temporada 2026',
+  startsOn: '2000-01-01',
+  endsOn: null,
+  status: 'active',
+  closedAt: null,
+  closedBy: null,
+  standings: null,
+  awards: [],
+  playoffs: [],
+};
+
 function seed() {
   queryClient.setQueryData(keys.players(lid), players);
   queryClient.setQueryData(keys.leagueMembers(lid), members);
   queryClient.setQueryData(seasonTeamKeys.league(lid), teams);
+  queryClient.setQueryData(seasonKeys.list(lid), [activeSeason]);
   queryClient.setQueryData(matchKeys.league(lid), matches);
   for (const m of matches) queryClient.setQueryData(matchKeys.one(m.id), { ...m, rules, state: null, history: [] });
   queryClient.setQueryData(teamSportKeys.officials(lid), [official]);
@@ -179,7 +196,7 @@ afterEach(() => queryClient.invalidateAll());
 
 describe('pantallas del baloncesto', () => {
   it('el contrato: pantallas, pestaña de admin «equipos» y nombres de pestañas', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Playoffs', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => t.key)).toEqual(['equipos']);
     expect(screens.tabs).toEqual({ home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' });
   });
@@ -238,6 +255,39 @@ describe('pantallas del baloncesto', () => {
     expect(player).toContain('Otra Díaz');
     expect(player).toContain('Triples');
     expect(player).toContain('#1 en anotadores');
+  });
+
+  it('temporadas: una cerrada sin tabla guardada se calcula con sus partidos y sus equipos; sin temporadas, no sale una tabla mezclada', () => {
+    // Una temporada de años de antes (la base la cerró sola: sin tabla ni equipos propios) con su campeón anotado.
+    const before: Season = {
+      ...activeSeason,
+      id: 's0',
+      name: 'Temporada 2025',
+      startsOn: '2000-01-01',
+      endsOn: '2998-12-31',
+      status: 'closed',
+      closedAt: '2026-01-01T00:00:00.000Z',
+      awards: [{ id: 'a1', kind: 'campeon', label: 'Campeón', name: 'Tigres', playerId: null, teamId: 'T1', note: null }],
+    };
+    queryClient.setQueryData(seasonKeys.list(lid), [{ ...activeSeason, startsOn: '2999-01-01' }, before]);
+    const closed = text(render(h(screens.Standings!), `/l/${lid}/ranking?temporada=s0`, 'visit'));
+    expect(closed).toContain('Campeón: Tigres');
+    expect(closed).toContain('Desempate FIBA');
+    expect(closed).toContain('Leones');
+    expect(closed).not.toContain('Sin tabla guardada');
+    // Otra liga con sus partidos pero sin las temporadas todavía: nada de tabla.
+    const other = 'l9';
+    queryClient.setQueryData(seasonTeamKeys.league(other), teams);
+    queryClient.setQueryData(matchKeys.league(other), matches);
+    queryClient.setQueryData(teamSportKeys.rules(other), rules);
+    const html = renderToString(
+      h(
+        MemoryRouter,
+        { initialEntries: [`/l/${other}/ranking`] },
+        h(FeedbackProvider, null, h(LeagueContext.Provider, { value: { ...ctx('visit'), lid: other, base: `/l/${other}` } }, h(Routes, null, h(Route, { path: '*', element: h(screens.Standings!) })))),
+      ),
+    );
+    expect(text(html)).not.toContain('Desempate FIBA');
   });
 
   it('admin: equipos, calendario con anotadores y reglas con plantillas', () => {

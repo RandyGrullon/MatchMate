@@ -3,25 +3,27 @@ import { FileSpreadsheet } from 'lucide-react';
 import { fetchEntriesOfEvents } from '../lib/data';
 import { formatDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
+import type { Season } from '../lib/seasons';
 import type { BowlingEvent, Player } from '../lib/types';
 import { useAction } from './feedback';
 import { Button, Modal } from './ui';
 
 /**
- * Ranking › Excel: descarga la temporada (el año elegido o las fechas de la temporada de la liga)
- * o toda la liga, con el ranking, todos los juegos y cada práctica y torneo.
+ * Ranking › Excel: descarga la temporada elegida en el ranking (sus fechas; la que sigue abierta, hasta hoy) o toda
+ * la liga, con el ranking, todos los juegos y cada práctica y torneo. Sin temporadas: las fechas de la liga.
  */
-export function LeagueExcelButton({ year, events, players }: { year: string | undefined; events: BowlingEvent[]; players: Player[] }) {
+export function LeagueExcelButton({ season, events, players }: { season: Season | null; events: BowlingEvent[]; players: Player[] }) {
   const { lid, league } = useLeagueCtx();
   const run = useAction();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const scopes = [
-    ...(league.seasonStart && league.seasonEnd
-      ? [{ key: 'temporada', label: `Temporada (${formatDate(league.seasonStart)} – ${formatDate(league.seasonEnd)})`, from: league.seasonStart, to: league.seasonEnd }]
-      : []),
-    ...(year ? [{ key: 'anio', label: `Temporada ${year}`, from: `${year}-01-01`, to: `${year}-12-31` }] : []),
+  const scopes: { key: string; label: string; from: string | undefined; to: string | undefined }[] = [
+    ...(season
+      ? [{ key: 'temporada', label: season.name, from: season.startsOn, to: season.status === 'active' ? undefined : (season.endsOn ?? undefined) }]
+      : league.seasonStart && league.seasonEnd
+        ? [{ key: 'temporada', label: `Temporada (${formatDate(league.seasonStart)} – ${formatDate(league.seasonEnd)})`, from: league.seasonStart, to: league.seasonEnd }]
+        : []),
     { key: 'todo', label: 'Toda la liga', from: undefined, to: undefined },
   ];
 

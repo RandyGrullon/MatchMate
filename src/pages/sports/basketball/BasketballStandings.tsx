@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { StandingsTable, defaultColumns } from '../../../components/match';
 import { ShareButton, leadersShare, standingsShare } from '../../../components/share';
-import { Card, Tabs } from '../../../components/ui';
+import { Card, ListSkeleton, LoadError, Tabs } from '../../../components/ui';
+import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
 import { TeamName } from '../team/TeamBits';
 import { useTeamLeague } from '../team/useTeamLeague';
@@ -21,10 +22,15 @@ export const SCORER_COLUMNS: LeaderColumn<BasketballTotals>[] = [
   { key: 'fouls', label: 'F', title: 'Faltas', value: (r) => r.fouls, wide: true },
 ];
 
-/** Tabla FIBA de la temporada y tabla de anotadores (/l/:lid/ranking). */
+/**
+ * Tabla FIBA de la temporada y tabla de anotadores (/l/:lid/ranking). Arriba, la temporada (?temporada=): la activa
+ * se calcula con sus equipos y sus partidos (sin los del playoff); una cerrada muestra sus premios y la tabla que se
+ * guardó al cerrarla (sin tabla guardada, se calcula como la activa).
+ */
 export default function BasketballStandings() {
   const tl = useTeamLeague();
-  const season = useBasketballSeason(tl);
+  const picked = useStandingsSeason();
+  const season = useBasketballSeason(tl, picked.selected ?? tl.season);
   const [tab, setTab] = useState<'tabla' | 'anotadores'>('tabla');
   const table = basketballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
@@ -44,8 +50,27 @@ export default function BasketballStandings() {
         })
       : leadersShare({ title: tl.league.name, subtitle: 'Anotadores', rows: season.leaders, columns: SCORER_COLUMNS, nameOf: tl.nameOf, teamOf: team, limit: 20 });
   const canShare = tab === 'tabla' ? season.standings.length > 0 : season.leaders.length > 0;
+  const label = picked.seasons.length > 1 ? picked.selected?.name : null;
+  // Sin las temporadas no se sabe qué partidos son de cuál: nada de una tabla con todas mezcladas.
+  if (picked.error) return <LoadError error={picked.error} />;
+  if (picked.loading) return <ListSkeleton rows={6} />;
+  if (picked.closed) {
+    // Mis equipos de esa temporada (y yo) salen resaltados en la tabla guardada.
+    const mineThen = [...tl.allTeams.data.filter((t) => t.roster.some((r) => r.playerId === tl.myPlayerId)).map((t) => t.id), ...(tl.myPlayerId ? [tl.myPlayerId] : [])];
+    return (
+      <div className="flex flex-col gap-4">
+        <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
+        <ClosedSeasonView
+          season={picked.closed}
+          highlight={mineThen}
+          footer={season.matches.length > 0 && <ExcelButton tl={tl} season={season} label={picked.closed.name} />}
+        />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
+      <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
       <Tabs
         items={[
           { key: 'tabla', label: 'Tabla' },
@@ -84,7 +109,7 @@ export default function BasketballStandings() {
           highlight={tl.myPlayerId}
         />
       )}
-      {tl.matches.data.length > 0 && <ExcelButton tl={tl} season={season} />}
+      {season.matches.length > 0 && <ExcelButton tl={tl} season={season} label={label} />}
     </div>
   );
 }

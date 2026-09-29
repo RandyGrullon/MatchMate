@@ -230,9 +230,12 @@ export interface SeasonTable {
   clubs: SeasonClub[];
 }
 
-/** Tabla de clubes de la temporada: suma de los puntos de cada encuentro (el control de marcas no cuenta). */
-export function seasonTable(season: SwimSeason, year?: string): SeasonTable {
-  const meets = season.meets.filter((m) => scores(m) && (!year || m.date.startsWith(year)));
+/**
+ * Tabla de clubes de la temporada: suma de los puntos de cada encuentro (el control de marcas no cuenta). `year`
+ * (ligas sin temporadas) o `within` (la temporada: qué fechas entran).
+ */
+export function seasonTable(season: SwimSeason, year?: string, within?: (date: string) => boolean): SeasonTable {
+  const meets = season.meets.filter((m) => scores(m) && (!year || m.date.startsWith(year)) && (!within || within(m.date)));
   const acc = new Map<string, SeasonClub>();
   const counted: SwimMeet[] = [];
   for (const m of [...meets].sort((a, b) => a.date.localeCompare(b.date))) {

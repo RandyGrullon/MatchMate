@@ -250,7 +250,7 @@ export function FootballCourt({
   const idsOf = (side: Side): string[] => {
     if (!s) return [];
     const i = side - 1;
-    const roster = rosterOf(tl.teams.data, m.sides[i].teamId).map((r) => r.playerId);
+    const roster = rosterOf(tl.allTeams.data, m.sides[i].teamId).map((r) => r.playerId);
     const all = [...new Set([...(s.onField[i] ?? []), ...s.present[i], ...roster, ...Object.keys(s.players[i])])];
     const field = s.onField[i];
     const rank = (id: string) => {

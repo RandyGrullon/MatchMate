@@ -62,6 +62,7 @@ import { usePendingClaimCount } from '../components/claims/data';
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
+const SeasonAdmin = lazy(() => import('../components/season/SeasonAdmin'));
 
 type Tab = string;
 
@@ -98,6 +99,8 @@ export default function AdminPage() {
     { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
     { key: 'reclamos', label: 'Reclamos', icon: <UserCheck className="size-4" />, count: claims },
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
+    // Cerrar la temporada con sus campeones y empezar la siguiente (un torneo suelto no tiene temporadas).
+    ...(league.kind === 'torneo' ? [] : [{ key: 'temporada', label: 'Temporada', icon: <CalendarRange className="size-4" /> }]),
     { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
   ];
   // Las del deporte; una que reemplaza a una general conserva su icono y su número.
@@ -181,6 +184,8 @@ function AdminTabs({
             <ClaimsPanel />
           ) : tab === 'buzon' ? (
             <SuggestionsPanel />
+          ) : tab === 'temporada' ? (
+            <SeasonAdmin />
           ) : (
             <SettingsPanel />
           )}

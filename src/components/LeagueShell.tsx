@@ -193,6 +193,8 @@ export default function LeagueShell() {
     // Los juegos de todos, para felicitar y comentar.
     ...(names.feed ? [{ to: `${base}/juegos`, label: names.feed, icon: icons.feed, tour: 'tab-juegos' }] : []),
     ...(names.standings ? [{ to: `${base}/ranking`, label: names.standings, icon: icons.standings, tour: 'tab-ranking' }] : []),
+    // Ligas de equipos: la llave de los playoffs de la temporada.
+    ...(!bowling && !standalone && screens?.Playoffs ? [{ to: `${base}/playoffs`, label: 'Playoffs', icon: Trophy, tour: 'tab-playoffs' }] : []),
     { to: `${base}/perfil`, label: names.profile, icon: icons.profile, tour: 'tab-perfil' },
     ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: pending + newNotes + claims, tour: 'tab-admin' }] : []),
   ];

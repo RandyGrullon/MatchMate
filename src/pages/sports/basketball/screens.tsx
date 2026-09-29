@@ -4,8 +4,10 @@ import BasketballAdmin from './BasketballAdmin';
 import BasketballEvent from './BasketballEvent';
 import BasketballGames from './BasketballGames';
 import BasketballHome from './BasketballHome';
+import BasketballPlayoffs from './BasketballPlayoffs';
 import { BasketballMyProfile, BasketballPlayer } from './BasketballProfile';
 import BasketballStandings from './BasketballStandings';
+import { useBasketballSeasonTable } from './seasonTable';
 
 /**
  * Pantallas del baloncesto (fase 4): equipos de temporada con plantilla, calendario entre equipos con convocatoria,
@@ -19,6 +21,8 @@ const screens: SportScreens = {
   Standings: BasketballStandings,
   MyProfile: BasketballMyProfile,
   Player: BasketballPlayer,
+  Playoffs: BasketballPlayoffs,
+  useSeasonTable: useBasketballSeasonTable,
   adminTabs: [{ key: 'equipos', label: 'Equipos', icon: Shirt, Component: BasketballAdmin }],
   tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' },
 };

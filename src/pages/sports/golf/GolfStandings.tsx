@@ -1,42 +1,47 @@
-import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { Medal } from 'lucide-react';
-import { useEvents, usePlayers } from '../../../lib/data';
-import { useGolfRounds, useGolfRules, useGolfSeason, useGolfTournaments } from '../../../lib/data/golf';
+import { useGolfTournaments } from '../../../lib/data/golf';
 import { eventLabel, formatDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { ShareButton, type ShareTableSpec } from '../../../components/share';
+import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
+import { seasonDates } from '../../../components/season/logic';
 import { Card, Empty, ListSkeleton, LoadError, Position } from '../../../components/ui';
-import { inSeasonDate } from './GolfHome';
-import { meritEvents, seasonMerit } from './logic';
+import { useGolfMerit } from './seasonTable';
 
 /**
  * Orden de mérito de la temporada: puntos por puesto en cada ronda cerrada (un torneo de varias rondas cuenta
- * como un evento cuando todas sus rondas están cerradas). Empates en un evento reparten los puntos.
+ * como un evento cuando todas sus rondas están cerradas). Empates en un evento reparten los puntos. Arriba, la
+ * temporada (?temporada=): la activa con las rondas de sus fechas; una cerrada muestra sus premios y la tabla que
+ * se guardó al cerrarla.
  */
 export default function GolfStandings() {
-  const { lid, base, league } = useLeagueCtx();
-  const season = useGolfSeason(lid);
-  const rounds = useGolfRounds(lid);
-  const rules = useGolfRules(lid);
-  const events = useEvents(lid);
-  const players = usePlayers(lid);
+  const { lid, base, league, myPlayerId } = useLeagueCtx();
+  const picked = useStandingsSeason();
+  const { season, rules, events, players, merit, counted } = useGolfMerit(picked.selected);
   const tournaments = useGolfTournaments(lid);
-
-  const { merit, counted } = useMemo(() => {
-    const dates = new Map(events.data.map((e) => [e.id, e.date] as const));
-    const evs = meritEvents(season.data, rounds.data, (id) => inSeasonDate(league, dates.get(id)));
-    return { merit: seasonMerit(evs, rules.data.meritPoints), counted: evs };
-  }, [season.data, rounds.data, rules.data, events.data, league]);
 
   if (season.error) return <LoadError error={season.error} />;
   if (season.loading) return <ListSkeleton rows={6} />;
+  if (picked.closed) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-xl font-bold tracking-tight">Orden de mérito</h1>
+        <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
+        <ClosedSeasonView season={picked.closed} highlight={myPlayerId ? [myPlayerId] : []} />
+      </div>
+    );
+  }
   const nameOf = (id: string) => players.data.find((p) => p.id === id)?.name ?? '(jugador borrado)';
   const eventName = (id: string) => {
     const e = events.data.find((x) => x.id === id);
     return e ? eventLabel({ type: e.type, name: e.name, date: e.date }, 'golf') : 'Ronda';
   };
-  const season$ = league.seasonStart || league.seasonEnd ? `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}` : null;
+  const season$ = picked.selected
+    ? `${picked.selected.name} (${seasonDates(picked.selected)})`
+    : league.seasonStart || league.seasonEnd
+      ? `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}`
+      : null;
 
   // Imagen del orden de mérito para mandar al grupo.
   const shareCard = (): ShareTableSpec => ({
@@ -54,12 +59,16 @@ export default function GolfStandings() {
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold tracking-tight">Orden de mérito</h1>
-          <p className="text-sm text-muted">
-            {season$ ? `Temporada ${season$}. ` : ''}Puntos por puesto en cada ronda cerrada: {rules.data.meritPoints.slice(0, 5).join(', ')}…
-          </p>
+          <p className="text-sm text-muted">Puntos por puesto en cada ronda cerrada: {rules.data.meritPoints.slice(0, 5).join(', ')}…</p>
         </div>
-        {merit.length > 0 && <ShareButton className="shrink-0" card={shareCard} />}
       </div>
+      <SeasonBar
+        seasons={picked.seasons}
+        selected={picked.selected}
+        onChange={picked.setSelected}
+        action={merit.length > 0 ? <ShareButton className="shrink-0" card={shareCard} /> : undefined}
+      />
+      {!picked.selected && season$ && <p className="-mt-2 text-sm text-muted">Temporada {season$}.</p>}
       {!merit.length ? (
         <Empty icon={<Medal className="size-8" />} title="Todavía no hay rondas cerradas">
           Cuando el admin cierre una ronda, sus resultados suman aquí.

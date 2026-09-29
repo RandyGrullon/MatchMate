@@ -5,6 +5,7 @@ import GolfEvent from './GolfEvent';
 import GolfHome from './GolfHome';
 import { GolfMyProfile, GolfPlayerPage } from './GolfProfile';
 import GolfStandings from './GolfStandings';
+import { useGolfSeasonTable } from './seasonTable';
 
 /**
  * Pantallas del golf (fase 6): rondas y torneos de club con tarjeta por grupo, leaderboard en vivo (bruto,
@@ -16,6 +17,7 @@ const screens: SportScreens = {
   Standings: GolfStandings,
   MyProfile: GolfMyProfile,
   Player: GolfPlayerPage,
+  useSeasonTable: useGolfSeasonTable,
   adminTabs: [{ key: 'campos', label: 'Campos', icon: LandPlot, Component: GolfAdmin }],
   tabs: { home: 'Rondas', feed: null, standings: 'Orden de mérito', profile: 'Mi golf' },
 };

@@ -52,7 +52,7 @@ export function LineupModal({
     { starters: [...current[1].starters], goalkeeper: current[1].goalkeeper },
   ]);
   const [extras, setExtras] = useState<[string[], string[]]>([[], []]);
-  const rosters = useMemo(() => [rosterOf(tl.teams.data, m.sides[0].teamId), rosterOf(tl.teams.data, m.sides[1].teamId)] as const, [tl.teams.data, m.sides]);
+  const rosters = useMemo(() => [rosterOf(tl.allTeams.data, m.sides[0].teamId), rosterOf(tl.allTeams.data, m.sides[1].teamId)] as const, [tl.allTeams.data, m.sides]);
 
   // Al abrir: lo que ya tiene el acta; si no hay, los que dijeron «Voy» (hasta los que caben) y el portero de la plantilla.
   useEffect(() => {
