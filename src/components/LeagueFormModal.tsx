@@ -1,9 +1,11 @@
 import { useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Baby, CalendarRange, Camera, CircleHelp, Clock, Globe, Lock } from 'lucide-react';
+import { Baby, CalendarRange, Camera, CircleHelp, Clock, Globe, ImagePlus, ImageUp, Lock, X } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { createLeague, createTournament, type LeagueInput } from '../lib/data';
 import { toIsoDate } from '../lib/format';
+import type { CompressedLogo } from '../lib/image';
 import { LeagueContext } from '../lib/league';
+import { logoErrorText, prepareLogo, uploadLeagueLogo } from '../lib/logos';
 import { formatSchedule, isCanonicalSchedule, parseSchedule, WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
 import type { League, LeagueKind, Visibility } from '../lib/types';
 import { DEFAULT_SPORT, getSport, leagueSport, sportMeta } from '../sports/registry';
@@ -75,10 +77,13 @@ export function LeagueForm({
   sport: sportProp,
   creating,
   onChangeSport,
+  logo,
 }: {
   id: string;
   initial: LeagueInput;
   onSubmit: (data: LeagueInput, date: string) => void;
+  /** Liga nueva: el selector del logo (va debajo del nombre). */
+  logo?: ReactNode;
   /** Torneo nuevo: pide la fecha del torneo. */
   withDate?: boolean;
   /** Deporte de la liga. Por defecto, el de la liga abierta (editar) o el boliche. */
@@ -166,6 +171,7 @@ export function LeagueForm({
           <Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
       )}
+      {logo}
       <fieldset className="col-span-2 grid grid-cols-2 gap-2">
         <legend className="mb-1.5 text-xs font-medium text-muted">¿Quién puede {isTournament ? 'verlo' : 'verla'}?</legend>
         <Choice
@@ -468,6 +474,73 @@ function Choice({
 }
 
 /**
+ * «Logo (opcional)» al crear: se elige la imagen, se recorta al cuadrado del centro y se comprime de una (así un
+ * archivo que no sirve se avisa aquí); se sube después de crear la liga (src/lib/logos.ts).
+ */
+export function LogoPicker({ value, onChange }: { value: CompressedLogo | null; onChange: (logo: CompressedLogo | null) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!value || typeof URL.createObjectURL !== 'function') {
+      setPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(value.blob);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [value]);
+
+  async function pick(file: File | undefined) {
+    if (input.current) input.current.value = '';
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await prepareLogo(file));
+    } catch (e) {
+      setError(logoErrorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="col-span-2 flex flex-col gap-1.5">
+      <span className="text-xs font-medium text-muted">Logo (opcional)</span>
+      <div className="flex items-center gap-3 rounded-xl border border-line p-3">
+        {preview ? (
+          <img src={preview} alt="" className="size-14 shrink-0 rounded-2xl border border-line bg-surface-2 object-cover" />
+        ) : (
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-dashed border-line text-muted" aria-hidden="true">
+            <ImagePlus className="size-6" />
+          </span>
+        )}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <Button className="h-11" loading={busy} onClick={() => input.current?.click()} icon={<ImageUp className="size-4" />}>
+            {busy ? 'Preparando…' : value ? 'Cambiar' : 'Elegir logo'}
+          </Button>
+          {value && !busy && (
+            <Button className="h-11" variant="ghost" onClick={() => onChange(null)} icon={<X className="size-4" />}>
+              Quitar
+            </Button>
+          )}
+        </div>
+      </div>
+      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0])} />
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : (
+        <span className="text-xs text-muted">Se recorta al cuadrado del centro. Es una imagen pública; la puedes cambiar después en Admin.</span>
+      )}
+    </div>
+  );
+}
+
+/**
  * Deporte que sale marcado al abrir «Crear»: el pedido (p. ej. «Crear liga de pádel» o el deporte en que estás) si
  * la cuenta lo puede crear; si no, el boliche o el primero que pueda. `direct`: ya viene elegido y se va de una a los
  * datos (con «Cambiar» arriba si hay otros).
@@ -500,8 +573,10 @@ export function LeagueFormModal({
 }) {
   const auth = useAuth();
   const run = useAction();
+  const { toast } = useFeedback();
   const sports = useSportStatus(auth.isSuper);
   const [busy, setBusy] = useState(false);
+  const [logo, setLogo] = useState<CompressedLogo | null>(null);
   const [initial, setInitial] = useState<LeagueInput>(() => empty(displayName(auth), kind));
   const [sport, setSport] = useState<SportId>(DEFAULT_SPORT);
   const [step, setStep] = useState<'sport' | 'form'>('form');
@@ -513,6 +588,7 @@ export function LeagueFormModal({
     if (!open) return;
     touched.current = false;
     setInitial(empty(displayName(auth), kind));
+    setLogo(null);
     const pick = initialSport(sports.creatable, wanted);
     setSport(pick.sport);
     setStep(canChoose && !pick.direct ? 'sport' : 'form');
@@ -538,18 +614,35 @@ export function LeagueFormModal({
     const owner = { uid: auth.user.uid, name: displayName(auth) };
     const input: NewLeagueInput = { ...data, sport };
     setBusy(true);
-    const to = isTournament
+    const made = isTournament
       ? await run(async () => {
           const { lid, eid } = await createTournament(owner, input, date);
           // Equipos (baloncesto, fútbol, sala): el torneo se arma desde su inicio (equipos y relámpago); el evento
           // que crea la base es solo el contenedor. Los demás van a inscribir en su evento.
-          return getSport(sport).family === 'team' ? `/l/${lid}` : `/l/${lid}/e/${eid}?tab=inscritos`;
+          return { lid, to: getSport(sport).family === 'team' ? `/l/${lid}` : `/l/${lid}/e/${eid}?tab=inscritos` };
         }, 'Torneo creado')
-      : await run(async () => `/l/${await createLeague(owner, input)}/admin?tab=liga`, 'Liga creada');
+      : await run(async () => {
+          const lid = await createLeague(owner, input);
+          return { lid, to: `/l/${lid}/admin?tab=liga` };
+        }, 'Liga creada');
+    // El logo, después de crearla y si se puede: si falla, la liga igual queda creada.
+    if (made && logo) {
+      try {
+        await uploadLeagueLogo(made.lid, logo);
+      } catch (e) {
+        console.warn('[logo]', e);
+        toast(
+          isTournament
+            ? 'El torneo se creó, pero el logo no se pudo subir. Súbelo desde Admin › Datos.'
+            : 'La liga se creó, pero el logo no se pudo subir. Súbelo desde Admin › Liga.',
+          'error',
+        );
+      }
+    }
     setBusy(false);
-    if (to) {
+    if (made) {
       onClose();
-      onSaved?.(to);
+      onSaved?.(made.to);
     }
   }
 
@@ -595,6 +688,7 @@ export function LeagueFormModal({
           withDate={isTournament}
           sport={sport}
           creating
+          logo={<LogoPicker value={logo} onChange={setLogo} />}
           onChangeSport={
             canChoose
               ? () => {

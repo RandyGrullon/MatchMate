@@ -6,8 +6,9 @@ import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { LeagueInput } from '../lib/data/leagues';
+import type { CompressedLogo } from '../lib/image';
 import { FeedbackProvider } from './feedback';
-import { LeagueForm } from './LeagueFormModal';
+import { LeagueForm, LogoPicker } from './LeagueFormModal';
 
 const base: LeagueInput = {
   name: 'Club Delfines',
@@ -71,5 +72,31 @@ describe('formulario de la liga: zona horaria y menores', () => {
   it('boliche: con menores no sale lo de la foto obligatoria', () => {
     expect(draw({ ...base, requirePhoto: true }, { creating: true, sport: 'bowling' })).toContain('Exigir foto del marcador');
     expect(draw({ ...base, hasMinors: true }, { creating: true, sport: 'bowling' })).not.toContain('Exigir foto del marcador');
+  });
+});
+
+describe('crear: el logo (opcional)', () => {
+  const picker = (value: CompressedLogo | null) => renderToString(h(LogoPicker, { value, onChange: () => {} }));
+
+  it('sin elegir: «Elegir logo», solo imágenes, y que se recorta y es pública', () => {
+    const html = picker(null);
+    expect(html).toContain('Logo (opcional)');
+    expect(html).toContain('Elegir logo');
+    expect(html).toContain('accept="image/*"');
+    expect(html).toContain('Es una imagen pública');
+    expect(html).not.toContain('Quitar');
+  });
+
+  it('ya elegido: «Cambiar» y «Quitar»', () => {
+    const html = picker({ blob: new Blob([new Uint8Array([1])], { type: 'image/webp' }), contentType: 'image/webp', side: 256 });
+    expect(html).toContain('Cambiar');
+    expect(html).toContain('Quitar');
+  });
+
+  it('va debajo del nombre cuando se pasa (al editar no sale)', () => {
+    const logo = h(LogoPicker, { value: null, onChange: () => {} });
+    const html = renderToString(h(FeedbackProvider, null, h(LeagueForm, { id: 'f', initial: base, onSubmit: () => {}, sport: 'bowling', creating: true, logo })));
+    expect(html.indexOf('Logo (opcional)')).toBeGreaterThan(html.indexOf('Nombre de la liga'));
+    expect(draw(base)).not.toContain('Logo (opcional)');
   });
 });

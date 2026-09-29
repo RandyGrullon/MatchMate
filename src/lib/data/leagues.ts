@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { sportMeta } from '../../sports/registry';
 import { BackendError } from '../backend/types';
 import { uuidv7 } from '../db/ids';
+import { deleteLeagueWithLogo } from '../logos';
 import type { Invite, League, LeagueKind, Visibility } from '../types';
 import { invalidate, rpc, select, useLive, type Live } from './client';
 import { keys, sortedKey, tags } from './keys';
@@ -154,9 +155,12 @@ export async function updateLeague(lid: string, patch: Partial<LeagueInput>) {
   invalidate(tags.league(lid), tags.leagues);
 }
 
-/** Borra la liga con todo su contenido (dueño o superadmin). Los archivos de fotos los borra la base después. */
+/**
+ * Borra la liga con todo su contenido (dueño o superadmin). Los archivos de fotos los borra la base después; el
+ * del logo, el teléfono justo después de borrarla (src/lib/logos.ts), si se puede (si no, queda en la cola de la base).
+ */
 export async function deleteLeague(lid: string, _myUid: string) {
-  await rpc('delete_league', { p_league: lid });
+  await deleteLeagueWithLogo(lid, () => rpc('delete_league', { p_league: lid }));
   invalidate(tags.league(lid), tags.leagues, tags.members, tags.feeds);
 }
 
@@ -191,9 +195,12 @@ export async function renewInviteCode(league: Pick<League, 'id'>): Promise<strin
 export async function getInvite(code: string): Promise<Invite | null> {
   const id = code.trim().toUpperCase();
   if (!id) return null;
-  const rows = await rpc<{ league_id: string; name: string; sport: string; kind: LeagueKind; visibility: Visibility }[] | null>('invite_preview', { p_code: id });
+  const rows = await rpc<{ league_id: string; name: string; sport: string; kind: LeagueKind; visibility: Visibility; logo_path?: string | null }[] | null>(
+    'invite_preview',
+    { p_code: id },
+  );
   const r = rows?.[0];
-  return r ? { id, leagueId: r.league_id, leagueName: r.name, sport: r.sport, kind: r.kind, visibility: r.visibility } : null;
+  return r ? { id, leagueId: r.league_id, leagueName: r.name, sport: r.sport, kind: r.kind, visibility: r.visibility, logoPath: r.logo_path ?? null } : null;
 }
 
 // ---------- Unirse ----------
@@ -364,6 +371,8 @@ export interface InviteDetails {
   sport: string;
   kind: LeagueKind;
   visibility: Visibility;
+  /** Logo de la liga (bucket público `logos`) o null. */
+  logoPath: string | null;
   venue: string;
   schedule: string;
   /** YYYY-MM-DD o '' (en un torneo sin liga, la fecha del torneo). */
@@ -378,7 +387,8 @@ export interface InviteDetails {
   players: FreePlayer[];
 }
 
-type InviteDetailsRaw = Omit<InviteDetails, 'seasonStart' | 'seasonEnd' | 'players'> & {
+type InviteDetailsRaw = Omit<InviteDetails, 'logoPath' | 'seasonStart' | 'seasonEnd' | 'players'> & {
+  logoPath?: string | null;
   seasonStart: string | null;
   seasonEnd: string | null;
   players: FreePlayer[] | null;
@@ -392,6 +402,7 @@ export async function getInviteDetails(code: string): Promise<InviteDetails | nu
   if (!r) return null;
   return {
     ...r,
+    logoPath: r.logoPath ?? null,
     venue: r.venue ?? '',
     schedule: r.schedule ?? '',
     seasonStart: r.seasonStart ?? '',

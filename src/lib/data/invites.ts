@@ -49,6 +49,8 @@ export interface LeagueInvite {
   id: string;
   leagueId: string;
   leagueName: string;
+  /** Logo de la liga (bucket público `logos`) o null. */
+  logoPath: string | null;
   sport: string;
   kind: LeagueKind;
   visibility: Visibility;
@@ -63,6 +65,8 @@ export interface LeagueInvite {
 export interface InviteLeague {
   id: string;
   name: string;
+  /** Logo de la liga (bucket público `logos`) o null. */
+  logoPath: string | null;
   sport: string;
   kind: LeagueKind;
   visibility: Visibility;
@@ -158,6 +162,7 @@ const toInvite = (r: Raw<LeagueInvite>): LeagueInvite => ({
   id: String(r.id),
   leagueId: String(r.leagueId ?? ''),
   leagueName: text(r.leagueName),
+  logoPath: text(r.logoPath) || null,
   sport: text(r.sport) || 'bowling',
   kind: r.kind === 'torneo' ? 'torneo' : 'liga',
   visibility: r.visibility === 'private' ? 'private' : 'public',
@@ -207,6 +212,7 @@ function toDetails(r: DetailsRaw): LeagueInviteDetails {
     league: {
       id: String(l.id ?? ''),
       name: text(l.name),
+      logoPath: text(l.logoPath) || null,
       sport: text(l.sport) || 'bowling',
       kind: l.kind === 'torneo' ? 'torneo' : 'liga',
       visibility: l.visibility === 'private' ? 'private' : 'public',

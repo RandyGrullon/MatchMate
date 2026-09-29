@@ -76,3 +76,32 @@ describe('tour de Admin', () => {
     }
   });
 });
+
+describe('Admin › Liga: el logo', () => {
+  const draw = (extra: Partial<League>) =>
+    renderToString(
+      h(
+        MemoryRouter,
+        { initialEntries: ['/l/l1/admin?tab=liga'] },
+        h(FeedbackProvider, null, h(LeagueContext.Provider, { value: { ...ctx('bowling'), league: { ...league('bowling'), ...extra } } }, h(AdminPage))),
+      ),
+    );
+  const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
+  it('sin logo: «Subir logo» (solo imágenes) y el ícono del deporte', () => {
+    const html = draw({});
+    const t = text(html);
+    expect(t).toContain('Logo');
+    expect(t).toContain('Subir logo');
+    expect(t).toContain('Es una imagen pública');
+    expect(t).not.toContain('Quitar');
+    expect(html).toContain('accept="image/*"');
+  });
+
+  it('con logo: «Cambiar» y «Quitar»', () => {
+    const t = text(draw({ logoPath: 'l1/0199a1b2-c3d4-7e5f-8a9b-000000000001.webp' }));
+    expect(t).toContain('Cambiar');
+    expect(t).toContain('Quitar');
+    expect(t).not.toContain('Subir logo');
+  });
+});

@@ -12,6 +12,7 @@ import { SportBadge, SportIcon } from './sports/SportBits';
 import { useCreateMenu } from '../components/CreateMenu';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { JoinCodeCard } from '../components/home/JoinCodeCard';
+import { LeagueLogo } from '../components/home/LeagueCard';
 import { LiveSection, NextUpCard } from '../components/home/LiveSection';
 import { greeting, todayLabel } from '../components/home/logic';
 import { MyLeaguesBody, MyLeaguesBySport, MyLeagueList, NoLeaguesYet } from '../components/home/MyLeagues';
@@ -111,15 +112,17 @@ export default function HomePage() {
             to={`/l/${resume.id}`}
             className="flex min-h-14 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 transition hover:bg-surface-2"
           >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
-              {manySports ? (
-                <SportIcon sport={leagueSport(resume)} className="size-5" />
-              ) : resume.kind === 'torneo' ? (
-                <Trophy className="size-5" />
-              ) : (
-                <CalendarDays className="size-5" />
-              )}
-            </span>
+            <LeagueLogo path={resume.logoPath} className="size-10 rounded-xl">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+                {manySports ? (
+                  <SportIcon sport={leagueSport(resume)} className="size-5" />
+                ) : resume.kind === 'torneo' ? (
+                  <Trophy className="size-5" />
+                ) : (
+                  <CalendarDays className="size-5" />
+                )}
+              </span>
+            </LeagueLogo>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-medium text-muted">Seguir en</span>
               <span className="block truncate font-semibold">{resume.name}</span>

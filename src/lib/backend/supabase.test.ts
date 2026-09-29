@@ -75,9 +75,10 @@ function mockClient() {
     }),
     removeChannel: vi.fn(async (_ch: unknown) => 'ok'),
     storage: {
-      from: vi.fn((_bucket: string) => ({
+      from: vi.fn((bucket: string) => ({
         upload: vi.fn(async (_p: string, _d: unknown, _o: unknown): Promise<Res> => storageRes),
         createSignedUrl: vi.fn(async (_p: string, _s: number): Promise<Res> => storageRes),
+        getPublicUrl: vi.fn((p: string) => ({ data: { publicUrl: `https://x/storage/v1/object/public/${bucket}/${p}` } })),
         remove: vi.fn(async (_p: string[]): Promise<Res> => storageRes),
       })),
     },
@@ -452,6 +453,8 @@ describe('archivos y funciones', () => {
     expect(await b.storage.signedUrl('scoreboards', 'l/p.webp')).toBe('https://x/sign?token=1');
     const bucket = m.client.storage.from.mock.results.at(-1)!.value as { createSignedUrl: ReturnType<typeof vi.fn> };
     expect(bucket.createSignedUrl).toHaveBeenCalledWith('l/p.webp', 3600);
+    // Bucket público (logos): la URL fija, sin preguntar al servidor.
+    expect(await b.storage.publicUrl('logos', 'l/a.webp')).toBe('https://x/storage/v1/object/public/logos/l/a.webp');
   });
 
   it('invoke: datos o errores traducidos (cuerpo {error})', async () => {

@@ -89,6 +89,7 @@ const invite = (id: string, extra: Partial<LeagueInvite> = {}): LeagueInvite => 
   id,
   leagueId: `l-${id}`,
   leagueName: `Liga ${id}`,
+  logoPath: null,
   sport: 'bowling',
   kind: 'liga',
   visibility: 'private',

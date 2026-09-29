@@ -8,7 +8,7 @@
 export const LEGAL_DRAFT = true;
 
 /** Fecha de la última versión ('YYYY-MM-DD'). */
-export const LEGAL_UPDATED = '2026-09-28';
+export const LEGAL_UPDATED = '2026-09-29';
 
 /**
  * Quién responde por los datos y cómo escribirle. Lo que va entre corchetes falta llenarlo (las páginas lo

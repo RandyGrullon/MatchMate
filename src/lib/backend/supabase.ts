@@ -100,6 +100,18 @@ export function applySelect(client: SupabaseClient, q: SelectQuery): FilterBuild
 
 const origin = () => (typeof window !== 'undefined' ? window.location.origin : '');
 
+/**
+ * A dónde vuelve el link de Google o del correo: el origen, más la ruta de la app a la que iba (si es una ruta
+ * de la app: nunca otro sitio). La lista de «Redirect URLs» de Supabase tiene `<origen>/**`; si no la aceptara,
+ * Supabase vuelve al «Site URL» y la app igual encuentra la ruta guardada en el teléfono.
+ */
+export function returnUrl(next?: string): string | undefined {
+  const base = origin();
+  if (!base) return undefined;
+  const ok = !!next && next.startsWith('/') && !next.startsWith('//') && !/[\s\\]/.test(next);
+  return ok ? base + next : base;
+}
+
 function readLastSession(): Session | null {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(LAST_SESSION_KEY) : null;
@@ -209,11 +221,11 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       });
       return () => data.subscription.unsubscribe();
     },
-    async signUp(email, password, name, meta, captchaToken) {
+    async signUp(email, password, name, meta, captchaToken, next) {
       const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { ...meta, name: name.trim() }, emailRedirectTo: origin() || undefined, captchaToken },
+        options: { data: { ...meta, name: name.trim() }, emailRedirectTo: returnUrl(next), captchaToken },
       });
       if (error) throw mapAuthError(error as AuthErrorLike);
       // Con «Confirm email» activado, un correo ya registrado vuelve sin identidades y sin error.
@@ -229,10 +241,10 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       if (!s) throw mapAuthError({ code: 'session_not_found' });
       return s;
     },
-    async signInWithGoogle() {
+    async signInWithGoogle(next) {
       const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: origin() || undefined, queryParams: { prompt: 'select_account' } },
+        options: { redirectTo: returnUrl(next), queryParams: { prompt: 'select_account' } },
       });
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
@@ -243,8 +255,8 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       writeLastSession(null);
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
-    async resendConfirmation(email, captchaToken) {
-      const { error } = await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: origin() || undefined, captchaToken } });
+    async resendConfirmation(email, captchaToken, next) {
+      const { error } = await client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: returnUrl(next), captchaToken } });
       if (error) throw mapAuthError(error as AuthErrorLike);
     },
     async resetPassword(email, captchaToken) {
@@ -320,6 +332,10 @@ export function createSupabaseBackend(opts: SupabaseBackendOptions): Backend {
       const { data, error } = await client.storage.from(bucket).createSignedUrl(path, expiresInSeconds);
       if (error) throw mapStorageError(error as { message?: string; status?: number; statusCode?: string });
       return data.signedUrl;
+    },
+    async publicUrl(bucket, path) {
+      // Solo arma la URL (no pregunta al servidor): si el archivo no existe, la imagen no carga.
+      return client.storage.from(bucket).getPublicUrl(path).data.publicUrl;
     },
     async remove(bucket, paths) {
       const { error } = await client.storage.from(bucket).remove(paths);

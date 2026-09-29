@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
   Baby,
@@ -13,6 +13,7 @@ import {
   Globe,
   Lightbulb,
   ImageMinus,
+  ImageUp,
   Inbox,
   Lock,
   MapPin,
@@ -44,8 +45,10 @@ import {
 import { useNotifications } from '../components/Notifications';
 import { formatDate, venueLabel } from '../lib/format';
 import { rememberLeague, roleLabel, useLeagueCtx, whatsappUrl } from '../lib/league';
+import { logoErrorText, removeLeagueLogo, uploadLeagueLogo } from '../lib/logos';
 import type { Member } from '../lib/types';
 import { Avatar } from '../components/Avatar';
+import { LeagueIcon } from '../components/home/LeagueCard';
 import { InviteCard } from '../components/InviteCard';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
 import { Tour } from '../components/Tour';
@@ -440,6 +443,8 @@ function SettingsPanel() {
         </div>
       </Card>
 
+      <LogoCard />
+
       <AnnouncePanel />
 
       <InviteCard league={league} />
@@ -447,6 +452,93 @@ function SettingsPanel() {
       <EditLeagueModal open={editing} onClose={() => setEditing(false)} />
       <LeagueConfigModal open={configuring} onClose={() => setConfiguring(false)} />
     </div>
+  );
+}
+
+/**
+ * El logo de la liga o del torneo (dueño y admins): cómo se ve, «Subir logo» o «Cambiar» (se recorta al cuadrado
+ * del centro y se comprime en el teléfono) y «Quitar» (vuelve el ícono del deporte). Necesita señal.
+ */
+function LogoCard() {
+  const { lid, league } = useLeagueCtx();
+  const { confirm, toast } = useFeedback();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<'upload' | 'remove' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const kind = league.kind ?? 'liga';
+  const noun = kind === 'torneo' ? 'el torneo' : 'la liga';
+  const has = !!league.logoPath;
+
+  async function upload(file: File | undefined) {
+    if (input.current) input.current.value = '';
+    if (!file || busy) return;
+    setBusy('upload');
+    setError(null);
+    try {
+      await uploadLeagueLogo(lid, file);
+      toast(has ? 'Logo cambiado' : 'Logo listo');
+    } catch (e) {
+      setError(logoErrorText(e, kind));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove() {
+    const ok = await confirm({
+      title: '¿Quitar el logo?',
+      message: `${kind === 'torneo' ? 'El torneo' : 'La liga'} vuelve a mostrar el ícono del deporte. Puedes subir otro cuando quieras.`,
+      confirmText: 'Quitar',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy('remove');
+    setError(null);
+    try {
+      await removeLeagueLogo(lid);
+      toast('Logo quitado');
+    } catch (e) {
+      setError(logoErrorText(e, kind));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-4">
+      <div className="flex items-center gap-3">
+        <LeagueIcon league={league} size="xl" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold">Logo</h2>
+          <p className="text-xs text-muted">
+            {has ? 'Sale' : 'Si subes uno, sale'} en la lista de ligas, en las invitaciones y arriba en {noun}. Es una imagen pública.
+          </p>
+        </div>
+      </div>
+      <input ref={input} type="file" accept="image/*" hidden onChange={(e) => void upload(e.target.files?.[0])} />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          className="h-11"
+          variant={has ? 'secondary' : 'primary'}
+          loading={busy === 'upload'}
+          disabled={!!busy}
+          icon={<ImageUp className="size-4" />}
+          onClick={() => input.current?.click()}
+        >
+          {busy === 'upload' ? 'Subiendo…' : has ? 'Cambiar' : 'Subir logo'}
+        </Button>
+        {has && (
+          <Button className="h-11" variant="ghost" loading={busy === 'remove'} disabled={!!busy} icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
+            Quitar
+          </Button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
+    </Card>
   );
 }
 

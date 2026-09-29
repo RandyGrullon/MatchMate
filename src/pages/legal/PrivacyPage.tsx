@@ -169,6 +169,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
             'Las fotos se quedan mientras exista la liga. El admin puede borrar las viejas cuando quiera, y se borran si se borra la liga.',
           ]}
         />
+        <p>El logo de una liga o torneo es distinto: es una imagen pública que puede ver cualquiera que tenga el link, aunque no tenga cuenta.</p>
       </>
     ),
   },

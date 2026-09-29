@@ -49,6 +49,8 @@ export interface League {
   hasMinors?: boolean;
   /** Zona horaria de la liga (IANA). */
   tz?: string;
+  /** Logo en el bucket público `logos` ('<liga>/<uuid>.webp'); null o sin valor = sin logo (src/lib/logos.ts). */
+  logoPath?: string | null;
   createdAt?: Stamp | null;
 }
 
@@ -76,6 +78,8 @@ export interface Invite {
   sport?: string;
   kind?: LeagueKind;
   visibility?: Visibility;
+  /** Logo de la liga (bucket público `logos`), también sin cuenta. */
+  logoPath?: string | null;
 }
 
 export interface Player {

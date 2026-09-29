@@ -6,6 +6,7 @@ import { respondErrorText, respondInvite, useInviteDetails, type InviteStatus, t
 import { AppShell } from '../components/Shell';
 import { BackLink } from '../components/BackLink';
 import { useFeedback } from '../components/feedback';
+import { LeagueLogo } from '../components/home/LeagueCard';
 import { INFO_FORMAT, InfoItem, InfoList } from '../components/league/LeagueInfo';
 import { countLabel, guessPlayer, infoRows, peopleWord } from '../components/league/logic';
 import { SportTheme } from '../components/league/SportTheme';
@@ -169,9 +170,11 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
   return (
     <SportTheme sport={l.sport}>
       <Card className="mx-auto flex max-w-md flex-col items-center gap-4 p-6 text-center">
-        <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <SportIcon sport={l.sport} className="size-7" />
-        </div>
+        <LeagueLogo path={l.logoPath} className="size-20 rounded-3xl">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <SportIcon sport={l.sport} className="size-7" />
+          </div>
+        </LeagueLogo>
         <div className="flex flex-col items-center gap-1.5">
           <p className="text-sm text-muted">
             {invitedByLine(d.invitedBy)} {torneo ? 'al torneo' : 'a la liga'}
