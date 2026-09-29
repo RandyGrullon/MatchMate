@@ -2,17 +2,34 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { CalendarDays, ChevronRight, Flag, LandPlot, Lock, Medal, Plus, Trophy } from 'lucide-react';
 import { useEvents } from '../../../lib/data';
-import { useGolfCourses, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '../../../lib/data/golf';
+import { useGolfCardPlayers, useGolfCourses, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '../../../lib/data/golf';
 import { useLeagueSeasons } from '../../../lib/data/seasons';
 import { eventLabel, formatDate, toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { currentSeason } from '../../../lib/seasons';
 import type { BowlingEvent } from '../../../lib/types';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Position, cx } from '../../../components/ui';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import GolfEvent from './GolfEvent';
 import { RoundForm } from './RoundForm';
 import { formatLabel, nineLabel } from './logic';
 import { useGolfMerit } from './seasonTable';
+
+/**
+ * «Anotadores» de un torneo sin liga con varias rondas (sus anotadores anotan en todas): «Juega» quien tiene tarjeta
+ * en alguna (se leen solo aquí, para el admin). Mientras llegan, nadie sale con «Juega».
+ */
+function TournamentScorers() {
+  const { lid, league } = useLeagueCtx();
+  const cards = useGolfCardPlayers(lid);
+  return (
+    <ScorersButton
+      labeled
+      target={{ scope: 'liga', refId: null, title: league.name }}
+      participants={cards.loading && !cards.data.length ? undefined : cards.data}
+    />
+  );
+}
 
 /**
  * Inicio de la liga de golf: rondas de hoy y las próximas, resultados y lo primero del orden de mérito.
@@ -46,6 +63,8 @@ export default function GolfHome() {
           <Link to={`${base}/admin?tab=campos`} className="text-sm font-medium text-accent">
             Campos del club
           </Link>
+          {/* Torneo sin liga con varias rondas: sus anotadores anotan en todas. */}
+          {league.kind === 'torneo' && <TournamentScorers />}
         </div>
       )}
       {isAdmin && !courses.loading && !courses.data.length && (

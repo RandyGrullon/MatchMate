@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
-import { Eye, LogIn, RotateCcw, UserPlus, UserRound } from 'lucide-react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { ClipboardPen, Eye, LogIn, LogOut, RotateCcw, UserPlus, UserRound } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { ensurePlayer, useJoining } from '../lib/data';
-import { useLeagueCtx } from '../lib/league';
+import { ensurePlayer, removeMember, useJoining } from '../lib/data';
+import { playToo } from '../lib/data/scorers';
+import { rememberLeague, useLeagueCtx } from '../lib/league';
+import { useAction, useFeedback } from '../components/feedback';
 import { useJoinFlow } from '../components/league/WhoAreYou';
 import { Button, Empty, PageSkeleton } from '../components/ui';
 import PlayerPage from './PlayerPage';
@@ -11,6 +13,7 @@ import PlayerPage from './PlayerPage';
 /**
  * "Mis juegos" dentro de la liga:
  * - miembro: su página de jugador (la cuenta es su jugador; si todavía no lo tiene, se le crea solo);
+ * - quien entró solo para anotar (sin jugador): «Estás aquí para anotar», con «También juego» y «Salir»;
  * - sin ser miembro: unirse (pública) o pedir invitación (privada).
  */
 export default function LeagueProfilePage() {
@@ -22,7 +25,54 @@ export default function LeagueProfilePage() {
   if (member && joining) return <PageSkeleton />;
   if (!user) return <SignInPrompt />;
   if (!member) return <NotMember />;
+  if (member.scorerOnly) return <ScorerOnly />;
   return <PreparingPlayer />;
+}
+
+/**
+ * Entró solo para anotar (link o invitación de anotador) y no tiene jugador: nadie se lo crea solo. «También juego»
+ * se lo crea (y deja de ser «solo anota»); «Salir» lo saca de la liga.
+ */
+function ScorerOnly() {
+  const { lid, league, member } = useLeagueCtx();
+  const navigate = useNavigate();
+  const run = useAction();
+  const { confirm } = useFeedback();
+  const [busy, setBusy] = useState<'play' | 'leave' | null>(null);
+  const torneo = league.kind === 'torneo';
+  const from = torneo ? 'del torneo' : 'de la liga';
+
+  async function play() {
+    setBusy('play');
+    await run(() => playToo(lid), 'Listo, ya tienes tu jugador');
+    setBusy(null);
+  }
+
+  async function leave() {
+    if (!member) return;
+    const ok = await confirm({ title: `¿Salir ${from}?`, message: `Dejas de anotar y sales ${from}.`, confirmText: 'Salir', danger: true });
+    if (!ok) return;
+    setBusy('leave');
+    const left = await run(() => removeMember(member).then(() => true), `Saliste ${from}`);
+    setBusy(null);
+    if (!left) return;
+    rememberLeague(null);
+    navigate('/ligas');
+  }
+
+  return (
+    <Empty icon={<ClipboardPen className="size-8" />} title="Estás aquí para anotar">
+      Entraste {torneo ? 'al torneo' : 'a la liga'} para anotar resultados; no tienes jugador.
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <Button variant="primary" loading={busy === 'play'} disabled={!!busy} onClick={() => void play()} icon={<UserPlus className="size-4" />}>
+          También juego
+        </Button>
+        <Button variant="ghost" className="text-danger" loading={busy === 'leave'} disabled={!!busy} onClick={() => void leave()} icon={<LogOut className="size-4" />}>
+          Salir {from}
+        </Button>
+      </div>
+    </Empty>
+  );
 }
 
 function SignInPrompt() {

@@ -7,12 +7,12 @@ import { SportIcon } from '../../pages/sports/SportBits';
 import { useFeedback } from '../feedback';
 import { LeagueLogo } from '../home/LeagueCard';
 import { Badge, Button, Card } from '../ui';
-import { invitedByLine, leagueTypeLabel, respondedText } from './inviteText';
+import { invitedByLine, leagueTypeLabel, respondedText, scorerInvitedLine } from './inviteText';
 
 /**
  * «Invitaciones» arriba de la lista de Avisos: las invitaciones pendientes de la cuenta a una liga, con Aceptar y
  * Rechazar ahí mismo (aceptar lleva a la liga) y «Ver» para la pantalla completa (/invitacion/<id>, con «¿Quién
- * eres?»). Sin invitaciones no sale.
+ * eres?»). La de anotador dice «te invitó a anotar en …» y al aceptar lleva a ese torneo. Sin invitaciones no sale.
  */
 export function InvitesCard({ uid, now }: { uid: string; now: number }) {
   const invites = useMyInvites(uid);
@@ -28,8 +28,8 @@ export function InvitesCard({ uid, now }: { uid: string; now: number }) {
     setBusy({ id: inv.id, accept });
     try {
       const r = await respondInvite(inv.id, accept);
-      toast(respondedText(r.status, inv.leagueName), r.status === 'cancelled' ? 'error' : 'ok');
-      if (r.status === 'accepted') navigate(`/l/${r.leagueId || inv.leagueId}`);
+      toast(respondedText(r.status, inv.leagueName, r.scorer ? r.scorer.title : null), r.status === 'cancelled' ? 'error' : 'ok');
+      if (r.status === 'accepted') navigate(r.scorer?.path ?? `/l/${r.leagueId || inv.leagueId}`);
     } catch (e) {
       toast(respondErrorText(e), 'error');
     } finally {
@@ -63,7 +63,8 @@ export function InvitesCard({ uid, now }: { uid: string; now: number }) {
                   <div className="min-w-0 flex-1">
                     <p className="leading-snug font-semibold break-words">{inv.leagueName || 'Una liga'}</p>
                     <p className="text-sm text-muted">
-                      {invitedByLine(inv.invitedBy)} · {leagueTypeLabel(inv.kind, inv.visibility)}
+                      {inv.scorer ? scorerInvitedLine(inv.invitedBy, inv.scorer.title || league) : invitedByLine(inv.invitedBy)} ·{' '}
+                      {leagueTypeLabel(inv.kind, inv.visibility)}
                     </p>
                     {Number.isFinite(time) && <p className="text-xs text-muted">{relativeTime(time, now)}</p>}
                   </div>

@@ -365,22 +365,32 @@ const canNativeShare = () => typeof navigator !== 'undefined' && typeof navigato
 /**
  * El link para mandar por fuera de la app: copiarlo, WhatsApp y el menú del teléfono («Más», si el navegador lo
  * tiene). Si la liga todavía no tiene link de invitación (el admin), en vez de esos tres, un solo botón que lo crea.
+ * Sirve también para otros links (el de anotar, src/components/scorers): `text` (lo que acompaña al link), `hint`
+ * (la línea de arriba) y `createLabel` (el botón de crear).
  */
 export function ShareRow({
   link,
   leagueName,
   onCreate,
   creating = false,
+  text: shareText,
+  hint = 'O manda el link por WhatsApp o donde quieras.',
+  createLabel = 'Crear link de invitación',
 }: {
   link: InviteLink;
   leagueName: string;
   /** Crear el link de invitación (solo cuando `link` es 'none'). */
   onCreate?: () => void;
   creating?: boolean;
+  /** Lo que acompaña al link en WhatsApp y en «Más» (por defecto, «Únete a <liga> en MatchMate»). */
+  text?: string;
+  /** La línea de arriba de los botones (null: sin línea). */
+  hint?: string | null;
+  createLabel?: string;
 }) {
   const { toast } = useFeedback();
   const [canShare] = useState(canNativeShare);
-  const text = inviteShareText(leagueName);
+  const text = shareText ?? inviteShareText(leagueName);
   const url = link.kind === 'url' ? link.url : null;
   const waiting = link.kind === 'loading';
 
@@ -389,7 +399,7 @@ export function ShareRow({
       <div className="flex flex-col gap-2">
         <p className="text-center text-xs text-muted">Todavía no hay link de invitación. Créalo para mandarlo por WhatsApp o donde quieras.</p>
         <Button className="h-11 w-full" icon={<Ticket className="size-4" />} loading={creating} onClick={onCreate}>
-          Crear link de invitación
+          {createLabel}
         </Button>
       </div>
     );
@@ -413,7 +423,7 @@ export function ShareRow({
   const waIcon = <MessageCircle className="size-5" />;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-center text-xs text-muted">O manda el link por WhatsApp o donde quieras.</p>
+      {hint && <p className="text-center text-xs text-muted">{hint}</p>}
       <div className="flex justify-center gap-4">
         <RoundButton label="Copiar enlace" icon={<Link2 className="size-5" />} tone="bg-surface-2 text-fg" onClick={() => void copy()} disabled={waiting} />
         {url ? (

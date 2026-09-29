@@ -89,11 +89,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const memberships = useMyMemberships(uid);
   // Cada cuenta juega con su propia cuenta: a quien se unió antes sin jugador (o al dueño de una liga
-  // vieja) se le crea el suyo, una vez. Al unirse ahora se crea en el momento.
+  // vieja) se le crea el suyo, una vez. Al unirse ahora se crea en el momento. A quien entró solo para anotar
+  // (link o invitación de anotador) no: su jugador lo pide él con «También juego».
   useEffect(() => {
     if (!user) return;
     for (const m of memberships.data) {
-      if (m.playerId || m.uid !== user.uid || isJoining(m.leagueId) || backfilled.has(m.id)) continue;
+      if (m.playerId || m.scorerOnly || m.uid !== user.uid || isJoining(m.leagueId) || backfilled.has(m.id)) continue;
       backfilled.add(m.id);
       ensurePlayer(m.leagueId, m.uid, m.name).catch((e) => console.warn('[jugador] no se pudo crear', e));
     }

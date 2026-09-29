@@ -72,7 +72,8 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const players = usePlayers(lid);
   const members = useLeagueMembers(lid);
   const memberByUid = useMemo(() => new Map(members.data.map((m) => [m.uid, m])), [members.data]);
-  const unlinked = members.data.filter((m) => !m.playerId);
+  // Cuentas sin jugador (quien entró solo para anotar no juega: no sale para vincular).
+  const unlinked = members.data.filter((m) => !m.playerId && !m.scorerOnly);
   const entries = useAllEntries(bowling ? lid : undefined);
   const stats = useStatsByPlayer(entries.data);
   // El promedio que toma una inscripción de hoy (el del handicap): la temporada, la anterior, el fijo o el de entrada.

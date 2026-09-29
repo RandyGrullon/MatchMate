@@ -11,8 +11,18 @@ import type { TourStep } from '../components/Tour';
 import { FeedbackProvider } from '../components/feedback';
 import { LeagueContext, type LeagueCtx } from '../lib/league';
 import { ADMIN_TOUR } from '../lib/tours';
-import type { League } from '../lib/types';
+import type { League, Member } from '../lib/types';
 import AdminPage from './AdminPage';
+
+// Los miembros de la liga (Admin › Miembros): los de la prueba, o los de verdad (vacíos sin base) si no hay.
+const data = vi.hoisted(() => ({ members: null as Member[] | null }));
+vi.mock('../lib/data', async (orig) => {
+  const real = await orig<typeof import('../lib/data')>();
+  return {
+    ...real,
+    useLeagueMembers: (lid?: string) => (data.members ? { data: data.members, loading: false, error: null } : real.useLeagueMembers(lid)),
+  };
+});
 
 const calls = vi.hoisted(() => [] as { name: string; steps: TourStep[]; when?: boolean }[]);
 vi.mock('../components/Tour', () => ({
@@ -63,6 +73,7 @@ function adminTourWhen(sport: string): boolean | undefined {
 
 beforeEach(() => {
   calls.length = 0;
+  data.members = null;
 });
 
 describe('tour de Admin', () => {
@@ -121,5 +132,53 @@ describe('Admin › Liga: el logo', () => {
     expect(t).toContain('Cambiar');
     expect(t).toContain('Quitar');
     expect(t).not.toContain('Subir logo');
+  });
+});
+
+describe('Admin › Miembros: los anotadores', () => {
+  const member = (uid: string, name: string, extra: Partial<Member> = {}): Member => ({
+    id: `l1_${uid}`,
+    leagueId: 'l1',
+    uid,
+    name,
+    role: 'member',
+    playerId: `p-${uid}`,
+    ...extra,
+  });
+  const members = [
+    member('u-owner', 'Org', { role: 'owner' }),
+    member('u-sofi', 'Sofi', { role: 'admin' }),
+    member('u-luis', 'Luis', { role: 'admin' }),
+    member('u-dani', 'Dani'),
+    member('u-beto', 'Beto', { scorer: true, scorerOnly: true, playerId: null }),
+  ];
+  const draw = (asOwner: boolean) => {
+    data.members = members;
+    const base = ctx('bowling');
+    const value: LeagueCtx = asOwner ? base : { ...base, isOwner: false, member: { ...base.member!, uid: 'u-sofi', name: 'Sofi', role: 'admin' } };
+    return renderToString(
+      h(MemoryRouter, { initialEntries: ['/l/l1/admin?tab=miembros'] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value }, h(AdminPage)))),
+    )
+      .replace(/<!-- -->/g, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ');
+  };
+
+  it('un admin nombra anotadores a los miembros, no a otro admin ni al dueño (y no nombra admins)', () => {
+    const t = draw(false);
+    expect(t).toContain('Solo el dueño nombra admins. Tú puedes nombrar anotadores.');
+    expect(t.match(/Hacer anotador/g)).toHaveLength(1);
+    expect(t).toMatch(/Dani Jugador: [^ ]+ Hacer anotador/);
+    expect(t).toMatch(/Beto Anotador Solo anota Quitar anotador/);
+    expect(t).not.toContain('Hacer admin');
+  });
+
+  it('el dueño, en la liga de boliche: anotadores para los torneos, y nombra admins', () => {
+    const t = draw(true);
+    expect(t).toContain('Solo tú, como dueño, nombras admins. Tú y los admins nombran anotadores.');
+    expect(t).toContain('solo anota los juegos de los torneos');
+    // Dani (miembro) y los dos admins.
+    expect(t.match(/Hacer anotador/g)).toHaveLength(3);
+    expect(t).toContain('Hacer admin');
   });
 });

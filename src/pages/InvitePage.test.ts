@@ -177,6 +177,39 @@ describe('pantalla de una invitación', () => {
     expect(text(out)).toContain('Ver ligas');
   });
 
+  it('de anotador: «te invitó a anotar en …», hasta dónde anota, sin «¿Quién eres?» y «Aceptar y anotar»', () => {
+    const scorer = { title: 'Copa Aniversario', scope: 'evento' as const, refId: 'e1', path: '/l/l1/e/e1', asPlayer: false };
+    // La base no manda jugadores libres si no es para jugar; aunque llegaran, no se pregunta.
+    show(invite({ players: [{ id: 'p1', name: 'Beto Ruiz' }], scorer }));
+    const out = render();
+    const t = text(out);
+    expect(t).toContain('Ana Pérez (@ana) te invitó a anotar en');
+    expect(t).toContain('Copa Aniversario');
+    expect(t).toContain('Liga Norte');
+    expect(t).toContain('Anotas los resultados. Podrás anotar en los torneos de esta liga (no en las prácticas). No te inscribe como jugador.');
+    expect(out).not.toContain('type="radio"');
+    expect(t).toContain('Aceptar y anotar');
+    expect(t).toContain('Rechazar');
+    expect(t).not.toContain('te invitó a la liga');
+  });
+
+  it('de anotador y también para jugar: «¿Quién eres?» y «También te invitó a jugar.»', () => {
+    const scorer = { title: 'Copa Aniversario', scope: 'evento' as const, refId: 'e1', path: '/l/l1/e/e1', asPlayer: true };
+    show(invite({ players: [{ id: 'p1', name: 'Beto Ruiz' }], scorer, league: { ...invite().league, sport: 'padel', kind: 'torneo', name: 'Copa Aniversario' } }));
+    const out = render();
+    const t = text(out);
+    expect(t).toContain('Anotas los resultados. También te invitó a jugar.');
+    expect(out.match(/type="radio"/g)).toHaveLength(2);
+    expect(t).toContain('Aceptar como Beto Ruiz');
+  });
+
+  it('de anotador ya aceptada: «Ir a anotar» lleva al torneo', () => {
+    show(invite({ status: 'accepted', member: true, scorer: { title: 'Copa', scope: 'evento', refId: 'e1', path: '/l/l1/e/e1', asPlayer: false } }));
+    const out = render();
+    expect(text(out)).toContain('Ir a anotar');
+    expect(out).toContain('href="/l/l1/e/e1"');
+  });
+
   it('la de otra cuenta (el superadmin): cómo está, sin Aceptar ni Rechazar', () => {
     show(invite({ mine: false }));
     const out = render();

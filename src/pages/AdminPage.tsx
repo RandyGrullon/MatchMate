@@ -73,6 +73,7 @@ import { BadgesSettingsCard } from '../components/badges/BadgesSettings';
 import { BadgeMakersCard } from '../components/badges/maker/MakerSettings';
 import { useBadgeNotices } from '../lib/data/badges';
 import { badgeMakersOf, canMakeBadges, setMemberBadgeMaker } from '../lib/data/leagueBadges';
+import { leavesOnRemove, removeConfirm } from '../components/scorers/logic';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
@@ -245,13 +246,13 @@ function AdminTabs({
 const ORDER: Record<Member['role'], number> = { owner: 0, admin: 1, member: 2 };
 
 /**
- * Miembros y permisos. Todos los que entran son jugadores; el dueño nombra admins (y, en torneos
- * sin liga, anotadores). Un miembro puede tener varios roles (p. ej. anotador y jugador).
+ * Miembros y permisos. Todos los que entran son jugadores (salvo quien entró solo para anotar); el dueño nombra
+ * admins y el dueño o un admin, anotadores. Un miembro puede tener varios roles (p. ej. anotador y jugador).
  * `accountsOf`: el deporte maneja a su gente en su propia pestaña (ese es su nombre); aquí abajo queda lo de
  * vincular cada cuenta con su jugador de la lista.
  */
 function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
-  const { lid, league, isOwner } = useLeagueCtx();
+  const { lid, league, isOwner, isAdmin } = useLeagueCtx();
   const { user } = useAuth();
   const run = useAction();
   const { confirm } = useFeedback();
@@ -259,9 +260,10 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   const players = usePlayers(lid);
   const playerName = useMemo(() => new Map(players.data.map((p) => [p.id, p.name])), [players.data]);
   const sorted = [...members.data].sort((a, b) => ORDER[a.role] - ORDER[b.role] || a.name.localeCompare(b.name));
-  // Anotadores: en torneos sin liga y en las ligas de otros deportes (en la liga de práctica del boliche no hacen falta).
+  // Anotadores: en todas (en una liga de boliche anotan sus torneos, no las prácticas).
   const bowling = leagueSport(league) === 'bowling';
-  const scorers = league.kind === 'torneo' || !bowling;
+  // La liga de boliche con prácticas y torneos (el admin también los crea).
+  const bowlingLeague = bowling && league.kind !== 'torneo';
   const where = league.kind === 'torneo' ? 'el torneo' : 'la liga';
   // «Diseña insignias» vale con la regla «Yo y los que yo elija» (Liga › ¿Quién diseña y da insignias?).
   const chosen = badgeMakersOf(league) === 'chosen';
@@ -271,7 +273,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
     const ok = await confirm({
       title: makeAdmin ? `¿Hacer admin a ${m.name}?` : `¿Quitarle admin a ${m.name}?`,
       message: makeAdmin
-        ? scorers
+        ? !bowlingLeague
           ? 'Podrá inscribir jugadores, armar equipos, anotar y aprobar juegos, e invitar. Los permisos los sigues manejando tú.'
           : 'Podrá crear torneos y prácticas, anotar y aprobar juegos, manejar jugadores e invitar. Los permisos los sigues manejando tú.'
         : m.uid === user?.uid
@@ -285,17 +287,22 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
 
   async function toggleScorer(m: Member) {
     const make = !m.scorer;
+    // Quien entró solo para anotar (sin jugador ni otro permiso) sale de la liga al quitarle el permiso (removeConfirm lo dice).
+    const leaving = !make && leavesOnRemove(m);
+    const out = leaving ? removeConfirm(m, league.kind) : null;
     const ok = await confirm({
       title: make ? `¿Hacer anotador a ${m.name}?` : `¿Quitarle anotador a ${m.name}?`,
       message: make
         ? bowling
-          ? 'Podrá anotar los juegos de los inscritos (a mano, por cuadros o con la foto) y nada más. Sigue siendo jugador.'
+          ? bowlingLeague
+            ? 'Podrá anotar los juegos de los torneos de la liga (no las prácticas) y nada más. Sigue siendo jugador.'
+            : 'Podrá anotar los juegos de los inscritos (a mano, por cuadros o con la foto) y nada más. Sigue siendo jugador.'
           : 'Podrá anotar los partidos, las tarjetas o los tiempos, y nada más. Sigue siendo jugador.'
-        : `Ya no podrá anotar en ${where}.`,
+        : (out?.message ?? `Ya no podrá anotar en ${where}.`),
       confirmText: make ? 'Hacer anotador' : 'Quitar anotador',
       danger: !make,
     });
-    if (ok) await run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : 'Listo');
+    if (ok) await run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : (out?.done ?? 'Listo'));
   }
 
   async function toggleMaker(m: Member) {
@@ -326,18 +333,14 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       <div>
         <h2 className="text-lg font-bold tracking-tight">Miembros y permisos</h2>
         <p className="text-sm text-muted">
-          Todos son jugadores. <b className="text-fg">Admin</b> maneja {where}
-          {scorers && (
-            <>
-              ; <b className="text-fg">Anotador</b> solo anota los juegos
-            </>
-          )}
+          Todos son jugadores, menos quien entró solo para anotar. <b className="text-fg">Admin</b> maneja {where}; <b className="text-fg">Anotador</b> solo anota los juegos
+          {bowlingLeague && ' de los torneos'}
           {chosen && (
             <>
               ; <b className="text-fg">Diseña insignias</b> crea y da las insignias de {where}
             </>
           )}
-          . {isOwner ? 'Solo tú, como dueño, das o quitas permisos.' : 'Solo el dueño da o quita permisos.'}
+          . {isOwner ? 'Solo tú, como dueño, nombras admins. Tú y los admins nombran anotadores.' : 'Solo el dueño nombra admins. Tú puedes nombrar anotadores.'}
         </p>
       </div>
       {members.error ? (
@@ -351,6 +354,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
             // El dueño saca a cualquiera; un admin solo a los que no tienen permisos (ni admin, ni anotador, ni diseña insignias).
             const canKick = !me && m.role !== 'owner' && (isOwner || (m.role === 'member' && !m.scorer && !m.badgeMaker));
             const canManage = isOwner && m.role !== 'owner';
+            // Anotadores: el dueño a cualquiera menos a sí mismo; un admin, a los miembros (no a sí mismo ni a otro admin).
+            const canScorer = isOwner ? m.role !== 'owner' : isAdmin && !me && m.role === 'member';
             // Un admin puede dejar de serlo por su cuenta.
             const canStepDown = me && m.role === 'admin' && !isOwner;
             return (
@@ -363,16 +368,18 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {m.role !== 'member' && <Badge tone="accent">{roleLabel(m.role)}</Badge>}
-                    {scorers && m.scorer && <Badge tone="warn">Anotador</Badge>}
+                    {m.scorer && <Badge tone="warn">Anotador</Badge>}
                     {chosen && m.badgeMaker && (
                       <Badge tone="accent">
                         <Palette className="size-3" aria-hidden="true" /> Diseña insignias
                       </Badge>
                     )}
-                    <Badge tone={m.playerId ? 'ok' : 'neutral'}>{m.playerId ? `Jugador: ${playerName.get(m.playerId) ?? '—'}` : 'Su jugador se crea al abrir la liga'}</Badge>
+                    <Badge tone={m.playerId ? 'ok' : 'neutral'}>
+                      {m.playerId ? `Jugador: ${playerName.get(m.playerId) ?? '—'}` : m.scorerOnly ? 'Solo anota' : 'Su jugador se crea al abrir la liga'}
+                    </Badge>
                   </div>
                 </div>
-                {(canManage || canKick || canStepDown) && (
+                {(canManage || canScorer || canKick || canStepDown) && (
                   <div className="flex flex-wrap justify-end gap-1">
                     {canStepDown && (
                       <Button size="sm" icon={<ShieldOff className="size-4" />} onClick={() => toggleAdmin(m)}>
@@ -388,7 +395,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         {m.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}
                       </Button>
                     )}
-                    {canManage && scorers && (
+                    {canScorer && (
                       <Button
                         size="sm"
                         icon={m.scorer ? <ClipboardX className="size-4" /> : <ClipboardList className="size-4" />}

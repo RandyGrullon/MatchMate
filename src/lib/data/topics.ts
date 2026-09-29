@@ -61,6 +61,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'claims') return invalidate(`claims:${id}`, tags.players(id), tags.entries(id));
     // Invitaciones a la liga (src/lib/data/invites.ts): la hoja de invitar dice quién ya tiene una.
     if (msg.event === 'invites') return invalidate(tags.invites(id), 'people:search');
+    // Anotadores de la liga (src/lib/data/scorers.ts): quién anota, las invitaciones de anotador y los links.
+    if (msg.event === 'scorers') return invalidate(`scorers:${id}`, tags.leagueMembers(id));
     // Temporadas y sus premios (etiqueta de seasonTags en ./seasons).
     if (msg.event === 'seasons') return invalidate(`seasons:${id}`);
     // Playoffs y sus llaves (etiqueta de playoffTags en ./playoffs); sus juegos avisan como cualquier partido.
@@ -74,6 +76,11 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'claims') return invalidate('claims:me', tags.members, tags.feeds);
     // Me invitaron, o una que mandé se aceptó, rechazó o retiró (aceptar también cambia mis membresías).
     if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds);
+    // Me nombraron o me quitaron de anotador, o entré con un link para anotar: mis membresías (y esa liga).
+    if (msg.event === 'scorers') {
+      const league = (msg.payload as { league_id?: unknown } | null)?.league_id;
+      return invalidate(tags.members, tags.feeds, ...(typeof league === 'string' && league ? [tags.leagueMembers(league)] : []));
+    }
     // Un juego suelto mío cambió en otro teléfono (etiquetas de src/lib/data/solo.ts; también mi perfil).
     if (msg.event === 'solo') return invalidate(`solo:${id}`, `people:${id}`);
     // Mis insignias (etiqueta badgeTags.mine de ./badges): la vitrina, el aviso de desbloqueo y lo por confirmar.

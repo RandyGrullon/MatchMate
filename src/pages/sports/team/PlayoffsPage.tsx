@@ -8,6 +8,7 @@ import { useNow } from '../../../lib/useNow';
 import type { Season } from '../../../lib/seasons';
 import { BracketView } from '../../../components/match';
 import { useAction, useFeedback } from '../../../components/feedback';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Select, cx } from '../../../components/ui';
 import { roundName } from '../../../sports/formats/knockout';
@@ -159,9 +160,18 @@ function PlayoffView({ tl, playoff, renderMatch }: { tl: TeamLeague; playoff: Pl
         </section>
       )}
       {tl.isAdmin && (
-        <Button variant="ghost" className="min-h-11 self-start text-danger" icon={<Trash2 className="size-4" />} loading={busy} onClick={() => void remove()}>
-          Borrar playoffs
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* La mesa de los playoffs: quién anota sus juegos. */}
+          <ScorersButton
+            labeled
+            className="h-11"
+            target={{ scope: 'playoff', refId: playoff.id, title: playoff.name }}
+            participants={playoff.seeds.flatMap((id) => tl.teamOf(id)?.roster.map((r) => r.playerId) ?? [])}
+          />
+          <Button variant="ghost" className="min-h-11 text-danger" icon={<Trash2 className="size-4" />} loading={busy} onClick={() => void remove()}>
+            Borrar playoffs
+          </Button>
+        </div>
       )}
     </div>
   );

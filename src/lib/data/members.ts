@@ -2,10 +2,11 @@ import type { LeagueRole, Member, UserProfile } from '../types';
 import { getUserId, invalidate, rpc, select, useLive, type Live } from './client';
 import { keys, tags } from './keys';
 import { toMember, toProfile, type MembershipRow, type ProfileRow } from './rows';
+import type { ScorerTarget } from './scorers';
 
 export { memberId } from './rows';
 
-const MEMBER_COLUMNS = 'league_id,user_id,role,is_scorer,display_name,player_id,badge_maker';
+const MEMBER_COLUMNS = 'league_id,user_id,role,is_scorer,display_name,player_id,badge_maker,scorer_only';
 
 export async function fetchMembership(lid: string, uid: string): Promise<Member | null> {
   const rows = await select<MembershipRow>({
@@ -88,9 +89,18 @@ export async function setMemberRole(member: Pick<Member, 'leagueId' | 'uid'>, ro
   afterMember(member.leagueId, member.uid);
 }
 
-/** Anotador del torneo (solo lo cambia el dueño). */
-export async function setMemberScorer(member: Pick<Member, 'leagueId' | 'uid'>, scorer: boolean) {
-  await rpc('set_member_scorer', { p_league: member.leagueId, p_user: member.uid, p_scorer: scorer });
+/**
+ * Anotador de la liga: lo nombra o lo quita el dueño o un admin (un admin, solo a miembros sin rol). Quitárselo a
+ * quien entró solo para anotar y no tiene jugador lo saca de la liga. `target`: desde qué torneo (el push «Ahora
+ * puedes anotar en …» lleva ahí); sin él, la liga.
+ */
+export async function setMemberScorer(member: Pick<Member, 'leagueId' | 'uid'>, scorer: boolean, target?: Pick<ScorerTarget, 'scope' | 'refId'> | null) {
+  await rpc('set_member_scorer', {
+    p_league: member.leagueId,
+    p_user: member.uid,
+    p_scorer: scorer,
+    ...(target ? { p_scope: target.scope, p_ref: target.refId } : {}),
+  });
   afterMember(member.leagueId, member.uid);
 }
 

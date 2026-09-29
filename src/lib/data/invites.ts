@@ -9,6 +9,7 @@ import { peopleTags } from './follows';
 import { tags } from './keys';
 import { afterJoinLeague, type FreePlayer } from './leagues';
 import { patchPeople } from './people';
+import { leaguePathOr, scopeOf, scorerTags, type ScorerScope } from './scorers';
 import { useTopic } from './topics';
 
 /**
@@ -18,6 +19,9 @@ import { useTopic } from './topics';
  * puede decir «¿Quién eres?») o rechaza (no se le puede volver a invitar en 7 días). Quien invitó o un admin la
  * puede retirar. Entrar por otro camino (código, liga pública) acepta la pendiente; salir de la liga cancela las
  * que mandó esa cuenta.
+ *
+ * Una invitación de anotador (src/lib/data/scorers.ts, invite_scorers) es la misma fila con `scorer`: al aceptarla la
+ * cuenta queda anotadora de la liga y, si no la invitaron también a jugar, sin jugador.
  *
  * RPC: invite_to_league, respond_league_invite, cancel_league_invite, my_league_invites, league_invite_details.
  * Tiempo real: 'invites' en 'user:<cuenta>' (la invitada y quien invitó) y 'league:<liga>' (src/lib/data/topics.ts).
@@ -44,6 +48,18 @@ export interface InvitePerson {
   username: string;
 }
 
+/** La parte de anotar de una invitación de anotador (20260929001400_anotadores.sql). */
+export interface InviteScorer {
+  /** El torneo (o la liga) donde la invitan a anotar. */
+  title: string;
+  scope: ScorerScope;
+  refId: string | null;
+  /** A dónde llevar al aceptar (ya revisado: siempre una ruta /l/…). */
+  path: string;
+  /** También la invitaron a jugar (y esa parte todavía vale): al aceptar tiene jugador. */
+  asPlayer: boolean;
+}
+
 /** Una invitación pendiente de la cuenta (my_league_invites). */
 export interface LeagueInvite {
   id: string;
@@ -59,6 +75,8 @@ export interface LeagueInvite {
   invitedBy: InvitePerson | null;
   /** ISO. */
   createdAt: string;
+  /** Solo en una invitación de anotador. */
+  scorer?: InviteScorer;
 }
 
 /** La liga de una invitación, para la pantalla /invitacion/<id>. */
@@ -91,8 +109,13 @@ export interface LeagueInviteDetails {
   /** La cuenta invitada ya es miembro de la liga (si aceptó y después salió, false). */
   member: boolean;
   league: InviteLeague;
-  /** Jugadores libres para «¿Quién eres?» (sin cuenta, no menores, sin reclamo pendiente), por nombre; solo si está pendiente. */
+  /**
+   * Jugadores libres para «¿Quién eres?» (sin cuenta, no menores, sin reclamo pendiente), por nombre; solo si está
+   * pendiente y es (también) para jugar.
+   */
   players: FreePlayer[];
+  /** Solo en una invitación de anotador. */
+  scorer?: InviteScorer;
 }
 
 /** El mismo tipo con el nombre corto (no confundir con `InviteDetails` de ./leagues, la del código de invitación). */
@@ -127,6 +150,8 @@ export interface InviteResponse {
   playerId: string | null;
   /** El reclamo que quedó si eligió un jugador en «¿Quién eres?» (lo aprueba el admin). */
   claimId: string | null;
+  /** Aceptó una invitación de anotador: ya puede anotar en `title` (`path` lleva ahí). */
+  scorer?: Omit<InviteScorer, 'asPlayer'>;
 }
 
 // ---------- Claves y etiquetas ----------
@@ -158,7 +183,22 @@ function toPerson(v: unknown): InvitePerson | null {
 
 type Raw<T> = { [K in keyof T]?: unknown };
 
-const toInvite = (r: Raw<LeagueInvite>): LeagueInvite => ({
+/** La parte de anotar que manda la base (solo en las de anotador). */
+function toScorer(v: unknown, leagueId: string): InviteScorer | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const s = v as Raw<InviteScorer>;
+  return {
+    title: text(s.title),
+    scope: scopeOf(s.scope),
+    refId: typeof s.refId === 'string' && s.refId ? s.refId : null,
+    path: leaguePathOr(s.path, leagueId),
+    asPlayer: s.asPlayer === true,
+  };
+}
+
+const withScorer = <T extends object>(o: T, scorer: InviteScorer | undefined): T & { scorer?: InviteScorer } => (scorer ? { ...o, scorer } : o);
+
+const toInvite = (r: Raw<LeagueInvite>): LeagueInvite => withScorer({
   id: String(r.id),
   leagueId: String(r.leagueId ?? ''),
   leagueName: text(r.leagueName),
@@ -169,7 +209,7 @@ const toInvite = (r: Raw<LeagueInvite>): LeagueInvite => ({
   members: typeof r.members === 'number' ? r.members : 0,
   invitedBy: toPerson(r.invitedBy),
   createdAt: text(r.createdAt),
-});
+}, toScorer(r.scorer, String(r.leagueId ?? '')));
 
 /** Mis invitaciones pendientes, la más nueva primero (hasta 50). */
 export async function fetchMyInvites(): Promise<LeagueInvite[]> {
@@ -202,7 +242,7 @@ type DetailsRaw = Raw<Omit<LeagueInviteDetails, 'league'>> & { league?: Raw<Invi
 function toDetails(r: DetailsRaw): LeagueInviteDetails {
   const l = r.league ?? {};
   const status = r.status;
-  return {
+  return withScorer({
     id: String(r.id),
     status: status === 'accepted' || status === 'declined' || status === 'cancelled' ? status : 'pending',
     createdAt: text(r.createdAt),
@@ -223,7 +263,7 @@ function toDetails(r: DetailsRaw): LeagueInviteDetails {
       members: typeof l.members === 'number' ? l.members : 0,
     },
     players: Array.isArray(r.players) ? (r.players as FreePlayer[]).filter((p) => p && p.id).map((p) => ({ id: p.id, name: text(p.name) })) : [],
-  };
+  }, toScorer(r.scorer, String(l.id ?? '')));
 }
 
 /** Una invitación para /invitacion/<id>. null si no existe, no es para la cuenta de la sesión o el id no sirve. */
@@ -303,6 +343,7 @@ export async function respondInvite(id: string, accept: boolean, prefer: string 
   try {
     const r = await rpc<Raw<InviteResponse> | null>('respond_league_invite', { p_invite: id, p_accept: accept, p_prefer: prefer || null });
     const status: InviteStatus = r?.status === 'accepted' || r?.status === 'declined' || r?.status === 'cancelled' ? r.status : 'pending';
+    const scorer = status === 'accepted' ? toScorer(r?.scorer, String(r?.leagueId ?? '')) : undefined;
     const res: InviteResponse = {
       status,
       leagueId: String(r?.leagueId ?? ''),
@@ -310,10 +351,12 @@ export async function respondInvite(id: string, accept: boolean, prefer: string 
       joined: status === 'accepted' && !!r && 'playerId' in r,
       playerId: typeof r?.playerId === 'string' ? r.playerId : null,
       claimId: typeof r?.claimId === 'string' ? r.claimId : null,
+      ...(scorer ? { scorer: { title: scorer.title, scope: scorer.scope, refId: scorer.refId, path: scorer.path } } : {}),
     };
     settleMine(id, status);
     // Lo mismo que al unirse con código: ligas, membresías, jugadores, reclamos y la campana.
     if (status === 'accepted' && res.leagueId) afterJoinLeague(res.leagueId);
+    if (scorer && res.leagueId) invalidate(scorerTags.access(res.leagueId));
     return res;
   } finally {
     invalidate(inviteTags.mine, peopleTags.search);
@@ -409,9 +452,17 @@ export function inviteResultSummary(results: readonly InviteResult[], kind: Leag
 
 const ms = (iso: string) => Date.parse(iso) || 0;
 
+/** «Ana te invitó a anotar en Copa Aniversario» (sin quien invitó: «Te invitaron a anotar en …»). */
+export function scorerInviteLine(inv: Pick<LeagueInvite, 'invitedBy' | 'leagueName'> & { scorer?: Pick<InviteScorer, 'title'> }): string {
+  const where = inv.scorer?.title?.trim() || inv.leagueName?.trim() || 'un torneo';
+  const from = inv.invitedBy?.name?.trim();
+  return from ? `${from} te invitó a anotar en ${where}` : `Te invitaron a anotar en ${where}`;
+}
+
 /**
  * Mis invitaciones pendientes como avisos genéricos de la campana (filtro Mis ligas): «Ana te invitó a Liga de
- * los martes» → /invitacion/<id>. Salen mientras estén pendientes. La más nueva primero.
+ * los martes» (o, la de anotador, «Ana te invitó a anotar en Copa Aniversario») → /invitacion/<id>. Salen
+ * mientras estén pendientes. La más nueva primero.
  */
 export function inviteNotices(invites: readonly LeagueInvite[] | null | undefined): GenericNotice[] {
   const out: GenericNotice[] = [];
@@ -424,8 +475,12 @@ export function inviteNotices(invites: readonly LeagueInvite[] | null | undefine
       kind: 'social',
       icon: 'invite',
       category: 'ligas',
-      title: from ? `${from} te invitó a ${league}` : `Te invitaron a ${league}`,
-      body: 'Toca para ver la invitación y unirte.',
+      title: inv.scorer ? scorerInviteLine(inv) : from ? `${from} te invitó a ${league}` : `Te invitaron a ${league}`,
+      body: inv.scorer
+        ? inv.scorer.asPlayer
+          ? 'También te invitó a jugar. Toca para ver la invitación.'
+          : 'Toca para ver la invitación. No te inscribe como jugador.'
+        : 'Toca para ver la invitación y unirte.',
       url: `/invitacion/${inv.id}`,
       at: inv.createdAt,
       lid: inv.leagueId || null,

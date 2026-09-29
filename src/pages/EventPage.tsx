@@ -27,7 +27,7 @@ import {
 import { useBowlingGameContext } from '../lib/data/bowlingContext';
 import { entryMarks } from '../lib/bowlingSeason';
 import { eventLabel, formatDateLong, toIsoDate, typeLabel } from '../lib/format';
-import { useLeagueCtx } from '../lib/league';
+import { canScoreEvent, useLeagueCtx } from '../lib/league';
 import { liveInfo } from '../lib/live';
 import { useNow } from '../lib/useNow';
 import { Announcements } from '../components/AnnouncementCard';
@@ -50,6 +50,7 @@ import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
 import { LanesPanel } from '../components/lanes/LanesPanel';
+import { ScorersButton } from '../components/scorers/ScorersButton';
 import { MyLane } from '../components/lanes/MyLane';
 import type { Entry } from '../lib/types';
 import { dispatchLeague, SportRoute } from '../sports/screens';
@@ -85,7 +86,8 @@ export default function EventPage(props: { eventId?: string }) {
 function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const params0 = useParams();
   const eventId = fixed ?? params0.eventId;
-  const { lid, base, isAdmin, canScore, myPlayerId, league } = useLeagueCtx();
+  const ctx = useLeagueCtx();
+  const { lid, base, isAdmin, myPlayerId, league } = ctx;
   // Torneo sin liga: el evento es la portada, no hay a dónde volver.
   const standalone = league.kind === 'torneo';
   const navigate = useNavigate();
@@ -126,6 +128,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   const ev = event.data;
   const isTorneo = ev.type === 'torneo';
+  // Anota los juegos de todos: el admin y, en un torneo, el anotador de la liga (en la práctica, cada jugador los suyos).
+  const canScore = canScoreEvent(ctx, ev.type);
   const back = isTorneo ? base : `${base}?ver=practicas`;
   const mine = myPlayerId ? entries.data.find((e) => e.playerId === myPlayerId) ?? null : null;
   // En un torneo, quien lo organiza (o anota) juega solo si está inscrito; en una práctica, todos.
@@ -201,37 +205,47 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
             {isTorneo && !!ev.teamSize && ` · Equipos de ${ev.teamSize}`}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          onClick={async () => {
-            if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
-          }}
-          aria-label="Compartir"
-          data-tour="compartir"
-          title="Compartir"
-          icon={<Share2 className="size-5" />}
-        />
-        {isAdmin && (
-          <>
-            <Button
-              variant="ghost"
-              loading={exporting}
-              onClick={async () => {
-                setExporting(true);
-                await run(async () => {
-                  const { exportEventToExcel } = await import('../lib/exportExcel');
-                  await exportEventToExcel(ev, entries.data, players.data);
-                  return true;
-                }, 'Excel descargado');
-                setExporting(false);
-              }}
-              aria-label="Exportar a Excel"
-              title="Exportar a Excel"
-              icon={<FileSpreadsheet className="size-5" />}
-            />
-            <Button variant="ghost" onClick={() => setEditing(true)} aria-label="Configurar" title="Configurar" icon={<Settings className="size-5" />} />
-          </>
-        )}
+        {/* Los íconos juntos, sin espacio entre ellos: con los cuatro del admin el nombre sigue cabiendo en un teléfono. */}
+        <div className="-mr-1 flex shrink-0 items-center">
+          <Button
+            variant="ghost"
+            onClick={async () => {
+              if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
+            }}
+            aria-label="Compartir"
+            data-tour="compartir"
+            title="Compartir"
+            icon={<Share2 className="size-5" />}
+          />
+          {isAdmin && (
+            <>
+              {/* Quién anota este torneo: de la liga, por @usuario o con el link (en la práctica no hay anotadores). */}
+              {isTorneo && (
+                <ScorersButton
+                  target={{ scope: 'evento', refId: ev.id, title: ev.name || (standalone ? league.name : eventLabel(ev)) }}
+                  participants={entries.data.map((e) => e.playerId)}
+                />
+              )}
+              <Button
+                variant="ghost"
+                loading={exporting}
+                onClick={async () => {
+                  setExporting(true);
+                  await run(async () => {
+                    const { exportEventToExcel } = await import('../lib/exportExcel');
+                    await exportEventToExcel(ev, entries.data, players.data);
+                    return true;
+                  }, 'Excel descargado');
+                  setExporting(false);
+                }}
+                aria-label="Exportar a Excel"
+                title="Exportar a Excel"
+                icon={<FileSpreadsheet className="size-5" />}
+              />
+              <Button variant="ghost" onClick={() => setEditing(true)} aria-label="Configurar" title="Configurar" icon={<Settings className="size-5" />} />
+            </>
+          )}
+        </div>
       </div>
 
       {isTorneo && upcoming && (standalone ? (

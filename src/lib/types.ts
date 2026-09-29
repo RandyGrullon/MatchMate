@@ -76,8 +76,16 @@ export interface Member {
   role: LeagueRole;
   /** Jugador de la liga vinculado a esta cuenta. */
   playerId: string | null;
-  /** Anotador (solo en torneos sin liga): anota los juegos de todos. Se suma a su rol y a ser jugador. */
+  /**
+   * Anotador (`league_members.is_scorer`, de la liga): anota los juegos de todos. En una liga de boliche vale en sus
+   * torneos, no en las prácticas (canScoreEvent en src/lib/league.tsx). Se suma a su rol y a ser jugador.
+   */
   scorer?: boolean;
+  /**
+   * Entró solo para anotar (link para anotar o invitación de anotador, `league_members.scorer_only`): no tiene jugador
+   * y nadie se lo crea solo. Se apaga cuando toca «También juego».
+   */
+  scorerOnly?: boolean;
   /** «Diseña insignias» (`league_members.badge_maker`): vale cuando la liga eligió 'chosen'. Lo pone el dueño. */
   badgeMaker?: boolean;
 }

@@ -51,6 +51,7 @@ describe('formulario de la liga: zona horaria y menores', () => {
     const html = draw({ ...base, hasMinors: true }, { creating: true });
     expect(html).toContain('Los menores no tienen cuenta');
     expect(html).toContain('Sin fotos, sin «Me gusta» y sin comentarios');
+    expect(html).toContain('Sin link para anotar: a cada anotador se le invita por su @usuario. Quien entró con un link solo para anotar sale de la liga.');
     expect(html).toContain('Con menores no se puede.');
     expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*disabled=""[^>]*>.*Pública/);
     expect(html).toContain('Una vez guardada, no la puedes apagar tú.');

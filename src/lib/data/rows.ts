@@ -60,6 +60,8 @@ export interface MembershipRow {
   player_id: string | null;
   /** 20260929001120_insignias_creador.sql. */
   badge_maker?: boolean;
+  /** 20260929001400_anotadores.sql: entró solo para anotar (sin jugador). */
+  scorer_only?: boolean;
 }
 
 export interface ProfileRow {
@@ -214,6 +216,7 @@ export const toMember = (r: MembershipRow): Member => ({
   playerId: r.player_id ?? null,
   scorer: r.is_scorer,
   ...(r.badge_maker ? { badgeMaker: true } : {}),
+  ...(r.scorer_only ? { scorerOnly: true } : {}),
 });
 
 export const toProfile = (r: ProfileRow): UserProfile => ({

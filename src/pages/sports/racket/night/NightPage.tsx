@@ -28,6 +28,7 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { MatchCard, ResultEntryModal, StandingsTable, pointsResultParser, whatsappShareUrl, type StandingsColumn } from '../../../../components/match';
+import { ScorersButton } from '../../../../components/scorers/ScorersButton';
 import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
 import { exportNightExcel } from '../excel';
@@ -249,6 +250,11 @@ export function NightPage({ event }: { event: RacketEvent }) {
               </Button>
             )
           )}
+          <ScorersButton
+            labeled
+            target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
+            participants={cfg.players}
+          />
           <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!rounds.length}>
             Excel
           </Button>

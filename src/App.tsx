@@ -37,6 +37,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
 const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const JoinPage = lazy(() => import('./pages/JoinPage'));
+const ScorerJoinPage = lazy(() => import('./pages/ScorerJoinPage'));
 const AccountPage = lazy(() => import('./pages/AccountPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const SuperAdminPage = lazy(() => import('./pages/SuperAdminPage'));
@@ -169,6 +170,8 @@ export default function App() {
                       {/* «¿Dónde juego esta semana?»: lo abierto en las ligas públicas (con y sin cuenta). */}
                       <Route path="/agenda" element={<Screen area="agenda" framed><AgendaPage /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />
+                      {/* El link para anotar de un torneo (con o sin cuenta; ?entrar=1 al volver de /login). */}
+                      <Route path="/anotar/:code" element={<Screen area="anotar" framed><ScorerJoinPage /></Screen>} />
                       <Route path="/perfil" element={<Screen area="perfil" framed><ProfilePage /></Screen>} />
                       <Route path="/cuenta" element={<Screen area="cuenta" framed><AccountPage /></Screen>} />
                       <Route path="/privacidad" element={<Screen area="privacidad" framed><PrivacyPage /></Screen>} />

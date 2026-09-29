@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Shield, Timer, Trash2, Waves } from 'lucide-react';
 import { setMemberScorer, useLeagueMembers } from '../../../lib/data';
 import { deleteClub, saveClub, saveSwimRules, useSwimmers, useSwimRules, type AgeScheme, type SwimClub } from '../../../lib/data/swimming';
+import type { Member } from '../../../lib/types';
 import { useAction, useFeedback } from '../../../components/feedback';
+import { leavesOnRemove, removeConfirm } from '../../../components/scorers/logic';
 import { Button, Card, Empty, Field, Input, Modal, Select, cx } from '../../../components/ui';
 import { Segmented, useSwim } from './bits';
 import { SCHEME_LABEL, pointsFor } from './logic';
@@ -153,12 +155,20 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
   );
 }
 
-/** Cronometristas: miembros que toman tiempos y publican series (anotadores). Solo el dueño los nombra. */
+/** Cronometristas: miembros que toman tiempos y publican series (anotadores). Los nombra el dueño o un admin. */
 function TimersSection() {
-  const { lid, isOwner } = useSwim();
+  const { lid, isAdmin, league } = useSwim();
   const run = useAction();
+  const { confirm } = useFeedback();
   const members = useLeagueMembers(lid);
   const list = members.data.filter((m) => m.role === 'member');
+
+  // Quitárselo a quien entró solo para anotar (sin nadador) lo saca de la liga: se pregunta antes (docs/anotadores.md D5).
+  async function toggle(m: Member, on: boolean) {
+    const ask = !on && leavesOnRemove(m) ? removeConfirm(m, league.kind) : null;
+    if (ask && !(await confirm(ask))) return;
+    await run(() => setMemberScorer(m, on), on ? 'Ahora cronometra' : (ask?.done ?? 'Ya no cronometra'));
+  }
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -166,21 +176,21 @@ function TimersSection() {
         <h2 className="text-lg font-semibold">Cronometristas</h2>
       </div>
       <p className="text-sm text-muted">
-        Toman los tiempos en el teléfono y publican las series. Los admins ya pueden.{!isOwner && ' Solo el dueño de la liga los nombra.'}
+        Toman los tiempos en el teléfono y publican las series. Los admins ya pueden.{!isAdmin && ' Los nombra el dueño o un admin.'}
       </p>
       {!list.length ? (
         <p className="text-sm text-muted">Todavía no hay miembros sin permisos en la liga.</p>
       ) : (
         <Card className="divide-y divide-line overflow-hidden">
           {list.map((m) => (
-            <label key={m.uid} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', isOwner && 'cursor-pointer')}>
+            <label key={m.uid} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', isAdmin && 'cursor-pointer')}>
               <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
               <input
                 type="checkbox"
                 className="size-5 accent-[var(--accent)]"
                 checked={!!m.scorer}
-                disabled={!isOwner}
-                onChange={(e) => void run(() => setMemberScorer(m, e.target.checked), e.target.checked ? 'Ahora cronometra' : 'Ya no cronometra')}
+                disabled={!isAdmin}
+                onChange={(e) => void toggle(m, e.target.checked)}
                 aria-label={`${m.name} cronometra`}
               />
             </label>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Ban, CircleCheck, Globe, Lock, LogIn, MailX, Ticket, Trophy, UserPlus, Users, X } from 'lucide-react';
+import { Ban, CircleCheck, ClipboardPen, Globe, Lock, LogIn, MailX, Ticket, Trophy, UserPlus, Users, X } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { respondErrorText, respondInvite, useInviteDetails, type InviteStatus, type LeagueInviteDetails } from '../lib/data/invites';
 import { AppShell } from '../components/Shell';
@@ -20,7 +20,9 @@ import {
   leagueNoun,
   leagueTypeLabel,
   respondedText,
+  scorerInviteBody,
 } from '../components/notifications/inviteText';
+import { scorerReach, scorerReachForYou } from '../components/scorers/logic';
 import { Badge, Button, Card, Empty, Loading, LoadError } from '../components/ui';
 import { SportBadge, SportIcon } from './sports/SportBits';
 
@@ -30,7 +32,8 @@ const linkBtn = 'inline-flex h-11 items-center justify-center gap-2 rounded-xl p
  * Una invitación a una liga (/invitacion/<id>, el push y el aviso de la campana llevan aquí): quién invitó, la
  * liga (deporte, tipo, lugar, horario y cuántos son), «¿Quién eres?» si el admin ya anotó jugadores sin cuenta, y
  * Aceptar (entra a la liga, como con el código) o Rechazar. Solo la ve la cuenta invitada (el superadmin también,
- * pero sin poder responderla); si ya se respondió, dice cómo quedó.
+ * pero sin poder responderla); si ya se respondió, dice cómo quedó. Una invitación de anotador («te invitó a anotar
+ * en Copa Aniversario») dice hasta dónde anota y si también juega; «Aceptar y anotar» lleva al torneo.
  */
 export default function InvitePage() {
   const { inviteId = '' } = useParams();
@@ -115,8 +118,8 @@ function DecidedInvite({ invite: d }: { invite: LeagueInviteDetails }) {
       {body}
       <div className="mt-4 flex justify-center">
         {status === 'accepted' && d.league.id ? (
-          <Link to={`/l/${d.league.id}`} className={`${linkBtn} bg-accent font-semibold text-accent-fg`}>
-            Ir a {leagueNoun(d.league.kind)}
+          <Link to={d.scorer?.path ?? `/l/${d.league.id}`} className={`${linkBtn} bg-accent font-semibold text-accent-fg`}>
+            {d.scorer ? 'Ir a anotar' : `Ir a ${leagueNoun(d.league.kind)}`}
           </Link>
         ) : (
           <Link to="/ligas" className={`${linkBtn} font-semibold text-accent hover:bg-accent-soft`}>
@@ -137,7 +140,9 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
   const l = d.league;
   const torneo = l.kind === 'torneo';
-  const players = d.players;
+  // Invitación de anotador: «¿Quién eres?» solo si también la invitaron a jugar.
+  const sc = d.scorer ?? null;
+  const players = sc && !sc.asPlayer ? [] : d.players;
   const me = displayName(auth);
   // La sugerencia: el único jugador libre con el mismo nombre de la cuenta (si hay).
   const suggested = useMemo<WhoChoice>(() => guessPlayer(players, me), [players, me]);
@@ -149,13 +154,14 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
     if (busy) return;
     setBusy(accept ? 'accept' : 'decline');
     try {
-      const r = await respondInvite(d.id, accept, accept ? picked : null);
+      const r = await respondInvite(d.id, accept, accept && players.length ? picked : null);
       if (r.status === 'accepted') {
-        toast(joinedText(l.name));
+        toast(r.scorer ? respondedText('accepted', l.name, r.scorer.title) : joinedText(l.name));
         // Lo de «¿Quién eres?» solo si entró ahora: si ya estaba aceptada (otro teléfono, Avisos) no se pidió nada.
-        const said = r.joined ? joinClaimMessage(picked, pickedName, r.playerId, r.claimId) : null;
+        const said = r.joined && players.length ? joinClaimMessage(picked, pickedName, r.playerId, r.claimId) : null;
         if (said) toast(said);
-        navigate(`/l/${r.leagueId || l.id}`);
+        // La de anotador lleva al torneo donde lo invitaron.
+        navigate(r.scorer?.path ?? `/l/${r.leagueId || l.id}`);
         return;
       }
       // Rechazada, o ya no valía: la pantalla pasa a decir cómo quedó.
@@ -176,10 +182,20 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
           </div>
         </LeagueLogo>
         <div className="flex flex-col items-center gap-1.5">
-          <p className="text-sm text-muted">
-            {invitedByLine(d.invitedBy)} {torneo ? 'al torneo' : 'a la liga'}
-          </p>
-          <h1 className="text-xl font-bold tracking-tight break-words">{l.name || 'Una liga'}</h1>
+          {sc ? (
+            <>
+              <p className="text-sm text-muted">{invitedByLine(d.invitedBy)} a anotar en</p>
+              <h1 className="text-xl font-bold tracking-tight break-words">{sc.title || l.name || 'Un torneo'}</h1>
+              {sc.title && l.name && sc.title !== l.name && <p className="text-sm text-muted break-words">{l.name}</p>}
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">
+                {invitedByLine(d.invitedBy)} {torneo ? 'al torneo' : 'a la liga'}
+              </p>
+              <h1 className="text-xl font-bold tracking-tight break-words">{l.name || 'Una liga'}</h1>
+            </>
+          )}
           <div className="flex flex-wrap justify-center gap-1.5">
             {l.sport && <SportBadge sport={l.sport} />}
             <Badge tone="neutral">
@@ -188,6 +204,13 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
             </Badge>
           </div>
         </div>
+
+        {sc && (
+          <p className="flex w-full items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-left text-sm">
+            <ClipboardPen className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
+            {scorerInviteBody(scorerReachForYou(scorerReach({ id: l.id, kind: l.kind, sport: l.sport })), sc.asPlayer)}
+          </p>
+        )}
 
         <InfoList
           rows={rows}
@@ -200,7 +223,7 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
           {players.length > 0 && <WhoAreYouList players={players} value={picked} onChange={setChoice} people={peopleWord(l.sport)} />}
           <div className="flex flex-col gap-2">
             <Button variant="primary" className="h-11 w-full" loading={busy === 'accept'} disabled={!!busy} onClick={() => void respond(true)} icon={<UserPlus className="size-4" />}>
-              <span className="min-w-0 truncate">{pickedName ? `Aceptar como ${pickedName}` : 'Aceptar'}</span>
+              <span className="min-w-0 truncate">{pickedName ? `Aceptar como ${pickedName}` : sc ? 'Aceptar y anotar' : 'Aceptar'}</span>
             </Button>
             <Button className="h-11 w-full" loading={busy === 'decline'} disabled={!!busy} onClick={() => void respond(false)}>
               Rechazar

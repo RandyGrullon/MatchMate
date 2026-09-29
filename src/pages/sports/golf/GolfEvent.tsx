@@ -10,6 +10,7 @@ import { BackLink } from '../../../components/BackLink';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { shareLink } from '../../../components/share';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { CardModal } from './bits';
 import { cardWire, markSent, mergeCard, sendPending, useCourtLog } from './courtLog';
 import { GolfBoard } from './GolfBoard';
@@ -189,6 +190,11 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
               {round.closed ? 'Volver a abrir' : 'Cerrar ronda'}
             </Button>
           )}
+          <ScorersButton
+            labeled
+            target={{ scope: 'evento', refId: ev.id, title: ev.name || (league.kind === 'torneo' ? league.name : title) }}
+            participants={golf.data.cards.map((c) => c.playerId)}
+          />
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={remove}>
             Eliminar
           </Button>

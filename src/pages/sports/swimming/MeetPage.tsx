@@ -17,6 +17,7 @@ import { formatDateLong } from '../../../lib/format';
 import { BackLink } from '../../../components/BackLink';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { clubMap, meetTitle, useNames, useSwim } from './bits';
 import { EntriesPanel } from './EntriesPanel';
 import { HeatSheetPanel } from './HeatSheetPanel';
@@ -164,6 +165,12 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
           <Button size="sm" icon={meet.finalizedAt ? <LockOpen className="size-4" /> : <Trophy className="size-4" />} onClick={toggleFinal}>
             {meet.finalizedAt ? 'Volver a abrir' : 'Finalizar'}
           </Button>
+          {/* Cronometristas: los anotadores de la liga toman los tiempos y publican las series. */}
+          <ScorersButton
+            labeled
+            target={{ scope: 'evento', refId: meet.id, title: meet.name || (standalone ? league.name : meetTitle(meet)) }}
+            participants={entries.data.map((e) => e.playerId)}
+          />
           <Button size="sm" icon={<FileSpreadsheet className="size-4" />} onClick={exportExcel} disabled={!events.data.length}>
             Excel
           </Button>

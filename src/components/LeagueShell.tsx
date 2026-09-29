@@ -85,7 +85,8 @@ export default function LeagueShell() {
     const member = membership.data;
     const isOwner = isSuper || member?.role === 'owner';
     const isAdmin = isOwner || member?.role === 'admin';
-    // Anotadores: torneos de boliche y cualquier liga de otro deporte (golf, cronometristas, mesa anotadora).
+    // Anotadores: torneos de boliche y cualquier liga de otro deporte (golf, cronometristas, mesa anotadora). En una
+    // liga de boliche la marca vale en sus torneos: cada evento lo mira con canScoreEvent (src/lib/league.tsx).
     const isScorer = (league.data.kind === 'torneo' || leagueSport(league.data) !== 'bowling') && member?.scorer === true;
     return {
       lid,
@@ -95,6 +96,8 @@ export default function LeagueShell() {
       isAdmin,
       isScorer,
       canScore: isAdmin || isScorer,
+      // Entró solo para anotar y sigue sin jugador: «Mis juegos» le ofrece «También juego».
+      scorerOnly: member?.scorerOnly === true && !member.playerId,
       myPlayerId: member?.playerId ?? null,
       base: `/l/${lid}`,
     };

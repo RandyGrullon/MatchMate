@@ -62,9 +62,25 @@ export function inviteOutcome(status: InviteOutcome, kind: LeagueKind, leagueNam
   }
 }
 
-/** El aviso cuando al responder la invitación ya no valía o ya estaba decidida. */
-export function respondedText(status: InviteStatus, leagueName: string): string {
-  if (status === 'accepted') return joinedText(leagueName);
+/** «Ana Pérez (@ana) te invitó a anotar en Copa Aniversario» (la invitación de anotador). */
+export function scorerInvitedLine(by: InvitePerson | null | undefined, title: string): string {
+  return `${invitedByLine(by)} a anotar en ${title.trim() || 'el torneo'}`;
+}
+
+/** Lo que dice la invitación de anotador: anota, hasta dónde (`reach`, en un torneo sin liga null) y si también juega. */
+export function scorerInviteBody(reach: string | null, asPlayer: boolean): string {
+  return ['Anotas los resultados.', reach, asPlayer ? 'También te invitó a jugar.' : 'No te inscribe como jugador.'].filter(Boolean).join(' ');
+}
+
+/** El aviso al aceptar una invitación de anotador: «Ya puedes anotar en Copa Aniversario». */
+export const scorerJoinedText = (title: string) => `Ya puedes anotar en ${title.trim() || 'el torneo'}`;
+
+/**
+ * El aviso cuando al responder la invitación ya no valía o ya estaba decidida. `scorerTitle`: era de anotador y se
+ * aceptó («Ya puedes anotar en …»).
+ */
+export function respondedText(status: InviteStatus, leagueName: string, scorerTitle?: string | null): string {
+  if (status === 'accepted') return scorerTitle != null ? scorerJoinedText(scorerTitle || leagueName) : joinedText(leagueName);
   if (status === 'declined') return 'Rechazaste la invitación';
   if (status === 'cancelled') return 'Esta invitación ya no está disponible.';
   return 'No se pudo. Prueba otra vez.';

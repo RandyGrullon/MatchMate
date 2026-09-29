@@ -59,6 +59,7 @@ const MINORS_RULES = [
   'Los menores no tienen cuenta: los registra un admin, con el permiso de su papá, mamá o tutor.',
   'Su año de nacimiento y sus datos solo los ven los admins; los demás ven su nombre y su categoría.',
   'Sin fotos, sin «Me gusta» y sin comentarios en toda la liga.',
+  'Sin link para anotar: a cada anotador se le invita por su @usuario. Quien entró con un link solo para anotar sale de la liga.',
 ];
 
 /**
@@ -133,7 +134,7 @@ export function LeagueForm({
     if (!creating && minors && !initial.hasMinors) {
       const ok = await confirm({
         title: '¿Activar «Liga con menores»?',
-        message: `${isTournament ? 'El torneo queda privado' : 'La liga queda privada'}, sin fotos ni comentarios, y después no la puedes apagar tú.`,
+        message: `${isTournament ? 'El torneo queda privado' : 'La liga queda privada'}, sin fotos ni comentarios, y después no la puedes apagar tú. Los links para anotar dejan de servir y quien entró con uno solo para anotar sale ${isTournament ? 'del torneo' : 'de la liga'}.`,
         confirmText: 'Activar y guardar',
       });
       if (!ok) return;

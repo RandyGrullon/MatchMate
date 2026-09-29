@@ -2,8 +2,8 @@
 // GENERADO por scripts/badges/bundle.mjs (pnpm badges:bundle): no se edita a mano.
 // El motor de las insignias (src/badges/edge.ts y lo que importa: 66 archivos) en un solo ESM sin imports para la
 // Edge Function supabase/functions/insignias (Deno). src/badges/bundle.test.ts falla si quedó viejo.
-// fuente: sha256-e804bd4840e3d81742384894440f7891c7a7e3707897494dbc3468c800f8c642
-// salida: sha256-e195a98585913f47721d542b54a7d8565037119996f0519224fce6ad91832253
+// fuente: sha256-1528c458e17c07cf604926b5e301aa66fe8d18bca567b0a8fd37b6595a573b7b
+// salida: sha256-584cb84ad7cbe08372817f32e5042d5d2cb76dffe1b4dfe7f9cdf7f62314115e
 // ---
 //#region src/sports/types.ts
 const SPORT_FAMILY = {
@@ -13224,4 +13224,4 @@ function withPushLabels(decisions) {
 }
 //#endregion
 export { evaluateJob, pushLabel, withPushLabels };
-export const SOURCE_HASH = "sha256-e804bd4840e3d81742384894440f7891c7a7e3707897494dbc3468c800f8c642";
+export const SOURCE_HASH = "sha256-1528c458e17c07cf604926b5e301aa66fe8d18bca567b0a8fd37b6595a573b7b";

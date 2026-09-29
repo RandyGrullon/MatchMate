@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronDown, ChevronUp, Radio, Shirt, Trophy, Zap } from 
 import type { Match } from '../../../lib/data/matches';
 import { formatDateLong } from '../../../lib/format';
 import { BackLink } from '../../../components/BackLink';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { Badge, Button, Card, Empty, ListSkeleton, cx } from '../../../components/ui';
 import { SectionHead, TeamName } from './TeamBits';
 import { KnockoutPrizes, type KoEvent } from './TeamPrizes';
@@ -75,6 +76,15 @@ export function TournamentHub({
           {date && <p className="text-sm text-muted first-letter:uppercase">{formatDateLong(date)}</p>}
           {announcement && <p className="mt-2 text-sm whitespace-pre-line">{announcement}</p>}
         </div>
+        {/* La mesa: quién anota los partidos (de la liga, por @usuario o con el link). Siempre de la liga (el permiso lo
+            es, y la portada es este torneo): no cambia cuando llega el evento del torneo suelto, así el link que se
+            crea antes sigue siendo el de la hoja. */}
+        {tl.isAdmin && (
+          <ScorersButton
+            target={{ scope: 'liga', refId: null, title }}
+            participants={teams.flatMap((t) => t.roster.map((r) => r.playerId))}
+          />
+        )}
       </div>
 
       {tl.isAdmin && step !== 'play' && (

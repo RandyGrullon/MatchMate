@@ -7,6 +7,7 @@ import { formatDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import { MatchCard } from '../../../components/match';
+import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { Button, Card, Empty, ListSkeleton, LoadError, cx } from '../../../components/ui';
 import { EventIcon, Section, eventTypeInfo } from './bits';
 import { EventWizard } from './create/EventWizard';
@@ -17,6 +18,7 @@ import { signupBlurb, signupPhase } from './logic/signup';
 import { parseTourneyConfig, tourneyStarted } from './logic/tourney';
 import { addDays, timeLabel, todayIn } from './logic/time';
 import { useMySide } from './match/MatchDetail';
+import { eventPlayers, useNames } from './names';
 import { useRacket } from './sport';
 
 /** Qué se dice del evento en la lista: «Ronda 3 de 7», «8 parejas», «2 categorías» (y la inscripción abierta). */
@@ -39,6 +41,19 @@ function eventLine(e: RacketEvent, side: readonly [string, string], today: strin
     return blurb ? `${line} · ${blurb}` : line;
   }
   return `${e.playerCount} ${e.playerCount === 1 ? side[0] : side[1]}`;
+}
+
+/**
+ * «Anotadores» de un torneo sin liga con varios eventos (sus anotadores anotan en todos): «Juega» quien está inscrito en
+ * alguno (las parejas se leen solo aquí, para el admin). Mientras llegan las parejas, nadie sale con «Juega».
+ */
+function TournamentScorers({ events }: { events: readonly RacketEvent[] }) {
+  const { league } = useLeagueCtx();
+  const names = useNames();
+  const participants = useMemo(() => [...new Set(events.flatMap((e) => eventPlayers(e, names)))], [events, names]);
+  return (
+    <ScorersButton labeled className="h-11" target={{ scope: 'liga', refId: null, title: league.name }} participants={names.loading ? undefined : participants} />
+  );
 }
 
 /**
@@ -95,6 +110,8 @@ export default function RacketHome() {
           <Link to={`${base}/admin?tab=parejas`} className="flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-accent hover:bg-surface-2">
             <Users className="size-4" /> {doubles ? 'Parejas y niveles' : 'Jugadores y niveles'}
           </Link>
+          {/* Torneo sin liga con varios eventos: sus anotadores anotan en todos. */}
+          {league.kind === 'torneo' && <TournamentScorers events={events.data} />}
         </div>
       )}
 

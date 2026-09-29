@@ -104,7 +104,7 @@ const EVENTS: SectionDef = {
   to: '/ligas',
   label: 'Eventos',
   icon: CalendarDays,
-  match: (p) => p.startsWith('/ligas') || p.startsWith('/l/') || p.startsWith('/unirse'),
+  match: (p) => p.startsWith('/ligas') || p.startsWith('/l/') || p.startsWith('/unirse') || p.startsWith('/anotar'),
 };
 const PROFILE: SectionDef = { key: 'profile', to: '/perfil', label: 'Perfil', icon: UserRound, match: (p) => p.startsWith('/perfil') };
 // Sin cuenta, Eventos y Perfil no dicen mucho: en su lugar, cómo escribirnos y qué es MatchMate.

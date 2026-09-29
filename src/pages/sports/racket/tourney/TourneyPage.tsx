@@ -11,6 +11,7 @@ import { podium, type Bracket } from '../../../../sports/formats';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { BackLink } from '../../../../components/BackLink';
 import { BracketView, MatchCard, StandingsTable } from '../../../../components/match';
+import { ScorersButton } from '../../../../components/scorers/ScorersButton';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { Chips, PickList, Section, Stepper, racketColumns } from '../bits';
 import { exportCompetitionExcel } from '../excel';
@@ -40,7 +41,7 @@ import { SignupSettingsModal } from '../signup/SignupFields';
 import { SignupPanel } from '../signup/SignupPanel';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { levelText, useLevels } from '../levels';
-import { useNames, type Names } from '../names';
+import { entrantPlayers, useNames, type Names } from '../names';
 import { useRacket } from '../sport';
 import { CategoryPrize, TourneyPrizes } from './TourneyPrizes';
 
@@ -159,6 +160,11 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
               Inscripción
             </Button>
           )}
+          <ScorersButton
+            labeled
+            target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
+            participants={cfg.categories.flatMap((c) => entrantPlayers(c.pairs, names))}
+          />
           <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!matches.length}>
             Excel
           </Button>

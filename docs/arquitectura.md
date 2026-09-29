@@ -60,7 +60,8 @@ Motor de insignias (src/badges/*.ts)           ← puro; corre en el servidor (E
   son de ese deporte y la app toma su color. Rutas: `/` Home de todos (si hay deporte activo manda a `/d/:sport`;
   volver atrás hasta `/` sí quita el deporte), `/d/:sport` Home del deporte, `/ligas` Eventos, `/avisos` página de
   avisos, `/u/:userId` perfil público, `/perfil` el propio, `/buscar` buscar personas (nombre o @usuario),
-  `/invitacion/:inviteId` una invitación a una liga (ahí llevan el push y el aviso de la campana),
+  `/invitacion/:inviteId` una invitación a una liga (ahí llevan el push y el aviso de la campana), `/anotar/:code`
+  el link para anotar de un torneo (también sin cuenta),
   `/juegos-sueltos` los juegos de boliche sin liga ni torneo, `/acerca` qué es MatchMate y `/contacto` cómo
   escribirnos. «Home» de la barra: fuera del Home del deporte va a él; en él, quita el deporte y va a `/`. Para ir
   al Home de todos: `setActiveSport(null)` y luego `/`.
@@ -145,9 +146,10 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
   admin. `invite_to_league` (hasta 50 por vez, 100 por día) manda un push «Ana te invitó a <liga>»; la cuenta
   invitada lo ve en la campana, en la tarjeta «Invitaciones» de /avisos y en `/invitacion/<id>`, donde acepta
   (`respond_league_invite`: entra con su jugador y, si eligió uno en «¿Quién eres?», queda el reclamo, como con el
-  código) o rechaza (no se le vuelve a invitar en 7 días). Quien invitó o un admin la retira
-  (`cancel_league_invite`). Entrar por otro camino acepta la pendiente; salir de la liga cancela las que mandó
-  esa cuenta. Si la liga ya no es pública y quien invitó ya no es admin, aceptar la deja `cancelled`.
+  código; la invitación de anotador, sin jugador si no lo invitaron también a jugar: ver «Anotadores del torneo») o
+  rechaza (no se le vuelve a invitar en 7 días). Quien invitó o un admin la retira (`cancel_league_invite`). Entrar
+  por otro camino acepta la pendiente (y, si era de anotador, entra también con el permiso); salir de la liga
+  cancela las que mandó esa cuenta. Si la liga ya no es pública y quien invitó ya no es admin, aceptar la deja `cancelled`.
 - **Hoja de invitar** (`src/components/invite/`, sobre `Sheet` de `src/components/ui.tsx`: en el teléfono sube
   desde abajo, en la computadora es un cuadro en el centro): buscador, las personas que sigues en tarjetas para
   elegir y, abajo, el link (copiar, WhatsApp, «Más»): el admin, el de invitación con código; un miembro de una
@@ -156,6 +158,36 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
 - Migración `20260929000200_invitaciones.sql`; cliente `src/lib/data/people.ts` y `src/lib/data/invites.ts`.
   Tiempo real `invites` en `user:<invitada>`, `user:<quien invitó>` y `league:<id>`; push a la invitada y, al
   aceptar, a quien invitó.
+
+## Anotadores del torneo (`20260929001400_anotadores.sql`, docs/anotadores.md)
+
+- El permiso es **de la liga** (`league_members.is_scorer`): en un torneo sin liga, ese torneo; en una liga de otro
+  deporte, todos sus eventos; en una liga de boliche, sus torneos y no las prácticas (`private.is_event_scorer` y
+  `canScoreEvent` en `src/lib/league.tsx`). Lo nombra o lo quita el dueño o un admin (un admin, solo a miembros).
+- El botón **«Anotadores»** (`src/components/scorers/`, solo dueño o admin) va en cada pantalla de torneo y abre
+  una hoja con quién anota y tres formas de sumar a alguien: «De la liga» (un miembro, directo:
+  `set_member_scorer`), «Por @usuario» (a quien no es de la liga, una invitación de anotador: `invite_scorers`, la
+  misma fila de `league_invites` con `as_scorer`) y «Link» (`/anotar/<código>`: su propio código, 7 días, 20 usos,
+  se cambia o se quita; no hay en ligas con menores).
+- **Entrar solo para anotar** (el link o una invitación de anotador): la cuenta queda como miembro anotador **sin
+  jugador** (`league_members.scorer_only`, también en una liga privada); nadie se lo crea solo (`ensure_my_player`
+  devuelve null y la app no lo intenta). «Mis juegos» le ofrece «También juego» (`join_league` con su liga) o salir.
+  Quitarle el permiso a quien entró solo para anotar lo saca de la liga. Sin sesión, /anotar manda a crear la cuenta
+  o a entrar y vuelve con `?entrar=1`, que entra solo.
+- **Dónde está el botón:** boliche (el evento `torneo`, también la portada de un torneo sin liga; en la práctica
+  no), raqueta (torneo por categorías, noche americano/mexicano, pickleball social y la portada de un torneo sin liga
+  con varios eventos), golf (la ronda y la portada de un torneo con varias rondas), natación (el encuentro),
+  baloncesto, fútbol y sala (el relámpago y los playoffs de una liga). En un torneo sin liga de un solo evento la
+  portada ya es el evento: el botón sale una vez.
+- **El link** vive en `private.scorer_links` (solo por RPC): un abierto por liga y contexto (la liga, un evento o un
+  playoff), hasta 10 abiertos por liga y 20 creados o cambiados por día por cuenta. Deja de servir si vence, se
+  llena, se cambia o se quita, si quien lo creó ya no es admin o está bloqueado, o si la liga pasa a tener menores.
+  `scorer_link_preview` corre también sin cuenta, con el límite de `invite_preview`. Quien entra le avisa a quien
+  creó el link.
+- Cliente `src/lib/data/scorers.ts`, `src/pages/ScorerJoinPage.tsx`. Tiempo real `scorers` en `league:<id>` y
+  `user:<id>`; push `anotador:` («Ahora puedes anotar en …», «Ana entró a anotar con tu link») en «Tus ligas».
+  Pruebas: `tests/sql/anotadores.test.ts`, `src/lib/data/scorers.flow.test.ts` (PGlite) y
+  `src/components/scorers/*.test.ts`.
 
 ## Organizador: la base (`20260929000600_organizador.sql`)
 

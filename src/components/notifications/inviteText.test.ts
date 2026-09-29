@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { invitedByLine, inviteOutcome, inviteOutcomeOf, inviterText, joinedText, leagueNoun, leagueTypeLabel, respondedText } from './inviteText';
+import {
+  invitedByLine,
+  inviteOutcome,
+  inviteOutcomeOf,
+  inviterText,
+  joinedText,
+  leagueNoun,
+  leagueTypeLabel,
+  respondedText,
+  scorerInviteBody,
+  scorerInvitedLine,
+  scorerJoinedText,
+} from './inviteText';
 
 const ana = { id: 'u1', name: 'Ana Pérez', username: 'ana' };
 
@@ -47,5 +59,19 @@ describe('textos de las invitaciones', () => {
     expect(respondedText('declined', 'Liga Norte')).toBe('Rechazaste la invitación');
     expect(respondedText('cancelled', 'Liga Norte')).toBe('Esta invitación ya no está disponible.');
     expect(respondedText('pending', 'Liga Norte')).toBe('No se pudo. Prueba otra vez.');
+    // La de anotador aceptada: «Ya puedes anotar en …» (sin título, la liga).
+    expect(respondedText('accepted', 'Liga Norte', 'Copa Aniversario')).toBe('Ya puedes anotar en Copa Aniversario');
+    expect(respondedText('accepted', 'Liga Norte', '')).toBe('Ya puedes anotar en Liga Norte');
+    expect(respondedText('declined', 'Liga Norte', 'Copa')).toBe('Rechazaste la invitación');
+  });
+
+  it('la invitación de anotador', () => {
+    expect(scorerInvitedLine(ana, 'Copa Aniversario')).toBe('Ana Pérez (@ana) te invitó a anotar en Copa Aniversario');
+    expect(scorerInvitedLine(null, ' ')).toBe('Te invitaron a anotar en el torneo');
+    expect(scorerInviteBody(null, false)).toBe('Anotas los resultados. No te inscribe como jugador.');
+    expect(scorerInviteBody('Podrás anotar en los torneos de esta liga (no en las prácticas).', true)).toBe(
+      'Anotas los resultados. Podrás anotar en los torneos de esta liga (no en las prácticas). También te invitó a jugar.',
+    );
+    expect(scorerJoinedText('Copa')).toBe('Ya puedes anotar en Copa');
   });
 });

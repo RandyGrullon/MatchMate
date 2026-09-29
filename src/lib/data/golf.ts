@@ -230,6 +230,7 @@ export const golfKeys = {
   player: (lid: string, playerId: string) => `golf:player:${lid}:${playerId}`,
   rules: (lid: string) => `golf:rules:${lid}`,
   indexes: (lid: string) => `golf:indexes:${lid}`,
+  cardPlayers: (lid: string) => `golf:card-players:${lid}`,
 };
 
 const coursesTag = (lid: string) => `golf:courses:${lid}`;
@@ -302,6 +303,20 @@ async function cardsOfEvents(lid: string, eventIds: string[]): Promise<GolfCardD
   );
   return parts.flat().map(toCard);
 }
+
+/** Los jugadores con tarjeta en alguna ronda de la liga: quién «Juega» en «Anotadores» de un torneo de varias rondas. */
+export async function fetchGolfCardPlayers(lid: string): Promise<string[]> {
+  const rows = await select<Pick<CardRow, 'player_id'>>({ table: 'golf_cards', columns: 'player_id', filters: [byLeague(lid)] });
+  return [...new Set(rows.map((r) => r.player_id).filter(Boolean))];
+}
+
+/** Lo mismo en pantalla (`lid` undefined: no se lee). No se guarda en el teléfono. */
+export const useGolfCardPlayers = (lid: string | undefined): Live<string[]> =>
+  useLive<string[]>(lid ? golfKeys.cardPlayers(lid) : null, lid ? { kind: 'golf-card-players', lid } : null, () => fetchGolfCardPlayers(lid!), {
+    initial: [],
+    tags: lid ? [tags.league(lid), tags.events(lid), tags.entries(lid)] : [],
+    persist: false,
+  });
 
 /** Las rondas de un torneo (con su campo) y sus tarjetas: leaderboard del torneo. */
 export async function fetchGolfTournament(lid: string, tournamentId: string): Promise<GolfSeasonData> {

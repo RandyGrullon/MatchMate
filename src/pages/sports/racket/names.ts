@@ -3,7 +3,9 @@ import { usePlayers } from '../../../lib/data';
 import { useSeasonTeams, type SeasonTeam } from '../../../lib/data/seasonTeams';
 import { useLeagueCtx } from '../../../lib/league';
 import type { Player } from '../../../lib/types';
-import type { ScheduleEntrant } from './logic/league';
+import { parseLeagueConfig, type ScheduleEntrant } from './logic/league';
+import { isNightType, parseNightConfig } from './logic/night';
+import { parseTourneyConfig } from './logic/tourney';
 
 /**
  * Nombres de jugadores y parejas de la liga para las pantallas de raqueta (una sola lectura de cada lista).
@@ -54,4 +56,20 @@ export function useNames(): Names {
       teamsOf: (pid) => (pid ? teams.data.filter((t) => t.roster.some((r) => r.playerId === pid)).map((t) => t.id) : []),
     };
   }, [players.data, players.loading, teams.data, teams.loading]);
+}
+
+/** Los jugadores de esas parejas (una pareja de la temporada, un jugador o `p:<id>+<id>`): quién «Juega» en el torneo. */
+export function entrantPlayers(ids: readonly string[], names: Pick<Names, 'team' | 'rosterOf'>): string[] {
+  return ids.flatMap((id) => (names.team(id) ? names.rosterOf(id) : id.startsWith('p:') ? id.slice(2).split('+') : [id]));
+}
+
+/**
+ * Los jugadores de un evento según su configuración: los de la noche (americano, mexicano o el social), las parejas
+ * de las categorías del torneo o las de la liga de parejas. Para «Juega» en «Anotadores» de un torneo con varios
+ * eventos.
+ */
+export function eventPlayers(e: { type: string; config: Record<string, unknown> }, names: Pick<Names, 'team' | 'rosterOf'>): string[] {
+  if (isNightType(e.type)) return parseNightConfig(e.config, e.type).players;
+  if (e.type === 'torneo') return parseTourneyConfig(e.config).categories.flatMap((c) => entrantPlayers(c.pairs, names));
+  return entrantPlayers(parseLeagueConfig(e.config).pairs, names);
 }

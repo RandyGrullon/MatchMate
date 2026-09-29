@@ -30,6 +30,27 @@ export {
 export { memberId, useMembership, useMyMemberships, useLeagueMembers, useUsers, removeMember, setMemberRole, setMemberScorer, setSuperadmin } from './data/members';
 
 export {
+  useScorerAccess,
+  setScorer,
+  inviteScorers,
+  createScorerLink,
+  rotateScorerLink,
+  revokeScorerLink,
+  getScorerLinkPreview,
+  joinAsScorer,
+  playToo,
+  scorerLinkUrl,
+  scorerErrorText,
+  type ScorerScope,
+  type ScorerTarget,
+  type ScorerLink,
+  type ScorerInvite,
+  type ScorerAccess,
+  type ScorerLinkPreview,
+  type ScorerJoinResult,
+} from './data/scorers';
+
+export {
   usePlayers,
   usePlayer,
   fetchEffectiveAverages,
