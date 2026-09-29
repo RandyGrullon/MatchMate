@@ -17,7 +17,8 @@
     "db:types": "npx -y supabase@2 gen types typescript --local > src/lib/db.types.ts",
     "test:migrar": "vitest run -c scripts/migrar/vitest.config.ts",
     "migrar": "node scripts/migrar/cli.mjs",
-    "importar": "node scripts/importar-torneo.mjs"
+    "importar": "node scripts/importar-torneo.mjs",
+    "badges:bundle": "node scripts/badges/bundle.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

@@ -3,7 +3,8 @@
  * 1A–2B y cuadro de eliminación con pases directos para los mejores sembrados y 3.er lugar opcional. También
  * sirve sin grupos (cuadro directo). Puro: src/sports/formats (groups, knockout, roundRobin).
  */
-import { isFinal, type Match, type MatchDraft } from '../../../../lib/data/matches';
+import { isFinal, type Match } from '../../../../lib/data/matchCore';
+import type { MatchDraft } from '../../../../lib/data/matches';
 import {
   createBracket,
   crossGroups,

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Maximize, Minimize, Sun, X } from 'lucide-react';
 import { courtVars, isIOS, useFullscreen, useSunMode, useWakeLock } from '../../../court';
+import { useHoldBadgeUnlock } from '../../../components/badges/hold';
 import { Button, cx } from '../../../components/ui';
 
 /**
@@ -35,6 +36,8 @@ export function FieldScreen({
 }) {
   const [sun, setSun] = useSunMode();
   const wake = useWakeLock(true);
+  // El aviso de una insignia nueva espera a que se cierre esta pantalla.
+  useHoldBadgeUnlock();
   const full = useFullscreen();
   const [hideHint, setHideHint] = useState(false);
 

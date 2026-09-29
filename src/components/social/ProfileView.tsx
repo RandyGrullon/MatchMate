@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { BarChart3, CalendarDays, Heart, Trophy, UserRound } from 'lucide-react';
+import { Award, BarChart3, CalendarDays, Heart, Trophy, UserRound } from 'lucide-react';
 import { invalidate } from '../../lib/data/client';
 import { peopleTags, usePublicProfile, type FollowKind, type PublicProfile } from '../../lib/data/follows';
 import { useProfileGames, useProfileStats } from '../../lib/data/profileGames';
@@ -17,7 +17,24 @@ import { SportBadge } from './SportBadge';
 import { SportStats } from './SportStats';
 import { atUsername, initialProfileSport, knownSports } from './socialFormat';
 
-type ProfileTab = 'juegos' | 'estadisticas';
+type ProfileTab = 'juegos' | 'estadisticas' | 'insignias';
+
+// Las insignias traen el catálogo y el dibujo: se cargan aparte (la pestaña y las destacadas debajo del nombre).
+const ProfileBadgesTab = lazy(() => import('../badges/ProfileBadges'));
+const FeaturedBadges = lazy(() => import('../badges/ProfileBadges').then((m) => ({ default: m.FeaturedBadges })));
+
+function BadgesSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Cargando insignias">
+      <Skeleton className="h-6 w-32" />
+      <div className="grid grid-cols-4 gap-2">
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** «Desde septiembre de 2026». */
 function sinceText(iso: string | null): string | null {
@@ -65,7 +82,8 @@ function Counter({ value, label, onClick, icon }: { value: number; label: string
 /**
  * Perfil de una cuenta (el público `/u/:userId` y el tuyo `/perfil`): cabecera con iniciales, nombre, @usuario,
  * deportes y los números Seguidores / Siguiendo / Me gusta (tocar abre la lista), el botón Seguir (no en el tuyo:
- * ahí van `actions`) y las pestañas «Juegos» (con me gusta y «Ver más») y «Estadísticas» (resumen por deporte).
+ * ahí van `actions`), hasta 3 insignias destacadas y las pestañas «Juegos» (con me gusta y «Ver más»),
+ * «Estadísticas» (resumen por deporte) e «Insignias» (la vitrina, src/components/badges; `?tab=insignias`).
  */
 export function ProfileView({
   userId,
@@ -92,7 +110,8 @@ export function ProfileView({
 }) {
   const profile = usePublicProfile(userId);
   const [params, setParams] = useSearchParams();
-  const tab: ProfileTab = params.get('tab') === 'estadisticas' ? 'estadisticas' : 'juegos';
+  const rawTab = params.get('tab');
+  const tab: ProfileTab = rawTab === 'estadisticas' || rawTab === 'insignias' ? rawTab : 'juegos';
   const [sheet, setSheet] = useState<FollowKind | null>(null);
 
   const setTab = (t: ProfileTab) =>
@@ -149,6 +168,9 @@ export function ProfileView({
             {since && <span>{since}</span>}
           </div>
         </div>
+        <Suspense fallback={null}>
+          <FeaturedBadges userId={p.id} />
+        </Suspense>
         {sports.length > 0 && (
           <div className="flex flex-wrap justify-center gap-1.5" aria-label="Deportes">
             {sports.map((s) => (
@@ -175,6 +197,7 @@ export function ProfileView({
         items={[
           { key: 'juegos', label: 'Juegos', icon: <Trophy className="size-4" aria-hidden="true" /> },
           { key: 'estadisticas', label: 'Estadísticas', icon: <BarChart3 className="size-4" aria-hidden="true" /> },
+          { key: 'insignias', label: 'Insignias', icon: <Award className="size-4" aria-hidden="true" /> },
         ]}
         active={tab}
         onChange={setTab}
@@ -182,6 +205,10 @@ export function ProfileView({
 
       {tab === 'juegos' ? (
         <GamesTab userId={p.id} sports={sports} isMe={p.isMe} name={p.name} />
+      ) : tab === 'insignias' ? (
+        <Suspense fallback={<BadgesSkeleton />}>
+          <ProfileBadgesTab userId={p.id} name={p.name} sports={sports} />
+        </Suspense>
       ) : (
         <div className="flex flex-col gap-5">
           {statsTop}

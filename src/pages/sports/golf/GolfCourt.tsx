@@ -6,6 +6,7 @@ import { pendingGolfSign, type GolfCardDoc, type GolfRoundFull } from '../../../
 import { currentOutbox, isOnline, sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
 import { useLeagueCtx } from '../../../lib/league';
 import { useWakeLock } from '../../../court';
+import { useHoldBadgeUnlock } from '../../../components/badges/hold';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, cx } from '../../../components/ui';
 import {
@@ -69,6 +70,8 @@ export function GolfCourt({
   const field = useFieldMode('campo', { tab: 'tarjeta' });
   // Entre hoyo y hoyo la pantalla no se apaga (nadie quiere desbloquear el teléfono en cada hoyo).
   useWakeLock(true);
+  // Tarjeta a medio anotar: el aviso de una insignia espera a que se cierre (§6.4).
+  useHoldBadgeUnlock();
   // Se vuelve a dibujar cuando cambia la cola (p. ej. la firma pendiente llegó al servidor).
   useOutboxSnapshot();
 

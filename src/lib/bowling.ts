@@ -256,3 +256,47 @@ export function standingMask(rolls: readonly number[], masks: readonly (number |
   for (let p = 9; p >= 0 && bitCount(mask) < now.standing; p--) mask |= 1 << p;
   return mask;
 }
+
+/**
+ * Pinos vecinos para decidir un split (índice = pin − 1). Un pino se une con los dos que tiene detrás en diagonal y
+ * con el que queda justo detrás a dos filas («dormido»: 1-5, 2-8, 3-9). Los de la misma fila no se unen: así, con el
+ * pino de adelante caído, 5-6 o 7-8 son split (regla USBC) y 2-8 o 3-9 no.
+ *
+ *   7 8 9 10
+ *    4 5 6
+ *     2 3
+ *      1
+ */
+export const PIN_NEIGHBORS: readonly (readonly number[])[] = [
+  [1, 2, 4], // 1: 2, 3, 5
+  [0, 3, 4, 7], // 2: 1, 4, 5, 8
+  [0, 4, 5, 8], // 3: 1, 5, 6, 9
+  [1, 6, 7], // 4: 2, 7, 8
+  [0, 1, 2, 7, 8], // 5: 1, 2, 3, 8, 9
+  [2, 8, 9], // 6: 3, 9, 10
+  [3], // 7: 4
+  [1, 3, 4], // 8: 2, 4, 5
+  [2, 4, 5], // 9: 3, 5, 6
+  [5], // 10: 6
+];
+
+/**
+ * ¿Los pinos parados (bit 0 = pin 1) son un split? El pino 1 cayó, quedan 2 o más y no forman un solo grupo
+ * conectado según `PIN_NEIGHBORS`.
+ */
+export function isSplit(standing: number): boolean {
+  const pins = standing & ALL_PINS;
+  if (pins & 1 || bitCount(pins) < 2) return false;
+  const start = Math.log2(pins & -pins);
+  let seen = 1 << start;
+  const stack = [start];
+  while (stack.length) {
+    for (const n of PIN_NEIGHBORS[stack.pop()!]) {
+      if (pins & (1 << n) && !(seen & (1 << n))) {
+        seen |= 1 << n;
+        stack.push(n);
+      }
+    }
+  }
+  return seen !== pins;
+}

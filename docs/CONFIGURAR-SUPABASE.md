@@ -208,7 +208,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
 ## Paso 9. Secretos de las Edge Functions y publicarlas
 
-**Quién: tú.** `scan-bowling`, `send-push`, `delete-account` y `purge-photos` ya están en el repo (`supabase/functions`).
+**Quién: tú.** `scan-bowling`, `send-push`, `delete-account`, `purge-photos` e `insignias` ya están en el repo (`supabase/functions`).
 
 - [ ] **Claves VAPID** (notificaciones). En la terminal:
   ```powershell
@@ -216,7 +216,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   ```
   Salen dos: *Public Key* y *Private Key*. Guárdalas en tu gestor. La pública va también en Vercel
   (`VITE_VAPID_PUBLIC_KEY`, paso 5, y *Redeploy*). Las mismas sirven para los dos proyectos.
-- [ ] **CRON_SECRET** (una contraseña larga al azar que solo usan el cron, `send-push` y `purge-photos`). En la terminal:
+- [ ] **CRON_SECRET** (una contraseña larga al azar que solo usan el cron, `send-push`, `purge-photos` e `insignias`). En la terminal:
   ```powershell
   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   ```
@@ -237,14 +237,14 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
   No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo (`delete-account` usa la clave
   secreta, `SUPABASE_SECRET_KEYS`, para borrar la cuenta con la API de administración).
-- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto). Publica las cuatro:
+- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto). Publica las cinco:
   ```powershell
   npx -y supabase@2 functions deploy --project-ref REF
   ```
   Si ya tenías las otras y solo falta una: `npx -y supabase@2 functions deploy purge-photos --project-ref REF` (o
-  `delete-account`).
+  `delete-account`, o `insignias`, el motor de las insignias; esa se vuelve a publicar cada vez que cambia el motor).
 
-**Comprobar:** *Edge Functions* muestra `scan-bowling`, `send-push`, `delete-account` y `purge-photos`, las cuatro con *Verify JWT*
+**Comprobar:** *Edge Functions* muestra `scan-bowling`, `send-push`, `delete-account`, `purge-photos` e `insignias`, las cinco con *Verify JWT*
 **apagado** (es a propósito: cada función revisa por dentro quién la llama). En la app, envía un juego con foto: a
 los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* se ve la llamada sin errores.
 
@@ -259,7 +259,7 @@ los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* s
 ## Paso 10. Secretos del cron en Vault
 
 **Quién: tú.** El cron de recordatorios ya viene en las migraciones. El cron de la base usa estos dos valores
-para llamar a `send-push`.
+para llamar a `send-push` y a `insignias`.
 
 - [ ] En **cada** proyecto: *Database › Extensions*: que `pg_cron` y `pg_net` estén activadas.
 - [ ] *Integrations › Vault › Secrets* › *Add new secret* (dos veces):
@@ -267,7 +267,8 @@ para llamar a `send-push`.
   - Nombre `cron_secret`, valor: el **mismo** `CRON_SECRET` que pusiste en el paso 9 para ese proyecto.
 
 **Comprobar:** *SQL Editor* › `select name from vault.secrets order by name;` muestra `cron_secret` y
-`project_url`. *Integrations › Cron* muestra las tareas (recordatorios, limpieza) y, al rato, corridas en verde.
+`project_url`. *Integrations › Cron* muestra las tareas (recordatorios, limpieza, `mm-insignias`, `mm-insignias-diario`)
+y, al rato, corridas en verde.
 Con la app instalada y las notificaciones activadas, llega el recordatorio de un evento de prueba.
 
 ## Paso 11. GitHub: mantener despierto y respaldos

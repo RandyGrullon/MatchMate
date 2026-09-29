@@ -51,8 +51,18 @@ export interface League {
   tz?: string;
   /** Logo en el bucket público `logos` ('<liga>/<uuid>.webp'); null o sin valor = sin logo (src/lib/logos.ts). */
   logoPath?: string | null;
+  /** Insignias automáticas de la liga (`leagues.badges_auto`); sin valor = 'todas'. */
+  badgesAuto?: BadgesAutoMode;
+  /** ¿Quién diseña y da las insignias de la liga? (`leagues.badge_makers`); sin valor = 'admins'. */
+  badgeMakers?: BadgeMakers;
   createdAt?: Stamp | null;
 }
+
+/** `leagues.badges_auto`: todas, sin las que comparan con otros (recomendado con menores) o ninguna. */
+export type BadgesAutoMode = 'todas' | 'sin_titulos' | 'ninguna';
+
+/** `leagues.badge_makers`: «Solo yo» (el dueño), «Yo y los admins» o «Yo y los que yo elija» (`Member.badgeMaker`). */
+export type BadgeMakers = 'owner' | 'admins' | 'chosen';
 
 export type LeagueRole = 'owner' | 'admin' | 'member';
 
@@ -68,6 +78,8 @@ export interface Member {
   playerId: string | null;
   /** Anotador (solo en torneos sin liga): anota los juegos de todos. Se suma a su rol y a ser jugador. */
   scorer?: boolean;
+  /** «Diseña insignias» (`league_members.badge_maker`): vale cuando la liga eligió 'chosen'. Lo pone el dueño. */
+  badgeMaker?: boolean;
 }
 
 /** Invitación: a qué liga lleva un código (id = el código, en mayúsculas). */

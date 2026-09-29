@@ -31,8 +31,8 @@ export type NoticeKind =
 /** Para los filtros de la página de avisos: Partidos y resultados, Mis ligas, Social y Admin. */
 export type NoticeCategory = 'partidos' | 'ligas' | 'social' | 'admin';
 
-/** Ícono de un aviso social: seguir, me gusta, comentario o invitación a una liga. */
-export type SocialIcon = 'follow' | 'like' | 'comment' | 'invite';
+/** Ícono de un aviso social: seguir, me gusta, comentario, invitación a una liga o insignia (ganada o por confirmar). */
+export type SocialIcon = 'follow' | 'like' | 'comment' | 'invite' | 'badge';
 
 /** Un aviso: qué pasó, en qué liga (si es de una) y a dónde lleva. */
 export interface Notice {

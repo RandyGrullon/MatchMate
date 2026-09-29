@@ -39,6 +39,8 @@ import { canInviteTo, inviteTitle } from './invite/logic';
 import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
 import { AppFrame, AppShell } from './Shell';
 import { Empty, Loading, Modal, PageSkeleton, cx } from './ui';
+import { LeaguePlayerBadges, playerPageId } from './badges/LeagueBadges';
+import { LeaguePlayerMadeBadges } from './badges/maker/LeagueMadeBadges';
 import { LeagueHomeFrame } from './league/LeagueHome';
 import { isLeagueHome } from './league/logic';
 import { SportTheme } from './league/SportTheme';
@@ -234,6 +236,8 @@ export default function LeagueShell() {
     ...(ctx.isAdmin ? [{ to: `${base}/admin`, label: 'Admin', icon: Settings2, count: toDo + newNotes, tour: 'tab-admin' }] : []),
   ];
   const home = isLeagueHome(pathname, base);
+  // Página de un jugador (del boliche o de un deporte que la tiene): sus insignias van al final.
+  const badgesOf = bowling || screens?.Player ? playerPageId(pathname, base) : null;
 
   return (
     <LeagueContext.Provider value={ctx}>
@@ -270,6 +274,12 @@ export default function LeagueShell() {
             <LeagueHomeFrame bowling={bowling} tabs={names}>
               <Outlet />
             </LeagueHomeFrame>
+          ) : badgesOf ? (
+            <>
+              <Outlet />
+              <LeaguePlayerBadges key={badgesOf} playerId={badgesOf} />
+              <LeaguePlayerMadeBadges key={`creador-${badgesOf}`} playerId={badgesOf} />
+            </>
           ) : (
             <Outlet />
           )}

@@ -1,3 +1,4 @@
+import { badgeSvg } from '../../badges/visual/svg';
 import { DUO_HEAD_R, DUO_HEADS, DUO_M, DUO_RX, DUO_STROKE } from '../splash/brand';
 import { FONT_STACK, type Scene, type SceneNode } from './scene';
 
@@ -33,6 +34,9 @@ function node(x: SceneNode): string {
         `${heads}</g>`
       );
     }
+    case 'badge':
+      // La insignia en claro, como `<svg>` anidado en su cuadro (trae sus degradados y recortes).
+      return badgeSvg(x.look, { size: 128, px: x.size, mode: 'light' }).replace(/^<svg /, `<svg x="${n(x.x)}" y="${n(x.y)}" `);
   }
 }
 

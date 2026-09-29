@@ -3,7 +3,7 @@
  * motores, tablas de parejas (desempates de src/sports/formats), ranking individual de la temporada, noches de
  * puntos de la temporada y el récord de un jugador (con cada compañero y contra cada rival). Puro.
  */
-import { finalMatches, sideKey, type Match, type MatchSide } from '../../../../lib/data/matches';
+import { finalMatches, sideKey, type Match, type MatchSide } from '../../../../lib/data/matchCore';
 import {
   PICKLEBALL_POINTS,
   RACKET_POINTS,

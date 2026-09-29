@@ -18,6 +18,7 @@ Backend (src/lib/backend/types.ts)             ← contrato único
    └─ local.ts     PGlite con las mismas migraciones y RLS (desarrollo, pruebas, demo)
 Base de datos (supabase/migrations/*.sql)      ← fuente de verdad: esquema, RLS, RPC, triggers
 Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, sin React ni backend
+Motor de insignias (src/badges/*.ts)           ← puro; corre en el servidor (Edge Function `insignias`)
 ```
 
 ## Base de datos (Postgres)
@@ -106,9 +107,10 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `legal` (aceptación de los términos), `reports` (reportes de contenido), `solo` (juegos sueltos de boliche), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
-cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`). Fuera de la carpeta,
-`src/lib/logos.ts` (logo de ligas y torneos).
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `legal` (aceptación de los términos), `reports` (reportes de contenido), `solo` (juegos sueltos de boliche), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), los de
+cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`) y los de las insignias
+(`badges`: vitrina, avisos, progreso, rareza, la liga, el evento y el título vigente; `leagueBadges`: el creador;
+`badgeAdmin`: la consola). Fuera de la carpeta, `src/lib/logos.ts` (logo de ligas y torneos).
 
 ## Jugadores sin cuenta y reclamos
 
@@ -360,6 +362,46 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   logo (o si no carga), el ícono de siempre. Se pone en Admin › Liga (en un torneo, › Datos) y, opcional, al crear.
 - Migración `20260929001000_sueltos_logos.sql` (también abre todos los deportes y trae los juegos sueltos).
 
+## Insignias
+
+Diseño completo: `docs/insignias.md`. Contratos de la base: `supabase/README.md` («Insignias», «Motor de insignias» e
+«Insignias de la liga (creador)»).
+
+```
+resultados, vínculos, cierres ──trigger──▶ private.badge_queue ◀── private.badges_daily (04:30 UTC) · badges_backfill
+                                                  │
+              pg_cron mm-insignias (cada 10 min) → private.cron_badges() → pg_net → Edge Function `insignias`
+                                                  ▼
+   badge_claim → por trabajo: badge_snapshot (jsonb) → evaluateJob (motor empaquetado) → badge_apply | badge_fail
+                                                  ▼
+          badge_awards · badge_progress · push agrupado (push_outbox) · tiempo real `badges` (user: y league:)
+```
+
+- **Catálogo y reglas en código, una sola fuente:** `src/badges/catalog.ts` (100 keys, 197 niveles, 9 deportes) y
+  `src/badges/rules/` (actividad válida, ligas reales, juez y parte, líneas base). Los usan la app (textos, progreso,
+  galería) y el motor.
+- **El servidor decide, nunca el teléfono:** `src/badges/engine.ts` (`evaluate(job, snapshot, now)` corre los
+  evaluadores de `src/badges/evaluators/` y asienta lo que ya existe; `decide` suma las adopciones: las copias de
+  respaldo de un jugador sin cuenta pasan a la cuenta que lo reclama). `src/badges/edge.ts` pone los nombres del
+  push. `pnpm badges:bundle` (rolldown de Vite 8) lo empaqueta en `supabase/functions/_shared/badges-engine.gen.js`,
+  un solo ESM sin imports con el hash de sus 66 archivos; `src/badges/bundle.test.ts` falla si está viejo. **Después
+  de cambiar algo de `src/badges`, `src/lib/types.ts`, `src/lib/data/rows.ts` o los helpers de deportes que usa el
+  motor, `pnpm badges:bundle` antes de hacer commit.**
+- **Edge Function `supabase/functions/insignias/`** (`core.ts` sin imports, como `send-push`): valida `CRON_SECRET`,
+  toma hasta 25 trabajos de a 5, corta a los 100 s o ~1,2 s de CPU del motor y termina con `badge_finish` (avisos y,
+  si queda cola, se vuelve a llamar). Cron: `20260929000890_insignias_cron_supabase.sql` (solo Supabase).
+- **Migraciones:** `…0800_insignias.sql` (premios, progreso, rareza, vitrina, aval, fusiones), `…0810_insignias_motor.sql`
+  (cola, triggers, foto de datos, aplicar, avisos, tarea diaria, historial y la consola del motor),
+  `…0820_insignias_creador.sql` (insignias que diseña y da la liga, reportes y palabras bloqueadas) y
+  `…0880_insignias_temporadas.sql` (solo si existe `public.seasons`, de la migración de temporadas).
+- **Pantallas:** `src/badges/visual/` (el dibujo: `<Insignia>`, 5 metales, 7 formas, animación), `src/components/badges/`
+  (vitrina del perfil, detalle, aviso al ganar y resumen del año, portada de la liga, página del evento, título
+  vigente en la tabla, «Por confirmar», ajustes) y `src/components/badges/maker/` (el creador). Lo pesado (catálogo y
+  dibujo) se carga aparte (`kit.ts`, `lazy`) solo cuando hay algo que mostrar.
+- **Consola › Insignias** (`src/pages/superadmin/BadgesSection.tsx`): hazañas vencidas, reportes, palabras
+  bloqueadas, la cola del motor y sus trabajos muertos, la primera corrida del historial (en seco y de verdad) contra
+  la rareza estimada, la rareza real y la galería del catálogo.
+
 ## Sin señal y errores
 
 - `src/lib/persist.ts`: pide al navegador que no borre lo guardado (lo que falta por enviar) cuando haya poco espacio.
@@ -373,4 +415,6 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
 
 - `pnpm test`: unitarias (`src/**/*.test.ts`).
 - `pnpm test:sql`: SQL y RLS con PGlite (`tests/sql/*.test.ts`, configuración `vitest.sql.config.ts`).
+  `tests/sql/insignias-funcion.test.ts` corre la Edge Function con el motor empaquetado contra la base de verdad.
+- `pnpm test:migrar` y `pnpm exec tsc --noEmit -p scripts/migrar/tsconfig.json`: la migración desde BowlingX.
 - Cuando haya Docker: `supabase start` + `supabase test db` (pgTAP) como verificación final.

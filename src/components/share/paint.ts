@@ -1,4 +1,5 @@
 import { DUO_HEAD_R, DUO_HEADS, DUO_M, DUO_RX, DUO_STROKE } from '../splash/brand';
+import { paintBadge } from './badgePaint';
 import { buildScene, type CardFrame, type ShareCard } from './cards';
 import { fontSpec, type Measure, type Scene } from './scene';
 
@@ -131,6 +132,10 @@ export function paintScene(ctx: Ctx2D, scene: Scene, scale = 2) {
         ctx.restore();
         break;
       }
+      case 'badge':
+        // Sin Path2D no se pinta: la tarjeta queda con el texto.
+        paintBadge(ctx, x.look, x.x, x.y, x.size);
+        break;
     }
   }
   ctx.globalAlpha = 1;

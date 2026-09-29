@@ -1,5 +1,5 @@
 import type { CourtAdapter } from '../../../court/types';
-import { isFinal, sideKey, type Match, type MatchScore, type MatchSide } from '../../../lib/data/matches';
+import { isFinal, sideKey, type Match, type MatchScore, type MatchSide } from '../../../lib/data/matchCore';
 import {
   basketball,
   basketballLines,

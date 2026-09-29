@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import {
+  Award,
   Baby,
+  BadgeCheck,
   CalendarRange,
   Camera,
   ChevronDown,
@@ -20,6 +22,7 @@ import {
   Lock,
   MapPin,
   MessageCircle,
+  Palette,
   Pencil,
   Save,
   Settings,
@@ -66,10 +69,16 @@ import { usePendingClaimCount } from '../components/claims/data';
 import { PendingPanel } from '../components/organizer/Pending';
 import { pendingTotal, useLeaguePending } from '../lib/data/organizer';
 import { useReportCounts } from '../lib/data/reports';
+import { BadgesSettingsCard } from '../components/badges/BadgesSettings';
+import { BadgeMakersCard } from '../components/badges/maker/MakerSettings';
+import { useBadgeNotices } from '../lib/data/badges';
+import { badgeMakersOf, canMakeBadges, setMemberBadgeMaker } from '../lib/data/leagueBadges';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
 const LeagueReportsPanel = lazy(() => import('../components/report/LeagueReportsPanel').then((m) => ({ default: m.LeagueReportsPanel })));
+const ReviewsPanel = lazy(() => import('../components/badges/ReviewsPanel'));
+const MakerAdmin = lazy(() => import('../components/badges/maker/MakerAdmin'));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 const SeasonAdmin = lazy(() => import('../components/season/SeasonAdmin'));
 
@@ -91,7 +100,8 @@ interface AdminTab {
  * queda en Miembros.
  */
 export default function AdminPage() {
-  const { lid, isAdmin, league } = useLeagueCtx();
+  const ctx = useLeagueCtx();
+  const { lid, isAdmin, league } = ctx;
   const [params, setParams] = useSearchParams();
   const sport = leagueSport(league);
   const bowling = sport === 'bowling';
@@ -106,6 +116,10 @@ export default function AdminPage() {
   const reports = useReportCounts(isAdmin, lid).data;
   // Todo lo que espera por el admin (envíos y reclamos en vivo; partidos reclamados o atrasados y listas de espera).
   const toDo = pendingTotal(useLeaguePending(isAdmin ? lid : null).data, { submissions: bowling ? pending : undefined, claims });
+  // Hazañas por confirmar (aval de insignias): la pestaña sale cuando hay alguna (o si el link la pide).
+  const reviews = useBadgeNotices().data.reviews.filter((r) => r.leagueId === lid).length;
+  // Insignias de la liga (el creador): solo para quien las diseña y las da.
+  const makers = canMakeBadges(ctx);
   const generic: AdminTab[] = [
     // Primero en todos los deportes (arrangeAdminTabs) y abre ahí.
     { key: 'pendientes', label: 'Pendientes', icon: <ClipboardCheck className="size-4" />, count: toDo },
@@ -115,6 +129,10 @@ export default function AdminPage() {
     { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
     { key: 'reclamos', label: 'Reclamos', icon: <UserCheck className="size-4" />, count: claims },
     ...(reports.all > 0 ? [{ key: 'reportes', label: 'Reportes', icon: <Flag className="size-4" />, count: reports.open }] : []),
+    ...(reviews > 0 || params.get('tab') === 'confirmar'
+      ? [{ key: 'confirmar', label: 'Por confirmar', icon: <BadgeCheck className="size-4" />, count: reviews }]
+      : []),
+    ...(makers ? [{ key: 'insignias', label: 'Insignias', icon: <Award className="size-4" /> }] : []),
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
     // Cerrar la temporada con sus campeones y empezar la siguiente (un torneo suelto no tiene temporadas).
     ...(league.kind === 'torneo' ? [] : [{ key: 'temporada', label: 'Temporada', icon: <CalendarRange className="size-4" /> }]),
@@ -207,6 +225,10 @@ function AdminTabs({
             <ClaimsPanel />
           ) : tab === 'reportes' ? (
             <LeagueReportsPanel />
+          ) : tab === 'confirmar' ? (
+            <ReviewsPanel />
+          ) : tab === 'insignias' ? (
+            <MakerAdmin />
           ) : tab === 'buzon' ? (
             <SuggestionsPanel />
           ) : tab === 'temporada' ? (
@@ -241,6 +263,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   const bowling = leagueSport(league) === 'bowling';
   const scorers = league.kind === 'torneo' || !bowling;
   const where = league.kind === 'torneo' ? 'el torneo' : 'la liga';
+  // «Diseña insignias» vale con la regla «Yo y los que yo elija» (Liga › ¿Quién diseña y da insignias?).
+  const chosen = badgeMakersOf(league) === 'chosen';
 
   async function toggleAdmin(m: Member) {
     const makeAdmin = m.role === 'member';
@@ -274,6 +298,19 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
     if (ok) await run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : 'Listo');
   }
 
+  async function toggleMaker(m: Member) {
+    const make = !m.badgeMaker;
+    const ok = await confirm({
+      title: make ? `¿${m.name} diseña insignias?` : `¿Quitarle a ${m.name} el diseño de insignias?`,
+      message: make
+        ? 'Podrá crear las insignias de la liga y darlas. Solo tú puedes quitarlas.'
+        : `Ya no podrá crear ni dar insignias de ${where}. Las que ya dio se quedan.`,
+      confirmText: make ? 'Sí, que diseñe' : 'Quitar',
+      danger: !make,
+    });
+    if (ok) await run(() => setMemberBadgeMaker(m, make), make ? `${m.name} ahora diseña insignias` : 'Listo');
+  }
+
   async function kick(m: Member) {
     const ok = await confirm({
       title: `¿Sacar a ${m.name} de ${where}?`,
@@ -295,6 +332,11 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
               ; <b className="text-fg">Anotador</b> solo anota los juegos
             </>
           )}
+          {chosen && (
+            <>
+              ; <b className="text-fg">Diseña insignias</b> crea y da las insignias de {where}
+            </>
+          )}
           . {isOwner ? 'Solo tú, como dueño, das o quitas permisos.' : 'Solo el dueño da o quita permisos.'}
         </p>
       </div>
@@ -306,8 +348,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
         <Card className="stagger divide-y divide-line overflow-hidden">
           {sorted.map((m, i) => {
             const me = m.uid === user?.uid;
-            // El dueño saca a cualquiera; un admin solo a los que no tienen permisos (ni admin ni anotador).
-            const canKick = !me && m.role !== 'owner' && (isOwner || (m.role === 'member' && !m.scorer));
+            // El dueño saca a cualquiera; un admin solo a los que no tienen permisos (ni admin, ni anotador, ni diseña insignias).
+            const canKick = !me && m.role !== 'owner' && (isOwner || (m.role === 'member' && !m.scorer && !m.badgeMaker));
             const canManage = isOwner && m.role !== 'owner';
             // Un admin puede dejar de serlo por su cuenta.
             const canStepDown = me && m.role === 'admin' && !isOwner;
@@ -322,6 +364,11 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                   <div className="mt-1 flex flex-wrap gap-1">
                     {m.role !== 'member' && <Badge tone="accent">{roleLabel(m.role)}</Badge>}
                     {scorers && m.scorer && <Badge tone="warn">Anotador</Badge>}
+                    {chosen && m.badgeMaker && (
+                      <Badge tone="accent">
+                        <Palette className="size-3" aria-hidden="true" /> Diseña insignias
+                      </Badge>
+                    )}
                     <Badge tone={m.playerId ? 'ok' : 'neutral'}>{m.playerId ? `Jugador: ${playerName.get(m.playerId) ?? '—'}` : 'Su jugador se crea al abrir la liga'}</Badge>
                   </div>
                 </div>
@@ -348,6 +395,11 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         onClick={() => toggleScorer(m)}
                       >
                         {m.scorer ? 'Quitar anotador' : 'Hacer anotador'}
+                      </Button>
+                    )}
+                    {canManage && chosen && (
+                      <Button size="sm" icon={<Palette className="size-4" />} onClick={() => toggleMaker(m)}>
+                        {m.badgeMaker ? 'Ya no diseña' : 'Diseña insignias'}
                       </Button>
                     )}
                     {canKick && (
@@ -473,6 +525,10 @@ function SettingsPanel() {
       <LogoCard />
 
       <AnnouncePanel />
+
+      <BadgesSettingsCard />
+
+      <BadgeMakersCard />
 
       <InviteCard league={league} />
 

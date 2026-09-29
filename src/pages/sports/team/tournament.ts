@@ -1,7 +1,8 @@
 import { crossGroups, groupLetter, snakeGroups } from '../../../sports/formats/groups';
 import { createBracket, roundName, type Bracket, type BracketMatch } from '../../../sports/formats/knockout';
 import { roundRobin } from '../../../sports/formats/roundRobin';
-import { hasResult, isFinal, type Match, type MatchDraft, type SideDraft } from '../../../lib/data/matches';
+import { hasResult, isFinal, type Match } from '../../../lib/data/matchCore';
+import type { MatchDraft, SideDraft } from '../../../lib/data/matches';
 import { addDays, zonedIso } from './schedule';
 
 /**

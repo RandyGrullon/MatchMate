@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { ChevronRight, LogIn, Pencil, Search, Settings, UserPlus } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
@@ -39,6 +39,9 @@ function SoloGamesLink() {
  */
 export default function ProfilePage() {
   const auth = useAuth();
+  // Al entrar vuelve aquí con la pestaña y la insignia (el push de una insignia abre /perfil?tab=insignias&insignia=…).
+  const here = useLocation();
+  const next = encodeURIComponent(`/perfil${here.search}`);
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
 
@@ -49,10 +52,10 @@ export default function ProfilePage() {
         <Empty icon={<UserPlus className="size-8" />} title="Tu perfil de jugador">
           Entra para ver tus juegos, tus seguidores y tus estadísticas de todas tus ligas juntas.
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Link to="/login?next=%2Fperfil" className="inline-flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2">
+            <Link to={`/login?next=${next}`} className="inline-flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2">
               <LogIn className="size-4" /> Entrar
             </Link>
-            <Link to="/login?modo=registro&next=%2Fperfil" className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg">
+            <Link to={`/login?modo=registro&next=${next}`} className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg">
               <UserPlus className="size-4" /> Crear cuenta
             </Link>
           </div>

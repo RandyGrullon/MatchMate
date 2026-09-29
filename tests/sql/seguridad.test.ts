@@ -74,6 +74,16 @@ const RPC_AUTHENTICATED = [
   'bowling_game_context', 'public_agenda',
   // Juegos sueltos del boliche y el logo de la liga.
   'save_solo_session', 'delete_solo_session', 'solo_sessions_of', 'begin_logo_upload', 'set_league_logo',
+  // Insignias: el perfil, destacadas, ocultar, visto, el modo de la liga, el aval y el retiro por fraude.
+  'mark_badges_seen', 'profile_badges', 'review_badge', 'set_badge_hidden', 'set_badges_auto', 'set_featured_badges',
+  'super_revoke_badge',
+  // Insignias, el motor: los avisos de la cuenta (y hazañas por confirmar), el historial y la consola (superadmin).
+  'badge_notices', 'badges_backfill', 'admin_badges_engine', 'admin_badge_jobs',
+  // Insignias, el creador de la liga: permisos, diseños, dar, retirar, ocultar, ver, reportes y moderación.
+  'set_badge_policy', 'set_member_badge_maker', 'save_league_badge', 'archive_league_badge', 'delete_league_badge',
+  'award_league_badge', 'revoke_league_badge_award', 'set_league_badge_hidden', 'mark_league_badges_seen',
+  'league_badge_holders', 'report_league_badge', 'report_badge', 'hide_league_badge', 'admin_badge_reports',
+  'admin_resolve_badge_reports', 'admin_blocked_terms',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

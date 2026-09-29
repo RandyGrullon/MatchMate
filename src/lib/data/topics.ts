@@ -65,6 +65,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'seasons') return invalidate(`seasons:${id}`);
     // Playoffs y sus llaves (etiqueta de playoffTags en ./playoffs); sus juegos avisan como cualquier partido.
     if (msg.event === 'playoffs') return invalidate(`playoffs:${id}`);
+    // Insignias que se ven en la liga (etiqueta badgeTags.league de ./badges): premios del mes, página del jugador.
+    if (msg.event === 'badges') return invalidate(`badges:l:${id}`);
   } else if (kind === 'user') {
     if (msg.event === 'submission') return invalidate(tags.feeds);
     // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
@@ -74,6 +76,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds);
     // Un juego suelto mío cambió en otro teléfono (etiquetas de src/lib/data/solo.ts; también mi perfil).
     if (msg.event === 'solo') return invalidate(`solo:${id}`, `people:${id}`);
+    // Mis insignias (etiqueta badgeTags.mine de ./badges): la vitrina, el aviso de desbloqueo y lo por confirmar.
+    if (msg.event === 'badges') return invalidate('badges:me');
   }
 }
 

@@ -1,4 +1,4 @@
-import { Link, Navigate, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
 import { LogIn, UserPlus, UserRound } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { AppShell } from '../components/Shell';
@@ -14,6 +14,7 @@ import { Empty, Loading } from '../components/ui';
 export default function UserProfilePage() {
   const { userId } = useParams();
   const auth = useAuth();
+  const { search } = useLocation();
 
   if (auth.loading) return <Loading />;
   if (!userId) {
@@ -27,9 +28,10 @@ export default function UserProfilePage() {
       </AppShell>
     );
   }
-  if (auth.user?.uid === userId) return <Navigate to="/perfil" replace />;
+  // Tu propio perfil, con lo que pida el link (los push de insignias abren `/u/<tú>?tab=insignias`).
+  if (auth.user?.uid === userId) return <Navigate to={{ pathname: '/perfil', search }} replace />;
   if (!auth.user) {
-    const next = encodeURIComponent(`/u/${userId}`);
+    const next = encodeURIComponent(`/u/${userId}${search}`);
     return (
       <AppShell>
         <Empty icon={<UserRound className="size-7" aria-hidden="true" />} title="Entra para ver este perfil">

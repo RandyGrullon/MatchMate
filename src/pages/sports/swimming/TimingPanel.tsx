@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, RotateCcw, Send, Timer, Undo2 } from 'lucide-react';
 import { useWakeLock } from '../../../court';
+import { useHoldBadgeUnlock } from '../../../components/badges/hold';
 import { recordHeat, type SwimEntry, type SwimEventItem } from '../../../lib/data/swimming';
 import { formatSwimTime, type SwimStatus } from '../../../sports/swimming';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
@@ -54,6 +55,8 @@ export function TimingPanel({ data }: { data: MeetData }) {
   const field = useFieldMode('piscina', { ver: 'cronometro' });
   // Entre serie y serie la pantalla no se apaga (se cronometra con las manos mojadas).
   useWakeLock(true);
+  // Cronómetro corriendo: el aviso de una insignia espera a que se cierre (§6.4).
+  useHoldBadgeUnlock();
   useEffect(() => sweepTimings(), []);
 
   /** Al abrir: la primera serie que falta por cronometrar. Después no se mueve sola (aunque otro publique). */

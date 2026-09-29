@@ -3,6 +3,7 @@
  * posiciones ya calculadas. Sin React ni navegador: lo arma cards.ts, lo pinta paint.ts en un canvas (PNG) y
  * svg.ts lo pasa a SVG (pruebas). Unidades: píxeles lógicos (la imagen sale al doble).
  */
+import type { BadgeLook } from '../../badges/visual/types';
 
 export type Align = 'left' | 'right' | 'center';
 export type Weight = 400 | 500 | 600 | 700 | 800;
@@ -52,7 +53,19 @@ export interface LogoNode {
   ink: string;
 }
 
-export type SceneNode = RectNode | CircleNode | TextNode | LogoNode;
+/**
+ * Una insignia (docs/insignias.md §4.9) en el cuadro (x, y) de `size`: paint.ts la pinta con `Path2D`
+ * (share/badgePaint.ts) y svg.ts la mete como `<svg>` anidado.
+ */
+export interface BadgeArtNode {
+  t: 'badge';
+  x: number;
+  y: number;
+  size: number;
+  look: BadgeLook;
+}
+
+export type SceneNode = RectNode | CircleNode | TextNode | LogoNode | BadgeArtNode;
 
 export interface Scene {
   width: number;

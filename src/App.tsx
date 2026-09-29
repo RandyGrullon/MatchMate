@@ -9,6 +9,8 @@ import { FeedbackProvider } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdultGate } from './components/AdultGate';
 import { LegalGate } from './components/LegalGate';
+import { BadgeUnlockHost } from './components/badges/BadgeUnlockHost';
+import { unlockGateOpen } from './components/badges/hold';
 import { AppRouter } from './components/GestureGuards';
 import { NotificationsProvider } from './components/Notifications';
 import { CreateMenuProvider } from './components/CreateMenu';
@@ -102,6 +104,20 @@ function PlayerRoute() {
 const inAppFrame = (fallback: ReactNode) => <AppShell>{fallback}</AppShell>;
 
 /**
+ * El aviso al ganar una insignia solo con la puerta de «¿Tienes 18 años?» ya contestada: esa pregunta (la de Google y
+ * las cuentas de BowlingX, justo las que reciben su historial) no se tapa con una celebración, y «Ver mis insignias»
+ * llevaría a una pantalla que la puerta todavía cierra.
+ */
+function GatedBadgeUnlock() {
+  if (!unlockGateOpen(useAuth())) return null;
+  return (
+    <ErrorBoundary area="insignias" frame={() => null}>
+      <BadgeUnlockHost />
+    </ErrorBoundary>
+  );
+}
+
+/**
  * Cada pantalla con su propio aviso de error: si una falla, la barra de navegación (y dentro de una liga, sus
  * pestañas) sigue ahí, y al ir a otra ruta se vuelve a intentar. `area` es el nombre en el reporte.
  * `framed`: pantallas de arriba (el aviso lleva el marco de la app); sin él, las de adentro de una liga (el
@@ -191,6 +207,8 @@ export default function App() {
                     </Routes>
                   </AccountGates>
                 </Suspense>
+                {/* El aviso al ganar una insignia (solo con insignias sin ver y la puerta de edad pasada; si falla, no tapa nada). */}
+                <GatedBadgeUnlock />
               </CreateMenuProvider>
             </NotificationsProvider>
             {/* Después de entrar o crear la cuenta, sigue a donde iba (una invitación, una liga). */}
