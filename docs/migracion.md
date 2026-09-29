@@ -300,7 +300,10 @@ node scripts/importar-torneo.mjs scripts/datos/torneo-2025.json --liga <id-de-la
 (o `node scripts/migrar/cli.mjs torneo …`, es lo mismo). El id de la liga es el que sale en el link de MatchMate
 (`/l/<id>`). Usa el proyecto de `.env.local` y te pide el correo y la contraseña de un admin de esa liga.
 - Reusa los jugadores con el mismo nombre (sin importar tildes ni mayúsculas) y crea los que falten.
-- Los juegos quedan verificados como `importado`. El handicap se guarda fijo solo si no es el de la fórmula.
+- Los juegos quedan anotados sin foto (`sin-foto`): cuentan en la tabla y el promedio como siempre. `importado`
+  (juego validado para las insignias) solo lo escribe el importador de BowlingX con la clave secreta: desde la sesión
+  de un admin la base no lo acepta (un admin no valida lo que él mismo escribe). El handicap se guarda fijo solo si no
+  es el de la fórmula.
 - Si el torneo ya está (el mismo archivo, o uno con el mismo nombre y fecha, por ejemplo el que vino de
   BowlingX), no lo toca; con `--reemplazar` lo borra con sus juegos y lo carga de nuevo.
 

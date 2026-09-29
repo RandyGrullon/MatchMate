@@ -36,9 +36,11 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
 | `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
-| `migrations/20260929000800_insignias.sql` | Insignias automáticas, los datos (ver `docs/insignias.md`): `badge_awards`, `badge_progress`, `badge_stats`, `leagues.badges_auto` (una liga con menores nace «sin títulos»), `profiles.featured_badges`, su RLS y las RPC `profile_badges`, `set_featured_badges`, `set_badge_hidden`, `mark_badges_seen`, `set_badges_auto`, `review_badge` (aval) y `super_revoke_badge`. Redefine `private.merge_players` (junta también las insignias de los dos jugadores) y `export_my_data` (las insignias de sus jugadores y `badgesAuto`). El motor que las da va en `…000810_insignias_motor.sql` |
-| `migrations/20260929000810_insignias_motor.sql` | Insignias, el motor (ver «Motor de insignias»): la cola `private.badge_queue` y los triggers que la llenan (resultados de todos los deportes, vínculos, cierre del mes de cajas), la foto de datos de cada trabajo (`badge_snapshot`, con la actividad válida y las ligas reales en SQL), aplicar las decisiones (`badge_apply`), el push agrupado con horas tranquilas, la tarea diaria (`badges_daily`), la rareza (`badge_stats_refresh`), `kick_badges`/`cron_badges` y las RPC `badge_notices` y `badges_backfill` (más cinco solo de `service_role` para la Edge Function `insignias`). Redefine `private.badge_signal` |
+| `migrations/20260929000800_insignias.sql` | Insignias automáticas, los datos (ver `docs/insignias.md`): `badge_awards`, `badge_progress`, `badge_stats`, `leagues.badges_auto` (una liga con menores nace «sin títulos»), `profiles.featured_badges`, su RLS y las RPC `profile_badges`, `set_featured_badges`, `set_badge_hidden`, `mark_badges_seen`, `set_badges_auto`, `review_badge` (aval) y `super_revoke_badge`. Envuelve `private.merge_players` (la que haya pasa a ser `private.merge_players_base`; la nueva junta antes las insignias de los dos jugadores) y redefine `export_my_data` (las insignias de sus jugadores y `badgesAuto`; de `league_badge_awards`, solo las vigentes y sin quién la dio ni por qué se retiró). El motor que las da va en `…000810_insignias_motor.sql` |
+| `migrations/20260929000810_insignias_motor.sql` | Insignias, el motor (ver «Motor de insignias»): la cola `private.badge_queue` y los triggers que la llenan (resultados de todos los deportes, vínculos, cierre del mes de cajas), la foto de datos de cada trabajo (`badge_snapshot`, con la actividad válida y las ligas reales en SQL), aplicar las decisiones (`badge_apply`), el push agrupado con horas tranquilas, la tarea diaria (`badges_daily`), la rareza (`badge_stats_refresh`), `kick_badges`/`cron_badges` y las RPC `badge_notices`, `badges_backfill`, `admin_badges_engine` y `admin_badge_jobs` (más cinco solo de `service_role` para la Edge Function `insignias`). Redefine `private.badge_signal` |
+| `migrations/20260929000820_insignias_creador.sql` | Insignias de la liga, el creador (ver «Insignias de la liga (creador)» en RPC): `leagues.badge_makers`, `league_members.badge_maker`, `league_badges` (diseños), `league_badge_awards` (otorgamientos), el filtro de texto (`private.badge_text_ok` con `private.blocked_terms`), los reportes (`private.badge_reports`), su RLS y 16 RPC. Redefine `private.merge_badges` (también las de liga), `profile_badges` y `badge_notices` (+ las del creador), `remove_member` (un admin no saca a quien diseña insignias) y la vista `memberships` (+ `badge_maker`) |
 | `migrations/20260929000880_insignias_temporadas.sql` | Insignias de temporada: solo hace algo si existe `public.seasons` (`…000700_temporadas.sql`): redefine `private.badge_season_rows` (temporadas y premios para la foto) y encola `temporada` cuando una temporada queda `closed` |
+| `migrations/20260929000890_insignias_cron_supabase.sql` | **Solo Supabase**: pg_cron `mm-insignias` cada 10 min (`private.cron_badges()`: avisos y, si hay cola, la Edge Function `insignias` con pg_net) y `mm-insignias-diario` a las 04:30 UTC (`private.badges_daily(now())`). Quita las dos por nombre antes de programarlas (`tests/sql/insignias-funcion.test.ts` lo corre contra un pg_cron de mentira) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -81,6 +83,7 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `P0001` | `conflicto: <qué choca> (n), …` | Aprobar un reclamo: los dos jugadores estuvieron en el mismo evento, partido, ronda, prueba, escalera o inscripción (o en equipos distintos de la temporada). No cambia nada; el admin quita lo repetido y aprueba otra vez | `conflict` |
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
 | `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s) o demasiados códigos malos | `rate_limited` |
+| `P0001` | `texto_bloqueado` · `a_si_mismo` · `cupo_lleno` · `ya_dada` · `no_activa` · `limite: activas` · `limite: total` · `limite: jugador` · `limite: liga` | Insignias de la liga (ver «Insignias de la liga (creador)») | `validation` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
 | `23503` | | FK: el id no existe o es de otra liga | `validation` |
 | `23505` | | Único repetido (p. ej. un `p_id` que ya existe) | `conflict` |
@@ -115,7 +118,8 @@ los demás las ven por `profile_badges`).
 `contact_name` (≤60), `contact_phone` (`^[0-9+]{0,20}$`), `require_photo`, `has_minors`,
 `tz` (zona IANA, por defecto `America/Santo_Domingo`), `rules` jsonb (reglas del deporte), `created_at`, `updated_at`,
 `badges_auto` (`todas`|`sin_titulos`|`ninguna`: insignias automáticas de la liga; con menores nace o pasa a
-`sin_titulos`; lo cambia el dueño con `set_badges_auto`).
+`sin_titulos`; lo cambia el dueño con `set_badges_auto`), `badge_makers` (`owner`|`admins`|`chosen`, por defecto
+`admins`: quién diseña y da insignias de la liga; lo cambia el dueño con `set_badge_policy`).
 `League.ownerUid` = `owner_id`, `requirePhoto` = `require_photo`, etc.
 
 ### `league_secrets` — admins de esa liga
@@ -123,13 +127,15 @@ los demás las ven por `profile_badges`).
 
 ### `league_members` — con sesión: las propias, las de sus ligas; el superadmin todas
 `league_id`, `user_id`, `role` (`owner`|`admin`|`member`), `is_scorer`, `display_name` (nombre al unirse),
-`joined_at`, `updated_at`. Clave `(league_id, user_id)`. El jugador de la cuenta NO está aquí.
+`joined_at`, `updated_at`, `badge_maker` («Diseña insignias»: vale con `leagues.badge_makers = 'chosen'`; lo cambia
+el dueño con `set_member_badge_maker`). Clave `(league_id, user_id)`. El jugador de la cuenta NO está aquí.
 
 ### `memberships` (vista, `security_invoker`) — igual que `league_members`
 `league_id`, `user_id`, `role`, `is_scorer`, `display_name`, `joined_at`, `updated_at`, **`player_id`** (su
-jugador en esa liga o null). Es el `Member` de hoy: `{ id: league_id+'_'+user_id, leagueId, uid, name:
+jugador en esa liga o null), `badge_maker`. Es el `Member` de hoy: `{ id: league_id+'_'+user_id, leagueId, uid, name:
 display_name, role, playerId: player_id, scorer: is_scorer }`. Úsala para `useMembership`, `useMyMemberships`
-y `useLeagueMembers`.
+y `useLeagueMembers`. Quién diseña y da insignias en una liga (`can_badges`): el dueño; con `badge_makers = 'admins'`,
+también los `admin`; con `'chosen'`, también los que tienen `badge_maker` (sean admin o no); el superadmin siempre.
 
 ### `players` — liga visible
 `id`, `league_id`, `user_id` (cuenta vinculada o null), `name` (1–60), `average_override` (0–300 o null),
@@ -192,6 +198,8 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `event_rsvps` `'<event_id>:<player_id>'`, `league_members` `'<league_id>:<user_id>'`, `live_states`
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 `badge_awards` deja tombstone solo si es de una liga (`league_id` no null: las fusiones de jugadores).
+`league_badges` y `league_badge_awards` dejan tombstone al borrarse (un diseño que nunca se dio, o en cascada al
+borrar el jugador).
 
 ### `badge_awards` — las propias; de la liga visible, provisionales o firmes y no ocultas (admins: también ocultas); superadmin todas
 Insignias automáticas otorgadas (las escribe el motor). `id`, `badge_key` (`^[a-z][a-z0-9_]{1,39}$`, del catálogo
@@ -207,18 +215,39 @@ menores: solo sus miembros (son privadas). Sincroniza por `(league_id, updated_a
 
 ### `badge_progress` — solo su dueño
 `player_id` + `league_id` o `user_id`, `holder`, `badge_key`, `sport`, `value`, `target` (double), `next_level`
-(1–5), `updated_at`. Clave `(holder, badge_key, sport)`. Lo escribe el motor.
+(0–5; 0 = única con meta, como «Arranque con todo»), `updated_at`. Clave `(holder, badge_key, sport)`. Lo escribe el
+motor.
 
 ### `badge_stats` — todos (también sin cuenta)
 Rareza medida cada noche: `badge_key`, `sport`, `level`, `holders`, `base`, `pct` (0–100, double), `rarity`
 (`nueva`|`comun`|`poco_comun`|`rara`|`epica`|`legendaria`), `computed_at`. Clave `(badge_key, sport, level)`.
+
+### `league_badges` — liga visible, menos las escondidas por el superadmin (admins de la liga y superadmin: todas)
+Diseños del creador de insignias de la liga (§5 de `docs/insignias.md`). `id`, `league_id`, `template`
+(`^[a-z_]{1,32}$`|null: `champion`, `mvp`…), `name` (3–28), `description` (≤140), `shape`
+(`hex`|`shield`|`circle`|`star`|`medal`|`medal_laurel`|`square`), `palette`
+(`bronce`|`plata`|`oro`|`platino`|`diamante`|`liga`|`color`), `color` (`#rrggbb` en minúsculas, solo con `color`),
+`icon` (uno de los 52 de `src/badges/visual/icons.ts`), `top_text` (≤14), `period_text` (≤10), `limit_kind`
+(`unica`|`selecta`|`abierta`), `by_team`, `status` (`activa`|`archivada`|`oculta` = escondida por el superadmin),
+`created_by`, `created_at`, `updated_at`. Sincroniza por `(league_id, updated_at)`.
+
+### `league_badge_awards` — liga visible: vigentes y no ocultas; el jugador: también las suyas ocultas; admins de la liga y superadmin: todas (también retiradas)
+Otorgamientos del creador. Se leen **solo estas columnas** (permiso por columna; pedir otra o `*` da `42501`):
+`id`, `badge_id`, `league_id`, `player_id`, `team_id` (con `by_team`; null si se borró el equipo), `period` (≤10),
+`division` (≤16), `awarded_at`, `revoked_at` (retirada: deshacer, el dueño o una fusión), `hidden`, `updated_at`.
+`note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` salen por `league_badge_holders` (nota: el jugador y
+los admins; lo demás, admins), `profile_badges` y `badge_notices` (lo propio). Única vigente por
+`(badge_id, player_id, period, division)`. Nunca cuentan en las oficiales, la rareza ni el total del perfil.
+Sincroniza por `(league_id, updated_at)`.
 
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
 `urgency`, `claimed_at`, `attempts`, `last_status`, `sent_at`). Esquema `private` (no expuesto): `op_log`, `paces`,
 `rate_limits`, `storage_purge_queue`, `heartbeat`, `scan_usage`, `scan_days`, `scan_minutes`, `scan_cache` y los del
-motor de insignias (`badge_queue`, `badge_runs`, `badge_dry_holders`, `badge_dry_runs`: ver «Motor de insignias»).
+motor de insignias (`badge_queue`, `badge_runs`, `badge_dry_holders`, `badge_dry_runs`: ver «Motor de insignias»),
+`blocked_terms` (palabras bloqueadas del creador, normalizadas; `whole` = solo como palabra entera) y `badge_reports`
+(reportes de diseños y de insignias automáticas; `resolution` `oculta`|`retirada`|`descartado`).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -262,7 +291,7 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `set_member_role(p_league, p_user, p_role) → void` | dueño o superadmin; **un admin consigo mismo a `member`** | `p_role` `admin`\|`member` (`invalido`). Al dueño no se le toca el rol (`no_permitido`). |
 | `set_member_scorer(p_league, p_user, p_scorer boolean) → void` | dueño o superadmin | Anotador (en boliche solo vale en torneos sin liga). |
 | `step_down_admin(p_league) → void` | un admin | Deja de ser admin (sigue como jugador). |
-| `remove_member(p_league, p_user) → void` | uno mismo (salvo el dueño); admin: solo miembros sin permisos (ni admin ni anotador); dueño o superadmin: cualquiera menos el dueño | Su jugador queda sin cuenta y se quitan sus juegos en vivo. `no_existe`. |
+| `remove_member(p_league, p_user) → void` | uno mismo (salvo el dueño); admin: solo miembros sin permisos (ni admin, ni anotador, ni «Diseña insignias»); dueño o superadmin: cualquiera menos el dueño | Su jugador queda sin cuenta y se quitan sus juegos en vivo. `no_existe`. |
 | `leave_league(p_league) → void` | miembro (no el dueño) | = `remove_member(p_league, yo)`. |
 
 ### Jugadores
@@ -369,24 +398,79 @@ Las da el motor (`…000810_insignias_motor.sql`); la app lee `badge_awards`, `b
 
 | RPC | Quién | Qué hace |
 |---|---|---|
-| `profile_badges(p_user) → {userId, isMe, featured: [id], awards: [insignia], truncated} \| null` | con sesión | La pestaña «Insignias» del perfil. `null` si no existe o no se ve (como `public_profile`). Insignia: `{id, key, sport, level, periodKey, scope: 'cuenta'\|'liga', status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, seenAt}`, más nuevas primero, hasta 1000 (`truncated`). **Otra cuenta:** las de cuenta y las de sus jugadores en ligas que pasan `social_league_ok` (la ve quien mira, sin menores), `provisional` o `firme` y no ocultas; en las de cuenta, `context` pierde `league` y `event` si esa liga no la ve quien mira; `seenAt` null; una cuenta bloqueada sale vacía (salvo al superadmin). **La propia:** todas (ocultas, en revisión, de ligas con menores) menos las revocadas que nunca vio. `featured`: las destacadas que hoy se ven en público, en su orden. |
+| `profile_badges(p_user) → {userId, isMe, featured: [id], awards: [insignia], truncated} \| null` | con sesión | La pestaña «Insignias» del perfil. `null` si no existe o no se ve (como `public_profile`). Insignia: `{id, key, sport, level, periodKey, scope: 'cuenta'\|'liga', status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, seenAt}`, más nuevas primero, hasta 1000 (`truncated`). **Otra cuenta:** las de cuenta y las de sus jugadores en ligas que pasan `social_league_ok` (la ve quien mira, sin menores), `provisional` o `firme` y no ocultas; en las de cuenta, `context` pierde `league` y `event` si esa liga no la ve quien mira; `seenAt` null; una cuenta bloqueada sale vacía (salvo al superadmin). **La propia:** todas (ocultas, en revisión, de ligas con menores) menos las revocadas que nunca vio. `featured`: las destacadas que hoy se ven en público, en su orden. **Del creador** (…0820): además `leagueAwards: [LeagueBadgeAward]` y `leagueTruncated` (hasta 500), ver «Insignias de la liga (creador)». |
 | `set_featured_badges(p_ids uuid[]) → uuid[]` | la cuenta | Hasta 3 (repetidas cuentan una), en ese orden; `null` o `[]` las quita. Cada una suya (`no_permitido`), `provisional` o `firme`, no oculta y no de una liga con menores (`invalido`); `no_existe`. Devuelve cómo quedaron. |
 | `set_badge_hidden(p_award, p_hidden boolean) → boolean` | su dueño (la cuenta o la de su jugador) | Ocultar del perfil o «Mostrar en mi perfil» (las privadas por defecto nacen ocultas). Oculta, sale de las destacadas. `no_existe`, `no_permitido`, `invalido` (null). |
 | `mark_badges_seen(p_ids uuid[]) → int` | su dueño | Ya vio el aviso de desbloqueo (no vuelve a salir en ningún teléfono). Hasta 50 (`invalido`); las ajenas o ya vistas se ignoran. Devuelve cuántas marcó. |
 | `set_badges_auto(p_league, p_mode text) → text` | dueño o superadmin | `todas`\|`sin_titulos`\|`ninguna` (`invalido`); `no_existe`. En ligas con menores también (nace `sin_titulos`). |
-| `review_badge(p_award, p_ok boolean, p_note text=null) → text` | dueño o admin de la liga que no es el jugador ni compite en la evidencia (mismo evento de boliche o golf, mismo partido), o superadmin | Aval de una hazaña `en_revision`: `firme` (el motor avisa al jugador) o `revocada` con `aval` (sin rastro público). Nota ≤ 140 (`invalido`) en `context.review {ok, at, note}`. Ya decidida: devuelve cómo quedó. El superadmin que no administra la liga queda en la auditoría (`review_badge`). |
+| `review_badge(p_award, p_ok boolean, p_note text=null) → text` | dueño o admin de la liga que no es el jugador ni compite en la evidencia (mismo evento de boliche o golf, mismo partido), o superadmin | Aval de una hazaña `en_revision`: `firme` (el motor avisa al jugador) o `revocada` con `aval` (sin rastro público). Queda `context.review {ok, at, by}`; la nota (≤ 140, `invalido`) solo al rechazar (`note`: la ve el jugador); al aprobar no se guarda (la fila firme es pública). `profile_badges` nunca muestra `context.review` a otros. Si después quien confirmó se vincula con ese jugador, vuelve a revisión (…0820). Ya decidida: devuelve cómo quedó. El superadmin que no administra la liga queda en la auditoría (`review_badge`). |
 | `super_revoke_badge(p_award, p_note text=null) → void` | superadmin | Retira por fraude (también una firme): `revocada` con `fraude`, sin push, fuera de las destacadas. Auditoría `revoke_badge` {award, key, sport, level, periodKey, playerId, userId, status, note} (target la cuenta o la liga). Nota ≤ 200. Ya revocada: nada. |
-| `badge_notices(p_limit=50) → {awards, unseen, reviews}` | con sesión | El aviso de desbloqueo y la página de Avisos. `awards`: las suyas (cuenta o sus jugadores) `provisional` o `firme` sin ver, más nuevas primero, hasta `p_limit` (1–50): `{id, key, sport, level, periodKey, scope, status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, history}` (`hidden` = privada por defecto: «Solo tú la ves»; `history` = del historial: un solo modal «Te dimos {n} insignias por tu historial»). `unseen` = cuántas hay. `reviews` («Por confirmar»): las `en_revision` que puede confirmar (dueño o admin elegible, `private.badge_can_review`) y, al superadmin, además las de 14+ días o sin nadie que pueda: `{id, key, sport, level, periodKey, leagueId, leagueName, playerId, playerName, refs, context, awardedAt, overdue}`. Se confirman con `review_badge`. |
-| `badges_backfill(p_league=null, p_dry_run=true) → {runId, dryRun, jobs}` | superadmin | Primera corrida del historial (§3.5): un trabajo `historial` por liga (todas o `p_league`; `no_existe`). En seco no escribe insignias: `private.badge_dry_runs` (`run_id`) queda con cuántas cuentas tendrían cada key, deporte y nivel sobre la base de activos. De verdad: sin push por insignia y un solo push por cuenta al final. Auditoría `badges_backfill`. |
+| `badge_notices(p_limit=50) → {awards, unseen, reviews}` | con sesión | El aviso de desbloqueo y la página de Avisos. `awards`: las suyas (cuenta o sus jugadores) `provisional` o `firme` sin ver, más nuevas primero, hasta `p_limit` (1–50): `{id, key, sport, level, periodKey, scope, status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, history}` (`hidden` = privada por defecto: «Solo tú la ves»; `history` = del historial: un solo modal «Te dimos {n} insignias por tu historial»). `unseen` = cuántas hay. `reviews` («Por confirmar»): las `en_revision` que puede confirmar (dueño o admin elegible, `private.badge_can_review`) y, al superadmin, además las de 14+ días o sin nadie que pueda: `{id, key, sport, level, periodKey, leagueId, leagueName, playerId, playerName, refs, context, awardedAt, overdue}`. Se confirman con `review_badge`. **Del creador** (…0820): además `leagueAwards: [LeagueBadgeAward]` (de sus jugadores, vigentes, sin ver: el aviso «Liga Los Pinos te dio una insignia»; hasta `p_limit`) y `leagueUnseen`; se marcan con `mark_league_badges_seen`. |
+| `badges_backfill(p_league=null, p_dry_run=true) → {runId, dryRun, jobs, leagues, accounts}` | superadmin | Primera corrida del historial (§3.5): un trabajo `historial` por liga (todas o `p_league`; `no_existe`) y uno por cada cuenta con jugadores en esas ligas (lo de cuenta y comunidad: kilometraje, constancia, fijo del mes, tu año, liga en marcha…; el de la liga solo hace eso para sus jugadores sin cuenta). En seco no escribe insignias: `private.badge_dry_runs` (`run_id`) queda con cuántas cuentas tendrían cada key, deporte y nivel sobre la base de activos. De verdad: sin push por insignia y un solo push por cuenta al final. Auditoría `badges_backfill`. La consola lo corre desde Insignias › Motor. |
+| `admin_badges_engine(p_run uuid=null) → jsonb` | superadmin | Consola › Insignias › Motor: `{queue: {pending, due, locked, dead, notices, oldestDue}, byKind: [{kind, pending, dead}], dead: [{id, kind, leagueId, leagueName, userId, userName, ref, attempts, lastError, runAfter, createdAt}] (5+ intentos, los 50 más viejos), backfill: [{runId, dryRun, pending, dead}] (corridas del historial en la cola), runs: [{runId, at, badges, holders}] (las 10 últimas en seco), dryRun: {runId, rows: [{key, sport, level, holders, base, pct}]} \| null (la de `p_run` o la última), periods: [{kind, scope, periodKey, doneAt, awarded}] (los 20 últimos)}`. La app compara `dryRun` con la rareza estimada del catálogo. |
+| `admin_badge_jobs(p_ids bigint[], p_action text='retry') → integer` | superadmin | Trabajos con 5+ intentos (los demás no se tocan; hasta 200): `'retry'` los vuelve a la cola (intentos en 0, sin error, ya; si entró otro igual se queda ese) y llama al motor; `'drop'` los borra. `invalido`. Auditoría `badge_jobs {action, ids}`. |
 
 Al aprobar un reclamo, `private.merge_players` junta también las insignias de los dos jugadores
 (`private.merge_badges`): si chocan (misma key, deporte, nivel y periodo) queda la firme sobre la provisional sobre la
 que está en revisión (sobre la revocada) y, a igual estado, la más vieja; se lleva el `awarded_at` más viejo, el
-primer `seen_at` y `notified_at`, y queda oculta solo si las dos lo estaban. La otra se borra (tombstone) y sale de las
-destacadas; el progreso de los dos se borra (el motor lo recalcula). `export_my_data` saca `badge_awards` y
-`badge_progress` por la cuenta y por sus jugadores. **Ojo:** esta migración redefine `private.merge_players` y
-`public.export_my_data` (misma firma): un cambio a esas funciones va aquí o en una migración posterior. Una tabla nueva
-con FK a `players` se junta en `private.merge_badges` (o en `merge_players`), o frena la aprobación con `conflicto`.
+primer `seen_at` y `notified_at`, y queda oculta si alguna lo estaba (no destapa lo que el dueño ocultó). La otra se
+borra (tombstone) y sale de las destacadas; el progreso de los dos se borra (el motor lo recalcula). `export_my_data`
+saca `badge_awards` y `badge_progress` por la cuenta y por sus jugadores. **Ojo:** `private.merge_players` la
+redefinen otras migraciones (…0100 reclamos y, al juntar las ramas, …0600 organizador y …0700 temporadas, que corren
+antes): esta no copia su cuerpo, la renombra a `private.merge_players_base` y pone delante `merge_badges`. Un cambio a
+la unión de jugadores va en `merge_players_base` (en una migración posterior); una tabla nueva con FK a `players` se
+junta ahí (o en `private.merge_badges`), o frena la aprobación con `conflicto`. `public.export_my_data` (misma firma)
+se cambia aquí o en una migración posterior.
+
+### Insignias de la liga (creador)
+
+`20260929000820_insignias_creador.sql` (pruebas: `tests/sql/insignias-creador.test.ts`; diseño: `docs/insignias.md` §5).
+Las diseña y las da una persona de la liga; nunca cuentan en las oficiales. **Quién** = `can_badges` (ver
+`memberships`). Nadie se da una a sí mismo (ni el dueño ni el superadmin). Todas con sesión y `require_uid`.
+
+Formas JSON:
+- **`LeagueBadge`** (un diseño): `{id, leagueId, name, description, shape, palette, color, icon, topText, periodText,
+  template, limitKind, byTeam, status, createdBy, createdAt, updatedAt, given, active, locked}` (`given` = veces que se
+  dio, también las retiradas; `active` = vigentes; `locked` = `given > 0`: solo cambian `description` y `status`).
+- **`LeagueBadgeAward`** (en el perfil y los avisos): `{id, badgeId, leagueId, leagueName, sport, playerId, teamId,
+  teamName, period, division, awardedAt, hidden, note, seenAt, badge: {id, name, description, shape, palette, color,
+  icon, topText, periodText, template, limitKind, byTeam, status}}` (`note` y `seenAt` solo si es de un jugador de
+  quien mira; si no, null).
+
+Filtro de texto (`private.badge_text_ok`, en nombre, descripción, textos de arriba y abajo, periodo, división y nota;
+los textos se recortan y quedan con un solo espacio entre palabras): solo letras (con `áéíóúüñ`), números, espacio y
+`. , : ; ! ¡ ? ¿ ' " & # / ( ) + -` (sin emoji); nada de `http`, `www.` ni `.com`/`.net`/`.org`/`.do` al final de una
+palabra; ni 7+ dígitos seguidos ni `ddd dddd` (con espacio, punto o guion en medio) sin más dígitos al lado; ni el mismo
+carácter 4+ veces seguidas; ni una palabra de `private.blocked_terms` después de normalizar (minúsculas, sin tildes,
+`ñ`→`n`, `0→o 1→i 3→e 4→a 5→s @→a`; `whole = false`: en el texto junto, sin separadores; `true`: palabra entera o su
+plural). Error: `texto_bloqueado` («Ese texto no se puede usar.»). El teléfono repite todo menos las palabras.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `set_badge_policy(p_league, p_policy text) → text` | dueño o superadmin | `owner`\|`admins`\|`chosen` (`invalido`); `no_existe`. |
+| `set_member_badge_maker(p_league, p_user, p_on boolean) → void` | dueño o superadmin | «Diseña insignias» (como `set_member_scorer`). `no_existe`. |
+| `save_league_badge(p_league, p_id uuid\|null, p_design jsonb) → LeagueBadge` | `can_badges` | Crea (`p_id` null o un id nuevo del teléfono) o cambia (solo las claves que vienen). Claves (snake_case): `template` (string\|null), `name`, `description`, `shape`, `palette`, `color` (string\|null; solo con `palette: 'color'`, `#rrggbb`), `icon`, `top_text`, `period_text`, `limit_kind`, `by_team` (boolean; solo en raqueta y equipos), `status` (`activa`\|`archivada`). Al crear hacen falta `name`, `shape`, `palette`, `icon`. `invalido` (clave, tipo, largo, valor, ícono fuera de la lista), `texto_bloqueado`, `ya_dada` (ya se dio: solo `description` y `status`), `limite: activas` (30), `limite: total` (100 con archivadas y escondidas), `rate_limited` (20 guardados por hora por cuenta), `no_existe` (liga, o `p_id` de otra liga), `no_permitido` (sin permiso, o escondida por el superadmin). |
+| `archive_league_badge(p_id, p_archived boolean) → text` | `can_badges` | `archivada` o `activa` (`limite: activas`). Escondida: `no_permitido`. |
+| `delete_league_badge(p_id) → void` | `can_badges` | Solo si nunca se dio (`ya_dada`: se archiva). Deja tombstone. |
+| `award_league_badge(p_badge, p_players uuid[], p_team uuid=null, p_period text=null, p_division text=null, p_note text=null, p_notify boolean=true) → {awards, notified}` | `can_badges` | Da un diseño `activa` (`no_activa`) a 1–30 jugadores de la liga (`no_existe`; repetidos cuentan uno). `by_team`: `p_team` obligatorio (equipo de la liga) y los jugadores de su plantilla (`team_players`); sin `by_team`, `p_team` null (`invalido`). `p_period` null = el `period_text` del diseño (`''` = sin periodo; ≤10), `p_division` ≤16, `p_note` ≤140. Su propio jugador: `a_si_mismo` («No puedes darte insignias a ti mismo. Pídele a otro admin o al dueño.»). Ya la tiene vigente con ese periodo y división: `duplicado`. Cupo por insignia, periodo y división: Única 1, Selecta 3, Abierta 20 jugadores (con `by_team`, equipos): `cupo_lleno`. 15 vigentes por jugador, liga y año (zona de la liga): `limite: jugador`. 60 por liga en 30 días: `limite: liga`; 60 por cuenta por hora: `rate_limited` (esos dos cuentan también las retiradas). `p_notify`: push a cada jugador con cuenta no bloqueada, nunca en ligas con menores: «¡Tienes una insignia nueva!» · «Liga Los Pinos te dio “Campeón · TEMP 2026”. Tócala para verla.», `url` `/u/<cuenta>?tab=insignias`, `tag` `insignia:<otorgamiento>`. `awards`: `[{id, badgeId, leagueId, playerId, teamId, period, division, note, awardedBy, awardedAt, hidden, revokedAt}]` en el orden de `p_players`; `notified` = jugadores avisados. |
+| `revoke_league_badge_award(p_award, p_reason text=null) → void` | dueño o superadmin, cuando sea; quien la dio, en 24 h y con `can_badges` | «Deshacer» y «Quitar»: `revoked_at`, `revoked_by`, motivo privado ≤140. Sin push (si el push aún no salió, se quita de la cola). Ya retirada: nada. El superadmin que no es el dueño: auditoría `revoke_league_badge`. |
+| `set_league_badge_hidden(p_award, p_hidden boolean) → boolean` | el jugador (su cuenta) o superadmin (auditoría `hide_league_badge_award`) | Ocultar o mostrar en su perfil. `invalido` (null). |
+| `mark_league_badges_seen(p_ids uuid[]) → int` | el jugador | Hasta 50 (`invalido`); las ajenas, retiradas o vistas se ignoran. |
+| `league_badge_holders(p_badge) → {badge, canGive, awards}` | quien ve la liga (una escondida: solo sus admins; si no, `no_existe`) | «Quién la tiene». `badge`: `LeagueBadge` (+ `openReports` para los admins). `canGive`: puede darla ahora. `awards`: `[{id, playerId, playerName, userId, teamId, teamName, period, division, awardedAt, hidden, revokedAt, note, awardedBy, awardedByName, revokedBy, revokeReason, canUndo}]`, más nuevas primero. Admins y superadmin: todas (ocultas y retiradas) con todo. Los demás: vigentes y no ocultas (y las suyas ocultas); `note` solo en las suyas; `awardedBy`, `awardedByName`, `revokedBy` y `revokeReason` null. `canUndo`: puede deshacerla o retirarla. |
+| `report_league_badge(p_badge, p_reason text=null) → void` | miembro de la liga | A la cola del superadmin. Motivo ≤140. Uno abierto por cuenta y diseño (repetir no hace nada). 5 reportes por día por cuenta (con `report_badge`): `rate_limited`. Escondido: `no_existe`. |
+| `report_badge(p_award, p_reason text=null) → void` | de una liga: sus miembros; de cuenta: quien ve ese perfil | Reportar una insignia automática `provisional` o `firme` y no oculta (si no, `no_existe`). Mismas reglas. Retirarla (motor, aval o fraude) cierra sus reportes. |
+| `hide_league_badge(p_id, p_hidden boolean, p_note text=null) → text` | superadmin | Esconder (`oculta`: fuera de perfiles y de la liga, salvo sus admins; cierra sus reportes) o dejar de esconder (`archivada`). Nota ≤200. Auditoría `hide_league_badge`. |
+| `admin_badge_reports(p_open boolean=true, p_limit int=50) → {open, rows}` | superadmin | La cola (abiertos o cerrados), más nuevos primero (1–200): `{id, kind: 'diseno'\|'insignia', reason, createdAt, resolvedAt, resolution, reporterId, reporterName, leagueId, leagueName, sameTarget, design: LeagueBadge\|null, award: {id, key, sport, level, periodKey, status, playerId, playerName, userId, context}\|null}`. |
+| `admin_resolve_badge_reports(p_ids bigint[], p_note text=null) → int` | superadmin | Cierra sin hacer nada (`descartado`). Auditoría `resolve_badge_reports`. |
+| `admin_blocked_terms(p_add text[]=null, p_remove text[]=null, p_whole boolean=false) → [{term, whole, createdAt}]` | superadmin | Palabras bloqueadas (se normalizan como el filtro; 2–40 letras, `invalido`; hasta 200). Sin argumentos: la lista. Auditoría `blocked_terms`. Empieza con una lista base (insultos de aquí y de otros países; las cortas o que salen dentro de palabras sanas, enteras). |
+
+En el perfil de otra cuenta (`profile_badges`) salen solo las de ligas que pasan `private.league_badges_public`: la ve
+quien mira y sin menores (`social_league_ok`), 6+ cuentas miembro no bloqueadas y 14+ días de creada; vigentes y no
+ocultas. La propia: todas las vigentes. Nunca las de un diseño escondido. Al juntar dos jugadores
+(`private.merge_badges`), si los dos tienen vigente la misma insignia, periodo y división, queda la más vieja y la otra
+se retira con motivo `fusión` (sin push); todas pasan al jugador que queda. `export_my_data` saca `league_badge_awards`
+de sus jugadores (la encuentra sola por `player_id`). **Ojo:** esta migración redefine `profile_badges`, `badge_notices`,
+`remove_member`, `private.merge_badges` y la vista `memberships` (misma firma): un cambio a esas va aquí o después.
 
 ### Push
 
@@ -405,14 +489,17 @@ con FK a `players` se junta en `private.merge_badges` (o en `merge_players`), o 
 | `scan_finish(p_user, p_key, p_model=null, p_result=null, p_refund=false) → void` | `scan-bowling` | Guarda el resultado en la caché; `p_refund` devuelve el cupo del día si ningún modelo respondió. |
 | `claim_push_batch(p_limit=50) → setof (id, endpoint, p256dh, auth, title, body, url, tag, urgency, ttl)` | `send-push` | Toma hasta 100 mensajes (los aparta 3 min y sube `attempts`); `ttl` = lo que le queda al aviso. |
 | `finish_push_batch(p_results jsonb) → jsonb` | `send-push` | `[{id, outcome, status}]` con `sent`/`expired` (listo), `gone` (borra el teléfono), `retry` (otra vez en 3 min), `failed` (no se reintenta; 3 seguidos borran el teléfono). Devuelve `{remaining, chained}`; si queda cola pide el siguiente lote con pg_net. |
-| `badge_claim(p_limit=25) → [BadgeJob]` | `insignias` | Toma hasta 50 trabajos vencidos (no `aviso`), sin tomar o tomados hace 10+ min, con menos de 5 intentos; sube `attempts`. `BadgeJob` = `{id, kind, league_id, user_id, ref, payload, run_after, attempts, created_at}`. |
-| `badge_snapshot(p_job bigint) → BadgeSnapshot \| null` | `insignias` | La foto de datos del trabajo (ver «Motor de insignias»). null si ya no existe. |
+| `badge_claim(p_limit=25) → [BadgeJob]` | `insignias` | Toma hasta 50 trabajos vencidos (no `aviso`), sin tomar o tomados hace 10+ min, con menos de 5 intentos. No sube `attempts` (lo sube la foto: lo tomado que no alcanzó a correr no gasta intentos). `BadgeJob` = `{id, kind, league_id, user_id, ref, payload, run_after, attempts, created_at}`. |
+| `badge_snapshot(p_job bigint) → BadgeSnapshot \| null` | `insignias` | La foto de datos del trabajo (ver «Motor de insignias»); pedirla es probar el trabajo: sube `attempts`. null si ya no existe. |
 | `badge_apply(p_job bigint, p_decisions jsonb) → jsonb` | `insignias` | Aplica `BadgeDecision[]` en una transacción y borra el trabajo: `{ok: true, awarded, reactivated, upgraded, updated, revoked, reviews, adopted, progress, skipped, notices}`. Si algo no sirve, nada se aplica y el trabajo vuelve a la cola: `{ok: false, error}`. |
-| `badge_fail(p_job bigint, p_error text) → void` | `insignias` | El motor no pudo con ese trabajo: vuelve en 2^intentos minutos con el error (a los 5 intentos ya no se toma). |
+| `badge_fail(p_job bigint, p_error text, p_charge boolean=false) → void` | `insignias` | El motor no pudo con ese trabajo: vuelve en 2^intentos minutos con el error (a los 5 intentos ya no se toma). `p_charge`: falló la foto (que es la que cuenta el intento): se cuenta aquí. |
+| `badge_release(p_job bigint) → void` | `insignias` | Se tomó y no alcanzó a correr (sin tiempo o sin CPU): vuelve ya, sin espera, sin error y sin gastar un intento. |
 | `badge_finish() → {remaining, chained, notices}` | `insignias` | Al terminar la corrida: manda los avisos que tocan y, si queda cola vencida, se vuelve a llamar con pg_net. |
 
 El cron (`20260926001300_cron_supabase.sql`, solo Supabase) corre `private.cron_reminders()` cada 15 min
 (`private.enqueue_due_reminders(now)` + `send-push`), `private.cleanup_old_rows()` a diario y un ping a `send-push`.
+El de las insignias (`…000890_insignias_cron_supabase.sql`) llama a la Edge Function `insignias` (ver «Motor de
+insignias»).
 
 ## De `data.ts` a la base
 
@@ -441,6 +528,9 @@ El cron (`20260926001300_cron_supabase.sql`, solo Supabase) corre `private.cron_
 | `sendSuggestion` / `markSuggestions` / `deleteSuggestion` | `send_suggestion` / `mark_suggestions_read` / `delete_suggestion` |
 | `createProfile` / `renameProfile` / `ensureProfile` (auth.tsx) | trigger en `auth.users` (pasar `name` en la metadata del registro) / `rename_profile` / `ensure_profile` |
 | `subscribePush` / `unsubscribePush` (push.ts) | `upsert_push_subscription` / `delete_push_subscription` |
+| Insignias (`src/lib/data/badges.ts`): `useProfileBadges` / `useBadgeNotices` / `useBadgeProgress` / `useBadgeStats` / `useLeagueAwards` / `usePlayerAwards` | `profile_badges` / `badge_notices` / `select badge_progress` / `select badge_stats` / `select badge_awards` (liga o jugador) |
+| `setFeaturedBadges` / `setBadgeHidden` / `markBadgesSeen` / `setBadgesAuto` / `reviewBadge` / `reportBadge` | `set_featured_badges` / `set_badge_hidden` / `mark_badges_seen` (de 50 en 50) / `set_badges_auto` / `review_badge` / `report_badge` |
+| `markLeagueBadgesSeen` / `setLeagueBadgeHidden` (las del creador) | `mark_league_badges_seen` / `set_league_badge_hidden` |
 
 ## Tiempo real
 
@@ -461,6 +551,10 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `like` | `{op, kind, id}` | me gusta (o quitarlo) en un juego suyo |
 | `league:<id>` | `claims` | `{id, status}` | reclamos de jugadores de la liga (pedido, aprobado, rechazado, cancelado) |
 | `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
+| `league:<id>` | `badges` | `{op, ids, kind: 'app'}` | insignias automáticas que se ven en la liga (…0810, `private.emit_badges`): nuevas provisionales o firmes, y cambios de estado, de oculta o de nivel (que el dueño la vea no avisa) |
+| `user:<uid>` | `badges` | `{op, ids, kind: 'app'}` | cualquier cambio de sus insignias automáticas (de la cuenta o de sus jugadores): nuevas, firmes, vistas, ocultas, retiradas |
+| `league:<id>` | `badges` | `{op, ids, kind: 'diseno'\|'liga'}` | insignias del creador (…0820): un diseño que se crea, cambia o borra (`diseno`); un otorgamiento que se da, se retira, se oculta o se muestra (`liga`) |
+| `user:<uid>` | `badges` | `{op, ids, kind: 'liga'}` | cualquier cambio de los otorgamientos del creador a sus jugadores (también verlos) |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa
@@ -480,10 +574,19 @@ y `…000880_insignias_temporadas.sql` (solo si existe `public.seasons`). El cro
 trabajos vencidos, `private.kick_badges()` llama a la Edge Function `insignias` con pg_net, como `kick_send_push`)
 y `mm-insignias-diario` a las 04:30 UTC (00:30 de Santo Domingo) → `private.badges_daily(now())`.
 
-**Una corrida de la Edge Function** (clave secreta): `badge_claim(25)`; por trabajo `badge_snapshot(id)` →
-`evaluate(job, snapshot, now)` (motor puro de `src/badges`) → `badge_apply(id, decisiones)` (si `evaluate` falla,
-`badge_fail(id, error)`); al final `badge_finish()`. Las funciones de `private` llevan además `p_now` (las pruebas
-fijan la hora).
+**Una corrida de la Edge Function** (`supabase/functions/insignias`, clave secreta): `badge_claim(5)` de a 5 hasta 25
+(`{"limit": n}` en el cuerpo: 1 a 50); por trabajo `badge_snapshot(id)` → `evaluateJob(job, snapshot, snapshot.now)`
+(el motor puro de `src/badges` empaquetado en `supabase/functions/_shared/badges-engine.gen.js`) →
+`badge_apply(id, decisiones)`; si la foto, el motor o aplicar fallan, `badge_fail(id, motivo)` (`foto: HTTP 500
+(57014)` con `p_charge`, `motor: TypeError: …`, `aplicar: …`). Corta a los 100 s o con ~1,2 s de CPU del motor
+(Supabase corta a los 2 s de CPU): lo tomado que no alcanzó vuelve con `badge_release(id)`. Al final `badge_finish()`. Las
+funciones de `private` llevan además `p_now` (las pruebas fijan la hora). De punta a punta con el motor empaquetado:
+`tests/sql/insignias-funcion.test.ts`.
+
+**El motor empaquetado**: Deno no acepta los imports de `src` (sin extensión), así que `pnpm badges:bundle`
+(`scripts/badges/bundle.mjs`, rolldown de Vite) arma un solo ESM sin imports desde `src/badges/edge.ts`, con el hash
+del código fuente en la cabecera. `src/badges/bundle.test.ts` falla si quedó viejo: cada cambio del motor (catálogo,
+reglas, evaluadores o los helpers de `src/lib` y `src/sports` que usan) va con el archivo generado de nuevo.
 
 ### Trabajos (`private.badge_queue`)
 
@@ -504,26 +607,33 @@ Uno por `(kind, league_id, user_id, ref)` mientras no se tome: lo repetido se ju
 | `temporada` | una temporada queda `closed` (…0880) | `season:<id>` | liga |
 | `cuenta` | `badges_daily`: cuentas con actividad, felicitaciones o servicio de hace 2 días, dueños de esas ligas y aniversarios | `YYYY-MM-DD` (el día de la corrida) | cuenta |
 | `vinculo` | `players.user_id` cambia (reclamo, `link_account_to_player`, `unlink_account`, salir de la liga) y `merge_players` (`badge_signal('merge')`) | `player:<id>` · payload `{players, unlinked?, merged?}` | liga · cuenta (la nueva y la vieja) |
-| `historial` | `badges_backfill` | `league:<id>` · payload `{dry_run, run_id, from?, to?}` | liga |
+| `historial` | `badges_backfill` | `league:<id>` · payload `{dry_run, run_id, from?, to?}`; o `user:<id>` (lo de cuenta y comunidad de esa cuenta). En seco, con `:seco` al final: nunca se junta con una corrida de verdad que siga en la cola | liga o cuenta |
 | `aviso` | `badge_apply` y `review_badge` (vía `badge_signal`); lo resuelve SQL (`badge_send_notices`), nunca el motor | `push` o `historial` | cuenta |
 
 Los triggers nunca frenan la escritura (si algo falla, un `warning`) y no encolan nada al borrar una liga. Juntar
 jugadores (`merge_players`) no encola por cada fila movida: avisa una vez con `badge_signal('merge')`.
-`private.badge_runs` anota los periodos hechos (`kind`, liga o `u:<cuenta>`, `ref`): `badges_daily` no los repite.
+`private.badge_runs` anota los periodos hechos (`kind`, liga o `u:<cuenta>`, `ref`): un periodo (`evento`, `noche`,
+`cajas`, `escalera`, `mes`, `anio`, `temporada`) corre una sola vez (§3.4: lo que se dio no cambia si después se
+corrige la final, se reabre la ronda o el encuentro o se cierra otra vez la temporada). `badge_enqueue` no lo vuelve
+a encolar y, si igual entró otro mientras corría, `badge_apply` no aplica nada (`{ok, done: true}`). Un periodo que
+quedó muerto (5 intentos) vuelve a tener chance cuando `badges_daily` lo pide otra vez (intentos en 0).
 
 ### La foto (`badge_snapshot`, contrato en `src/badges/snapshot.ts`)
 
 Siempre: `{v: 1, now, job, sport, period, leagues, members, profiles, players, league_months, awards, progress}`.
-- `job`: el trabajo (`BadgeJob`); en `vinculo`, `payload.verified_only` = el reclamo lo aprobó la misma cuenta que
-  reclamaba (§1.6: para las de cuenta, solo lo verificado). `sport`: el de la liga del trabajo (null en los de
-  cuenta). `period`: `{from, to}` del mes, año, temporada o mes de la escalera (null en los demás).
+- `job`: el trabajo (`BadgeJob`). `sport`: el de la liga del trabajo (null en los de cuenta). `period`: `{from, to}` del mes, año, temporada o mes de la escalera (null en los demás).
 - `leagues`: `SnapLeague` de toda liga que aparece. `members`: owner, admins y anotadores de esas ligas, más todas
   las membresías de las cuentas del trabajo. `profiles`: `SnapProfile` (`bowlingx`, `first_import_on`) de toda cuenta
-  que aparece (jugadores, staff, `league_months`). `players`: `SnapPlayer` de todo jugador que aparece.
+  que aparece (jugadores, staff, `league_months`). `players`: `SnapPlayer` de todo jugador que aparece, con
+  `verified_only` (`private.badge_verified_only`): la cuenta se vinculó ella misma (dueño o admin: su reclamo al
+  instante, `link_account_to_player` con su cuenta, `ensure_player`; `private.badge_self_links`) o su reclamo lo aprobó
+  ella misma. En todo trabajo, para las de cuenta, de ese jugador solo cuenta lo verificado (§1.6).
 - `league_months`: `LeagueMonthActivity` de cada liga que aparece, todos sus meses (hasta el fin del periodo): la base
   de «liga real». Sale de `private.badge_activity`.
 - `awards` y `progress`: las filas (`to_jsonb`) de los dueños del trabajo (sus jugadores y sus cuentas), en cualquier
   estado.
+- Marcas de boliche que cuentan (`private.badge_mark_ok`, lo mismo que `markKind` del motor): el id (uuid) de la foto,
+  `'importado'` o `'sin-foto'`. Otra marca (la base acepta cualquier texto de 1 a 64) no es actividad ni encola.
 - Filas del deporte (`to_jsonb` de cada fila, snake_case; solo las listas del deporte de la liga):
   boliche `events`, `entries`, `submissions` (solo aprobadas de jugadores que son juez y parte), `teams`; raqueta y
   equipos `events` (con `config`), `matches` (sin `state`), `match_sides`, `match_players`, `match_officials`,
@@ -544,7 +654,8 @@ deporte, en todas sus ligas):
 | `mes`, `anio` (cuenta) | boliche y golf de sus jugadores hasta el fin del periodo (Tu mejor mes) | `activity` de la cuenta hasta el fin del periodo |
 | `temporada` | lo de la liga desde 400 días antes de `starts_on` hasta `ends_on` y la carrera de quienes jugaron en la temporada o tienen un premio; baloncesto: cada partido con `has_state` y `fouls: [{side, kind, player}]` (técnicas, antideportivas y descalificantes de `matches.state`) | `seasons`, `season_awards`; `activity`: el primer día activo de cada cuenta en el deporte (Revelación); `service` del dueño y los admins en la temporada |
 | `cuenta` | — | `activity` de la cuenta (todos los deportes) y, de los jugadores de sus ligas (dueño) y de los que felicitó, sus primeros 3 días por liga; `cheers`; `service` |
-| `historial` | la liga entera (o `payload.from`–`to`) y la carrera de sus jugadores | `activity` de sus cuentas y jugadores; `cheers`; `service` |
+| `historial` (liga) | la liga entera (o `payload.from`–`to`) y la carrera de sus jugadores | `activity` de sus cuentas y jugadores; `cheers`; `service` |
+| `historial` (cuenta) | boliche y golf de sus jugadores (Tu mejor mes) | como `cuenta` (`activity`, primeros días de los jugadores de sus ligas y de los que felicitó, `cheers`, `service`, sus ligas) y `targets: []` (las carreras van en el de la liga) |
 
 - `activity`: `ActivityDay[]` `{sport, league_id, player_id, user_id, date, official, roster}` calculado en SQL
   (`private.badge_activity`, lo mismo que `bowlingActivity` … `swimActivity`): boliche B1 con juez y parte (sin foto
@@ -564,19 +675,26 @@ deporte, en todas sus ligas):
 - `award {badge_key, sport, level, period_key, player_id+league_id | user_id, status 'provisional'|'firme', refs,
   context, hidden?}`: nueva (provisional: `firm_at` = +7 días; `hidden` = privada por defecto, nunca avisa). Si ya
   existe: revocada por `evidencia` → se reactiva (avisa otra vez); por `aval` o `fraude` → no vuelve; provisional →
-  se actualizan `refs` y `context`, o sube a firme; firme o en revisión → no cambia (un `award` no se salta un aval).
+  se actualizan `refs` y `context`, o sube a firme; firme → no cambia; en revisión → no cambia (un `award` no se salta
+  un aval), salvo que cambie la cara (`context.alt`: el albatros corregido a águila): sale de revisión y avisa.
 - `review {…, refs, context, reviewers}`: nace `en_revision`; push «Hay una hazaña por confirmar» (tag
   `insignia-aval:<id>`) a los dueños y admins que pasan `private.badge_can_review` (no a los que diga el motor), nunca
-  en ligas con menores ni a cuentas bloqueadas. Confirmada con `review_badge`, avisa al jugador.
+  en ligas con menores ni a cuentas bloqueadas. Confirmada con `review_badge`, avisa al jugador. Sobre una provisional
+  (el águila corregida que resultó albatros): pasa a `en_revision`, sin `firm_at` y fuera de las destacadas.
 - `revoke {…, reason 'evidencia'}`: solo provisionales y en revisión (las firmes no); sale de las destacadas; sin push.
 - `progress {badge_key, sport, dueño, value, target, next_level | null}`: null borra la fila.
 - `adopt {badge_key, sport, level, period_key, player_id, league_id, user_id}`: la copia de respaldo del jugador
   (insignia de cuenta ganada sin cuenta, §1.6) pasa a su cuenta (`players.user_id` tiene que ser esa) con tombstone
-  en la liga; si la cuenta ya la tenía, queda una (el mejor estado, el `awarded_at` más viejo) sin aviso nuevo.
+  en la liga; si la cuenta ya la tenía, queda una (el mejor estado, el `awarded_at` más viejo) sin aviso nuevo. La
+  arma el motor (`decide` en `src/badges/engine.ts`) para toda copia de respaldo de la foto cuyo jugador ya tiene
+  cuenta, antes que lo demás; con `players[].verified_only` solo junta lo que la cuenta ya tiene o gana en esa
+  corrida (lo provisional que no, se retira; lo firme se queda en el jugador). Queda oculta si alguna de las dos lo
+  estaba. También borra el progreso del jugador.
 - Jugador que ya no existe o no es de esa liga, cuenta que ya no existe: se salta. Cualquier otra cosa que no sirva
   (kind, key, deporte, nivel, periodo, dueño, estado): nada se aplica y el trabajo vuelve a la cola.
 - `context` queda con `v: 1`. **Para los push**, el motor pone `context.name` (el nombre ya resuelto por deporte y
-  nivel, «Constancia», «Club 225») y `context.level_name` («oro»); sin eso el push dice «Insignia».
+  nivel, «Constancia», «Club 225») y `context.level_name` (el propio del nivel o el metal: «oro»); sin eso el push dice
+  «Insignia». Los pone `src/badges/edge.ts` (`withPushLabels`) en todo `award` y `review`, si el evaluador no los puso.
 - `historial`: todas con `context.historial = true` y `notified_at` (sin push por cada una); en seco
   (`payload.dry_run`) no escribe insignias: `private.badge_dry_holders` y `private.badge_dry_runs` (`run_id`).
 
@@ -589,7 +707,8 @@ deporte, en todas sus ligas):
   más.», tag `insignias`, url `/u/<cuenta>?tab=insignias`. Nunca entre 9:00 pm y 8:00 am (Santo Domingo): espera a
   las 8:00; como mucho uno cada 6 h por cuenta (lo que llega en medio sale junto en el siguiente). Del historial:
   «¡Tus insignias llegaron!» / «Te dimos {n} insignias por tu historial. ¡Míralas!», 30 min después del último trabajo.
-- `badges_daily(p_now)`: provisionales con 7 días → firmes; podios de boliche; noches cerradas; foto de las
+- `badges_daily(p_now)`: provisionales con 7 días → firmes (salvo las de quien tiene un `resultado` o `revisar` sin
+  aplicar: vencido, tomado, con espera o muerto; no los que esperan sus 48 h); podios de boliche; noches cerradas; foto de las
   escaleras (días 1 y 2); meses (días 3 a 10); años (7 al 31 de enero); cuentas; rareza
   (`badge_stats_refresh`: cuentas con la insignia sobre cuentas con un día activo en el deporte en 365 días, sin
   ligas con menores ni cuentas bloqueadas; base < 50 = `nueva`); limpieza del motor (`badge_cleanup`: trabajos de 5
@@ -656,12 +775,14 @@ hay que hacerlo aquí (o en una migración nueva después).
 - Deporte fijo (trigger); dueño solo por `transfer_ownership` (trigger); `leagues.owner_id` ON DELETE RESTRICT.
 - Menores: `is_minor` exige `has_minors` (trigger), sin cuenta (CHECK), liga privada sin foto obligatoria (CHECK),
   sin social ni fotos (RPC), `has_minors` solo sube (salvo superadmin y sin menores).
+- `league_badge_awards` con SELECT por columna: `note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` no se
+  leen directo (solo por `league_badge_holders`, `profile_badges` y `badge_notices`, que miran quién pregunta).
 - Supabase Security Advisor: puede marcar «security definer function executable by authenticated» en las RPC:
   es a propósito (todas validan permisos adentro).
 
 ## Pendiente para otras fases
 
 - Hecho en 0C: cron de recordatorios y limpieza, cupos de lectura de fotos (`scan_*`), cola de push y las Edge
-  Functions `scan-bowling` y `send-push`. `max_rows` = 500 en `config.toml`.
+  Functions `scan-bowling` y `send-push`. `max_rows` = 500 en `config.toml`. Después: `delete-account` e `insignias`.
 - Cada deporte trae su migración (partidos, `match_*`, `swim_*`, equipos de temporada) y agrega su caso a
   `private.series_ok`, `private.check_event` y `private.check_live`.

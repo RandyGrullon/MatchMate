@@ -168,7 +168,7 @@ describe('permisos', () => {
               has_function_privilege('service_role', p.oid, 'execute') as service, p.prosecdef as definer
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname = 'public' and p.proname in ('badge_notices', 'badges_backfill', 'badge_claim', 'badge_snapshot', 'badge_apply',
-                                                     'badge_fail', 'badge_finish')
+                                                     'badge_fail', 'badge_release', 'badge_finish')
         order by 1`,
     );
     expect(rows).toEqual([
@@ -177,6 +177,7 @@ describe('permisos', () => {
       { fn: 'public.badge_fail', anon: false, auth: false, service: true, definer: true },
       { fn: 'public.badge_finish', anon: false, auth: false, service: true, definer: true },
       { fn: 'public.badge_notices', anon: false, auth: true, service: true, definer: true },
+      { fn: 'public.badge_release', anon: false, auth: false, service: true, definer: true },
       { fn: 'public.badge_snapshot', anon: false, auth: false, service: true, definer: true },
       { fn: 'public.badges_backfill', anon: false, auth: true, service: true, definer: true },
     ]);
@@ -221,20 +222,23 @@ describe('la cola', () => {
     expect(await db.count('private.badge_queue', `ref = 'entry:x'`)).toBe(2);
   });
 
-  it('badge_claim: vencidos, sin avisos, sube attempts; lo tomado hace 10+ min vuelve; 5 intentos ya no', async () => {
+  it('badge_claim: vencidos, sin avisos; tomar no gasta intentos (los cuenta la foto); lo tomado hace 10+ min vuelve; 5 intentos ya no', async () => {
     await enqueue('resultado', w.priv, null, 'entry:a', {}, at(5, 10));
     await enqueue('resultado', w.priv, null, 'entry:b', {}, at(5, 14));
     await enqueue('aviso', null, w.u.luis, 'push', {}, at(5, 10));
     const claim = async (now: string, n = 25) =>
       (await db.admin<{ r: { id: number; ref: string; attempts: number; kind: string }[] }>('select private.badge_claim($1, $2::timestamptz) as r', [n, now]))[0].r;
     const first = await claim(at(5, 12));
-    expect(first.map((x) => [x.ref, x.attempts])).toEqual([['entry:a', 1]]);
+    expect(first.map((x) => [x.ref, x.attempts])).toEqual([['entry:a', 0]]);
     expect(await claim(at(5, 12, 5))).toEqual([]);
-    expect((await claim(at(5, 12, 11))).map((x) => [x.ref, x.attempts])).toEqual([['entry:a', 2]]);
+    // La función se cayó con la tanda tomada: vuelve a los 10 minutos sin haber gastado un intento.
+    expect((await claim(at(5, 12, 11))).map((x) => [x.ref, x.attempts])).toEqual([['entry:a', 0]]);
+    // Pedir la foto es probarlo: ahí se cuenta.
+    await db.as(SERVICE, 'select public.badge_snapshot($1)', [first[0].id]);
     // A las 3 pm: b venció y a lleva 10+ min tomado (la función se cayó).
     expect((await claim(at(5, 15))).map((x) => [x.ref, x.attempts])).toEqual([
-      ['entry:a', 3],
-      ['entry:b', 1],
+      ['entry:a', 1],
+      ['entry:b', 0],
     ]);
     await db.admin(`update private.badge_queue set attempts = 5, locked_at = null`);
     expect(await claim(at(6))).toEqual([]);
@@ -243,7 +247,8 @@ describe('la cola', () => {
   it('badge_fail: vuelve a la cola con espera y el error; si entró otro igual, se juntan', async () => {
     const id = await enqueue('resultado', w.priv, null, 'entry:a', { players: [w.p.luis] }, at(5, 10));
     await db.admin('select private.badge_claim(5, $1::timestamptz)', [at(5, 12)]);
-    await db.admin('select private.badge_fail($1, $2, $3::timestamptz)', [id, 'boom', at(5, 12)]);
+    // p_charge: falló la foto (que es la que cuenta el intento), así que se cuenta aquí.
+    await db.admin('select private.badge_fail($1, $2, $3::timestamptz, true)', [id, 'boom', at(5, 12)]);
     let [j] = await jobs();
     expect([j.locked, j.attempts, j.last_error, iso(j.run_after)]).toEqual([false, 1, 'boom', at(5, 12, 2)]);
     await db.admin('select private.badge_claim(5, $1::timestamptz)', [at(5, 13)]);
@@ -251,7 +256,51 @@ describe('la cola', () => {
     await db.admin('select private.badge_fail($1, $2, $3::timestamptz)', [id, 'otra vez', at(5, 13)]);
     [j] = await jobs();
     expect(j.id).not.toBe(id);
-    expect([j.attempts, j.last_error, new Set(j.payload.players as string[])]).toEqual([2, 'otra vez', new Set([w.p.luis, w.p.pedro])]);
+    expect([j.attempts, j.last_error, new Set(j.payload.players as string[])]).toEqual([1, 'otra vez', new Set([w.p.luis, w.p.pedro])]);
+  });
+
+  it('badge_release: lo tomado que no alcanzó a correr vuelve ya, sin espera, sin error y sin gastar intentos; si entró otro igual, se juntan', async () => {
+    const id = await enqueue('resultado', w.priv, null, 'entry:a', { players: [w.p.luis] }, at(5, 10));
+    await db.admin('update private.badge_queue set attempts = 2 where id = $1', [id]);
+    // Cinco corridas seguidas sin CPU no lo matan.
+    for (let i = 0; i < 5; i++) {
+      await db.admin('select private.badge_claim(5, $1::timestamptz)', [at(5, 12)]);
+      await db.as(SERVICE, 'select public.badge_release($1)', [id]);
+    }
+    let [j] = await jobs();
+    expect([j.id, j.locked, j.attempts, j.last_error, iso(j.run_after)]).toEqual([id, false, 2, null, at(5, 10)]);
+    await db.admin('select private.badge_claim(5, $1::timestamptz)', [at(5, 13)]);
+    await enqueue('resultado', w.priv, null, 'entry:a', { players: [w.p.pedro] }, at(5, 13));
+    await db.as(SERVICE, 'select public.badge_release($1)', [id]);
+    [j] = await jobs();
+    expect(j.id).not.toBe(id);
+    expect([j.attempts, iso(j.run_after), new Set(j.payload.players as string[])]).toEqual([2, at(5, 10), new Set([w.p.luis, w.p.pedro])]);
+  });
+
+  it('un periodo que ya corrió no se vuelve a encolar ni a aplicar (§3.4); uno muerto vuelve a tener chance', async () => {
+    const ev = await enqueue('evento', w.priv, null, 'event:e');
+    expect(await apply(ev, [give(toPlayer(w.p.luis, w.priv))])).toMatchObject({ ok: true, awarded: 1 });
+    // La final se corrige: el trigger vuelve a pedir el evento, pero ya corrió.
+    await db.admin(`select private.badge_enqueue('evento', $1, null, 'event:e')`, [w.priv]);
+    expect(await jobs(`kind = 'evento'`)).toEqual([]);
+    // Si igual entró otro (mientras corría el primero), al aplicar no da nada.
+    await db.admin(`insert into private.badge_queue (kind, league_id, ref) values ('evento', $1, 'event:e')`, [w.priv]);
+    const [dup] = await jobs(`kind = 'evento'`);
+    const again = await apply(dup.id, [give({ ...toPlayer(w.p.pedro, w.priv), badge_key: 'event_podium', level: 1, period_key: 'e:e', status: 'firme' })]);
+    expect(again).toMatchObject({ ok: true, awarded: 0, done: true });
+    expect((await awards()).map((a) => a.player_id)).toEqual([w.p.luis]);
+    expect(await jobs(`kind = 'evento'`)).toEqual([]);
+    // El historial sí se puede volver a correr.
+    const h = await enqueue('historial', w.priv, null, `league:${w.priv}`);
+    await apply(h, []);
+    await db.admin(`select private.badge_enqueue('historial', $1, null, $2)`, [w.priv, `league:${w.priv}`]);
+    expect(await jobs(`kind = 'historial'`)).toHaveLength(1);
+    // Un mes que quedó muerto (5 intentos sin correr) vuelve con los intentos en 0; uno vivo no se duplica.
+    const m = await enqueue('mes', w.priv, null, '2026-09');
+    await db.admin('update private.badge_queue set attempts = 5 where id = $1', [m]);
+    expect((await db.admin<{ r: boolean }>(`select private.badge_enqueue_period('mes', $1, null, '2026-09') as r`, [w.priv]))[0].r).toBe(true);
+    expect((await jobs(`kind = 'mes'`)).map((x) => [x.id, x.attempts])).toEqual([[m, 0]]);
+    expect((await db.admin<{ r: boolean }>(`select private.badge_enqueue_period('mes', $1, null, '2026-09') as r`, [w.priv]))[0].r).toBe(false);
   });
 });
 
@@ -467,6 +516,50 @@ describe('la foto de un trabajo (badge_snapshot)', () => {
     expect(await act()).toEqual([{ n: 1 }]);
   });
 
+  it('solo cuentan las marcas del motor (id de foto, importado o sin-foto): otra marca no es actividad ni encola', async () => {
+    const ev = await event(db, w.priv, 'practica', '2026-10-02');
+    const act = () => db.admin<{ n: number }>('select count(*)::int as n from private.badge_activity($1, $2::date, $2::date)', [[w.p.luis], '2026-10-02']);
+    const id = await entry(db, w.priv, ev, w.p.luis, [180], ['fotos/liga/juego.jpg']);
+    expect(await act()).toEqual([{ n: 0 }]);
+    expect(await jobs(`ref = $1`, [`entry:${id}`])).toEqual([]);
+    await db.admin('update public.entries set photos = $2 where id = $1', [id, ['0192F0A1-7B3C-7D4E-8F90-A1B2C3D4E5F6']]);
+    expect(await act()).toEqual([{ n: 1 }]);
+    expect(await jobs(`ref = $1`, [`entry:${id}`])).toHaveLength(1);
+    expect(await db.admin(`select private.badge_mark_ok(m) as ok from unnest(array['importado', 'sin-foto', 'otra', '', null]) m`)).toEqual([
+      { ok: true },
+      { ok: true },
+      { ok: false },
+      { ok: false },
+      { ok: false },
+    ]);
+  });
+
+  it('update_entry: nadie de la app inventa una marca que valida (importado o una foto que no es de la liga)', async () => {
+    const ev = await event(db, w.priv, 'practica', '2026-10-02');
+    const id = await entry(db, w.priv, ev, w.p.luis, [150, 160], ['importado', null]);
+    const marks = async () => (await db.admin<{ scores: number[]; photos: (string | null)[] }>('select scores, photos from public.entries where id = $1', [id]))[0];
+    // sofi (admin, juez y parte si juega) no escribe 'importado' ni un uuid cualquiera.
+    await fails(db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { photos: ['importado', 'importado'] } }), 'invalido');
+    await fails(db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { photos: ['importado', crypto.randomUUID()] } }), 'invalido');
+    // Una foto de otra liga tampoco; una de la liga sí.
+    const [{ id: other }] = await db.admin<{ id: string }>(`insert into public.photos (id, league_id, path) select g, x.l, x.l::text || '/' || g::text || '.webp' from gen_random_uuid() g, (select $1::uuid as l) x returning id`, [w.pub]);
+    await fails(db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { photos: ['importado', other] } }), 'invalido');
+    const [{ id: photo }] = await db.admin<{ id: string }>(`insert into public.photos (id, league_id, path) select g, x.l, x.l::text || '/' || g::text || '.webp' from gen_random_uuid() g, (select $1::uuid as l) x returning id`, [w.priv]);
+    await db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { photos: ['importado', photo] } });
+    expect(await marks()).toEqual({ scores: [150, 160], photos: ['importado', photo] });
+    // Dejar lo que ya estaba, quitar la verificación o 'sin-foto': sí.
+    await db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { photos: ['importado', 'sin-foto'] } });
+    expect((await marks()).photos).toEqual(['importado', 'sin-foto']);
+    // Cambiar el puntaje de un juego importado sin otra foto: ya no es el importado (la liga pide foto: borrador).
+    await db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { scores: [279, 160] } });
+    expect(await marks()).toEqual({ scores: [279, 160], photos: [null, 'sin-foto'] });
+    // Sin foto obligatoria queda anotado sin foto.
+    await db.admin('update public.leagues set require_photo = false where id = $1', [w.priv]);
+    await db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { scores: [279, 160], photos: [photo, null] } });
+    await db.rpc(w.u.sofi, 'update_entry', { p_entry: id, p_patch: { scores: [290, 160] } });
+    expect(await marks()).toEqual({ scores: [290, 160], photos: ['sin-foto', null] });
+  });
+
   it('partidos: los dos lados, alineación, lados y reglas; la actividad oficial', async () => {
     const x = await padel();
     const m = await x.match();
@@ -562,6 +655,30 @@ describe('la foto de un trabajo (badge_snapshot)', () => {
     expect(s3.leagues.map((l) => l.id)).toEqual([w.priv]);
   });
 
+  it('servicio en golf: cerrar una ronda de 4+ tarjetas, salvo si quien la cerró jugó en ella', async () => {
+    const golf = await league(db, w.u.org, { name: 'Golf', visibility: 'private', sport: 'golf', requirePhoto: false });
+    await member(db, golf, w.u.org, 'owner', 'org');
+    const course = await db.rpc<string>(w.u.org, 'golf_save_course', {
+      p_league: golf,
+      p_name: 'Campo',
+      p_holes: DEMO_COURSE.holes.map((h) => ({ par: h.par, si: h.si })),
+      p_tees: JSON.parse(JSON.stringify(DEMO_COURSE.tees)),
+    });
+    const round = async (withOrg: boolean, day: string) => {
+      const ev = await db.rpc<string>(w.u.org, 'golf_create_round', { p_league: golf, p_date: day, p_course: course });
+      const players: { player_id: string }[] = [];
+      for (const n of withOrg ? ['A', 'B', 'C'] : ['A', 'B', 'C', 'D']) players.push({ player_id: await player(db, golf, n + day) });
+      if (withOrg) players.push({ player_id: await player(db, golf, 'Org' + day, w.u.org) });
+      await db.rpc(w.u.org, 'golf_add_players', { p_event: ev, p_players: players });
+      await db.admin(`update public.golf_rounds set status = 'cerrada', closed_at = $2, closed_by = $3 where event_id = $1`, [ev, `${day}T20:00:00Z`, w.u.org]);
+      return ev;
+    };
+    const served = await round(false, '2026-10-01');
+    await round(true, '2026-10-02');
+    const svc = await db.admin<{ r: Json[] }>('select private.badge_service($1) as r', [[w.u.org]]);
+    expect(svc[0].r.map((x) => x.ref)).toEqual([`round:${served}`]);
+  });
+
   it('mes de una liga: el periodo, lo de la liga y la historia de quien jugó ese mes', async () => {
     await counted();
     const s = await snapshot(await enqueue('mes', w.priv, null, '2026-10'));
@@ -575,8 +692,10 @@ describe('la foto de un trabajo (badge_snapshot)', () => {
   it('vínculo: la cuenta con su actividad y si el reclamo lo aprobó la misma cuenta (solo lo verificado)', async () => {
     await db.admin(`update public.players set user_id = $2 where id = $1`, [w.p.pedro, w.u.ana]);
     const [j] = await jobs();
+    const pedroIn = (x: Json & Record<string, Json[]>) => x.players.find((p) => p.id === w.p.pedro);
     let s = await snapshot(j.id);
-    expect(s.job.payload).toMatchObject({ players: [w.p.pedro], verified_only: false });
+    expect(s.job.payload).toMatchObject({ players: [w.p.pedro] });
+    expect(pedroIn(s)).toMatchObject({ user_id: w.u.ana, verified_only: false });
     await db.admin(`update public.players set user_id = null where id = $1`, [w.p.pedro]);
     await db.admin(
       `insert into public.player_claims (league_id, player_id, user_id, status, decided_by, decided_at) values ($1, $2, $3, 'approved', $3, now())`,
@@ -585,7 +704,29 @@ describe('la foto de un trabajo (badge_snapshot)', () => {
     await db.admin(`update public.players set user_id = $2 where id = $1`, [w.p.pedro, w.u.sofi]);
     const [k] = await jobs(`user_id = $1`, [w.u.sofi]);
     s = await snapshot(k.id);
-    expect(s.job.payload).toMatchObject({ verified_only: true });
+    expect(pedroIn(s)).toMatchObject({ user_id: w.u.sofi, verified_only: true });
+    // No solo en el vínculo: cualquier trabajo que lo traiga (un resultado de su liga) lo marca igual.
+    s = await snapshot(await enqueue('resultado', w.priv, null, `player:${w.p.pedro}`, { players: [w.p.pedro] }));
+    expect(pedroIn(s)).toMatchObject({ verified_only: true });
+  });
+
+  it('se vincula él mismo (dueño o admin, link_account_to_player o su reclamo al instante): queda marcado; si lo vincula otro, no', async () => {
+    const mine = await player(db, w.priv, 'Org viejo');
+    const other = await player(db, w.priv, 'Ana vieja');
+    await db.rpc(w.u.org, 'link_account_to_player', { p_player: mine, p_user: w.u.org });
+    await db.rpc(w.u.sofi, 'link_account_to_player', { p_player: other, p_user: w.u.ana });
+    const links = await db.admin<{ player_id: string; user_id: string }>('select player_id, user_id from private.badge_self_links order by created_at');
+    expect(links).toEqual([{ player_id: mine, user_id: w.u.org }]);
+    const s = await snapshot(await enqueue('resultado', w.priv, null, 'x', { players: [mine, other] }));
+    expect(s.players.filter((p) => p.id === mine || p.id === other).map((p) => [p.id, p.verified_only]).sort()).toEqual(
+      [[mine, true], [other, false]].sort(),
+    );
+    // El reclamo de un admin se aprueba al instante: también queda marcado.
+    await db.rpc(w.u.sofi, 'request_player_claim', { p_player: w.p.pedro });
+    expect(await db.count('private.badge_self_links', 'player_id = $1 and user_id = $2', [w.p.pedro, w.u.sofi])).toBe(1);
+    // Queda con otra cuenta (o sin cuenta): la marca se va.
+    await db.admin('update public.players set user_id = null where id = $1', [mine]);
+    expect(await db.count('private.badge_self_links', 'player_id = $1', [mine])).toBe(0);
   });
 
   it('un trabajo que ya no existe: null', async () => {
@@ -714,7 +855,7 @@ describe('aplicar decisiones (badge_apply)', () => {
       {
         title: 'Hay una hazaña por confirmar',
         body: 'En Liga del Banco: Juego perfecto de Luis. Confírmala si la viste.',
-        url: `/l/${w.priv}/admin?tab=insignias`,
+        url: `/l/${w.priv}/admin?tab=confirmar`,
         tag: `insignia-aval:${a.id}`,
       },
     ]);
@@ -763,6 +904,40 @@ describe('aplicar decisiones (badge_apply)', () => {
     expect(await apply(await enqueue('vinculo', w.priv, w.u.sofi, 'x'), [{ ...adopt('mileage'), user_id: w.u.sofi }])).toMatchObject({ skipped: 1 });
   });
 
+  it('adopt: si la cuenta había ocultado la suya, la copia de respaldo (visible sin que nadie lo eligiera) no la destapa', async () => {
+    await apply(await enqueue('resultado', w.priv, null, 'x'), [give({ ...toPlayer(w.p.pedro, w.priv), badge_key: 'mileage', sport: 'all', status: 'firme' })], at(1));
+    await apply(await enqueue('resultado', null, w.u.ana, 'x'), [give({ ...toUser(w.u.ana), badge_key: 'mileage', sport: 'all', status: 'firme' })], at(3));
+    await db.admin(`update public.badge_awards set hidden = true where user_id = $1`, [w.u.ana]);
+    await db.admin(`update public.players set user_id = $2 where id = $1`, [w.p.pedro, w.u.ana]);
+    const adopt = { kind: 'adopt', badge_key: 'mileage', sport: 'all', level: 1, period_key: '-', player_id: w.p.pedro, league_id: w.priv, user_id: w.u.ana };
+    await apply(await enqueue('vinculo', w.priv, w.u.ana, `player:${w.p.pedro}`), [adopt]);
+    expect((await awards()).map((a) => [a.user_id, a.hidden])).toEqual([[w.u.ana, true]]);
+  });
+
+  it('aval que cambia: una provisional que ahora pide aval pasa a revisión (y avisa); una en revisión que ya no lo pide sale', async () => {
+    for (const u of [w.u.org, w.u.sofi]) await phone(u);
+    const { id: e1 } = await counted(200, 'importado');
+    const base = { ...toPlayer(w.p.luis, w.priv), badge_key: 'golf_eagle', sport: 'golf', level: 0, period_key: 'c:x', refs: [`entry:${e1}:0`] };
+    // Un águila provisional (destacada) que, corregida la tarjeta, resultó albatros: pide aval.
+    await apply(await enqueue('resultado', w.priv, null, `entry:${e1}`), [give({ ...base, context: { name: '¡Águila!' } })]);
+    const [a] = await awards();
+    await db.admin('update public.profiles set featured_badges = $2 where id = $1', [w.u.luis, [a.id]]);
+    const review = { ...give({ ...base, context: { name: '¡Albatros!', alt: 'albatross' } }), kind: 'review', reviewers: [] };
+    expect(await apply(await enqueue('revisar', w.priv, null, `entry:${e1}`), [review])).toMatchObject({ ok: true, reviews: 1 });
+    expect((await awards())[0]).toMatchObject({ id: a.id, status: 'en_revision', firm_at: null, context: expect.objectContaining({ alt: 'albatross' }) });
+    expect(await pushes(w.u.org)).toHaveLength(1);
+    expect((await db.admin<{ f: string[] }>('select featured_badges as f from public.profiles where id = $1', [w.u.luis]))[0].f).toEqual([]);
+    // Con la misma cara, un «award» no la saca de revisión.
+    await apply(await enqueue('revisar', w.priv, null, `entry:${e1}`), [give({ ...base, context: { name: '¡Albatros!', alt: 'albatross' } })]);
+    expect((await awards())[0].status).toBe('en_revision');
+    // Corregida otra vez a águila: ya no pide aval, vuelve a provisional (firme en 7 días) y se avisa.
+    const out = await apply(await enqueue('revisar', w.priv, null, `entry:${e1}`), [give({ ...base, context: { name: '¡Águila!' } })], at(6));
+    expect(out).toMatchObject({ ok: true, awarded: 1, notices: 1 });
+    const [b] = await awards();
+    expect(b).toMatchObject({ id: a.id, status: 'provisional', notified_at: null });
+    expect(iso(b.firm_at)).toBe(at(13));
+  });
+
   it('todo o nada: una decisión que no sirve deja el trabajo en la cola con el error y nada aplicado', async () => {
     const j = await enqueue('resultado', w.priv, null, 'x');
     await db.admin('select private.badge_claim(5, $1::timestamptz)', [NOON]);
@@ -772,7 +947,8 @@ describe('aplicar decisiones (badge_apply)', () => {
     expect(String(out.error)).toMatch(/invalido/);
     expect(await awards()).toEqual([]);
     const [q] = await jobs();
-    expect([q.id, q.locked, q.attempts, iso(q.run_after)]).toEqual([j, false, 1, at(5, 12, 2)]);
+    // El intento lo cuenta la foto (aquí no se pidió): vuelve con espera y sin sumar.
+    expect([q.id, q.locked, q.attempts, iso(q.run_after), q.last_error?.startsWith('invalido')]).toEqual([j, false, 0, at(5, 12, 2), true]);
     for (const d of [{ kind: 'nada' }, give({ badge_key: 'Mal', ...toUser(w.u.luis) }), give({ ...toUser(w.u.luis), level: 9 }), give({ ...toUser(w.u.luis), status: 'revocada' })]) {
       expect((await apply(j, [d])).ok).toBe(false);
     }
@@ -901,6 +1077,26 @@ describe('la tarea diaria (badges_daily)', () => {
     ]);
   });
 
+  it('no pasa a firme la provisional de quien tiene una corrección sin aplicar (con espera o muerta); sí cuando se aplica', async () => {
+    const { id: e1 } = await counted(200, 'importado');
+    await db.admin('delete from private.badge_queue');
+    await apply(await enqueue('resultado', w.priv, null, `entry:${e1}`), [give({ ...toPlayer(w.p.luis, w.priv), refs: [`entry:${e1}:0`] })], at(1));
+    // El 7 corrigen el juego; el trabajo falla y queda con espera (o muerto).
+    const fix = await enqueue('revisar', w.priv, null, `entry:${e1}`, { players: [w.p.luis] }, at(7));
+    await db.admin(`update private.badge_queue set attempts = 5, last_error = 'boom', run_after = $2 where id = $1`, [fix, at(20)]);
+    // Otro jugador sin nada pendiente sí pasa.
+    await apply(await enqueue('resultado', w.priv, null, 'y'), [give({ ...toPlayer(w.p.pedro, w.priv), refs: ['entry:y:0'] })], at(1));
+    expect(await daily(at(9, 0, 30))).toMatchObject({ firm: 1 });
+    const statusOf = async (pid: string) => (await awards('player_id = $1', [pid]))[0].status;
+    expect([await statusOf(w.p.luis), await statusOf(w.p.pedro)]).toEqual(['provisional', 'firme']);
+    // Una cuenta con una corrección de uno de sus jugadores: tampoco (la de cuenta queda provisional).
+    await apply(await enqueue('resultado', null, w.u.luis, 'z'), [give({ ...toUser(w.u.luis), badge_key: 'mileage', sport: 'all' })], at(1));
+    expect(await daily(at(9, 1, 30))).toMatchObject({ firm: 0 });
+    // Se aplica la corrección (sigue cumpliendo): al día siguiente, firmes.
+    await apply(fix, [], at(9, 12));
+    expect(await daily(at(10, 0, 30))).toMatchObject({ firm: 2 });
+  });
+
   it('el día 3: el mes anterior por liga y por cuenta; el día 1: la foto de la escalera para el día 3', async () => {
     await counted();
     const lid = await league(db, w.u.org, { name: 'Tenis', visibility: 'private', sport: 'tennis', requirePhoto: false });
@@ -979,10 +1175,25 @@ describe('RPC de la app', () => {
     expect((await db.rpc<{ unseen: number }>(w.u.luis, 'badge_notices', {})).unseen).toBe(0);
   });
 
-  it('badges_backfill: el superadmin encola el historial (en seco por defecto) con auditoría', async () => {
-    const r = await db.rpc<{ runId: string; dryRun: boolean; jobs: number }>(w.u.dios, 'badges_backfill', { p_league: w.priv });
-    expect(r).toMatchObject({ dryRun: true, jobs: 1 });
-    expect((await jobs()).map((j) => [j.kind, j.league_id, j.ref, j.payload])).toEqual([['historial', w.priv, `league:${w.priv}`, { dry_run: true, run_id: r.runId }]]);
+  it('badges_backfill: el superadmin encola el historial (en seco por defecto) de la liga y de sus cuentas, con auditoría', async () => {
+    const r = await db.rpc<{ runId: string; dryRun: boolean; jobs: number; leagues: number; accounts: number }>(w.u.dios, 'badges_backfill', { p_league: w.priv });
+    const owners = (await db.admin<{ u: string }>('select distinct user_id as u from public.players where league_id = $1 and user_id is not null order by 1', [w.priv])).map((x) => x.u);
+    expect(owners.length).toBeGreaterThan(0);
+    expect(r).toMatchObject({ dryRun: true, leagues: 1, accounts: owners.length, jobs: 1 + owners.length });
+    const payload = { dry_run: true, run_id: r.runId };
+    // En seco va con otra ref: nunca se junta con una corrida de verdad que siga en la cola.
+    expect((await jobs()).map((j) => [j.kind, j.league_id, j.user_id, j.ref, j.payload])).toEqual([
+      ['historial', w.priv, null, `league:${w.priv}:seco`, payload],
+      ...owners.map((u) => ['historial', null, u, `user:${u}:seco`, payload]),
+    ]);
+    const real = await db.rpc<{ runId: string }>(w.u.dios, 'badges_backfill', { p_league: w.priv, p_dry_run: false });
+    await db.rpc(w.u.dios, 'badges_backfill', { p_league: w.priv });
+    expect((await jobs(`kind = 'historial' and league_id is not null`)).map((j) => [j.ref, j.payload.dry_run, j.payload.run_id === real.runId])).toEqual([
+      [`league:${w.priv}:seco`, true, false],
+      [`league:${w.priv}`, false, true],
+    ]);
+    await db.admin(`delete from private.badge_queue where kind = 'historial'`);
+    await db.admin(`delete from public.admin_audit where action = 'badges_backfill' and detail ->> 'runId' <> $1`, [r.runId]);
     expect(await db.admin(`select action, target_type, target_id from public.admin_audit where action = 'badges_backfill'`)).toEqual([
       { action: 'badges_backfill', target_type: 'league', target_id: w.priv },
     ]);
@@ -997,6 +1208,74 @@ describe('RPC de la app', () => {
     expect(s.activity.map((a) => a.player_id)).toEqual([w.p.luis]);
     expect(s).toHaveProperty('cheers');
     expect(s).toHaveProperty('service');
+    expect(s).not.toHaveProperty('targets');
+    // La de una cuenta: su actividad de todos los deportes, sus juegos de boliche (Tu mejor mes), felicitaciones y
+    // servicio; sin carreras que evaluar (targets vacío: van en el historial de la liga).
+    const [hu] = await jobs(`kind = 'historial' and user_id = $1`, [w.u.luis]);
+    const su = await snapshot(hu.id);
+    expect(su.job).toMatchObject({ kind: 'historial', league_id: null, user_id: w.u.luis, ref: `user:${w.u.luis}` });
+    expect(su.targets).toEqual([]);
+    expect(su.activity.map((a) => a.player_id)).toEqual([w.p.luis]);
+    expect(su.entries.map((e) => e.player_id)).toEqual(expect.arrayContaining([w.p.luis]));
+    expect(su).toHaveProperty('cheers');
+    expect(su).toHaveProperty('service');
+    expect(su.league_months).toEqual(expect.arrayContaining([expect.objectContaining({ league_id: w.priv, month: '2026-10' })]));
+  });
+});
+
+describe('la consola del superadmin: el motor', () => {
+  it('admin_badges_engine: la cola, lo que ya no se toma, el historial en curso y la corrida en seco contra su base', async () => {
+    await counted();
+    const run = '11111111-2222-3333-4444-555555555555';
+    const dead = await enqueue('resultado', w.priv, null, 'entry:muerto');
+    await db.admin(`update private.badge_queue set attempts = 5, last_error = 'motor: TypeError: x', locked_at = now() - interval '1 hour' where id = $1`, [dead]);
+    const h = await enqueue('historial', w.priv, null, `league:${w.priv}`, { dry_run: true, run_id: run });
+    expect(await apply(h, [give({ ...toUser(w.u.luis), badge_key: 'bowling_games' })])).toMatchObject({ ok: true });
+    await enqueue('historial', null, w.u.ana, `user:${w.u.ana}`, { dry_run: true, run_id: run });
+    await enqueue('aviso', null, w.u.luis, 'push');
+    await fails(db.rpc(w.u.org, 'admin_badges_engine', {}), DENIED);
+
+    const e = await db.rpc<Json & { queue: Json; byKind: Json[]; dead: Json[]; backfill: Json[]; runs: Json[]; dryRun: Json; periods: Json[] }>(w.u.dios, 'admin_badges_engine', {});
+    expect(e.queue).toMatchObject({ dead: 1, notices: 1 });
+    expect(Number(e.queue.pending)).toBeGreaterThanOrEqual(2);
+    expect(e.byKind).toEqual(expect.arrayContaining([{ kind: 'resultado', pending: expect.any(Number), dead: 1 }]));
+    expect(e.dead).toEqual([expect.objectContaining({ id: dead, kind: 'resultado', leagueId: w.priv, leagueName: expect.any(String), ref: 'entry:muerto', attempts: 5, lastError: 'motor: TypeError: x' })]);
+    expect(e.backfill).toEqual([{ runId: run, dryRun: true, pending: 1, dead: 0 }]);
+    expect(e.runs).toEqual([expect.objectContaining({ runId: run, badges: 1, holders: 1 })]);
+    expect(e.dryRun).toEqual({ runId: run, rows: [{ key: 'bowling_games', sport: 'bowling', level: 1, holders: 1, base: 1, pct: 100 }] });
+    expect(e.periods).toEqual([expect.objectContaining({ kind: 'historial', scope: w.priv, periodKey: `league:${w.priv}` })]);
+    // Otra corrida por su id (sin filas: vacía).
+    expect((await db.rpc<{ dryRun: Json }>(w.u.dios, 'admin_badges_engine', { p_run: '99999999-2222-3333-4444-555555555555' })).dryRun).toEqual({
+      runId: '99999999-2222-3333-4444-555555555555',
+      rows: [],
+    });
+  });
+
+  it('admin_badge_jobs: reintentar (vuelve a la cola, o se queda el que ya entró igual) o borrar lo que ya no se toma, con auditoría', async () => {
+    const a = await enqueue('resultado', w.priv, null, 'entry:a');
+    const b = await enqueue('resultado', w.priv, null, 'entry:b');
+    const live = await enqueue('resultado', w.priv, null, 'entry:vivo');
+    await db.admin(`update private.badge_queue set attempts = 5, last_error = 'x', locked_at = now() where id = any ($1)`, [[a, b]]);
+    // Mientras b estaba muerto entró otro igual (sin tomar).
+    const twin = await enqueue('resultado', w.priv, null, 'entry:b');
+    await fails(db.rpc(w.u.org, 'admin_badge_jobs', { p_ids: [a] }), DENIED);
+    await fails(db.rpc(w.u.dios, 'admin_badge_jobs', { p_ids: [a], p_action: 'otra' }), 'invalido');
+    // Solo los de 5+ intentos: el vivo no se toca.
+    expect(await db.rpc(w.u.dios, 'admin_badge_jobs', { p_ids: [a, b, live] })).toBe(2);
+    const q = await jobs(`ref like 'entry:%'`);
+    expect(q.map((j) => [j.id, j.attempts, j.locked, j.last_error])).toEqual([
+      [a, 0, false, null],
+      [live, 0, false, null],
+      [twin, 0, false, null],
+    ]);
+    await db.admin(`update private.badge_queue set attempts = 7 where id = $1`, [a]);
+    expect(await db.rpc(w.u.dios, 'admin_badge_jobs', { p_ids: [a], p_action: 'drop' })).toBe(1);
+    expect((await jobs(`ref like 'entry:%'`)).map((j) => j.id)).toEqual([live, twin]);
+    expect(await db.rpc(w.u.dios, 'admin_badge_jobs', { p_ids: [] })).toBe(0);
+    expect(await db.admin(`select detail ->> 'action' as action from public.admin_audit where action = 'badge_jobs' order by id`)).toEqual([
+      { action: 'retry' },
+      { action: 'drop' },
+    ]);
   });
 });
 
@@ -1019,8 +1298,19 @@ describe('la Edge Function (service_role) de punta a punta con un motor falso', 
     // Un trabajo que el motor no pudo evaluar.
     const j = await enqueue('resultado', w.priv, null, 'x', {}, new Date(Date.now() - 60_000).toISOString());
     await db.as(SERVICE, 'select public.badge_claim(10)');
+    await db.as(SERVICE, 'select public.badge_snapshot($1)', [j]);
     await db.as(SERVICE, `select public.badge_fail($1, 'evaluate: boom')`, [j]);
     expect((await jobs('id = $1', [j]))[0]).toMatchObject({ locked: false, attempts: 1, last_error: 'evaluate: boom' });
+    // La foto falló: el intento se cuenta en badge_fail (p_charge).
+    await db.admin(`update private.badge_queue set run_after = now() - interval '1 minute' where id = $1`, [j]);
+    await db.as(SERVICE, 'select public.badge_claim(10)');
+    await db.as(SERVICE, `select public.badge_fail($1, 'foto: HTTP 500', true)`, [j]);
+    expect((await jobs('id = $1', [j]))[0]).toMatchObject({ locked: false, attempts: 2, last_error: 'foto: HTTP 500' });
+    // Tomado y sin alcanzar a correr: badge_release, sin gastar.
+    await db.admin(`update private.badge_queue set run_after = now() - interval '1 minute' where id = $1`, [j]);
+    await db.as(SERVICE, 'select public.badge_claim(10)');
+    await db.as(SERVICE, 'select public.badge_release($1)', [j]);
+    expect((await jobs('id = $1', [j]))[0]).toMatchObject({ locked: false, attempts: 2 });
   });
 });
 

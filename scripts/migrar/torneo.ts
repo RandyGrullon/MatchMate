@@ -1,7 +1,9 @@
 /**
  * Carga un torneo histórico (JSON sacado del Excel) dentro de una liga de MatchMate, con las RPC de verdad
  * (como un admin de la liga desde la app). Es el scripts/importar-torneo.mjs de BowlingX pasado a Supabase.
- * Los juegos quedan verificados como 'importado' (resultado auditado, sin foto).
+ * Los juegos quedan anotados sin foto ('sin-foto'): cuentan en la tabla y el promedio como siempre. 'importado' (juego
+ * validado, B2) solo lo escribe el importador de BowlingX con la clave secreta; desde una sesión de admin la base no lo
+ * acepta (update_entry, …0810): un admin no puede validar juegos que él mismo escribe.
  *
  * El archivo:
  *   {
@@ -170,7 +172,7 @@ export async function importTournament(
         id: entryOf.get(id),
         patch: {
           scores,
-          photos: scores.map((s) => (s == null ? null : 'importado')),
+          photos: scores.map((s) => (s == null ? null : 'sin-foto')),
           handicap_override: p.handicap === formula ? null : p.handicap,
         },
       };

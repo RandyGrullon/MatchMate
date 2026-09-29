@@ -6,12 +6,14 @@
 --   cambios en resultados ──trigger──▶ private.badge_queue ◀── private.badges_daily (00:30 de Santo Domingo)
 --   pg_cron (…0890) → private.cron_badges() → Edge Function `insignias` (pg_net, private.kick_badges):
 --     badge_claim → por trabajo: badge_snapshot → evaluate(job, snapshot) (motor puro, src/badges) → badge_apply
---     (o badge_fail si el motor falló) → badge_finish (avisos y, si queda cola, se vuelve a llamar).
+--     (o badge_fail si el motor falló; badge_release si no alcanzó a correr) → badge_finish (avisos y, si queda
+--     cola, se vuelve a llamar).
 --   El trabajo 'aviso' no pasa por el motor: lo resuelve private.badge_send_notices (push agrupado).
 --
 -- 1. Cola: private.badge_queue (un trabajo por kind, liga, cuenta y ref mientras no se tome; lo repetido se junta),
---    private.badge_runs (un trabajo de periodo corre una vez) y las corridas en seco del historial
---    (private.badge_dry_holders → private.badge_dry_runs).
+--    private.badge_runs (un trabajo de periodo corre una vez: ni se vuelve a encolar ni se aplica dos veces), las
+--    corridas en seco del historial (private.badge_dry_holders → private.badge_dry_runs) y los jugadores que un
+--    dueño o admin se vinculó a sí mismo (private.badge_self_links: de ellos solo cuenta lo verificado, §1.6).
 -- 2. Triggers que encolan (nunca frenan la escritura: si algo falla, solo avisan): entries, matches (y su borrado),
 --    match_players, golf_cards, golf_rounds, swim_meets, swim_entries (borrado), ladder_challenges, players
 --    (vínculos) y events (cierre del mes de cajas, con la foto del mes antes de podarla).
@@ -27,8 +29,13 @@
 -- 6. private.badges_daily: firmes a los 7 días, podios de boliche (+3 días), noches cerradas, foto de la escalera
 --    (día 1), meses (día 3), años (7 de enero), cuentas con algo nuevo de hace 48 h, rareza y limpieza.
 -- 7. RPC: badge_notices (la app: insignias sin ver y hazañas por confirmar) y badges_backfill (superadmin); para la
---    Edge Function, solo service_role: badge_claim, badge_snapshot, badge_apply, badge_fail y badge_finish.
+--    Edge Function, solo service_role: badge_claim, badge_snapshot, badge_apply, badge_fail, badge_release y
+--    badge_finish.
 -- 8. private.badge_signal (de …0800) ahora encola: 'merge' → 'vinculo', 'review' → el aviso del jugador.
+-- 9. Tiempo real (private.emit_badges): 'badges' por user:<cuenta> cuando cambia algo de sus insignias (el aviso de
+--    desbloqueo sale en segundos) y por league:<liga> cuando cambia algo que se ve en la liga.
+-- 10. public.update_entry (misma firma): una marca nueva que valida un juego ('importado' o una foto) tiene que ser
+--    una foto de la liga; 'importado' solo lo escribe el importador.
 
 -- =====================================================================
 -- Tablas (solo servidor)
@@ -36,7 +43,8 @@
 
 -- Trabajos del motor. ref dice qué tocó ('entry:<id>', 'match:<id>', '2026-10'…; ver el README) y payload lo que
 -- después no se puede leer (jugadores y cuentas de un borrado, la foto del mes de cajas o de la escalera).
--- attempts sube al tomarlo (badge_claim): un trabajo que tumba la función cinco veces se queda quieto.
+-- attempts sube al probarlo (public.badge_snapshot, o badge_fail si la foto falló), no al tomarlo: un trabajo que
+-- tumba la función cinco veces se queda quieto, y lo que se tomó y no alcanzó a correr no pierde intentos.
 create table private.badge_queue (
   id bigint generated always as identity primary key,
   kind text not null check (kind in ('resultado', 'revisar', 'evento', 'cajas', 'escalera', 'mes', 'anio',
@@ -90,6 +98,15 @@ create table private.badge_dry_runs (
   primary key (run_id, badge_key, sport, level)
 );
 
+-- Jugadores que un dueño o admin se vinculó a sí mismo (private.badge_self_link): para las insignias de cuenta, de
+-- ellos solo cuenta el historial verificado (§1.6). Se borra con el jugador; merge_badges la pasa al que queda.
+create table private.badge_self_links (
+  player_id uuid primary key references public.players (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+revoke all on private.badge_self_links from public, anon, authenticated;
+
 -- =====================================================================
 -- Ayudas
 -- =====================================================================
@@ -128,12 +145,21 @@ language sql stable set search_path = '' as $$
   end
 $$;
 
+-- Marca de un juego de boliche que cuenta (B1): el id de su foto del marcador, 'importado' (BowlingX) o 'sin-foto'.
+-- Lo mismo que markKind de src/badges/rules/bowling.ts: otra marca (la base acepta cualquier texto de 1 a 64) no
+-- cuenta ni para el motor ni para la actividad de aquí (ligas reales).
+create function private.badge_mark_ok(p_mark text) returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(p_mark in ('importado', 'sin-foto')
+                  or p_mark ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', false)
+$$;
+
 -- Juegos contados (puntaje y marca) de una participación, como texto para comparar antes y después.
 create function private.badge_counted(p_scores smallint[], p_photos text[]) returns text
 language sql immutable set search_path = '' as $$
   select coalesce(string_agg(g::text || '=' || p_scores[g]::text || ':' || p_photos[g], ',' order by g), '')
     from generate_subscripts(coalesce(p_scores, '{}'::smallint[]), 1) g
-   where p_scores[g] is not null and p_photos[g] is not null
+   where p_scores[g] is not null and private.badge_mark_ok(p_photos[g])
 $$;
 
 -- Jugadores de un partido: su alineación y la plantilla de los equipos o parejas de sus lados.
@@ -188,6 +214,76 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 -- =====================================================================
+-- Marcas que verifican un juego (B2): nadie de la app las inventa
+-- =====================================================================
+
+-- Igual que en 20260926000500_rpc.sql, y además revisa las marcas de p_patch.photos (§1.7.5: la foto o 'importado'
+-- validan el juego, B2, y saltan juez y parte). 'importado' solo lo escribe el importador de BowlingX (service_role,
+-- directo a la tabla), y una foto es una fila de public.photos de esa liga (la suben save_photo_scores y los envíos).
+-- Por juego: la marca que ya tenía se puede dejar; una nueva tiene que ser null, 'sin-foto' o el id de una foto de la
+-- liga ('invalido' si no). Si cambia el puntaje de un juego importado o con foto y no llega otra foto, la marca vuelve
+-- a 'sin-foto' (o a borrador si la liga pide foto), como en save_game: ese puntaje ya no es el de la foto.
+create or replace function public.update_entry(p_entry uuid, p_patch jsonb) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  e public.entries;
+  v_admin boolean;
+  v_sport text;
+  v_require boolean;
+  v_scores smallint[];
+  v_photos text[];
+  v_mark text;
+  k text;
+begin
+  perform private.require_uid();
+  select * into e from public.entries x where x.id = p_entry for update;
+  if e.id is null then
+    perform private.fail('no_existe');
+  end if;
+  v_admin := private.is_admin(e.league_id);
+  if not v_admin and not private.is_scorer(e.league_id) then
+    perform private.deny();
+  end if;
+  if jsonb_typeof(p_patch) is distinct from 'object' then
+    perform private.fail('invalido');
+  end if;
+  for k in select jsonb_object_keys(p_patch) loop
+    if k <> all (array['team_id', 'average', 'handicap_override', 'scores', 'photos', 'frames']) then
+      perform private.fail('invalido');
+    end if;
+    if not v_admin and k <> all (array['scores', 'photos', 'frames']) then
+      perform private.deny();
+    end if;
+  end loop;
+  if p_patch ? 'frames' and jsonb_typeof(p_patch -> 'frames') not in ('object', 'null') then
+    perform private.fail('invalido');
+  end if;
+  select l.sport, l.require_photo into v_sport, v_require from public.leagues l where l.id = e.league_id;
+  v_scores := case when p_patch ? 'scores' then coalesce(private.series(p_patch -> 'scores', v_sport), '{}') else e.scores end;
+  v_photos := case when p_patch ? 'photos' then coalesce(private.marks(p_patch -> 'photos'), '{}') else e.photos end;
+  for g in 1 .. coalesce(cardinality(v_photos), 0) loop
+    v_mark := v_photos[g];
+    continue when v_mark is null or v_mark = 'sin-foto';
+    if v_mark is distinct from e.photos[g] then
+      if not private.raq_is_uuid(v_mark)
+         or not exists (select 1 from public.photos ph where ph.id = v_mark::uuid and ph.league_id = e.league_id) then
+        perform private.fail('invalido');
+      end if;
+    elsif v_scores[g] is distinct from e.scores[g] then
+      v_photos[g] := case when v_scores[g] is not null and not coalesce(v_require, false) then 'sin-foto' end;
+    end if;
+  end loop;
+  update public.entries x set
+    team_id = case when p_patch ? 'team_id' then nullif(p_patch ->> 'team_id', '')::uuid else x.team_id end,
+    average = case when p_patch ? 'average' then (p_patch ->> 'average')::double precision else x.average end,
+    handicap_override = case when p_patch ? 'handicap_override' then (p_patch ->> 'handicap_override')::smallint else x.handicap_override end,
+    scores = v_scores,
+    photos = v_photos,
+    frames = case when p_patch ? 'frames' then nullif(p_patch -> 'frames', 'null'::jsonb) else x.frames end
+  where x.id = p_entry;
+end $$;
+
+-- =====================================================================
 -- Cola
 -- =====================================================================
 
@@ -205,13 +301,34 @@ language sql immutable set search_path = '' as $$
               else '{}'::jsonb end
 $$;
 
+-- Trabajos de periodo (evento, noche, cajas, escalera, mes, año, temporada): corren una sola vez (§3.4: se dan
+-- después de su gracia, quedan firmes y una corrección posterior no los cambia). El historial no entra: se puede
+-- volver a correr.
+create function private.badge_period_kind(p_kind text) returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(p_kind in ('evento', 'noche', 'cajas', 'escalera', 'mes', 'anio', 'temporada'), false)
+$$;
+
+-- ¿Ese trabajo de periodo ya corrió? (private.badge_runs: kind, liga o 'u:<cuenta>', ref).
+create function private.badge_period_done(p_kind text, p_league uuid, p_user uuid, p_ref text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select private.badge_period_kind(p_kind)
+     and exists (select 1 from private.badge_runs r
+                  where r.kind = p_kind and r.scope = coalesce(p_league::text, 'u:' || p_user::text)
+                    and r.period_key = coalesce(p_ref, ''))
+$$;
+
 -- Encola sin duplicar: si ya hay uno igual sin tomar, se juntan los payloads y la hora queda en la más temprana
 -- ('evento': la más tardía, así corre después del último partido; 'aviso': la que tenía, salvo el del historial,
--- que espera al último trabajo del historial).
+-- que espera al último trabajo del historial). Un trabajo de periodo que ya corrió no se vuelve a encolar (corregir
+-- la final, reabrir la ronda o el encuentro, cerrar otra vez la temporada: lo que se dio no cambia, §3.4).
 create function private.badge_enqueue(p_kind text, p_league uuid, p_user uuid, p_ref text,
                                       p_payload jsonb default '{}', p_run_after timestamptz default now()) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+  if private.badge_period_done(p_kind, p_league, p_user, p_ref) then
+    return;
+  end if;
   insert into private.badge_queue as q (kind, league_id, user_id, ref, payload, run_after)
   values (p_kind, p_league, p_user, coalesce(p_ref, ''), coalesce(p_payload, '{}'::jsonb), coalesce(p_run_after, now()))
   on conflict (kind, coalesce(league_id, '00000000-0000-0000-0000-000000000000'::uuid),
@@ -477,6 +594,36 @@ end $$;
 create trigger players_badges after update of user_id on public.players
   for each row when (old.user_id is distinct from new.user_id) execute function private.badges_on_player_link();
 
+-- Un dueño o admin que se vincula él mismo con un jugador (su reclamo aprobado al instante, link_account_to_player
+-- con su propia cuenta, el reclamo automático de ensure_player): de ese jugador solo cuenta lo verificado para las
+-- insignias de cuenta (§1.6), en todos los trabajos (badge_snapshot lo marca en players[].verified_only). Quien hace
+-- el cambio es la sesión (auth.uid()). La marca se va si el jugador queda con otra cuenta o sin cuenta; si otro
+-- admin lo vincula con la misma cuenta, se queda (el historial sigue siendo el mismo). No se traga errores: sin la
+-- marca, el vínculo no se hace.
+create function private.badge_self_link() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_by uuid := auth.uid();
+begin
+  delete from private.badge_self_links s where s.player_id = new.id and s.user_id is distinct from new.user_id;
+  if new.user_id is not null and v_by = new.user_id and private.user_is_admin(new.league_id, new.user_id) then
+    insert into private.badge_self_links (player_id, user_id) values (new.id, new.user_id) on conflict (player_id) do nothing;
+  end if;
+  return null;
+end $$;
+create trigger players_badges_self_link after update of user_id on public.players
+  for each row when (old.user_id is distinct from new.user_id) execute function private.badge_self_link();
+
+-- ¿De este jugador (con esta cuenta) solo cuenta lo verificado? Se vinculó él mismo (arriba) o su reclamo lo aprobó
+-- la misma cuenta que reclamaba (player_claims.decided_by = user_id).
+create function private.badge_verified_only(p_player uuid, p_user uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select p_user is not null and (
+    exists (select 1 from private.badge_self_links s where s.player_id = p_player and s.user_id = p_user)
+    or exists (select 1 from public.player_claims c
+                where c.player_id = p_player and c.user_id = p_user and c.status = 'approved' and c.decided_by = c.user_id))
+$$;
+
 -- Liga por cajas: save_box_month cierra un mes (closed = true) y en la misma escritura poda los viejos. Se encola
 -- 'cajas' con el mes completo: el de antes (con sus cajas) más lo del cierre (closed, closedAt, moves).
 create function private.badges_on_box_month() returns trigger
@@ -552,7 +699,7 @@ language sql stable security definer set search_path = '' as $$
        and (p_from is null or ev.date >= p_from) and (p_to is null or ev.date <= p_to)
        and exists (
          select 1 from generate_subscripts(e.scores, 1) g
-          where e.scores[g] is not null and e.photos[g] is not null
+          where e.scores[g] is not null and private.badge_mark_ok(e.photos[g])
             and (e.photos[g] <> 'sin-foto'
                  or m.user_id is null or not (m.role in ('owner', 'admin') or m.is_scorer)
                  or exists (select 1 from public.submissions s
@@ -934,6 +1081,9 @@ language sql stable security definer set search_path = '' as $$
         join public.leagues l on l.id = r.league_id
        where r.closed_by = any (p_users) and r.status = 'cerrada' and r.closed_at is not null
          and (select count(*) from public.golf_cards c where c.event_id = r.event_id) >= 4
+         -- Sin jugadores propios en la ronda (quien jugó y la cerró no hizo servicio).
+         and not exists (select 1 from public.golf_cards c join public.players p on p.id = c.player_id
+                          where c.event_id = r.event_id and p.user_id = r.closed_by)
     ) z
    where (p_from is null or z.date >= p_from) and (p_to is null or z.date <= p_to)
 $$;
@@ -1023,10 +1173,7 @@ begin
     if j.user_id is not null then
       v_users := v_users || j.user_id;
       v_accounts := array[j.user_id];
-      -- Reclamo que aprobó la misma cuenta que reclamaba (owner o admin): para las de cuenta, solo lo verificado (§1.6).
-      v_payload := v_payload || jsonb_build_object('verified_only', exists (
-        select 1 from public.player_claims c
-         where c.player_id = any (v_seeds) and c.user_id = j.user_id and c.status = 'approved' and c.decided_by = c.user_id));
+      -- Si se vinculó él mismo (owner o admin), players[].verified_only lo dice (como en todos los trabajos, §1.6).
     end if;
 
   when 'evento' then
@@ -1141,16 +1288,38 @@ begin
     v_expand := false;
 
   when 'historial' then
-    -- La liga entera (o la ventana del payload) y la historia de sus cuentas; también lo de cuenta y comunidad.
-    v_leagues := array[j.league_id];
-    v_from := nullif(v_payload ->> 'from', '')::date;
-    v_to := nullif(v_payload ->> 'to', '')::date;
-    v_until := v_to;
-    v_seeds := v_seeds || array(select p.id from public.players p where p.league_id = j.league_id);
-    v_accounts := array(select distinct p.user_id from public.players p where p.league_id = j.league_id and p.user_id is not null);
-    v_users := v_users || v_accounts;
-    v_cheers := true;
-    v_service := true;
+    if j.league_id is null and j.user_id is not null then
+      -- El historial de una cuenta (badges_backfill encola uno por cuenta): lo de cuenta y comunidad como en 'cuenta'
+      -- (kilometraje, constancia, fijo del mes, tu año, liga en marcha…) en todos sus meses y años, más sus juegos de
+      -- boliche y tarjetas de golf (Tu mejor mes). Las carreras y lo de cada liga van en el historial de la liga:
+      -- targets vacío.
+      v_accounts := array[j.user_id];
+      v_users := v_users || j.user_id;
+      v_capped := array(select p.id from public.players p join public.leagues l on l.id = p.league_id where l.owner_id = j.user_id);
+      v_capped := v_capped || array(select distinct r.player_id from public.reactions r where r.user_id = j.user_id
+                                    union select distinct g.player_id from public.game_likes g where g.user_id = j.user_id);
+      v_rows := private.badge_merge_rows(
+        private.badge_family_rows('bowling', array(select p.id from public.players p join public.leagues l on l.id = p.league_id
+                                                    where p.user_id = j.user_id and l.sport = 'bowling'), null, null, null, null, null),
+        private.badge_family_rows('golf', array(select p.id from public.players p join public.leagues l on l.id = p.league_id
+                                                 where p.user_id = j.user_id and l.sport = 'golf'), null, null, null, null, null));
+      v_extra := jsonb_build_object('targets', '[]'::jsonb);
+      v_cheers := true;
+      v_service := true;
+      v_expand := false;
+    else
+      -- La liga entera (o la ventana del payload) y la historia de sus cuentas; lo de cuenta y comunidad solo de sus
+      -- jugadores sin cuenta (las cuentas tienen su propio historial).
+      v_leagues := array[j.league_id];
+      v_from := nullif(v_payload ->> 'from', '')::date;
+      v_to := nullif(v_payload ->> 'to', '')::date;
+      v_until := v_to;
+      v_seeds := v_seeds || array(select p.id from public.players p where p.league_id = j.league_id);
+      v_accounts := array(select distinct p.user_id from public.players p where p.league_id = j.league_id and p.user_id is not null);
+      v_users := v_users || v_accounts;
+      v_cheers := true;
+      v_service := true;
+    end if;
 
   else
     null;
@@ -1228,7 +1397,9 @@ begin
       || private.badge_uuids(v_rows -> 'events', 'league_id')
       || private.badge_uuids(v_activity, 'league_id')
       || private.badge_uuids(v_extra -> 'service', 'league_id')
-      || array(select l.id from public.leagues l where l.owner_id = any (case when j.kind = 'cuenta' then v_accounts else '{}'::uuid[] end))) x
+      || array(select l.id from public.leagues l
+                where l.owner_id = any (case when j.kind = 'cuenta' or (j.kind = 'historial' and j.league_id is null) then v_accounts
+                                             else '{}'::uuid[] end))) x
     where x is not null and exists (select 1 from public.leagues l where l.id = x));
 
   v_months := private.badge_league_months(v_all_leagues, case when j.kind in ('mes', 'anio', 'temporada') then v_to end);
@@ -1278,7 +1449,9 @@ begin
           from public.profiles p where p.id = any (v_all_users)), '[]'::jsonb),
       'players', coalesce((
         select jsonb_agg(jsonb_build_object('id', p.id, 'league_id', p.league_id, 'user_id', p.user_id, 'name', p.name,
-                                            'is_minor', p.is_minor, 'created_at', p.created_at)
+                                            'is_minor', p.is_minor, 'created_at', p.created_at,
+                                            -- Se vinculó él mismo (§1.6): en todo trabajo, de él solo cuenta lo verificado.
+                                            'verified_only', private.badge_verified_only(p.id, p.user_id))
                          order by p.id)
           from public.players p where p.id = any (v_players)), '[]'::jsonb),
       'league_months', v_months,
@@ -1296,7 +1469,9 @@ end $$;
 -- =====================================================================
 
 -- Toma hasta p_limit (1–50) trabajos vencidos (no 'aviso': ese lo resuelve SQL), sin tomar o tomados hace más de
--- 10 minutos (la función se cayó), con menos de 5 intentos. Sube attempts. Devuelve [BadgeJob].
+-- 10 minutos (la función se cayó), con menos de 5 intentos. No sube attempts: un intento se cuenta cuando de verdad
+-- se prueba (public.badge_snapshot, o badge_fail con p_charge si la foto falló), así lo que se tomó y no alcanzó a
+-- correr (badge_release, o la función que se cayó con la tanda tomada) no pierde intentos. Devuelve [BadgeJob].
 create function private.badge_claim(p_limit integer default 25, p_now timestamptz default now()) returns jsonb
 language sql security definer set search_path = '' as $$
   with picked as (
@@ -1307,7 +1482,7 @@ language sql security definer set search_path = '' as $$
      limit least(greatest(coalesce(p_limit, 25), 1), 50)
        for update skip locked
   ), taken as (
-    update private.badge_queue q set locked_at = p_now, attempts = q.attempts + 1
+    update private.badge_queue q set locked_at = p_now
       from picked p where q.id = p.id
     returning q.*
   )
@@ -1320,7 +1495,42 @@ $$;
 
 -- El motor (o badge_apply) falló con este trabajo: vuelve a la cola en 2^intentos minutos con el error. Si mientras
 -- tanto se encoló uno igual, se juntan. A los 5 intentos ya no se toma (queda para la consola del superadmin).
-create function private.badge_fail(p_job bigint, p_error text, p_now timestamptz default now()) returns void
+-- p_charge: el intento todavía no se contó (falló la foto, que es la que lo cuenta) y se cuenta aquí.
+create function private.badge_fail(p_job bigint, p_error text, p_now timestamptz default now(), p_charge boolean default false)
+returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  j private.badge_queue;
+  v_dup bigint;
+begin
+  select * into j from private.badge_queue q where q.id = p_job for update;
+  if not found then
+    return;
+  end if;
+  if coalesce(p_charge, false) then
+    j.attempts := j.attempts + 1;
+  end if;
+  select q.id into v_dup from private.badge_queue q
+   where q.id <> j.id and q.locked_at is null and q.kind = j.kind and q.ref = j.ref
+     and q.league_id is not distinct from j.league_id and q.user_id is not distinct from j.user_id
+     for update;
+  if v_dup is not null then
+    update private.badge_queue q
+       set payload = private.badge_merge_payload(j.payload, q.payload), attempts = greatest(q.attempts, j.attempts),
+           last_error = left(coalesce(p_error, ''), 1000)
+     where q.id = v_dup;
+    delete from private.badge_queue q where q.id = j.id;
+    return;
+  end if;
+  update private.badge_queue q
+     set locked_at = null, attempts = j.attempts, last_error = left(coalesce(p_error, ''), 1000),
+         run_after = p_now + make_interval(mins => power(2, least(greatest(j.attempts, 1), 10))::integer)
+   where q.id = j.id;
+end $$;
+
+-- Se tomó y no alcanzó a correr (la corrida se quedó sin tiempo o sin CPU): vuelve a la cola ya, sin espera, sin
+-- error y sin gastar un intento. Si mientras tanto se encoló uno igual, se juntan.
+create function private.badge_release(p_job bigint) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
   j private.badge_queue;
@@ -1337,15 +1547,12 @@ begin
   if v_dup is not null then
     update private.badge_queue q
        set payload = private.badge_merge_payload(j.payload, q.payload), attempts = greatest(q.attempts, j.attempts),
-           last_error = left(coalesce(p_error, ''), 1000)
+           run_after = least(q.run_after, j.run_after)
      where q.id = v_dup;
     delete from private.badge_queue q where q.id = j.id;
     return;
   end if;
-  update private.badge_queue q
-     set locked_at = null, last_error = left(coalesce(p_error, ''), 1000),
-         run_after = p_now + make_interval(mins => power(2, least(greatest(j.attempts, 1), 10))::integer)
-   where q.id = j.id;
+  update private.badge_queue q set locked_at = null where q.id = j.id;
 end $$;
 
 -- Aplica las decisiones del motor para un trabajo (BadgeDecision[] de src/badges/types.ts, planas) en una sola
@@ -1354,15 +1561,19 @@ end $$;
 --
 -- - award {badge_key, sport, level, period_key, player_id | user_id, league_id, status 'provisional'|'firme', refs,
 --   context, hidden?}: nueva (provisional: firme en 7 días); si existe revocada por evidencia, se reactiva (con
---   aviso otra vez); una provisional se actualiza (refs y context) o sube a firme; una firme o en revisión no cambia;
---   una retirada por aval o por fraude no vuelve.
+--   aviso otra vez); una provisional se actualiza (refs y context) o sube a firme; una en revisión que ya no pide
+--   aval sale de revisión (provisional o firme, con aviso); una firme no cambia; una retirada por aval o por fraude no
+--   vuelve.
 -- - review {…, refs, context, reviewers}: nace en_revision (solo la ve el jugador) y avisa a los revisores elegibles
---   (private.badge_can_review, no los que diga el motor), salvo en ligas con menores.
+--   (private.badge_can_review, no los que diga el motor), salvo en ligas con menores. Una provisional que ahora pide
+--   aval pasa a en_revision (sin firm_at, fuera de las destacadas) y también avisa a los revisores.
 -- - revoke {…, reason 'evidencia'}: retira una provisional o en revisión (las firmes no); sale de las destacadas.
 -- - progress {badge_key, sport, holder, value, target, next_level | null}: next_level null borra la fila.
 -- - adopt {badge_key, sport, level, period_key, player_id, league_id, user_id}: la copia de respaldo del jugador pasa a
---   su cuenta (§1.6); si la cuenta ya la tenía, queda una (la mejor, con el awarded_at más viejo) sin aviso nuevo.
--- Un jugador que ya no existe (o de otra liga) o una cuenta que ya no existe: la decisión se salta (skipped).
+--   su cuenta (§1.6); si la cuenta ya la tenía, queda una (la mejor, con el awarded_at más viejo, oculta si alguna lo
+--   estaba) sin aviso nuevo.
+-- Un jugador que ya no existe (o de otra liga) o una cuenta que ya no existe: la decisión se salta (skipped). Un
+-- trabajo de periodo que ya corrió (private.badge_runs) no aplica nada: {ok, done: true}.
 -- context: se le pone v = 1. Para el push, el motor pone context.name (nombre ya resuelto, «Constancia») y
 -- context.level_name («oro»); sin eso el aviso dice «Insignia». Trabajo 'historial': todas con context.historial =
 -- true y notified_at (un solo push por cuenta al final); en seco (payload.dry_run) no escribe insignias: anota en
@@ -1437,6 +1648,13 @@ begin
     if v_run is null then
       raise exception 'invalido: run_id' using errcode = 'P0001';
     end if;
+  end if;
+  -- Un periodo que ya corrió (otro trabajo igual entró mientras este corría): no se da nada otra vez (§3.4).
+  if private.badge_period_done(j.kind, j.league_id, j.user_id, j.ref) then
+    delete from private.badge_queue q where q.id = j.id;
+    return jsonb_build_object('ok', true, 'awarded', 0, 'reactivated', 0, 'upgraded', 0, 'updated', 0, 'revoked', 0,
+                              'reviews', 0, 'adopted', 0, 'progress', 0, 'skipped', jsonb_array_length(p_decisions),
+                              'notices', 0, 'done', true);
   end if;
 
   for d in select x from jsonb_array_elements(p_decisions) x loop
@@ -1526,6 +1744,8 @@ begin
        for update;
       if b.id is not null then
         -- Queda la de la cuenta con lo mejor de las dos; la del jugador se borra (tombstone) y sale de las destacadas.
+        -- Oculta si alguna lo estaba: la copia de respaldo nace visible sin que nadie lo eligiera, y no destapa lo que
+        -- la cuenta ocultó (§1.4).
         delete from public.badge_awards x where x.id = a.id;
         update public.badge_awards x
            set status = case when array_position(v_rank, a.status) > array_position(v_rank, b.status) then a.status else b.status end,
@@ -1536,7 +1756,7 @@ begin
                awarded_at = least(a.awarded_at, b.awarded_at),
                seen_at = least(a.seen_at, b.seen_at),
                notified_at = least(a.notified_at, b.notified_at),
-               hidden = a.hidden and b.hidden
+               hidden = a.hidden or b.hidden
          where x.id = b.id;
         update public.profiles p set featured_badges = array_remove(p.featured_badges, a.id)
          where p.id = v_user and a.id = any (p.featured_badges);
@@ -1619,6 +1839,25 @@ begin
     elsif a.status = 'provisional' and v_status = 'firme' then
       update public.badge_awards x set status = 'firme', firm_at = p_now, refs = v_refs, context = v_ctx where x.id = a.id;
       n_upgraded := n_upgraded + 1;
+    elsif a.status = 'provisional' and v_status = 'en_revision' then
+      -- Ahora pide aval (el águila corregida que resultó albatros): vuelve a revisión, sin fecha de firme, sale de las
+      -- destacadas y se avisa a los revisores.
+      update public.badge_awards x set status = 'en_revision', firm_at = null, refs = v_refs, context = v_ctx where x.id = a.id;
+      update public.profiles p set featured_badges = array_remove(p.featured_badges, a.id)
+       where a.id = any (p.featured_badges);
+      n_reviews := n_reviews + 1;
+      v_reviews := v_reviews || a.id;
+    elsif a.status = 'en_revision' and v_status in ('provisional', 'firme')
+          and (a.context ->> 'alt') is distinct from (v_ctx ->> 'alt') then
+      -- Ya no pide aval (el albatros corregido a águila: cambió la cara, context.alt): sale de revisión con su
+      -- evidencia y se avisa como nueva. Con la misma cara, un «award» no se salta el aval.
+      update public.badge_awards x
+         set status = v_status, awarded_at = p_now,
+             firm_at = case v_status when 'provisional' then p_now + interval '7 days' else p_now end,
+             refs = v_refs, context = v_ctx, seen_at = null, notified_at = case when v_hist then p_now end
+       where x.id = a.id;
+      n_awarded := n_awarded + 1;
+      v_new := v_new || a.id;
     elsif a.status = v_status and a.status in ('provisional', 'en_revision')
           and (a.refs is distinct from v_refs or a.context is distinct from v_ctx) then
       -- Se sigue cumpliendo con otra evidencia: se actualiza y se queda.
@@ -1711,7 +1950,7 @@ begin
         values (r.user_id, 'Hay una hazaña por confirmar',
                 left('En ' || r.league_name || ': ' || private.badge_push_label(r.context, r.level, 'paren') || ' de ' || r.player_name
                      || '. Confírmala si la viste.', 1000),
-                '/l/' || r.league_id::text || '/admin?tab=insignias', 'insignia-aval:' || r.id::text, 259200, 'normal');
+                '/l/' || r.league_id::text || '/admin?tab=confirmar', 'insignia-aval:' || r.id::text, 259200, 'normal');
         n := n + 1;
       end if;
     exception when others then
@@ -1885,7 +2124,35 @@ begin
   return v;
 end $$;
 
--- Encola un trabajo de periodo si no corrió ni está en la cola.
+-- Jugadores y cuentas que toca un trabajo 'resultado' o 'revisar': los de su payload y los de su ref (la
+-- participación, el partido, la tarjeta, la ronda, el encuentro, el evento o el jugador), con sus cuentas.
+create function private.badge_job_people(p_ref text, p_payload jsonb) returns uuid[]
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_kind text := split_part(coalesce(p_ref, ''), ':', 1);
+  v_id uuid;
+  v_players uuid[] := private.badge_uuids(p_payload -> 'players');
+begin
+  if private.raq_is_uuid(split_part(coalesce(p_ref, ''), ':', 2)) then
+    v_id := split_part(p_ref, ':', 2)::uuid;
+    v_players := v_players || case v_kind
+      when 'entry' then array(select x.player_id from public.entries x where x.id = v_id)
+      when 'match' then private.badge_match_players(v_id)
+      when 'card' then array(select c.player_id from public.golf_cards c where c.id = v_id)
+      when 'round' then array(select c.player_id from public.golf_cards c where c.event_id = v_id)
+      when 'meet' then array(select se.player_id from public.swim_entries se where se.event_id = v_id)
+      when 'event' then private.badge_event_players(array[v_id])
+      when 'player' then array[v_id]
+      else '{}'::uuid[] end;
+  end if;
+  return array(select distinct x from unnest(v_players || private.badge_uuids(p_payload -> 'users')
+                 || array(select p.user_id from public.players p where p.id = any (v_players) and p.user_id is not null)) x
+               where x is not null);
+end $$;
+
+-- Encola un trabajo de periodo si no corrió ni está vivo en la cola. Uno que quedó muerto (5 intentos) tiene otra
+-- oportunidad: vuelve con los intentos en 0 (así un mes que no alcanzó a correr no se pierde; se recupera del día 3
+-- al 10).
 create function private.badge_enqueue_period(p_kind text, p_league uuid, p_user uuid, p_ref text,
                                              p_payload jsonb default '{}', p_run_after timestamptz default now()) returns boolean
 language plpgsql security definer set search_path = '' as $$
@@ -1894,10 +2161,16 @@ begin
               where r.kind = p_kind and r.scope = coalesce(p_league::text, 'u:' || p_user::text) and r.period_key = p_ref)
      or exists (select 1 from private.badge_queue q
                  where q.kind = p_kind and q.ref = p_ref and q.league_id is not distinct from p_league
-                   and q.user_id is not distinct from p_user) then
+                   and q.user_id is not distinct from p_user and q.attempts < 5) then
     return false;
   end if;
-  perform private.badge_enqueue(p_kind, p_league, p_user, p_ref, p_payload, p_run_after);
+  update private.badge_queue q
+     set attempts = 0, payload = private.badge_merge_payload(q.payload, p_payload), run_after = coalesce(p_run_after, now())
+   where q.kind = p_kind and q.ref = p_ref and q.league_id is not distinct from p_league
+     and q.user_id is not distinct from p_user and q.attempts >= 5 and q.locked_at is null;
+  if not found then
+    perform private.badge_enqueue(p_kind, p_league, p_user, p_ref, p_payload, p_run_after);
+  end if;
   return true;
 end $$;
 
@@ -1926,9 +2199,18 @@ declare
   v_accounts integer := 0;
   v_stats integer;
   v_cleanup jsonb;
+  v_held uuid[];
   r record;
 begin
-  update public.badge_awards x set status = 'firme' where x.status = 'provisional' and x.firm_at <= p_now;
+  -- Provisionales con 7 días → firmes, salvo las de quien tiene una corrección sin aplicar en la cola ('resultado' o
+  -- 'revisar' vencido, tomado, con espera o muerto; no los que esperan sus 48 h): siguen provisionales hasta que se
+  -- aplique, así la corrección todavía las puede retirar.
+  v_held := array(select distinct u from private.badge_queue q
+                   cross join lateral unnest(private.badge_job_people(q.ref, q.payload)) u
+                   where q.kind in ('resultado', 'revisar')
+                     and (q.run_after <= p_now or q.attempts > 0 or q.last_error is not null or q.locked_at is not null));
+  update public.badge_awards x set status = 'firme'
+   where x.status = 'provisional' and x.firm_at <= p_now and not (x.holder = any (v_held));
   get diagnostics v_firm = row_count;
 
   -- Podios de boliche (event_podium, bowling_category_win, bowling_team_win): torneos de hace 3 a 30 días.
@@ -2111,19 +2393,27 @@ language sql security definer set search_path = '' as $$
   select private.badge_claim(p_limit, now())
 $$;
 
+-- Pedir la foto es probar el trabajo: aquí se cuenta el intento (badge_claim no lo cuenta).
 create function public.badge_snapshot(p_job bigint) returns jsonb
-language sql stable security definer set search_path = '' as $$
-  select private.badge_snapshot(p_job, now())
-$$;
+language plpgsql security definer set search_path = '' as $$
+begin
+  update private.badge_queue q set attempts = q.attempts + 1 where q.id = p_job;
+  return private.badge_snapshot(p_job, now());
+end $$;
 
 create function public.badge_apply(p_job bigint, p_decisions jsonb) returns jsonb
 language sql security definer set search_path = '' as $$
   select private.badge_apply(p_job, p_decisions, now())
 $$;
 
-create function public.badge_fail(p_job bigint, p_error text) returns void
+create function public.badge_fail(p_job bigint, p_error text, p_charge boolean default false) returns void
 language sql security definer set search_path = '' as $$
-  select private.badge_fail(p_job, p_error, now())
+  select private.badge_fail(p_job, p_error, now(), p_charge)
+$$;
+
+create function public.badge_release(p_job bigint) returns void
+language sql security definer set search_path = '' as $$
+  select private.badge_release(p_job)
 $$;
 
 -- Al terminar una corrida: manda los avisos y, si queda cola vencida, se vuelve a llamar. {remaining, chained, notices}.
@@ -2202,50 +2492,205 @@ begin
            limit v_limit) z), '[]'::jsonb));
 end $$;
 
--- Superadmin: primera corrida del historial (§3.5). Encola un trabajo 'historial' por liga (todas, o p_league);
+-- Superadmin: primera corrida del historial (§3.5). Encola un trabajo 'historial' por liga (todas, o p_league) y
+-- uno por cada cuenta con jugadores en esas ligas (lo de cuenta y comunidad: kilometraje, constancia, tu año…);
 -- en seco (por defecto) no escribe insignias: badge_dry_runs queda con cuántas cuentas tendrían cada key, deporte y
--- nivel (run_id) sobre la base de activos. Auditoría 'badges_backfill'. 'no_existe'. {runId, dryRun, jobs}.
+-- nivel (run_id) sobre la base de activos. Auditoría 'badges_backfill'. 'no_existe'. {runId, dryRun, jobs,
+-- leagues, accounts}.
 create function public.badges_backfill(p_league uuid default null, p_dry_run boolean default true) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := private.require_super();
   v_run uuid := gen_random_uuid();
   v_dry boolean := coalesce(p_dry_run, true);
-  n integer := 0;
+  v_payload jsonb := jsonb_build_object('dry_run', v_dry, 'run_id', v_run);
+  n_leagues integer := 0;
+  n_accounts integer := 0;
   r record;
 begin
   if p_league is not null and not exists (select 1 from public.leagues l where l.id = p_league) then
     perform private.fail('no_existe');
   end if;
+  -- En seco, otra ref ('…:seco'): una corrida en seco nunca se junta con una de verdad que sigue en la cola (el
+  -- payload nuevo mandaría y la de verdad no escribiría nada).
   for r in select l.id from public.leagues l where p_league is null or l.id = p_league order by l.created_at, l.id loop
-    perform private.badge_enqueue('historial', r.id, null, 'league:' || r.id::text,
-                                  jsonb_build_object('dry_run', v_dry, 'run_id', v_run));
-    n := n + 1;
+    perform private.badge_enqueue('historial', r.id, null, 'league:' || r.id::text || case when v_dry then ':seco' else '' end, v_payload);
+    n_leagues := n_leagues + 1;
+  end loop;
+  for r in select distinct p.user_id as id from public.players p join public.profiles pr on pr.id = p.user_id
+            where p.user_id is not null and (p_league is null or p.league_id = p_league) order by 1 loop
+    perform private.badge_enqueue('historial', null, r.id, 'user:' || r.id::text || case when v_dry then ':seco' else '' end, v_payload);
+    n_accounts := n_accounts + 1;
   end loop;
   perform private.audit('badges_backfill', case when p_league is null then 'app' else 'league' end,
-                        coalesce(p_league::text, 'all'), jsonb_build_object('runId', v_run, 'dryRun', v_dry, 'jobs', n, 'by', v_uid));
+                        coalesce(p_league::text, 'all'),
+                        jsonb_build_object('runId', v_run, 'dryRun', v_dry, 'jobs', n_leagues + n_accounts, 'by', v_uid));
   perform private.kick_badges();
-  return jsonb_build_object('runId', v_run, 'dryRun', v_dry, 'jobs', n);
+  return jsonb_build_object('runId', v_run, 'dryRun', v_dry, 'jobs', n_leagues + n_accounts, 'leagues', n_leagues,
+                            'accounts', n_accounts);
+end $$;
+
+-- Superadmin: cómo va el motor (consola › Insignias › Motor, §6.6).
+-- {queue: {pending, due, locked, dead, notices, oldestDue}, byKind: [{kind, pending, dead}],
+--  dead: [{id, kind, leagueId, leagueName, userId, userName, ref, attempts, lastError, runAfter, createdAt}] (5+
+--  intentos: el motor ya no los toma; los 50 más viejos),
+--  backfill: [{runId, dryRun, pending, dead}] (corridas del historial que siguen en la cola),
+--  runs: [{runId, at, badges, holders}] (las 10 últimas corridas en seco),
+--  dryRun: {runId, rows: [{key, sport, level, holders, base, pct}]} | null (la de p_run o la última en seco; pct con
+--  un decimal, null sin base: la app la compara con la rareza objetivo del catálogo),
+--  periods: [{kind, scope, periodKey, doneAt, awarded}] (los 20 últimos periodos que corrieron)}.
+create function public.admin_badges_engine(p_run uuid default null) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_run uuid;
+begin
+  perform private.require_super();
+  v_run := coalesce(p_run, (select r.run_id from private.badge_dry_runs r order by r.created_at desc, r.run_id limit 1));
+  return jsonb_build_object(
+    'queue', (select jsonb_build_object(
+                'pending', count(*) filter (where q.kind <> 'aviso' and q.attempts < 5),
+                'due', count(*) filter (where q.kind <> 'aviso' and q.attempts < 5 and q.run_after <= now()),
+                'locked', count(*) filter (where q.locked_at >= now() - interval '10 minutes' and q.attempts < 5),
+                'dead', count(*) filter (where q.attempts >= 5),
+                'notices', count(*) filter (where q.kind = 'aviso'),
+                'oldestDue', private.iso(min(q.run_after) filter (where q.kind <> 'aviso' and q.attempts < 5 and q.run_after <= now())))
+                from private.badge_queue q),
+    'byKind', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', z.kind, 'pending', z.pending, 'dead', z.dead) order by z.kind)
+        from (select q.kind, count(*) filter (where q.attempts < 5) as pending, count(*) filter (where q.attempts >= 5) as dead
+                from private.badge_queue q where q.kind <> 'aviso' group by q.kind) z), '[]'::jsonb),
+    'dead', coalesce((
+      select jsonb_agg(z.item order by z.created_at, z.id)
+        from (select q.id, q.created_at, jsonb_build_object(
+                       'id', q.id, 'kind', q.kind, 'leagueId', q.league_id, 'leagueName', l.name, 'userId', q.user_id,
+                       'userName', pr.name, 'ref', q.ref, 'attempts', q.attempts, 'lastError', q.last_error,
+                       'runAfter', private.iso(q.run_after), 'createdAt', private.iso(q.created_at)) as item
+                from private.badge_queue q
+                left join public.leagues l on l.id = q.league_id
+                left join public.profiles pr on pr.id = q.user_id
+               where q.attempts >= 5
+               order by q.created_at, q.id
+               limit 50) z), '[]'::jsonb),
+    'backfill', coalesce((
+      select jsonb_agg(jsonb_build_object('runId', z.run_id, 'dryRun', z.dry, 'pending', z.pending, 'dead', z.dead) order by z.first_at desc)
+        from (select q.payload ->> 'run_id' as run_id, bool_or(coalesce((q.payload ->> 'dry_run')::boolean, false)) as dry,
+                     count(*) filter (where q.attempts < 5) as pending, count(*) filter (where q.attempts >= 5) as dead,
+                     min(q.created_at) as first_at
+                from private.badge_queue q
+               where q.kind = 'historial' and q.payload ? 'run_id'
+               group by 1) z), '[]'::jsonb),
+    'runs', coalesce((
+      select jsonb_agg(jsonb_build_object('runId', z.run_id, 'at', private.iso(z.at), 'badges', z.badges, 'holders', z.holders) order by z.at desc)
+        from (select r.run_id, min(r.created_at) as at, count(*) as badges, sum(r.holders) as holders
+                from private.badge_dry_runs r group by r.run_id order by min(r.created_at) desc limit 10) z), '[]'::jsonb),
+    'dryRun', case when v_run is not null then jsonb_build_object('runId', v_run, 'rows', coalesce((
+      select jsonb_agg(jsonb_build_object('key', r.badge_key, 'sport', r.sport, 'level', r.level, 'holders', r.holders, 'base', r.base,
+                                          'pct', case when r.base > 0 then round(100.0 * r.holders / r.base, 1)::double precision end)
+                       order by r.badge_key, r.sport, r.level)
+        from private.badge_dry_runs r where r.run_id = v_run), '[]'::jsonb)) end,
+    'periods', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', z.kind, 'scope', z.scope, 'periodKey', z.period_key, 'doneAt', private.iso(z.done_at),
+                                          'awarded', z.awarded) order by z.done_at desc)
+        from (select * from private.badge_runs r order by r.done_at desc limit 20) z), '[]'::jsonb));
+end $$;
+
+-- Superadmin: trabajos que el motor ya no toma (5+ intentos). 'retry' los vuelve a la cola (intentos en 0, sin
+-- error, ya; si entró otro igual mientras tanto, se queda ese) y llama al motor; 'drop' los borra. Hasta 200 ids;
+-- solo toca los de 5+ intentos. Auditoría 'badge_jobs' {action, ids}. Devuelve cuántos tocó.
+create function public.admin_badge_jobs(p_ids bigint[], p_action text default 'retry') returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_ids bigint[];
+  v_zero constant uuid := '00000000-0000-0000-0000-000000000000';
+begin
+  perform private.require_super();
+  if p_ids is null or coalesce(array_ndims(p_ids), 1) <> 1 or cardinality(p_ids) > 200 or p_action is null or p_action not in ('retry', 'drop') then
+    perform private.fail('invalido');
+  end if;
+  v_ids := array(select q.id from private.badge_queue q where q.id = any (p_ids) and q.attempts >= 5 order by q.id);
+  if cardinality(v_ids) = 0 then
+    return 0;
+  end if;
+  if p_action = 'drop' then
+    delete from private.badge_queue q where q.id = any (v_ids);
+  else
+    delete from private.badge_queue d
+     where d.id = any (v_ids)
+       and exists (select 1 from private.badge_queue o
+                    where o.id <> d.id and o.locked_at is null and o.kind = d.kind and o.ref = d.ref
+                      and coalesce(o.league_id, v_zero) = coalesce(d.league_id, v_zero)
+                      and coalesce(o.user_id, v_zero) = coalesce(d.user_id, v_zero));
+    update private.badge_queue q set attempts = 0, locked_at = null, last_error = null, run_after = now()
+     where q.id = any (v_ids);
+    perform private.kick_badges();
+  end if;
+  perform private.audit('badge_jobs', 'app', null, jsonb_build_object('action', p_action, 'ids', to_jsonb(v_ids)));
+  return cardinality(v_ids);
 end $$;
 
 -- =====================================================================
--- Permisos: la app solo badge_notices y badges_backfill; la Edge Function solo sus cinco; lo demás, nadie
+-- Tiempo real: la app vuelve a leer (src/lib/data/topics.ts → src/lib/data/badges.ts)
+-- =====================================================================
+
+-- Por sentencia (una corrida del motor da muchas de una vez): un aviso por cuenta dueña ('user:<id>', cualquier
+-- cambio: nueva, firme, vista, oculta, retirada) y uno por liga ('league:<id>', solo lo que cambia lo que se ve en la
+-- liga: nuevas provisionales o firmes y cambios de estado, de oculta o de nivel; que el dueño la vea no avisa). El
+-- payload solo lleva los ids y kind 'app' (las del creador, …0820, avisan 'diseno' o 'liga'): las pantallas vuelven a
+-- leer con sus permisos.
+create function private.emit_badges() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+begin
+  for r in select coalesce(n.user_id, p.user_id) as uid, jsonb_agg(n.id) as ids
+             from new_rows n left join public.players p on p.id = n.player_id
+            where coalesce(n.user_id, p.user_id) is not null
+            group by 1 loop
+    perform private.emit('user:' || r.uid::text, 'badges', jsonb_build_object('op', lower(tg_op), 'ids', r.ids, 'kind', 'app'));
+  end loop;
+  if tg_op = 'INSERT' then
+    for r in select n.league_id, jsonb_agg(n.id) as ids from new_rows n
+              where n.league_id is not null and n.status in ('provisional', 'firme') and not n.hidden
+              group by n.league_id loop
+      perform private.emit('league:' || r.league_id::text, 'badges', jsonb_build_object('op', 'insert', 'ids', r.ids, 'kind', 'app'));
+    end loop;
+  else
+    for r in select n.league_id, jsonb_agg(n.id) as ids
+               from new_rows n join old_rows o on o.id = n.id
+              where n.league_id is not null
+                and (n.status is distinct from o.status or n.hidden is distinct from o.hidden or n.level is distinct from o.level)
+              group by n.league_id loop
+      perform private.emit('league:' || r.league_id::text, 'badges', jsonb_build_object('op', 'update', 'ids', r.ids, 'kind', 'app'));
+    end loop;
+  end if;
+  return null;
+end $$;
+
+create trigger badge_awards_emit_insert after insert on public.badge_awards referencing new table as new_rows
+  for each statement execute function private.emit_badges();
+create trigger badge_awards_emit_update after update on public.badge_awards referencing old table as old_rows new table as new_rows
+  for each statement execute function private.emit_badges();
+
+-- =====================================================================
+-- Permisos: la app solo badge_notices, badges_backfill y las dos de la consola; la Edge Function solo sus seis; lo
+-- demás, nadie
 -- =====================================================================
 do $$
 declare
   f record;
-  v_app constant text[] := array['badge_notices', 'badges_backfill'];
-  v_service constant text[] := array['badge_claim', 'badge_snapshot', 'badge_apply', 'badge_fail', 'badge_finish'];
+  v_app constant text[] := array['badge_notices', 'badges_backfill', 'admin_badges_engine', 'admin_badge_jobs'];
+  v_service constant text[] := array['badge_claim', 'badge_snapshot', 'badge_apply', 'badge_fail', 'badge_release', 'badge_finish'];
   v_private constant text[] := array[
-    'badge_tz', 'badge_uuids', 'badge_match_day', 'badge_quiet_until', 'badge_counted', 'badge_match_players',
+    'badge_tz', 'badge_uuids', 'badge_match_day', 'badge_quiet_until', 'badge_mark_ok', 'badge_counted', 'badge_match_players',
     'badge_event_players', 'badge_people', 'badge_card_complete', 'badge_league_gone', 'badge_merge_payload',
+    'badge_period_kind', 'badge_period_done', 'badge_self_link', 'badge_verified_only', 'badge_job_people',
     'badge_enqueue', 'badges_on_entry', 'badges_on_match', 'badges_on_match_delete', 'badges_on_match_player',
     'badges_on_golf_card', 'badges_on_golf_round', 'badges_on_swim_meet', 'badges_on_swim_entry', 'badges_on_ladder',
     'badges_on_player_link', 'badges_on_box_month', 'badge_signal', 'badge_activity', 'badge_activity_json',
     'badge_league_months', 'badge_family_rows', 'badge_season_rows', 'badge_cheers', 'badge_service', 'badge_merge_rows',
-    'badge_snapshot', 'badge_claim', 'badge_fail', 'badge_apply', 'badge_apply_decisions', 'badge_push_label',
+    'badge_snapshot', 'badge_claim', 'badge_fail', 'badge_release', 'badge_apply', 'badge_apply_decisions', 'badge_push_label',
     'badge_push_reviewers', 'badge_send_notices', 'badge_stats_refresh', 'badge_cleanup', 'badge_enqueue_period',
-    'badges_daily', 'kick_badges', 'cron_badges'];
+    'badges_daily', 'kick_badges', 'cron_badges', 'emit_badges'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname, p.proname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

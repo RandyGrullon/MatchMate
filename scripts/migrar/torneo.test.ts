@@ -63,7 +63,7 @@ describe('importar un torneo del Excel', () => {
     await expect(importTournament(await as('uLuis'), L1, FILE)).rejects.toMatchObject({ kind: 'permission' });
   });
 
-  it('carga evento, jugadores, equipos y juegos «importado» con las RPC', async () => {
+  it('carga evento, jugadores, equipos y juegos «sin-foto» con las RPC (un admin no escribe «importado»)', async () => {
     const org = await as('uOrg');
     const r = await importTournament(org, L1, FILE);
     expect(r).toEqual({ eventId: tournamentEventId(L1, 'torneo-2025'), created: 2, entered: 3, teams: 2, replaced: false });
@@ -76,8 +76,8 @@ describe('importar un torneo del Excel', () => {
     const players = await org.select<{ id: string; name: string }>({ table: 'players', filters: [{ col: 'league_id', op: 'eq', value: L1 }] });
     const of = (name: string) => entries.find((e) => e.player_id === players.find((p) => p.name === name)?.id)!;
     // Pedro ya estaba (mismo jugador); 44 = (230 - 175) × 80 % es la fórmula → no queda fijo.
-    expect(of('Pedro')).toMatchObject({ player_id: playerUuid('L1banco', 'pPedro'), scores: [190, 175, 201], photos: ['importado', 'importado', 'importado'], handicap_override: null, team_id: teams[0].id });
-    expect(of('Carla Núñez')).toMatchObject({ scores: [160, 150, null], photos: ['importado', 'importado', null], handicap_override: null, team_id: teams[0].id });
+    expect(of('Pedro')).toMatchObject({ player_id: playerUuid('L1banco', 'pPedro'), scores: [190, 175, 201], photos: ['sin-foto', 'sin-foto', 'sin-foto'], handicap_override: null, team_id: teams[0].id });
+    expect(of('Carla Núñez')).toMatchObject({ scores: [160, 150, null], photos: ['sin-foto', 'sin-foto', null], handicap_override: null, team_id: teams[0].id });
     // Tomás: la fórmula da 24 y el Excel dice 10 → queda fijo.
     expect(of('Tomás')).toMatchObject({ handicap_override: 10, team_id: teams[1].id, average: 200 });
 

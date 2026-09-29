@@ -85,7 +85,8 @@ create table public.badge_progress (
                                        'basketball', 'football', 'futsal', 'golf', 'swimming')),
   value double precision not null,
   target double precision not null,
-  next_level smallint not null check (next_level between 1 and 5),
+  -- 0 = único: las de un solo nivel con meta (Arranque con todo: 4 días en tus primeros 30) también tienen progreso.
+  next_level smallint not null check (next_level between 0 and 5),
   updated_at timestamptz not null default now(),
   primary key (holder, badge_key, sport),
   foreign key (player_id, league_id) references public.players (id, league_id) on delete cascade,
@@ -190,8 +191,8 @@ end $$;
 -- Pasa las insignias de p_from a p_into (los dos de p_league) al juntar dos jugadores. Si chocan (misma key,
 -- deporte, nivel y periodo) queda una: la firme gana a la provisional, que gana a la que está en revisión (y
 -- cualquiera a una revocada); a igual estado, la más vieja. La que queda se lleva el awarded_at más viejo, el
--- primer seen_at y notified_at, y queda oculta solo si las dos lo estaban; la otra se borra (con su tombstone) y
--- sale de las destacadas. El progreso de los dos se borra: el motor lo recalcula.
+-- primer seen_at y notified_at, y queda oculta si alguna lo estaba (no destapa lo que el dueño ocultó, §1.4); la
+-- otra se borra (con su tombstone) y sale de las destacadas. El progreso de los dos se borra: el motor lo recalcula.
 create function private.merge_badges(p_from uuid, p_into uuid, p_league uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -205,7 +206,7 @@ begin
     select f.id as f_id, i.id as i_id,
            array_position(v_rank, f.status) > array_position(v_rank, i.status)
              or (f.status = i.status and f.awarded_at < i.awarded_at) as from_wins,
-           f.hidden and i.hidden as hidden,
+           f.hidden or i.hidden as hidden,
            least(f.seen_at, i.seen_at) as seen_at,
            least(f.notified_at, i.notified_at) as notified_at,
            least(f.awarded_at, i.awarded_at) as awarded_at
@@ -278,96 +279,21 @@ $$;
 -- Juntar jugadores (reclamos): también sus insignias
 -- =====================================================================
 
--- Igual que en 20260929000100_reclamos.sql, y además private.merge_badges antes del guardia del catálogo (sin
--- eso, un jugador con insignias frena toda aprobación con 'conflicto: badge_awards').
-create or replace function private.merge_players(p_from uuid, p_into uuid, p_league uuid) returns void
+-- private.merge_players la redefinen otras migraciones: …0100 (reclamos) y, al juntar las ramas, …0600 (organizador:
+-- pistas del boliche) y …0700 (temporadas: premios y tablas guardadas), que corren antes que esta. Para no pisar la
+-- que haya (y perder lo que mueven), aquí no se copia su cuerpo: la que existe pasa a llamarse
+-- private.merge_players_base y private.merge_players primero junta las insignias (private.merge_badges: badge_awards,
+-- badge_progress y, desde …0820, league_badge_awards) y después llama a la base, que termina con el guardia del
+-- catálogo. Sin merge_badges, un jugador con insignias frena toda aprobación con 'conflicto: badge_awards'. Si la base
+-- falla ('conflicto: …'), no queda nada hecho (misma transacción). Un cambio a la unión de jugadores va en la base
+-- (create or replace function private.merge_players_base) en una migración posterior.
+alter function private.merge_players(uuid, uuid, uuid) rename to merge_players_base;
+
+create function private.merge_players(p_from uuid, p_into uuid, p_league uuid) returns void
 language plpgsql security definer set search_path = '' as $$
-declare
-  v_conf jsonb := private.claim_conflicts(p_from, p_into);
-  v_list text;
-  v_from text := p_from::text;
-  v_into text := p_into::text;
-  v_left boolean;
-  f record;
 begin
-  if jsonb_array_length(v_conf) > 0 then
-    select string_agg((x ->> 'label') || ' (' || (x ->> 'count') || ')', ', ') into v_list from jsonb_array_elements(v_conf) x;
-    raise exception 'conflicto: %', v_list using errcode = 'P0001';
-  end if;
-
-  -- Boliche: participaciones con sus felicitaciones y comentarios en UNA sentencia (la FK compuesta de
-  -- reactions/comments a entries se revisa al final de la sentencia).
-  with r as (update public.reactions x set player_id = p_into where x.player_id = p_from returning 1),
-       c as (update public.comments x set player_id = p_into where x.player_id = p_from returning 1)
-  update public.entries e set player_id = p_into where e.player_id = p_from;
-  update public.submissions s set player_id = p_into where s.player_id = p_from;
-  -- «Voy» y en vivo: si los dos tienen, queda el del reclamado.
-  delete from public.event_rsvps a where a.player_id = p_from
-     and exists (select 1 from public.event_rsvps c where c.event_id = a.event_id and c.player_id = p_into);
-  update public.event_rsvps r set player_id = p_into where r.player_id = p_from;
-  delete from public.live_states a where a.player_id = p_from
-     and exists (select 1 from public.live_states c where c.event_id = a.event_id and c.player_id = p_into);
-  update public.live_states s set player_id = p_into, subject_key = 'p:' || v_into where s.player_id = p_from;
-  -- Datos privados (año, sexo, tutor) y ficha de nadador: se queda la del reclamado si tiene.
-  if exists (select 1 from public.player_private x where x.player_id = p_into) then
-    delete from public.player_private x where x.player_id = p_from;
-  else
-    update public.player_private x set player_id = p_into where x.player_id = p_from;
-  end if;
-  if exists (select 1 from public.swim_swimmers x where x.player_id = p_into) then
-    delete from public.swim_swimmers x where x.player_id = p_from;
-  else
-    update public.swim_swimmers x set player_id = p_into where x.player_id = p_from;
-  end if;
-  -- Partidos y equipos (las plantillas antes que las sanciones: su trigger mira la plantilla).
-  update public.match_players x set player_id = p_into where x.player_id = p_from;
-  delete from public.match_rsvps a where a.player_id = p_from
-     and exists (select 1 from public.match_rsvps c where c.match_id = a.match_id and c.player_id = p_into);
-  update public.match_rsvps x set player_id = p_into where x.player_id = p_from;
-  delete from public.team_players a where a.player_id = p_from
-     and exists (select 1 from public.team_players c where c.team_id = a.team_id and c.player_id = p_into);
-  update public.team_players x set player_id = p_into where x.player_id = p_from;
-  update public.football_sanctions x set player_id = p_into where x.player_id = p_from;
-  -- Golf, natación, escalera e inscripciones (entrant_id = el jugador).
-  update public.golf_cards x set player_id = p_into where x.player_id = p_from;
-  update public.swim_entries x set player_id = p_into where x.player_id = p_from;
-  update public.ladder_rungs x set player_id = p_into, entrant_id = p_into where x.player_id = p_from;
-  update public.ladder_challenges x set
-    challenger = case when x.challenger = p_from then p_into else x.challenger end,
-    challenged = case when x.challenged = p_from then p_into else x.challenged end,
-    winner = case when x.winner = p_from then p_into else x.winner end
-   where x.league_id = p_league and p_from in (x.challenger, x.challenged, x.winner);
-  update public.event_signups x set player_id = p_into, entrant_id = p_into where x.player_id = p_from;
-  update public.game_likes x set player_id = p_into where x.player_id = p_from;
-  -- Ids dentro de jsonb (anotador, historial, rondas de las noches, competencia del golf).
-  update public.matches m set state = replace(m.state::text, v_from, v_into)::jsonb,
-                              history = replace(m.history::text, v_from, v_into)::jsonb,
-                              score = replace(m.score::text, v_from, v_into)::jsonb
-   where m.league_id = p_league
-     and (coalesce(m.state::text, '') || m.history::text || coalesce(m.score::text, '')) like '%' || v_from || '%';
-  update public.events e set config = replace(e.config::text, v_from, v_into)::jsonb
-   where e.league_id = p_league and e.config::text like '%' || v_from || '%';
-  update public.golf_rounds g set competition = replace(g.competition::text, v_from, v_into)::jsonb
-   where g.league_id = p_league and g.competition::text like '%' || v_from || '%';
-  -- Pedidos viejos del jugador propio (p. ej. la cuenta ya había reclamado otro jugador y ahora junta un
-  -- duplicado que el admin anotó dos veces): son historia de un jugador que se borra.
-  delete from public.player_claims x where x.player_id = p_from;
-  -- Insignias (badge_awards y badge_progress).
   perform private.merge_badges(p_from, p_into, p_league);
-
-  for f in
-    select c.conrelid::regclass as tbl, a.attname as col
-      from pg_constraint c
-      join pg_attribute pid on pid.attrelid = c.confrelid and pid.attname = 'id'
-      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[array_position(c.confkey, pid.attnum)]
-     where c.contype = 'f' and c.confrelid = 'public.players'::regclass
-  loop
-    execute format('select exists (select 1 from %s where %I = $1)', f.tbl, f.col) into v_left using p_from;
-    if v_left then
-      raise exception 'conflicto: %', f.tbl::text using errcode = 'P0001';
-    end if;
-  end loop;
-  delete from public.players p where p.id = p_from;
+  perform private.merge_players_base(p_from, p_into, p_league);
 end $$;
 
 -- =====================================================================
@@ -414,12 +340,16 @@ begin
     if r.col = 'player_id' and cardinality(v_players) = 0 then
       continue;
     end if;
+    -- Las insignias de la liga (…0820): el jugador ve las vigentes y su nota, nunca quién la dio ni por qué se la
+    -- quitaron (eso es del dueño y los admins, §5.2), ni las retiradas.
     execute format(
       'select coalesce(jsonb_agg(to_jsonb(x) - $2), ''[]''::jsonb), count(*)::integer
-         from (select * from public.%I t where t.%I = any ($1) limit %s) x',
-      r.t, r.col, c_max + 1)
+         from (select * from public.%I t where t.%I = any ($1)%s limit %s) x',
+      r.t, r.col, case when r.t = 'league_badge_awards' then ' and t.revoked_at is null' else '' end, c_max + 1)
       using case r.col when 'user_id' then array[v_uid] when 'holder' then v_uid || v_players else v_players end,
             private.export_hidden_columns()
+              || case when r.t = 'league_badge_awards' then array['awarded_by', 'revoked_by', 'revoke_reason', 'revoked_at']
+                      else '{}'::text[] end
       into v_rows, v_n;
     if v_n > c_max then
       v_rows := v_rows - c_max;
@@ -488,13 +418,25 @@ end $$;
 -- RPC
 -- =====================================================================
 
+-- El context de una insignia de cuenta para otra persona cuando no puede ver la liga de donde salió (privada, con
+-- menores, que ya no existe): sin nada que la nombre ni la ubique (liga, evento, temporada, equipo, ventana y los
+-- nombres que van en values: club, temporada, liga, equipo, evento) ni el aval (context.review).
+create function private.badge_context_hidden(p_ctx jsonb) returns jsonb
+language sql immutable set search_path = '' as $$
+  select (coalesce(p_ctx, '{}'::jsonb) - 'league' - 'event' - 'season' - 'team' - 'window' - 'review')
+      || case when jsonb_typeof(p_ctx -> 'values') = 'object'
+              then jsonb_build_object('values', (p_ctx -> 'values') - 'club' - 'temporada' - 'liga' - 'equipo' - 'evento')
+              else '{}'::jsonb end
+$$;
+
 -- Insignias de una cuenta para su perfil (/u/:id, pestaña «Insignias»). null si no existe o no se ve
 -- (private.social_can_see). {userId, isMe, featured: [id], awards: [insignia], truncated}; cada insignia:
 -- {id, key, sport, level, periodKey, scope: 'cuenta'|'liga', status, awardedAt, firmAt, leagueId, leagueName,
 --  playerId, context, hidden, seenAt}. Más nuevas primero, hasta 1000 (truncated = había más).
 -- - Otra cuenta: las de cuenta y las de sus jugadores en ligas que pasan private.social_league_ok (la ve quien mira
---   y sin menores), provisionales o firmes y no ocultas; en las de cuenta, context pierde 'league' y 'event' si
---   esa liga no pasa. Una cuenta bloqueada no muestra nada (salvo al superadmin). seenAt siempre null.
+--   y sin menores), provisionales o firmes y no ocultas; en las de cuenta, si esa liga no pasa, context pierde todo
+--   lo que la nombra (private.badge_context_hidden). Nunca context.review (quién dio el aval). Una cuenta bloqueada
+--   no muestra nada (salvo al superadmin). seenAt siempre null.
 -- - La propia: todas las suyas (ocultas, en revisión, de ligas con menores), menos las revocadas que nunca vio.
 -- featured: las destacadas que hoy se ven en público (y quien mira puede ver), en su orden.
 create function public.profile_badges(p_user uuid) returns jsonb
@@ -537,10 +479,11 @@ begin
     from (
       select a.*, l.name as league_name,
              case
-               when v_self or a.league_id is not null or not (a.context ? 'league') then a.context
-               when coalesce(a.context -> 'league' ->> 'id', '') !~ v_uuid then a.context - 'league' - 'event'
-               when private.social_league_ok((a.context -> 'league' ->> 'id')::uuid) then a.context
-               else a.context - 'league' - 'event'
+               when v_self then a.context
+               when a.league_id is not null or not (a.context ? 'league') then a.context - 'review'
+               when coalesce(a.context -> 'league' ->> 'id', '') !~ v_uuid then private.badge_context_hidden(a.context)
+               when private.social_league_ok((a.context -> 'league' ->> 'id')::uuid) then a.context - 'review'
+               else private.badge_context_hidden(a.context)
              end as ctx
         from public.badge_awards a
         left join public.players p on p.id = a.player_id
@@ -684,8 +627,10 @@ end $$;
 
 -- Aval de una hazaña (§1.7.5, §3.4): un dueño o admin de la liga que no es el jugador ni compite en la evidencia
 -- (private.badge_can_review), o el superadmin. p_ok: pasa a 'firme' (el motor avisa al jugador); si no, 'revocada'
--- con 'aval' (sin rastro público). La nota (≤ 140) queda en context.review {ok, at, note}. Ya decidida: devuelve
--- cómo quedó. Devuelve el estado.
+-- con 'aval' (sin rastro público). Queda context.review {ok, at, by} (by = quien decidió: si después se vincula con
+-- ese jugador, la hazaña vuelve a revisión, …0820). La nota (≤ 140) solo se guarda al rechazar (la ve el jugador en
+-- su lista): al aprobar, la fila queda firme y su context es público, así que la nota no se guarda (solo va a la
+-- auditoría del superadmin). Ya decidida: devuelve cómo quedó. Devuelve el estado.
 create function public.review_badge(p_award uuid, p_ok boolean, p_note text default null) returns text
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -707,7 +652,8 @@ begin
   if a.status <> 'en_revision' then
     return a.status;
   end if;
-  v_review := jsonb_build_object('review', jsonb_build_object('ok', p_ok, 'at', private.iso(now()), 'note', v_note));
+  v_review := jsonb_build_object('review', jsonb_build_object('ok', p_ok, 'at', private.iso(now()), 'by', v_uid)
+                                            || case when p_ok then '{}'::jsonb else jsonb_build_object('note', v_note) end);
   if p_ok then
     update public.badge_awards x set status = 'firme', firm_at = now(), context = x.context || v_review where x.id = p_award;
   else
@@ -770,7 +716,7 @@ declare
   v_rpc constant text[] := array['profile_badges', 'set_featured_badges', 'set_badge_hidden', 'mark_badges_seen',
                                  'set_badges_auto', 'review_badge', 'super_revoke_badge', 'export_my_data'];
   v_private constant text[] := array['badges_auto_minors', 'badge_signal', 'merge_badges', 'badge_can_review',
-                                     'merge_players'];
+                                     'badge_context_hidden', 'merge_players', 'merge_players_base'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

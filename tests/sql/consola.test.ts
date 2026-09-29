@@ -76,6 +76,13 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   ['admin_unblock_user', { p_user: w.u.luis }],
   ['admin_announce', ANNOUNCE],
   ['admin_count_recipients', { p_audience: { kind: 'all' } }],
+  // Insignias de la liga (20260929000820_insignias_creador.sql): reportes y palabras bloqueadas.
+  ['admin_badge_reports', {}],
+  ['admin_resolve_badge_reports', { p_ids: [] }],
+  ['admin_blocked_terms', {}],
+  // El motor de insignias (20260929000810_insignias_motor.sql): cola, trabajos muertos y corridas en seco.
+  ['admin_badges_engine', {}],
+  ['admin_badge_jobs', { p_ids: [] }],
 ];
 
 describe('permisos', () => {

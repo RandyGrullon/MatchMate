@@ -341,6 +341,26 @@ describe('perfil (profile_badges)', () => {
     expect((await profile(w.u.dios, w.u.luis))!.awards.map((b) => b.id)).toEqual([a.pub, a.priv, a.acc]);
   });
 
+  it('una de cuenta que salió de una liga que quien mira no ve (con menores, privada): nada que la nombre; el aval nunca', async () => {
+    await member(db, w.pub, w.u.luis, 'member', 'luis');
+    const pubLuis = await player(db, w.pub, 'Luis', w.u.luis);
+    const { kids } = await kidsLeague();
+    const coach = await award({
+      key: 'coach_board', sport: 'swimming', level: 0, period: 's:x', user: w.u.luis,
+      context: {
+        v: 1, league: { id: kids, name: 'Escuelita' }, season: { id: 'x', name: 'Temporada Infantil 2026' }, window: ['2026-01-01', '2026-06-30'],
+        values: { n: 12, club: 'Delfines Sub-10', temporada: 'Temporada Infantil 2026' },
+      },
+    });
+    const feat = await award({ key: 'bowling_perfect_game', level: 0, period: 'g:x:1', player: pubLuis, league: w.pub, context: { v: 1, review: { ok: true, by: w.u.otro } } });
+    const p = (await profile(w.u.extra, w.u.luis))!;
+    expect(p.awards.find((b) => b.id === coach)!.context).toEqual({ v: 1, values: { n: 12 } });
+    expect(p.awards.find((b) => b.id === feat)!.context).toEqual({ v: 1 });
+    // El dueño la ve completa.
+    const mine = (await profile(w.u.luis, w.u.luis))!;
+    expect(mine.awards.find((b) => b.id === coach)!.context).toMatchObject({ season: { name: 'Temporada Infantil 2026' }, values: { club: 'Delfines Sub-10' } });
+  });
+
   it('la propia: todas (ocultas, en revisión, de ligas con menores), menos las revocadas que nunca vio', async () => {
     const { a } = await setup();
     await db.admin(`update public.badge_awards set seen_at = '2026-09-10T00:00:00Z' where id = $1`, [a.pub]);
@@ -358,7 +378,10 @@ describe('perfil (profile_badges)', () => {
     expect(await profile(w.u.extra, w.u.nuevo)).toBeNull();
     expect(await profile(w.u.extra, '00000000-0000-0000-0000-000000000000')).toBeNull();
     await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.luis, p_reason: 'x' });
-    expect(await profile(w.u.otro, w.u.luis)).toEqual({ userId: w.u.luis, isMe: false, featured: [], awards: [], truncated: false });
+    // (leagueAwards y leagueTruncated: las del creador, de 20260929000820_insignias_creador.sql.)
+    expect(await profile(w.u.otro, w.u.luis)).toEqual({
+      userId: w.u.luis, isMe: false, featured: [], awards: [], truncated: false, leagueAwards: [], leagueTruncated: false,
+    });
     expect((await profile(w.u.dios, w.u.luis))!.awards.map((b) => b.id)).toEqual([a.pub, a.priv, a.acc]);
   });
 
@@ -470,7 +493,8 @@ describe('aval (review_badge)', () => {
     expect(await db.rpc(w.u.org, 'review_badge', { p_award: id, p_ok: true, p_note: ' Vi la foto ' })).toBe('firme');
     const r = await row(id);
     expect(r).toMatchObject({ status: 'firme', revoke_reason: null });
-    expect((r.context as Json).review).toMatchObject({ ok: true, note: 'Vi la foto' });
+    // Firme, su context es público: queda quién la confirmó, pero la nota no (solo va a la auditoría del superadmin).
+    expect((r.context as Json).review).toEqual({ ok: true, at: expect.any(String), by: w.u.org });
     expect(await visibleIds(w.u.ana)).toEqual([id]);
     // Ya decidida: devuelve cómo quedó (dos admins a la vez).
     expect(await db.rpc(w.u.org, 'review_badge', { p_award: id, p_ok: false })).toBe('firme');
@@ -479,8 +503,10 @@ describe('aval (review_badge)', () => {
 
   it('no se pudo confirmar: revocada con «aval», sin rastro público; el superadmin también decide (con auditoría)', async () => {
     const id = await feat();
-    expect(await db.rpc(w.u.org, 'review_badge', { p_award: id, p_ok: false })).toBe('revocada');
+    expect(await db.rpc(w.u.org, 'review_badge', { p_award: id, p_ok: false, p_note: 'No hay foto' })).toBe('revocada');
     expect(await row(id)).toMatchObject({ status: 'revocada', revoke_reason: 'aval', revoked_by: w.u.org });
+    // Al rechazar sí queda la nota (la ve solo el jugador, en su lista).
+    expect(((await row(id)).context as Json).review).toEqual({ ok: false, at: expect.any(String), by: w.u.org, note: 'No hay foto' });
     expect(await visibleIds(w.u.ana)).toEqual([]);
     expect(await visibleIds(w.u.org)).toEqual([]);
     expect(await visibleIds(w.u.luis)).toEqual([id]);
@@ -550,7 +576,7 @@ describe('reclamos y fusiones', () => {
     // Choca: la firme de Pedro gana a la provisional (más vieja) del propio; se lleva la fecha más vieja.
     const clubMine = await award({ key: 'bowling_club', player: mine, league: w.priv, status: 'provisional', at: '2026-09-20T00:00:00Z' });
     const clubPedro = await award({ key: 'bowling_club', player: w.p.pedro, league: w.priv, hidden: true, seen: '2026-09-26T00:00:00Z', at: '2026-09-25T00:00:00Z' });
-    // Choca con el mismo estado: gana la más vieja; oculta solo si las dos lo estaban.
+    // Choca con el mismo estado: gana la más vieja; oculta si alguna lo estaba (no se destapa lo que se ocultó).
     const debutMine = await award({ key: 'debut', level: 0, player: mine, league: w.priv, hidden: true, at: '2026-09-01T00:00:00Z' });
     const debutPedro = await award({ key: 'debut', level: 0, player: w.p.pedro, league: w.priv, hidden: true, seen: '2026-09-11T00:00:00Z', at: '2026-09-10T00:00:00Z' });
     // No choca: pasa tal cual.
@@ -565,7 +591,7 @@ describe('reclamos y fusiones', () => {
 
     const left = await db.admin<{ id: string }>('select id from public.badge_awards where player_id = $1 order by id', [w.p.pedro]);
     expect(left.map((r) => r.id)).toEqual(sorted([clubPedro, debutMine, clean]));
-    expect(await row(clubPedro)).toMatchObject({ status: 'firme', hidden: false, awarded_at: '2026-09-20T00:00:00.000Z', seen_at: '2026-09-26T00:00:00.000Z' });
+    expect(await row(clubPedro)).toMatchObject({ status: 'firme', hidden: true, awarded_at: '2026-09-20T00:00:00.000Z', seen_at: '2026-09-26T00:00:00.000Z' });
     expect(await row(debutMine)).toMatchObject({ player_id: w.p.pedro, hidden: true, awarded_at: '2026-09-01T00:00:00.000Z', seen_at: '2026-09-11T00:00:00.000Z' });
     expect(await row(clean)).toMatchObject({ player_id: w.p.pedro, league_id: w.priv, status: 'provisional' });
     expect(await row(acc)).toMatchObject({ user_id: w.u.nuevo, player_id: null });
@@ -578,6 +604,45 @@ describe('reclamos y fusiones', () => {
     expect(await db.count('public.badge_progress')).toBe(0);
     // Ahora son suyas por Pedro.
     expect(await visibleIds(w.u.nuevo)).toEqual(sorted([clubPedro, debutMine, clean, acc]));
+  });
+
+  it('la unión que traen otras ramas (merge_players_base, como …0600 y …0700) sigue corriendo, con las insignias antes', async () => {
+    // Como hace una migración de otra rama: una tabla nueva con FK a players y su propia versión de la unión.
+    await db.admin('create table public.lanes_stub (player_id uuid not null references public.players (id), lane integer)');
+    await db.admin('alter function private.merge_players_base(uuid, uuid, uuid) rename to merge_players_base0');
+    await db.admin(`create function private.merge_players_base(p_from uuid, p_into uuid, p_league uuid) returns void
+      language plpgsql security definer set search_path = '' as $f$
+      begin
+        update public.lanes_stub x set player_id = p_into where x.player_id = p_from;
+        perform private.merge_players_base0(p_from, p_into, p_league);
+      end $f$`);
+    const { player_id: mine } = await joinPriv(w.u.nuevo);
+    await db.admin('insert into public.lanes_stub values ($1, 1), ($2, 2)', [mine, w.p.pedro]);
+    const a = await award({ key: 'bowling_club', player: mine, league: w.priv });
+    const b = await award({ key: 'bowling_club', player: w.p.pedro, league: w.priv, at: '2026-09-01T00:00:00Z' });
+    const id = await db.rpc<string>(w.u.nuevo, 'request_player_claim', { p_player: w.p.pedro });
+    expect(await db.rpc(w.u.sofi, 'decide_player_claim', { p_claim: id, p_approve: true })).toBe('approved');
+    expect(await db.admin('select player_id, lane from public.lanes_stub order by lane')).toEqual([
+      { player_id: w.p.pedro, lane: 1 },
+      { player_id: w.p.pedro, lane: 2 },
+    ]);
+    expect((await db.admin<{ id: string }>('select id from public.badge_awards where player_id = $1', [w.p.pedro])).map((r) => r.id)).toEqual([b]);
+    expect(await db.count('public.badge_awards', 'id = $1', [a])).toBe(0);
+    // Si la base choca ('conflicto'), no queda nada hecho (las insignias tampoco se movieron).
+    const { player_id: again } = await joinPriv(w.u.otra).catch(async () => {
+      await member(db, w.priv, w.u.otra, 'member', 'otra');
+      return joinPriv(w.u.otra);
+    });
+    const c = await award({ key: 'bowling_games', player: again, league: w.priv });
+    const dup = await player(db, w.priv, 'Otra vieja');
+    await db.admin(`create or replace function private.merge_players_base(p_from uuid, p_into uuid, p_league uuid) returns void
+      language plpgsql security definer set search_path = '' as $f$
+      begin
+        raise exception 'conflicto: prueba' using errcode = 'P0001';
+      end $f$`);
+    const claim = await db.rpc<string>(w.u.otra, 'request_player_claim', { p_player: dup });
+    await fails(db.rpc(w.u.sofi, 'decide_player_claim', { p_claim: claim, p_approve: true }), 'conflicto: prueba');
+    expect(await row(c)).toMatchObject({ player_id: again });
   });
 
   it('juntar un duplicado que el admin anotó dos veces (la revocada pierde)', async () => {
