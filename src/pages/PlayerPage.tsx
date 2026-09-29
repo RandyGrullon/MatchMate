@@ -4,8 +4,11 @@ import { CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronRight, Clock,
 import { frameStats } from '../lib/bowling';
 import { useAuth } from '../lib/auth';
 import { removeMember, useEntriesOfEvents, useEvents, usePlayer, usePlayerEntries, usePlayerSubmissions } from '../lib/data';
-import { eventLabel, formatDate, formatDateLong } from '../lib/format';
+import { useLeagueSeasons } from '../lib/data/seasons';
+import { averageForDay, averageSourceLabel, buildGameContexts, entryMarks, type GameMark } from '../lib/bowlingSeason';
+import { eventLabel, formatDate, formatDateLong, toIsoDate } from '../lib/format';
 import { rememberLeague, useLeagueCtx } from '../lib/league';
+import { currentSeason, inSeason } from '../lib/seasons';
 import { effectiveAverage, entryLine, eventPosition, playerStats } from '../lib/stats';
 import type { BowlingEvent, Entry } from '../lib/types';
 import { ScoreChart, type ChartPoint } from '../components/ScoreChart';
@@ -19,6 +22,7 @@ import { UserLink, userPath } from '../components/social/UserLink';
 import { BackLink } from '../components/BackLink';
 import { SuggestionBox } from '../components/SuggestionBox';
 import { ClaimPlayerButton } from '../components/claims/ClaimPlayerButton';
+import { MarkIcon, MarksLine, markedChip } from '../components/event/GameMarks';
 
 /** Página del jugador en la liga: sus números, torneos y prácticas. En una liga pública se ve sin login. */
 export default function PlayerPage({ playerId: own }: { playerId?: string }) {
@@ -45,6 +49,11 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   );
   const tournamentIds = mine.filter((e) => eventById.get(e.eventId)!.type === 'torneo').map((e) => e.eventId);
   const tournamentEntries = useEntriesOfEvents(lid, tournamentIds);
+  const seasons = useLeagueSeasons(lid);
+  const dated = useMemo(() => mine.map((entry) => ({ entry, date: eventById.get(entry.eventId)!.date })), [mine, eventById]);
+  // Marcas de cada juego («Récord personal», «+15 sobre tu promedio») con toda su historia en la liga.
+  const override = player.data?.averageOverride ?? null;
+  const contexts = useMemo(() => buildGameContexts(dated, seasons.data, override), [dated, seasons.data, override]);
 
   const loadError = player.error ?? entries.error ?? events.error;
   if (loadError) return <LoadError error={loadError} />;
@@ -77,7 +86,12 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   const stats = playerStats(mine);
   // Eventos a los que fue (con al menos un juego que cuenta).
   const attended = mine.filter((e) => e.scores?.some((sc, i) => sc != null && e.photos?.[i] != null)).length;
-  const average = effectiveAverage(p, stats);
+  // El promedio del handicap: el de la temporada (con el mínimo de juegos) o, mientras tanto, el de la anterior o el
+  // fijo. Sin temporadas leídas, el de siempre (fijo o con todos sus juegos).
+  const season = currentSeason(seasons.data);
+  const bySeason = seasons.data.length ? averageForDay({ entries: dated, seasons: seasons.data, day: toIsoDate(new Date()), override: p.averageOverride }) : null;
+  const average = bySeason ? bySeason.average : effectiveAverage(p, stats);
+  const averageNote = bySeason ? (bySeason.source === 'temporada' && season ? season.name : averageSourceLabel(bySeason.source)) : undefined;
   const tournaments = mine.filter((e) => eventById.get(e.eventId)!.type === 'torneo');
   const practices = mine.filter((e) => eventById.get(e.eventId)!.type === 'practica');
   const thisYear = String(new Date().getFullYear());
@@ -93,10 +107,18 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
     })
     .slice(-30);
 
+  // Sus números por temporada (sin temporadas leídas, por año).
   const byYear = new Map<string, Entry[]>();
-  for (const e of mine) {
-    const y = eventById.get(e.eventId)!.date.slice(0, 4);
-    byYear.set(y, [...(byYear.get(y) ?? []), e]);
+  if (seasons.data.length) {
+    for (const s of seasons.data) {
+      const list = dated.filter((d) => inSeason(s, d.date)).map((d) => d.entry);
+      if (list.length) byYear.set(s.name, list);
+    }
+  } else {
+    for (const e of mine) {
+      const y = eventById.get(e.eventId)!.date.slice(0, 4);
+      byYear.set(y, [...(byYear.get(y) ?? []), e]);
+    }
   }
 
   const openSubs = subs.data
@@ -175,7 +197,12 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat icon={<Target className="size-4" />} label={p.averageOverride != null ? 'Promedio (fijo)' : 'Promedio'} value={average || '—'} />
+          <Stat
+            icon={<Target className="size-4" />}
+            label={!bySeason && p.averageOverride != null ? 'Promedio (fijo)' : 'Promedio'}
+            value={average || '—'}
+            sub={averageNote}
+          />
           <Stat icon={<Sigma className="size-4" />} label="Puntaje total" value={stats.pins ? stats.pins.toLocaleString('es-DO') : '—'} />
           <Stat icon={<Hash className="size-4" />} label="Juegos" value={stats.games} />
           <Stat icon={<Flame className="size-4" />} label="Mejor juego" value={stats.high || '—'} />
@@ -282,7 +309,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
                       </div>
                     )}
                   </div>
-                  <GameChips entry={e} event={ev} />
+                  <GameChips entry={e} event={ev} marks={entryMarks(e, contexts.get(e.id))} mine={isOwner} />
                   <Link to={`${base}/e/${ev.id}`} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent">
                     Ver clasificación <ChevronRight className="size-4" />
                   </Link>
@@ -323,7 +350,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
                   <Link key={e.id} to={`${base}/e/${ev.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition hover:bg-surface-2">
                     <div className="min-w-32 flex-1">
                       <div className="font-medium first-letter:uppercase">{formatDate(ev.date)}</div>
-                      <GameChips entry={e} event={ev} compact />
+                      <GameChips entry={e} event={ev} compact marks={entryMarks(e, contexts.get(e.id))} mine={isOwner} />
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-bold tabular-nums">{line.avg || '—'}</div>
@@ -338,12 +365,12 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
 
         {byYear.size > 0 && (
           <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold text-muted">Por año</h2>
+            <h2 className="text-sm font-semibold text-muted">{seasons.data.length ? 'Por temporada' : 'Por año'}</h2>
             <Card className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted">
                   <tr className="border-b border-line">
-                    <th className="px-4 py-2 text-left font-medium">Año</th>
+                    <th className="px-4 py-2 text-left font-medium">{seasons.data.length ? 'Temporada' : 'Año'}</th>
                     <th className="px-2 py-2 text-right font-medium">Juegos</th>
                     <th className="px-2 py-2 text-right font-medium">Promedio</th>
                     <th className="px-4 py-2 text-right font-medium">Mejor</th>
@@ -382,27 +409,45 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   );
 }
 
-function GameChips({ entry, event, compact }: { entry: Entry; event: BowlingEvent; compact?: boolean }) {
+function GameChips({
+  entry,
+  event,
+  compact,
+  marks,
+  mine,
+}: {
+  entry: Entry;
+  event: BowlingEvent;
+  compact?: boolean;
+  /** «Récord personal» y «+15 sobre tu promedio» de cada juego (null mientras no se sabe). */
+  marks?: (GameMark | null)[] | null;
+  /** Los juegos son de quien mira («tu promedio»). */
+  mine?: boolean;
+}) {
   const line = entryLine(entry, event, true);
   const raw = line.scores;
   if (raw.every((s) => s == null)) return compact ? <div className="text-xs text-muted">Sin juegos</div> : null;
   return (
-    <div className={cx('flex flex-wrap gap-1.5', compact ? 'mt-1' : 'mt-3')}>
-      {raw.map((s, i) =>
-        s == null ? null : (
-          <span
-            key={i}
-            title={line.verified[i] ? 'Verificado' : 'Sin foto: no cuenta todavía'}
-            className={cx(
-              'inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-medium tabular-nums',
-              line.verified[i] ? 'bg-surface-2' : 'border border-dashed border-warn text-warn',
-            )}
-          >
-            {s}
-            {!line.verified[i] && <Camera className="size-3" />}
-          </span>
-        ),
-      )}
-    </div>
+    <>
+      <div className={cx('flex flex-wrap gap-1.5', compact ? 'mt-1' : 'mt-3')}>
+        {raw.map((s, i) =>
+          s == null ? null : (
+            <span
+              key={i}
+              title={line.verified[i] ? 'Verificado' : 'Sin foto: no cuenta todavía'}
+              className={cx(
+                'inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-sm font-medium tabular-nums',
+                line.verified[i] ? (markedChip(marks?.[i]) ?? 'bg-surface-2') : 'border border-dashed border-warn text-warn',
+              )}
+            >
+              <MarkIcon mark={marks?.[i]} />
+              {s}
+              {!line.verified[i] && <Camera className="size-3" />}
+            </span>
+          ),
+        )}
+      </div>
+      <MarksLine marks={marks} mine={mine} className="mt-1.5" />
+    </>
   );
 }

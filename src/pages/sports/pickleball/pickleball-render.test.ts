@@ -168,7 +168,7 @@ const text = (html: string) =>
 
 describe('pantallas de pickleball', () => {
   it('el contrato y la pestaña del admin', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => t.label)).toEqual(['Parejas y niveles']);
   });
 

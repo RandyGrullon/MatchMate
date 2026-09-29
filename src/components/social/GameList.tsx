@@ -1,5 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { useAuth } from '../../lib/auth';
+import { gameMarks } from '../../lib/bowlingSeason';
+import { useBowlingGameContext } from '../../lib/data/bowlingContext';
 import type { Paged } from '../../lib/data/follows';
 import type { ProfileGame } from '../../lib/data/profileGames';
 import { toIsoDate } from '../../lib/format';
@@ -37,6 +40,18 @@ export function GameList({ games, showUser, empty, limit }: { games: Paged<Profi
   const now = useNow();
   const today = toIsoDate(now);
   const [max, setMax] = useState(limit ?? Number.POSITIVE_INFINITY);
+  const { user } = useAuth();
+  // Boliche: lo jugado antes de cada juego que se ve, para marcar «Récord personal» y «+15 sobre tu promedio».
+  const bowlingIds = useMemo(
+    () =>
+      games.data
+        .slice(0, max)
+        .filter((g) => g.kind === 'bowling')
+        .map((g) => g.id)
+        .slice(0, 100),
+    [games.data, max],
+  );
+  const context = useBowlingGameContext(bowlingIds);
   if (games.loading && !games.data.length) return <GameCardsSkeleton />;
   if (games.error && !games.data.length) return <LoadError error={games.error} onRetry={games.refresh} />;
   if (!games.data.length) return <>{empty}</>;
@@ -54,7 +69,19 @@ export function GameList({ games, showUser, empty, limit }: { games: Paged<Profi
     <div className="flex flex-col gap-3">
       <div className="stagger flex flex-col gap-3">
         {shown.map((g, i) => (
-          <GameCard key={g.key} game={g} showUser={showUser} i={i} today={today} />
+          <GameCard
+            key={g.key}
+            game={g}
+            showUser={showUser}
+            i={i}
+            today={today}
+            marks={
+              g.kind === 'bowling' && context.data[g.id]
+                ? gameMarks(g.detail.scores, g.detail.verified, context.data[g.id], { frozen: context.data[g.id].average })
+                : null
+            }
+            mine={!!user && g.userId === user.uid}
+          />
         ))}
       </div>
       {games.moreError && (

@@ -9,9 +9,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match, type MatchSide } from '../../../lib/data/matches';
+import { seasonKeys } from '../../../lib/data/seasons';
 import { seasonTeamKeys, type SeasonTeam } from '../../../lib/data/seasonTeams';
 import { teamSportKeys, type MatchOfficial, type MatchRsvp } from '../../../lib/data/teamSports';
 import { LeagueContext, type LeagueCtx } from '../../../lib/league';
+import type { Season } from '../../../lib/seasons';
 import type { League, Member, Player } from '../../../lib/types';
 import { football, footballConfig, type FootballEvent } from '../../../sports/team/football';
 import { replay } from '../../../sports/types';
@@ -148,12 +150,27 @@ const rsvps: MatchRsvp[] = [
 ];
 const sanctions: FootballSanction[] = [{ id: 's1', leagueId: lid, teamId: 'T1', playerId: 'p2', matchId: 'm1', matches: 2, note: 'Reclamo al árbitro', createdBy: 'u-admin', at: null }];
 
+/** La temporada en curso (sin ella, las tablas no salen: no se sabe qué partidos son de cuál). */
+const activeSeason: Season = {
+  id: 's1',
+  name: 'Temporada 2026',
+  startsOn: '2000-01-01',
+  endsOn: null,
+  status: 'active',
+  closedAt: null,
+  closedBy: null,
+  standings: null,
+  awards: [],
+  playoffs: [],
+};
+
 function seed() {
   const w = world();
   const rules = templateRules(sport === 'football' ? 'campo' : 'sala', sport);
   queryClient.setQueryData(keys.players(lid), players);
   queryClient.setQueryData(keys.leagueMembers(lid), members);
   queryClient.setQueryData(seasonTeamKeys.league(lid), teams);
+  queryClient.setQueryData(seasonKeys.list(lid), [activeSeason]);
   queryClient.setQueryData(matchKeys.league(lid), w.matches);
   for (const m of w.matches) {
     const state = m.id === 'm1' ? { v: 1, seq: w.doneLog.length, config: footballConfig(sport), base: null, log: w.doneLog, at: now } : null;
@@ -187,7 +204,7 @@ afterEach(() => queryClient.invalidateAll());
 
 describe('pantallas del fútbol', () => {
   it('el contrato: pantallas, pestaña de admin «equipos», nombres de pestañas; la sala usa las mismas', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Playoffs', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => t.key)).toEqual(['equipos']);
     expect(screens.tabs).toEqual({ home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' });
     expect(futsalScreens).toBe(screens);

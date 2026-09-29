@@ -24,6 +24,8 @@ import {
   usePlayers,
   useReactionsOfEvents,
 } from '../lib/data';
+import { useBowlingGameContext } from '../lib/data/bowlingContext';
+import { entryMarks } from '../lib/bowlingSeason';
 import { eventLabel, formatDateLong, toIsoDate, typeLabel } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { liveInfo } from '../lib/live';
@@ -100,6 +102,11 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   // Me gusta y comentarios de los juegos (se ven al abrir el juego de alguien).
   const reactions = useReactionsOfEvents(lid, eventId ? [eventId] : []);
   const comments = useCommentsOfEvents(lid, eventId ? [eventId] : []);
+  // Lo jugado antes de este evento por cada inscrito: marca «Récord personal» y «+15 sobre tu promedio».
+  const context = useBowlingGameContext(
+    entries.data.map((e) => e.id),
+    lid,
+  );
   const now = useNow();
 
   const loadError = event.error ?? entries.error ?? players.error;
@@ -261,6 +268,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           }
           onOpenEntry={() => mine && setDetail(mine)}
           onSend={() => setSubmitting(true)}
+          marks={mine ? entryMarks(mine, context.data[mine.id]) : null}
         />
       )}
 
@@ -315,6 +323,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         entry={detail ? entries.data.find((e) => e.id === detail.id) ?? detail : null}
         name={detail ? nameOf(detail) : ''}
         onClose={() => setDetail(null)}
+        marks={detail ? entryMarks(entries.data.find((e) => e.id === detail.id) ?? detail, context.data[detail.id]) : null}
+        mine={!!detail && detail.playerId === myPlayerId}
       >
         {detail && (
           <PostSocial

@@ -422,7 +422,7 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   const [busy, setBusy] = useState(false);
   const match: Match | undefined = played.find((m) => m.id === matchId);
   const side = match?.sides.find((s) => s.teamId === teamId);
-  const candidates = side ? [...new Set([...rosterOf(tl.teams.data, teamId).map((r) => r.playerId), ...side.players.map((p) => p.playerId)])] : [];
+  const candidates = side ? [...new Set([...rosterOf(tl.allTeams.data, teamId).map((r) => r.playerId), ...side.players.map((p) => p.playerId)])] : [];
   const n = num(count, 1, 50, 0);
   const valid = !!match && !!side && !!playerId && n > 0;
   const nm = (m: Match, i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;

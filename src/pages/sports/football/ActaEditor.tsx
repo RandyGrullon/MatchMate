@@ -30,7 +30,7 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
 
   const side = (tab === '1' ? 1 : 2) as Side;
   const names = m.sides.map((s) => tl.teamOf(s.teamId)?.name ?? s.label);
-  const roster = useMemo(() => rosterOf(tl.teams.data, m.sides[side - 1].teamId), [tl.teams.data, m.sides, side]);
+  const roster = useMemo(() => rosterOf(tl.allTeams.data, m.sides[side - 1].teamId), [tl.allTeams.data, m.sides, side]);
   const mine = lines.filter((l) => l.side === side);
   const candidates = [...roster.map((r) => r.playerId), ...tl.players.data.map((p) => p.id)].filter((id, i, a) => a.indexOf(id) === i && !lines.some((l) => l.playerId === id));
   const num = (v: string) => (/^\d{1,2}$/.test(v.trim()) ? Number(v) : null);

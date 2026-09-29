@@ -216,7 +216,8 @@ export function SuspendedCard({ tl, season }: { tl: TeamLeague; season: Football
 
 function TablePreview({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
   const played = season.standings.filter((r) => r.played > 0);
-  if (!played.length) return null;
+  // Sin la temporada (todavía no llega o no se pudo leer) la tabla mezclaría todas: no sale.
+  if (!tl.season || !played.length) return null;
   const rows = season.groups.length ? season.groups.flatMap((g) => g.rows.slice(0, 2)) : season.standings.slice(0, 5);
   return (
     <section className="flex flex-col gap-2">
@@ -250,8 +251,8 @@ function TablePreview({ tl, season }: { tl: TeamLeague; season: FootballSeason }
   );
 }
 
-/** Descargar la liga en Excel: calendario, tabla, goleadores, tarjetas y disciplina. */
-export function ExcelButton({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
+/** Descargar la temporada en Excel: calendario, tabla, goleadores, tarjetas y disciplina. `label` = la temporada (va en el nombre del archivo). */
+export function ExcelButton({ tl, season, label }: { tl: TeamLeague; season: FootballSeason; label?: string | null }) {
   const run = useAction();
   const [busy, setBusy] = useState(false);
   const teamName = (key: string) => tl.teamOf(key)?.name ?? '(equipo borrado)';
@@ -262,7 +263,8 @@ export function ExcelButton({ tl, season }: { tl: TeamLeague; season: FootballSe
       loading={busy}
       onClick={async () => {
         setBusy(true);
-        await run(() => exportFootballExcel({ leagueName: tl.league.name, matches: tl.matches.data, season, teamName, playerName: tl.nameOf, tz: tl.tz }));
+        const leagueName = label ? `${tl.league.name} - ${label}` : tl.league.name;
+        await run(() => exportFootballExcel({ leagueName, matches: season.matches, season, teamName, playerName: tl.nameOf, tz: tl.tz }));
         setBusy(false);
       }}
     >

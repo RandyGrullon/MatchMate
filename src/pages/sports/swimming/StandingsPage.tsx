@@ -3,7 +3,9 @@ import { Link } from 'react-router';
 import { Medal } from 'lucide-react';
 import { useSwimSeason } from '../../../lib/data/swimming';
 import { formatDate } from '../../../lib/format';
+import { inSeason } from '../../../lib/seasons';
 import { ShareButton, medalPointsShare } from '../../../components/share';
+import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import { Badge, Card, Empty, ListSkeleton, LoadError } from '../../../components/ui';
 import { ClubTag, PageHead, clubMap, meetTitle, useSwim } from './bits';
 import { seasonTable } from './logic';
@@ -11,21 +13,30 @@ import { ClubPointsCard } from './ResultsPanel';
 
 const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
 
-/** Puntos por club de la temporada: la suma de cada encuentro (el control de marcas no cuenta). */
+/**
+ * Puntos por club de la temporada: la suma de cada encuentro (el control de marcas no cuenta). Arriba, la
+ * temporada (?temporada=): la activa con los encuentros de sus fechas; una cerrada muestra sus premios y la tabla
+ * que se guardó al cerrarla. Sin temporadas (datos de antes), por año.
+ */
 export default function SwimStandings() {
   const { lid, base, clubs, league } = useSwim();
   const season = useSwimSeason(lid);
+  const picked = useStandingsSeason();
+  const sel = picked.selected;
   const years = useMemo(() => [...new Set(season.data.meets.map((m) => m.date.slice(0, 4)))].sort().reverse(), [season.data.meets]);
   const [year, setYear] = useState<string | null>(null);
-  const shownYear = year ?? years[0] ?? String(new Date().getFullYear());
-  const table = useMemo(() => seasonTable(season.data, shownYear), [season.data, shownYear]);
+  const shownYear = sel ? sel.name : (year ?? years[0] ?? String(new Date().getFullYear()));
+  const table = useMemo(
+    () => (sel ? seasonTable(season.data, undefined, (d) => inSeason(sel, d)) : seasonTable(season.data, shownYear)),
+    [season.data, sel, shownYear],
+  );
   const byId = useMemo(() => clubMap(clubs.data), [clubs.data]);
 
   // Imagen de los puntos de la temporada para mandar al grupo.
   const shareCard = () =>
     medalPointsShare({
       title: league.name,
-      subtitle: `Puntos de la temporada ${shownYear}`,
+      subtitle: sel ? `Puntos · ${shownYear}` : `Puntos de la temporada ${shownYear}`,
       rows: table.clubs.map((c) => ({ ...c, id: c.clubId })),
       who: (id) => byId.get(id) ?? { name: '(club borrado)' },
       note: `Suma de ${table.meets.length} ${table.meets.length === 1 ? 'encuentro' : 'encuentros'}. El control de marcas no cuenta.`,
@@ -34,7 +45,7 @@ export default function SwimStandings() {
   return (
     <div className="flex flex-col gap-5">
       <PageHead icon={<Medal className="size-5" />} title="Puntos de la temporada" sub="Suma de los puntos por club de cada encuentro.">
-        {years.length > 1 && (
+        {!sel && years.length > 1 && (
           <select
             value={shownYear}
             onChange={(e) => setYear(e.target.value)}
@@ -48,16 +59,19 @@ export default function SwimStandings() {
             ))}
           </select>
         )}
-        {!season.loading && table.clubs.length > 0 && <ShareButton variant="ghost" size="md" iconOnly label="Compartir los puntos" card={shareCard} />}
+        {!picked.closed && !season.loading && table.clubs.length > 0 && <ShareButton variant="ghost" size="md" iconOnly label="Compartir los puntos" card={shareCard} />}
       </PageHead>
+      <SeasonBar seasons={picked.seasons} selected={sel} onChange={picked.setSelected} />
 
-      {season.error ? (
+      {picked.closed ? (
+        <ClosedSeasonView season={picked.closed} />
+      ) : season.error ? (
         <LoadError error={season.error} />
       ) : season.loading ? (
         <ListSkeleton rows={4} />
       ) : !table.clubs.length ? (
         <Empty icon={<Medal className="size-8" />} title="Todavía no hay puntos">
-          Salen de los resultados de los encuentros de la temporada {shownYear}. Los nadadores tienen que tener club.
+          Salen de los resultados de los encuentros de {sel ? shownYear : `la temporada ${shownYear}`}. Los nadadores tienen que tener club.
         </Empty>
       ) : (
         <>

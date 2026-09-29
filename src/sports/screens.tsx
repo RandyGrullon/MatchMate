@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoti
 import { Navigate } from 'react-router';
 import type { LucideIcon } from 'lucide-react';
 import { useLeagueCtx } from '../lib/league';
+import type { Season } from '../lib/seasons';
 import { PageSkeleton } from '../components/ui';
+import type { SeasonTableResult } from '../components/season/logic';
 import { dispatchSport, leagueSport, type SportDispatch } from './registry';
 
 /**
@@ -27,6 +29,13 @@ export interface SportScreens {
   MyProfile?: ComponentType;
   /** Perfil de otro jugador: /l/:lid/j/:playerId */
   Player?: ComponentType;
+  /** Playoffs de la temporada (ligas de equipos): /l/:lid/playoffs. Con esta pantalla sale la pestaña «Playoffs». */
+  Playoffs?: ComponentType;
+  /**
+   * Admin › Temporada: la tabla final de esa temporada (la foto que se guarda al cerrarla) y a quién se le pueden
+   * dar premios. Es un hook: se llama siempre igual mientras la pantalla está abierta (el deporte no cambia).
+   */
+  useSeasonTable?: (season: Season) => SeasonTableResult;
   /**
    * Pestañas del Admin propias del deporte. Van después de las generales (Jugadores, Miembros, Buzón, Liga);
    * una con la misma `key` que una general la reemplaza (p. ej. 'jugadores').
@@ -36,7 +45,7 @@ export interface SportScreens {
   tabs?: { home?: string; feed?: string | null; standings?: string | null; profile?: string };
 }
 
-export type ScreenSlot = 'Home' | 'Event' | 'Standings' | 'Feed' | 'MyProfile' | 'Player';
+export type ScreenSlot = 'Home' | 'Event' | 'Standings' | 'Feed' | 'MyProfile' | 'Player' | 'Playoffs';
 
 const loaders = import.meta.glob<{ default: SportScreens }>('../pages/sports/*/screens.tsx');
 const loaderBySport = new Map(Object.entries(loaders).map(([path, load]) => [path.split('/').at(-2) ?? '', load]));

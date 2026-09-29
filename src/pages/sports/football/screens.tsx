@@ -4,8 +4,10 @@ import FootballAdmin from './FootballAdmin';
 import FootballEvent from './FootballEvent';
 import FootballGames from './FootballGames';
 import FootballHome from './FootballHome';
+import FootballPlayoffs from './FootballPlayoffs';
 import { FootballMyProfile, FootballPlayer } from './FootballProfile';
 import FootballStandings from './FootballStandings';
+import { useFootballSeasonTable } from './seasonTable';
 
 /**
  * Pantallas del fútbol de campo (fase 5). El fútbol sala usa estas mismas (src/pages/sports/futsal/screens.tsx las
@@ -24,6 +26,8 @@ const screens: SportScreens = {
   Standings: FootballStandings,
   MyProfile: FootballMyProfile,
   Player: FootballPlayer,
+  Playoffs: FootballPlayoffs,
+  useSeasonTable: useFootballSeasonTable,
   adminTabs: [{ key: 'equipos', label: 'Equipos', icon: Shirt, Component: FootballAdmin }],
   tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' },
 };

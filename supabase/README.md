@@ -39,6 +39,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929000200_invitaciones.sql` | `@usuario` de cada cuenta (`profiles.username`, `set_username`, `username_status`), buscar personas (`search_people`) e invitaciones a una liga (`league_invites`, `invite_to_league`, `respond_league_invite`, `cancel_league_invite`, `my_league_invites`, `league_invite_details`). Redefine `private.social_can_see` (con sesión se ve cualquier cuenta sin bloquear; sus juegos siguen filtrados por liga), `public_profile` y `follow_list` (con `username`) |
 | `migrations/20260929000500_avisos_telefono.sql` · `000510_avisos_telefono_supabase.sql` | Avisos al teléfono (ver «Avisos al teléfono»): preferencias (`profiles.push_prefs`, `set_push_prefs`, filtro `push_outbox_prefs`), `private.queue_push`, push de envíos aprobados o rechazados, felicitaciones, me gusta, comentarios y resultado confirmado; recordatorios de después del juego y de partidos sin resultado; el «¿Vas?» ya no le llega a quien marcó «voy» (redefine `private.enqueue_due_reminders`); cola de fotos por borrar y archivos huérfanos (`purge_queue_take`, `purge_queue_done`, `storage_orphans` para la Edge Function `purge-photos`); espacio del plan gratis y su alerta (`admin_storage_usage`) · pg_cron `mm-despues-del-juego`, `mm-partidos-sin-resultado`, `mm-limpiar-fotos`, `mm-alerta-espacio` (solo Supabase) |
 | `migrations/20260929000600_organizador.sql` | Organizador (ver «Organizador»): ligas públicas vivas y más activas primero (`public_leagues_feed`, también sin cuenta) y tope de 5 ligas o torneos por día y 20 cada 30 días por cuenta (trigger `leagues_quota`); pendientes del admin (`league_pending`); juntar jugadores repetidos (`merge_league_players`, `merge_league_players_preview`); menores con tutor, teléfono y permiso en todos los deportes (`create_player` con `p_guardian_phone` y `p_consent`, `set_player_minor`, `player_private.guardian_phone`); suspender un día (`suspend_day_preview`, `suspend_day`); pistas del boliche (`event_lanes`, `assign_lanes`, `set_player_lane`, `clear_lanes`, `publish_lanes`) |
+| `migrations/20260929000700_temporadas.sql` | Temporadas con historia y campeones (`seasons`, `season_awards`, `teams.season_id`, `close_season`, `start_season`, `league_seasons`, `league_champions`), playoffs con series al mejor de 1/3/5/7 (`playoffs`, `playoff_series`, `matches.series_id`, `create_playoffs`, `delete_playoffs`, `sync_playoffs`), lo que el boliche necesita para marcar récords (`bowling_game_context`) y «¿Dónde juego esta semana?» (`public_agenda`, también sin cuenta). Redefine `private.check_free_players`, `private.claim_conflicts` y `private.merge_players` (equipos y premios por temporada), y `league_announce` / `league_announce_reach` (el aviso automático de fin de temporada, `league_announcements.automatic`, no cuenta para el tope diario) |
 | `migrations/20260929000900_legal.sql` | Términos y privacidad con versión y aceptación guardada (`legal_acceptances`, `accept_legal`, el trigger `on_auth_user_legal` del registro, `admin_legal_stats`) y reportes de contenido (`reports`, `report_content`, `resolve_report`, `list_reports`, `my_reports`; push a los superadmins). Ver «Términos, privacidad y reportes» |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
@@ -155,7 +156,9 @@ El `BowlingEvent` de la app se arma con dos lecturas más: `teams` (→ `event.t
 y `event_rsvps` (→ `event.rsvp[player_id] = true`).
 
 ### `teams` — liga visible
-`id`, `league_id`, `event_id`, `name` (1–60), `sort_order`, `color` (`#rrggbb`|null), `created_at`, `updated_at`.
+`id`, `league_id`, `event_id`, `name` (1–60), `sort_order`, `color` (`#rrggbb`|null), `season_id`|null, `created_at`,
+`updated_at`. `season_id`: temporada de un equipo de temporada (`event_id` null) de una liga de equipos (baloncesto,
+fútbol, sala); se llena sola al crearlo (la activa, o la última). Las parejas de raqueta y los equipos del boliche: null.
 
 ### `event_rsvps` — liga visible
 `event_id`, `player_id`, `league_id`, `going` (siempre true hoy: quitar el «voy» borra la fila), `created_at`, `updated_at`.
@@ -224,6 +227,37 @@ null en una cuenta), `reason` (`spam`|`ofensivo`|`acoso`|`falso`|`menores`|`otro
 dirían quién fue) existen pero **no se leen directo** (el `GRANT SELECT` es por columnas): un admin de liga no sabe
 quién reportó; la lista va por `list_reports`. Uno abierto por cuenta y cosa. No tiene `user_id`: «Descargar mis
 datos» trae los de la cuenta con `my_reports`.
+
+### `seasons` — liga visible
+`id`, `league_id`, `name` (1–60), `starts_on` date, `ends_on` date|null, `status` (`active`|`closed`; una activa como
+mucho), `closed_at`|null, `closed_by`|null, `standings` jsonb|null (la tabla final que guardó `close_season`),
+`created_at`, `updated_at`. **Un juego es de la temporada donde cae su día** (evento: `events.date`; partido:
+`scheduled_at`, o `created_at` sin hora, en la zona de la liga): `starts_on <= día` y (`status = 'active'` o
+`ends_on` null o `día <= ends_on`). La activa no tiene fin para contar juegos (su `ends_on` es el fin previsto); al
+cerrarla, `ends_on` = el día del cierre. Nunca se pisan ni se estiran a otro año: un evento o partido de antes de la
+primera temporada (juegos viejos, la importación de BowlingX) la hace empezar ese día si es del mismo año; si es de un
+año sin temporada, queda en una **cerrada `'Temporada <año>'`** (1 ene – 31 dic, `standings` null, `closed_by` null:
+cada tabla la calcula con sus juegos). Un día entre dos temporadas del mismo año queda sin temporada. Las ligas que ya
+existían recibieron una activa desde `season_start` (sin inicio: lo primero que se jugó) y lo de años anteriores en
+cerradas así. `update_league` con `season_start`/`season_end` mueve la activa (`invalido: temporada` si empieza antes
+de que termine la anterior o después de un juego que ya es de ella). Toda liga nace con la suya (`'Temporada <año>'`).
+
+### `season_awards` — liga visible
+`id`, `season_id`, `league_id`, `kind` (`campeon`|`subcampeon`|`tercero`|`mvp`|`mas_mejorado`|`fair_play`|`otro`),
+`label` (1–40, lo que se muestra), `player_id`|null, `team_id`|null (a uno de los dos; null si se borró), `name`
+(copiado), `note` (≤200)|null, `sort_order`, `created_at`, `updated_at`.
+
+### `playoffs` / `playoff_series` — liga visible
+`playoffs`: `id`, `league_id`, `season_id`, `name`, `status` (`active`|`finished`; uno activo por temporada),
+`best_of` smallint[] (por ronda), `seeds` uuid[] (equipos en orden de siembra), `winner`|null (campeón),
+`created_by`, `created_at`, `updated_at`. `playoff_series`: `id`, `playoff_id`, `league_id`, `round` (1 = primera),
+`slot` (desde 1), `best_of` (1|3|5|7), `team_a`/`team_b`|null, `seed_a`/`seed_b`, `label_a`/`label_b` (nombres
+copiados), `wins_a`/`wins_b`, `winner`|null, `bye` (pase directo), `next_series`|null + `next_side` (`a`|`b`),
+`created_at`, `updated_at`. Los juegos son `matches` con **`series_id`** (y `bracket_key` `'PO<ronda>-<lugar>'`,
+`stage` «Semifinal · Juego 2», sin `scheduled_at` al crearse): no cuentan en la tabla de la temporada. Una corrección
+que cambia quién ganó una serie cuando la serie siguiente ya empezó (un juego no anulado con resultado o anotador)
+falla con `cerrado: serie` y no cambia nada: el admin anula primero esos juegos. Reabrir una final (anular su último
+juego) con otro playoff en curso en la temporada: `invalido: playoff`.
 
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
@@ -394,6 +428,27 @@ followsYou, inLeague, invited}`.
 | `my_league_invites() → [{id, leagueId, leagueName, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt}]` | con sesión | Mis invitaciones pendientes que todavía valen, la más nueva primero (hasta 50). |
 | `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
 
+### Temporadas, playoffs y agenda
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `close_season(p_season, p_standings jsonb, p_awards jsonb='[]') → void` | admin | Guarda la tabla (objeto o lista, < 256 KB) y los premios `[{kind, label?, player_id? \| team_id?, note?}]` (hasta 30, un solo `campeon`; `otro` con `label` 1–40; si no, «Campeón», «Subcampeón», «Tercer lugar», «MVP», «Más mejorado», «Fair play»; jugador o equipo de la liga). Activa: queda `closed` (`ends_on` = hoy en la liga) y sale un aviso como `league_announce` («Terminó <temporada>: campeón <nombre>», push a los miembros con avisos, url `/l/<liga>/temporadas`; `automatic`: no cuenta en el tope diario del admin). Ya cerrada: reemplaza tabla y premios sin avisar. |
+| `start_season(p_league, p_name, p_starts_on, p_ends_on=null, p_copy_teams=false) → uuid` | admin | Con una activa: `invalido`. Empieza después de que terminó la anterior (si no: `invalido`; la cerrada no se toca, sus juegos siguen siendo suyos). Pone las fechas en la liga. `p_copy_teams` (ligas de equipos): copia los equipos de la anterior con plantilla (dorsal, posición, rol). |
+| `league_seasons(p_league) → [{id, name, startsOn, endsOn, status, closedAt, closedBy, standings, awards: [{id, kind, label, name, playerId, teamId, note}], playoffs: [{id, name, status, champion: {teamId, name}\|null, runnerUp, semifinalists: [{teamId, name}]}]}]` | quien ve la liga (también sin cuenta) | Más nueva primero. Lee con la RLS de quien llama (no es security definer): `null` si no ve la liga. El `champion` del playoff es lo que se propone al cerrar. |
+| `league_champions(p_league) → [{seasonId, name, startsOn, endsOn, closedAt, champion: {label, name, playerId, teamId}\|null, awards}]` | quien ve la liga (también sin cuenta) | Solo temporadas cerradas, más nueva primero. `null` si no ve la liga. |
+| `create_playoffs(p_league, p_season, p_teams uuid[], p_best_of integer[]) → uuid` | admin (liga de equipos) | Temporada activa (si no: `cerrado`); 2–32 equipos de esa temporada en orden de siembra; `p_best_of` uno por ronda (1, 3, 5 o 7; con 5 equipos, 3 rondas). Siembra estándar (1 contra el último); pases directos a los mejores si no es potencia de 2. Programa el primer juego de cada serie (el mejor sembrado de local, sin fecha). Otro activo en la temporada: `duplicado`. |
+| `delete_playoffs(p_playoff) → void` | admin | Borra la llave y los juegos sin empezar; los jugados se quedan sin serie. |
+| `sync_playoffs(p_playoff) → int` | con sesión y ve la liga | Pone al día las series (un resultado propuesto que a las 48 h ya cuenta, un juego borrado). Una serie cuyo cambio ya no se puede aplicar se queda como estaba (las demás sí). Devuelve cuántas series cambiaron. Llamarla al abrir la llave. |
+| `bowling_game_context(p_entries uuid[]) → [{entryId, playerId, leagueId, seasonId, averageOverride, average, before: {games, high}, season: {games, pins}, prevSeason: {id, games, pins}\|null}]` | quien ve la liga (también sin cuenta) | Hasta 100 participaciones de boliche. Juegos verificados del jugador en la liga antes de ese evento (orden fecha, id del evento), los de su temporada antes del evento, los de la temporada anterior entera y `average` (el promedio congelado de la participación): con eso `stats.ts` marca «Récord personal» y «+15 sobre tu promedio». Lee con la RLS de quien llama. |
+| `public_agenda(p_sport=null, p_from=null, p_days=14) → {from, days, items: [{eventId, leagueId, leagueName, sport, leagueKind, type, name, date, time, timeLabel, venue, join, cap, taken, spotsLeft, waitlist, until, categories, mine, url}]}` | cualquiera (también sin cuenta) | Ligas públicas sin menores de deportes no cerrados, de `p_from` (hoy en RD) a `p_days` (1–31) días, por día y hora, hasta 100: boliche (`join` `rsvp`: `join_league` + `set_rsvp`), rondas de golf abiertas (`golf`: `join_league` + `golf_register`) y noches o torneos de raqueta con inscripción abierta, antes de la fecha límite, sin empezar y con lugar (`signup`: `join_signup`; `cap`/`taken`/`spotsLeft`, por categoría en el torneo; `waitlist`). `mine`: ya va o ya está apuntado. Sin cuenta: 60 cada 10 min por IP (`rate_limited`). |
+
+Cuando un juego de una serie queda con resultado que cuenta (confirmado o W.O.; propuesto de hace 48 h con
+`sync_playoffs`), la base cuenta las victorias; si nadie ganó la serie programa el siguiente juego (local alterno, el
+mejor sembrado abre); un empate o un W.O. doble no suma y se juega otro; un anulado se reemplaza. Quien llega a las
+victorias que hacían falta pasa a la serie siguiente (con su primer juego cuando se sabe el rival); el ganador de la
+final queda en `playoffs.winner` (`finished`). Una corrección cambia quién pasa mientras la serie siguiente no haya
+empezado.
+
 ### Términos, privacidad y reportes
 
 `20260929000900_legal.sql` (pruebas: `tests/sql/legal.test.ts`; cliente: `src/lib/legal.ts`,
@@ -506,6 +561,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `invites` | `{id, status, league_id}` | una invitación a una liga que recibió o que mandó (nueva, aceptada, rechazada, cancelada) |
 | `league:<id>` | `invites` | `{id, status}` | invitaciones a la liga |
 | `event:<id>` | `lanes` | `{op}` | pistas del boliche del evento (una vez por sentencia) |
+| `league:<id>` | `seasons` | `{op, ids}` | temporadas de la liga y sus premios (los premios avisan `update` de su temporada) |
+| `league:<id>` | `playoffs` | `{op, ids}` | playoffs y sus series (las series avisan `update` de su playoff); los juegos, como cualquier partido |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa
@@ -720,8 +777,9 @@ con `p_guardian_phone` y `p_consent` al final).
 - Primera migración: `alter default privileges` quita EXECUTE a PUBLIC y todo a anon/authenticated; al final de
   `…_rpc.sql` se quitan otra vez en todas las funciones de `public` y `private` y se dan explícitos
   (lista `v_authenticated`, `v_anon`). Una fase nueva agrega sus RPC a su propia lista de GRANT.
-- Solo `public.invite_preview`, `public.public_leagues_feed` y `private.readable_leagues` son security definer
-  ejecutables por `anon`.
+- Solo `public.invite_preview`, `public.public_leagues_feed`, `public.public_agenda` y `private.readable_leagues` son
+  security definer ejecutables por `anon`. `league_seasons`, `league_champions` y `bowling_game_context` también las
+  llama `anon`, pero leen con la RLS de quien llama (no son security definer).
 - Nadie tiene INSERT/UPDATE/DELETE en ninguna tabla; `profiles` sin UPDATE directo (más estricto que permisos por
   columna) y un trigger impide que una sesión de usuario cambie `is_superadmin`, `email` o `firebase_uid`.
 - `league_id` de las tablas hijas verificado con FK compuestas; `photos.path` atado a su liga e id.

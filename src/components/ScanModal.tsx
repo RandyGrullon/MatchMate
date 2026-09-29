@@ -152,7 +152,7 @@ export function ScanModal({
     if (!photo || problems.length || !gamesToSave) return;
     setSaving(true);
     const newcomers = included.filter((r) => !entryOf(r.playerId)).map((r) => players.find((p) => p.id === r.playerId)!);
-    const averages = newcomers.length ? await fetchEffectiveAverages(lid, newcomers) : new Map<string, number>();
+    const averages = newcomers.length ? await fetchEffectiveAverages(lid, newcomers, { date: event.date, eventId: event.id }) : new Map<string, number>();
     const writes: VerifiedWrite[] = included.map((r) => {
       const values: Record<number, number> = {};
       r.values.forEach((v, k) => {

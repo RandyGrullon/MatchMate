@@ -79,7 +79,7 @@ function CalendarAdmin({ tl }: { tl: TeamLeague }) {
 function OfficialRow({ tl, match: m }: { tl: TeamLeague; match: Match }) {
   const run = useAction();
   const official = tl.officialOf(m.id);
-  const candidates = scorerCandidates(m, tl.teams.data, tl.members.data, tl.players.data);
+  const candidates = scorerCandidates(m, tl.allTeams.data, tl.members.data, tl.players.data);
   const name = (i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;
   return (
     <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">

@@ -1,86 +1,45 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { ListOrdered, Medal, Moon, Users } from 'lucide-react';
-import { useMatches, type Match } from '../../../lib/data/matches';
-import { useRacketEvents, useWithPendingPoints, type RacketEvent } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
-import { useNow } from '../../../lib/useNow';
-import type { StandingRow } from '../../../sports/types';
 import { StandingsTable, type StandingsColumn } from '../../../components/match';
 import { ShareButton, standingsShare, type ShareTableSpec } from '../../../components/share';
+import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
+import { SEASON_PARAM } from '../../../components/season/SeasonSelect';
 import { Card, Empty, ListSkeleton, LoadError, Position, Tabs, cx } from '../../../components/ui';
 import { Chips, racketColumns } from './bits';
-import { parseLeagueConfig } from './logic/league';
 import { fmtPoints } from './logic/night';
-import { byModality, MODALITY_LABEL, type Modality } from './logic/modality';
-import { inSeason, isSetsMatch, pairStandings, seasonDay, seasonNightTable, seasonPlayerTable, winPct } from './logic/results';
+import { MODALITY_LABEL, type Modality } from './logic/modality';
+import { seasonPlayerTable, winPct } from './logic/results';
 import { rankingNote, tiebreakText } from './logic/tiebreaks';
-import { groupStage, groupTables, parseTourneyConfig } from './logic/tourney';
-import { useNames } from './names';
+import { useRacketSeason } from './seasonTable';
 import { hasNights, useRacket } from './sport';
 
 type Tab = 'parejas' | 'ranking' | 'noches';
 
-interface Competition {
-  key: string;
-  name: string;
-  rows: StandingRow[];
-}
-
-/** Tablas de las ligas de parejas y de los grupos de los torneos. */
-function competitions(sport: Parameters<typeof pairStandings>[0], events: readonly RacketEvent[], matches: readonly Match[], now: number): Competition[] {
-  const out: Competition[] = [];
-  for (const e of events) {
-    const list = matches.filter((m) => m.eventId === e.id);
-    if (e.type === 'liga') {
-      const cfg = parseLeagueConfig(e.config, e.date);
-      if (cfg.pairs.length && list.length) out.push({ key: e.id, name: e.name || 'Liga', rows: pairStandings(sport, cfg.pairs, list, { scheme: cfg.points, lotSeed: e.id, now }) });
-    } else if (e.type === 'torneo') {
-      const cfg = parseTourneyConfig(e.config);
-      for (const c of cfg.categories) {
-        groupTables(sport, c, list, { scheme: cfg.points, now }).forEach((rows, g) => out.push({ key: `${e.id}:${c.id}:${g}`, name: `${e.name || 'Torneo'} · ${groupStage(c, g)}`, rows }));
-      }
-    }
-  }
-  return out;
-}
-
 /**
  * Tabla de la temporada: las tablas de las ligas de parejas (y de los grupos de los torneos), el ranking
- * individual con los partidos a sets y las noches de americano y mexicano.
+ * individual con los partidos a sets y las noches de americano y mexicano. Arriba, la temporada (?temporada=): la
+ * activa con los partidos de sus fechas; una cerrada muestra sus premios y la tabla que se guardó al cerrarla.
  */
 export default function RacketStandings() {
   const { lid, base, league, myPlayerId } = useLeagueCtx();
   const { sport, doubles, ext } = useRacket();
-  const names = useNames();
   const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
-  const now = useNow().getTime();
-  const events = useRacketEvents(lid);
-  const q = useMatches({ lid });
-  const all = useWithPendingPoints(lid, q.data);
-  const hasSeason = !!(league.seasonStart || league.seasonEnd);
-  const [whole, setWhole] = useState(false);
+  const picked = useStandingsSeason();
+  const { q, all, matches, comps, kinds, split, nights, names, now } = useRacketSeason(picked.selected, sport, ext);
   const nightsWord = ext.words?.nights ?? 'Noches';
-
-  const eventDays = useMemo(() => new Map(events.data.map((e) => [e.id, { date: e.date, type: e.type }] as const)), [events.data]);
-  const matches = useMemo(
-    () => (whole || !hasSeason ? all : all.filter((m) => inSeason(league, seasonDay(m, eventDays, league.tz)))),
-    [all, whole, hasSeason, league, eventDays],
-  );
-  const comps = useMemo(
-    () => [...competitions(sport, events.data, matches, now), ...(ext.competitions?.(events.data, matches, now) ?? [])],
-    [sport, events.data, matches, now, ext],
-  );
-  // Individual y dobles van por separado (tenis y pickleball pueden tener de los dos en la misma liga).
-  const kinds = useMemo(() => byModality(matches.filter(isSetsMatch), names.rosterOf), [matches, names]);
-  const split = kinds.individual.length > 0 && kinds.dobles.length > 0;
+  // Cambiar de pestaña o de tabla no pierde la temporada elegida.
+  const go = (p: Record<string, string>) => {
+    const season = search.get(SEASON_PARAM);
+    setSearch(season ? { ...p, [SEASON_PARAM]: season } : p, { replace: true });
+  };
   const modo: Modality = search.get('modo') === 'dobles' ? 'dobles' : search.get('modo') === 'individual' ? 'individual' : kinds.dobles.length > kinds.individual.length ? 'dobles' : 'individual';
   const ranking = useMemo(
     () => seasonPlayerTable(split ? kinds[modo] : matches, { sport, rosterOf: names.rosterOf, lotSeed: lid, now }),
     [split, kinds, modo, matches, sport, names, lid, now],
   );
-  const nights = useMemo(() => seasonNightTable(matches, { now }), [matches, now]);
   const rankingColumns: StandingsColumn[] = useMemo(
     () => [
       ...racketColumns(sport).slice(0, 4),
@@ -94,7 +53,7 @@ export default function RacketStandings() {
   const compKey = search.get('tabla') ?? comps[0]?.key;
   const comp = comps.find((c) => c.key === compKey) ?? comps[0];
   const highlight = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
-  const scope = hasSeason ? (whole ? 'Todo' : 'Esta temporada') : null;
+  const scope = picked.seasons.length > 1 ? (picked.selected?.name ?? null) : null;
 
   // Imagen de la tabla que se ve (pestaña, tabla elegida y modalidad) para mandar al grupo.
   const shareCard = (): ShareTableSpec | null => {
@@ -136,6 +95,15 @@ export default function RacketStandings() {
 
   if (q.error) return <LoadError error={q.error} />;
 
+  if (picked.closed) {
+    return (
+      <div className="flex flex-col gap-4">
+        <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
+        <ClosedSeasonView season={picked.closed} highlight={highlight} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Tabs
@@ -145,31 +113,21 @@ export default function RacketStandings() {
           ...(hasNights(sport) ? [{ key: 'noches' as Tab, label: nightsWord, icon: <Moon className="size-4" /> }] : []),
         ]}
         active={tab}
-        onChange={(k) => setSearch({ ver: k }, { replace: true })}
+        onChange={(k) => go({ ver: k })}
       />
-      {(hasSeason || canShare) && (
-        <div className="flex items-center gap-2">
-          {hasSeason && (
-            <Chips
-              className="min-w-0 flex-1"
-              items={[
-                { key: 'temporada', label: 'Esta temporada' },
-                { key: 'todo', label: 'Todo' },
-              ]}
-              value={whole ? 'todo' : 'temporada'}
-              onChange={(k) => setWhole(k === 'todo')}
-            />
-          )}
-          {canShare && <ShareButton className="ml-auto shrink-0" card={shareCard} />}
-        </div>
-      )}
+      <SeasonBar
+        seasons={picked.seasons}
+        selected={picked.selected}
+        onChange={picked.setSelected}
+        action={canShare ? <ShareButton className="shrink-0" card={shareCard} /> : undefined}
+      />
 
       {q.loading && !all.length ? (
         <ListSkeleton rows={5} />
       ) : tab === 'parejas' ? (
         comps.length ? (
           <>
-            {comps.length > 1 && <Chips items={comps.map((c) => ({ key: c.key, label: c.name }))} value={comp.key} onChange={(k) => setSearch({ ver: 'parejas', tabla: k }, { replace: true })} />}
+            {comps.length > 1 && <Chips items={comps.map((c) => ({ key: c.key, label: c.name }))} value={comp.key} onChange={(k) => go({ ver: 'parejas', tabla: k })} />}
             <StandingsTable rows={comp.rows} nameOf={names.entrantName} columns={racketColumns(sport)} highlight={highlight} />
             <p className="px-1 text-xs text-muted">{tiebreakText(sport)}</p>
           </>
@@ -184,7 +142,7 @@ export default function RacketStandings() {
             <Chips
               items={(['individual', 'dobles'] as const).map((k) => ({ key: k, label: MODALITY_LABEL[k] }))}
               value={modo}
-              onChange={(k) => setSearch({ ver: 'ranking', modo: k }, { replace: true })}
+              onChange={(k) => go({ ver: 'ranking', modo: k })}
             />
           )}
           <StandingsTable

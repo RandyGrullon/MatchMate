@@ -8,12 +8,14 @@ import { scoreColumns } from './format';
 /**
  * Cuadro de eliminación (src/sports/formats/knockout): una columna por ronda (Cuartos, Semifinal, Final) con
  * desplazamiento horizontal en el teléfono, el partido por el 3.er lugar aparte y el campeón. `matchOf` une cada
- * partido del cuadro con el partido de la base (por `bracket_key`) para mostrar el marcador.
+ * partido del cuadro con el partido de la base (por `bracket_key`) para mostrar el marcador; `scoreOf` pone otro
+ * marcador por lado (los playoffs: las victorias de cada equipo en la serie).
  */
 export function BracketView({
   bracket,
   nameOf,
   matchOf,
+  scoreOf,
   onMatch,
   highlight = [],
   className,
@@ -21,6 +23,7 @@ export function BracketView({
   bracket: Bracket;
   nameOf: (id: string) => ReactNode;
   matchOf?: (key: string) => Match | undefined;
+  scoreOf?: (bm: BracketMatch) => readonly [ReactNode, ReactNode] | null;
   onMatch?: (bm: BracketMatch) => void;
   /** Ids resaltados (mi pareja o equipo). */
   highlight?: readonly string[];
@@ -41,7 +44,7 @@ export function BracketView({
                   .filter((m) => m.round === r && !m.thirdPlace)
                   .sort((a, b) => a.index - b.index)
                   .map((m) => (
-                    <BracketCell key={m.key} bm={m} nameOf={nameOf} match={matchOf?.(m.key)} onMatch={onMatch} highlight={highlight} />
+                    <BracketCell key={m.key} bm={m} nameOf={nameOf} match={matchOf?.(m.key)} score={scoreOf?.(m)} onMatch={onMatch} highlight={highlight} />
                   ))}
               </div>
             </div>
@@ -56,7 +59,7 @@ export function BracketView({
       {third && (
         <div className="w-56">
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">3.er lugar</h3>
-          <BracketCell bm={third} nameOf={nameOf} match={matchOf?.(third.key)} onMatch={onMatch} highlight={highlight} />
+          <BracketCell bm={third} nameOf={nameOf} match={matchOf?.(third.key)} score={scoreOf?.(third)} onMatch={onMatch} highlight={highlight} />
         </div>
       )}
     </div>
@@ -67,16 +70,18 @@ function BracketCell({
   bm,
   nameOf,
   match,
+  score,
   onMatch,
   highlight,
 }: {
   bm: BracketMatch;
   nameOf: (id: string) => ReactNode;
   match?: Match;
+  score?: readonly [ReactNode, ReactNode] | null;
   onMatch?: (bm: BracketMatch) => void;
   highlight: readonly string[];
 }) {
-  const cols = scoreColumns(match?.score);
+  const cols: { a: ReactNode; b: ReactNode }[] = score ? [{ a: score[0], b: score[1] }] : scoreColumns(match?.score);
   const line = (id: string | null, seed: number | null, idx: 0 | 1) => {
     const won = !!id && bm.winner === id;
     return (

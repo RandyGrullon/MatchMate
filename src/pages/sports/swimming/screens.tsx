@@ -4,6 +4,7 @@ import { ClubsAdmin } from './ClubsAdmin';
 import MeetPage from './MeetPage';
 import { SwimMyProfile, SwimPlayer } from './ProfilePage';
 import SwimStandings from './StandingsPage';
+import { useSwimSeasonTable } from './seasonTable';
 import SwimHome from './SwimHome';
 import { SwimmersAdmin } from './SwimmersAdmin';
 
@@ -17,6 +18,7 @@ const screens: SportScreens = {
   Standings: SwimStandings,
   MyProfile: SwimMyProfile,
   Player: SwimPlayer,
+  useSeasonTable: useSwimSeasonTable,
   adminTabs: [
     { key: 'nadadores', label: 'Nadadores', icon: Users, Component: SwimmersAdmin },
     { key: 'clubes', label: 'Clubes', icon: Shield, Component: ClubsAdmin },

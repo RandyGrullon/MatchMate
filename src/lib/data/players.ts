@@ -1,10 +1,12 @@
 import { BLOCKED_MESSAGE, isBlockedError } from '../backend/errors';
 import { uuidv7 } from '../db/ids';
+import { averageForDay } from '../bowlingSeason';
 import { playerStats } from '../stats';
 import type { Entry, Member, Player } from '../types';
 import { invalidate, rpc, select, useLive, type Live } from './client';
 import { keys, tags } from './keys';
 import { chunks, toEntry, toPlayer, type EntryRow, type PlayerRow } from './rows';
+import { fetchLeagueSeasons } from './seasons';
 
 // ---------- Lecturas ----------
 
@@ -34,8 +36,20 @@ export const usePlayer = (lid: string | undefined, id: string | undefined): Live
     tags: lid ? [tags.league(lid), tags.players(lid)] : [],
   });
 
-/** Promedio que tiene hoy cada jugador en la liga (fijo o calculado con sus juegos verificados). */
-export async function fetchEffectiveAverages(lid: string, players: Pick<Player, 'id' | 'averageOverride'>[]) {
+/**
+ * Promedio con el que cada jugador entra a un evento (para el handicap). Con `at` (la fecha del evento y su id): el
+ * de la temporada de ese día cuando ya tiene el mínimo de juegos; si no, el de la temporada anterior, el fijo o el
+ * de su última participación (averageForDay en src/lib/bowlingSeason.ts; no cuenta los juegos de ese mismo evento).
+ * Sin `at`, o si no se pueden leer las temporadas: el fijo o el calculado con todos sus juegos verificados.
+ */
+export async function fetchEffectiveAverages(lid: string, players: Pick<Player, 'id' | 'averageOverride'>[], at?: { date: string; eventId?: string | null }) {
+  if (at?.date && players.length) {
+    const bySeason = await seasonAverages(lid, players, at).catch((e: unknown) => {
+      console.error(e);
+      return null;
+    });
+    if (bySeason) return bySeason;
+  }
   const result = new Map<string, number>();
   const need = players.filter((p) => {
     if (p.averageOverride != null) result.set(p.id, p.averageOverride);
@@ -51,6 +65,31 @@ export async function fetchEffectiveAverages(lid: string, players: Pick<Player, 
     });
     const entries: Entry[] = rows.map(toEntry);
     for (const p of chunk) result.set(p.id, playerStats(entries.filter((e) => e.playerId === p.id)).autoAverage ?? 0);
+  }
+  return result;
+}
+
+/** El promedio por temporada de fetchEffectiveAverages: temporadas, fechas de los eventos y sus participaciones. */
+async function seasonAverages(lid: string, players: Pick<Player, 'id' | 'averageOverride'>[], at: { date: string; eventId?: string | null }) {
+  const [seasons, events] = await Promise.all([
+    fetchLeagueSeasons(lid),
+    select<{ id: string; date: string }>({ table: 'events', columns: 'id,date', filters: [{ col: 'league_id', op: 'eq', value: lid }] }),
+  ]);
+  const dateOf = new Map(events.map((e) => [e.id, e.date]));
+  const result = new Map<string, number>();
+  for (const chunk of chunks(players)) {
+    const rows = await select<EntryRow>({
+      table: 'entries',
+      filters: [
+        { col: 'league_id', op: 'eq', value: lid },
+        { col: 'player_id', op: 'in', value: chunk.map((p) => p.id) },
+      ],
+    });
+    const entries = rows.map(toEntry).flatMap((entry) => (dateOf.has(entry.eventId) ? [{ entry, date: dateOf.get(entry.eventId)! }] : []));
+    for (const p of chunk) {
+      const mine = entries.filter((d) => d.entry.playerId === p.id);
+      result.set(p.id, averageForDay({ entries: mine, seasons, day: at.date, skipEvent: at.eventId, override: p.averageOverride }).average);
+    }
   }
   return result;
 }

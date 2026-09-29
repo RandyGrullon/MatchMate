@@ -134,7 +134,7 @@ const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, 
 
 describe('pantallas de natación', () => {
   it('el contrato: pantallas, pestañas del admin y nombres', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => t.key)).toEqual(['nadadores', 'clubes']);
     expect(screens.tabs).toEqual({ home: 'Encuentros', feed: null, standings: 'Puntos', profile: 'Mis marcas' });
   });

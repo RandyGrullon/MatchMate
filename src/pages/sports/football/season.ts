@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { finalMatches, isFinal, sideKey, type Match } from '../../../lib/data/matches';
+import type { Season } from '../../../lib/seasons';
 import { useNow } from '../../../lib/useNow';
+import { seasonMatches } from '../../../components/season/logic';
 import type { FootballVariant } from '../../../sports/team/football';
 import {
   disciplineReport,
@@ -15,6 +17,7 @@ import {
 import { footballStandings, type FootballTableConfig, type TeamMatchResult } from '../../../sports/team/standings';
 import { footballTotals, type FootballTotals } from '../../../sports/team/stats';
 import type { StandingRow } from '../../../sports/types';
+import { isPlayoffMatch } from '../team/playoffs';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { cardLinesOf, matchLines, matchResultOf, seasonLines, type SeasonLine } from './adapter';
 import { useFootballSanctions, type FootballSanction } from './data';
@@ -71,6 +74,8 @@ export interface FootballSeason {
   /** Suspendidos para el próximo partido de cada equipo. */
   suspendedNext: SuspendedNext[];
   adjustments: DisciplineAdjustment[];
+  /** Los partidos de la temporada (también los del playoff): el calendario del Excel. */
+  matches: Match[];
 }
 
 /** «Grupo A»… (partidos de la fase de grupos del torneo relámpago). */
@@ -180,7 +185,8 @@ export function cardTable(lines: readonly SeasonLine[], fair = { yellow: -1, sec
 
 /**
  * La temporada completa. `teamIds` = equipos de la liga (todos salen en la tabla, también sin partidos).
- * Solo partidos entre equipos de la temporada; los anulados y aplazados no cuentan.
+ * Solo partidos entre equipos de la temporada; los anulados y aplazados no cuentan. Los del playoff no suman en la
+ * tabla ni en los goleadores, pero sí en la disciplina (una roja en el playoff también suspende).
  */
 export function footballSeason(input: {
   matches: readonly Match[];
@@ -205,7 +211,10 @@ export function footballSeason(input: {
     const set = new Set(ms.map((m) => m.id));
     return { stage, rows: footballStandings(ids, results.filter((r) => set.has(r.id)), table) };
   });
-  const lines = seasonLines(between, now);
+  const lines = seasonLines(
+    between.filter((m) => !isPlayoffMatch(m)),
+    now,
+  );
   const played = lines.filter((l) => l.played);
   const scorers = footballTotals(
     played.map((l) => ({
@@ -238,18 +247,23 @@ export function footballSeason(input: {
     discipline: disciplineReport(dm, cfg, adjustments),
     suspendedNext: suspendedForNext(dm, cfg, adjustments),
     adjustments,
+    matches: [...input.matches],
   };
 }
 
-/** La variante de la liga (campo o sala) y la temporada, al día con la caché y el tiempo real. */
-export function useFootballSeason(tl: TeamLeague): FootballSeason {
+/**
+ * La variante de la liga (campo o sala) y la temporada, al día con la caché y el tiempo real: la de ahora o la que
+ * se pida (sus equipos y los partidos de sus fechas). Sin temporadas (datos de antes), todo.
+ */
+export function useFootballSeason(tl: TeamLeague, season: Season | null = tl.season): FootballSeason {
   const now = useNow(5 * 60_000).getTime();
   const sanctions = useFootballSanctions(tl.lid);
-  const teamIds = tl.teams.data.map((t) => t.id);
+  const teamIds = tl.teamsFor(season).map((t) => t.id);
   const key = teamIds.join();
   return useMemo(
-    () => footballSeason({ matches: tl.matches.data, teamIds: key ? key.split(',') : [], rules: tl.rules.data, sanctions: sanctions.data, now }),
-    [tl.matches.data, key, tl.rules.data, sanctions.data, now],
+    () =>
+      footballSeason({ matches: seasonMatches(tl.matches.data, season, tl.tz), teamIds: key ? key.split(',') : [], rules: tl.rules.data, sanctions: sanctions.data, now }),
+    [tl.matches.data, season, tl.tz, key, tl.rules.data, sanctions.data, now],
   );
 }
 
@@ -261,7 +275,7 @@ export const useVariant = (tl: Pick<TeamLeague, 'league'>): FootballVariant => v
  * cuentan (por jugar, en juego o por confirmar). Los anulados no frenan.
  */
 export function groupRanking(season: Pick<FootballSeason, 'groups'>, matches: readonly Match[], stage: string, now: number = Date.now()): string[] | null {
-  const ms = matches.filter((m) => m.stage.trim() === stage && !m.bracketKey);
+  const ms = matches.filter((m) => m.stage.trim() === stage && !m.bracketKey && !isPlayoffMatch(m));
   if (!ms.length || !ms.every((m) => m.status === 'void' || isFinal(m, now))) return null;
   return season.groups.find((g) => g.stage === stage)?.rows.map((r) => r.id) ?? null;
 }

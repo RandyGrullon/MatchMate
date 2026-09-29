@@ -180,7 +180,7 @@ const text = (html: string) =>
 
 describe('pantallas del pádel', () => {
   it('el contrato: pantallas, pestaña del admin y nombres', () => {
-    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs']);
+    expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => [t.key, t.label])).toEqual([['parejas', 'Parejas y niveles']]);
     expect(screens.tabs).toEqual({ home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mis partidos' });
   });

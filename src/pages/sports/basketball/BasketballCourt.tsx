@@ -201,7 +201,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
     const i = side - 1;
     const color = colors[i];
     const tLeft = basketballTimeoutsLeft(s, side, now);
-    const roster = rosterOf(tl.teams.data, m.sides[i].teamId).map((r) => r.playerId);
+    const roster = rosterOf(tl.allTeams.data, m.sides[i].teamId).map((r) => r.playerId);
     const ids = [...new Set([...(s.present[i].length ? s.present[i] : roster), ...Object.keys(s.players[i])])];
     ids.sort((a, b) => (jerseyOf(side, a) ?? 1000) - (jerseyOf(side, b) ?? 1000) || tl.nameOf(a).localeCompare(tl.nameOf(b), 'es'));
     return (

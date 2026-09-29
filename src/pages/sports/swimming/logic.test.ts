@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { POINTS_6_LANES, validateSwimEvent } from '../../../sports/swimming';
 import type { SwimEntry, SwimEventItem, SwimMeet, SwimSeason } from '../../../lib/data/swimming';
+import { inSeason } from '../../../lib/seasons';
 import {
   canEnter,
   clubMeetTemplate,
@@ -147,6 +148,11 @@ describe('resultados', () => {
     ]);
     expect(t.clubs[0].byMeet).toEqual({ m1: 4, m2: 6 });
     expect(seasonTable(season).meets.map((m) => m.id)).toEqual(['m4', 'm1', 'm2']);
+    // Por temporada (`within`): una cerrada no se lleva lo de después de su cierre; la activa, lo de antes de su inicio.
+    const closed = { startsOn: '2025-01-01', endsOn: '2025-12-31', status: 'closed' as const };
+    const active = { startsOn: '2026-01-01', endsOn: '2026-04-30', status: 'active' as const };
+    expect(seasonTable(season, undefined, (d) => inSeason(closed, d)).meets.map((m) => m.id)).toEqual(['m4']);
+    expect(seasonTable(season, undefined, (d) => inSeason(active, d)).meets.map((m) => m.id)).toEqual(['m1', 'm2']);
   });
 });
 

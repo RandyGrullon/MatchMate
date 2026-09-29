@@ -114,6 +114,8 @@ export interface Match {
   disputeNote: string | null;
   note: string | null;
   createdBy: string | null;
+  /** Juego de una serie del playoff (src/lib/data/playoffs.ts): no cuenta en la tabla de la temporada. */
+  seriesId?: string | null;
   sides: [MatchSide, MatchSide];
   createdAt: Stamp | null;
   updatedAt: Stamp | null;
@@ -158,6 +160,7 @@ export interface MatchRow {
   dispute_note: string | null;
   note: string | null;
   created_by: string | null;
+  series_id?: string | null;
   created_at: string;
   updated_at: string;
   rules?: Record<string, unknown>;
@@ -186,7 +189,7 @@ export interface MatchPlayerRow {
 export const MATCH_LIST_COLUMNS =
   'id,league_id,event_id,round,stage,bracket_key,court,scheduled_at,status,format,require_confirm,score,seq,version,winner_side,' +
   'walkover_side,scorer_id,lease_until,proposed_by,proposed_at,proposed_side,confirmed_by,confirmed_at,disputed_by,disputed_at,' +
-  'dispute_note,note,created_by,created_at,updated_at';
+  'dispute_note,note,created_by,series_id,created_at,updated_at';
 
 const asSide = (v: unknown): Side | null => (v === 1 || v === 2 ? v : null);
 const iso = (v: unknown): string | null => (typeof v === 'string' && v ? v : v instanceof Date ? v.toISOString() : null);
@@ -245,6 +248,7 @@ export function rowFields(row: MatchRow): Omit<Wire<Match>, 'sides'> {
     disputeNote: row.dispute_note ?? null,
     note: row.note ?? null,
     createdBy: row.created_by ?? null,
+    seriesId: row.series_id ?? null,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };

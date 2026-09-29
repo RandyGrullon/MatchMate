@@ -143,7 +143,8 @@ export default function BasketballHome() {
 
 function TablePreview({ tl, season }: { tl: TeamLeague; season: BasketballSeason }) {
   const rows = season.standings.filter((r) => r.played > 0);
-  if (!rows.length) return null;
+  // Sin la temporada (todavía no llega o no se pudo leer) la tabla mezclaría todas: no sale.
+  if (!tl.season || !rows.length) return null;
   return (
     <section className="flex flex-col gap-2">
       <SectionHead
@@ -176,8 +177,8 @@ function TablePreview({ tl, season }: { tl: TeamLeague; season: BasketballSeason
   );
 }
 
-/** Descargar la liga en Excel: calendario, tabla, resultados y anotadores. */
-export function ExcelButton({ tl, season }: { tl: TeamLeague; season: BasketballSeason }) {
+/** Descargar la temporada en Excel: calendario, tabla, resultados y anotadores. `label` = la temporada (va en el nombre del archivo). */
+export function ExcelButton({ tl, season, label }: { tl: TeamLeague; season: BasketballSeason; label?: string | null }) {
   const run = useAction();
   const [busy, setBusy] = useState(false);
   const teamName = (key: string) => tl.teamOf(key)?.name ?? '(equipo borrado)';
@@ -188,7 +189,8 @@ export function ExcelButton({ tl, season }: { tl: TeamLeague; season: Basketball
       loading={busy}
       onClick={async () => {
         setBusy(true);
-        await run(() => exportBasketballExcel({ leagueName: tl.league.name, matches: tl.matches.data, season, teamName, playerName: tl.nameOf, tz: tl.tz }));
+        const leagueName = label ? `${tl.league.name} - ${label}` : tl.league.name;
+        await run(() => exportBasketballExcel({ leagueName, matches: season.matches, season, teamName, playerName: tl.nameOf, tz: tl.tz }));
         setBusy(false);
       }}
     >

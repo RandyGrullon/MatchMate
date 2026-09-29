@@ -42,6 +42,11 @@ const LEAGUE_TABLES = [
   'swim_meets',
   'swim_events',
   'swim_entries',
+  // Temporadas con sus premios y tablas guardadas, y los playoffs con su llave.
+  'seasons',
+  'season_awards',
+  'playoffs',
+  'playoff_series',
 ] as const;
 
 async function leagueData(lid: string) {

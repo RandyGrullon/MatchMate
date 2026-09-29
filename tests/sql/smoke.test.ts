@@ -45,7 +45,7 @@ async function footprint(db: PGlite): Promise<Record<string, number>> {
     'public.submissions', 'public.matches', 'public.teams', 'public.team_players', 'public.golf_cards', 'public.swim_entries',
     'public.push_subscriptions', 'public.push_outbox', 'public.league_announcements', 'public.admin_audit', 'public.tombstones',
     'public.league_invites', 'public.legal_acceptances', 'public.reports', 'public.event_lanes', 'private.league_creations',
-    'private.op_log', 'private.rate_limits',
+    'public.seasons', 'public.season_awards', 'public.playoffs', 'public.playoff_series', 'private.op_log', 'private.rate_limits',
   ];
   const out: Record<string, number> = {};
   for (const t of tables) out[t] = (await db.query<{ n: number }>(`select count(*)::int as n from ${t}`)).rows[0].n;
@@ -127,6 +127,9 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK legal: lo que descartó el dueño no se vuelve a decidir [falla como debe: cerrado]',
       'OK organizador: league_pending, pistas del torneo por equipo con su aviso y suspend_day_preview de hoy',
       'OK permisos: anon no ve ligas privadas; sí ve los deportes, las ligas públicas',
+      'OK playoffs: el admin arma la final',
+      'OK temporadas: el admin cierra la temporada con el campeón',
+      'OK agenda: «¿Dónde juego esta semana?» responde sin cuenta',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }

@@ -6,6 +6,7 @@ import { toIsoDate } from '../../../lib/format';
 import { seededRandom, shuffle } from '../../../sports/formats/random';
 import { useAction } from '../../../components/feedback';
 import { Button, Card, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { isPlayoffMatch } from './playoffs';
 import { isIsoDate, parseCourts } from './schedule';
 import { TeamName } from './TeamBits';
 import { advanceTournament, groupName, planTournament, tournamentDrafts, tournamentErrors, tournamentSetupOf, type SideChange, type TournamentPlan } from './tournament';
@@ -229,7 +230,8 @@ function Warn({ children }: { children: ReactNode }) {
 export function tournamentChanges(tl: TeamLeague, rankGroup: (stage: string) => string[] | null, now = Date.now()): SideChange[] {
   const setup = tournamentSetupOf(tl.rules.data);
   if (!setup) return [];
-  const knockout = tl.matches.data.filter((m) => !!m.bracketKey);
+  // Solo el cuadro del torneo (los juegos del playoff tienen su propia llave).
+  const knockout = tl.matches.data.filter((m) => !!m.bracketKey && !isPlayoffMatch(m));
   if (!knockout.length) return [];
   const rankings = Array.from({ length: setup.groups }, (_, i) => rankGroup(groupName(i)));
   try {

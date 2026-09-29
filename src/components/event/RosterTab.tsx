@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshCw, UserPlus, Users, X } from 'lucide-react';
 import { fetchEffectiveAverages, removeEntry, updateEntries, updateEntry } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
-import { calcHandicap, category } from '../../lib/stats';
+import { calcHandicap, category, MIN_RANK_GAMES } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { useAction, useFeedback } from '../feedback';
 import { NumberCell } from '../NumberCell';
@@ -38,13 +38,17 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
     const ok = await confirm({
       title: 'Actualizar promedios',
       message:
-        'Se toma el promedio actual de cada inscrito (fijo o calculado con sus juegos verificados). Úsalo antes de empezar el torneo; el handicap se recalcula.',
+        `Se toma el promedio de la temporada de cada inscrito (con menos de ${MIN_RANK_GAMES} juegos: el de la temporada anterior o el fijo). Úsalo antes de empezar el torneo; el handicap se recalcula.`,
       confirmText: 'Actualizar',
     });
     if (!ok) return;
     setSyncing(true);
     await run(async () => {
-      const avgs = await fetchEffectiveAverages(lid, entries.map((e) => ({ id: e.playerId, averageOverride: byId.get(e.playerId)?.averageOverride ?? null })));
+      const avgs = await fetchEffectiveAverages(
+        lid,
+        entries.map((e) => ({ id: e.playerId, averageOverride: byId.get(e.playerId)?.averageOverride ?? null })),
+        { date: event.date, eventId: event.id },
+      );
       await updateEntries(lid, entries.map((e) => ({ id: e.id, patch: { average: avgs.get(e.playerId) ?? 0 } })));
     }, 'Promedios actualizados');
     setSyncing(false);

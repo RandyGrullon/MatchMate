@@ -4,12 +4,14 @@ import { addEventGame } from '../../lib/data';
 import { saveDraft, useDraft } from '../../lib/draft';
 import { useLeagueCtx } from '../../lib/league';
 import type { LiveInfo } from '../../lib/live';
+import { hasMark, type GameMark } from '../../lib/bowlingSeason';
 import { slots } from '../../lib/stats';
 import type { BowlingEvent, Entry, Submission } from '../../lib/types';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Badge, Button, Card, cx } from '../ui';
+import { MarkIcon, MarksLine } from './GameMarks';
 
 type Cell =
   | { kind: 'tabla'; score: number; counted: boolean }
@@ -41,6 +43,7 @@ export function MyGamesPanel({
   onAutoStarted,
   onOpenEntry,
   onSend,
+  marks,
 }: {
   event: BowlingEvent;
   playerId: string;
@@ -54,6 +57,8 @@ export function MyGamesPanel({
   onAutoStarted: () => void;
   onOpenEntry: () => void;
   onSend: () => void;
+  /** «Récord personal» y «+15 sobre tu promedio» de los juegos que ya están en la tabla. */
+  marks?: (GameMark | null)[] | null;
 }) {
   const { lid } = useLeagueCtx();
   const { toast, confirm } = useFeedback();
@@ -215,7 +220,8 @@ export function MyGamesPanel({
                 aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? ': anotar' : `: ${c.score}`}`}
                 className={cx(
                   'flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 transition active:scale-95',
-                  c.kind === 'tabla' && (c.counted ? 'border-ok/40 bg-ok-soft/50' : 'border-line bg-surface-2'),
+                  c.kind === 'tabla' &&
+                    (c.counted ? (hasMark(marks?.[i]) ? 'border-accent/50 bg-accent-soft/60' : 'border-ok/40 bg-ok-soft/50') : 'border-line bg-surface-2'),
                   c.kind === 'telefono' && 'border-accent/50 bg-accent-soft/50',
                   c.kind === 'enviado' && 'border-warn/40 bg-warn-soft/40',
                   c.kind === 'vacio' && 'border-dashed border-line text-muted hover:border-accent hover:text-accent',
@@ -229,7 +235,11 @@ export function MyGamesPanel({
                 )}
                 <span className="flex items-center gap-0.5 text-[10px] text-muted">
                   {c.kind === 'tabla' ? (
-                    c.counted ? (
+                    c.counted && hasMark(marks?.[i]) ? (
+                      <span className="flex items-center gap-0.5 font-medium text-accent">
+                        <MarkIcon mark={marks?.[i]} /> {marks![i]!.record ? 'Récord' : `+${marks![i]!.over}`}
+                      </span>
+                    ) : c.counted ? (
                       <>
                         <CheckCircle2 className="size-3 text-ok" /> En la tabla
                       </>
@@ -264,6 +274,8 @@ export function MyGamesPanel({
               </button>
             )}
           </div>
+
+          <MarksLine marks={marks} />
 
           {average != null && (
             <div className="flex items-baseline justify-between rounded-xl bg-surface-2 px-3 py-2">

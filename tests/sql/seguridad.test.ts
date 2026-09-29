@@ -69,6 +69,9 @@ const RPC_AUTHENTICATED = [
   // Organizador: ligas públicas, pendientes, juntar jugadores, menores, suspender un día y pistas del boliche.
   'public_leagues_feed', 'league_pending', 'merge_league_players', 'merge_league_players_preview', 'set_player_minor',
   'suspend_day', 'suspend_day_preview', 'assign_lanes', 'clear_lanes', 'publish_lanes', 'set_player_lane',
+  // Temporadas, campeones, playoffs, marcas del boliche y «¿Dónde juego esta semana?».
+  'close_season', 'start_season', 'league_seasons', 'league_champions', 'create_playoffs', 'delete_playoffs', 'sync_playoffs',
+  'bowling_game_context', 'public_agenda',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -78,7 +81,7 @@ const RPC_SERVICE_ONLY = [
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
-const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview', 'public.public_leagues_feed'];
+const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview', 'public.public_agenda', 'public.public_leagues_feed'];
 
 describe('canario: la RLS se aplica en PGlite', () => {
   it('como authenticated no es superusuario y solo ve lo suyo', async () => {

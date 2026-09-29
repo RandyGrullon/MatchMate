@@ -47,7 +47,7 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
     setAddingConfirmed(true);
     const chosen = missing.map((id) => byId.get(id)!);
     await run(async () => {
-      const avgs = await fetchEffectiveAverages(lid, chosen);
+      const avgs = await fetchEffectiveAverages(lid, chosen, { date: event.date, eventId: event.id });
       await addEntries(lid, event, chosen.map((p) => ({ id: p.id, average: avgs.get(p.id) ?? 0 })));
     }, `${chosen.length} agregados`);
     setAddingConfirmed(false);

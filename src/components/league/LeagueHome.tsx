@@ -5,6 +5,7 @@ import { ClaimBanner } from '../claims/ClaimBanner';
 import { PendingHomeCard } from '../organizer/Pending';
 import { SuspendTodayCard } from '../organizer/SuspendDay';
 import { ReportButton } from '../report/ReportButton';
+import { ChampionsSection } from '../season/ChampionsSection';
 import { SuggestionBox } from '../SuggestionBox';
 import { Tour } from '../Tour';
 import { LeagueNotices } from './Announce';
@@ -18,6 +19,7 @@ import { JoinLeagueCard, LeagueInfoCard } from './LeagueInfo';
  *   Admin › Pendientes) y, si hoy hay juego, «Suspender» (src/components/organizer); para los miembros, «Mi reclamo»
  *   (pidió ser un jugador sin cuenta y espera al admin) o «¿Ya jugabas en esta liga? Busca tu nombre»
  *   (src/components/claims);
+ * - todas: «Campeones» de las temporadas cerradas (src/components/season), después de la pantalla del deporte;
  * - los otros deportes: la portada (escena, color, nombre, lugar, cuántos son e «Invitar»); para quien mira una
  *   liga pública sin ser miembro, «Unirme» con los datos de la liga y «¿Quién eres?»; para los miembros, los datos
  *   de la liga al final (lugar, horario, WhatsApp), el buzón de sugerencias y el tour de su liga;
@@ -36,6 +38,7 @@ export function LeagueHomeFrame({ bowling, tabs, children }: { bowling: boolean;
       {member && <ClaimBanner key={`reclamo-${lid}`} />}
       {!bowling && observer && <JoinLeagueCard />}
       {children}
+      <ChampionsSection key={`campeones-${lid}`} />
       {!bowling && !observer && <LeagueInfoCard />}
       {!bowling && <SuggestionBox />}
       {!bowling && <Tour name={`liga-${league.sport ?? 'otro'}`} steps={sportLeagueTour(tabs)} when={!!member} />}

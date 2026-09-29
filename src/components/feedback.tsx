@@ -117,11 +117,24 @@ export function useFeedback() {
   return ctx;
 }
 
+/**
+ * Errores de la base que dicen qué pasó ('invalido: temporada'…) y que se pueden explicar tal cual, venga de donde
+ * venga la escritura (datos de la liga, corregir un resultado, anular un partido).
+ */
+const RAISED_MESSAGES: Record<string, string> = {
+  'invalido: temporada':
+    'Esa fecha de inicio deja fuera juegos de la temporada o se pisa con la anterior. Para empezar otra, usa Admin › Temporada.',
+  'cerrado: serie': 'La serie siguiente del playoff ya empezó con ese equipo. Anula primero sus juegos y vuelve a corregir.',
+  'invalido: playoff': 'Esta temporada ya tiene otro playoff en curso: bórralo antes de volver a abrir esta final.',
+};
+
 /** Mensaje para un error al guardar (los códigos de la base, en palabras sencillas). */
 export function saveErrorMessage(e: unknown): string {
   const be = asBackendError(e);
   const msg = e instanceof Error ? e.message : String(e);
   if (isBlockedError(be ?? e)) return BLOCKED_MESSAGE;
+  const raised = RAISED_MESSAGES[(be?.message ?? msg).trim()];
+  if (raised) return raised;
   if (be?.kind === 'permission' || /permission/i.test(msg)) return 'Sin permiso para guardar. ¿Sesión de admin activa?';
   if (be?.kind === 'network') return 'Sin conexión. Intenta de nuevo cuando vuelva la señal.';
   if (be?.kind === 'auth') return 'Tu sesión venció. Entra de nuevo.';
