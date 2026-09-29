@@ -2,8 +2,8 @@
 // GENERADO por scripts/badges/bundle.mjs (pnpm badges:bundle): no se edita a mano.
 // El motor de las insignias (src/badges/edge.ts y lo que importa: 66 archivos) en un solo ESM sin imports para la
 // Edge Function supabase/functions/insignias (Deno). src/badges/bundle.test.ts falla si quedó viejo.
-// fuente: sha256-f164bc2fe54512d819ec48d2aa89a1b269ce0a064d2c17b79e6d1deed1e71fae
-// salida: sha256-dab8cd4d2bc441cbd754f6dae531746bee11a4661c5f12556dcc8944647edc8d
+// fuente: sha256-50c062a9c81aaf67a1cce8ec755e51ab1d159f7fac20d144e8d287c96d0208e3
+// salida: sha256-9f8cd1b965b70b86d7dc15f4e5d7d855488d9363a9b20bc563395002b7c28088
 // ---
 //#region src/sports/types.ts
 const SPORT_FAMILY = {
@@ -4276,6 +4276,7 @@ function rowFields(row) {
 		disputeNote: row.dispute_note ?? null,
 		note: row.note ?? null,
 		createdBy: row.created_by ?? null,
+		seriesId: row.series_id ?? null,
 		createdAt: iso(row.created_at),
 		updatedAt: iso(row.updated_at)
 	};
@@ -13195,4 +13196,4 @@ function withPushLabels(decisions) {
 }
 //#endregion
 export { evaluateJob, pushLabel, withPushLabels };
-export const SOURCE_HASH = "sha256-f164bc2fe54512d819ec48d2aa89a1b269ce0a064d2c17b79e6d1deed1e71fae";
+export const SOURCE_HASH = "sha256-50c062a9c81aaf67a1cce8ec755e51ab1d159f7fac20d144e8d287c96d0208e3";
