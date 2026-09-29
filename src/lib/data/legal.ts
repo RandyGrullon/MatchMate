@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { AccountProfile } from '../auth';
 import { BLOCKED_MESSAGE, isBlockedError } from '../backend/errors';
-import { asBackendError } from '../db/errors';
+import { asBackendError, isOutdatedAppError } from '../db/errors';
 import { acceptedNow, CURRENT_LEGAL, latestAccepted, type LegalAccepted, type LegalDocKey } from '../legal';
 import { invalidate, queryClient, rpc, select, type Live } from './client';
 import { keys, tags } from './keys';
@@ -43,11 +43,42 @@ export function isLegalVersionMismatch(e: unknown): boolean {
   return msg.split(/[\s:]/)[0] === 'invalido';
 }
 
-/** Lo que llega a Errores de la consola cuando no coinciden las versiones (la consola › Legal muestra las de la base). */
-export const legalMismatchText = () =>
-  `accept_legal: la base no tiene las versiones de la app (términos ${CURRENT_LEGAL.terms}, privacidad ${CURRENT_LEGAL.privacy})`;
+/**
+ * ¿La base no tiene accept_legal (PGRST202 en PostgREST, 42883 en Postgres; o una columna o función que usa)? Se
+ * publicó la app antes que 20260929000900_legal.sql o PostgREST no recargó su caché. Como con las versiones que no
+ * coinciden, LegalGate deja seguir por esta vez: nadie se queda trancado por algo que no puede arreglar.
+ */
+export function isLegalMissing(e: unknown): boolean {
+  return !isBlockedError(e) && isOutdatedAppError(e);
+}
 
-/** El error de aceptar en palabras simples (las versiones que no coinciden no llegan aquí: ver isLegalVersionMismatch). */
+/** ¿La base no puede guardar la aceptación de esta app (otras versiones o sin accept_legal)? */
+export const legalCannotBeSaved = (e: unknown): boolean => isLegalVersionMismatch(e) || isLegalMissing(e);
+
+/**
+ * Lo que llega a Errores de la consola cuando la base no puede guardar la aceptación: otras versiones (la consola ›
+ * Legal muestra las de la base) o sin accept_legal.
+ */
+export const legalMismatchText = (e?: unknown) =>
+  isLegalMissing(e)
+    ? `accept_legal: la base no tiene la función (falta 20260929000900_legal.sql o PostgREST no recargó su caché; términos ${CURRENT_LEGAL.terms}, privacidad ${CURRENT_LEGAL.privacy})`
+    : `accept_legal: la base no tiene las versiones de la app (términos ${CURRENT_LEGAL.terms}, privacidad ${CURRENT_LEGAL.privacy})`;
+
+/**
+ * Acepta; si la base no lo puede guardar (legalCannotBeSaved), no falla: devuelve el texto para Errores de la consola
+ * y LegalGate deja seguir por esta vez. null = quedó guardado. Lo demás (sin señal, bloqueada…) se lanza.
+ */
+export async function acceptLegalOrSkip(uid: string): Promise<string | null> {
+  try {
+    await acceptLegal(uid);
+    return null;
+  } catch (e) {
+    if (!legalCannotBeSaved(e)) throw e;
+    return legalMismatchText(e);
+  }
+}
+
+/** El error de aceptar en palabras simples (lo que la base no puede guardar no llega aquí: ver legalCannotBeSaved). */
 export function legalErrorMessage(e: unknown): string {
   if (isBlockedError(e)) return BLOCKED_MESSAGE;
   const be = asBackendError(e);

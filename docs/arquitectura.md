@@ -150,7 +150,8 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
   mismas fechas en `private.legal_versions()` y `tests/sql/legal.test.ts` revisa que coincidan. Cambiar un texto:
   la página (`src/pages/legal`), la fecha y los cambios en `legal.ts`, y una migración nueva que redefine
   `private.legal_versions()`. Se publica primero la migración y después la app; si la app sale antes,
-  `accept_legal` dice `invalido` y `LegalGate` deja seguir sin guardar por esa vez (queda en Errores de la consola).
+  `accept_legal` dice `invalido` (o todavía no existe: PGRST202 / 42883) y `LegalGate` deja seguir sin guardar por
+  esa vez (queda en Errores de la consola).
 - **Aceptación** (`legal_acceptances`, una fila por cuenta, documento y versión, con fecha y navegador): al crear la
   cuenta con correo, la casilla obligatoria «Acepto los Términos y la Política de privacidad»
   (`src/components/AcceptTermsBox.tsx`) viaja en la metadata (`{legal: {terms, privacy}}`) y la base la guarda al

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import { Link, useLocation, useNavigate } from 'react-router';
 import { Check, ChevronRight, LogOut, ScrollText, ShieldCheck, UserX } from 'lucide-react';
 import { logout, useAuth } from '../lib/auth';
-import { acceptLegal, isLegalVersionMismatch, legalErrorMessage, legalMismatchText } from '../lib/data/legal';
+import { acceptLegalOrSkip, legalErrorMessage } from '../lib/data/legal';
 import { reportClientError } from '../lib/errorReport';
 import {
   accountBeforeLegal,
@@ -29,8 +29,8 @@ const DeleteAccountDialog = lazy(() => import('../pages/legal/DeleteAccountDialo
  * casilla) ve «Antes de seguir». Las dos páginas se pueden leer igual; puede salir de la cuenta o borrarla. Si marcó
  * «Acepto…» en «Crear cuenta» y después fue a Google, al volver se acepta solo (solo esa cuenta nueva).
  * Si la base no tiene las mismas versiones que la app (se publicó la app antes que la migración, o esta app quedó
- * vieja), aceptar no se puede guardar: sigue por esta vez (hasta recargar), queda en Errores de la consola y se le
- * vuelve a preguntar después. Así nadie se queda trancado.
+ * vieja) o no tiene accept_legal (PGRST202 / 42883), aceptar no se puede guardar: sigue por esta vez (hasta
+ * recargar), queda en Errores de la consola y se le vuelve a preguntar después. Así nadie se queda trancado.
  */
 export function LegalGate({ children }: { children: ReactNode }) {
   const auth = useAuth();
@@ -82,16 +82,16 @@ function LegalQuestion({
   const pending = accepted ? legalPending(accepted) : (['terminos', 'privacidad'] as LegalDocKey[]);
   const changes = first ? [] : legalChangesFor(pending);
 
-  /** Guarda la aceptación; si la base tiene otras versiones, sigue sin guardarla (y queda en Errores de la consola). */
+  /**
+   * Guarda la aceptación; si la base no la puede guardar (otras versiones o sin accept_legal), sigue sin guardarla
+   * (y queda en Errores de la consola).
+   */
   async function accept(): Promise<void> {
-    try {
-      await acceptLegal(uid);
-    } catch (e) {
-      if (!isLegalVersionMismatch(e)) throw e;
-      reportClientError('error', new Error(legalMismatchText()), { component: 'LegalGate' });
-      toast('No pudimos guardar que aceptaste. Sigue usando la app; te lo volvemos a preguntar más adelante.');
-      onSkip();
-    }
+    const skipped = await acceptLegalOrSkip(uid);
+    if (skipped === null) return;
+    reportClientError('error', new Error(skipped), { component: 'LegalGate' });
+    toast('No pudimos guardar que aceptaste. Sigue usando la app; te lo volvemos a preguntar más adelante.');
+    onSkip();
   }
 
   async function yes() {

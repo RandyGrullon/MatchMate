@@ -10,7 +10,16 @@ import { BackendError } from '../../lib/backend/types';
 import { confirmAdult, fetchProfile, rememberAdultForGoogle, takeAdultPending } from '../../lib/auth';
 import { transferLeague } from '../../lib/data/admin';
 import { backend, rpc } from '../../lib/data/client';
-import { acceptLegal, fetchLegalAccepted, isLegalVersionMismatch, legalErrorMessage, legalMismatchText } from '../../lib/data/legal';
+import {
+  acceptLegal,
+  acceptLegalOrSkip,
+  fetchLegalAccepted,
+  isLegalMissing,
+  isLegalVersionMismatch,
+  legalCannotBeSaved,
+  legalErrorMessage,
+  legalMismatchText,
+} from '../../lib/data/legal';
 import { createLeague, joinLeague } from '../../lib/data/leagues';
 import { reportContent } from '../../lib/data/reports';
 import { PRIVACY_VERSION, TERMS_VERSION } from '../../lib/legal';
@@ -125,6 +134,42 @@ describe('con la base de verdad', () => {
     expect(await fetchLegalAccepted(beto)).toEqual({ terms: null, privacy: null });
     await acceptLegal(beto);
     expect(await fetchLegalAccepted(beto)).toEqual({ terms: TERMS_VERSION, privacy: PRIVACY_VERSION });
+  });
+
+  it('términos: si la base no tiene accept_legal (PGRST202 / 42883) LegalGate deja seguir igual que con otras versiones', async () => {
+    await w.as('beto@x.com');
+    // PostgREST: la app se publicó antes que 20260929000900_legal.sql (o no recargó su caché).
+    const pgrst = new BackendError('Could not find the function public.accept_legal(p_privacy, p_terms) in the schema cache', 'not_found', 'PGRST202');
+    expect(isLegalMissing(pgrst)).toBe(true);
+    expect(isLegalVersionMismatch(pgrst)).toBe(false);
+    expect(legalCannotBeSaved(pgrst)).toBe(true);
+    expect(legalMismatchText(pgrst)).toMatch(/^accept_legal: la base no tiene la función/);
+    // Un no_existe del negocio (P0001), una cuenta bloqueada o sin señal no son eso: se muestran como error.
+    for (const e of [
+      new BackendError('no_existe', 'not_found', 'P0001'),
+      new BackendError(BLOCKED_MESSAGE, 'permission', 'bloqueada'),
+      new BackendError('Failed to fetch', 'network'),
+    ]) {
+      expect(legalCannotBeSaved(e)).toBe(false);
+    }
+    // De verdad (Postgres 42883): sin la función, aceptar no falla ni guarda; devuelve lo que va a Errores de la consola.
+    await w.b.db.query('alter function public.accept_legal(text, text) rename to accept_legal_fuera');
+    try {
+      const err = await rpc('accept_legal', { p_terms: TERMS_VERSION, p_privacy: PRIVACY_VERSION }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).toMatchObject({ code: '42883' });
+      expect(isLegalMissing(err)).toBe(true);
+      expect(await acceptLegalOrSkip(beto)).toMatch(/^accept_legal: la base no tiene la función/);
+    } finally {
+      await w.b.db.query('alter function public.accept_legal_fuera(text, text) rename to accept_legal');
+    }
+    // Con la función de vuelta (y lo vigente ya aceptado de antes): se guarda y no hay nada que reportar.
+    expect(await acceptLegalOrSkip(beto)).toBeNull();
+    expect(await fetchLegalAccepted(beto)).toEqual({ terms: TERMS_VERSION, privacy: PRIVACY_VERSION });
+    // Otras versiones ('invalido', la prueba de arriba): el texto de las versiones.
+    expect(legalMismatchText(new BackendError('invalido', 'validation', 'P0001'))).toContain('no tiene las versiones de la app');
   });
 
   it('bajar mis datos: su cuenta, sus ligas, su jugador y sus reportes', async () => {

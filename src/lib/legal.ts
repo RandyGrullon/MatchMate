@@ -10,8 +10,9 @@
  * con las mismas fechas. Al entrar, cada cuenta ve «Actualizamos los términos» (src/components/LegalGate.tsx).
  *
  * Orden al publicar: primero la migración (la base) y después la app. Si la app sale antes, accept_legal no acepta
- * las fechas nuevas ('invalido'): LegalGate deja seguir sin guardar (se reporta en Errores de la consola y la consola
- * › Legal muestra que las versiones no coinciden) y vuelve a preguntar cuando la base esté al día.
+ * las fechas nuevas ('invalido') o todavía no existe (PGRST202 / 42883): LegalGate deja seguir sin guardar (se
+ * reporta en Errores de la consola y la consola › Legal muestra que las versiones no coinciden) y vuelve a preguntar
+ * cuando la base esté al día.
  */
 
 export type LegalDocKey = 'terminos' | 'privacidad';
