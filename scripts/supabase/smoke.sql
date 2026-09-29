@@ -14,9 +14,9 @@ begin;
 -- sin cuenta soy yo» que aprueba el dueño, los pendientes del organizador y las pistas), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
--- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo, la consola del
--- superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando
--- admin_*, escrituras sin cuenta).
+-- términos y reportar, juegos sueltos y el logo de la liga, las insignias, los premios y los anotadores del torneo,
+-- la consola del superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un
+-- miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -113,7 +113,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200'];
+    '20260929001190', '20260929001200', '20260929001400'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1790,6 +1790,126 @@ begin
     'FAIL premios: Ana no lee los premios de su liga';
   perform pg_temp.must_fail('premios: un miembro no entrega premios',
     format('select public.tournament_podium(p_prize => %L)', pg_temp.val('prize')), array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9h. Anotadores (20260929001400): el dueño crea el link para anotar el torneo; sin cuenta se ve a dónde lleva; alguien
+-- de fuera entra (liga privada, sin el código de la liga) y queda anotador sin jugador: anota el torneo, no la
+-- práctica. El dueño le quita el permiso (sale de la liga; el mismo link ya no lo deja volver) y quita el link
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  k jsonb;
+begin
+  k := public.create_scorer_link(p_league => pg_temp.id('bowl'), p_scope => 'evento', p_ref => pg_temp.id('bowl_tour'));
+  assert k ->> 'code' ~ '^[A-HJ-NP-Z2-9]{10}$' and k ->> 'status' = 'ok' and (k ->> 'uses')::integer = 0
+         and k ->> 'path' = '/l/' || pg_temp.val('bowl') || '/e/' || pg_temp.val('bowl_tour'),
+    format('FAIL anotadores: create_scorer_link %s', k);
+  assert public.create_scorer_link(p_league => pg_temp.id('bowl'), p_scope => 'evento', p_ref => pg_temp.id('bowl_tour')) ->> 'id' = k ->> 'id',
+    'FAIL anotadores: crear dos veces no da el mismo link';
+  perform pg_temp.put('scorer_link', k ->> 'id');
+  perform pg_temp.put('scorer_code', k ->> 'code');
+  perform pg_temp.ok('anotadores: el dueño crea el link para anotar el torneo (create_scorer_link; otra vez da el mismo)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', '{"role": "anon"}', true);
+select set_config('request.headers', json_build_object('x-real-ip', 'smoke-' || pg_temp.val('tag'))::text, true);
+set local role anon;
+do $$
+declare
+  p jsonb := public.scorer_link_preview(p_code => pg_temp.val('scorer_code'));
+begin
+  assert p ->> 'status' = 'ok' and p ->> 'leagueId' = pg_temp.val('bowl') and p ->> 'title' = 'Smoke Copa'
+         and not (p ->> 'member')::boolean and not (p ->> 'canScore')::boolean,
+    format('FAIL anotadores: scorer_link_preview sin cuenta %s', p);
+  perform pg_temp.ok('anotadores: sin cuenta se ve a qué torneo lleva el link (scorer_link_preview)');
+  perform pg_temp.must_fail('anotadores: sin cuenta no se entra a anotar',
+    format('select public.join_as_scorer(p_code => %L)', pg_temp.val('scorer_code')), array['42501']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.headers', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  perform pg_temp.must_fail('anotadores: un miembro no crea links para anotar',
+    format('select public.create_scorer_link(p_league => %L)', pg_temp.val('bowl')), array['no_permitido']);
+  perform pg_temp.must_fail('anotadores: un miembro no nombra anotadores',
+    format('select public.set_member_scorer(p_league => %L, p_user => %L, p_scorer => true)', pg_temp.val('bowl'), pg_temp.val('u_luis')),
+    array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('out'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb := public.join_as_scorer(p_code => pg_temp.val('scorer_code'));
+  v_prac_entry uuid;
+begin
+  assert r ->> 'status' = 'joined' and r ->> 'leagueId' = pg_temp.val('bowl'), format('FAIL anotadores: join_as_scorer %s', r);
+  assert (select m.is_scorer and m.scorer_only and m.player_id is null from public.memberships m
+           where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_out')),
+    'FAIL anotadores: quien entra con el link no quedó anotador sin jugador';
+  assert public.ensure_my_player(p_league => pg_temp.id('bowl')) is null, 'FAIL anotadores: ensure_my_player le creó un jugador a quien solo anota';
+  perform public.save_game(p_entry => pg_temp.id('bowl_e_owner'), p_game => 2, p_score => 190);
+  assert (select x.scores[3] from public.entries x where x.id = pg_temp.id('bowl_e_owner')) = 190, 'FAIL anotadores: el anotador no anotó el torneo';
+  perform public.save_game(p_entry => pg_temp.id('bowl_e_owner'), p_game => 2, p_score => null);
+  perform pg_temp.ok('anotadores: alguien de fuera entra con el link (join_as_scorer, liga privada): anotador sin jugador que anota el torneo');
+  select x.id into v_prac_entry from public.entries x where x.event_id = pg_temp.id('bowl_prac') order by x.id limit 1;
+  assert v_prac_entry is not null, 'FAIL anotadores: la práctica no tiene participaciones';
+  perform pg_temp.must_fail('anotadores: el anotador no anota las prácticas de la liga',
+    format('select public.save_game(p_entry => %L, p_game => 0, p_score => 300)', v_prac_entry), array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  a jsonb := public.scorer_access(p_league => pg_temp.id('bowl'));
+begin
+  assert exists (select 1 from jsonb_array_elements(a -> 'links') x
+                  where x ->> 'id' = pg_temp.val('scorer_link') and (x ->> 'uses')::integer = 1),
+    format('FAIL anotadores: scorer_access %s', a);
+  perform public.set_member_scorer(p_league => pg_temp.id('bowl'), p_user => pg_temp.id('u_out'), p_scorer => false);
+  assert not exists (select 1 from public.league_members m where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_out')),
+    'FAIL anotadores: quitarle el permiso a quien solo anota no lo sacó de la liga';
+  perform pg_temp.ok('anotadores: el dueño ve el link usado (scorer_access) y le quita el permiso (sale de la liga)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('out'), true);
+set local role authenticated;
+do $$
+begin
+  assert public.join_as_scorer(p_code => pg_temp.val('scorer_code')) ->> 'status' = 'removed',
+    'FAIL anotadores: a quien le quitaron el permiso el link lo dejó volver a entrar';
+  assert not exists (select 1 from public.memberships m where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_out')),
+    'FAIL anotadores: join_as_scorer (removed) lo metió en la liga';
+  perform pg_temp.ok('anotadores: a quien le quitaron el permiso, el mismo link ya no lo deja volver (removed)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+begin
+  perform public.revoke_scorer_link(p_link => pg_temp.id('scorer_link'));
+  assert public.scorer_link_preview(p_code => pg_temp.val('scorer_code')) ->> 'status' = 'revoked', 'FAIL anotadores: revoke_scorer_link';
+  perform pg_temp.ok('anotadores: el dueño quita el link');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

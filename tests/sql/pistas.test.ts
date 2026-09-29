@@ -1,5 +1,5 @@
 /**
- * Pistas del boliche (20260929000600_organizador.sql): el admin (o el anotador de un torneo sin liga) arma las pistas
+ * Pistas del boliche (20260929000600_organizador.sql): el admin (o el anotador de un torneo) arma las pistas
  * de un evento con quien dijo «voy» o está inscrito, mueve a alguien, las borra y avisa a cada jugador su pista.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -143,7 +143,7 @@ describe('armar las pistas', () => {
     expect(await assign(w.u.org, empty, [1, 2], 3, 'azar')).toMatchObject({ count: 0, lanes: [], text: '' });
   });
 
-  it('quién: el admin, o el anotador en un torneo sin liga; solo boliche', async () => {
+  it('quién: el admin, o el anotador (en una liga normal, en sus torneos); solo boliche', async () => {
     const { ev } = await copa();
     await fails(assign(w.u.luis, ev, [1, 2, 3], 3, 'azar'), DENIED);
     await fails(assign(w.u.otro, ev, [1, 2, 3], 3, 'azar'), DENIED);
@@ -151,8 +151,10 @@ describe('armar las pistas', () => {
     const c = await withCopa(db, w);
     // Luis es anotador de la copa (torneo sin liga): sí.
     expect((await assign(w.u.luis, c.t1, [1], 4, 'azar')).count).toBe(1);
-    // La marca de anotador en una liga normal no vale.
-    await fails(assign(w.u.ana, ev, [1, 2, 3], 3, 'azar'), DENIED);
+    // En una liga normal la marca de anotador vale en sus torneos, no en las prácticas.
+    expect((await assign(w.u.ana, ev, [1, 2, 3], 3, 'azar')).count).toBe(7);
+    const prac = await event(db, w.priv, 'practica', '2026-10-06');
+    await fails(assign(w.u.ana, prac, [1, 2, 3], 3, 'azar'), DENIED);
     // El superadmin sí.
     await assign(w.u.dios, ev, [1, 2, 3], 3, 'azar');
     const padel = await league(db, w.u.org, { name: 'Pádel', visibility: 'private', sport: 'padel' });

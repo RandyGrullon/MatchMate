@@ -49,6 +49,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929001180_insignias_temporadas.sql` | Insignias de temporada: solo hace algo si existe `public.seasons` (`…000700_temporadas.sql`, que corre antes: siempre se aplica): redefine `private.badge_season_rows` (temporadas y premios para la foto) y encola `temporada` cuando una temporada queda `closed` |
 | `migrations/20260929001190_insignias_cron_supabase.sql` | **Solo Supabase**: pg_cron `mm-insignias` cada 10 min (`private.cron_badges()`: avisos y, si hay cola, la Edge Function `insignias` con pg_net) y `mm-insignias-diario` a las 04:30 UTC (`private.badges_daily(now())`). Quita las dos por nombre antes de programarlas (`tests/sql/insignias-funcion.test.ts` lo corre contra un pg_cron de mentira) |
 | `migrations/20260929001200_premios_torneo.sql` | Premios del torneo (ver «Premios del torneo» en RPC y `docs/premios-torneo.md`): `tournament_prizes` (una premiación por competencia: evento, torneo de golf o playoff) y `tournament_prize_slots` (la insignia de cada lugar del podio), `league_badge_awards.prize_slot_id` y `prize_verified` con el índice único `league_badge_awards_once` también por lugar premiado, su RLS, tombstones y tiempo real, y 4 RPC (`set_tournament_prizes`, `tournament_podium`, `deliver_tournament_prizes`, `close_tournament_prizes`). El servidor calcula el podio del boliche (equipos por scratch, individual con handicap: la regla efectiva del evento, como `src/lib/stats.ts`), de los cuadros de raqueta, del torneo relámpago y de los playoffs. Redefine `award_league_badge` (sus cupos y topes no cuentan los premios), `private.merge_badges` (dos premios de lugares distintos se quedan los dos), `private.badge_link_guard` (no retira un premio con el orden verificado), `revoke_league_badge_award` (un premio cerrado solo lo quita el dueño) y `create_event` (un torneo nuevo del boliche nace con `individual_rank_by = 'hcp'` y `team_rank_by = 'scratch'`) |
+| `migrations/20260929001400_anotadores.sql` | Anotadores del torneo (ver «Anotadores del torneo» en RPC y `docs/anotadores.md`): `league_members.scorer_only` (entró solo para anotar: sin jugador y nadie se lo crea solo; la vista `memberships` lo trae), la invitación de anotador en `league_invites` (`as_player`, `as_scorer`, `scope`, `ref_id`), el link para anotar (`private.scorer_links`) y 7 RPC (`invite_scorers`, `scorer_access`, `create_scorer_link`, `rotate_scorer_link`, `revoke_scorer_link`, `scorer_link_preview` (también sin cuenta) y `join_as_scorer`). En una liga de boliche la marca de anotador ahora vale en sus torneos (no en las prácticas: `private.is_event_scorer`). Cambia la firma de `set_member_scorer` (drop + create: el dueño o un admin, con `p_scope`/`p_ref`) y redefine `private.can_upload_photo` (la marca sin la regla del boliche), `save_game`, `update_entry` (la de `001110`), `save_verified_games`, `private.lanes_event`, `private.ensure_player` (apaga `scorer_only`), `ensure_my_player` (null para quien solo anota), `invite_to_league` y `private.people_item` (una pendiente vale con `private.league_invite_valid`), `respond_league_invite`, `private.accept_invites_on_join`, `my_league_invites`, `league_invite_details` (la de `001000`) y `private.push_category` (la de `001110` más `anotador:` en `liga`) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -93,6 +94,7 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
 | `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s), demasiados códigos malos, más de 5 ligas o torneos nuevos por día (20 cada 30 días) o demasiados avisos | `rate_limited` |
 | `P0001` | `texto_bloqueado` · `a_si_mismo` · `cupo_lleno` · `ya_dada` · `no_activa` · `limite: activas` · `limite: total` · `limite: jugador` · `limite: liga` | Insignias de la liga (ver «Insignias de la liga (creador)») | `validation` |
+| `P0001` | `cupo_lleno` | Link para anotar: ya hay 10 abiertos sin vencer en la liga (ver «Anotadores del torneo») | `validation` |
 | `P0001` | `ya_entregado` · `sin_resultado` · `podio_cambio` | Premios del torneo (ver «Premios del torneo»); `cerrado` también: premios cerrados o con más de 14 días, solo el dueño corrige | `validation` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
 | `23503` | | FK: el id no existe o es de otra liga | `validation` |
@@ -150,11 +152,15 @@ de la liga; con menores nace o pasa a `sin_titulos`; lo cambia el dueño con `se
 ### `league_members` — con sesión: las propias, las de sus ligas; el superadmin todas
 `league_id`, `user_id`, `role` (`owner`|`admin`|`member`), `is_scorer`, `display_name` (nombre al unirse),
 `joined_at`, `updated_at`, `badge_maker` («Diseña insignias»: vale con `leagues.badge_makers = 'chosen'`; lo cambia
-el dueño con `set_member_badge_maker`). Clave `(league_id, user_id)`. El jugador de la cuenta NO está aquí.
+el dueño con `set_member_badge_maker`), `scorer_only` (…1400: entró solo para anotar, con el link para anotar o una
+invitación de anotador; no tiene jugador y nadie se lo crea solo: `ensure_my_player` da null. Se apaga cuando crea su
+jugador: `join_league` con su liga («También juego»), una inscripción o una invitación a jugar). Clave `(league_id,
+user_id)`. El jugador de la cuenta NO está aquí. `is_scorer` (anotador): en boliche vale en un torneo sin liga y, en
+una liga normal, en sus eventos `torneo` (no en las prácticas); en los demás deportes, siempre.
 
 ### `memberships` (vista, `security_invoker`) — igual que `league_members`
 `league_id`, `user_id`, `role`, `is_scorer`, `display_name`, `joined_at`, `updated_at`, **`player_id`** (su
-jugador en esa liga o null), `badge_maker`. Es el `Member` de hoy: `{ id: league_id+'_'+user_id, leagueId, uid, name:
+jugador en esa liga o null), `badge_maker`, `scorer_only`. Es el `Member` de hoy: `{ id: league_id+'_'+user_id, leagueId, uid, name:
 display_name, role, playerId: player_id, scorer: is_scorer }`. Úsala para `useMembership`, `useMyMemberships`
 y `useLeagueMembers`. Quién diseña y da insignias en una liga (`can_badges`): el dueño; con `badge_makers = 'admins'`,
 también los `admin`; con `'chosen'`, también los que tienen `badge_maker` (sean admin o no); el superadmin siempre.
@@ -291,8 +297,10 @@ place)`. Sin FK a `players`. Sincroniza por `(league_id, updated_at)`.
 
 ### `league_invites` — la cuenta invitada, quien invitó y los admins de la liga (el superadmin, todas)
 `id`, `league_id`, `user_id` (la cuenta invitada), `invited_by` (null si se borró su cuenta), `status`
-(`pending`|`accepted`|`declined`|`cancelled`), `created_at`, `updated_at`, `decided_at` (null mientras está pendiente).
-Una pendiente por liga y cuenta. Se escribe solo con las RPC de invitaciones (abajo). Unirse por otro camino (código,
+(`pending`|`accepted`|`declined`|`cancelled`), `created_at`, `updated_at`, `decided_at` (null mientras está pendiente),
+`as_player` (al aceptar tiene jugador; `true` en las de siempre), `as_scorer` (al aceptar anota: la invitación de
+anotador, …1400), `scope` (`liga`|`evento`|`playoff`, solo en las de anotador) y `ref_id` (el evento o playoff; null en
+`liga`): solo el texto y a dónde llevar, sin FK. Una pendiente por liga y cuenta. Se escribe solo con las RPC de invitaciones (abajo). Unirse por otro camino (código,
 liga pública) la deja `accepted`; salir de la liga (o que lo saquen) deja `cancelled` las que mandó esa cuenta.
 
 ### `legal_acceptances` — con sesión: las propias (el superadmin, todas)
@@ -361,7 +369,9 @@ salieron), `storage_alerts` (alertas de espacio), `league_creations` (ligas y to
 últimos 30 días, para el tope), `solo_deleted` (ids de juegos sueltos borrados), `logo_uploads` (subidas de logo
 reservadas), los del motor de insignias (`badge_queue`, `badge_runs`, `badge_dry_holders`, `badge_dry_runs`: ver
 «Motor de insignias»), `blocked_terms` (palabras bloqueadas del creador, normalizadas; `whole` = solo como palabra
-entera) y `badge_reports` (reportes de diseños y de insignias automáticas; `resolution` `oculta`|`retirada`|`descartado`).
+entera), `badge_reports` (reportes de diseños y de insignias automáticas; `resolution` `oculta`|`retirada`|`descartado`)
+y `scorer_links` (los links para anotar, …1400: `code` de 10 caracteres, `scope`/`ref_id`, `created_by`, `expires_at`,
+`revoked_at`, `uses`/`max_uses`, `last_used_at`; uno abierto por contexto; solo por RPC).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -372,7 +382,7 @@ where user_id = <yo>` con lo local y purgar lo que ya no está.
 ## RPC
 
 Formato: `nombre(argumentos) → retorno` · **quién** · errores propios. Todas exigen sesión salvo
-`invite_preview` y `public_leagues_feed`; sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
+`invite_preview`, `scorer_link_preview`, `public_leagues_feed` y `public_agenda`; sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
 desconocida da `invalido`). Las que llevan `p_op_id` son las de la cola sin conexión: reintentar con el
 mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
@@ -401,13 +411,15 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `set_league_logo(p_league, p_path text) → text` | admin | Pone el logo (una ruta que reservó esa cuenta con `begin_logo_upload` hace menos de un día; se usa una vez) o lo quita (`p_path` null). Devuelve la ruta anterior para borrarla de Storage (null si no había o si es la misma: no cambia nada); la anterior ya queda en `private.storage_purge_queue`. `no_existe`, `no_permitido`, `invalido` (otra liga, otra forma o sin reservar), `rate_limited` (quitarlo cuenta en los mismos 30 por día). |
 | `invite_preview(p_code text) → setof {league_id, name, sport, kind, visibility, logo_path}` | **cualquiera, también sin cuenta** | = `getInvite`. Código malo: ninguna fila. Más de 30 códigos malos por hora (por cuenta o IP): `rate_limited`. Mayúsculas/espacios no importan. Llamar con `select * from`. |
 | `join_league(p_league uuid=null, p_code text=null, p_prefer uuid=null) → {league_id, player_id, claim_id} \| null` | con sesión | Pública: sin código. Privada: con su código (o solo `p_code`, desde el link). Ya miembro: igual (idempotente). Deja listo su jugador (ver `ensure_my_player`; `p_prefer` = «¿eres tú?» deja un reclamo; `claim_id` = su reclamo pendiente en la liga, o null). Código malo: **devuelve null** (cuenta el intento). Privada sin código: `no_permitido`. 10 códigos malos por hora: `rate_limited`. |
+| `scorer_link_preview(p_code text) → {status: 'ok', leagueId, name, sport, kind, visibility, logoPath, scope, refId, title, path, expiresAt, member, canScore} \| {status} \| null` | **cualquiera, también sin cuenta** | A qué lleva un link para anotar (`/anotar/<código>`). El mismo límite que `invite_preview`. Ver «Anotadores del torneo». |
+| `join_as_scorer(p_code text) → {status, leagueId, scope, refId, title, path} \| {status} \| null` | con sesión | Entrar con el link para anotar (también en una liga privada, sin su código): anotador sin jugador. El mismo límite que `join_league`. Ver «Anotadores del torneo». |
 
 ### Miembros y roles
 
 | RPC | Quién | Qué hace |
 |---|---|---|
 | `set_member_role(p_league, p_user, p_role) → void` | dueño o superadmin; **un admin consigo mismo a `member`** | `p_role` `admin`\|`member` (`invalido`). Al dueño no se le toca el rol (`no_permitido`). |
-| `set_member_scorer(p_league, p_user, p_scorer boolean) → void` | dueño o superadmin | Anotador (en boliche solo vale en torneos sin liga). |
+| `set_member_scorer(p_league, p_user, p_scorer boolean, p_scope text=null, p_ref uuid=null) → void` | dueño o superadmin: a cualquiera; **un admin: solo a miembros** (ni a sí mismo, ni a otro admin, ni al dueño) | Anotador (en boliche: en un torneo sin liga y en los torneos de una liga, no en sus prácticas). Nombrar: push «Ahora puedes anotar en <torneo>» (`anotador:<liga>`, lleva a `p_scope`/`p_ref`: `liga`, `evento` o `playoff`); ya anotador: nada. Quitarle el permiso a quien entró solo para anotar (miembro sin jugador) **lo saca de la liga**; a los demás solo se les quita la marca. `no_existe` (no es miembro), `invalido` (cuenta bloqueada al nombrar, o `p_scope`/`p_ref` que no son de la liga). Desde …1400 (antes: solo el dueño, 3 argumentos). |
 | `step_down_admin(p_league) → void` | un admin | Deja de ser admin (sigue como jugador). |
 | `remove_member(p_league, p_user) → void` | uno mismo (salvo el dueño); admin: solo miembros sin permisos (ni admin, ni anotador, ni «Diseña insignias»); dueño o superadmin: cualquiera menos el dueño | Su jugador queda sin cuenta y se quitan sus juegos en vivo. `no_existe`. |
 | `leave_league(p_league) → void` | miembro (no el dueño) | = `remove_member(p_league, yo)`. |
@@ -416,7 +428,7 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
 | RPC | Quién | Qué hace |
 |---|---|---|
-| `ensure_my_player(p_league, p_prefer uuid=null) → uuid` | miembro | Su jugador: el que tiene; si no, uno nuevo con su `display_name`. Si eligió un jugador libre (`p_prefer`, no menor, sin otro pedido) o hay un único libre con su mismo nombre normalizado (sin acentos, como `normalizeName`), además deja el **reclamo** de ese jugador (10 por día); un dueño o admin lo toma al momento (y se devuelve ese). Nunca crea dos (bloquea la membresía). Reemplaza `ensurePlayer` y `createOwnPlayer`. |
+| `ensure_my_player(p_league, p_prefer uuid=null) → uuid` | miembro | Su jugador: el que tiene; si no, uno nuevo con su `display_name`. Si eligió un jugador libre (`p_prefer`, no menor, sin otro pedido) o hay un único libre con su mismo nombre normalizado (sin acentos, como `normalizeName`), además deja el **reclamo** de ese jugador (10 por día); un dueño o admin lo toma al momento (y se devuelve ese). Nunca crea dos (bloquea la membresía). Reemplaza `ensurePlayer` y `createOwnPlayer`. Quien entró solo para anotar (`scorer_only`) y no tiene jugador: **null** sin crear nada (…1400; «También juego» es `join_league` con su liga). |
 | `claim_player(p_player) → uuid` | miembro | Igual que `request_player_claim(p_player)`: devuelve el id del **reclamo** (null si el jugador ya era suyo). Antes vinculaba al momento. |
 | `request_player_claim(p_player, p_note text=null) → uuid` | miembro de la liga del jugador | «Ese jugador soy yo»: pide un jugador libre de su liga (aunque ya tenga el suyo). Queda `pending` y les llega un push a los admins («<nombre> dice que es <jugador>», a `/l/<liga>/admin?tab=reclamos`). Pedirlo otra vez = el mismo; pedir otro cancela el anterior. Dueño o admin: aprobado al momento. `duplicado` (tiene cuenta o ya lo pidió otra), `invalido` (menor, nota > 300), `no_permitido` (otra liga), `rate_limited` (10 por día). |
 | `cancel_player_claim(p_claim) → void` | quien lo pidió | Lo retira (`cancelled`). Ya decidido: `invalido`. Salir de la liga también lo cancela. |
@@ -451,11 +463,11 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | RPC | Quién | Qué hace |
 |---|---|---|
 | `add_entries(p_event, p_players jsonb) → int` | admin | `[{player_id, average}]`, con `scores`/`photos` vacíos del tamaño del evento. Quien ya estaba no se toca. Devuelve cuántos entraron. Jugador de otra liga: 23503. |
-| `save_game(p_entry, p_game int, p_score int=null, p_frames jsonb=null, p_op_id=null) → void` | admin; anotador (torneo sin liga) | `saveGame`: juego `p_game` (desde 0). La base decide la marca: `'sin-foto'` si la liga no exige foto, si no `null` (borrador). `p_score` null borra el juego; `p_frames` null quita sus cuadros. |
-| `update_entry(p_entry, p_patch) → void` | admin: `team_id, average, handicap_override, scores, photos, frames`; anotador: solo `scores, photos, frames` | El equipo tiene que ser del mismo evento (`invalido`). |
+| `save_game(p_entry, p_game int, p_score int=null, p_frames jsonb=null, p_op_id=null) → void` | admin; anotador (en boliche: torneo sin liga o torneo de la liga, no las prácticas) | `saveGame`: juego `p_game` (desde 0). La base decide la marca: `'sin-foto'` si la liga no exige foto, si no `null` (borrador). `p_score` null borra el juego; `p_frames` null quita sus cuadros. |
+| `update_entry(p_entry, p_patch) → void` | admin: `team_id, average, handicap_override, scores, photos, frames`; anotador (como en `save_game`): solo `scores, photos, frames` | El equipo tiene que ser del mismo evento (`invalido`). |
 | `update_entries(p_patches jsonb) → void` | como `update_entry` | `[{id, patch}]`, todo o nada. |
 | `remove_entry(p_entry) → void` | admin | Con su social (cascada) y lo que anotaba en vivo. |
-| `save_verified_games(p_event, p_photo jsonb, p_writes jsonb) → uuid` | admin; anotador si todos ya están inscritos | `p_photo = {id, width, height, bytes, content_type}` (ya subida); `p_writes = [{player_id, average, values: {"<juego>": pinos}}]`. Marca esos juegos con la foto; inscribe a quien falte (solo admin). Devuelve el id de la foto. |
+| `save_verified_games(p_event, p_photo jsonb, p_writes jsonb) → uuid` | admin; anotador (como en `save_game`) si todos ya están inscritos | `p_photo = {id, width, height, bytes, content_type}` (ya subida); `p_writes = [{player_id, average, values: {"<juego>": pinos}}]`. Marca esos juegos con la foto; inscribe a quien falte (solo admin). Devuelve el id de la foto. |
 
 ### Fotos
 
@@ -531,10 +543,10 @@ followsYou, inLeague, invited}`.
 |---|---|---|
 | `search_people(p_query=null, p_league uuid=null, p_limit=30) → [persona]` | con sesión; con `p_league`: miembro de esa liga o superadmin (`no_permitido`) | Hasta 50, nunca la propia ni bloqueadas. Consulta (recortada a 60, en minúsculas, sin una `@` al principio) vacía: las cuentas que sigo, la más reciente primero. 1 letra: `[]`. Si no: `@usuario` que empieza con lo escrito o nombre que lo contiene (sin acentos; por nombre solo con 2 letras o números o más), en este orden: `@usuario` exacto, cuentas que sigo, `@usuario` que empieza así, nombre que empieza así y el resto por nombre. `inLeague` / `invited` (invitación pendiente a `p_league`): false sin `p_league`. 600 búsquedas por hora (`rate_limited`; la lista de quienes sigo no cuenta). |
 | `invite_to_league(p_league, p_users uuid[]) → {sent, results: [{userId, status}]}` | miembro de una liga pública; en una privada (también con menores) dueño, admin o superadmin | Hasta 50 cuentas distintas (en su orden; `invalido` si ninguna o más). Cada una: `unavailable` (uno mismo, no existe o bloqueada), `member`, `pending` (ya tiene una que vale; la que ya no vale se cancela y se manda la nueva), `declined` (la rechazó hace menos de 7 días), `rate_limited` (no cupo en el límite de hoy) o `sent` (push «<nombre> te invitó a <liga>» a `/invitacion/<id>`, tag `invitacion:<id>`, vale 7 días; uno por persona y día de quien invita: invitar, retirar y volver a invitar, o a otra liga, no manda otro). `no_existe`, `no_permitido`, `rate_limited` (100 enviadas por día; se mira con cada una, con candado). |
-| `respond_league_invite(p_invite, p_accept boolean, p_prefer uuid=null) → {status, leagueId[, playerId, claimId]}` | la cuenta invitada | Aceptar: entra de miembro con su jugador (`p_prefer` = «¿Quién eres?»: deja el reclamo, como `join_league`; `claimId` = su reclamo pendiente o null) y push a quien invitó («<nombre> aceptó tu invitación»). Si ya no vale (quien invitó está bloqueado, o la liga no es pública y quien invitó ya no es admin de ella: `private.invite_ok`), queda `cancelled` sin entrar. Rechazar: `declined`. Ya decidida: `{status, leagueId}` sin cambiar nada (sin `playerId`). `no_existe` (no es suya), `invalido` (`p_accept` null). |
+| `respond_league_invite(p_invite, p_accept boolean, p_prefer uuid=null) → {status, leagueId[, playerId, claimId][, scorer: {title, scope, refId, path}]}` | la cuenta invitada | Invitación de anotador (…1400): la parte de jugar vale con `as_player` y `private.invite_ok`, la de anotar con `as_scorer` y `private.scorer_invite_ok` (quien invitó sigue siendo admin y no está bloqueado, también en una liga pública); si ninguna vale, `cancelled`. Con la de anotar entra con `is_scorer` (y `scorer_only` si no es para jugar: **sin jugador**, `playerId` null aunque llegue `p_prefer`), el push a quien invitó es «<nombre> aceptó anotar en <torneo>» (lleva al torneo) y devuelve además `scorer`. Aceptar (la de siempre): entra de miembro con su jugador (`p_prefer` = «¿Quién eres?»: deja el reclamo, como `join_league`; `claimId` = su reclamo pendiente o null) y push a quien invitó («<nombre> aceptó tu invitación»). Si ya no vale (quien invitó está bloqueado, o la liga no es pública y quien invitó ya no es admin de ella: `private.invite_ok`), queda `cancelled` sin entrar. Rechazar: `declined`. Ya decidida: `{status, leagueId}` sin cambiar nada (sin `playerId`). `no_existe` (no es suya), `invalido` (`p_accept` null). |
 | `cancel_league_invite(p_invite) → void` | quien invitó o admin de la liga | La deja `cancelled`. Ya decidida: nada. `no_existe`, `no_permitido`. |
-| `my_league_invites() → [{id, leagueId, leagueName, logoPath, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt}]` | con sesión | Mis invitaciones pendientes que todavía valen, la más nueva primero (hasta 50). |
-| `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, logoPath, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
+| `my_league_invites() → [{id, leagueId, leagueName, logoPath, sport, kind, visibility, members, invitedBy: {id, name, username} \| null, createdAt[, scorer: {title, scope, refId, path, asPlayer}]}]` | con sesión | Mis invitaciones pendientes que todavía valen (`private.league_invite_valid`), la más nueva primero (hasta 50). `scorer` solo en las de anotador cuya parte de anotar vale (`asPlayer`: la de jugar también vale). |
+| `league_invite_details(p_invite) → {id, status, createdAt, invitedBy, mine, member, league: {id, name, sport, kind, visibility, logoPath, venue, schedule, seasonStart, seasonEnd, members}, players: [{id, name}][, scorer: {title, scope, refId, path, asPlayer}]} \| null` | la cuenta invitada (o el superadmin); cualquier otra: `null` | Para `/invitacion/<id>`. `scorer` en una de anotador (pendiente: si su parte de anotar vale; ya decidida: siempre); `players` vacío si la parte de jugar no vale (la de solo anotar no pregunta «¿Quién eres?»). `mine`: es de la cuenta de la sesión (el superadmin la ve pero no la responde). `member`: si la cuenta invitada está en la liga. Pendiente que ya no vale: `status` = `cancelled`. `players`: los libres (sin cuenta, no menores, sin reclamo pendiente), por nombre, hasta 500, solo mientras está pendiente y vale. `venue`, `schedule`, `seasonStart`, `seasonEnd` y `members`: `null` si ya no vale y quien mira no puede leer la liga. |
 
 ### Temporadas, playoffs y agenda
 
@@ -717,6 +729,42 @@ en el otorgamiento y sigue aunque se borre la competencia), `revoke_league_badge
 cerrada, o de un lugar entregado hace más de 14 días, solo lo quita el dueño: `cerrado`) y `create_event` (misma
 firma).
 
+### Anotadores del torneo
+
+`20260929001400_anotadores.sql` (pruebas: `tests/sql/anotadores.test.ts`; diseño: `docs/anotadores.md`). El permiso
+sigue siendo de liga (`league_members.is_scorer`). En boliche vale en un torneo sin liga y, en una liga normal, en sus
+eventos `torneo` (`private.is_event_scorer` en `save_game`, `update_entry`, `save_verified_games` y las pistas); las
+prácticas siguen siendo del jugador. Subir fotos (`private.can_upload_photo`) mira la marca sin la regla del boliche.
+Golf, natación y partidos siguen con `private.is_scorer`. Contextos (`p_scope`/`p_ref`, solo el texto y a dónde
+llevar): `liga` (sin `p_ref`), `evento` (un evento de la liga) o `playoff` (un playoff de la liga); otro: `invalido`.
+Link = `{id, code, scope, refId, title, path, expiresAt, uses, maxUses, status, createdBy: {id, name} | null,
+createdAt}`, `status` `ok`|`expired`|`full`|`revoked`|`closed` (`closed`: la liga tiene menores, o quien lo creó ya no
+es admin, está bloqueado o se borró su cuenta).
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `invite_scorers(p_league, p_users uuid[], p_scope text='liga', p_ref uuid=null) → {sent, results: [{userId, status}]}` | dueño, admin o superadmin | De 1 a 20 cuentas distintas (en su orden; `invalido`). Estados, en orden: `unavailable` (uno mismo, no existe o bloqueada), `member` (ya está: se nombra con `set_member_scorer`), `pending` (ya tiene una de anotador que vale), `declined` (rechazó una de la liga hace menos de 7 días), `rate_limited` o `sent`. Si tenía una pendiente para jugar, se retira y la nueva invita a las dos cosas (`as_player`); si no, solo a anotar. Push «<nombre> te invitó a anotar en <torneo>» (`invitacion:<id>`, `/invitacion/<id>`, 7 días; uno por persona y día de quien invita). Límite `invite:` de `invite_to_league` (100 por día). También en una liga con menores. `no_existe`, `no_permitido`, `invalido`, `rate_limited`. |
+| `scorer_access(p_league) → {invites: [{id, user: {id, name, username}, invitedBy: {id, name} \| null, asPlayer, scope, refId, title, createdAt}], links: [link]}` | dueño, admin o superadmin | Para la hoja «Anotadores»: las invitaciones de anotador pendientes que valen (hasta 100, la más nueva primero) y los links abiertos de la liga (también los vencidos, llenos o cerrados, con su `status`). |
+| `create_scorer_link(p_league, p_scope text='liga', p_ref uuid=null) → link` | dueño, admin o superadmin | El link del contexto: si ya hay uno que sirve, ese (sin costo: crear dos veces da el mismo); si no, uno nuevo (el que venció, se llenó o se cerró queda quitado). 10 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, 7 días, 20 usos. `no_existe`, `no_permitido`, `invalido` (liga con menores o contexto que no es de la liga), `cupo_lleno` (10 abiertos sin vencer en la liga), `rate_limited` (20 creados o cambiados por día por cuenta). |
+| `rotate_scorer_link(p_link) → link` | dueño, admin o superadmin de su liga | Otro código para el mismo contexto (0 usos, 7 días); el anterior da `revoked`. Quien ya entró sigue anotando. Cuesta como crear. `no_existe`, `no_permitido`, `invalido` (menores o el contexto ya no existe), `cupo_lleno`, `rate_limited`. |
+| `revoke_scorer_link(p_link) → void` | dueño, admin o superadmin de su liga | Lo quita (ya quitado: nada). `no_existe`, `no_permitido`. |
+| `scorer_link_preview(p_code text) → {status: 'ok', leagueId, name, sport, kind, visibility, logoPath, scope, refId, title, path, expiresAt, member, canScore} \| {status} \| null` | **cualquiera, también sin cuenta** | Para `/anotar/<código>`. Mayúsculas y espacios no importan. Código que no existe: null (y cuenta el intento). Si no sirve, solo `{status}` (ni la liga). `member`: la cuenta ya está en la liga; `canScore`: además es dueño, admin o anotador (sin cuenta, las dos false). Límite: el de `invite_preview` (`preview:`, 30 códigos que no existen por hora, por cuenta o IP; `rate_limited`). |
+| `join_as_scorer(p_code text) → {status, leagueId, scope, refId, title, path} \| {status} \| null` | con sesión | `joined` (no era miembro: entra con `is_scorer` y `scorer_only`, **sin jugador**, también en una liga privada; su invitación pendiente queda aceptada), `upgraded` (miembro sin la marca: la gana y conserva su jugador) o `already` (dueño, admin o ya anotador: no cuenta como uso). Con `joined`/`upgraded` suma un uso y avisa a quien creó el link («<nombre> entró a anotar en <torneo>», `anotador:<link>`; si entran varios antes de que salga: «Entraron varias personas a anotar en <torneo>»). Link que no sirve: `{status}`. Código que no existe: null (cuenta el intento). Límite: el de `join_league` (`join:`, 10 por hora; `rate_limited`). `no_existe` (cuenta sin perfil), `bloqueada`. |
+
+Quien solo anota (`scorer_only`) no tiene jugador: `ensure_my_player` le da null y «También juego» es `join_league` con
+su liga (crea el jugador y apaga la marca). Quitarle el permiso (`set_member_scorer`) lo saca de la liga; también puede
+salir con `leave_league`. `remove_member` no cambia: un admin no saca a un anotador (le quita el permiso). Una
+invitación de anotador que vale también hace anotador a quien entra por otro camino (código, liga pública,
+`join_signup`), con su jugador (trigger `league_members_accept_invites`).
+
+Tiempo real: `scorers` por `league:<liga>` `{user_id}` (null si solo cambiaron los links) y por `user:<cuenta>`
+`{league_id}` (su permiso o su liga): los cambios de `league_members` llegan por sync, así que el teléfono del nuevo
+anotador ve el permiso al momento con este aviso. Las invitaciones siguen con `invites`. **Ojo:** esta migración
+redefine `set_member_scorer` (firma nueva), `save_game`, `update_entry`, `save_verified_games`, `private.lanes_event`,
+`private.can_upload_photo`, `private.ensure_player`, `ensure_my_player`, `invite_to_league`, `private.people_item`,
+`respond_league_invite`, `private.accept_invites_on_join`, `my_league_invites`, `league_invite_details`,
+`private.push_category` y la vista `memberships`: un cambio a esas va aquí o después.
+
 ### Push
 
 | RPC | Quién | Qué hace |
@@ -825,6 +873,8 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
 | `user:<uid>` | `invites` | `{id, status, league_id}` | una invitación a una liga que recibió o que mandó (nueva, aceptada, rechazada, cancelada) |
 | `league:<id>` | `invites` | `{id, status}` | invitaciones a la liga |
+| `league:<id>` | `scorers` | `{user_id}` | anotadores de la liga (nombrar, quitar, entrar con el link, aceptar una invitación de anotador) o sus links (`user_id` null) |
+| `user:<uid>` | `scorers` | `{league_id}` | su permiso de anotar cambió (o entró o salió de la liga como anotador) |
 | `event:<id>` | `lanes` | `{op}` | pistas del boliche del evento (una vez por sentencia) |
 | `league:<id>` | `seasons` | `{op, ids}` | temporadas de la liga y sus premios (los premios avisan `update` de su temporada) |
 | `league:<id>` | `playoffs` | `{op, ids}` | playoffs y sus series (las series avisan `update` de su playoff); los juegos, como cualquier partido |
@@ -1066,7 +1116,7 @@ teléfono si la cuenta apagó la categoría de su tag, también en los avisos qu
 | `resultados` | `envio:` (envíos del boliche), `confirmar:` (resultado por confirmar), `resultado:` (confirmado), `reclamo:` |
 | `social` | `reaccion:` (felicitaciones y me gusta), `comentario:`, `seguir:`, `insignias` (te ganaste insignias, agrupadas) e `insignia:` (una insignia que te dio la liga): `20260929001110_insignias_motor.sql` |
 | `recordatorios` | `recordatorio:` (boliche, golf, natación, noches), `partido:`, `despues:`, `sinresultado:`, `pista:` (tu pista en el boliche: `20260929000600_organizador.sql`) |
-| `liga` | `aviso:` (avisos del admin a su liga), `temporada:` (terminó la temporada: `20260929000700_temporadas.sql`), `invitacion:` (te invitaron a una liga), `invitacion-ok:` (aceptaron tu invitación) |
+| `liga` | `aviso:` (avisos del admin a su liga), `temporada:` (terminó la temporada: `20260929000700_temporadas.sql`), `invitacion:` (te invitaron a una liga o a anotar), `invitacion-ok:` (aceptaron tu invitación), `anotador:` («Ahora puedes anotar en …» y «Ana entró a anotar con tu link»: `20260929001400_anotadores.sql`) |
 
 Sin categoría (salen siempre): `claim:`, inscripciones, escalera, `ronda:`, `anuncio:` (superadmin), `espacio`,
 `reporte:` (reportes nuevos para moderar, a los superadmins: `20260929000900_legal.sql`) e `insignia-aval:` («Hay una
@@ -1174,7 +1224,7 @@ admin. Cada sección es `{count, url, items}` con hasta 5 (lo más viejo primero
   `'nada'` (no cambió nada), `'duplicado'` (el mismo aviso salió hace menos de 10 minutos: doble toque) o `'limite'`
   (ya salieron los 3 avisos del día); `null` si salió.
 
-**Pistas del boliche** (tabla `event_lanes`). Admin, o anotador en un torneo sin liga; solo eventos de boliche
+**Pistas del boliche** (tabla `event_lanes`). Admin, o anotador en un torneo (sin liga o de la liga, …1400); solo eventos de boliche
 (`invalido`). Las que devuelven las pistas dan `{eventId, count, unpublished, publishedAt, lanes: [{lane, players:
 [{playerId, name, position, userId}]}], text}` (`text` = `'Pista 5: Ana, Beto, Caro'`, una línea por pista, para
 WhatsApp).
@@ -1209,8 +1259,8 @@ vale): `merge_players` con lo mismo más los premios y las tablas guardadas, y `
 - Primera migración: `alter default privileges` quita EXECUTE a PUBLIC y todo a anon/authenticated; al final de
   `…_rpc.sql` se quitan otra vez en todas las funciones de `public` y `private` y se dan explícitos
   (lista `v_authenticated`, `v_anon`). Una fase nueva agrega sus RPC a su propia lista de GRANT.
-- Solo `public.invite_preview`, `public.public_leagues_feed`, `public.public_agenda` y `private.readable_leagues` son
-  security definer ejecutables por `anon`. `league_seasons`, `league_champions` y `bowling_game_context` también las
+- Solo `public.invite_preview`, `public.scorer_link_preview`, `public.public_leagues_feed`, `public.public_agenda` y
+  `private.readable_leagues` son security definer ejecutables por `anon`. `league_seasons`, `league_champions` y `bowling_game_context` también las
   llama `anon`, pero leen con la RLS de quien llama (no son security definer).
 - Nadie tiene INSERT/UPDATE/DELETE en ninguna tabla; `profiles` sin UPDATE directo (más estricto que permisos por
   columna) y un trigger impide que una sesión de usuario cambie `is_superadmin`, `email` o `firebase_uid`.

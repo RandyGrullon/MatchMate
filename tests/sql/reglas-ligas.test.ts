@@ -190,9 +190,12 @@ describe('roles en la liga', () => {
     await fails(db.rpc(w.u.org, 'set_member_role', { p_league: w.priv, p_user: w.u.ana, p_role: 'owner' }), INVALID);
   });
 
-  it('un admin que no es dueño no cambia permisos, pero sí desvincula jugadores', async () => {
+  it('un admin que no es dueño no cambia roles, pero sí nombra anotadores y desvincula jugadores', async () => {
     await fails(db.rpc(w.u.sofi, 'set_member_role', { p_league: w.priv, p_user: w.u.luis, p_role: 'admin' }), DENIED);
-    await fails(db.rpc(w.u.sofi, 'set_member_scorer', { p_league: w.priv, p_user: w.u.ana, p_scorer: true }), DENIED);
+    await db.rpc(w.u.sofi, 'set_member_scorer', { p_league: w.priv, p_user: w.u.ana, p_scorer: true });
+    expect(await db.admin('select is_scorer from public.league_members where league_id = $1 and user_id = $2', [w.priv, w.u.ana])).toEqual([
+      { is_scorer: true },
+    ]);
     await db.rpc(w.u.sofi, 'unlink_account', { p_player: w.p.luis });
     expect(await db.admin('select user_id from public.players where id = $1', [w.p.luis])).toEqual([{ user_id: null }]);
   });

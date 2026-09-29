@@ -185,10 +185,10 @@ describe('anotadores', () => {
   const scorer = (uid: string) =>
     db.admin<{ is_scorer: boolean }>('select is_scorer from public.league_members where league_id = $1 and user_id = $2', [c.copa, uid]).then((r) => r[0].is_scorer);
 
-  it('el dueño del torneo nombra anotadores; un admin no', async () => {
-    await fails(db.rpc(w.u.sofi, 'set_member_scorer', { p_league: c.copa, p_user: w.u.ana, p_scorer: true }), DENIED);
+  it('el dueño o un admin nombran anotadores; un admin no se nombra a sí mismo ni a otro admin', async () => {
     await fails(db.rpc(w.u.ana, 'set_member_scorer', { p_league: c.copa, p_user: w.u.ana, p_scorer: true }), DENIED);
-    await db.rpc(w.u.org, 'set_member_scorer', { p_league: c.copa, p_user: w.u.ana, p_scorer: true });
+    await db.rpc(w.u.sofi, 'set_member_scorer', { p_league: c.copa, p_user: w.u.ana, p_scorer: true });
+    await fails(db.rpc(w.u.sofi, 'set_member_scorer', { p_league: c.copa, p_user: w.u.org, p_scorer: true }), DENIED);
     await db.rpc(w.u.org, 'set_member_scorer', { p_league: c.copa, p_user: w.u.luis, p_scorer: false });
     expect([await scorer(w.u.ana), await scorer(w.u.luis)]).toEqual([true, false]);
   });

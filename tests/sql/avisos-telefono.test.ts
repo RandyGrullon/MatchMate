@@ -121,10 +121,11 @@ describe('preferencias', () => {
     await prefs(w.u.luis, { social: false, resultados: false, recordatorios: false, liga: false });
     expect(await db.admin(`select private.push_category(t) as c from unnest($1::text[]) t`, [
       ['envio:1', 'confirmar:1', 'resultado:1', 'reclamo:1', 'reaccion:1', 'comentario:1', 'seguir:1', 'recordatorio:1', 'partido:1',
-       'despues:1', 'sinresultado:1', 'aviso:1', 'invitacion:1', 'invitacion-ok:1', 'claim:1', 'ronda:1', 'anuncio:1', 'espacio', null],
+       'despues:1', 'sinresultado:1', 'aviso:1', 'invitacion:1', 'invitacion-ok:1', 'anotador:1', 'claim:1', 'ronda:1', 'anuncio:1',
+       'espacio', null],
     ])).toEqual(
       ['resultados', 'resultados', 'resultados', 'resultados', 'social', 'social', 'social', 'recordatorios', 'recordatorios',
-       'recordatorios', 'recordatorios', 'liga', 'liga', 'liga', null, null, null, null, null].map((c) => ({ c })),
+       'recordatorios', 'recordatorios', 'liga', 'liga', 'liga', 'liga', null, null, null, null, null].map((c) => ({ c })),
     );
     // Seguir (follow_user encola directo): a luis no le llega.
     await db.rpc(w.u.ana, 'follow_user', { p_user: w.u.luis });

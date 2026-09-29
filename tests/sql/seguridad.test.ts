@@ -86,6 +86,9 @@ const RPC_AUTHENTICATED = [
   'admin_resolve_badge_reports', 'admin_blocked_terms',
   // Premios del torneo: la insignia de cada lugar del podio, el podio que calcula el servidor, entregar y cerrar.
   'set_tournament_prizes', 'tournament_podium', 'deliver_tournament_prizes', 'close_tournament_prizes',
+  // Anotadores del torneo: invitar a anotar, lo que ve la hoja y el link para anotar (crear, cambiar, quitar, ver y entrar).
+  'invite_scorers', 'scorer_access', 'create_scorer_link', 'rotate_scorer_link', 'revoke_scorer_link', 'scorer_link_preview',
+  'join_as_scorer',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -97,7 +100,9 @@ const RPC_SERVICE_ONLY = [
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
-const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview', 'public.public_agenda', 'public.public_leagues_feed'];
+const ANON_ALLOWED = [
+  'private.readable_leagues', 'public.invite_preview', 'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview',
+];
 
 describe('canario: la RLS se aplica en PGlite', () => {
   it('como authenticated no es superusuario y solo ve lo suyo', async () => {
@@ -226,6 +231,9 @@ describe('nada abierto por accidente', () => {
     await fails(db.rpc(ANON, 'publish_live', { p_event: w.e.e9, p_scores: [100] }), '42501');
     await fails(db.rpc(ANON, 'send_suggestion', { p_league: w.pub, p_text: 'hola' }), '42501');
     expect(await db.rpcRows(ANON, 'invite_preview', { p_code: 'ABCD2345' })).toHaveLength(1);
+    // Ni con el link para anotar (solo ver a qué lleva).
+    await fails(db.rpc(ANON, 'join_as_scorer', { p_code: 'ABCDEFGHJK' }), '42501');
+    expect(await db.rpc(ANON, 'scorer_link_preview', { p_code: 'ABCDEFGHJK' })).toBeNull();
   });
 
   it('los perfiles nunca los lee un visitante sin cuenta (tienen el correo)', async () => {

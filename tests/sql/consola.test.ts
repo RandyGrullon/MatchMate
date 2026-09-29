@@ -137,11 +137,12 @@ describe('permisos', () => {
     // Lecturas (y touch_seen, que nunca falla): no escriben nada de la persona. delete_push_subscription solo borra
     // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones). accept_legal solo
     // guarda que la propia cuenta aceptó los términos vigentes (una bloqueada también, para poder seguir leyendo).
-    // public_leagues_feed también la llama quien no tiene cuenta. sync_ladder y sync_playoffs solo ponen al día lo
-    // que ya pasó.
+    // public_leagues_feed y scorer_link_preview (a qué lleva un link para anotar) también las llama quien no tiene
+    // cuenta. sync_ladder y sync_playoffs solo ponen al día lo que ya pasó.
     expect(rows.map((r) => r.fn)).toEqual([
       'accept_legal', 'bowling_game_context', 'delete_push_subscription', 'invite_preview', 'league_champions', 'league_seasons',
-      'list_reports', 'my_matches', 'public_agenda', 'public_leagues_feed', 'server_now', 'sync_ladder', 'sync_playoffs', 'touch_seen',
+      'list_reports', 'my_matches', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'server_now', 'sync_ladder',
+      'sync_playoffs', 'touch_seen',
     ]);
   });
 });

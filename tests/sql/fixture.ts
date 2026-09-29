@@ -140,7 +140,7 @@ export async function withCopa(db: TestDb, w: World): Promise<Copa> {
   const px = await player(db, copa, 'PX');
   const t1 = await event(db, copa, 'torneo', '2026-10-01', 3, 'Copa');
   const t1Px = await entry(db, copa, t1, px, [null, null, null], [null, null, null]);
-  // En una liga normal la marca de anotador no vale.
+  // En una liga normal de boliche la marca solo vale en sus torneos (no en las prácticas).
   await db.admin('update public.league_members set is_scorer = true where league_id = $1 and user_id = $2', [w.priv, w.u.ana]);
   return { copa, t1, jl, px, t1Px };
 }
