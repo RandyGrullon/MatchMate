@@ -10,6 +10,7 @@ import { BackLink } from '../../../components/BackLink';
 import { Empty, ListSkeleton } from '../../../components/ui';
 import { finishedGroupRanking } from '../team/tournament';
 import { TournamentHub } from '../team/TournamentHub';
+import { useKoEvent, type KoEvent } from '../team/TeamPrizes';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { BasketballMatchCard } from './BasketballGames';
 import { BASKETBALL_POSITIONS } from './bits';
@@ -29,7 +30,8 @@ export default function BasketballEvent() {
   const matches = useMatches({ lid: tl.lid, eventId });
   const now = useNow(30_000).getTime();
   const e = event.data;
-  if (tl.league.kind === 'torneo') return <BasketballTournament tl={tl} title={e?.name || tl.league.name} date={e?.date} announcement={e?.announcement} />;
+  const koEvent = useKoEvent(tl);
+  if (tl.league.kind === 'torneo') return <BasketballTournament tl={tl} title={e?.name || tl.league.name} date={e?.date} announcement={e?.announcement} event={koEvent} />;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-2">
@@ -57,7 +59,7 @@ export default function BasketballEvent() {
   );
 }
 
-function BasketballTournament({ tl, title, date, announcement }: { tl: TeamLeague; title: string; date?: string; announcement?: string | null }) {
+function BasketballTournament({ tl, title, date, announcement, event }: { tl: TeamLeague; title: string; date?: string; announcement?: string | null; event: KoEvent | null }) {
   const now = useNow(30_000).getTime();
   const config = basketballConfigFrom(tl.rules.data);
   // Tabla FIBA de cada grupo (solo con sus partidos) cuando el grupo terminó.
@@ -68,6 +70,7 @@ function BasketballTournament({ tl, title, date, announcement }: { tl: TeamLeagu
   return (
     <TournamentHub
       tl={tl}
+      event={event}
       title={title}
       date={date}
       announcement={announcement}

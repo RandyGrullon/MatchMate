@@ -42,6 +42,7 @@ import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { levelText, useLevels } from '../levels';
 import { useNames, type Names } from '../names';
 import { useRacket } from '../sport';
+import { CategoryPrize, TourneyPrizes } from './TourneyPrizes';
 
 type View = 'grupos' | 'cuadro' | 'partidos';
 
@@ -166,6 +167,8 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
           </Button>
         </div>
       )}
+
+      {cfg.categories.length > 0 && <TourneyPrizes event={event} cfg={cfg} matches={matches} names={names} now={now} />}
 
       {cfg.signup && !started && cfg.categories.length > 0 && (
         <SignupPanel
@@ -461,7 +464,7 @@ function CategoryView({
       {(view === 'cuadro' || (!hasGroups && view === 'grupos')) &&
         (bracket ? (
           <div className="flex flex-col gap-3">
-            {medals[0] && (
+            {medals[0] ? (
               <Card className="flex flex-col gap-1.5 p-4">
                 {medals.map((id, i) =>
                   id ? (
@@ -471,7 +474,10 @@ function CategoryView({
                     </div>
                   ) : null,
                 )}
+                <CategoryPrize eventId={event.id} catId={cat.id} className="mt-1 border-t border-line pt-2" />
               </Card>
+            ) : (
+              <CategoryPrize eventId={event.id} catId={cat.id} className="px-1" />
             )}
             {isAdmin && pending > 0 && (
               <Button variant="primary" className="h-12" loading={busy} icon={<Wand2 className="size-5" />} onClick={() => void advance(bracket)}>

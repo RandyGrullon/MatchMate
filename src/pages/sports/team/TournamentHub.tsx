@@ -6,6 +6,7 @@ import { formatDateLong } from '../../../lib/format';
 import { BackLink } from '../../../components/BackLink';
 import { Badge, Button, Card, Empty, ListSkeleton, cx } from '../../../components/ui';
 import { SectionHead, TeamName } from './TeamBits';
+import { KnockoutPrizes, type KoEvent } from './TeamPrizes';
 import { TeamsManager } from './TeamsManager';
 import { stageGroups, tournamentStep, type TournamentStep } from './tournament';
 import { TournamentAdvance, TournamentBuilder } from './TournamentBuilder';
@@ -29,6 +30,7 @@ export function TournamentHub({
   rankGroup,
   renderMatch,
   sportWord = 'equipo',
+  event = null,
 }: {
   tl: TeamLeague;
   title: string;
@@ -47,6 +49,8 @@ export function TournamentHub({
   rankGroup: (stage: string) => string[] | null;
   renderMatch: (m: Match) => ReactNode;
   sportWord?: string;
+  /** El evento del torneo suelto (de él cuelgan los premios del torneo). */
+  event?: KoEvent | null;
 }) {
   const [building, setBuilding] = useState(false);
   const teams = tl.teams.data;
@@ -78,6 +82,8 @@ export function TournamentHub({
       )}
 
       {tl.isAdmin && <TournamentAdvance tl={tl} rankGroup={rankGroup} />}
+
+      <KnockoutPrizes tl={tl} event={event} />
 
       {loading ? (
         <ListSkeleton rows={3} />

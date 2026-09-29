@@ -112,6 +112,62 @@ export function teamPoints(rows: readonly Placed[]): TeamScore[] {
   return list;
 }
 
+export interface SwimmerScore {
+  swimmerId: string;
+  points: number;
+  gold: number;
+  silver: number;
+  bronze: number;
+  /**
+   * El sexo de las pruebas que nadó (las mixtas no cuentan): 'F' si todas son femeninas, 'M' si todas son
+   * masculinas; null si solo nadó mixtas o nadó de las dos. No se usa el sexo privado del nadador.
+   */
+  gender: 'F' | 'M' | null;
+  /** Empates en puntos, oros y platas comparten puesto. */
+  rank: number;
+}
+
+/**
+ * Nadador del encuentro (la hermana de `teamPoints`): suma los puntos de cada prueba ya con puesto
+ * (`placeResults`) por nadador y desempata por más oros y luego más platas; si sigue el empate, comparten el
+ * puesto. Solo entra quien tiene al menos una prueba con puesto (nadó con tiempo y sin DQ, DNS ni DNF). Con
+ * `gender`, solo los nadadores de ese sexo (por las pruebas que nadaron), con sus puestos entre ellos.
+ */
+export function swimmerPoints(rows: readonly Placed[], gender?: 'F' | 'M'): SwimmerScore[] {
+  const acc = new Map<string, SwimmerScore & { placed: boolean; sexes: Set<string> }>();
+  rows.forEach((r) => {
+    if (!r.swimmerId) return;
+    const s = acc.get(r.swimmerId) ?? { swimmerId: r.swimmerId, points: 0, gold: 0, silver: 0, bronze: 0, gender: null, rank: 0, placed: false, sexes: new Set<string>() };
+    if (r.gender === 'F' || r.gender === 'M') s.sexes.add(r.gender);
+    if (r.place != null) {
+      s.placed = true;
+      s.points += r.points;
+      if (r.place === 1) s.gold++;
+      else if (r.place === 2) s.silver++;
+      else if (r.place === 3) s.bronze++;
+    }
+    acc.set(r.swimmerId, s);
+  });
+  const list: SwimmerScore[] = [...acc.values()]
+    .filter((s) => s.placed)
+    .map((s) => ({
+      swimmerId: s.swimmerId,
+      points: round2(s.points),
+      gold: s.gold,
+      silver: s.silver,
+      bronze: s.bronze,
+      gender: s.sexes.size === 1 ? ([...s.sexes][0] as 'F' | 'M') : null,
+      rank: 0,
+    }))
+    .filter((s) => !gender || s.gender === gender);
+  list.sort((a, b) => b.points - a.points || b.gold - a.gold || b.silver - a.silver);
+  list.forEach((s, k) => {
+    const p = list[k - 1];
+    s.rank = p && p.points === s.points && p.gold === s.gold && p.silver === s.silver ? p.rank : k + 1;
+  });
+  return list;
+}
+
 export interface MedalRow {
   id: string;
   gold: number;

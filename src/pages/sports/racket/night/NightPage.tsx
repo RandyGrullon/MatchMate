@@ -53,6 +53,7 @@ import { levelText, useLevels } from '../levels';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { useNames } from '../names';
 import { useRacket } from '../sport';
+import { NightPrizes } from './NightPrizes';
 import { appOrigin, eventTypeInfo } from '../bits';
 import type { SignupSettings } from '../logic/signup';
 import { SignupSettingsModal } from '../signup/SignupFields';
@@ -278,6 +279,8 @@ export function NightPage({ event }: { event: RacketEvent }) {
           </p>
         </Card>
       )}
+
+      <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
 
       <Tabs
         items={[

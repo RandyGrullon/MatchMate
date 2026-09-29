@@ -5,19 +5,30 @@
 
 export const DEFAULT_TZ = 'America/Santo_Domingo';
 
+// Un formateador por zona: crearlo cuesta mucho más que usarlo, y el motor de insignias pide la fecha local de cada
+// partido miles de veces por corrida. Una zona que Intl no conoce lanza al crearlo y no se guarda.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const formatterOf = (tz: string): Intl.DateTimeFormat => {
+  let fmt = formatters.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    formatters.set(tz, fmt);
+  }
+  return fmt;
+};
+
 const parts = (ts: number, tz: string): Record<string, number> => {
   const out: Record<string, number> = {};
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  for (const p of fmt.formatToParts(ts)) if (p.type !== 'literal') out[p.type] = Number(p.value);
+  for (const p of formatterOf(tz).formatToParts(ts)) if (p.type !== 'literal') out[p.type] = Number(p.value);
   return out;
 };
 
@@ -28,12 +39,16 @@ function offsetMs(ts: number, tz: string): number {
   return asUtc - Math.floor(ts / 1000) * 1000;
 }
 
+const badZones = new Set<string>();
 const safeTz = (tz: string | null | undefined) => {
   const z = tz || DEFAULT_TZ;
+  if (formatters.has(z)) return z;
+  if (badZones.has(z)) return DEFAULT_TZ;
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: z });
+    formatterOf(z);
     return z;
   } catch {
+    badZones.add(z);
     return DEFAULT_TZ;
   }
 };

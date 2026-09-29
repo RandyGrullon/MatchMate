@@ -31,6 +31,7 @@ import {
   winsNeeded,
 } from './playoffs';
 import { SectionHead, TeamName } from './TeamBits';
+import { PlayoffPrizes } from './TeamPrizes';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -138,6 +139,7 @@ function PlayoffView({ tl, playoff, renderMatch }: { tl: TeamLeague; playoff: Pl
           </div>
         </Card>
       )}
+      <PlayoffPrizes tl={tl} playoff={playoff} />
       <BracketView
         bracket={bracket}
         nameOf={(id) => <TeamName team={tl.teamOf(id)} label={labels.get(id) ?? '(equipo borrado)'} />}

@@ -22,6 +22,7 @@ import { EntriesPanel } from './EntriesPanel';
 import { HeatSheetPanel } from './HeatSheetPanel';
 import { STAGE_LABEL, meetStage, pendingHeats, scores } from './logic';
 import { MeetFormModal } from './MeetFormModal';
+import { MeetPrizes } from './MeetPrizes';
 import { ProgramPanel } from './ProgramPanel';
 import { ResultsPanel, ScoresPanel } from './ResultsPanel';
 import { TimingPanel } from './TimingPanel';
@@ -173,6 +174,8 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
           )}
         </div>
       )}
+
+      <MeetPrizes data={data} />
 
       <Tabs items={tabs} active={tab} onChange={setTab} />
 

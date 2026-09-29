@@ -1493,6 +1493,15 @@ admin saque a alguien (hoy «ni admin ni anotador»), y se ajusta el texto en `A
 - Filtro de texto, reportes y escondite por el superadmin con registro.
 - Quien la recibe siempre la puede ocultar.
 
+### 5.9 Premios del torneo
+
+Un diseño del creador también puede ser **el premio de un torneo**: quien diseña insignias elige qué insignia se
+lleva cada lugar del podio (campeón por equipos e individual, y si quiere el 2.º y el 3.º) y, cuando el torneo
+termina, un admin toca «Entregar premios». Se da en `league_badge_awards` con `prize_slot_id`, así que el perfil, los
+avisos, el push, ocultar, reportar y las fusiones funcionan igual. Un premio no usa el cupo del diseño (Única, Selecta,
+Abierta) ni los topes de «Dar insignia», y en «Quién la tiene» dice «Premio del torneo». En el boliche los equipos se
+miden por scratch y el individual con handicap (la regla del torneo). Todo el diseño: [premios-torneo.md](premios-torneo.md).
+
 ---
 
 ## 6. Pantallas

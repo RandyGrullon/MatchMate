@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultPoints, medalTable, placeResults, POINTS_6_LANES, POINTS_8_LANES, splitPoints, teamPoints, type SwimResult } from './results';
+import { defaultPoints, medalTable, placeResults, POINTS_6_LANES, POINTS_8_LANES, splitPoints, swimmerPoints, teamPoints, type SwimResult } from './results';
 
 const r = (entryId: string, time: number | null, over: Partial<SwimResult> = {}): SwimResult => ({
   entryId,
@@ -126,5 +126,62 @@ describe('puntos por club y medallero', () => {
     const medals = medalTable(ev1, (x) => x.entryId);
     expect(medals.map((m) => m.id)).toEqual(['a1', 'b1', 'c1']);
     expect(medals.map((m) => m.rank)).toEqual([1, 1, 3]);
+  });
+});
+
+describe('nadador del encuentro (swimmerPoints)', () => {
+  // Cada nadador con su id; el sexo es el de la prueba.
+  const s = (swimmerId: string, time: number | null, over: Partial<SwimResult> = {}) => r(`${swimmerId}-${time}`, time, { swimmerId, ...over });
+
+  it('suma los puntos de sus pruebas; desempata por oros y luego por platas', () => {
+    const rows = [
+      // 50 libre F: ana 1.ª (6), bea 2.ª (4), eva 3.ª (3).
+      ...placeResults([s('ana', 3000), s('bea', 3100), s('eva', 3200)]),
+      // 100 libre F: bea 1.ª (6), eva 2.ª (4), ana 3.ª (3).
+      ...placeResults([s('bea', 7000), s('eva', 7100), s('ana', 7200)]),
+      // 50 pecho F: eva 1.ª (6), ana 2.ª (4); bea DQ.
+      ...placeResults([s('eva', 4000), s('ana', 4100), s('bea', 3900, { status: 'dq' })]),
+    ];
+    // ana 13 (1 oro, 1 plata), eva 13 (1 oro, 1 plata), bea 10.
+    expect(swimmerPoints(rows).map((x) => [x.swimmerId, x.points, x.gold, x.silver, x.rank])).toEqual([
+      ['ana', 13, 1, 1, 1],
+      ['eva', 13, 1, 1, 1],
+      ['bea', 10, 1, 1, 3],
+    ]);
+  });
+
+  it('con los mismos puntos gana quien tiene más oros, y después más platas', () => {
+    // Con la tabla [4, 4, 4] los tres primeros puestos dan lo mismo.
+    const tied = placeResults([s('ana', 3000), s('bea', 3100), s('cruz', 3200)], [4, 4, 4]);
+    expect(swimmerPoints(tied).map((x) => [x.swimmerId, x.points, x.rank])).toEqual([
+      ['ana', 4, 1],
+      ['bea', 4, 2],
+      ['cruz', 4, 3],
+    ]);
+  });
+
+  it('quien no tiene ninguna prueba con puesto no entra; sin nadador tampoco', () => {
+    const rows = placeResults([s('ana', 3000), s('bea', 3100, { status: 'dns' }), r('suelto', 2900)]);
+    expect(swimmerPoints(rows).map((x) => x.swimmerId)).toEqual(['ana']);
+  });
+
+  it('el sexo sale de las pruebas que nadó (las mixtas no cuentan) y filtra con sus puestos', () => {
+    const rows = [
+      ...placeResults([s('ana', 3000), s('bea', 3100)]),
+      ...placeResults([s('luis', 2900, { gender: 'M' }), s('juan', 3000, { gender: 'M' })]),
+      // Mixta: todos juntos.
+      ...placeResults([s('juan', 2000, { gender: 'X' }), s('ana', 2100, { gender: 'X' }), s('nico', 2200, { gender: 'X' })]),
+    ];
+    const all = swimmerPoints(rows);
+    expect(Object.fromEntries(all.map((x) => [x.swimmerId, x.gender]))).toEqual({ ana: 'F', bea: 'F', luis: 'M', juan: 'M', nico: null });
+    // ana 6 + 4 = 10, bea 4; juan 4 + 6 = 10, luis 6.
+    expect(swimmerPoints(rows, 'F').map((x) => [x.swimmerId, x.points, x.rank])).toEqual([
+      ['ana', 10, 1],
+      ['bea', 4, 2],
+    ]);
+    expect(swimmerPoints(rows, 'M').map((x) => [x.swimmerId, x.points, x.rank])).toEqual([
+      ['juan', 10, 1],
+      ['luis', 6, 2],
+    ]);
   });
 });

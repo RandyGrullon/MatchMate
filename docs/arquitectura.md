@@ -110,7 +110,7 @@ ni el backend:
 `submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `legal` (aceptación de los términos), `reports` (reportes de contenido), `solo` (juegos sueltos de boliche), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`) y los de las insignias
 (`badges`: vitrina, avisos, progreso, rareza, la liga, el evento y el título vigente; `leagueBadges`: el creador;
-`badgeAdmin`: la consola). Fuera de la carpeta, `src/lib/logos.ts` (logo de ligas y torneos).
+`prizes`: los premios del torneo; `badgeAdmin`: la consola). Fuera de la carpeta, `src/lib/logos.ts` (logo de ligas y torneos).
 
 ## Jugadores sin cuenta y reclamos
 
@@ -401,6 +401,56 @@ resultados, vínculos, cierres ──trigger──▶ private.badge_queue ◀─
 - **Consola › Insignias** (`src/pages/superadmin/BadgesSection.tsx`): hazañas vencidas, reportes, palabras
   bloqueadas, la cola del motor y sus trabajos muertos, la primera corrida del historial (en seco y de verdad) contra
   la rareza estimada, la rareza real y la galería del catálogo.
+
+## Premios del torneo
+
+Diseño: `docs/premios-torneo.md`. Contrato: `supabase/README.md` («Premios del torneo»). Migración
+`20260929001200_premios_torneo.sql`; pruebas `tests/sql/premios-torneo.test.ts` (base y boliche) y
+`tests/sql/premios-deportes.test.ts` (los demás deportes: lo que dice el teléfono contra el servidor).
+
+- **Qué es:** quien diseña insignias (`can_badges`) elige qué diseño del creador (`league_badges`, o uno nuevo de las
+  plantillas «Campeón», «Subcampeón» y «Tercer lugar») se lleva cada lugar (1.º a 3.º) de cada categoría de una
+  competencia. Cuando termina, un admin (o quien diseña) toca «Entregar premios», revisa el podio y confirma. Las
+  insignias van a `league_badge_awards` con `prize_slot_id` (perfil, avisos, push, fusiones y «Descargar mis datos»
+  como cualquier insignia de la liga); un premio de equipo le llega a cada jugador del equipo. Entregar es por estado
+  deseado (otra vez lo mismo no duplica) y se corrige hasta 14 días después de la primera entrega o hasta «Cerrar
+  premios»; el dueño corrige siempre. Un premio no gasta el cupo del diseño ni los topes del creador.
+- **Tablas:** `tournament_prizes` (una por competencia: `scope` `evento`, `golf_torneo` o `playoff`) y
+  `tournament_prize_slots` (categoría `equipo`, `pareja` o `individual`, división, lugar, diseño y la foto de quién
+  ganó). Se leen como la liga (también sin cuenta en una pública) y se escriben solo por RPC (`set_tournament_prizes`,
+  `tournament_podium`, `deliver_tournament_prizes`, `close_tournament_prizes`). Tiempo real `badges` `{kind: 'premio'}`
+  en `league:<id>`.
+- **Qué premia cada deporte** (`private.prize_allowed`, gemela de `prizeCategories` en `src/prizes/catalog.ts`; una
+  prueba compara categorías, etiquetas y títulos):
+  - boliche, evento `torneo`: «Equipos (scratch)» (si hay equipos) e «Individual (handicap)», con la regla efectiva del
+    evento (`individualRule`/`teamRule`/`bowlingStandings` de `src/lib/stats.ts`; con 0 % de handicap, scratch). Todo
+    torneo nuevo nace con individual por handicap y equipos por scratch (`create_event`, `create_tournament` y el
+    formulario, que dice la regla); se cambia en «Configurar» del evento.
+  - raqueta: en el torneo por categorías, pareja (pádel; tenis y pickleball según `rules.match.doubles`) o individual
+    por categoría; en las noches de americano o mexicano y el social del pickleball, individual.
+  - baloncesto, fútbol y sala: el equipo del torneo relámpago (cuelga del evento del torneo suelto) y el de cada playoff.
+  - golf: individual (la competencia oficial, gross y neto) de la ronda suelta o del torneo de varias rondas.
+  - natación: clubes e individual (todos, femenino y masculino) del encuentro o torneo; el control de marcas no.
+- **Quién calcula el podio:** el servidor donde puede (`private.prize_server_podium`: boliche, cuadros de raqueta,
+  relámpago y playoffs). Ahí el orden está verificado: la entrega solo acepta ese podio (el teléfono puede desmarcar
+  jugadores, no agregar) y el admin que ganó se entrega su premio. En golf, natación y noches (`status 'telefono'`) el
+  podio lo arma el teléfono con lo mismo que muestra la pantalla (`golfProvider`, `swimProvider` y `nightProvider` de
+  `src/prizes/sports.ts`) y el servidor revisa que cada uno haya jugado (`private.prize_unit_players`) y que nadie se
+  lo dé a sí mismo (`a_si_mismo`). Los podios del teléfono del boliche (`bowlingPodium`) y de los cuadros
+  (`racketTourneyProvider`, `teamKoProvider`, `playoffProvider`) son la misma cuenta del servidor, con pruebas de
+  paridad, y sirven solo para «Por ahora: …» y el aviso «El podio cambió».
+- **Cliente:** datos en `src/lib/data/prizes.ts` (`useTournamentPrize`, las 4 RPC, `prizeErrorText`; una entrega de
+  más de 300 jugadores sale en tandas), lógica pura en `src/prizes/` (`catalog`, `providers`, `sports`, `setup`,
+  `award`, `card`, `ready`) y pantallas en `src/components/prizes/`: `TournamentPrizes` es la tarjeta «Premios del
+  torneo», liviana, que carga `PrizesCard`, `PrizePicker` y `AwardPrizesSheet` solo si hay algo que mostrar. Cada
+  deporte la monta con un envoltorio fino: boliche `src/components/event/EventPrizes.tsx` (antes de las insignias
+  oficiales del evento), raqueta `TourneyPrizes.tsx` (más «Se lleva: …» junto al podio de cada categoría) y
+  `NightPrizes.tsx` (noche y social del pickleball), equipos `TeamPrizes.tsx` (`TournamentHub` y cada playoff), golf
+  `GolfPrizes.tsx` (en cada ronda; la de un torneo muestra los premios del torneo) y natación `MeetPrizes.tsx`.
+- **Con el creador y las automáticas:** los premios no cuentan en el cupo del diseño ni en el aviso de duplicado
+  (`maker/design.ts`, `GiveBadge.tsx`) y «Quién la tiene» los marca «Premio del torneo». Las insignias automáticas
+  (`event_podium`, `bowling_team_win`…) siguen aparte, en su tabla, y pueden no coincidir (tienen mínimos y llegan
+  después).
 
 ## Sin señal y errores
 

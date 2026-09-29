@@ -14,6 +14,7 @@ import { CardModal } from './bits';
 import { cardWire, markSent, mergeCard, sendPending, useCourtLog } from './courtLog';
 import { GolfBoard } from './GolfBoard';
 import { GolfCourt } from './GolfCourt';
+import { GolfPrizes } from './GolfPrizes';
 import { GolfPlayers } from './GolfPlayers';
 import { RoundForm } from './RoundForm';
 import { formatLabel, holesDone, isComplete, nineLabel } from './logic';
@@ -205,6 +206,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
               Terminaste: revisa y firma tu tarjeta
             </Button>
           )}
+          <GolfPrizes eventId={eventId} name={ev.name} date={ev.date} round={round} cards={golf.data.cards} tournamentName={tournament?.name} nameOf={nameOf} />
           <Tabs items={tabs} active={tab} onChange={(k) => setSearch({ tab: k }, { replace: true })} />
           <div key={tab} className="animate-fade-up">
             {tab === 'tarjeta' ? (

@@ -22,6 +22,7 @@ import { timeLabel } from '../../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../../racket/match/MatchDetail';
 import { useNames } from '../../racket/names';
 import { NightFields, NightPlayers } from '../../racket/night/NightForm';
+import { NightPrizes } from '../../racket/night/NightPrizes';
 import { useRacket } from '../../racket/sport';
 import { GameFields, MixedGroups } from './SocialForm';
 import {
@@ -248,6 +249,8 @@ export function SocialPage({ event }: { event: RacketEvent }) {
           </p>
         </Card>
       )}
+
+      <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
 
       <Tabs
         items={[
