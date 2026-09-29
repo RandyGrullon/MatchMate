@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { BadgeCheck, ExternalLink, Link2, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
+import { BadgeCheck, ExternalLink, Link2, Merge, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
 import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useLeagueMembers, usePlayers } from '../lib/data';
+import { setPlayerMinor, useGuardians } from '../lib/data/players';
 import { roleLabel, useLeagueCtx } from '../lib/league';
 import { playerStats, type PlayerStats } from '../lib/stats';
 import type { Entry, Member, Player } from '../lib/types';
@@ -14,7 +15,19 @@ import { peopleWord } from '../components/league/logic';
 import { AddPlayerModal } from '../components/players/AddPlayerModal';
 import { SportStatFields } from '../components/players/SportStatFields';
 import { saveSportStats, usePlayerAttrs } from '../components/players/data';
-import { draftFromAttrs, emptyDraft, parseStats, statKind, statSummary, type StatDraft } from '../components/players/logic';
+import {
+  draftFromAttrs,
+  emptyDraft,
+  emptyGuardian,
+  guardianProblem,
+  parseStats,
+  statKind,
+  statSummary,
+  type GuardianDraft,
+  type StatDraft,
+} from '../components/players/logic';
+import { GuardianFields, MinorCheck } from '../components/players/GuardianFields';
+import { MergePlayerModal } from '../components/players/MergePlayerModal';
 import { PlayerClaimBadge } from '../components/claims/PlayerClaimBadge';
 
 export function useStatsByPlayer(entries: Entry[]) {
@@ -57,6 +70,9 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const editing = editingId ? (players.data.find((p) => p.id === editingId) ?? null) : null;
   const setEditing = (p: Player | null) => setEditingId(p?.id ?? null);
   const [adding, setAdding] = useState(false);
+  // «Juntar con…» (se abre desde la ficha del jugador, que se cierra: uno de los dos se borra al juntar).
+  const [mergingId, setMergingId] = useState<string | null>(null);
+  const merging = mergingId ? (players.data.find((p) => p.id === mergingId) ?? null) : null;
   const names = useMemo(() => players.data.map((p) => p.name), [players.data]);
 
   const filtered = players.data.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
@@ -210,7 +226,12 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
         members={members.data}
         players={players.data}
         onClose={() => setEditing(null)}
+        onMerge={() => {
+          setMergingId(editingId);
+          setEditing(null);
+        }}
       />
+      <MergePlayerModal open={merging != null} onClose={() => setMergingId(null)} player={merging} players={players.data} />
     </div>
   );
 }
@@ -225,6 +246,7 @@ function PlayerFormModal({
   members,
   players,
   onClose,
+  onMerge,
 }: {
   open: boolean;
   player: Player | null;
@@ -234,6 +256,8 @@ function PlayerFormModal({
   members: Member[];
   players: Player[];
   onClose: () => void;
+  /** «Juntar con…»: abre el modal para juntarlo con otro de la lista. */
+  onMerge: () => void;
 }) {
   const { lid, league } = useLeagueCtx();
   const sport = leagueSport(league);
@@ -245,6 +269,13 @@ function PlayerFormModal({
   const [draft, setDraft] = useState<StatDraft>(emptyDraft);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Liga con menores (menos natación, que lo hace en Nadadores): marcar o desmarcar a un jugador sin cuenta como menor,
+  // con su tutor y el permiso (set_player_minor). Los datos del tutor solo los leen los admins y no se guardan.
+  const minorsOk = !!league.hasMinors && !swimming && !!player && !player.uid;
+  const guardians = useGuardians(lid, open && minorsOk);
+  const saved = player ? guardians.data[player.id] : undefined;
+  const [isMinor, setIsMinor] = useState(false);
+  const [guardian, setGuardian] = useState<GuardianDraft>(emptyGuardian);
 
   // Se llena al abrir (o al cambiar de jugador); lo que llega en vivo después no pisa lo que se está escribiendo.
   useEffect(() => {
@@ -252,8 +283,17 @@ function PlayerFormModal({
     setName(player?.name ?? '');
     setDraft(draftFromAttrs(sport, attrs, player?.averageOverride ?? null));
     setError(null);
+    setIsMinor(!!player?.isMinor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, player?.id]);
+
+  // El tutor guardado llega aparte (solo admins): se pone cuando llega.
+  useEffect(() => {
+    if (!open) return;
+    setGuardian(
+      saved ? { guardianName: saved.guardianName ?? '', guardianPhone: saved.guardianPhone ?? '', consent: !!saved.consentAt } : emptyGuardian,
+    );
+  }, [open, player?.id, saved?.guardianName, saved?.guardianPhone, saved?.consentAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -263,12 +303,25 @@ function PlayerFormModal({
       setError(parsed.error);
       return;
     }
+    const minorChanged =
+      minorsOk &&
+      (isMinor !== !!player.isMinor ||
+        (isMinor &&
+          (guardian.guardianName.trim() !== (saved?.guardianName ?? '') ||
+            guardian.guardianPhone.replace(/[\s().-]/g, '') !== (saved?.guardianPhone ?? '') ||
+            guardian.consent !== !!saved?.consentAt)));
+    const problem = minorChanged && isMinor ? guardianProblem(guardian) : null;
+    if (problem) {
+      setError(problem);
+      return;
+    }
     const before = parseStats(sport, draftFromAttrs(sport, attrs, player.averageOverride ?? null));
     setError(null);
     setBusy(true);
     await run(async () => {
       await updatePlayer(lid, player.id, bowling ? { name: name.trim(), averageOverride: parsed.stats.averageOverride } : { name: name.trim() });
       if (!bowling && !swimming) await saveSportStats(lid, sport, player.id, parsed.stats, before.ok ? before.stats : undefined);
+      if (minorChanged) await setPlayerMinor(lid, player.id, isMinor ? guardian : null);
     }, 'Jugador actualizado');
     setBusy(false);
     onClose();
@@ -324,6 +377,8 @@ function PlayerFormModal({
             }
           />
         )}
+        {minorsOk && <MinorCheck checked={isMinor} onChange={setIsMinor} />}
+        {minorsOk && isMinor && <GuardianFields value={guardian} onChange={setGuardian} />}
         {error && (
           <p role="alert" className="text-sm text-danger">
             {error}
@@ -331,6 +386,16 @@ function PlayerFormModal({
         )}
       </form>
       {player && <AccountSection player={player} account={account} members={members} players={players} onDone={onClose} />}
+      {player && players.length > 1 && (
+        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-line p-3 sm:flex-row sm:items-center">
+          <p className="min-w-0 flex-1 text-xs text-muted">
+            ¿Está dos veces en la lista (con otro nombre, o con cuenta y sin cuenta)? Júntalo con el otro y queda uno solo, con todos sus resultados.
+          </p>
+          <Button className="h-11 shrink-0 self-start sm:self-auto" icon={<Merge className="size-4" />} onClick={onMerge}>
+            Juntar con…
+          </Button>
+        </div>
+      )}
     </Modal>
   );
 }

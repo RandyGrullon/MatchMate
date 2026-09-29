@@ -12,6 +12,7 @@ import {
   infoRows,
   isLeagueHome,
   joinLabel,
+  joinStep,
   minorsLocked,
   noticesLeft,
   peopleWord,
@@ -49,6 +50,41 @@ describe('«¿Quién eres?»', () => {
     expect(searchPlayers(l, 'gomez maria').map((x) => x.id)).toEqual(['1']);
     expect(searchPlayers(l, '  ')).toHaveLength(3);
     expect(searchPlayers(l, 'pedro')).toEqual([]);
+  });
+});
+
+describe('«Unirme» desde cualquier lado (el mismo camino)', () => {
+  const me = { signedIn: true, name: 'Ana Pérez' };
+  const t = { lid: 'L1' };
+
+  it('sin cuenta: a entrar (o a crearla) y volver a la liga o adonde se pidió', () => {
+    expect(joinStep(t, undefined, { signedIn: false })).toEqual({ step: 'login', url: '/login?next=%2Fl%2FL1' });
+    expect(joinStep({ ...t, signUp: true, next: '/l/L1/juegos' }, [], { signedIn: false })).toEqual({
+      step: 'login',
+      url: '/login?modo=registro&next=%2Fl%2FL1%2Fjuegos',
+    });
+  });
+
+  it('si ya dijo quién es, se une pidiendo ese sin preguntar (ni leer la lista)', () => {
+    expect(joinStep({ ...t, prefer: 'p9' }, undefined, me)).toEqual({ step: 'join', choice: 'p9' });
+  });
+
+  it('sin la lista, primero la lee; con jugadores sin cuenta, pregunta «¿Quién eres?» con el que parece ser', () => {
+    expect(joinStep(t, undefined, me)).toEqual({ step: 'load' });
+    const players = [p('1', 'Ana Pérez'), p('2', 'Luis', { uid: 'u-luis' }), p('3', 'Nene', { isMinor: true }), p('4', 'Beto')];
+    const r = joinStep(t, players, me);
+    expect(r.step).toBe('ask');
+    if (r.step === 'ask') {
+      expect(r.free.map((x) => x.id)).toEqual(['1', '4']);
+      expect(r.initial).toBe('1');
+    }
+    // Nadie con su nombre: pregunta igual, sin marcar a nadie.
+    expect(joinStep(t, players, { signedIn: true, name: 'Carla' })).toMatchObject({ step: 'ask', initial: null });
+  });
+
+  it('si todos tienen cuenta (o son menores), se une directo como alguien nuevo', () => {
+    expect(joinStep(t, [p('2', 'Luis', { uid: 'u-luis' }), p('3', 'Nene', { isMinor: true })], me)).toEqual({ step: 'join', choice: null });
+    expect(joinStep(t, [], me)).toEqual({ step: 'join', choice: null });
   });
 });
 
@@ -232,6 +268,19 @@ describe('pestañas del Admin', () => {
     expect(r.tabs[1]).toBe(own);
     // Si el deporte trae su propia «jugadores», no se esconde.
     expect(r.playersMerged).toBe(false);
+  });
+
+  it('«Pendientes» va primero y abre ahí en todos los deportes', () => {
+    const withPending = [t('pendientes'), ...generic];
+    const bowling = arrangeAdminTabs([t('pendientes'), t('jugadores'), t('aprobar'), t('miembros')], [], true);
+    expect(keys(bowling)).toEqual(['pendientes', 'jugadores', 'aprobar', 'miembros']);
+    expect(bowling.defaultKey).toBe('pendientes');
+    const team = arrangeAdminTabs(withPending, [t('equipos')], false);
+    expect(keys(team)).toEqual(['pendientes', 'equipos', 'jugadores', 'miembros', 'buzon', 'liga']);
+    expect(team.defaultKey).toBe('pendientes');
+    const swim = arrangeAdminTabs(withPending, [t('nadadores')], false);
+    expect(keys(swim)).toEqual(['pendientes', 'nadadores', 'miembros', 'buzon', 'liga']);
+    expect(swim.playersMerged).toBe(true);
   });
 
   it('mientras no llegan las del deporte: las generales, en Jugadores', () => {

@@ -1,8 +1,7 @@
 import { lazy, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { CalendarDays, CalendarRange, CheckCircle2, ChevronRight, Clock, MapPin, Plus, Trophy, UserPlus, Users } from 'lucide-react';
-import { displayName, useAuth } from '../lib/auth';
-import { joinLeague, useEntriesOfEvents, useEvents, usePlayerEntries } from '../lib/data';
+import { useEntriesOfEvents, useEvents, usePlayerEntries } from '../lib/data';
 import { eventLabel, formatDate, formatDateLong, toIsoDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { liveInfo } from '../lib/live';
@@ -14,11 +13,11 @@ import { EventFormModal } from '../components/EventFormModal';
 import { LiveBoard } from '../components/LiveBoard';
 import { LiveActions } from '../components/LiveNow';
 import { useNotifications } from '../components/Notifications';
-import { NextPracticeCard } from '../components/NextPracticeCard';
+import { NextPracticeCard, nextPractice } from '../components/NextPracticeCard';
 import { SuggestionBox } from '../components/SuggestionBox';
 import { Tour } from '../components/Tour';
 import { LEAGUE_TOUR } from '../lib/tours';
-import { useAction } from '../components/feedback';
+import { useJoinFlow } from '../components/league/WhoAreYou';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, PageSkeleton, Position, Tabs } from '../components/ui';
 
 const EventPage = lazy(() => import('./EventPage'));
@@ -75,6 +74,8 @@ function LeagueEvents() {
   const today = toIsoDate(now);
   const isTorneo = type === 'torneo';
   const liveEvents = events.data.map((event) => ({ event, info: liveInfo(event, league, now) })).filter((l) => l.info.live);
+  // La próxima práctica ya está en vivo arriba: «Tu pista» sale en el tablero y no otra vez en la tarjeta.
+  const practiceIsLive = liveEvents.some((l) => l.event.id === nextPractice(events.data, today)?.id);
   const counts = {
     torneo: events.data.filter((e) => e.type === 'torneo').length,
     practica: events.data.filter((e) => e.type === 'practica').length,
@@ -91,7 +92,7 @@ function LeagueEvents() {
       ))}
 
       {!events.loading && <Announcements events={events.data} />}
-      {myPlayerId && <NextPracticeCard events={events.data} playerId={myPlayerId} />}
+      {myPlayerId && <NextPracticeCard events={events.data} playerId={myPlayerId} lane={!practiceIsLive} />}
 
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1 [&>div]:mx-0 [&>div]:px-0">
@@ -230,24 +231,14 @@ function LeagueHeader() {
   );
 }
 
-/** Observador de una liga pública: invitación a unirse. */
+/**
+ * Observador de una liga pública: invitación a unirse, con «¿Quién eres?» si el admin ya anotó jugadores sin cuenta
+ * (el mismo camino que en todas partes). Al unirse ya es jugador: se queda en la liga (la página cambia sola).
+ */
 function JoinBanner() {
   const { lid, league, base } = useLeagueCtx();
-  const auth = useAuth();
-  const navigate = useNavigate();
-  const run = useAction();
-  const [busy, setBusy] = useState(false);
-
-  async function join() {
-    if (!auth.user) return navigate(`/login?next=${encodeURIComponent(base)}`);
-    setBusy(true);
-    // Al unirse ya es jugador: se queda en la liga (la página cambia sola).
-    await run(async () => {
-      await joinLeague(lid, { uid: auth.user!.uid, name: displayName(auth) }, null);
-      return true;
-    }, `Te uniste a ${league.name}`);
-    setBusy(false);
-  }
+  const flow = useJoinFlow();
+  const join = () => flow.start({ lid, name: league.name, sport: league.sport, kind: league.kind, next: base });
 
   return (
     <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -255,9 +246,10 @@ function JoinBanner() {
         <p className="font-medium">Estás viendo {league.name}</p>
         <p className="text-sm text-muted">Únete para confirmar asistencia, subir tus juegos y salir en el ranking.</p>
       </div>
-      <Button variant="primary" icon={<UserPlus className="size-4" />} loading={busy} onClick={join}>
+      <Button variant="primary" icon={<UserPlus className="size-4" />} loading={flow.busy === lid} onClick={join}>
         Unirme
       </Button>
+      {flow.modal}
     </Card>
   );
 }

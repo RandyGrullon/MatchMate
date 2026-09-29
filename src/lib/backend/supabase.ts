@@ -51,6 +51,7 @@ const TABLE_KEYS: Record<string, readonly string[]> = {
   memberships: ['league_id', 'user_id'],
   player_private: ['player_id'],
   event_rsvps: ['event_id', 'player_id'],
+  event_lanes: ['event_id', 'player_id'],
   live_states: ['event_id', 'subject_key'],
   match_sides: ['match_id', 'side'],
   match_players: ['match_id', 'player_id'],

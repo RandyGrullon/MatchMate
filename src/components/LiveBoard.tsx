@@ -7,6 +7,7 @@ import { useLeagueCtx } from '../lib/league';
 import { liveRows, type LiveInfo, type LiveSource } from '../lib/live';
 import type { BowlingEvent } from '../lib/types';
 import { Avatar } from './Avatar';
+import { MyLane } from './lanes/MyLane';
 import { Card, Skeleton, cx } from './ui';
 
 /** Filas que se ven antes de "Ver todos". */
@@ -29,14 +30,17 @@ export function LiveBoard({
   info,
   onOpen,
   actions,
+  lane = true,
 }: {
   event: BowlingEvent;
   info: LiveInfo;
   onOpen?: (entryId: string) => void;
   /** Arriba del tablero: lo que puede hacer la cuenta (anotar sus juegos, anotar los de todos). */
   actions?: ReactNode;
+  /** «Tu pista: 7» arriba (la pantalla del evento ya la muestra: ahí va false). */
+  lane?: boolean;
 }) {
-  const { lid, base } = useLeagueCtx();
+  const { lid, base, myPlayerId } = useLeagueCtx();
   const entries = useEventEntries(lid, event.id);
   const subs = useEventSubmissions(lid, event.id);
   const live = useEventLive(lid, event.id);
@@ -56,6 +60,7 @@ export function LiveBoard({
         <span className="min-w-0 flex-1 truncate font-normal text-muted">· {eventLabel(event)}</span>
         {rows.length > 0 && <span className="shrink-0 font-normal text-muted">{rows.length} jugando</span>}
       </div>
+      {lane && myPlayerId && <MyLane lid={lid} eventId={event.id} playerId={myPlayerId} className="mx-4 mt-3" />}
       {actions && <div className="flex flex-col gap-3 border-b border-line p-4">{actions}</div>}
 
       {loading ? (

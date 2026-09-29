@@ -229,3 +229,117 @@ export function parseManyNames(text: string, current: readonly string[] = []): M
   }
   return out;
 }
+
+// ---------- Menores de edad (ligas con menores) ----------
+
+/** Lo que escribe el admin de un menor: su padre, madre o tutor, el teléfono (opcional) y el permiso. */
+export interface GuardianDraft {
+  guardianName: string;
+  guardianPhone: string;
+  consent: boolean;
+}
+
+export const emptyGuardian: GuardianDraft = { guardianName: '', guardianPhone: '', consent: false };
+
+/** El teléfono como lo guarda la base: sin espacios, guiones, puntos ni paréntesis ('' = sin teléfono). */
+export const cleanGuardianPhone = (raw: string) => raw.replace(/[\s().-]/g, '');
+
+/** Dígitos y + (hasta 20), igual que la base; vacío también sirve (es opcional). */
+export function validGuardianPhone(raw: string): boolean {
+  const t = cleanGuardianPhone(raw);
+  return !t || /^[0-9+]{1,20}$/.test(t);
+}
+
+/** Qué falta para registrar a un menor (null = está completo). */
+export function guardianProblem(g: GuardianDraft): string | null {
+  const name = g.guardianName.trim();
+  if (!name) return 'Escribe el nombre del padre, madre o tutor.';
+  if (name.length > MAX_NAME) return `El nombre del tutor es muy largo (hasta ${MAX_NAME} letras).`;
+  if (!validGuardianPhone(g.guardianPhone)) return 'El teléfono del tutor lleva solo números (puede empezar con +).';
+  if (!g.consent) return 'Marca que el padre, madre o tutor dio permiso.';
+  return null;
+}
+
+/** Un menor de «Agregar varios»: «Nombre, tutor, teléfono». */
+export interface MinorLine {
+  name: string;
+  guardianName: string;
+  guardianPhone: string;
+}
+
+export interface ManyMinors {
+  rows: MinorLine[];
+  /** Los que ya están en la liga (mismo nombre): no se agregan otra vez. */
+  existing: string[];
+  /** Repetidos dentro de lo escrito. */
+  repeated: number;
+  /** Menores sin el nombre de su tutor (no se pueden agregar así). */
+  noGuardian: string[];
+  /** Menores con un teléfono que no se entiende. */
+  badPhone: string[];
+}
+
+/** ¿Parece un teléfono? (al menos 7 números y solo signos de teléfono). */
+const looksLikePhone = (s: string) => /^[0-9+\s().-]+$/.test(s) && (s.match(/\d/g)?.length ?? 0) >= 7;
+
+/**
+ * «Agregar varios» en una liga con menores: un menor por línea, «Nombre, tutor, teléfono» (también con punto y
+ * coma o tabulador, como sale al pegar de una hoja de cálculo). El teléfono es opcional; si la segunda parte es un
+ * teléfono, falta el tutor.
+ */
+export function parseManyMinors(text: string, current: readonly string[] = []): ManyMinors {
+  const key = (s: string) => s.toLocaleLowerCase('es').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const have = new Set(current.map((n) => key(n.trim().replace(/\s+/g, ' '))));
+  const seen = new Set<string>();
+  const out: ManyMinors = { rows: [], existing: [], repeated: 0, noGuardian: [], badPhone: [] };
+  for (const line of text.split(/\r?\n/)) {
+    const parts = line
+      .replace(/^\s*(?:\d{1,3}[.)-]|[-*•·])\s*/, '')
+      .split(/\t|;|,/)
+      .map((p) => p.replace(/\s+/g, ' ').trim());
+    const name = (parts[0] ?? '').slice(0, MAX_NAME);
+    if (!name) continue;
+    let guardianName = parts[1] ?? '';
+    let guardianPhone = parts[2] ?? '';
+    if (!guardianPhone && looksLikePhone(guardianName)) {
+      guardianPhone = guardianName;
+      guardianName = '';
+    }
+    const k = key(name);
+    if (seen.has(k)) {
+      out.repeated++;
+      continue;
+    }
+    seen.add(k);
+    if (have.has(k)) {
+      out.existing.push(name);
+      continue;
+    }
+    if (!guardianName) out.noGuardian.push(name);
+    if (!validGuardianPhone(guardianPhone)) out.badPhone.push(name);
+    out.rows.push({ name, guardianName: guardianName.slice(0, MAX_NAME), guardianPhone: cleanGuardianPhone(guardianPhone) });
+  }
+  return out;
+}
+
+// ---------- «Juntar con…» ----------
+
+/** Con quién se puede juntar a un jugador: los demás de la lista, por nombre. */
+export function mergeCandidates<P extends { id: string; name: string }>(players: readonly P[], id: string): P[] {
+  return players.filter((p) => p.id !== id).sort((a, b) => a.name.localeCompare(b.name, 'es') || a.id.localeCompare(b.id));
+}
+
+interface MergeSideLike {
+  name: string;
+  isMinor: boolean;
+}
+
+/** Lo que pasa al juntar, en palabras: quién queda, si se lleva la cuenta del otro y si queda como menor. */
+export function mergeSummary(p: { keep: MergeSideLike; drop: MergeSideLike; moveAccount: boolean }): string {
+  const { keep, drop } = p;
+  // «Ana P.» ya trae su punto: no se pone otro.
+  const end = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
+  const first = end(`Queda ${keep.name}${p.moveAccount ? `, con la cuenta que tenía ${drop.name}` : ''}`);
+  const minor = keep.isMinor || drop.isMinor ? ' Queda como menor de edad.' : '';
+  return `${first} Los juegos, partidos y «voy» de ${drop.name} pasan a ${keep.name}, y ${end(`${drop.name} sale de la lista`)}${minor}`;
+}

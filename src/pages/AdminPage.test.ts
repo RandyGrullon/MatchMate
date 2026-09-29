@@ -76,3 +76,21 @@ describe('tour de Admin', () => {
     }
   });
 });
+
+describe('pestaña «Pendientes»', () => {
+  const html = (sport: string, url = '/l/l1/admin') =>
+    renderToString(h(MemoryRouter, { initialEntries: [url] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: ctx(sport) }, h(AdminPage)))));
+
+  it('va primera y el Admin abre ahí (el orden en los otros deportes: arrangeAdminTabs en league/logic.test.ts)', () => {
+    const out = html('bowling');
+    expect(out).toMatch(/role="tab" aria-selected="true"[^>]*>(?:(?!<\/button>).)*Pendientes/);
+    expect(out.indexOf('Pendientes')).toBeLessThan(out.indexOf('Jugadores'));
+    expect(out).toContain('Suspender un día');
+  });
+
+  it('con otra pestaña pedida, sigue primera pero abre la pedida', () => {
+    const out = html('bowling', '/l/l1/admin?tab=miembros');
+    expect(out.indexOf('Pendientes')).toBeLessThan(out.indexOf('Miembros'));
+    expect(out).not.toContain('Suspender un día');
+  });
+});

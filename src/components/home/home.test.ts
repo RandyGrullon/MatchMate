@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { HOME_TOUR } from '../../lib/tours';
 import { initialSport } from '../LeagueFormModal';
 import { FollowingSlot } from './FollowingSlot';
+import { LeagueRow } from './LeagueCard';
 import { MyLeaguesBody, NoLeaguesYet } from './MyLeagues';
 import { SportHero, heroCountsLabel } from './SportHero';
 import { sportTileNote } from './SportPickerRow';
@@ -93,5 +94,36 @@ describe('Tour del Home', () => {
     const targets = HOME_TOUR.map((s) => s.target);
     expect(new Set(targets).size).toBe(targets.length);
     expect(targets).toEqual(expect.arrayContaining(['nav', 'deporte', 'deportes', 'portada-deporte', 'siguiendo', 'unirse']));
+  });
+});
+
+describe('Ligas públicas: la fila', () => {
+  const league = {
+    id: 'L1',
+    name: 'Liga del Naco',
+    kind: 'liga' as const,
+    visibility: 'public' as const,
+    ownerUid: '',
+    venue: 'Club Naco',
+    schedule: 'Martes 7 pm',
+    seasonStart: '',
+    seasonEnd: '',
+    contactName: '',
+    contactPhone: '',
+    requirePhoto: false,
+    sport: 'bowling',
+  };
+
+  it('dice cuántos son y cuándo juega, y debajo dónde y cuándo', () => {
+    const html = text(render(h(LeagueRow, { league, today: '2026-09-28', line: '24 jugadores · juega el martes' })));
+    expect(html).toContain('Liga del Naco');
+    expect(html).toContain('24 jugadores · juega el martes');
+    expect(html).toContain('Club Naco · Martes 7 pm');
+  });
+
+  it('sin línea (no hay nada que decir) queda solo dónde y cuándo', () => {
+    const html = text(render(h(LeagueRow, { league, today: '2026-09-28', line: '' })));
+    expect(html).not.toContain('jugadores');
+    expect(html).toContain('Club Naco · Martes 7 pm');
   });
 });

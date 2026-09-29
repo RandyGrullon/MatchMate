@@ -66,6 +66,9 @@ const RPC_AUTHENTICATED = [
   'set_push_prefs', 'admin_storage_usage',
   // Legal: aceptar los términos vigentes y reportar contenido (y los reportes propios, para «Descargar mis datos»).
   'accept_legal', 'admin_legal_stats', 'list_reports', 'my_reports', 'report_content', 'resolve_report',
+  // Organizador: ligas públicas, pendientes, juntar jugadores, menores, suspender un día y pistas del boliche.
+  'public_leagues_feed', 'league_pending', 'merge_league_players', 'merge_league_players_preview', 'set_player_minor',
+  'suspend_day', 'suspend_day_preview', 'assign_lanes', 'clear_lanes', 'publish_lanes', 'set_player_lane',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -75,7 +78,7 @@ const RPC_SERVICE_ONLY = [
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
-const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview'];
+const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview', 'public.public_leagues_feed'];
 
 describe('canario: la RLS se aplica en PGlite', () => {
   it('como authenticated no es superusuario y solo ve lo suyo', async () => {

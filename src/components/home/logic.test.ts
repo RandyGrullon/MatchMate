@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { CalendarItem, NextMatchInfo } from '../../lib/calendar';
-import { greeting, groupBySport, leaguesCountLabel, nextByLeague, nextEventItem, normalize, pickNextUp, searchLeagues, todayLabel, whenLabel } from './logic';
+import {
+  greeting,
+  groupBySport,
+  leaguesCountLabel,
+  nextByLeague,
+  nextEventItem,
+  normalize,
+  pickNextUp,
+  playsWhen,
+  publicLeagueLine,
+  searchLeagues,
+  todayLabel,
+  whenLabel,
+} from './logic';
+import { mergeFound } from './PublicLeagues';
 
 const item = (p: Partial<CalendarItem>): CalendarItem => ({
   key: p.key ?? `${p.lid}:${p.date}:${p.minutes}`,
@@ -102,5 +116,45 @@ describe('Eventos: buscar y agrupar', () => {
     expect(leaguesCountLabel(leagues)).toBe('2 ligas y 1 torneo');
     expect(leaguesCountLabel([{ kind: 'torneo' }])).toBe('1 torneo');
     expect(leaguesCountLabel([])).toBe('Sin ligas');
+  });
+});
+
+describe('Ligas públicas: la línea que invita a entrar', () => {
+  // Lunes 28 de septiembre de 2026.
+  const today = '2026-09-28';
+  const now = Date.parse('2026-09-28T16:00:00.000Z');
+  const base = { sport: 'bowling', kind: 'liga', members: 12, players: 24, nextEventDate: null, lastActivityAt: null };
+
+  it('cuándo juega: hoy, mañana, el día de esta semana o la fecha', () => {
+    expect(playsWhen('2026-09-28', today)).toBe('juega hoy');
+    expect(playsWhen('2026-09-29', today)).toBe('juega mañana');
+    expect(playsWhen('2026-09-30', today)).toBe('juega el miércoles');
+    expect(playsWhen('2026-10-04', today)).toBe('juega el domingo');
+    expect(playsWhen('2026-10-12', today)).toBe('juega el 12 de octubre');
+    expect(playsWhen('2026-10-03', today, { kind: 'torneo' })).toBe('se juega el sábado');
+    expect(playsWhen('2026-09-29', today, { sport: 'swimming' })).toBe('compite mañana');
+    expect(playsWhen('2026-09-20', today)).toBeNull();
+  });
+
+  it('cuántos son (la lista o las cuentas, lo que sea más) y cuándo juega', () => {
+    expect(publicLeagueLine({ ...base, nextEventDate: '2026-09-29' }, today, now)).toBe('24 jugadores · juega mañana');
+    expect(publicLeagueLine({ ...base, members: 30, players: 2, nextEventDate: '2026-09-29' }, today, now)).toBe('30 jugadores · juega mañana');
+    expect(publicLeagueLine({ ...base, members: 1, players: 0, nextEventDate: '2026-09-30' }, today, now)).toBe('1 jugador · juega el miércoles');
+    expect(publicLeagueLine({ ...base, sport: 'swimming', players: 12, members: 3 }, today, now)).toBe('12 nadadores');
+  });
+
+  it('sin nada programado: si se movió esta semana; si no, solo cuántos son (o nada)', () => {
+    expect(publicLeagueLine({ ...base, lastActivityAt: '2026-09-25T01:00:00.000Z' }, today, now)).toBe('24 jugadores · activa esta semana');
+    expect(publicLeagueLine({ ...base, kind: 'torneo', lastActivityAt: '2026-09-25T01:00:00.000Z' }, today, now)).toBe('24 jugadores · activo esta semana');
+    expect(publicLeagueLine({ ...base, lastActivityAt: '2026-09-01T01:00:00.000Z' }, today, now)).toBe('24 jugadores');
+    expect(publicLeagueLine({ ...base, members: 0, players: 0, nextEventDate: '2026-09-10' }, today, now)).toBe('');
+  });
+
+  it('la búsqueda junta lo de la lista y lo que encontró la base, sin repetir', () => {
+    const a = { id: 'a' };
+    const b = { id: 'b' };
+    const c = { id: 'c' };
+    expect(mergeFound([a, b], [b, c]).map((l) => l.id)).toEqual(['a', 'b', 'c']);
+    expect(mergeFound([], [c]).map((l) => l.id)).toEqual(['c']);
   });
 });

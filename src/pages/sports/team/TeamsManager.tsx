@@ -14,6 +14,7 @@ import {
   type TeamRole,
 } from '../../../lib/data/seasonTeams';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
+import { useQuickMinor } from '../../../components/players/GuardianFields';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, Select, cx } from '../../../components/ui';
 import { TEAM_PALETTE, teamColor } from './logic';
 import { TeamDot } from './TeamBits';
@@ -305,6 +306,8 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
   const [q, setQ] = useState('');
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
+  const minor = useQuickMinor(canCreate && !!newName.trim());
   const inTeam = new Set(team.roster.map((r) => r.playerId));
   const teamOfPlayer = useMemo(() => {
     const map = new Map<string, string>();
@@ -330,11 +333,14 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
   const create = async () => {
     const name = newName.trim();
     if (!name) return;
+    const m = minor.take();
+    if (m === undefined) return;
     setBusy(true);
     try {
-      const id = await createPlayer(tl.lid, name, null);
+      const id = await createPlayer(tl.lid, name, null, m);
       await setTeamPlayer(tl.lid, team.id, { playerId: id, jersey: nextFreeJersey(team.roster, 4) });
       setNewName('');
+      minor.reset();
       toast(`${name} está en ${team.name}`);
     } catch (e) {
       toast(rosterError(e), 'error');
@@ -376,6 +382,7 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
                 Crear
               </Button>
             </div>
+            {minor.fields}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router';
-import { CalendarClock, ChevronRight, Globe, Lock, MapPin, Repeat, Trophy } from 'lucide-react';
+import { CalendarClock, ChevronRight, Globe, Lock, MapPin, Repeat, Trophy, Users } from 'lucide-react';
 import type { CalendarItem } from '../../lib/calendar';
 import { roleLabel } from '../../lib/league';
 import type { League, Member } from '../../lib/types';
@@ -49,10 +49,26 @@ function NextLine({ next, today, league }: { next?: CalendarItem | null; today: 
   );
 }
 
+/** La línea de una liga pública («24 jugadores · juega el martes») y, debajo, dónde y cuándo juegan. */
+function PublicLine({ line, league }: { line: string; league: League }) {
+  return (
+    <>
+      {line && (
+        <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-accent">
+          <Users className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{line}</span>
+        </span>
+      )}
+      <LeagueMeta league={league} />
+    </>
+  );
+}
+
 /**
  * Una liga o torneo en una lista (Home, Home del deporte y Eventos): su cuadrito del color del deporte, el nombre,
- * si es privada o pública, mi papel, el deporte (si hay de varios) y lo próximo que tiene. Toda la fila abre la liga;
- * `action` (p. ej. «Unirme») va a la derecha, fuera del link.
+ * si es privada o pública, mi papel, el deporte (si hay de varios) y lo próximo que tiene (o, en las públicas para
+ * unirse, `line`: cuántos son y cuándo juegan). Toda la fila abre la liga; `action` (p. ej. «Unirme») va a la
+ * derecha, fuera del link.
  */
 export function LeagueRow({
   league,
@@ -62,6 +78,7 @@ export function LeagueRow({
   showSport,
   action,
   index = 0,
+  line,
 }: {
   league: League;
   role?: Member['role'];
@@ -70,6 +87,8 @@ export function LeagueRow({
   showSport?: boolean;
   action?: ReactNode;
   index?: number;
+  /** Liga pública para unirse: «24 jugadores · juega el martes» (en vez de lo próximo). */
+  line?: string;
 }) {
   const torneo = league.kind === 'torneo';
   const isPrivate = league.visibility === 'private';
@@ -98,7 +117,7 @@ export function LeagueRow({
             {role && role !== 'member' && <Badge tone="accent">{roleLabel(role)}</Badge>}
             {showSport && <SportBadge sport={sport} />}
           </span>
-          <NextLine next={next} today={today} league={league} />
+          {line !== undefined ? <PublicLine line={line} league={league} /> : <NextLine next={next} today={today} league={league} />}
         </span>
       </Link>
       {action ?? <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />}

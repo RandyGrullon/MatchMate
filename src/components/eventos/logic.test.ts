@@ -48,12 +48,12 @@ describe('joinable', () => {
   const pub = [L('p1', 'Pádel Norte', { sport: 'padel' }), L('b1', 'Boliche Sur'), L('p2', 'Américano', { sport: 'padel' }), L('m', 'Mía', { sport: 'padel' })];
   const isMine = (id: string) => id === 'm';
 
-  it('sin deporte: todas las que no son mías, por nombre', () => {
-    expect(joinable(pub, isMine, null).map((l) => l.id)).toEqual(['p2', 'b1', 'p1']);
+  it('sin deporte: todas las que no son mías, en el orden del listado (las más activas primero)', () => {
+    expect(joinable(pub, isMine, null).map((l) => l.id)).toEqual(['p1', 'b1', 'p2']);
   });
 
   it('con deporte: solo las de ese deporte (sin deporte guardado = boliche)', () => {
-    expect(joinable(pub, isMine, 'padel').map((l) => l.id)).toEqual(['p2', 'p1']);
+    expect(joinable(pub, isMine, 'padel').map((l) => l.id)).toEqual(['p1', 'p2']);
     expect(joinable(pub, isMine, 'bowling').map((l) => l.id)).toEqual(['b1']);
   });
 });

@@ -1,11 +1,13 @@
 /**
  * Lo que no es pantalla del Home, el Home de cada deporte y Eventos (se prueba sin navegador): saludo, lo próximo de
- * cada liga, qué va primero (el próximo partido o el próximo evento), buscar ligas y agruparlas por deporte.
+ * cada liga, qué va primero (el próximo partido o el próximo evento), buscar ligas y agruparlas por deporte, y la
+ * línea de cada liga pública («24 jugadores · juega el martes»).
  */
 import { dayLabel, type CalendarItem, type NextMatchInfo, type CalendarMatch } from '../../lib/calendar';
 import { parseDate } from '../../lib/format';
 import { WEEKDAYS } from '../../lib/schedule';
 import { leagueSport, sportsOf } from '../../sports/registry';
+import { countLabel, peopleWord } from '../league/logic';
 
 const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -101,4 +103,51 @@ export function leaguesCountLabel(leagues: readonly { kind?: string | null }[]):
   const n = leagues.length - t;
   const parts = [n ? `${n} ${n === 1 ? 'liga' : 'ligas'}` : '', t ? `${t} ${t === 1 ? 'torneo' : 'torneos'}` : ''].filter(Boolean);
   return parts.join(' y ') || 'Sin ligas';
+}
+
+// ---------- Ligas públicas ----------
+
+/** Lo que usa la línea de una liga pública (public_leagues_feed). */
+export interface PublicLineInput {
+  sport?: string | null;
+  kind?: string | null;
+  members: number;
+  players: number;
+  /** El día del próximo evento o partido (YYYY-MM-DD, en la zona de la liga) o null. */
+  nextEventDate: string | null;
+  /** Lo último que pasó (ISO) o null. */
+  lastActivityAt: string | null;
+}
+
+/** Días hacia atrás en que una liga sin nada programado todavía cuenta como «activa esta semana». */
+export const ACTIVE_DAYS = 7;
+
+/** «juega hoy», «juega mañana», «juega el martes», «juega el 12 de octubre» (un torneo «se juega»; natación «compite»). */
+export function playsWhen(date: string, today: string, opts: { sport?: string | null; kind?: string | null } = {}): string | null {
+  const gap = Math.round((parseDate(date).getTime() - parseDate(today).getTime()) / 86_400_000);
+  if (!Number.isFinite(gap) || gap < 0) return null;
+  const verb = `${opts.kind === 'torneo' ? 'se ' : ''}${opts.sport === 'swimming' ? 'compite' : 'juega'}`;
+  if (gap === 0) return `${verb} hoy`;
+  if (gap === 1) return `${verb} mañana`;
+  const d = parseDate(date);
+  if (gap < 7) return `${verb} el ${WEEKDAYS[(d.getDay() + 6) % 7].toLowerCase()}`;
+  return `${verb} el ${d.getDate()} de ${MONTHS_LONG[d.getMonth()]}`;
+}
+
+/**
+ * La línea de una liga pública: cuántos son (los de la lista o las cuentas, lo que sea más) y cuándo juega (su
+ * próximo evento o partido); sin nada programado, si tuvo movimiento en la última semana. «24 jugadores · juega el
+ * martes», «12 nadadores · compite el sábado», «8 jugadores · activa esta semana» (un torneo, «activo»). '' si no hay
+ * nada que decir.
+ */
+export function publicLeagueLine(l: PublicLineInput, today: string, now: number): string {
+  const n = Math.max(l.players ?? 0, l.members ?? 0);
+  const who = n > 0 ? countLabel(n, peopleWord(l.sport)) : '';
+  let when = l.nextEventDate ? playsWhen(l.nextEventDate, today, l) : null;
+  if (!when && l.lastActivityAt) {
+    const at = Date.parse(l.lastActivityAt);
+    // Un torneo es «activo»; una liga, «activa».
+    if (Number.isFinite(at) && at >= now - ACTIVE_DAYS * 86_400_000) when = l.kind === 'torneo' ? 'activo esta semana' : 'activa esta semana';
+  }
+  return [who, when].filter(Boolean).join(' · ');
 }

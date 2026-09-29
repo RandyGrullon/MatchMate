@@ -1,16 +1,14 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { CalendarDays, CalendarRange, Clock, Info, LogIn, MapPin, MessageCircle, UserPlus, UserRound } from 'lucide-react';
-import { displayName, useAuth } from '../../lib/auth';
-import { joinLeagueClaim } from '../../lib/data/leagues';
+import { useAuth } from '../../lib/auth';
 import { usePlayers } from '../../lib/data/players';
 import { formatDate, formatDateLong } from '../../lib/format';
 import { useLeagueCtx, whatsappUrl } from '../../lib/league';
 import type { League } from '../../lib/types';
-import { useAction, useFeedback } from '../feedback';
 import { Button, Card, cx } from '../ui';
-import { freePlayers, guessPlayer, infoRows, joinLabel, peopleWord, type InfoKey, type InfoRow } from './logic';
-import { joinClaimMessage, WhoAreYouModal, type WhoChoice } from './WhoAreYou';
+import { infoRows, joinLabel, type InfoKey, type InfoRow } from './logic';
+import { useJoinFlow } from './WhoAreYou';
 
 const ICONS: Record<InfoKey, ReactNode> = {
   venue: <MapPin className="size-4" />,
@@ -101,33 +99,21 @@ export function LeagueInfoCard() {
 export function JoinLeagueCard() {
   const { lid, league, base } = useLeagueCtx();
   const auth = useAuth();
-  const navigate = useNavigate();
-  const run = useAction();
-  const { toast } = useFeedback();
   const players = usePlayers(lid);
-  const free = useMemo(() => freePlayers(players.data), [players.data]);
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const people = peopleWord(league.sport);
+  const flow = useJoinFlow();
   const torneo = league.kind === 'torneo';
   const next = encodeURIComponent(base);
 
-  async function join(choice: WhoChoice) {
-    if (!auth.user) return navigate(`/login?next=${next}`);
-    setBusy(true);
-    const r = await run(() => joinLeagueClaim(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, choice), `Te uniste a ${league.name}`);
-    setBusy(false);
-    if (r === undefined) return;
-    setAsking(false);
-    const said = joinClaimMessage(choice, free.find((p) => p.id === choice)?.name ?? null, r.playerId, r.claimId);
-    if (said) toast(said);
-  }
-
-  function start() {
-    if (!auth.user) return navigate(`/login?modo=registro&next=${next}`);
-    if (free.length) setAsking(true);
-    else void join(null);
-  }
+  const start = () =>
+    flow.start({
+      lid,
+      name: league.name,
+      sport: league.sport,
+      kind: league.kind,
+      players: players.loading ? undefined : players.data,
+      next: base,
+      signUp: true,
+    });
 
   return (
     <Card className="flex flex-col gap-4 p-4" tour="unirme">
@@ -139,7 +125,7 @@ export function JoinLeagueCard() {
           </p>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-          <Button variant="primary" icon={<UserPlus className="size-4" />} loading={busy || (!!auth.user && players.loading)} onClick={start}>
+          <Button variant="primary" icon={<UserPlus className="size-4" />} loading={flow.busy === lid || (!!auth.user && players.loading)} onClick={start}>
             {joinLabel(league.kind)}
           </Button>
           {!auth.user && (
@@ -150,16 +136,7 @@ export function JoinLeagueCard() {
         </div>
       </div>
       <LeagueInfoList league={league} className="border-t border-line pt-3" />
-      <WhoAreYouModal
-        open={asking}
-        onClose={() => setAsking(false)}
-        players={free}
-        initial={guessPlayer(free, displayName(auth))}
-        busy={busy}
-        joinText={joinLabel(league.kind)}
-        people={people}
-        onJoin={join}
-      />
+      {flow.modal}
     </Card>
   );
 }

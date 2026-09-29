@@ -38,6 +38,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
 | `migrations/20260929000200_invitaciones.sql` | `@usuario` de cada cuenta (`profiles.username`, `set_username`, `username_status`), buscar personas (`search_people`) e invitaciones a una liga (`league_invites`, `invite_to_league`, `respond_league_invite`, `cancel_league_invite`, `my_league_invites`, `league_invite_details`). Redefine `private.social_can_see` (con sesión se ve cualquier cuenta sin bloquear; sus juegos siguen filtrados por liga), `public_profile` y `follow_list` (con `username`) |
 | `migrations/20260929000500_avisos_telefono.sql` · `000510_avisos_telefono_supabase.sql` | Avisos al teléfono (ver «Avisos al teléfono»): preferencias (`profiles.push_prefs`, `set_push_prefs`, filtro `push_outbox_prefs`), `private.queue_push`, push de envíos aprobados o rechazados, felicitaciones, me gusta, comentarios y resultado confirmado; recordatorios de después del juego y de partidos sin resultado; el «¿Vas?» ya no le llega a quien marcó «voy» (redefine `private.enqueue_due_reminders`); cola de fotos por borrar y archivos huérfanos (`purge_queue_take`, `purge_queue_done`, `storage_orphans` para la Edge Function `purge-photos`); espacio del plan gratis y su alerta (`admin_storage_usage`) · pg_cron `mm-despues-del-juego`, `mm-partidos-sin-resultado`, `mm-limpiar-fotos`, `mm-alerta-espacio` (solo Supabase) |
+| `migrations/20260929000600_organizador.sql` | Organizador (ver «Organizador»): ligas públicas vivas y más activas primero (`public_leagues_feed`, también sin cuenta) y tope de 5 ligas o torneos por día y 20 cada 30 días por cuenta (trigger `leagues_quota`); pendientes del admin (`league_pending`); juntar jugadores repetidos (`merge_league_players`, `merge_league_players_preview`); menores con tutor, teléfono y permiso en todos los deportes (`create_player` con `p_guardian_phone` y `p_consent`, `set_player_minor`, `player_private.guardian_phone`); suspender un día (`suspend_day_preview`, `suspend_day`); pistas del boliche (`event_lanes`, `assign_lanes`, `set_player_lane`, `clear_lanes`, `publish_lanes`) |
 | `migrations/20260929000900_legal.sql` | Términos y privacidad con versión y aceptación guardada (`legal_acceptances`, `accept_legal`, el trigger `on_auth_user_legal` del registro, `admin_legal_stats`) y reportes de contenido (`reports`, `report_content`, `resolve_report`, `list_reports`, `my_reports`; push a los superadmins). Ver «Términos, privacidad y reportes» |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
@@ -79,9 +80,9 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `P0001` | `no_existe` | La liga, evento, jugador, envío… no existe (o no es de esa liga) | `not_found` |
 | `P0001` | `duplicado` | Ya es de otra cuenta (reclamar jugador, `@usuario`) o ya lo pidió otra cuenta, op_id de otra cuenta u otra función | `conflict` |
 | `P0001` | `reservado` | Ese `@usuario` no se puede usar (`set_username`: `admin`, `soporte`, `matchmate`…) | `validation` |
-| `P0001` | `conflicto: <qué choca> (n), …` | Aprobar un reclamo: los dos jugadores estuvieron en el mismo evento, partido, ronda, prueba, escalera o inscripción (o en equipos distintos de la temporada). No cambia nada; el admin quita lo repetido y aprueba otra vez | `conflict` |
+| `P0001` | `conflicto: <qué choca> (n), …` | Aprobar un reclamo o juntar dos jugadores (`merge_league_players`): los dos jugadores estuvieron en el mismo evento, partido, ronda, prueba, escalera o inscripción (o en equipos distintos de la temporada). No cambia nada; el admin quita lo repetido y aprueba otra vez | `conflict` |
 | `P0001` | `cerrado` | Deporte cerrado | `validation` |
-| `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s) o demasiados códigos malos | `rate_limited` |
+| `P0001` | `rate_limited` | Ritmo (comentario 3 s, sugerencia 60 s), demasiados códigos malos, más de 5 ligas o torneos nuevos por día (20 cada 30 días) o demasiados avisos | `rate_limited` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
 | `23503` | | FK: el id no existe o es de otra liga | `validation` |
 | `23505` | | Único repetido (p. ej. un `p_id` que ya existe) | `conflict` |
@@ -142,7 +143,8 @@ y `useLeagueMembers`.
 `is_minor`, `attrs` jsonb, `created_at`, `updated_at`. `Player.uid` = `user_id`. Un jugador por cuenta y liga.
 
 ### `player_private` — admins
-`player_id`, `league_id`, `birth_year`, `sex` (`F`|`M`|`X`), `guardian_name`, `consent_by`, `consent_at`, `updated_at`.
+`player_id`, `league_id`, `birth_year`, `sex` (`F`|`M`|`X`), `guardian_name`, `guardian_phone` (dígitos y `+`, ≤ 20),
+`consent_by`, `consent_at`, `updated_at`.
 
 ### `events` — liga visible
 `id`, `league_id`, `type` (boliche: `torneo`|`practica`), `name` (≤80), `date` date, `start_time` time|null,
@@ -157,6 +159,11 @@ y `event_rsvps` (→ `event.rsvp[player_id] = true`).
 
 ### `event_rsvps` — liga visible
 `event_id`, `player_id`, `league_id`, `going` (siempre true hoy: quitar el «voy» borra la fila), `created_at`, `updated_at`.
+
+### `event_lanes` — liga visible (pistas del boliche)
+`event_id`, `player_id`, `league_id`, `lane` (1–999), `position` (1 = tira primero), `published_at`|null (último aviso;
+null = cambió sin avisar), `created_at`, `updated_at`. Una fila por jugador con pista en el evento. Se escribe con
+`assign_lanes`, `set_player_lane`, `clear_lanes` y `publish_lanes`.
 
 ### `entries` — liga visible
 `id`, `league_id`, `event_id`, `player_id`, `team_id`|null, `average` (0–300), `handicap_override`|null,
@@ -195,7 +202,7 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 
 ### `tombstones` — liga visible (los de `league_members`: miembros; los de `suggestions`: admins)
 `id` bigint, `tbl` (tabla), `row_key`, `league_id`, `deleted_at`. `row_key` = el `id`; en claves dobles:
-`event_rsvps` `'<event_id>:<player_id>'`, `league_members` `'<league_id>:<user_id>'`, `live_states`
+`event_rsvps` y `event_lanes` `'<event_id>:<player_id>'`, `league_members` `'<league_id>:<user_id>'`, `live_states`
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 
 ### `league_invites` — la cuenta invitada, quien invitó y los admins de la liga (el superadmin, todas)
@@ -223,7 +230,8 @@ datos» trae los de la cuenta con `my_reports`.
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
 `urgency`, `claimed_at`, `attempts`, `last_status`, `sent_at`). Esquema `private` (no expuesto): `op_log`, `paces`,
 `rate_limits`, `storage_purge_queue` (`path`, `queued_at`, `claimed_at`, `attempts`), `heartbeat`, `scan_usage`, `scan_days`,
-`scan_minutes`, `scan_cache`, `push_once` (recordatorios que ya salieron) y `storage_alerts` (alertas de espacio).
+`scan_minutes`, `scan_cache`, `push_once` (recordatorios que ya salieron), `storage_alerts` (alertas de espacio) y
+`league_creations` (ligas y torneos creados por cada cuenta en los últimos 30 días, para el tope).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -234,7 +242,7 @@ where user_id = <yo>` con lo local y purgar lo que ya no está.
 ## RPC
 
 Formato: `nombre(argumentos) → retorno` · **quién** · errores propios. Todas exigen sesión salvo
-`invite_preview`; sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
+`invite_preview` y `public_leagues_feed`; sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
 desconocida da `invalido`). Las que llevan `p_op_id` son las de la cola sin conexión: reintentar con el
 mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
@@ -282,8 +290,11 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `cancel_player_claim(p_claim) → void` | quien lo pidió | Lo retira (`cancelled`). Ya decidido: `invalido`. Salir de la liga también lo cancela. |
 | `decide_player_claim(p_claim, p_approve boolean, p_note text=null) → text` | dueño, admin o superadmin | Aprobar: el jugador queda con la cuenta y todo lo del jugador propio de la cuenta en la liga (juegos con felicitaciones y comentarios, envíos, «voy», en vivo, datos privados, nadador, partidos, plantillas, sanciones, golf, natación, escalera, inscripciones, me gusta y los ids dentro de partidos, eventos y rondas) pasa al reclamado; el propio se borra. Rechazar: queda igual, con la nota. Push a quien pidió. Devuelve el estado (ya decidido: cómo quedó). `conflicto: …` si chocan. |
 | `player_claim_conflicts(p_claim) → [{what, label, count}]` | dueño, admin o superadmin | Lo que chocaría al aprobar (vacío = se pueden juntar). |
-| `create_player(p_league, p_name, p_average_override double=null, p_is_minor=false, p_guardian_name=null, p_id=null) → uuid` | admin | Jugador sin cuenta. Menor: solo en liga con menores (`invalido`) y guarda el consentimiento (quién y cuándo). |
-| `update_player(p_player, p_patch) → void` | admin | Claves: `name, average_override, is_minor, attrs`. |
+| `create_player(p_league, p_name, p_average_override double=null, p_is_minor=false, p_guardian_name=null, p_id=null, p_guardian_phone=null, p_consent=false) → uuid` | admin | Jugador sin cuenta. Menor (todos los deportes): solo en liga con menores, con el nombre del padre, madre o tutor (1–60), su teléfono (opcional; se quitan espacios, guiones, puntos y paréntesis; queda con dígitos y `+`, ≤ 20) y su permiso (`p_consent = true`); si falta algo, `invalido`. Va a `player_private` con quién lo registró y cuándo. A quien no es menor no se le guarda el tutor. |
+| `set_player_minor(p_player, p_is_minor boolean, p_guardian_name=null, p_guardian_phone=null, p_consent=false) → void` | admin | Marcarlo menor después: lo mismo que `create_player` (tutor, teléfono, permiso) y sin cuenta (`invalido`). Desmarcarlo deja los datos del tutor (un año de nacimiento de menor no lo deja). Es el único camino para marcar a un menor (`update_player` con `is_minor: true` da `invalido`). Al quedar como menor por cualquier camino, su reclamo pendiente se rechaza (trigger `players_minor_claims`: «Es menor de edad: un menor no queda con una cuenta.»). |
+| `merge_league_players_preview(p_league, p_keep, p_drop) → {canMerge, reason, conflicts, moveAccount, keep, drop}` | admin | Lo que pasaría al juntar (no cambia nada). `reason` null \| `'dos_cuentas'` \| `'menor_con_cuenta'`; `conflicts` = `[{what, label, count}]` (como `player_claim_conflicts`); `moveAccount` = la cuenta del que se va pasa al que queda; `keep`/`drop` = `{id, name, userId, isMinor}`. `no_existe` (no son de esa liga), `invalido` (el mismo). |
+| `merge_league_players(p_league, p_keep, p_drop) → {playerId, removedId, userId}` | admin | «Juntar con…»: todo lo de `p_drop` (juegos, envíos, «voy», pistas, partidos, golf, natación, inscripciones, me gusta, datos privados…) pasa a `p_keep` y `p_drop` se borra (`private.merge_players`, la misma unión de los reclamos). Si solo `p_drop` tiene cuenta, la cuenta pasa a `p_keep` (y un reclamo pendiente de `p_keep` se cierra solo). Si uno era menor, el que queda es menor y se completan sus datos privados con los del otro. El promedio fijo y los `attrs` (Index, nivel…) que le falten al que queda salen del otro (lo suyo gana). El reclamo pendiente de `p_drop` pasa a `p_keep` (si nadie lo pidió y ninguno tiene cuenta); si el que queda es menor, los reclamos pendientes quedan rechazados. Los dos con cuenta, o un menor con cuenta: `invalido`. `conflicto: …` si los dos jugaron el mismo evento o partido (no cambia nada). Queda en la auditoría (`merge_players`). |
+| `update_player(p_player, p_patch) → void` | admin | Claves: `name, average_override, is_minor, attrs`. Desde el organizador `is_minor: true` a quien no es menor da `invalido` (marcar a un menor pide el tutor: `set_player_minor`); `is_minor: false` sigue igual. |
 | `set_player_private(p_player, p_birth_year=null, p_sex=null, p_guardian_name=null) → void` | admin | Datos que solo ven los admins. |
 | `delete_player(p_player) → void` | admin | Con sus participaciones, envíos, «voy», en vivo y social (cascada). |
 | `link_account_to_player(p_player, p_user) → {removed_old, old_player_id}` | admin | Une la cuenta (miembro) con un jugador libre. Del jugador anterior de la cuenta: envíos pendientes y «voy» pasan al nuevo; si nunca jugó un evento se borra (y pasan todos sus envíos), si jugó queda libre. `duplicado`, `invalido` (menor), `no_existe`. |
@@ -494,6 +505,7 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `claims` | `{id, status, league_id}` | su reclamo cambió |
 | `user:<uid>` | `invites` | `{id, status, league_id}` | una invitación a una liga que recibió o que mandó (nueva, aceptada, rechazada, cancelada) |
 | `league:<id>` | `invites` | `{id, status}` | invitaciones a la liga |
+| `event:<id>` | `lanes` | `{op}` | pistas del boliche del evento (una vez por sentencia) |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa
@@ -526,6 +538,8 @@ bloquea a sí mismo. Bloquear no borra nada.
 {name, email, reason, already}, `unblock_user` {name, email, wasBlocked, reason}, `announce` {title, body, url,
 audience, recipients}, y cuando un superadmin actúa sobre una liga que no es suya: `delete_league` {name, sport,
 kind, ownerId, ownerName, members, players, events} y `transfer_league` {name, sport, from, to, fromName, toName}.
+También lo que un admin de liga no puede deshacer: `merge_players` {keep, drop, keepName, dropName, userId}
+(target `league`).
 
 | RPC | Quién | Qué hace |
 |---|---|---|
@@ -610,13 +624,101 @@ o más del plan gratis y no se avisó en 3 días (`private.storage_alerts`), pus
 MatchMate va por 72 %» con el link `/superadmin/sistema`. Solo cuenta como aviso si se encoló al menos un push (sin
 ningún superadmin con teléfono, lo intenta otra vez al día siguiente). El correo queda para cuando haya SMTP.
 
+## Organizador
+
+`20260929000600_organizador.sql` (pruebas: `tests/sql/organizador.test.ts` y `tests/sql/pistas.test.ts`). Todo en
+`jsonb` camelCase; horas en texto ISO (`private.iso`), días `'YYYY-MM-DD'` en la zona de la liga.
+
+**Ligas públicas.** `public_leagues_feed(p_sport text=null, p_query text=null, p_limit=30, p_offset=0) → Item[]`
+(también sin cuenta; sin cuenta, 120 llamadas cada 10 minutos por IP: `rate_limited`). Solo ligas públicas sin
+menores que siguen vivas: fuera la liga cuya `season_end` ya pasó y el torneo cuyo último evento o partido (o, si no
+tiene, su `season_end`) fue hace más de 7 días. Orden: actividad de los últimos 30 días (participaciones y envíos,
+partidos terminados, tarjetas de golf, tiempos de natación y eventos del mes), después más miembros, después las más
+nuevas. `p_query` busca en nombre y lugar sin acentos; `p_limit` 1–50, `p_offset` 0–5000. `Item` = `{id, name,
+sport, kind, venue, schedule, members, players, activity, nextEventAt, nextEventDate, lastActivityAt, seasonEnd,
+createdAt}`: `nextEventAt` = el próximo evento (a su `start_time`, o a las 00:00 de la liga si no tiene) o partido
+programado, lo que venga antes; `nextEventDate` = ese día en la zona de la liga. La línea «24 jugadores · juega el
+martes» la arma el teléfono con `players` y `nextEventDate`.
+
+**Tope de ligas nuevas.** Trigger `leagues_quota` (BEFORE INSERT en `leagues`): con sesión y sin ser superadmin,
+hasta 5 ligas o torneos por día (`rate_limited`) y 20 cada 30 días (`rate_limited: mes`: el teléfono no dice
+«prueba mañana»). Cuenta lo creado (borrar la liga no lo devuelve), en `private.league_creations`. Sin sesión
+(`service_role`: el importador de BowlingX, `scripts/migrar`; SQL) no cuenta.
+
+**Pendientes.** `league_pending(p_league) → {total, submissions, disputes, overdue, claims, waitlists, checklist}` ·
+admin. Cada sección es `{count, url, items}` con hasta 5 (lo más viejo primero):
+- `submissions`: envíos por aprobar `{id, playerId, playerName, eventId, eventName, date, games, hasPhoto,
+  createdAt}`; `url` `/l/<liga>/admin?tab=aprobar`.
+- `disputes`: partidos reclamados `{id, label ('Rojos vs Azules'), sides, scheduledAt, disputedAt, note, url
+  ('/l/<liga>/juegos?partido=<id>')}`.
+- `overdue`: partidos programados, en juego o suspendidos cuya hora pasó hace más de 3 horas, sin anotador activo
+  `{id, label, sides, status, scheduledAt, url}`.
+- `claims`: reclamos pendientes `{id, playerId, playerName, claimantName, note, createdAt}`; `url`
+  `/l/<liga>/admin?tab=reclamos`.
+- `waitlists`: eventos de hoy en adelante con lista de espera `{eventId, name, date, waiting, url ('/l/<liga>/e/<id>')}`.
+- `checklist`: solo los primeros 30 días de la liga (después, null): `{complete, done, total, steps: [{key, label,
+  done, url}]}` con `invite` (más de un miembro), `players` (más de un jugador), `schedule` (un evento o partido) y
+  `result` (un juego, partido terminado, tarjeta de golf o tiempo).
+
+`total` = la suma de los `count` (el número de la pestaña Admin).
+
+**Suspender un día.** Los dos · admin.
+- `suspend_day_preview(p_league, p_date) → {date, matches, events, counts, withNewDate, withoutDate}` (no cambia
+  nada): `matches` = `[{id, label, sub ('racket'|'team'), status, scheduledAt, locked, reason}]` (los partidos de ese
+  día en la zona de la liga, sin los anulados); `events` = `[{id, label, sub ('bowling'|'golf'|'swim'|'event'),
+  startTime, locked, reason, content}]`; `locked` = no se toca (`reason` `'en_juego'` o `'con_resultado'`);
+  `content` = el evento tiene algo que se perdería al borrarlo (inscritos, envíos, fotos, en vivo, «voy», equipos del
+  evento, tarjetas, programa o nadadores de natación, escalera, partidos, apuntados o pistas); un evento con juegos
+  enviados por aprobar cuenta como `con_resultado`. `counts` = `{matches,
+  bowlingEvents, golfRounds, swimMeets, otherEvents, locked}` (lo que se puede cambiar); `withNewDate` = `{matches,
+  events}` (lo que pasa a la nueva fecha); `withoutDate` = `{postponed, cancelled, kept}`.
+- `suspend_day(p_league, p_date, p_reason, p_new_date date=null) → {date, newDate, matches: {moved, postponed},
+  events: {moved, cancelled, kept}, locked, announced, skipped, recipients, body}`. `p_reason` 1–90 (sin el punto final);
+  `p_new_date` desde hoy y distinta de `p_date` (si no, `invalido`). Con fecha: cada partido programado, aplazado o
+  suspendido pasa a ese día a la misma hora (aplazado → programado; suspendido sigue suspendido) y los eventos sin
+  resultados pasan a esa fecha. Sin fecha: los partidos programados o suspendidos quedan aplazados (`postponed`); los
+  eventos sin nada adentro se cancelan (se borran) y los que tienen algo (`content`) se quedan. En el historial
+  del partido queda `reschedule` / `postpone` con el motivo (y en `note`). Los retos abiertos de la escalera cuyo
+  partido se movió o quedó aplazado alargan su `play_by` (hasta un día después de la nueva hora, o `playDays` desde
+  hoy sin fecha), para que el cron no dé W.O. por el día suspendido. Después, UN aviso con `league_announce`:
+  «Se suspende el martes 29 de septiembre: <motivo>. Nueva fecha: martes 6 de octubre.» (o «La nueva fecha se
+  avisará.»), solo si algo cambió. Si no sale, suspende igual con `announced: false` y `skipped` dice por qué:
+  `'nada'` (no cambió nada), `'duplicado'` (el mismo aviso salió hace menos de 10 minutos: doble toque) o `'limite'`
+  (ya salieron los 3 avisos del día); `null` si salió.
+
+**Pistas del boliche** (tabla `event_lanes`). Admin, o anotador en un torneo sin liga; solo eventos de boliche
+(`invalido`). Las que devuelven las pistas dan `{eventId, count, unpublished, publishedAt, lanes: [{lane, players:
+[{playerId, name, position, userId}]}], text}` (`text` = `'Pista 5: Ana, Beto, Caro'`, una línea por pista, para
+WhatsApp).
+- `assign_lanes(p_event, p_lanes int[], p_per_lane int, p_mode text, p_order uuid[]=null) → pistas`: con quien dijo
+  «voy» o está inscrito; reemplaza las que había. `p_lanes` 1–999 (hasta 100, en ese orden; las repetidas cuentan una
+  vez), `p_per_lane` 1–20; más jugadores que lugares: `invalido`. `p_mode` `'promedio'` (el promedio es del
+  teléfono: `p_order` = jugadores de mayor a menor promedio; sin él, `average_override` o el promedio de la
+  inscripción), `'equipo'` (los del mismo equipo del evento juntos: un equipo empieza pista nueva si no cabe entero;
+  sin equipos, al azar) o `'azar'`. En `promedio` y `azar` se usan las pistas que hagan falta, parejas (10 de a 4: 4,
+  3 y 3).
+- `set_player_lane(p_event, p_player, p_lane int|null) → pistas`: lo pone al final de esa pista (cualquier jugador
+  de la liga); la pista de donde salió queda sin huecos; `null` lo quita.
+- `clear_lanes(p_event) → int` (cuántas había).
+- `publish_lanes(p_event) → {players, pushed}`: push a cada jugador con cuenta (sin bloquear y en la liga) «Tu pista:
+  7 · <evento>» con el texto de su pista, `url` `/l/<liga>/e/<evento>`, `tag` `pista:<evento>:<jugador>` (el nuevo
+  reemplaza al anterior en el teléfono); marca todas como avisadas. 6 veces por hora y evento (`rate_limited`). Sin
+  pistas: `{players: 0, pushed: 0}`.
+
+Al juntar dos jugadores (reclamo o `merge_league_players`) la pista pasa al que queda (si los dos tenían, queda la
+suya).
+
+**Ojo al cambiar migraciones viejas:** esta redefine `private.merge_players` (mueve también las pistas) y cambia la
+firma de `public.create_player` (drop + create con `p_guardian_phone` y `p_consent` al final).
+
 ## Seguridad (lo que prueban `tests/sql/seguridad.test.ts` y `nuevas.test.ts`)
 
 - RLS en todas las tablas de `public`; la vista con `security_invoker`.
 - Primera migración: `alter default privileges` quita EXECUTE a PUBLIC y todo a anon/authenticated; al final de
   `…_rpc.sql` se quitan otra vez en todas las funciones de `public` y `private` y se dan explícitos
   (lista `v_authenticated`, `v_anon`). Una fase nueva agrega sus RPC a su propia lista de GRANT.
-- Solo `public.invite_preview` y `private.readable_leagues` son security definer ejecutables por `anon`.
+- Solo `public.invite_preview`, `public.public_leagues_feed` y `private.readable_leagues` son security definer
+  ejecutables por `anon`.
 - Nadie tiene INSERT/UPDATE/DELETE en ninguna tabla; `profiles` sin UPDATE directo (más estricto que permisos por
   columna) y un trigger impide que una sesión de usuario cambie `is_superadmin`, `email` o `firebase_uid`.
 - `league_id` de las tablas hijas verificado con FK compuestas; `photos.path` atado a su liga e id.

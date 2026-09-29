@@ -24,11 +24,113 @@ export const useLeague = (lid: string | undefined): Live<League | null> =>
     tags: lid ? [tags.league(lid), tags.leagues] : [],
   });
 
-export const fetchPublicLeagues = async (): Promise<Wire<League>[]> =>
-  (await select<LeagueRow>({ table: 'leagues', filters: [{ col: 'visibility', op: 'eq', value: 'public' }] })).map(toLeague).sort(byName);
+// ---------- Ligas públicas para unirse (public_leagues_feed) ----------
 
-export const usePublicLeagues = (): Live<League[]> =>
-  useLive<League[]>(keys.publicLeagues, { kind: 'leagues' }, fetchPublicLeagues, { initial: [], tags: [tags.leagues] });
+/**
+ * Una liga pública del listado: la liga y lo que invita a entrar (cuántos son, cuándo juegan, si se mueve). Solo
+ * las públicas sin menores que siguen vivas, las más activas primero (lo decide la base).
+ */
+export interface PublicLeague extends League {
+  /** Cuentas en la liga. */
+  members: number;
+  /** Jugadores en la lista (con cuenta o sin ella). */
+  players: number;
+  /** Lo hecho en los últimos 30 días (juegos, resultados y eventos). */
+  activity: number;
+  /** El próximo evento o partido programado (ISO), o null. */
+  nextEventAt: string | null;
+  /** Ese día en la zona de la liga (YYYY-MM-DD), o null. */
+  nextEventDate: string | null;
+  /** Lo último que pasó en la liga (ISO), o null. */
+  lastActivityAt: string | null;
+}
+
+/** Lo que manda la base por cada liga del listado. */
+export interface PublicFeedItem {
+  id: string;
+  name: string;
+  sport: string;
+  kind: LeagueKind;
+  venue: string | null;
+  schedule: string | null;
+  members: number | null;
+  players: number | null;
+  activity: number | null;
+  nextEventAt: string | null;
+  nextEventDate: string | null;
+  lastActivityAt: string | null;
+  seasonEnd: string | null;
+  createdAt: string | null;
+}
+
+/** Del listado a la forma de una liga (lo que no viene, vacío: la fila solo muestra nombre, deporte, lugar y la línea). */
+export const toPublicLeague = (r: PublicFeedItem): Wire<PublicLeague> => ({
+  id: r.id,
+  name: r.name,
+  kind: r.kind,
+  visibility: 'public',
+  ownerUid: '',
+  venue: r.venue ?? '',
+  schedule: r.schedule ?? '',
+  seasonStart: '',
+  seasonEnd: r.seasonEnd ?? '',
+  contactName: '',
+  contactPhone: '',
+  requirePhoto: false,
+  sport: r.sport,
+  hasMinors: false,
+  createdAt: r.createdAt ?? null,
+  members: r.members ?? 0,
+  players: r.players ?? 0,
+  activity: r.activity ?? 0,
+  nextEventAt: r.nextEventAt ?? null,
+  nextEventDate: r.nextEventDate ?? null,
+  lastActivityAt: r.lastActivityAt ?? null,
+});
+
+/** Cuántas trae el listado si no se dice (la base deja hasta 50). */
+export const PUBLIC_FEED_LIMIT = 30;
+export const PUBLIC_FEED_MAX = 50;
+
+export interface PublicFeedQuery {
+  /** Solo las de ese deporte (null = todos). */
+  sport?: string | null;
+  /** Busca en el nombre y el lugar (sin acentos). */
+  query?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Lo buscado como lo compara la base: sin espacios de más y en minúsculas (una sola clave de caché). */
+const feedQuery = (q: string | undefined) => (q ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 60);
+
+/** Las ligas públicas vivas, las más activas primero. También sin cuenta. */
+export async function fetchPublicLeagues(q: PublicFeedQuery = {}): Promise<Wire<PublicLeague>[]> {
+  const rows = await rpc<PublicFeedItem[] | null>('public_leagues_feed', {
+    p_sport: q.sport ?? null,
+    p_query: feedQuery(q.query) || null,
+    p_limit: Math.min(PUBLIC_FEED_MAX, Math.max(1, q.limit ?? PUBLIC_FEED_LIMIT)),
+    p_offset: Math.max(0, q.offset ?? 0),
+  });
+  return (rows ?? []).map(toPublicLeague);
+}
+
+/**
+ * Ligas públicas para unirse (el Home, el Home del deporte, Eventos y el selector de deporte). `enabled: false`
+ * no pide nada (p. ej. el buscador sin texto). Fresco por 2 minutos: sin cuenta, la base cuenta las llamadas.
+ */
+export function usePublicLeagues(q: PublicFeedQuery & { enabled?: boolean } = {}): Live<PublicLeague[]> {
+  const sport = q.sport ?? null;
+  const limit = Math.min(PUBLIC_FEED_MAX, Math.max(1, q.limit ?? PUBLIC_FEED_LIMIT));
+  const query = feedQuery(q.query);
+  const on = q.enabled !== false;
+  return useLive<PublicLeague[]>(
+    on ? keys.publicLeagues(sport, limit, query) : null,
+    { kind: 'public-leagues' },
+    () => fetchPublicLeagues({ sport, query, limit }),
+    { initial: [], tags: [tags.leagues], staleMs: 2 * 60_000 },
+  );
+}
 
 /** Todas las ligas (solo el superadmin puede listarlas). */
 export const useAllLeagues = (enabled: boolean): Live<League[]> =>
@@ -112,6 +214,27 @@ const createArgs = (input: LeagueInput) => ({
 /** Después de crear o unirse: las listas de ligas, las membresías y la campana cambian. */
 const afterJoin = (lid: string) => invalidate(tags.leagues, tags.members, tags.feeds, tags.league(lid));
 
+/** Tope de ligas y torneos nuevos por cuenta (trigger leagues_quota de la base; el superadmin no tiene). */
+export const LEAGUE_QUOTA = { day: 5, month: 20 } as const;
+/** Código del error del tope (la pantalla muestra el mensaje tal cual). */
+export const LEAGUE_QUOTA_CODE = 'league_quota';
+
+/**
+ * 'rate_limited' al crear = el tope de la cuenta: en palabras, con los números. 'rate_limited: mes' es el de 30
+ * días (puede tardar días en liberarse: no dice «prueba mañana»).
+ */
+export function leagueQuotaError(e: unknown): unknown {
+  if (!(e instanceof BackendError) || e.kind !== 'rate_limited') return e;
+  const month = /^rate_limited:\s*mes\b/.test(e.message.trim());
+  return new BackendError(
+    month
+      ? `Llegaste al tope de ${LEAGUE_QUOTA.month} ligas y torneos nuevos en 30 días. Cada uno deja de contar a los 30 días de creado: prueba más adelante.`
+      : `Llegaste al tope de ${LEAGUE_QUOTA.day} ligas y torneos nuevos por día. Prueba mañana.`,
+    'rate_limited',
+    LEAGUE_QUOTA_CODE,
+  );
+}
+
 /**
  * Después de entrar a una liga ya creada (join_league o aceptar una invitación, src/lib/data/invites.ts): lo de
  * afterJoin y además sus jugadores, sus miembros, los reclamos (el de «¿Quién eres?», si eligió uno) y sus
@@ -142,6 +265,8 @@ export async function createLeague(_owner: { uid: string; name: string }, input:
       p_rules: sportMeta(input.sport ?? 'bowling')?.defaultRules() ?? {},
       ...(input.tz ? { p_tz: input.tz } : {}),
     });
+  } catch (e) {
+    throw leagueQuotaError(e);
   } finally {
     setJoining(lid, false);
   }
@@ -167,6 +292,8 @@ export async function createTournament(_owner: { uid: string; name: string }, in
   setJoining(lid, true);
   try {
     await rpc('create_tournament', { ...createArgs(input), p_date: date, p_id: lid, p_event_id: eid });
+  } catch (e) {
+    throw leagueQuotaError(e);
   } finally {
     setJoining(lid, false);
   }

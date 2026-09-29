@@ -5,25 +5,31 @@ import { formatDateLong, toIsoDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import type { BowlingEvent } from '../lib/types';
 import { useAction } from './feedback';
+import { MyLane } from './lanes/MyLane';
 import { Button, Card, cx } from './ui';
 
-/** Próxima práctica: el jugador confirma si va (el admin sabe cuántas pistas pedir). */
-export function NextPracticeCard({ events, playerId }: { events: BowlingEvent[]; playerId: string }) {
+/** La práctica que muestra la tarjeta: la próxima de hoy en adelante (undefined si no hay). */
+export const nextPractice = (events: readonly BowlingEvent[], today: string): BowlingEvent | undefined =>
+  events.filter((e) => e.type === 'practica' && e.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+
+/**
+ * Próxima práctica: el jugador confirma si va (el admin sabe cuántas pistas pedir). Con `lane` (por defecto) dice
+ * «Tu pista: 7»; el inicio lo apaga si esa práctica ya está en vivo arriba (el tablero en vivo ya la dice).
+ */
+export function NextPracticeCard({ events, playerId, lane = true }: { events: BowlingEvent[]; playerId: string; lane?: boolean }) {
   const { lid } = useLeagueCtx();
   const run = useAction();
   const [busy, setBusy] = useState(false);
-  const today = toIsoDate(new Date());
-  const next = events
-    .filter((e) => e.type === 'practica' && e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const next = nextPractice(events, toIsoDate(new Date()));
   if (!next) return null;
 
   const going = !!next.rsvp?.[playerId];
   const count = Object.keys(next.rsvp ?? {}).length;
+  const eventId = next.id;
 
   async function toggle(value: boolean) {
     setBusy(true);
-    await run(() => setRsvp(lid, next.id, playerId, value), value ? '¡Te esperamos!' : 'Listo, no vas');
+    await run(() => setRsvp(lid, eventId, playerId, value), value ? '¡Te esperamos!' : 'Listo, no vas');
     setBusy(false);
   }
 
@@ -39,6 +45,7 @@ export function NextPracticeCard({ events, playerId }: { events: BowlingEvent[];
           <p className="text-xs text-muted">
             {count === 0 ? 'Nadie ha confirmado todavía' : `${count} ${count === 1 ? 'confirmado' : 'confirmados'}`}
           </p>
+          {lane && <MyLane lid={lid} eventId={next.id} playerId={playerId} className="mt-2 w-fit" />}
         </div>
       </div>
       {going ? (

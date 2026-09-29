@@ -125,6 +125,8 @@ export function saveErrorMessage(e: unknown): string {
   if (be?.kind === 'permission' || /permission/i.test(msg)) return 'Sin permiso para guardar. ¿Sesión de admin activa?';
   if (be?.kind === 'network') return 'Sin conexión. Intenta de nuevo cuando vuelva la señal.';
   if (be?.kind === 'auth') return 'Tu sesión venció. Entra de nuevo.';
+  // El tope de ligas y torneos nuevos por cuenta ya viene en palabras (src/lib/data/leagues.ts).
+  if (be?.code === 'league_quota') return be.message;
   if (be?.kind === 'rate_limited') return 'Muy seguido: espera un momento e intenta de nuevo.';
   if (be?.kind === 'not_found') return 'Ya no existe: alguien lo borró.';
   // Los errores propios de la capa de datos ya vienen en español (p. ej. un código de invitación que no sirve).

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { Eye, LogIn, RotateCcw, UserPlus, UserRound } from 'lucide-react';
-import { displayName, useAuth } from '../lib/auth';
-import { ensurePlayer, joinLeagueClaim, useJoining } from '../lib/data';
+import { useAuth } from '../lib/auth';
+import { ensurePlayer, useJoining } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
-import { useAction, useFeedback } from '../components/feedback';
-import { joinClaimMessage } from '../components/league/WhoAreYou';
+import { useJoinFlow } from '../components/league/WhoAreYou';
 import { Button, Empty, PageSkeleton } from '../components/ui';
 import PlayerPage from './PlayerPage';
 
@@ -45,12 +44,10 @@ function SignInPrompt() {
 }
 
 function NotMember() {
-  const { lid, league } = useLeagueCtx();
-  const auth = useAuth();
-  const run = useAction();
-  const { toast } = useFeedback();
-  const [busy, setBusy] = useState(false);
+  const { lid, league, base } = useLeagueCtx();
   // Vino de "¿Eres tú? Crea tu cuenta" en la página de un jugador: se une y pide ser ese jugador (lo aprueba el admin).
+  // Si no, «¿Quién eres?» cuando hay jugadores sin cuenta (el mismo camino que en todas partes).
+  const flow = useJoinFlow();
   const [params] = useSearchParams();
   const soy = params.get('soy');
   if (league.visibility === 'private') {
@@ -60,21 +57,16 @@ function NotMember() {
       </Empty>
     );
   }
-  async function join() {
-    setBusy(true);
-    const r = await run(() => joinLeagueClaim(lid, { uid: auth.user!.uid, name: displayName(auth) }, null, soy), `Te uniste a ${league.name}`);
-    setBusy(false);
-    const said = r && joinClaimMessage(soy, null, r.playerId, r.claimId);
-    if (said) toast(said);
-  }
+  const join = () => flow.start({ lid, name: league.name, sport: league.sport, kind: league.kind, prefer: soy, next: `${base}/perfil` });
   return (
     <Empty icon={<UserPlus className="size-8" />} title={`Únete a ${league.name}`}>
       Entras como jugador: confirmas asistencia, anotas tus juegos y sales en el ranking.
       <div className="mt-4">
-        <Button variant="primary" loading={busy} onClick={join} icon={<UserPlus className="size-4" />}>
+        <Button variant="primary" loading={flow.busy === lid} onClick={join} icon={<UserPlus className="size-4" />}>
           Unirme
         </Button>
       </div>
+      {flow.modal}
     </Empty>
   );
 }

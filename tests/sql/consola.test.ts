@@ -130,8 +130,10 @@ describe('permisos', () => {
     // Lecturas (y touch_seen, que nunca falla): no escriben nada de la persona. delete_push_subscription solo borra
     // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones). accept_legal solo
     // guarda que la propia cuenta aceptó los términos vigentes (una bloqueada también, para poder seguir leyendo).
+    // public_leagues_feed también la llama quien no tiene cuenta.
     expect(rows.map((r) => r.fn)).toEqual([
-      'accept_legal', 'delete_push_subscription', 'invite_preview', 'list_reports', 'my_matches', 'server_now', 'sync_ladder', 'touch_seen',
+      'accept_legal', 'delete_push_subscription', 'invite_preview', 'list_reports', 'my_matches', 'public_leagues_feed', 'server_now',
+      'sync_ladder', 'touch_seen',
     ]);
   });
 });

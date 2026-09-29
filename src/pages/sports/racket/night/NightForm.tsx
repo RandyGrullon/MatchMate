@@ -4,6 +4,7 @@ import { createPlayer } from '../../../../lib/data';
 import { useLeagueCtx } from '../../../../lib/league';
 import type { RestPolicy } from '../../../../sports/formats';
 import { useAction } from '../../../../components/feedback';
+import { useQuickMinor } from '../../../../components/players/GuardianFields';
 import { Button, Field, Input, Select, cx } from '../../../../components/ui';
 import { PickList, Stepper } from '../bits';
 import { NIGHT_MAX_COURTS, NIGHT_MAX_PLAYERS, NIGHT_TARGETS, REST_LABELS, nightInfo, suggestRounds, type NightConfig } from '../logic/night';
@@ -137,6 +138,8 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
   const names = useNames();
   const run = useAction();
   const [name, setName] = useState('');
+  // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
+  const minor = useQuickMinor(!!name.trim());
   const selected = new Set(value);
   const items = [...names.players]
     .sort((a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)) || a.name.localeCompare(b.name, 'es'))
@@ -145,10 +148,13 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
   const add = async () => {
     const n = name.trim();
     if (!n) return;
-    const id = await run(() => createPlayer(lid, n, null), `${n} agregado`);
+    const m = minor.take();
+    if (m === undefined) return;
+    const id = await run(() => createPlayer(lid, n, null, m), `${n} agregado`);
     if (id) {
       onChange([...value, id]);
       setName('');
+      minor.reset();
     }
   };
 
@@ -174,6 +180,7 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
         <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Agregar a alguien nuevo" aria-label="Nombre del jugador nuevo" />
         <Button type="submit" icon={<UserPlus className="size-4" />} disabled={!name.trim()} aria-label="Agregar jugador" />
       </form>
+      {minor.fields}
       <PickList
         items={items}
         selected={selected}

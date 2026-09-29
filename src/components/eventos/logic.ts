@@ -31,9 +31,9 @@ export function splitMine<L extends LeagueLike>(leagues: readonly L[], nextOf: R
   return { ligas: sorted.filter((l) => l.kind !== 'torneo'), torneos: sorted.filter((l) => l.kind === 'torneo') };
 }
 
-/** Las públicas del deporte (null = todos) en que todavía no estoy, por nombre. */
+/** Las públicas del deporte (null = todos) en que todavía no estoy, en el orden del listado (las más activas primero). */
 export function joinable<L extends LeagueLike>(pub: readonly L[], isMine: (lid: string) => boolean, sport: string | null): L[] {
-  return pub.filter((l) => !isMine(l.id) && inSport(sport)(l)).sort(byName);
+  return pub.filter((l) => !isMine(l.id) && inSport(sport)(l));
 }
 
 /** Deportes para los chips de «Todos los deportes»: los de mis ligas y los de las públicas (en el orden del registro). */

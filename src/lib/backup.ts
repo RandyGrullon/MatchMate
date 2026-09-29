@@ -12,6 +12,8 @@ const LEAGUE_TABLES = [
   'events',
   'teams',
   'event_rsvps',
+  // Pistas del boliche.
+  'event_lanes',
   'entries',
   'submissions',
   'reactions',
