@@ -80,8 +80,8 @@ con la dirección del Session pooler.
   activado**, *Minimum password length* = **6**. En *Authentication › Sign In / Providers* arriba, *Allow new users
   to sign up* activado.
 - [ ] **Direcciones permitidas:** *Authentication › URL Configuration*:
-  - Producción: *Site URL* = `https://matchmate.vercel.app`. *Redirect URLs*: `https://matchmate.vercel.app` y
-    `https://matchmate.vercel.app/**`.
+  - Producción: *Site URL* = `https://matchmate-oficial.vercel.app`. *Redirect URLs*: `https://matchmate-oficial.vercel.app` y
+    `https://matchmate-oficial.vercel.app/**`.
   - Staging: *Site URL* = `http://localhost:5173`. *Redirect URLs*: `http://localhost:5173`,
     `http://localhost:5173/**` y `https://*-TU-USUARIO-DE-VERCEL.vercel.app/**` (las direcciones de *Preview* de
     Vercel; tu usuario sale al final de esas direcciones).
@@ -141,12 +141,12 @@ veces: el valor de producción marcado solo en **Production** y el de staging ma
 
 - [ ] Nada que empiece con `sb_secret_`, ninguna contraseña ni la clave de Gemini: todo lo `VITE_` lo puede ver
   cualquiera que abra la app.
-- [ ] *Settings › Domains*: que esté `matchmate.vercel.app` (si está ocupado, elige otro `.vercel.app` y avísale
+- [ ] *Settings › Domains*: que esté `matchmate-oficial.vercel.app` (si está ocupado, elige otro `.vercel.app` y avísale
   a Claude, porque cambia los pasos 3 y 7).
 - [ ] Las variables se leen al construir la app: después de cambiarlas, *Deployments* › el último › *…* ›
   **Redeploy**.
 
-**Comprobar:** abre https://matchmate.vercel.app y crea una cuenta. Si te dice que revises el correo para
+**Comprobar:** abre https://matchmate-oficial.vercel.app y crea una cuenta. Si te dice que revises el correo para
 confirmar, ya está usando Supabase (en modo local no pide confirmar). En Supabase › *Authentication › Users*
 aparece la cuenta. (El correo en sí llega después del paso 6.)
 
@@ -177,12 +177,12 @@ les llega el correo de confirmación (mira en *Spam*) y al tocar el enlace entra
   `bowlinx-12368`, el de BowlingX).
 - [ ] *Google Auth Platform* (antes *OAuth consent screen*) › *Get started*: nombre **MatchMate**, tu correo de
   soporte, público **External**, tu correo de contacto.
-  - *Branding* › *Authorized domains*: `matchmate.vercel.app`, `REF_PROD.supabase.co` y `REF_STAGING.supabase.co`.
-  - *Branding* › *Application privacy policy link*: `https://matchmate.vercel.app/privacidad` y *Application terms of
-    service link*: `https://matchmate.vercel.app/terminos` (Google los pide para verificar la app).
+  - *Branding* › *Authorized domains*: `matchmate-oficial.vercel.app`, `REF_PROD.supabase.co` y `REF_STAGING.supabase.co`.
+  - *Branding* › *Application privacy policy link*: `https://matchmate-oficial.vercel.app/privacidad` y *Application terms of
+    service link*: `https://matchmate-oficial.vercel.app/terminos` (Google los pide para verificar la app).
   - *Audience* › **Publish app** (si se queda en *Testing*, solo entran los correos de prueba).
 - [ ] *Clients* › *Create client* › *Web application*, nombre «MatchMate web»:
-  - *Authorized JavaScript origins*: `https://matchmate.vercel.app` y `http://localhost:5173`.
+  - *Authorized JavaScript origins*: `https://matchmate-oficial.vercel.app` y `http://localhost:5173`.
   - *Authorized redirect URIs*: `https://REF_PROD.supabase.co/auth/v1/callback` y
     `https://REF_STAGING.supabase.co/auth/v1/callback` (Supabase te muestra esa dirección exacta en la página de
     Google, como *Callback URL*).
@@ -233,7 +233,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   | `VAPID_PRIVATE_KEY` | la privada |
   | `VAPID_SUBJECT` | `mailto:` + la Gmail del paso 6 (p. ej. `mailto:matchmate.app@gmail.com`) |
   | `CRON_SECRET` | el de ese proyecto |
-  | `SCAN_ALLOWED_ORIGINS` | prod: `https://matchmate.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma. Lo usan `scan-bowling` y `delete-account` (desde qué páginas se puede pedir) |
+  | `SCAN_ALLOWED_ORIGINS` | prod: `https://matchmate-oficial.vercel.app` · staging: `http://localhost:5173` y tu dirección de Preview de Vercel, separadas por coma. Lo usan `scan-bowling` y `delete-account` (desde qué páginas se puede pedir) |
 
   No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo (`delete-account` usa la clave
   secreta, `SUPABASE_SECRET_KEYS`, para borrar la cuenta con la API de administración).
@@ -317,7 +317,7 @@ tareas diarias de GitHub lo cubren; necesitan estos secretos.
 captcha en Supabase sin poner la site key en Vercel, nadie puede entrar con correo ni registrarse.
 
 - [ ] https://dash.cloudflare.com (cuenta gratis) › *Turnstile* › *Add widget*: nombre MatchMate, *Hostnames*
-  `matchmate.vercel.app` (y `localhost` para staging), modo *Managed*. Copia la *Site Key* (pública) y la
+  `matchmate-oficial.vercel.app` (y `localhost` para staging), modo *Managed*. Copia la *Site Key* (pública) y la
   *Secret Key* (SECRETA).
 - [ ] Vercel: `VITE_TURNSTILE_SITE_KEY` = la site key (Production y Preview) › *Redeploy*.
 - [ ] Supabase, en los dos proyectos: *Authentication › Attack Protection* › *Enable Captcha protection* ›
@@ -337,7 +337,7 @@ arriba que son un **borrador**. Antes de abrir la app a otros clubes:
   la fecha (`LEGAL_UPDATED`) y `LEGAL_DRAFT = false`. Se lo puedes pedir a Claude con los datos.
 - [ ] Poner los dos links en Google (paso 7, *Branding*).
 
-**Comprobar:** abre https://matchmate.vercel.app/privacidad sin entrar: ya no sale el aviso de borrador ni nada
+**Comprobar:** abre https://matchmate-oficial.vercel.app/privacidad sin entrar: ya no sale el aviso de borrador ni nada
 marcado en amarillo.
 
 ---
