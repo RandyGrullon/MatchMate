@@ -1658,6 +1658,73 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 
 -- =====================================================================================================================
+-- 9f. Insignias (20260929001100–001190): el motor encola, el creador de la liga da una y Ana la ve
+-- =====================================================================================================================
+
+-- 9f.1 Los juegos verificados del boliche de arriba dejaron trabajos para el motor (la Edge Function `insignias` los
+-- toma cada 10 minutos; aquí no corre: el ROLLBACK los quita).
+do $$
+begin
+  assert exists (select 1 from private.badge_queue q where q.league_id = pg_temp.id('bowl') and q.kind = 'resultado'),
+    'FAIL insignias: los juegos del boliche no encolaron nada para el motor (private.badge_queue)';
+  assert private.push_category('insignias') = 'social' and private.push_category('insignia:x') = 'social'
+     and private.push_category('insignia-aval:x') is null, 'FAIL insignias: categorías de los avisos (private.push_category)';
+  perform pg_temp.ok('insignias: los juegos del boliche encolan trabajos del motor (badge_queue) y sus avisos van en «Social»');
+end $$;
+
+-- 9f.2 El dueño diseña una insignia de su liga y se la da a Ana (con su aviso al teléfono).
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  d jsonb;
+  g jsonb;
+begin
+  d := public.save_league_badge(p_league => pg_temp.id('bowl'), p_id => null,
+         p_design => jsonb_build_object('name', 'Smoke Campeón', 'shape', 'shield', 'palette', 'oro', 'icon', 'trophy',
+                                        'limit_kind', 'unica', 'period_text', 'TEMP 2026'));
+  assert d ->> 'id' is not null, format('FAIL insignias: save_league_badge %s', d);
+  g := public.award_league_badge(p_badge => (d ->> 'id')::uuid, p_players => array[pg_temp.id('bowl_p_ana')]);
+  assert jsonb_array_length(g -> 'awards') = 1, format('FAIL insignias: award_league_badge %s', g);
+  perform pg_temp.put('badge_design', d ->> 'id');
+  perform pg_temp.put('badge_award', g -> 'awards' -> 0 ->> 'id');
+  perform pg_temp.ok('insignias: el dueño diseña una insignia de la liga (save_league_badge) y se la da a Ana (award_league_badge)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+begin
+  assert (select count(*) from public.push_outbox o
+           where o.user_id = pg_temp.id('u_ana') and o.tag = 'insignia:' || pg_temp.val('badge_award') and o.subscription_id is not null) = 1,
+    'FAIL insignias: el aviso «¡Tienes una insignia nueva!» no le llegó al teléfono de Ana';
+  perform pg_temp.ok('insignias: el aviso de la insignia le llega al teléfono de Ana');
+end $$;
+
+-- 9f.3 Ana la ve en su perfil y en sus avisos y la marca vista; no diseña insignias (es miembro).
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_award jsonb := jsonb_build_array(jsonb_build_object('id', pg_temp.id('badge_award')));
+  p jsonb;
+  n jsonb;
+begin
+  p := public.profile_badges(p_user => pg_temp.id('u_ana'));
+  assert (p -> 'leagueAwards') @> v_award, format('FAIL insignias: profile_badges de Ana %s', p);
+  n := public.badge_notices();
+  assert (n -> 'leagueAwards') @> v_award, format('FAIL insignias: badge_notices de Ana %s', n);
+  assert public.mark_league_badges_seen(p_ids => array[pg_temp.id('badge_award')]) = 1, 'FAIL insignias: mark_league_badges_seen';
+  perform pg_temp.ok('insignias: Ana ve la insignia en su perfil (profile_badges) y en sus avisos (badge_notices) y la marca vista');
+  perform pg_temp.must_fail('insignias: un miembro no diseña insignias de la liga',
+    format('select public.save_league_badge(p_league => %L, p_id => null, p_design => %L)', pg_temp.val('bowl'),
+           '{"name": "Smoke X", "shape": "shield", "palette": "oro", "icon": "trophy", "limit_kind": "unica"}'),
+    array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
 -- 10. Consola del superadmin (lecturas de toda la app; en Supabase leen también cron, migraciones y Storage)
 -- =====================================================================================================================
 select set_config('request.jwt.claims', pg_temp.jwt('super'), true);
@@ -1681,6 +1748,11 @@ begin
   o := public.admin_storage_usage();
   assert (o ->> 'dbLimit')::bigint = 524288000 and (o ->> 'storageLimit')::bigint = 1073741824 and (o ->> 'dbBytes')::bigint > 0
          and o ? 'storagePct' and o ? 'lastAlertAt' and o ? 'purgePending', format('FAIL consola: admin_storage_usage %s', o);
+  o := public.admin_badges_engine();
+  assert jsonb_typeof(o -> 'queue') = 'object' and (o -> 'queue' ->> 'pending')::integer >= 1, format('FAIL consola: admin_badges_engine %s', o -> 'queue');
+  o := public.admin_badge_reports();
+  assert o ? 'open' and jsonb_typeof(o -> 'rows') = 'array', 'FAIL consola: admin_badge_reports';
+  perform pg_temp.ok('consola: el motor de insignias (admin_badges_engine) y sus reportes (admin_badge_reports)');
   perform pg_temp.ok(format('consola: admin_overview, admin_system (backend %s, %s migraciones, %s tareas de cron), admin_users y admin_leagues',
                             s ->> 'backend',
                             case when jsonb_typeof(s -> 'migrations') = 'array' then jsonb_array_length(s -> 'migrations')::text else '-' end,

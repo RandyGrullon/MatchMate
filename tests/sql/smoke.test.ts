@@ -46,7 +46,8 @@ async function footprint(db: PGlite): Promise<Record<string, number>> {
     'public.push_subscriptions', 'public.push_outbox', 'public.league_announcements', 'public.admin_audit', 'public.tombstones',
     'public.league_invites', 'public.legal_acceptances', 'public.reports', 'public.event_lanes', 'private.league_creations',
     'public.seasons', 'public.season_awards', 'public.playoffs', 'public.playoff_series', 'public.solo_sessions',
-    'public.solo_likes', 'private.logo_uploads', 'private.op_log', 'private.rate_limits',
+    'public.solo_likes', 'private.logo_uploads', 'private.op_log', 'private.rate_limits', 'public.badge_awards',
+    'public.league_badges', 'public.league_badge_awards', 'private.badge_queue', 'private.badge_reports',
   ];
   const out: Record<string, number> = {};
   for (const t of tables) out[t] = (await db.query<{ n: number }>(`select count(*)::int as n from ${t}`)).rows[0].n;
@@ -133,6 +134,12 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK agenda: «¿Dónde juego esta semana?» responde sin cuenta',
       'OK sueltos: el dueño ve solo el compartido de Ana',
       'OK logo: el dueño pone y cambia el logo',
+      'OK insignias: los juegos del boliche encolan trabajos del motor',
+      'OK insignias: el dueño diseña una insignia de la liga',
+      'OK insignias: el aviso de la insignia le llega al teléfono de Ana',
+      'OK insignias: Ana ve la insignia en su perfil',
+      'OK insignias: un miembro no diseña insignias de la liga [falla como debe: no_permitido]',
+      'OK consola: el motor de insignias (admin_badges_engine) y sus reportes (admin_badge_reports)',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }
