@@ -43,8 +43,8 @@ export function PresentesModal({
   const [adding, setAdding] = useState('');
 
   const rosters = useMemo(
-    () => [rosterOf(tl.teams.data, m.sides[0].teamId), rosterOf(tl.teams.data, m.sides[1].teamId)] as const,
-    [tl.teams.data, m.sides],
+    () => [rosterOf(tl.allTeams.data, m.sides[0].teamId), rosterOf(tl.allTeams.data, m.sides[1].teamId)] as const,
+    [tl.allTeams.data, m.sides],
   );
 
   // Al abrir: la lista que ya tiene la mesa; si no hay, los que dijeron «Voy».

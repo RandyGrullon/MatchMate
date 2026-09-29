@@ -33,7 +33,8 @@ export function Convocatoria({
   const rsvps = useMatchRsvps(tl.lid, [m.id]);
   const run = useAction();
   const [open, setOpen] = useState<Side | null>(null);
-  const teams = tl.teams.data;
+  // Los equipos del partido (también los de una temporada pasada).
+  const teams = tl.allTeams.data;
   const targets = useMemo(() => rsvpTargets(m, teams, tl.myPlayerId, tl.isAdmin), [m, teams, tl.myPlayerId, tl.isAdmin]);
   const mySide = rosterSide(m, teams, tl.myPlayerId);
   const editable = m.status === 'scheduled' || m.status === 'postponed' || m.status === 'live' || m.status === 'suspended';

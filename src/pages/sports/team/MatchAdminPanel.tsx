@@ -37,7 +37,7 @@ export function MatchAdminPanel({
   const { confirm } = useFeedback();
   const [modal, setModal] = useState<'reprogramar' | 'wo' | 'corregir' | 'resolver' | null>(null);
   const official = tl.officialOf(m.id);
-  const candidates = scorerCandidates(m, tl.teams.data, tl.members.data, tl.players.data);
+  const candidates = scorerCandidates(m, tl.allTeams.data, tl.members.data, tl.players.data);
   const open = isOpen(m) || m.status === 'postponed';
   const name = (side: 1 | 2) => tl.teamOf(m.sides[side - 1].teamId)?.name ?? m.sides[side - 1].label;
 
