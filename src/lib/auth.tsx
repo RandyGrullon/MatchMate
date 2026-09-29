@@ -4,7 +4,9 @@ import type { AuthEvent, Session } from './backend/types';
 import { touchSeenDaily } from './data/admin';
 import { invalidate, queryClient, rpc, select, setDataUser } from './data/client';
 import { keys, tags } from './data/keys';
+import { fetchLegalAccepted } from './data/legal';
 import { toPushPrefs, type PushPrefs } from './data/pushPrefs';
+import { createdAfterMark, CURRENT_LEGAL, forgetLegalForGoogle, needsLegal, type LegalAccepted } from './legal';
 import { toProfile, type ProfileRow } from './data/rows';
 import { asBackendError } from './db/errors';
 import { hideSplash } from './splash';
@@ -29,6 +31,13 @@ export interface AccountProfile extends UserProfile {
    * vieja guardada en el teléfono o base que todavía no las tiene.
    */
   pushPrefs?: PushPrefs;
+  /**
+   * La última versión que aceptó de los términos y la privacidad (legal_acceptances). undefined = no se sabe (copia
+   * vieja en el teléfono, o no se pudo leer): no se le pregunta hasta saberlo.
+   */
+  legal?: LegalAccepted;
+  /** Cuándo se creó la cuenta (profiles.created_at, ISO): las de antes de guardar la aceptación ven lo nuevo. */
+  createdAt?: string | null;
 }
 
 interface AuthState {
@@ -42,18 +51,20 @@ interface AuthState {
   recovering: boolean;
   /** Falta que diga «tengo 18 años o más» (una sola vez): la app muestra AdultGate. */
   needsAdult?: boolean;
+  /** Falta aceptar la versión vigente de los términos o la privacidad: la app muestra LegalGate. */
+  needsLegal?: boolean;
 }
 
-const initial: AuthState = { user: null, profile: null, isSuper: false, loading: true, recovering: false, needsAdult: false };
+const initial: AuthState = { user: null, profile: null, isSuper: false, loading: true, recovering: false, needsAdult: false, needsLegal: false };
 const Ctx = createContext<AuthState>(initial);
 
 const toAppUser = (s: Session): AppUser => ({ uid: s.userId, email: s.email, displayName: s.name });
 const sameUser = (u: AppUser | null, s: Session | null) =>
   (!u && !s) || (!!u && !!s && u.uid === s.userId && u.email === s.email && u.displayName === s.name);
 
-type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; push_prefs?: unknown };
+type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; created_at?: string | null; push_prefs?: unknown };
 
-const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at';
+const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at,created_at';
 /** Columnas que llegaron después, en el orden de sus migraciones: username (20260929000200) y push_prefs (20260929000500). */
 const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs'];
 
@@ -77,7 +88,15 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
       }
     }
   };
-  let rows = await read();
+  // Qué versión de los términos y la privacidad aceptó, a la vez (si no se puede leer, no se pregunta ahora).
+  const [first, legal] = await Promise.all([
+    read(),
+    fetchLegalAccepted(uid).catch((e: unknown) => {
+      console.warn('[legal] no se pudo leer la aceptación', e);
+      return undefined;
+    }),
+  ]);
+  let rows = first;
   if (!rows.length) {
     try {
       await rpc('ensure_profile');
@@ -89,7 +108,7 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
   }
   const row = rows[0];
   if (!row) return null;
-  const profile: AccountProfile = { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null };
+  const profile: AccountProfile = { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null, legal, createdAt: row.created_at ?? null };
   if (row.push_prefs !== undefined) profile.pushPrefs = toPushPrefs(row.push_prefs);
   return profile;
 }
@@ -114,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const b = getBackend();
     const off = b.auth.onChange((event, s) => {
       changed = true;
+      if (event === 'SIGNED_OUT') forgetGoogleMarks();
       apply(s, event);
     });
     b.auth.getSession().then(
@@ -145,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       recovering: session.recovering,
       // Solo con el perfil leído de la base (una copia vieja sin la marca no cuenta).
       needsAdult: !!p && p.adultConfirmedAt === null,
+      needsLegal: !!p && needsLegal(p.legal),
     };
   }, [session, uid, profile.data, profile.loading]);
 
@@ -188,7 +209,10 @@ export async function confirmAdult(uid: string): Promise<void> {
   invalidate(tags.profile(uid));
 }
 
-/** Registro con Google: la casilla «tengo 18 años o más» se marcó antes de ir a Google (vale 1 hora). */
+/**
+ * Registro con Google: la casilla «tengo 18 años o más» se marcó antes de ir a Google (vale 1 hora y solo para una
+ * cuenta creada después de marcarla, como «Acepto…» en src/lib/legal.ts). Al salir de la cuenta se olvida.
+ */
 const ADULT_PENDING_KEY = 'mm:mayor-de-edad';
 const ADULT_PENDING_MS = 60 * 60 * 1000;
 
@@ -201,17 +225,30 @@ export function rememberAdultForGoogle(now = Date.now()): void {
   }
 }
 
-/** ¿Marcó la casilla antes de ir a Google (hace menos de 1 hora)? Se usa una sola vez. */
-export function takeAdultPending(now = Date.now()): boolean {
+/**
+ * ¿Marcó la casilla antes de ir a Google (hace menos de 1 hora) y esta cuenta (`createdAt`, profiles.created_at) se
+ * creó después? Se usa una sola vez: se borra aunque no valga.
+ */
+export function takeAdultPending(createdAt: string | null | undefined, now = Date.now()): boolean {
   try {
     const raw = localStorage.getItem(ADULT_PENDING_KEY);
     if (raw == null) return false;
     localStorage.removeItem(ADULT_PENDING_KEY);
     const at = Number(raw);
-    return Number.isFinite(at) && now - at >= 0 && now - at < ADULT_PENDING_MS;
+    return Number.isFinite(at) && now - at >= 0 && now - at < ADULT_PENDING_MS && createdAfterMark(createdAt, at);
   } catch {
     return false;
   }
+}
+
+/** Al salir de la cuenta: las casillas marcadas antes de ir a Google ya no valen (eran de otra vez o de otra persona). */
+function forgetGoogleMarks(): void {
+  try {
+    localStorage.removeItem(ADULT_PENDING_KEY);
+  } catch {
+    // sin almacenamiento
+  }
+  forgetLegalForGoogle();
 }
 
 /** `captcha`: token de Turnstile si el proyecto lo pide (src/components/Turnstile.tsx). */
@@ -223,9 +260,20 @@ export const logout = () => getBackend().auth.signOut();
  * Registro con correo y contraseña. El perfil lo crea la base con el nombre. Si el proyecto pide confirmar el
  * correo, no entra todavía: `needsConfirm` = hay que abrir el link que llegó al correo.
  */
-/** `adult`: marcó «tengo 18 años o más» (queda en profiles.adult_confirmed_at). */
-export async function signUp(name: string, email: string, password: string, adult = false, captcha?: string): Promise<{ needsConfirm: boolean }> {
-  const s = await getBackend().auth.signUp(email.trim(), password, name.trim(), adult ? { adult: true } : undefined, captcha);
+/**
+ * `adult`: marcó «tengo 18 años o más» (queda en profiles.adult_confirmed_at). `terms`: marcó «Acepto los Términos
+ * y la Política de privacidad» (la base guarda la aceptación de las versiones vigentes al crear la cuenta).
+ */
+export async function signUp(
+  name: string,
+  email: string,
+  password: string,
+  adult = false,
+  captcha?: string,
+  terms = false,
+): Promise<{ needsConfirm: boolean }> {
+  const meta = { ...(adult ? { adult: true } : {}), ...(terms ? { legal: { ...CURRENT_LEGAL } } : {}) };
+  const s = await getBackend().auth.signUp(email.trim(), password, name.trim(), Object.keys(meta).length ? meta : undefined, captcha);
   return { needsConfirm: !s };
 }
 

@@ -64,6 +64,8 @@ const RPC_AUTHENTICATED = [
   'my_league_invites', 'league_invite_details',
   // Avisos al teléfono: preferencias de cada cuenta y el espacio del plan gratis en la consola.
   'set_push_prefs', 'admin_storage_usage',
+  // Legal: aceptar los términos vigentes y reportar contenido (y los reportes propios, para «Descargar mis datos»).
+  'accept_legal', 'admin_legal_stats', 'list_reports', 'my_reports', 'report_content', 'resolve_report',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

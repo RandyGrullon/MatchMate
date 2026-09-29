@@ -3,9 +3,21 @@
  * La sección va en la ruta: /superadmin/<clave>. /superadmin solo = Resumen.
  * «Marca» usa la clave `logo` porque /superadmin/marca es la página de logo y animaciones (SplashPreviewPage).
  */
-import { Bug, LayoutDashboard, Megaphone, Palette, ScanLine, ScrollText, Server, Trophy, Users, Volleyball, type LucideIcon } from 'lucide-react';
+import { Bug, Flag, LayoutDashboard, Megaphone, Palette, Scale, ScanLine, ScrollText, Server, Trophy, Users, Volleyball, type LucideIcon } from 'lucide-react';
 
-export type SectionKey = 'resumen' | 'cuentas' | 'ligas' | 'deportes' | 'anuncios' | 'fotos' | 'sistema' | 'errores' | 'auditoria' | 'logo';
+export type SectionKey =
+  | 'resumen'
+  | 'cuentas'
+  | 'ligas'
+  | 'reportes'
+  | 'deportes'
+  | 'anuncios'
+  | 'fotos'
+  | 'sistema'
+  | 'errores'
+  | 'legal'
+  | 'auditoria'
+  | 'logo';
 
 export interface SectionMeta {
   key: SectionKey;
@@ -19,11 +31,13 @@ export const SECTIONS: readonly SectionMeta[] = [
   { key: 'resumen', label: 'Resumen', hint: 'Cómo va la app hoy: cuentas, ligas, actividad y avisos.', icon: LayoutDashboard },
   { key: 'cuentas', label: 'Cuentas', hint: 'Todas las cuentas: buscar, ver sus ligas, nombrar superadmins y bloquear.', icon: Users },
   { key: 'ligas', label: 'Ligas y torneos', hint: 'Todas las ligas y torneos de todos los deportes.', icon: Trophy },
+  { key: 'reportes', label: 'Reportes', hint: 'Lo que la gente reportó: comentarios, avisos, juegos, ligas y cuentas. Descartar, atender y las herramientas.', icon: Flag },
   { key: 'deportes', label: 'Deportes', hint: 'Qué deportes están abiertos a todos, en prueba o cerrados.', icon: Volleyball },
   { key: 'anuncios', label: 'Anuncios', hint: 'Mandar un aviso al teléfono de todos o de un grupo.', icon: Megaphone },
   { key: 'fotos', label: 'Lectura de fotos', hint: 'Cuántas fotos del marcador se leen con IA y quién las usa.', icon: ScanLine },
   { key: 'sistema', label: 'Sistema', hint: 'Base de datos, límites del plan gratis, tareas y respaldo.', icon: Server },
   { key: 'errores', label: 'Errores', hint: 'Lo que falla en los teléfonos: qué pantalla, cuántas veces, a cuántas cuentas y en qué teléfono.', icon: Bug },
+  { key: 'legal', label: 'Legal', hint: 'Versiones de los términos y la privacidad, quién ya las aceptó y lo que falta completar.', icon: Scale },
   { key: 'auditoria', label: 'Auditoría', hint: 'Todo lo que se hizo desde esta consola, con quién y cuándo.', icon: ScrollText },
   { key: 'logo', label: 'Marca', hint: 'Logo y animaciones de apertura de cada deporte.', icon: Palette },
 ];

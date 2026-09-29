@@ -8,6 +8,7 @@ import { SportRoute } from './sports/screens';
 import { FeedbackProvider } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdultGate } from './components/AdultGate';
+import { LegalGate } from './components/LegalGate';
 import { AppRouter } from './components/GestureGuards';
 import { NotificationsProvider } from './components/Notifications';
 import { CreateMenuProvider } from './components/CreateMenu';
@@ -109,6 +110,15 @@ function Screen({ area, framed, children }: { area: string; framed?: boolean; ch
   );
 }
 
+/** Las pantallas de la cuenta antes de la app: primero «tengo 18 años o más», después aceptar los términos vigentes. */
+function AccountGates({ children }: { children: ReactNode }) {
+  return (
+    <AdultGate>
+      <LegalGate>{children}</LegalGate>
+    </AdultGate>
+  );
+}
+
 export default function App() {
   // Sin Supabase configurado la app corre en modo local (PGlite en el navegador): no hay pantalla de error.
   return (
@@ -119,8 +129,8 @@ export default function App() {
             <NotificationsProvider>
               <CreateMenuProvider>
                 <Suspense fallback={<TopLoader />}>
-                  {/* «Tengo 18 años o más» una sola vez para quien entró con Google o viene de BowlingX. */}
-                  <AdultGate>
+                  {/* «Tengo 18 años o más» una sola vez para quien entró con Google o viene de BowlingX; después, los términos. */}
+                  <AccountGates>
                     <Routes>
                       <Route index element={<Screen area="home" framed><GlobalHomeRoute /></Screen>} />
                       {/* Home de un deporte (la app queda en ese deporte). */}
@@ -163,7 +173,7 @@ export default function App() {
                       </Route>
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
-                  </AdultGate>
+                  </AccountGates>
                 </Suspense>
               </CreateMenuProvider>
             </NotificationsProvider>

@@ -161,6 +161,7 @@ export const AUDIT_ACTIONS: readonly { key: string; label: string }[] = [
   { key: 'delete_league', label: 'Liga borrada' },
   { key: 'delete_account', label: 'Cuenta borrada' },
   { key: 'clear_errors', label: 'Errores borrados' },
+  { key: 'resolve_report', label: 'Reporte atendido' },
 ];
 
 export function auditActionLabel(action: string): string {
@@ -231,6 +232,14 @@ export function auditSummary(e: Pick<AdminAuditEntry, 'action' | 'detail'> & { t
       const message = str(d.message);
       return `Borró ${what}${message ? `: «${message.length > 80 ? `${message.slice(0, 79)}…` : message}»` : ''}`;
     }
+    case 'resolve_report': {
+      // 20260929000900_legal.sql: {kind, status, reason, note, closed}.
+      const verb = d.status === 'dismissed' ? 'Descartó' : 'Atendió';
+      const n = numOrNull(d.closed);
+      const what = n != null && n > 1 ? `${fmtNum(n)} reportes` : 'un reporte';
+      const note = str(d.note);
+      return `${verb} ${what}${note ? `: «${note.length > 80 ? `${note.slice(0, 79)}…` : note}»` : ''}`;
+    }
     default:
       return auditActionLabel(e.action);
   }
@@ -239,6 +248,7 @@ export function auditSummary(e: Pick<AdminAuditEntry, 'action' | 'detail'> & { t
 /** A dónde lleva el objetivo de una entrada (null = no hay a dónde ir). */
 export function auditTargetPath(e: Pick<AdminAuditEntry, 'targetType' | 'targetId' | 'action'>): string | null {
   if (e.action === 'clear_errors') return '/superadmin/errores';
+  if (e.action === 'resolve_report') return '/superadmin/reportes?e=closed';
   // Una cuenta borrada ya no se puede abrir.
   if (e.action === 'delete_account') return null;
   if (!e.targetId) return e.targetType === 'sport' ? '/superadmin/deportes' : null;

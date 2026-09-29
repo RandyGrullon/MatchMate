@@ -13,6 +13,7 @@ import { useLeagueCtx } from '../../lib/league';
 import { relativeTime } from '../../lib/notifications';
 import { useNow } from '../../lib/useNow';
 import { saveErrorMessage, useFeedback } from '../feedback';
+import { ReportButton } from '../report/ReportButton';
 import { Button, Card, Textarea, cx } from '../ui';
 import { announceTemplates, noticesLeft, reachLine, recentNotices } from './logic';
 
@@ -40,10 +41,10 @@ function saveClosed(lid: string, ids: Set<string>) {
 
 /**
  * Arriba en el inicio de la liga: el aviso del admin de los últimos 2 días («Se suspende por lluvia»), para quien no
- * tiene las notificaciones activadas. Cada quien lo puede cerrar.
+ * tiene las notificaciones activadas. Cada quien lo puede cerrar; quien no es admin lo puede reportar.
  */
 export function LeagueNotices() {
-  const { lid } = useLeagueCtx();
+  const { lid, isAdmin } = useLeagueCtx();
   const list = useLeagueAnnouncements(lid, 5);
   const now = useNow();
   const [closed, setClosed] = useState(() => readClosed(lid));
@@ -67,6 +68,7 @@ export function LeagueNotices() {
             </p>
             <p className="text-sm break-words whitespace-pre-line text-fg">{a.body}</p>
           </div>
+          {!isAdmin && <ReportButton kind="announcement" targetId={a.id} className="-my-2" />}
           <button
             type="button"
             onClick={() => close(a.id)}

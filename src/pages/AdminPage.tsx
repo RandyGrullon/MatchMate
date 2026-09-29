@@ -10,6 +10,7 @@ import {
   Clock,
   DatabaseBackup,
   Earth,
+  Flag,
   Globe,
   Lightbulb,
   ImageMinus,
@@ -58,9 +59,11 @@ import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, To
 import { AnnouncePanel } from '../components/league/Announce';
 import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
 import { usePendingClaimCount } from '../components/claims/data';
+import { useReportCounts } from '../lib/data/reports';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
+const LeagueReportsPanel = lazy(() => import('../components/report/LeagueReportsPanel').then((m) => ({ default: m.LeagueReportsPanel })));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 
 type Tab = string;
@@ -91,12 +94,15 @@ export default function AdminPage() {
   // Reclamos de jugadores sin cuenta («ese soy yo»): todos los deportes.
   const uid = useAuth().user?.uid;
   const claims = usePendingClaimCount(isAdmin ? lid : null, uid);
+  // Reportes de comentarios, avisos y juegos de la liga: la pestaña sale solo si alguna vez hubo alguno.
+  const reports = useReportCounts(isAdmin, lid).data;
   const generic: AdminTab[] = [
     { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
     // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
     ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
     { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
     { key: 'reclamos', label: 'Reclamos', icon: <UserCheck className="size-4" />, count: claims },
+    ...(reports.all > 0 ? [{ key: 'reportes', label: 'Reportes', icon: <Flag className="size-4" />, count: reports.open }] : []),
     { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
     { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
   ];
@@ -179,6 +185,8 @@ function AdminTabs({
             <MembersPanel accountsOf={accountsOf} />
           ) : tab === 'reclamos' ? (
             <ClaimsPanel />
+          ) : tab === 'reportes' ? (
+            <LeagueReportsPanel />
           ) : tab === 'buzon' ? (
             <SuggestionsPanel />
           ) : (

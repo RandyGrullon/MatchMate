@@ -109,10 +109,16 @@ export function saveJsonFile(fileName: string, data: unknown): void {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-/** Todo lo de la cuenta (export_my_data): perfil, ligas, jugadores, partidos y las filas de cada tabla. */
+/**
+ * Todo lo de la cuenta (export_my_data): perfil, ligas, jugadores, partidos y las filas de cada tabla. Y `reports`:
+ * los reportes que hizo (my_reports, 20260929000900_legal.sql; esa tabla no tiene user_id, así que export_my_data no
+ * los encuentra sola).
+ */
 export async function fetchMyData(): Promise<Record<string, unknown>> {
   const data = await rpc<unknown>('export_my_data');
-  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+  const reports = await rpc<unknown>('my_reports');
+  const out = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+  return { ...out, reports: Array.isArray(reports) ? reports : [] };
 }
 
 /** «Descargar mis datos»: todo lo de la cuenta en un JSON (como mucho 5 veces por hora). Devuelve el archivo. */

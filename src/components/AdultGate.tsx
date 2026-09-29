@@ -14,16 +14,17 @@ const DeleteAccountDialog = lazy(() => import('../pages/legal/DeleteAccountDialo
  * Google no pasa por la casilla) o su cuenta viene de BowlingX. Hasta que lo diga no usa la app: las cuentas son
  * solo de adultos (Ley 136-03); los menores juegan sin cuenta, en ligas que lleva un adulto. La privacidad y los
  * términos se pueden leer igual.
- * Si marcó la casilla en «Crear cuenta» y después fue a Google, al volver se confirma solo (sin preguntar otra vez).
+ * Si marcó la casilla en «Crear cuenta» y después fue a Google, al volver se confirma solo (sin preguntar otra vez),
+ * pero solo si la cuenta se creó después de marcarla (no otra que entre en el mismo teléfono).
  */
 export function AdultGate({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { pathname } = useLocation();
   if (!auth.user || !auth.needsAdult || LEGAL_PATHS.includes(pathname)) return children;
-  return <AdultQuestion uid={auth.user.uid} />;
+  return <AdultQuestion uid={auth.user.uid} createdAt={auth.profile?.createdAt ?? null} />;
 }
 
-function AdultQuestion({ uid }: { uid: string }) {
+function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | null }) {
   const navigate = useNavigate();
   const { toast } = useFeedback();
   const [step, setStep] = useState<'ask' | 'minor'>('ask');
@@ -44,16 +45,16 @@ function AdultQuestion({ uid }: { uid: string }) {
     }
   }
 
-  // Marcó la casilla antes de ir a Google: se confirma solo (una vez).
+  // Marcó la casilla antes de ir a Google y esta es la cuenta nueva: se confirma solo (una vez).
   useEffect(() => {
     if (auto.current) return;
     auto.current = true;
-    if (!takeAdultPending()) return;
+    if (!takeAdultPending(createdAt)) return;
     setBusy('auto');
     confirmAdult(uid)
       .catch(() => setError('No se pudo guardar. Toca «Sí, tengo 18 años o más» otra vez.'))
       .finally(() => setBusy(null));
-  }, [uid]);
+  }, [uid, createdAt]);
 
   async function signOut() {
     setBusy('salir');

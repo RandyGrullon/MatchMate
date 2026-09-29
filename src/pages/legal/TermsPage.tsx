@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { ScrollText } from 'lucide-react';
-import { Bullets, ContactEmail, LegalDoc, type LegalSection } from './LegalDoc';
-import { PRIVACY_PATH } from './legal';
+import { Bullets, ContactEmail, Fill, LegalDoc, type LegalSection } from './LegalDoc';
+import { LEGAL_CONTACT, PRIVACY_PATH } from './legal';
 
 const privacyLink = (hash = '') => (
   <Link to={`${PRIVACY_PATH}${hash}`} className="font-medium text-accent underline underline-offset-2">
@@ -9,15 +9,25 @@ const privacyLink = (hash = '') => (
   </Link>
 );
 
-/** Términos de uso (BORRADOR para revisar con un abogado de República Dominicana). */
+/**
+ * Términos de uso (BORRADOR para revisar con un abogado de República Dominicana). Si cambian, se sube TERMS_VERSION
+ * en src/lib/legal.ts (con lo que cambió) y la misma fecha en private.legal_versions().
+ */
 export const TERMS_SECTIONS: LegalSection[] = [
   {
     id: 'acuerdo',
     title: 'El acuerdo',
     body: (
-      <p>
-        Al crear una cuenta o usar MatchMate aceptas estos términos y la {privacyLink()}. Si no estás de acuerdo, no uses la app.
-      </p>
+      <>
+        <p>
+          Estos términos son un acuerdo entre tú y <Fill>{LEGAL_CONTACT.responsible}</Fill> (<Fill>{LEGAL_CONTACT.taxId}</Fill>), responsable
+          de MatchMate.
+        </p>
+        <p>
+          Al crear una cuenta o usar MatchMate aceptas estos términos y la {privacyLink()}. Guardamos qué versión aceptaste y cuándo. Si no estás
+          de acuerdo, no uses la app.
+        </p>
+      </>
     ),
   },
   {
@@ -27,7 +37,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
       <Bullets
         items={[
           'Solo los mayores de 18 años pueden tener cuenta.',
-          'Una cuenta por persona, con tu nombre de verdad.',
+          'Una cuenta por persona, con tu nombre de verdad. No te hagas pasar por otra persona.',
           'Los menores participan solo como jugadores sin cuenta, en ligas «con menores» que lleva un adulto, con el permiso de su mamá, su papá o su tutor (Ley 136-03).',
         ]}
       />
@@ -52,7 +62,8 @@ export const TERMS_SECTIONS: LegalSection[] = [
       <>
         <p>
           MatchMate es una herramienta: no organiza los eventos. El dueño y los admins de cada liga deciden quién entra, las reglas y los
-          horarios, aprueban los resultados y responden por su liga. Quien anota a un menor responde por tener el permiso de su tutor.
+          horarios, aprueban los resultados y responden por su liga. En su liga pueden sacar a alguien, corregir resultados y borrar comentarios.
+          Quien anota a un menor responde por tener el permiso de su tutor y por los datos que anota.
         </p>
         <p>
           MatchMate no responde por premios, cuotas, pagos, lesiones, peleas entre jugadores ni por lo que pase en las canchas, boleras, campos
@@ -65,17 +76,22 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: 'reglas',
     title: 'Lo que no se permite',
     body: (
-      <Bullets
-        items={[
-          'Anotar resultados falsos o hacer trampa.',
-          'Molestar, amenazar, insultar o discriminar a otros.',
-          'Nombres, comentarios o fotos ofensivos, sexuales o ilegales.',
-          'Subir fotos de personas: solo la pantalla del marcador.',
-          'Usar los datos de otros sin su permiso.',
-          'Entrar donde no te toca, intentar romper la app o abusar de ella con programas.',
-          'Usar la app para mandar publicidad que nadie pidió.',
-        ]}
-      />
+      <>
+        <Bullets
+          items={[
+            'Anotar resultados falsos o hacer trampa.',
+            'Molestar, amenazar, insultar o discriminar a otros.',
+            'Nombres, comentarios, avisos o imágenes ofensivos, sexuales o ilegales.',
+            'Publicar datos de otras personas (teléfono, dirección, fotos) sin su permiso, o cualquier cosa sobre un menor fuera de lo que pide su liga.',
+            'Usar la app para mandar publicidad que nadie pidió.',
+            'Entrar donde no te toca, usar la cuenta de otro, intentar romper la app o abusar de ella con programas.',
+          ]}
+        />
+        <p>
+          Algunas de estas cosas, además, pueden ser delito según la Ley 53-07 sobre crímenes y delitos de alta tecnología (por ejemplo, entrar
+          sin permiso a una cuenta o hacerte pasar por otra persona).
+        </p>
+      </>
     ),
   },
   {
@@ -91,11 +107,44 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: 'fotos',
-    title: 'Fotos y lectura con IA',
+    title: 'Fotos, logos y nombres',
+    body: (
+      <Bullets
+        items={[
+          'Las fotos del marcador son solo de la pantalla: sin personas.',
+          'Si subes un logo o una imagen de tu liga o equipo, donde la app lo permita, tiene que ser tuyo o tener el permiso de su dueño. No uses marcas de otros sin permiso.',
+          'Los nombres de ligas, equipos y jugadores no pueden ser ofensivos ni hacerse pasar por otro.',
+          <>
+            La lectura automática de las fotos puede equivocarse: un admin revisa los números antes de que cuenten. Las fotos las lee la IA de
+            Google en su plan gratis, como explica la {privacyLink('#fotos')}.
+          </>,
+        ]}
+      />
+    ),
+  },
+  {
+    id: 'reportes',
+    title: 'Reportar y moderar',
+    body: (
+      <>
+        <Bullets
+          items={[
+            'Si ves algo que no cumple estas reglas (un comentario, un aviso, un juego, una liga o una cuenta), toca la bandera («Reportar») que tiene al lado.',
+            'Lo revisa el equipo de MatchMate y, si es un comentario, un aviso o un juego de una liga, también sus admins (menos el admin del que es lo reportado). No le decimos a nadie quién lo reportó.',
+            'Podemos descartar el reporte, borrar lo reportado, bloquear la cuenta o borrar la liga. Reportar a propósito algo que cumple las reglas también es abuso.',
+          ]}
+        />
+        <p>Si alguien está en peligro, llama primero al 911.</p>
+      </>
+    ),
+  },
+  {
+    id: 'avisos',
+    title: 'Avisos al teléfono',
     body: (
       <p>
-        La lectura automática de las fotos puede equivocarse: un admin revisa los números antes de que cuenten. Las fotos las lee la IA de
-        Google en su plan gratis, como explica la {privacyLink('#fotos')}.
+        Los avisos llegan solo si los activas. El admin de tu liga puede mandar avisos a su liga (unos pocos al día) y MatchMate manda anuncios
+        de la app de vez en cuando. Los apagas cuando quieras. Qué se guarda para mandarlos lo explica la {privacyLink('#avisos')}.
       </p>
     ),
   },
@@ -151,8 +200,17 @@ export const TERMS_SECTIONS: LegalSection[] = [
     title: 'Cambios',
     body: (
       <p>
-        Si cambiamos algo importante, te avisamos en la app antes. Si sigues usándola después, aceptas los cambios. Para cualquier duda,
-        escríbenos a <ContactEmail />.
+        Cada versión lleva su fecha (arriba). Si cambiamos algo importante, al entrar a la app te mostramos qué cambió y te pedimos aceptarlo
+        antes de seguir. Si no estás de acuerdo, puedes salir o borrar tu cuenta.
+      </p>
+    ),
+  },
+  {
+    id: 'contacto',
+    title: 'Contacto',
+    body: (
+      <p>
+        Para cualquier duda, reclamo o aviso sobre estos términos, escríbenos a <ContactEmail />.
       </p>
     ),
   },
@@ -161,7 +219,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
 export default function TermsPage() {
   return (
     <LegalDoc
-      title="Términos de uso"
+      doc="terminos"
       icon={<ScrollText className="size-6" />}
       lead="Las reglas para usar MatchMate: quién puede tener cuenta, qué no se permite y qué pasa con tus ligas."
       sections={TERMS_SECTIONS}

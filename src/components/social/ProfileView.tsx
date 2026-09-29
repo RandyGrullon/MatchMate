@@ -8,6 +8,7 @@ import { useActiveSport } from '../../lib/sportContext';
 import { sportMeta } from '../../sports/registry';
 import type { SportId } from '../../sports/types';
 import { Avatar } from '../Avatar';
+import { ReportButton } from '../report/ReportButton';
 import { AnimatedNumber, Badge, Card, Empty, LoadError, Skeleton, Tabs, cx } from '../ui';
 import { FollowButton } from './FollowButton';
 import { FollowersSheet } from './FollowersSheet';
@@ -133,6 +134,12 @@ export function ProfileView({
     <div className="flex flex-col gap-5">
       <section className="relative flex flex-col items-center gap-3 overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-accent-soft via-surface to-surface p-5 text-center">
         {back && <div className="absolute top-3 left-3">{back}</div>}
+        {/* El perfil de otra cuenta: «Reportar esta cuenta» arriba a la derecha. */}
+        {!p.isMe && (
+          <div className="absolute top-3 right-3">
+            <ReportButton kind="user" targetId={p.id} ownerId={p.id} />
+          </div>
+        )}
         <Avatar name={p.name} className="size-20 text-2xl ring-4 ring-surface" />
         <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
           <h1 className="max-w-full truncate text-2xl font-bold tracking-tight">{p.name}</h1>
