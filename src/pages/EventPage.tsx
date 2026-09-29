@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   ListOrdered,
   Megaphone,
+  Rows3,
   Settings,
   Share2,
   Shield,
@@ -44,13 +45,15 @@ import { MyGamesPanel } from '../components/event/MyGamesPanel';
 import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
+import { LanesPanel } from '../components/lanes/LanesPanel';
+import { MyLane } from '../components/lanes/MyLane';
 import type { Entry } from '../lib/types';
 import { dispatchLeague, SportRoute } from '../sports/screens';
 
 const SportComingSoon = lazy(() => import('./sports/SportComingSoon'));
 const UpdateAppScreen = lazy(() => import('./sports/UpdateAppScreen'));
 
-type TabKey = 'inscritos' | 'equipos' | 'juegos' | 'clasificacion';
+type TabKey = 'inscritos' | 'equipos' | 'pistas' | 'juegos' | 'clasificacion';
 
 /**
  * Un evento de la liga. Punto de desvío por deporte (el otro es LeagueShell): el boliche ve sus pantallas
@@ -124,24 +127,29 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const upcoming = ev.date >= today;
   const liveNow = liveInfo(ev, league, now);
 
-  // Anotador (no admin): solo anota juegos y ve la clasificación.
+  // Pistas (admin o anotador): se arman antes de jugar; en la práctica van al final para no cambiar dónde abre.
+  const lanesTab = { key: 'pistas' as const, label: 'Pistas', icon: <Rows3 className="size-4" /> };
+  // Anotador (no admin): anota juegos, ve la clasificación y arma las pistas.
   const tabs: { key: TabKey; label: string; icon: ReactNode }[] = !canScore
     ? []
     : !isAdmin
       ? [
           { key: 'juegos', label: 'Juegos', icon: <ClipboardList className="size-4" /> },
           { key: 'clasificacion', label: 'Clasificación', icon: <ListOrdered className="size-4" /> },
+          lanesTab,
         ]
       : isTorneo
       ? [
           { key: 'inscritos', label: 'Inscritos', icon: <Users className="size-4" /> },
           { key: 'equipos', label: 'Equipos', icon: <Shield className="size-4" /> },
+          lanesTab,
           { key: 'juegos', label: 'Juegos', icon: <ClipboardList className="size-4" /> },
           { key: 'clasificacion', label: 'Clasificación', icon: <ListOrdered className="size-4" /> },
         ]
       : [
           { key: 'juegos', label: 'Juegos', icon: <ClipboardList className="size-4" /> },
           { key: 'clasificacion', label: 'Resultados', icon: <ListOrdered className="size-4" /> },
+          lanesTab,
         ];
   const requested = params.get('tab') as TabKey | null;
   const tab: TabKey = tabs.length ? (tabs.some((t) => t.key === requested) ? requested! : tabs[0].key) : 'clasificacion';
@@ -228,6 +236,9 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         )
       ))}
 
+      {/* Su pista, cuando el admin ya las publicó (el evento de hoy o uno que viene). */}
+      {myPlayerId && upcoming && <MyLane lid={lid} eventId={ev.id} playerId={myPlayerId} />}
+
       <Tour name="evento" steps={EVENT_TOUR} when={playsHere && ev.date <= today} />
       {/* Sus juegos primero (los anota mientras juega y los envía a revisión). El dueño y los admins también juegan. */}
       {playsHere && !entries.loading && !mySubs.loading && (
@@ -258,6 +269,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         <LiveBoard
           event={ev}
           info={liveNow}
+          lane={false}
           onOpen={(id) => {
             const e = entries.data.find((x) => x.id === id);
             if (e) setDetail(e);
@@ -276,6 +288,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
             <RosterTab {...props} />
           ) : tab === 'equipos' ? (
             <TeamsTab {...props} />
+          ) : tab === 'pistas' ? (
+            <LanesPanel {...props} />
           ) : tab === 'juegos' ? (
             <GamesTab {...props} />
           ) : (

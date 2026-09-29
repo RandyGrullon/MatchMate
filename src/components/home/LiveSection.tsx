@@ -5,6 +5,7 @@ import type { Match } from '../../lib/data/matches';
 import { eventLabel } from '../../lib/format';
 import type { LiveGame, LiveMatchItem } from '../../lib/live';
 import { SportIcon } from '../../pages/sports/SportBits';
+import { MyLane } from '../lanes/MyLane';
 import { LiveActions } from '../LiveNow';
 import { LiveMatchesCard, NextMatchCard } from '../LiveNowMatches';
 import { Badge, Card } from '../ui';
@@ -50,6 +51,7 @@ function LiveGameCard({ game }: { game: LiveGame }) {
             <p className="text-xs text-muted">{event.games} juegos</p>
           </div>
         </div>
+        {feed.playerId && <MyLane lid={feed.lid} eventId={event.id} playerId={feed.playerId} />}
         <LiveActions feed={feed} event={event} />
         <Link to={`/l/${feed.lid}`} className="inline-flex min-h-11 items-center justify-center self-center text-sm font-medium text-accent">
           Ver cómo van todos
@@ -118,6 +120,7 @@ function NextEventCard({ item, today, now }: { item: CalendarItem; today: string
           {item.time && ` · ${item.time}`}
           {item.going && <span className="ml-2 font-medium text-ok">· Vas</span>}
         </p>
+        {item.sport === 'bowling' && item.eventId && item.playerId && <MyLane lid={item.lid} eventId={item.eventId} playerId={item.playerId} className="w-fit" />}
       </Link>
     </SportTint>
   );
