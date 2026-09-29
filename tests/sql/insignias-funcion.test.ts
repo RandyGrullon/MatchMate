@@ -4,7 +4,7 @@
  * EMPAQUETADO tal como lo carga Deno (supabase/functions/_shared/badges-engine.gen.js). Así se prueba el contrato
  * entre badge_snapshot, el motor y badge_apply, y los permisos de las RPC de la función.
  *
- * Además, 20260929000890_insignias_cron_supabase.sql (solo Supabase) contra un pg_cron de mentira: programa
+ * Además, 20260929001190_insignias_cron_supabase.sql (solo Supabase) contra un pg_cron de mentira: programa
  * mm-insignias y mm-insignias-diario, se puede volver a correr y sin pg_cron no hace nada.
  */
 import { readFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ import { SOURCE_HASH, evaluateJob } from '../../supabase/functions/_shared/badge
 import { MIGRATIONS_DIR, SERVICE, TestDb, type SqlError } from './harness';
 import { league, makeWorld, member, player, type World } from './fixture';
 
-const CRON_SQL = readFileSync(join(MIGRATIONS_DIR, '20260929000890_insignias_cron_supabase.sql'), 'utf8');
+const CRON_SQL = readFileSync(join(MIGRATIONS_DIR, '20260929001190_insignias_cron_supabase.sql'), 'utf8');
 const SECRET = 'secreto-del-cron-de-prueba-0123456789';
 const BASE = 'https://proyecto.test/rest/v1/rpc/';
 
@@ -354,7 +354,7 @@ describe('Edge Function insignias con la base y el motor empaquetado', () => {
   });
 });
 
-describe('20260929000890_insignias_cron_supabase.sql', () => {
+describe('20260929001190_insignias_cron_supabase.sql', () => {
   it('sin pg_cron (PGlite) no hace nada', async () => {
     await db.pg.exec(CRON_SQL);
     expect(await db.admin(`select to_regnamespace('cron') is null as none`)).toEqual([{ none: true }]);

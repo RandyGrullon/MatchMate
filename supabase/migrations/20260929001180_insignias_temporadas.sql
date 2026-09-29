@@ -11,7 +11,7 @@
 -- que esta y todo sale bien. Si una base ya tiene esta aplicada sin temporadas y …0700 llega después (db push
 -- --include-all), hay que volver a correr este archivo a mano (se puede: es idempotente) para activar las insignias de
 -- temporada. Cuando existen:
--- 1. private.badge_season_rows(liga, temporada, desde, hasta) (de …0810, misma firma) lee las temporadas y sus premios
+-- 1. private.badge_season_rows(liga, temporada, desde, hasta) (de …1110, misma firma) lee las temporadas y sus premios
 --    para la foto del motor ('temporada' y 'anio': «Figura del año» no se da si hubo una temporada igual al año).
 -- 2. Trigger en public.seasons: cuando una temporada queda 'closed' se encola 'temporada' (ref 'season:<id>').
 -- No hay cierre automático: las temporadas solo las cierra el admin.

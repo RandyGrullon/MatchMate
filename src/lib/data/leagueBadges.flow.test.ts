@@ -20,7 +20,7 @@ import { openWorld, type TestWorld } from './testkit';
 /**
  * El creador de insignias contra la base de verdad (PGlite con las migraciones): liga de boliche de rosa (dueña),
  * con pedro de admin y ana y luis de miembros, más un jugador sin cuenta. Lo que mandan las pantallas llega a las RPC
- * de 20260929000820_insignias_creador.sql con los nombres y la forma que piden.
+ * de 20260929001120_insignias_creador.sql con los nombres y la forma que piden.
  */
 
 let w: TestWorld;

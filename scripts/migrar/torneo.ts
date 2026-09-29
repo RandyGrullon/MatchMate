@@ -3,7 +3,7 @@
  * (como un admin de la liga desde la app). Es el scripts/importar-torneo.mjs de BowlingX pasado a Supabase.
  * Los juegos quedan anotados sin foto ('sin-foto'): cuentan en la tabla y el promedio como siempre. 'importado' (juego
  * validado, B2) solo lo escribe el importador de BowlingX con la clave secreta; desde una sesión de admin la base no lo
- * acepta (update_entry, …0810): un admin no puede validar juegos que él mismo escribe.
+ * acepta (update_entry, …1110): un admin no puede validar juegos que él mismo escribe.
  *
  * El archivo:
  *   {

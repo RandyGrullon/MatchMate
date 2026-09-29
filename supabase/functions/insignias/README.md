@@ -52,7 +52,7 @@ faltan los pasos 3 y 4.
    select vault.create_secret('https://<ref>.supabase.co', 'project_url');
    select vault.create_secret('<el mismo secreto>', 'cron_secret');
    ```
-3. **Migraciones**: `supabase db push` aplica `20260929000800`, `…0810`, `…0880` y `…0890_insignias_cron_supabase.sql`
+3. **Migraciones**: `supabase db push` aplica `20260929001100`, `…1110`, `…1120`, `…1180` y `…1190_insignias_cron_supabase.sql`
    (esta programa `mm-insignias` y `mm-insignias-diario`).
 4. **Desplegar** sin verificar JWT (la llama pg_net con `x-cron-secret`, no con una sesión): `supabase/config.toml` ya
    trae `[functions.insignias] verify_jwt = false`, así que basta

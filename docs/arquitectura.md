@@ -389,11 +389,11 @@ resultados, vínculos, cierres ──trigger──▶ private.badge_queue ◀─
   motor, `pnpm badges:bundle` antes de hacer commit.**
 - **Edge Function `supabase/functions/insignias/`** (`core.ts` sin imports, como `send-push`): valida `CRON_SECRET`,
   toma hasta 25 trabajos de a 5, corta a los 100 s o ~1,2 s de CPU del motor y termina con `badge_finish` (avisos y,
-  si queda cola, se vuelve a llamar). Cron: `20260929000890_insignias_cron_supabase.sql` (solo Supabase).
-- **Migraciones:** `…0800_insignias.sql` (premios, progreso, rareza, vitrina, aval, fusiones), `…0810_insignias_motor.sql`
+  si queda cola, se vuelve a llamar). Cron: `20260929001190_insignias_cron_supabase.sql` (solo Supabase).
+- **Migraciones:** `…1100_insignias.sql` (premios, progreso, rareza, vitrina, aval, fusiones), `…1110_insignias_motor.sql`
   (cola, triggers, foto de datos, aplicar, avisos, tarea diaria, historial y la consola del motor),
-  `…0820_insignias_creador.sql` (insignias que diseña y da la liga, reportes y palabras bloqueadas) y
-  `…0880_insignias_temporadas.sql` (solo si existe `public.seasons`, de la migración de temporadas).
+  `…1120_insignias_creador.sql` (insignias que diseña y da la liga, reportes y palabras bloqueadas) y
+  `…1180_insignias_temporadas.sql` (solo si existe `public.seasons`, de la migración de temporadas).
 - **Pantallas:** `src/badges/visual/` (el dibujo: `<Insignia>`, 5 metales, 7 formas, animación), `src/components/badges/`
   (vitrina del perfil, detalle, aviso al ganar y resumen del año, portada de la liga, página del evento, título
   vigente en la tabla, «Por confirmar», ajustes) y `src/components/badges/maker/` (el creador). Lo pesado (catálogo y

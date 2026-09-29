@@ -1,10 +1,10 @@
 -- MatchMate · Insignias: el motor (diseño en docs/insignias.md §3.1–§3.6 y §3.8). Los datos (badge_awards,
--- badge_progress, badge_stats y las RPC del jugador) están en 20260929000800_insignias.sql; lo de temporadas en
--- …0880 (se activa solo cuando existe public.seasons); el cron de Supabase en …0890.
+-- badge_progress, badge_stats y las RPC del jugador) están en 20260929001100_insignias.sql; lo de temporadas en
+-- …1180 (se activa solo cuando existe public.seasons); el cron de Supabase en …1190.
 --
 -- Cómo corre:
 --   cambios en resultados ──trigger──▶ private.badge_queue ◀── private.badges_daily (00:30 de Santo Domingo)
---   pg_cron (…0890) → private.cron_badges() → Edge Function `insignias` (pg_net, private.kick_badges):
+--   pg_cron (…1190) → private.cron_badges() → Edge Function `insignias` (pg_net, private.kick_badges):
 --     badge_claim → por trabajo: badge_snapshot → evaluate(job, snapshot) (motor puro, src/badges) → badge_apply
 --     (o badge_fail si el motor falló; badge_release si no alcanzó a correr) → badge_finish (avisos y, si queda
 --     cola, se vuelve a llamar).
@@ -31,7 +31,7 @@
 -- 7. RPC: badge_notices (la app: insignias sin ver y hazañas por confirmar) y badges_backfill (superadmin); para la
 --    Edge Function, solo service_role: badge_claim, badge_snapshot, badge_apply, badge_fail, badge_release y
 --    badge_finish.
--- 8. private.badge_signal (de …0800) ahora encola: 'merge' → 'vinculo', 'review' → el aviso del jugador.
+-- 8. private.badge_signal (de …1100) ahora encola: 'merge' → 'vinculo', 'review' → el aviso del jugador.
 -- 9. Tiempo real (private.emit_badges): 'badges' por user:<cuenta> cuando cambia algo de sus insignias (el aviso de
 --    desbloqueo sale en segundos) y por league:<liga> cuando cambia algo que se ve en la liga.
 -- 10. public.update_entry (misma firma): una marca nueva que valida un juego ('importado' o una foto) tiene que ser
@@ -655,7 +655,7 @@ create trigger events_badges_box after update of config on public.events
   for each row when (new.type = 'cajas' and old.config is distinct from new.config)
   execute function private.badges_on_box_month();
 
--- Aviso al motor desde 20260929000800_insignias.sql (misma firma): después de juntar dos jugadores se recalcula el
+-- Aviso al motor desde 20260929001100_insignias.sql (misma firma): después de juntar dos jugadores se recalcula el
 -- que quedó ('vinculo'); un aval confirmado avisa al jugador (su insignia ya está firme y sin avisar).
 create or replace function private.badge_signal(p_event text, p_league uuid, p_player uuid, p_award uuid) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -1006,7 +1006,7 @@ begin
 end $$;
 
 -- Temporadas de una liga ({seasons, season_awards}) con el contrato de public.seasons. Aquí no hay temporadas:
--- 20260929000880_insignias_temporadas.sql la redefine cuando existe public.seasons.
+-- 20260929001180_insignias_temporadas.sql la redefine cuando existe public.seasons.
 create function private.badge_season_rows(p_league uuid, p_season uuid, p_from date, p_to date) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 begin
@@ -2368,7 +2368,7 @@ exception when others then
   return false;
 end $$;
 
--- La tarea de cada 10 minutos (…0890): manda los avisos que tocan y, si hay trabajos vencidos, llama al motor.
+-- La tarea de cada 10 minutos (…1190): manda los avisos que tocan y, si hay trabajos vencidos, llama al motor.
 create function private.cron_badges(p_now timestamptz default now()) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -2635,7 +2635,7 @@ end $$;
 -- Por sentencia (una corrida del motor da muchas de una vez): un aviso por cuenta dueña ('user:<id>', cualquier
 -- cambio: nueva, firme, vista, oculta, retirada) y uno por liga ('league:<id>', solo lo que cambia lo que se ve en la
 -- liga: nuevas provisionales o firmes y cambios de estado, de oculta o de nivel; que el dueño la vea no avisa). El
--- payload solo lleva los ids y kind 'app' (las del creador, …0820, avisan 'diseno' o 'liga'): las pantallas vuelven a
+-- payload solo lleva los ids y kind 'app' (las del creador, …1120, avisan 'diseno' o 'liga'): las pantallas vuelven a
 -- leer con sus permisos.
 create function private.emit_badges() returns trigger
 language plpgsql security definer set search_path = '' as $$

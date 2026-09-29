@@ -44,9 +44,9 @@ export interface LeagueRow {
   tz: string;
   /** Falta en filas guardadas en el teléfono antes del logo. */
   logo_path?: string | null;
-  /** 20260929000800_insignias.sql. */
+  /** 20260929001100_insignias.sql. */
   badges_auto?: string;
-  /** 20260929000820_insignias_creador.sql. */
+  /** 20260929001120_insignias_creador.sql. */
   badge_makers?: string;
   created_at: string;
 }
@@ -58,7 +58,7 @@ export interface MembershipRow {
   is_scorer: boolean;
   display_name: string;
   player_id: string | null;
-  /** 20260929000820_insignias_creador.sql. */
+  /** 20260929001120_insignias_creador.sql. */
   badge_maker?: boolean;
 }
 

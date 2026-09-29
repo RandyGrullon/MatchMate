@@ -111,7 +111,7 @@ begin
     jsonb_build_object('id', (select id from public.entries where event_id = e_p1 and player_id = p_marta),
       'patch', jsonb_build_object('scores', jsonb_build_array(182, 176, 199), 'photos', jsonb_build_array('sin-foto', 'sin-foto', null)))));
   -- Pedro: juegos importados de BowlingX. 'importado' solo lo escribe el importador (directo a la tabla, con la clave
-  -- secreta); desde la app (update_entry) no se puede (…0810).
+  -- secreta); desde la app (update_entry) no se puede (…1110).
   update public.entries set scores = array[145, 150, 162]::smallint[], photos = array['importado', 'importado', 'importado']
    where event_id = e_p1 and player_id = p_pedro;
 

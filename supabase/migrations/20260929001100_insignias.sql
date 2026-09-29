@@ -1,12 +1,12 @@
 -- MatchMate · Insignias: los datos (diseño completo en docs/insignias.md, §3.2, §3.7 y §3.9). El motor va en
--- 20260929000810_insignias_motor.sql, el creador de insignias de liga en …0820 y lo de temporadas en …0880.
+-- 20260929001110_insignias_motor.sql, el creador de insignias de liga en …1120 y lo de temporadas en …1180.
 --
 -- 1. public.badge_awards: las insignias automáticas otorgadas. Una fila por dueño, key, deporte, nivel y periodo
 --    (la clave única incluye las revocadas, que el motor reactiva). Ámbito `liga` (y copia de respaldo de un jugador
 --    sin cuenta): player_id + league_id. Ámbito `cuenta`: user_id y league_id null. holder = el que la tiene.
 --    Estados 'provisional' (7 días, firm_at), 'firme', 'en_revision' (aval) y 'revocada' ('evidencia', 'aval',
 --    'fraude'). context guarda la evidencia (con el nombre de la liga copiado). Solo escribe el motor
---    (20260929000810_insignias_motor.sql) y las RPC de aquí; la app solo lee.
+--    (20260929001110_insignias_motor.sql) y las RPC de aquí; la app solo lee.
 -- 2. public.badge_progress: cuánto le falta a cada dueño para el siguiente nivel (solo lo ve el dueño).
 -- 3. public.badge_stats: la rareza medida cada noche (la leen todos, también sin cuenta).
 -- 4. leagues.badges_auto: 'todas' | 'sin_titulos' | 'ninguna'. Una liga con menores nace (o pasa a ser) 'sin_titulos';
@@ -15,7 +15,7 @@
 --    liga visible, provisionales o firmes y no ocultas (los admins de la liga ven también las ocultas); el
 --    superadmin, todas. Las de cuenta de otra persona solo salen por profile_badges.
 -- 6. RPC: profile_badges, set_featured_badges, set_badge_hidden, mark_badges_seen, set_badges_auto, review_badge
---    (aval) y super_revoke_badge. report_badge va con el creador (20260929000820), badges_backfill con el motor y
+--    (aval) y super_revoke_badge. report_badge va con el creador (20260929001120), badges_backfill con el motor y
 --    el cierre de temporada lo hace public.close_season (20260929000700_temporadas.sql).
 -- 7. Cambian (misma firma): private.merge_players (junta también las insignias de los dos jugadores al aprobar un
 --    reclamo, con private.merge_badges) y public.export_my_data (las tablas con `holder` salen por la cuenta y por
@@ -180,7 +180,7 @@ grant select on public.badge_progress to authenticated;
 -- Ayudas
 -- =====================================================================
 
--- Aviso al motor: aquí no hace nada. 20260929000810_insignias_motor.sql la redefine (misma firma) para encolar el
+-- Aviso al motor: aquí no hace nada. 20260929001110_insignias_motor.sql la redefine (misma firma) para encolar el
 -- trabajo que toca: 'merge' (p_player = el jugador que quedó al juntar dos) o 'review' (p_award confirmada).
 create function private.badge_signal(p_event text, p_league uuid, p_player uuid, p_award uuid) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -283,7 +283,7 @@ $$;
 -- pistas del boliche) y …0700 (temporadas: premios y tablas guardadas), que corren antes que esta. Para no pisar la
 -- que haya (y perder lo que mueven), aquí no se copia su cuerpo: la que existe pasa a llamarse
 -- private.merge_players_base y private.merge_players primero junta las insignias (private.merge_badges: badge_awards,
--- badge_progress y, desde …0820, league_badge_awards) y después llama a la base, que termina con el guardia del
+-- badge_progress y, desde …1120, league_badge_awards) y después llama a la base, que termina con el guardia del
 -- catálogo. Sin merge_badges, un jugador con insignias frena toda aprobación con 'conflicto: badge_awards'. Si la base
 -- falla ('conflicto: …'), no queda nada hecho (misma transacción). Un cambio a la unión de jugadores va en la base
 -- (create or replace function private.merge_players_base) en una migración posterior.
@@ -340,7 +340,7 @@ begin
     if r.col = 'player_id' and cardinality(v_players) = 0 then
       continue;
     end if;
-    -- Las insignias de la liga (…0820): el jugador ve las vigentes y su nota, nunca quién la dio ni por qué se la
+    -- Las insignias de la liga (…1120): el jugador ve las vigentes y su nota, nunca quién la dio ni por qué se la
     -- quitaron (eso es del dueño y los admins, §5.2), ni las retiradas.
     execute format(
       'select coalesce(jsonb_agg(to_jsonb(x) - $2), ''[]''::jsonb), count(*)::integer
@@ -628,7 +628,7 @@ end $$;
 -- Aval de una hazaña (§1.7.5, §3.4): un dueño o admin de la liga que no es el jugador ni compite en la evidencia
 -- (private.badge_can_review), o el superadmin. p_ok: pasa a 'firme' (el motor avisa al jugador); si no, 'revocada'
 -- con 'aval' (sin rastro público). Queda context.review {ok, at, by} (by = quien decidió: si después se vincula con
--- ese jugador, la hazaña vuelve a revisión, …0820). La nota (≤ 140) solo se guarda al rechazar (la ve el jugador en
+-- ese jugador, la hazaña vuelve a revisión, …1120). La nota (≤ 140) solo se guarda al rechazar (la ve el jugador en
 -- su lista): al aprobar, la fila queda firme y su context es público, así que la nota no se guarda (solo va a la
 -- auditoría del superadmin). Ya decidida: devuelve cómo quedó. Devuelve el estado.
 create function public.review_badge(p_award uuid, p_ok boolean, p_note text default null) returns text

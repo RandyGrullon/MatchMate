@@ -7,7 +7,7 @@ import { tags } from './keys';
 import { useTopic } from './topics';
 
 /**
- * El creador de insignias de la liga (docs/insignias.md §5; 20260929000820_insignias_creador.sql): los diseños de
+ * El creador de insignias de la liga (docs/insignias.md §5; 20260929001120_insignias_creador.sql): los diseños de
  * una liga, quién los tiene y lo que escriben las pantallas del creador. Todo por RPC; las lecturas directas solo
  * piden las columnas que la base deja ver (`note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` NO: salen
  * por `league_badge_holders`).

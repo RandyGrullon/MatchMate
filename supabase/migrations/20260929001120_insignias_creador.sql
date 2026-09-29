@@ -1,5 +1,5 @@
 -- MatchMate · Insignias: el creador de insignias de la liga (diseño completo en docs/insignias.md §5). Los datos de
--- las automáticas están en 20260929000800_insignias.sql y el motor en …0810.
+-- las automáticas están en 20260929001100_insignias.sql y el motor en …1110.
 --
 -- Las insignias de liga las diseña y las da una persona. Nunca cuentan para las oficiales (ni rareza, ni rankings, ni
 -- el total del perfil) y siempre dicen de qué liga son.
@@ -374,7 +374,7 @@ $$;
 -- Juntar jugadores: también las insignias de la liga
 -- =====================================================================
 
--- Igual que en 20260929000800_insignias.sql, y además league_badge_awards: si los dos jugadores tienen vigente la misma
+-- Igual que en 20260929001100_insignias.sql, y además league_badge_awards: si los dos jugadores tienen vigente la misma
 -- insignia, periodo y división, queda la más vieja y la otra se retira con 'fusión' (sin push); después todas pasan a
 -- p_into (las retiradas también: son historia).
 create or replace function private.merge_badges(p_from uuid, p_into uuid, p_league uuid) returns void
@@ -426,7 +426,7 @@ begin
                     and (o.awarded_at, o.id) < (f.awarded_at, f.id));
   update public.league_badge_awards x set player_id = p_into where x.player_id = p_from;
 
-  -- «Se vinculó él mismo» (…0810, §1.6) pasa al que queda: ese historial ahora está ahí.
+  -- «Se vinculó él mismo» (…1110, §1.6) pasa al que queda: ese historial ahora está ahí.
   insert into private.badge_self_links (player_id, user_id, created_at)
   select p_into, s.user_id, s.created_at from private.badge_self_links s where s.player_id = p_from
   on conflict (player_id) do nothing;
@@ -1266,7 +1266,7 @@ end $$;
 -- Perfil y avisos: también las del creador
 -- =====================================================================
 
--- Igual que en 20260929000800_insignias.sql, más leagueAwards (las del creador; nunca cuentan en el total) y
+-- Igual que en 20260929001100_insignias.sql, más leagueAwards (las del creador; nunca cuentan en el total) y
 -- leagueTruncated: [LeagueBadgeAward] (private.league_award_json), más nuevas primero, hasta 500.
 -- - Otra cuenta: vigentes y no ocultas, de ligas que pasan private.league_badges_public (6+ cuentas, 14+ días, la ve
 --   quien mira y sin menores); sin note ni seenAt.
@@ -1365,7 +1365,7 @@ begin
                             'truncated', v_n > c_max, 'leagueAwards', v_league, 'leagueTruncated', v_ln > c_league);
 end $$;
 
--- Igual que en 20260929000810_insignias_motor.sql, más las del creador sin ver (el aviso «Liga Los Pinos te dio una
+-- Igual que en 20260929001110_insignias_motor.sql, más las del creador sin ver (el aviso «Liga Los Pinos te dio una
 -- insignia», §6.4): leagueAwards [LeagueBadgeAward] (de sus jugadores, vigentes, sin ver, de diseños no escondidos),
 -- más nuevas primero, hasta p_limit, y leagueUnseen (cuántas hay). Se marcan con mark_league_badges_seen.
 create or replace function public.badge_notices(p_limit integer default 50) returns jsonb
@@ -1431,7 +1431,7 @@ begin
 end $$;
 
 -- =====================================================================
--- Tiempo real: el mismo aviso 'badges' que las automáticas (…0810, src/lib/data/topics.ts)
+-- Tiempo real: el mismo aviso 'badges' que las automáticas (…1110, src/lib/data/topics.ts)
 -- =====================================================================
 
 -- Por sentencia, solo con los ids ({op, ids, kind: 'diseno'|'liga'}): las pantallas vuelven a leer con sus permisos.

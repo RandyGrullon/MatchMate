@@ -6,7 +6,7 @@ import { tags } from './keys';
 import { useTopic } from './topics';
 
 /**
- * Insignias (docs/insignias.md §3.9 y §6; 20260929000800_insignias.sql y …0810_insignias_motor.sql): lo que leen y
+ * Insignias (docs/insignias.md §3.9 y §6; 20260929001100_insignias.sql y …1110_insignias_motor.sql): lo que leen y
  * escriben las pantallas. La app nunca escribe `badge_awards` directo: todo por RPC.
  *
  * Lecturas:
@@ -66,7 +66,7 @@ export interface ProfileBadges {
   awards: BadgeAward[];
   /** Había más de 1000: la lista viene cortada. */
   truncated: boolean;
-  /** Las del creador de insignias de sus ligas (20260929000820_insignias_creador.sql; nunca cuentan en el total). */
+  /** Las del creador de insignias de sus ligas (20260929001120_insignias_creador.sql; nunca cuentan en el total). */
   leagueAwards: LeagueBadgeAward[];
 }
 

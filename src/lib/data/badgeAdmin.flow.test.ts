@@ -5,7 +5,7 @@ import { openWorld, type TestWorld } from './testkit';
 
 /**
  * La consola › Insignias contra la base de verdad (PGlite con las migraciones): lo que mandan las pantallas llega a
- * las RPC del superadmin (20260929000810 y …0820) con los nombres y la forma que piden, y lo que vuelve se lee bien.
+ * las RPC del superadmin (20260929001110 y …1120) con los nombres y la forma que piden, y lo que vuelve se lee bien.
  */
 
 let w: TestWorld;

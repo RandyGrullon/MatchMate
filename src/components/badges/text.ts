@@ -1,6 +1,6 @@
 /**
  * Filtro de texto de las insignias de la liga en el teléfono (docs/insignias.md §5.7): la respuesta al instante
- * mientras se escribe. Repite las reglas de `private.badge_text_ok` (20260929000820_insignias_creador.sql) menos las
+ * mientras se escribe. Repite las reglas de `private.badge_text_ok` (20260929001120_insignias_creador.sql) menos las
  * palabras bloqueadas, que solo sabe el servidor: él decide al guardar ('texto_bloqueado').
  *
  * Un texto no se puede usar si:

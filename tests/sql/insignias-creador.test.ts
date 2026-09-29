@@ -1,5 +1,5 @@
 /**
- * Insignias, el creador de la liga (20260929000820_insignias_creador.sql, docs/insignias.md §5): quién diseña y da
+ * Insignias, el creador de la liga (20260929001120_insignias_creador.sql, docs/insignias.md §5): quién diseña y da
  * (política de la liga y «Diseña insignias»), los diseños (largos, íconos, filtro de texto, bloqueo después de darse,
  * 30 activos y 100 en total, 20 guardados por hora), dar (nunca a uno mismo, cupos Única/Selecta/Abierta por periodo y
  * división, por equipo, 15 por jugador al año, 60 por liga en 30 días, 60 por cuenta por hora, push), deshacer y

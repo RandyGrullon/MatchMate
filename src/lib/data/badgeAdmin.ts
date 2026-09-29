@@ -1,10 +1,10 @@
 /**
  * Consola del superadmin › Insignias (docs/insignias.md §6.6): reportes, palabras bloqueadas del creador, el motor
  * (cola, trabajos que ya no se toman, historial en seco y de verdad) y el retiro por fraude. CONTRATO con la base:
- * - 20260929000820_insignias_creador.sql: admin_badge_reports, admin_resolve_badge_reports, admin_blocked_terms,
+ * - 20260929001120_insignias_creador.sql: admin_badge_reports, admin_resolve_badge_reports, admin_blocked_terms,
  *   hide_league_badge (en leagueBadges.ts);
- * - 20260929000810_insignias_motor.sql: admin_badges_engine, admin_badge_jobs, badges_backfill;
- * - 20260929000800_insignias.sql: super_revoke_badge.
+ * - 20260929001110_insignias_motor.sql: admin_badges_engine, admin_badge_jobs, badges_backfill;
+ * - 20260929001100_insignias.sql: super_revoke_badge.
  * Las hazañas vencidas (14+ días o sin quién las confirme) llegan por `badge_notices` (useBadgeNotices, badges.ts).
  * Nada se guarda en el teléfono (`persist: false`), como el resto de la consola.
  */

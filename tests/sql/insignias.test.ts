@@ -1,5 +1,5 @@
 /**
- * Insignias, los datos (20260929000800_insignias.sql): badge_awards, badge_progress y badge_stats con su RLS, el modo
+ * Insignias, los datos (20260929001100_insignias.sql): badge_awards, badge_progress y badge_stats con su RLS, el modo
  * de insignias automáticas de la liga (menores: sin títulos), las destacadas del perfil, las RPC del jugador
  * (profile_badges, set_featured_badges, set_badge_hidden, mark_badges_seen), del dueño (set_badges_auto), el aval
  * (review_badge) y el retiro por fraude (super_revoke_badge). Además: aprobar un reclamo con insignias en los dos
@@ -378,7 +378,7 @@ describe('perfil (profile_badges)', () => {
     expect(await profile(w.u.extra, w.u.nuevo)).toBeNull();
     expect(await profile(w.u.extra, '00000000-0000-0000-0000-000000000000')).toBeNull();
     await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.luis, p_reason: 'x' });
-    // (leagueAwards y leagueTruncated: las del creador, de 20260929000820_insignias_creador.sql.)
+    // (leagueAwards y leagueTruncated: las del creador, de 20260929001120_insignias_creador.sql.)
     expect(await profile(w.u.otro, w.u.luis)).toEqual({
       userId: w.u.luis, isMe: false, featured: [], awards: [], truncated: false, leagueAwards: [], leagueTruncated: false,
     });

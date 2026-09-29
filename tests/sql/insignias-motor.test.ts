@@ -1,5 +1,5 @@
 /**
- * Insignias, el motor (20260929000810_insignias_motor.sql y 20260929000880_insignias_temporadas.sql): la cola y los
+ * Insignias, el motor (20260929001110_insignias_motor.sql y 20260929001180_insignias_temporadas.sql): la cola y los
  * triggers que la llenan, la foto de datos de cada trabajo (badge_snapshot), aplicar decisiones (badge_apply) con un
  * motor falso que devuelve decisiones fijas (idempotencia, reactivar, revocar provisionales, avales, progreso,
  * copias de respaldo, en seco), los avisos agrupados con horas tranquilas, la tarea diaria, la rareza, las RPC de la
@@ -17,7 +17,7 @@ import { entry, event, league, makeWorld, member, player, type World } from './f
 import { DEMO_COURSE } from '../../src/sports/golf/demo';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SEASONS_SQL = readFileSync(join(ROOT, 'supabase', 'migrations', '20260929000880_insignias_temporadas.sql'), 'utf8');
+const SEASONS_SQL = readFileSync(join(ROOT, 'supabase', 'migrations', '20260929001180_insignias_temporadas.sql'), 'utf8');
 
 let db: TestDb;
 let w: World;
@@ -1314,7 +1314,7 @@ describe('la Edge Function (service_role) de punta a punta con un motor falso', 
   });
 });
 
-describe('temporadas (20260929000880, solo cuando existe public.seasons)', () => {
+describe('temporadas (20260929001180, solo cuando existe public.seasons)', () => {
   it('sin public.seasons no hace nada; con el contrato de temporadas, cerrar una encola «temporada» y la foto trae sus premios', async () => {
     expect(await db.admin(`select to_regclass('public.seasons') is null as none`)).toEqual([{ none: true }]);
     expect(await db.admin(`select private.badge_season_rows(null, null, null, null) as r`)).toEqual([{ r: {} }]);

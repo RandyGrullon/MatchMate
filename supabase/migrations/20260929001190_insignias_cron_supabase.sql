@@ -1,6 +1,6 @@
 -- MatchMate · Insignias · Solo Supabase (el cargador de PGlite salta los archivos que terminan en _supabase.sql).
 -- Programa el motor de las insignias (docs/insignias.md §3.1). Las funciones que corren están en
--- 20260929000810_insignias_motor.sql (con pruebas en PGlite); aquí solo se programan, con pg_cron como
+-- 20260929001110_insignias_motor.sql (con pruebas en PGlite); aquí solo se programan, con pg_cron como
 -- 20260926001300_cron_supabase.sql:
 --
 -- - mm-insignias, cada 10 minutos: private.cron_badges() manda los avisos agrupados que ya tocan
