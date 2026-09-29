@@ -21,7 +21,7 @@ import { WeekAgenda } from '../components/home/WeekAgenda';
 import { NotificationsPrompt } from '../components/NotificationsOptIn';
 import { AppShell } from '../components/Shell';
 import { Tour } from '../components/Tour';
-import { ListSkeleton, Loading } from '../components/ui';
+import { ListSkeleton, LoadError, Loading } from '../components/ui';
 
 /** Ligas públicas del deporte que se muestran aquí (el resto, en Eventos). */
 const PUBLIC_SHOWN = 5;
@@ -44,13 +44,14 @@ function SportHome({ sport }: { sport: SportId }) {
   const sportStatus = useSportStatus(auth.isSuper);
   const mine = useMyLeagues(sport);
   const act = useActivity(mine.leagues, mine.uid);
-  const publics = usePublicLeagues();
+  // Las públicas de este deporte, las más activas primero (el listado ya viene del deporte).
+  const publics = usePublicLeagues({ sport });
   const create = useCreateMenu();
 
   // Por si se llega sin pasar por la ruta (la ruta ya lo hace antes de pintar): la app queda en este deporte.
   useEffect(() => setActiveSport(sport), [sport]);
 
-  // Públicas de este deporte en las que no estoy.
+  // Públicas de este deporte en las que no estoy (en el orden del listado).
   const joinable = useMemo(() => {
     const mineIds = new Set(mine.all.map((l) => l.id));
     return publics.data.filter(inSport(sport)).filter((l) => !mineIds.has(l.id));
@@ -119,6 +120,9 @@ function SportHome({ sport }: { sport: SportId }) {
         >
           {publics.loading && !publics.data.length ? (
             <ListSkeleton rows={2} />
+          ) : publics.error && !publics.data.length ? (
+            // Sin señal o muchas visitas seguidas sin cuenta: no es que no haya ligas.
+            <LoadError error={publics.error} />
           ) : (
             <PublicLeagues
               leagues={joinable}

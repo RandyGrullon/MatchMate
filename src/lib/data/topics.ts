@@ -3,6 +3,7 @@ import type { Backend, RealtimeMessage } from '../backend/types';
 import { watchTopic } from '../db/query';
 import { backend, getUserId, invalidate, queryClient } from './client';
 import { keys, tags } from './keys';
+import { laneTags } from './lanes';
 import { liveId } from './rows';
 import type { LiveScore } from '../types';
 import type { Wire } from './stamp';
@@ -49,6 +50,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'entries') return invalidate(tags.eventEntries(id), ...(lid ? [tags.entries(lid)] : []));
     if (msg.event === 'submissions') return invalidate(tags.eventSubs(id), ...(lid ? [tags.subs(lid)] : []));
     if (msg.event === 'rsvps') return invalidate(tags.event(id));
+    // Pistas del boliche.
+    if (msg.event === 'lanes') return invalidate(laneTags.event(id));
   } else if (kind === 'league') {
     if (msg.event === 'events') return invalidate(tags.events(id));
     if (msg.event === 'announcements') return invalidate(`announcements:${id}`);
@@ -67,7 +70,7 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
 /** Sin tiempo real: lo que se vuelve a leer cada 15–20 s. */
 function poll(topic: string) {
   const [kind, id] = [topic.slice(0, topic.indexOf(':')), topic.slice(topic.indexOf(':') + 1)];
-  if (kind === 'event') invalidate(tags.live(id), tags.eventEntries(id), tags.eventSubs(id), tags.event(id));
+  if (kind === 'event') invalidate(tags.live(id), tags.eventEntries(id), tags.eventSubs(id), tags.event(id), laneTags.event(id));
   else if (kind === 'league') invalidate(tags.events(id), tags.subs(id), `announcements:${id}`);
   else if (kind === 'user') invalidate(tags.feeds);
 }

@@ -38,6 +38,35 @@ export function searchPlayers<T extends Pick<Player, 'name'>>(players: readonly 
 /** Con cuántos jugadores libres vale la pena el buscador. */
 export const PICKER_SEARCH_FROM = 8;
 
+/** Lo que useJoinFlow necesita saber de a qué liga se une (el resto de JoinTarget es para la pantalla). */
+export interface JoinStepTarget {
+  lid: string;
+  prefer?: string | null;
+  next?: string;
+  signUp?: boolean;
+}
+
+/**
+ * El paso siguiente de «Unirme» (el mismo desde todas partes): sin cuenta, `login` (a entrar o crear la cuenta y
+ * volver a `next`); si ya dijo quién es (`prefer`), `join` con ese sin preguntar; si todavía no se leyeron los
+ * jugadores, `load`; si la liga tiene jugadores sin cuenta, `ask` («¿Quién eres?», con el que parece ser marcado);
+ * si no, `join` como alguien nuevo (null).
+ */
+export type JoinStep =
+  | { step: 'login'; url: string }
+  | { step: 'join'; choice: string | null }
+  | { step: 'load' }
+  | { step: 'ask'; free: Player[]; initial: string | null };
+
+export function joinStep(t: JoinStepTarget, players: readonly Player[] | undefined, me: { signedIn: boolean; name?: string | null }): JoinStep {
+  if (!me.signedIn) return { step: 'login', url: `/login?${t.signUp ? 'modo=registro&' : ''}next=${encodeURIComponent(t.next ?? `/l/${t.lid}`)}` };
+  if (t.prefer) return { step: 'join', choice: t.prefer };
+  if (!players) return { step: 'load' };
+  const free = freePlayers(players);
+  if (!free.length) return { step: 'join', choice: null };
+  return { step: 'ask', free, initial: guessPlayer(free, me.name) };
+}
+
 // ---------- Inicio de la liga ----------
 
 /** ¿La ruta es el inicio de la liga (`/l/<id>`)? Ahí van la portada, el aviso y los datos de la liga. */
@@ -183,11 +212,15 @@ export interface AdminTabLike {
   key: string;
 }
 
+/** Pestañas generales que van primero en todos los deportes: «Pendientes» (lo que espera por el admin). */
+export const FIRST_TABS: ReadonlySet<string> = new Set(['pendientes']);
+
 /**
- * El orden de las pestañas del Admin. El boliche, como siempre (las generales; abre en «Jugadores»). Los otros
- * deportes: primero las suyas (la clave para arrancar: Equipos, Campos, Nadadores, Parejas) y abre en la primera;
- * después las generales. Una del deporte con la misma clave que una general la reemplaza en su lugar. Si el deporte
- * tiene su propia pestaña de gente, la general «Jugadores» no sale (lo de vincular cuentas pasa a Miembros).
+ * El orden de las pestañas del Admin. Primero «Pendientes» (si viene), en todos los deportes, y abre ahí. Después,
+ * el boliche como siempre (las generales). Los otros deportes: primero las suyas (la clave para arrancar: Equipos,
+ * Campos, Nadadores, Parejas) y después las generales. Sin «Pendientes», abre en la primera. Una del deporte con la
+ * misma clave que una general la reemplaza en su lugar. Si el deporte tiene su propia pestaña de gente, la general
+ * «Jugadores» no sale (lo de vincular cuentas pasa a Miembros).
  */
 export function arrangeAdminTabs<T extends AdminTabLike>(
   generic: readonly T[],
@@ -195,13 +228,15 @@ export function arrangeAdminTabs<T extends AdminTabLike>(
   bowling: boolean,
 ): { tabs: T[]; defaultKey: string; playersMerged: boolean } {
   const replaced = generic.map((t) => sport.find((x) => x.key === t.key) ?? t);
+  const first = replaced.filter((t) => FIRST_TABS.has(t.key));
+  const rest = replaced.filter((t) => !FIRST_TABS.has(t.key));
   const own = sport.filter((x) => !generic.some((t) => t.key === x.key));
   if (bowling) {
-    const tabs = [...replaced, ...own];
+    const tabs = [...first, ...rest, ...own];
     return { tabs, defaultKey: tabs[0]?.key ?? 'jugadores', playersMerged: false };
   }
   const playersMerged = own.some((t) => PEOPLE_TABS.has(t.key)) && !sport.some((x) => x.key === 'jugadores');
-  const tabs = [...own, ...replaced.filter((t) => !(playersMerged && t.key === 'jugadores'))];
+  const tabs = [...first, ...own, ...rest.filter((t) => !(playersMerged && t.key === 'jugadores'))];
   return { tabs, defaultKey: tabs[0]?.key ?? 'jugadores', playersMerged };
 }
 

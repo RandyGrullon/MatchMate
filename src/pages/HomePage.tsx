@@ -24,7 +24,7 @@ import { Welcome } from '../components/home/Welcome';
 import { NotificationsPrompt } from '../components/NotificationsOptIn';
 import { AppShell } from '../components/Shell';
 import { Tour } from '../components/Tour';
-import { ListSkeleton, Loading } from '../components/ui';
+import { ListSkeleton, LoadError, Loading } from '../components/ui';
 
 /** Ligas públicas que se muestran en la portada sin cuenta. */
 const WELCOME_PUBLIC = 5;
@@ -67,6 +67,9 @@ export default function HomePage() {
           <Section title="Ligas públicas" icon={<Compass className="size-4" aria-hidden="true" />} action={<SectionLink to="/ligas">Ver todas</SectionLink>}>
             {publics.loading && !publics.data.length ? (
               <ListSkeleton rows={3} />
+            ) : publics.error && !publics.data.length ? (
+              // Sin señal o muchas visitas seguidas sin cuenta: no es que no haya ligas.
+              <LoadError error={publics.error} />
             ) : (
               <PublicLeagues
                 leagues={publics.data}

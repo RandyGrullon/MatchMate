@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { displayName, useAuth } from '../../lib/auth';
+import { useAuth } from '../../lib/auth';
 import { isMatchSport, myMatchesSince, nextMatch, upcomingCalendar, type CalendarItem, type NextMatchInfo } from '../../lib/calendar';
-import { joinLeague, useLeaguesByIds, useMyMemberships, type Live } from '../../lib/data';
+import { useLeaguesByIds, useMyMemberships, type Live } from '../../lib/data';
 import { useLiveMatches, useMyMatches, type Match } from '../../lib/data/matches';
 import { toIsoDate } from '../../lib/format';
 import { liveGames, liveMatches, type LiveGame, type LiveMatchItem } from '../../lib/live';
@@ -10,7 +10,7 @@ import { inSport } from '../../lib/sportContext';
 import type { League, Member } from '../../lib/types';
 import { useNow } from '../../lib/useNow';
 import { leagueSport } from '../../sports/registry';
-import { useAction } from '../feedback';
+import { useJoinFlow } from '../league/WhoAreYou';
 import { useNotifications } from '../Notifications';
 import { nextByLeague, nextEventItem, pickNextUp, type NextUp } from './logic';
 
@@ -106,27 +106,15 @@ export function useActivity(leagues: League[], uid: string | undefined): Activit
   }, [allFeeds, mineLive.data, mineLive.loading, live.data, leagues, now, today, uid]);
 }
 
-/** «Unirme» a una liga pública: sin cuenta va a entrar; si sale bien, a la liga. */
-export function useJoin(): { joining: string | null; join: (l: League) => Promise<void> } {
-  const auth = useAuth();
+/**
+ * «Unirme» a una liga pública desde una lista: sin cuenta va a entrar; si la liga tiene jugadores sin cuenta, primero
+ * «¿Quién eres?» (el mismo camino que la tarjeta de la liga: useJoinFlow); si sale bien, a la liga. `modal` va una
+ * vez en la pantalla de la lista.
+ */
+export function useJoin(): { joining: string | null; join: (l: League) => Promise<void>; modal: ReactNode } {
   const navigate = useNavigate();
-  const run = useAction();
-  const [joining, setJoining] = useState<string | null>(null);
-  const join = useCallback(
-    async (l: League) => {
-      if (!auth.user) {
-        navigate(`/login?next=${encodeURIComponent(`/l/${l.id}`)}`);
-        return;
-      }
-      setJoining(l.id);
-      const ok = await run(async () => {
-        await joinLeague(l.id, { uid: auth.user!.uid, name: displayName(auth) }, null);
-        return true;
-      }, `Te uniste a ${l.name}`);
-      setJoining(null);
-      if (ok) navigate(`/l/${l.id}`);
-    },
-    [auth, navigate, run],
-  );
-  return { joining, join };
+  const flow = useJoinFlow((t) => navigate(`/l/${t.lid}`));
+  const { start } = flow;
+  const join = useCallback((l: League) => start({ lid: l.id, name: l.name, sport: l.sport, kind: l.kind }), [start]);
+  return { joining: flow.busy, join, modal: flow.modal };
 }

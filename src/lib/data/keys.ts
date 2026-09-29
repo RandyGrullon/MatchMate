@@ -15,7 +15,8 @@ export const sortedKey = (ids: readonly string[]) => [...ids].sort().join(',');
 
 export const keys = {
   league: (lid: string) => `league:${lid}`,
-  publicLeagues: 'leagues:public',
+  /** Listado de ligas públicas (public_leagues_feed): deporte ('*' = todos), cuántas y lo buscado (ya normalizado). */
+  publicLeagues: (sport: string | null, limit: number, query: string) => `leagues:public:${sport ?? '*'}:${limit}:${query}`,
   allLeagues: 'leagues:all',
   leaguesByIds: (ids: readonly string[]) => `leagues:ids:${sortedKey(ids)}`,
   invite: (lid: string) => `invite:${lid}`,

@@ -1,11 +1,18 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router';
 import { Check, Clock, Search, UserPlus } from 'lucide-react';
+import { displayName, useAuth } from '../../lib/auth';
+import { joinLeagueClaim } from '../../lib/data/leagues';
+import { fetchPlayers } from '../../lib/data/players';
+import type { LeagueKind, Player } from '../../lib/types';
 import type { UnitPair } from '../../sports/registry';
 import { Avatar } from '../Avatar';
+import { joinClaimMessage } from '../claims/logic';
+import { useAction, useFeedback } from '../feedback';
 import { Badge, Button, Input, Modal, cx } from '../ui';
-import { PICKER_SEARCH_FROM, searchPlayers } from './logic';
+import { PICKER_SEARCH_FROM, joinLabel, joinStep, peopleWord, searchPlayers } from './logic';
 
-export { joinClaimMessage } from '../claims/logic';
+export { joinClaimMessage };
 
 export interface PickablePlayer {
   id: string;
@@ -146,4 +153,102 @@ export function WhoAreYouModal({
       <WhoAreYouList players={players} value={value} onChange={setValue} people={people} />
     </Modal>
   );
+}
+
+// ---------- «Unirme» desde cualquier lado ----------
+
+/** A qué liga se une la cuenta. */
+export interface JoinTarget {
+  lid: string;
+  name: string;
+  sport?: string | null;
+  kind?: LeagueKind;
+  /** Los jugadores de la liga, si ya están leídos (si no, se leen al tocar «Unirme»). */
+  players?: readonly Player[];
+  /** El jugador que ya dijo ser (p. ej. «¿Eres tú?» en su página): se une pidiendo ese, sin preguntar. */
+  prefer?: string | null;
+  /** Adónde vuelve después de entrar o crear la cuenta (por defecto, la liga). */
+  next?: string;
+  /** Sin cuenta: a crear la cuenta (true) o a entrar. */
+  signUp?: boolean;
+}
+
+export interface JoinFlow {
+  /** La liga a la que se está uniendo (o leyendo sus jugadores), o null. */
+  busy: string | null;
+  start: (target: JoinTarget) => Promise<void>;
+  /** El «¿Quién eres?»: va una vez en la pantalla que usa el flujo. */
+  modal: ReactNode;
+}
+
+/**
+ * «Unirme» por el mismo camino desde todas partes (la tarjeta de la liga, el aviso del boliche, «Mis juegos» y las
+ * listas de ligas públicas): sin cuenta, a entrar y volver; si la liga tiene jugadores sin cuenta (los que el admin
+ * anotó), primero «¿Quién eres?» para no quedar dos veces en la tabla; después join_league (con el pedido del
+ * jugador elegido) y el aviso de cómo quedó. `onJoined`: después de unirse (p. ej. abrir la liga).
+ */
+export function useJoinFlow(onJoined?: (target: JoinTarget, r: { playerId: string | null; claimId: string | null }) => void): JoinFlow {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const run = useAction();
+  const { toast } = useFeedback();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [asking, setAsking] = useState<{ target: JoinTarget; free: Player[]; initial: WhoChoice } | null>(null);
+  const joined = useRef(onJoined);
+  joined.current = onJoined;
+
+  const join = useCallback(
+    async (t: JoinTarget, choice: WhoChoice, free: readonly PickablePlayer[]) => {
+      if (!auth.user) return;
+      setBusy(t.lid);
+      const r = await run(() => joinLeagueClaim(t.lid, { uid: auth.user!.uid, name: displayName(auth) }, null, choice), `Te uniste a ${t.name}`);
+      setBusy(null);
+      if (r === undefined) return;
+      setAsking(null);
+      const said = joinClaimMessage(choice, free.find((p) => p.id === choice)?.name ?? null, r.playerId, r.claimId);
+      if (said) toast(said);
+      joined.current?.(t, r);
+    },
+    [auth, run, toast],
+  );
+
+  const start = useCallback(
+    async (t: JoinTarget) => {
+      const me = { signedIn: !!auth.user, name: auth.user ? displayName(auth) : null };
+      let next = joinStep(t, t.players, me);
+      if (next.step === 'load') {
+        setBusy(t.lid);
+        try {
+          next = joinStep(t, await fetchPlayers(t.lid), me);
+        } catch (e) {
+          console.error(e);
+          toast('No se pudo abrir la lista de la liga. Prueba otra vez.', 'error');
+          return;
+        } finally {
+          setBusy(null);
+        }
+      }
+      if (next.step === 'login') navigate(next.url);
+      else if (next.step === 'join') await join(t, next.choice, []);
+      else if (next.step === 'ask') setAsking({ target: t, free: next.free, initial: next.initial });
+    },
+    [auth, navigate, join, toast],
+  );
+
+  const target = asking?.target;
+  const modal = (
+    <WhoAreYouModal
+      open={!!asking}
+      onClose={() => setAsking(null)}
+      players={asking?.free ?? []}
+      initial={asking?.initial ?? null}
+      busy={!!target && busy === target.lid}
+      joinText={joinLabel(target?.kind)}
+      people={peopleWord(target?.sport)}
+      onJoin={(choice) => {
+        if (asking) void join(asking.target, choice, asking.free);
+      }}
+    />
+  );
+  return { busy, start, modal };
 }

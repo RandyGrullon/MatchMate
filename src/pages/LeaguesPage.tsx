@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { CalendarClock, Globe, Layers, Shield, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { usePublicLeagues } from '../lib/data';
+import { PUBLIC_FEED_MAX, usePublicLeagues } from '../lib/data/leagues';
 import { inSport, setActiveSport, useActiveSport } from '../lib/sportContext';
 import { SPORTS } from '../sports/registry';
 import { SportChips, useSportFilter } from './sports/SportBits';
@@ -27,15 +27,18 @@ import type { League, Member } from '../lib/types';
 export default function LeaguesPage() {
   const auth = useAuth();
   const active = useActiveSport();
-  const pub = usePublicLeagues();
+  // Las públicas de todos los deportes (para los chips) y las del deporte elegido (la lista; la misma consulta si no
+  // hay deporte), las más activas primero.
+  const pubAll = usePublicLeagues({ limit: PUBLIC_FEED_MAX });
 
   // Chips solo en «Todos los deportes» y si hay de más de un deporte (el filtro vive en ?deporte=).
   const mine = useMyLeagues(null);
-  const sports = filterSports(mine.all, pub.data);
+  const sports = filterSports(mine.all, pubAll.data);
   const multi = sports.length > 1;
   const [chip, setChip] = useSportFilter(!active && multi ? sports : []);
   const sport: string | null = active ?? chip;
   const showSport = !sport && multi;
+  const pub = usePublicLeagues({ sport, limit: PUBLIC_FEED_MAX });
 
   // Mis ligas del deporte (o todas): misma lista mientras no cambie, para no recalcular lo que viene en cada pintada.
   const leagues = useMemo(() => mine.all.filter(inSport(sport)), [mine.all, sport]);
@@ -108,10 +111,18 @@ export default function LeaguesPage() {
         <Section title="Públicas para unirte" icon={<Globe className="size-4" />}>
           {pub.error ? (
             <LoadError error={pub.error} />
-          ) : pub.loading || mine.loading ? (
+          ) : (pub.loading && !pub.data.length) || mine.loading ? (
             <ListSkeleton rows={3} />
           ) : (
-            <PublicLeagues leagues={toJoin} today={act.today} showSport={showSport} search emptyText={publicEmptyText({ sport, inSportTotal })} />
+            <PublicLeagues
+              leagues={toJoin}
+              today={act.today}
+              showSport={showSport}
+              search
+              sport={sport}
+              exclude={isMine}
+              emptyText={publicEmptyText({ sport, inSportTotal })}
+            />
           )}
         </Section>
 
