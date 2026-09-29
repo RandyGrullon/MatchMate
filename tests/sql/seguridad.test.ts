@@ -62,6 +62,8 @@ const RPC_AUTHENTICATED = [
   // @usuario, buscar personas e invitaciones a una liga.
   'set_username', 'username_status', 'search_people', 'invite_to_league', 'respond_league_invite', 'cancel_league_invite',
   'my_league_invites', 'league_invite_details',
+  // Juegos sueltos del boliche y el logo de la liga.
+  'save_solo_session', 'delete_solo_session', 'solo_sessions_of', 'begin_logo_upload', 'set_league_logo',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
@@ -197,7 +199,10 @@ describe('nada abierto por accidente', () => {
     );
     expect(rows).toEqual([
       { who: 'anon', fn: 'readable_leagues' },
-      ...['admin_leagues', 'can_upload_photo_path', 'is_super', 'my_leagues', 'photo_admin_leagues', 'readable_leagues'].map((fn) => ({
+      ...[
+        'admin_leagues', 'can_remove_logo_path', 'can_upload_logo_path', 'can_upload_photo_path', 'is_super', 'my_leagues',
+        'photo_admin_leagues', 'readable_leagues',
+      ].map((fn) => ({
         who: 'authenticated',
         fn,
       })),

@@ -13,8 +13,9 @@ begin;
 -- add_practice_game, en vivo, envíos sin foto, aprobar y rechazar, lo que lee el ranking, el reclamo «ese jugador
 -- sin cuenta soy yo» que aprueba el dueño), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
--- natación (lo mínimo), league_announce, bloqueo de cuentas, la consola del superadmin y los permisos que TIENEN
--- que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
+-- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, juegos sueltos y
+-- el logo de la liga, la consola del superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una
+-- liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -109,7 +110,7 @@ declare
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
-    '20260929000200'];
+    '20260929000200', '20260929000300', '20260929000310'];
   v_missing text[];
   v_bowling text;
 begin
@@ -573,7 +574,7 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 
 -- =====================================================================================================================
--- 3. Ligas de otros deportes (en beta solo las crea el superadmin)
+-- 3. Ligas de otros deportes (las crea el superadmin de la prueba: si alguno está en beta, solo él puede)
 -- =====================================================================================================================
 select set_config('request.jwt.claims', pg_temp.jwt('super'), true);
 set local role authenticated;
@@ -1303,6 +1304,149 @@ begin
   assert (select i.status from public.league_invites i where i.id = v_id) = 'accepted', 'FAIL invitaciones: la invitación no quedó aceptada';
   assert public.respond_league_invite(p_invite => v_id, p_accept => false) ->> 'status' = 'accepted', 'FAIL invitaciones: responder otra vez';
   perform pg_temp.ok('invitaciones: Beto ve la invitación (my_league_invites, league_invite_details), la acepta y queda en la liga');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9d. Juegos sueltos del boliche y el logo de la liga (todo se deshace con el ROLLBACK)
+-- =====================================================================================================================
+
+-- 9d.1 Ana anota un juego suelto (idempotente con p_op_id), lo corrige y anota otro que no sale en su perfil.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_op uuid := gen_random_uuid();
+  v_today date := (now() at time zone 'America/Santo_Domingo')::date;
+  v_id uuid;
+  v_hidden uuid;
+  r jsonb;
+begin
+  v_id := public.save_solo_session(p_id => gen_random_uuid(), p_played_on => v_today, p_scores => '[180, 200]'::jsonb,
+                                   p_venue => ' Bolera Smoke ', p_op_id => v_op);
+  assert public.save_solo_session(p_id => gen_random_uuid(), p_played_on => v_today, p_scores => '[100]'::jsonb, p_op_id => v_op) = v_id,
+    'FAIL sueltos: reintentar con el mismo p_op_id no devuelve el mismo juego';
+  assert (select count(*) from public.solo_sessions s where s.user_id = pg_temp.id('u_ana')) = 1, 'FAIL sueltos: el reintento creó otro';
+  perform public.save_solo_session(p_id => v_id, p_played_on => v_today - 1, p_scores => '[180, 210]'::jsonb, p_venue => 'Bolera Smoke',
+                                   p_frames => '{"0": {"rolls": [10]}}'::jsonb);
+  v_hidden := public.save_solo_session(p_id => null, p_played_on => v_today, p_scores => '[150]'::jsonb, p_shared => false);
+  r := public.solo_sessions_of();
+  assert jsonb_array_length(r) = 2 and r -> 1 ->> 'id' = v_id::text and r -> 1 -> 'scores' = '[180, 210]'::jsonb
+     and r -> 1 ->> 'venue' = 'Bolera Smoke' and r -> 0 ->> 'id' = v_hidden::text and not (r -> 0 ->> 'shared')::boolean,
+    format('FAIL sueltos: solo_sessions_of %s', r);
+  perform pg_temp.put('solo_ana', v_id::text);
+  perform pg_temp.put('solo_ana_hidden', v_hidden::text);
+  perform pg_temp.ok('sueltos: Ana anota un juego suelto (idempotente con p_op_id), lo corrige y otro que no sale en su perfil');
+  perform pg_temp.must_fail('sueltos: un juego de 301 pinos no se guarda',
+    format('select public.save_solo_session(p_id => null, p_played_on => %L, p_scores => %L)', v_today, '[301]'), array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9d.2 El dueño ve solo el compartido de Ana (también en su perfil) y le da me gusta; no lo cambia ni lo borra.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  g jsonb;
+begin
+  r := public.solo_sessions_of(p_user => pg_temp.id('u_ana'));
+  assert jsonb_array_length(r) = 1 and r -> 0 ->> 'id' = pg_temp.val('solo_ana'), format('FAIL sueltos: el dueño ve %s', r);
+  assert (select count(*) from public.solo_sessions) = 0, 'FAIL sueltos: el dueño lee directo los juegos sueltos de Ana';
+  g := public.profile_games(p_user => pg_temp.id('u_ana'), p_sport => 'bowling');
+  assert exists (select 1 from jsonb_array_elements(g) x
+                  where x ->> 'kind' = 'solo' and x ->> 'id' = pg_temp.val('solo_ana') and x ->> 'leagueId' is null
+                    and x ->> 'url' is null and (x -> 'detail' ->> 'series')::integer = 390),
+    format('FAIL sueltos: profile_games sin el juego suelto (%s)', g);
+  assert not exists (select 1 from jsonb_array_elements(g) x where x ->> 'id' = pg_temp.val('solo_ana_hidden')),
+    'FAIL sueltos: sale en el perfil uno que no es compartido';
+  r := public.set_game_like(p_kind => 'solo', p_id => pg_temp.id('solo_ana'), p_liked => true);
+  assert (r ->> 'liked')::boolean and (r ->> 'likes')::integer = 1, format('FAIL sueltos: set_game_like %s', r);
+  perform pg_temp.ok('sueltos: el dueño ve solo el compartido de Ana (solo_sessions_of, profile_games) y le da me gusta');
+  perform pg_temp.must_fail('sueltos: nadie cambia el juego suelto de otra cuenta',
+    format('select public.save_solo_session(p_id => %L, p_played_on => current_date, p_scores => %L)', pg_temp.val('solo_ana'), '[300]'),
+    array['no_permitido']);
+  perform pg_temp.must_fail('sueltos: nadie borra el juego suelto de otra cuenta',
+    format('select public.delete_solo_session(p_id => %L)', pg_temp.val('solo_ana')), array['no_permitido']);
+  perform pg_temp.must_fail('sueltos: no se le da me gusta a uno que no es compartido',
+    format('select public.set_game_like(p_kind => %L, p_id => %L, p_liked => true)', 'solo', pg_temp.val('solo_ana_hidden')),
+    array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9d.3 Ana ve el aviso del me gusta y borra sus juegos sueltos.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb := public.social_notices();
+begin
+  assert exists (select 1 from jsonb_array_elements(r) x
+                  where x ->> 'kind' = 'like' and x ->> 'gameKind' = 'solo' and x ->> 'id' = pg_temp.val('solo_ana')
+                    and x ->> 'userId' = pg_temp.val('u_owner')),
+    format('FAIL sueltos: social_notices sin el me gusta del juego suelto (%s)', r);
+  perform public.delete_solo_session(p_id => pg_temp.id('solo_ana'));
+  perform public.delete_solo_session(p_id => pg_temp.id('solo_ana_hidden'));
+  assert public.solo_sessions_of() = '[]'::jsonb, 'FAIL sueltos: quedaron juegos sueltos después de borrarlos';
+  assert (select count(*) from public.solo_likes l where l.session_id = pg_temp.id('solo_ana')) = 0, 'FAIL sueltos: quedó el me gusta';
+  perform pg_temp.ok('sueltos: Ana ve el aviso del me gusta (social_notices) y borra sus juegos sueltos (con sus me gusta)');
+  perform pg_temp.must_fail('sueltos: un guardado viejo (la cola de otro teléfono) no revive el juego borrado',
+    format('select public.save_solo_session(p_id => %L, p_played_on => current_date, p_scores => %L)', pg_temp.val('solo_ana'), '[200]'),
+    array['no_existe']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9d.4 El dueño reserva, pone y cambia el logo de su liga (begin_logo_upload, set_league_logo); sale en la invitación.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v_a text := pg_temp.val('bowl') || '/' || gen_random_uuid()::text || '.webp';
+  v_b text := pg_temp.val('bowl') || '/' || gen_random_uuid()::text || '.jpg';
+begin
+  assert not private.can_upload_logo_path(p_path => v_a), 'FAIL logo: se puede subir el logo sin reservar la ruta';
+  perform public.begin_logo_upload(p_league => pg_temp.id('bowl'), p_path => v_a);
+  perform public.begin_logo_upload(p_league => pg_temp.id('bowl'), p_path => v_b);
+  assert private.can_upload_logo_path(p_path => v_a), 'FAIL logo: el dueño no puede subir el logo que reservó (can_upload_logo_path)';
+  assert public.set_league_logo(p_league => pg_temp.id('bowl'), p_path => v_a) is null, 'FAIL logo: el primero devolvió algo';
+  assert public.set_league_logo(p_league => pg_temp.id('bowl'), p_path => v_b) = v_a, 'FAIL logo: no devolvió el anterior';
+  assert private.can_remove_logo_path(p_path => v_a), 'FAIL logo: el anterior no se puede borrar de Storage';
+  assert (select l.logo_path from public.leagues l where l.id = pg_temp.id('bowl')) = v_b, 'FAIL logo: la liga no quedó con el logo';
+  assert (select x.logo_path from public.invite_preview(p_code => pg_temp.val('bowl_code')) x) = v_b, 'FAIL logo: invite_preview sin el logo';
+  assert public.invite_details(p_code => pg_temp.val('bowl_code')) ->> 'logoPath' = v_b, 'FAIL logo: invite_details sin el logo';
+  perform pg_temp.put('bowl_logo', v_b);
+  perform pg_temp.ok('logo: el dueño pone y cambia el logo (set_league_logo) y sale en invite_preview e invite_details');
+  perform pg_temp.must_fail('logo: una ruta de otra liga no sirve',
+    format('select public.set_league_logo(p_league => %L, p_path => %L)', pg_temp.val('bowl'),
+           pg_temp.val('padel') || '/' || gen_random_uuid()::text || '.webp'),
+    array['invalido']);
+  perform pg_temp.must_fail('logo: una ruta sin reservar no sirve',
+    format('select public.set_league_logo(p_league => %L, p_path => %L)', pg_temp.val('bowl'),
+           pg_temp.val('bowl') || '/' || gen_random_uuid()::text || '.webp'),
+    array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9d.5 Ana (miembro) ve el logo, pero no lo sube ni lo cambia.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select l.logo_path from public.leagues l where l.id = pg_temp.id('bowl')) = pg_temp.val('bowl_logo'), 'FAIL logo: un miembro no ve el logo';
+  assert not private.can_upload_logo_path(p_path => pg_temp.val('bowl') || '/' || gen_random_uuid()::text || '.webp'),
+    'FAIL logo: un miembro puede subir el logo';
+  perform pg_temp.ok('logo: Ana (miembro) ve el logo y no lo puede subir');
+  perform pg_temp.must_fail('logo: un miembro no cambia el logo',
+    format('select public.set_league_logo(p_league => %L, p_path => null)', pg_temp.val('bowl')), array['no_permitido']);
+  perform pg_temp.must_fail('logo: un miembro no reserva dónde subir un logo',
+    format('select public.begin_logo_upload(p_league => %L, p_path => %L)', pg_temp.val('bowl'),
+           pg_temp.val('bowl') || '/' || gen_random_uuid()::text || '.webp'),
+    array['no_permitido']);
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

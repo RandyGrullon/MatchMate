@@ -168,8 +168,9 @@ site_url = "https://matchmate-oficial.vercel.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-# La app pide volver a su origen (entrar con Google, confirmar el correo) y a /cuenta?recuperar=1
-# (olvidé mi contraseña): por eso cada origen va solo y con /**. 4173 = `pnpm preview`.
+# La app pide volver a su origen o a la ruta a la que iba (entrar con Google, confirmar el correo: p. ej.
+# /unirse/<código>) y a /cuenta?recuperar=1 (olvidé mi contraseña): por eso cada origen va solo y con /**.
+# 4173 = `pnpm preview`.
 additional_redirect_urls = [
   "http://localhost:5173",
   "http://localhost:5173/**",

@@ -221,7 +221,8 @@ describe('auditoría', () => {
     ]);
     expect(rows.every((r) => r.actor_id === w.u.dios)).toBe(true);
     expect(rows[0].detail).toMatchObject({ value: true, before: false, name: 'sofi', email: 'sofi@x.com' });
-    expect(rows[1].detail).toEqual({ from: 'beta', to: 'closed' });
+    // Todos los deportes están abiertos desde 20260929000300_sueltos_logos.sql.
+    expect(rows[1].detail).toEqual({ from: 'open', to: 'closed' });
     expect(rows[2].detail).toMatchObject({ reason: 'spam', name: 'luis' });
     expect(rows[3].detail).toMatchObject({ wasBlocked: true, reason: 'spam' });
     expect(rows[4].detail).toMatchObject({ title: 'Nueva versión', url: '/', audience: { kind: 'all' }, recipients: 0 });
@@ -481,6 +482,7 @@ describe('listas', () => {
       sport: 'bowling',
       kind: 'liga',
       visibility: 'private',
+      logoPath: null,
       hasMinors: false,
       ownerId: w.u.org,
       ownerName: 'org',

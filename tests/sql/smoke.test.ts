@@ -44,7 +44,7 @@ async function footprint(db: PGlite): Promise<Record<string, number>> {
     'auth.users', 'public.profiles', 'public.leagues', 'public.league_members', 'public.players', 'public.events', 'public.entries',
     'public.submissions', 'public.matches', 'public.teams', 'public.team_players', 'public.golf_cards', 'public.swim_entries',
     'public.push_subscriptions', 'public.push_outbox', 'public.league_announcements', 'public.admin_audit', 'public.tombstones',
-    'private.op_log', 'private.rate_limits',
+    'public.solo_sessions', 'public.solo_likes', 'private.op_log', 'private.rate_limits',
   ];
   const out: Record<string, number> = {};
   for (const t of tables) out[t] = (await db.query<{ n: number }>(`select count(*)::int as n from ${t}`)).rows[0].n;
@@ -112,6 +112,8 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK permisos: un miembro no llama admin_overview [falla como debe: no_permitido]',
       'OK permisos: anon no crea ligas [falla como debe: permission denied for function create_league]',
       'OK consola: admin_overview',
+      'OK sueltos: el dueño ve solo el compartido de Ana',
+      'OK logo: el dueño pone y cambia el logo',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }
