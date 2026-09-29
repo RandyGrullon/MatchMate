@@ -1366,7 +1366,14 @@ describe('temporadas (20260929001180: public.seasons ya existe, de 2026092900070
       [season, w.priv, w.p.pedro],
     );
     expect(await jobs()).toEqual([]);
-    await db.admin(`update public.seasons set status = 'closed', closed_at = now(), standings = '[{"id": "x"}]' where id = $1`, [season]);
+    // Sin closed_by no la cerró un admin (close_season siempre lo pone): no encola.
+    await db.admin(`update public.seasons set status = 'closed', closed_at = now() where id = $1`, [season]);
+    expect(await jobs()).toEqual([]);
+    await db.admin(`update public.seasons set status = 'active', closed_at = null where id = $1`, [season]);
+    await db.admin(`update public.seasons set status = 'closed', closed_at = now(), closed_by = $2, standings = '[{"id": "x"}]' where id = $1`, [
+      season,
+      w.u.sofi,
+    ]);
     const [j] = await jobs();
     expect([j.kind, j.league_id, j.ref]).toEqual(['temporada', w.priv, `season:${season}`]);
     await counted();
@@ -1399,5 +1406,25 @@ describe('temporadas (20260929001180: public.seasons ya existe, de 2026092900070
     const s = await snapshot(j.id);
     expect(s.seasons).toEqual([expect.objectContaining({ id: season, status: 'closed' })]);
     expect(s.season_awards).toEqual([expect.objectContaining({ kind: 'campeon', player_id: w.p.pedro })]);
+  });
+
+  it('las cerradas que arma season_cover (un evento de un año sin temporada) no encolan «temporada»; close_season sí', async () => {
+    // Una práctica vieja (o lo que trae el importador) de 2025: …0700 arma «Temporada 2025» ya cerrada y sin closed_by.
+    const old = await event(db, w.priv, 'practica', '2025-06-03');
+    const [past] = await db.admin<{ id: string; status: string; closed_by: string | null }>(
+      `select id, status, closed_by from public.seasons where league_id = $1 and name = 'Temporada 2025'`,
+      [w.priv],
+    );
+    expect(past).toMatchObject({ status: 'closed', closed_by: null });
+    expect(await jobs(`kind = 'temporada'`)).toEqual([]);
+    // Llegan sus resultados después: sigue sin trabajo de temporada (y nada la marca como corrida).
+    await entry(db, w.priv, old, w.p.luis, [180, 190, 200], [null, null, null]);
+    await db.admin('select private.season_cover($1, $2::date)', [w.priv, '2025-11-20']);
+    expect(await jobs(`kind = 'temporada'`)).toEqual([]);
+    expect(await db.count('private.badge_runs', `kind = 'temporada'`)).toBe(0);
+    // La activa, cerrada por el admin: se encola como siempre.
+    const [{ id: season }] = await db.admin<{ id: string }>(`select id from public.seasons where league_id = $1 and status = 'active'`, [w.priv]);
+    await db.rpc(w.u.sofi, 'close_season', { p_season: season, p_standings: [], p_awards: [] });
+    expect((await jobs(`kind = 'temporada'`)).map((j) => j.ref)).toEqual([`season:${season}`]);
   });
 });

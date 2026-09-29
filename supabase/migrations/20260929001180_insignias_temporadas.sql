@@ -13,8 +13,11 @@
 -- temporada. Cuando existen:
 -- 1. private.badge_season_rows(liga, temporada, desde, hasta) (de …1110, misma firma) lee las temporadas y sus premios
 --    para la foto del motor ('temporada' y 'anio': «Figura del año» no se da si hubo una temporada igual al año).
--- 2. Trigger en public.seasons: cuando una temporada queda 'closed' se encola 'temporada' (ref 'season:<id>').
--- No hay cierre automático: las temporadas solo las cierra el admin.
+-- 2. Trigger en public.seasons: cuando el admin cierra una temporada (close_season: de 'active' a 'closed', con
+--    closed_by) se encola 'temporada' (ref 'season:<id>'). Solo ese cierre: las cerradas 'Temporada <año>' que arma
+--    private.season_cover (…0700) al anotar un evento o partido de un año sin temporada (el importador, una práctica
+--    vieja) nacen ya cerradas (insert, sin closed_by) y no encolan nada: no hay temporadas pasadas (§3.5), y ese
+--    trabajo, de periodo, correría una sola vez y quizás antes de que lleguen sus resultados.
 do $guard$
 begin
   if to_regclass('public.seasons') is null or to_regclass('public.season_awards') is null then
@@ -41,7 +44,7 @@ begin
     create or replace function private.badges_on_season() returns trigger
     language plpgsql security definer set search_path = '' as $b$
     begin
-      if new.status = 'closed' and (tg_op = 'INSERT' or old.status is distinct from 'closed') then
+      if new.status = 'closed' and old.status is distinct from 'closed' and new.closed_by is not null then
         perform private.badge_enqueue('temporada', new.league_id, null, 'season:' || new.id::text);
       end if;
       return null;
@@ -52,7 +55,7 @@ begin
   $f$;
 
   execute 'drop trigger if exists seasons_badges on public.seasons';
-  execute 'create trigger seasons_badges after insert or update of status on public.seasons
+  execute 'create trigger seasons_badges after update of status on public.seasons
              for each row execute function private.badges_on_season()';
 
   execute 'revoke execute on function private.badge_season_rows(uuid, uuid, date, date) from public, anon, authenticated';
