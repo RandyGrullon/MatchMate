@@ -6,10 +6,10 @@ import { AppShell } from '../components/Shell';
 import { useFeedback } from '../components/feedback';
 import { copyText } from '../components/share/actions';
 import { Button, Card, Field, Input, Select, Textarea } from '../components/ui';
-import { PRIVACY_PATH } from './legal/legal';
+import { LEGAL_CONTACT, PRIVACY_PATH } from './legal/legal';
 
-/** El correo de MatchMate (lo lee el equipo). */
-export const CONTACT_EMAIL = 'matchmate.oficial@gmail.com';
+/** El correo de MatchMate (lo lee el equipo): el mismo que dicen la privacidad y los términos (src/lib/legal.ts). */
+export const CONTACT_EMAIL: string = LEGAL_CONTACT.email;
 
 export const CONTACT_REASONS = ['Tengo una duda', 'Algo no funciona', 'Una idea para la app', 'Quiero usarla en mi liga', 'Otro'] as const;
 export type ContactReason = (typeof CONTACT_REASONS)[number];
