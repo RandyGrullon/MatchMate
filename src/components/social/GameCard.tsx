@@ -5,6 +5,8 @@ import { toIsoDate } from '../../lib/format';
 import { gameSummary, type ProfileGame } from '../../lib/data/profileGames';
 import { formatSwimTime } from '../../sports/swimming/time';
 import { STROKE_LABEL } from '../../sports/swimming/events';
+import type { GameMark } from '../../lib/bowlingSeason';
+import { MarkIcon, MarksLine, markedChip } from '../event/GameMarks';
 import { Badge, Card, cx } from '../ui';
 import { LikeButton } from './LikeButton';
 import { SportBadge } from './SportBadge';
@@ -18,7 +20,23 @@ const strokeText = (s: string) => (STROKE_LABEL as Record<string, string>)[s] ??
  * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo) y el me gusta. Tocar «Ver» abre el juego
  * en su liga.
  */
-export function GameCard({ game, showUser, i = 0, today }: { game: ProfileGame; showUser?: boolean; i?: number; today?: string }) {
+export function GameCard({
+  game,
+  showUser,
+  i = 0,
+  today,
+  marks,
+  mine,
+}: {
+  game: ProfileGame;
+  showUser?: boolean;
+  i?: number;
+  today?: string;
+  /** Boliche: «Récord personal» y «+15 sobre tu promedio» de cada juego (null mientras no se sabe). */
+  marks?: (GameMark | null)[] | null;
+  /** El juego es de quien mira («tu promedio»; si no, «su promedio»). */
+  mine?: boolean;
+}) {
   const date = gameDateLabel(game.eventDate, today ?? toIsoDate(new Date()));
   const where = [game.leagueName, game.eventName].filter((s) => s && s.trim()).join(' · ');
   return (
@@ -40,7 +58,7 @@ export function GameCard({ game, showUser, i = 0, today }: { game: ProfileGame; 
         </div>
       </div>
 
-      <GameBody game={game} />
+      <GameBody game={game} marks={marks} mine={mine} />
 
       <div className="-mx-2 flex items-center justify-between border-t border-line pt-1">
         <LikeButton game={game} />
@@ -66,36 +84,39 @@ function Big({ value, note }: { value: ReactNode; note: string }) {
   );
 }
 
-function GameBody({ game }: { game: ProfileGame }) {
+function GameBody({ game, marks, mine }: { game: ProfileGame; marks?: (GameMark | null)[] | null; mine?: boolean }) {
   switch (game.kind) {
     case 'bowling': {
       const d = game.detail;
       if (!d.scores.length) return <p className="text-sm text-muted">Sin juegos anotados</p>;
       const allVerified = d.verified.length > 0 && d.verified.every(Boolean);
       return (
-        <div className="flex items-end gap-3">
-          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-            {d.scores.map((s, k) => (
-              <span
-                key={k}
-                className={cx(
-                  'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
-                  s >= 200 ? 'bg-accent text-accent-fg' : 'bg-surface-2',
-                  d.verified[k] === false && 'opacity-70',
-                )}
-                title={`Juego ${k + 1}${d.verified[k] === false ? ' (sin verificar)' : ''}`}
-              >
-                {s >= 200 && <Flame className="mr-0.5 size-3" aria-hidden="true" />}
-                {s}
-              </span>
-            ))}
-            {allVerified && (
-              <span className="inline-flex items-center gap-1 self-center text-[11px] font-medium text-ok">
-                <BadgeCheck className="size-3.5" aria-hidden="true" /> Verificado
-              </span>
-            )}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-end gap-3">
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+              {d.scores.map((s, k) => (
+                <span
+                  key={k}
+                  className={cx(
+                    'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
+                    s >= 200 ? 'bg-accent text-accent-fg' : (markedChip(marks?.[k]) ?? 'bg-surface-2'),
+                    d.verified[k] === false && 'opacity-70',
+                  )}
+                  title={`Juego ${k + 1}${d.verified[k] === false ? ' (sin verificar)' : ''}`}
+                >
+                  {s >= 200 ? <Flame className="mr-0.5 size-3" aria-hidden="true" /> : <MarkIcon mark={marks?.[k]} className="mr-0.5 size-3" />}
+                  {s}
+                </span>
+              ))}
+              {allVerified && (
+                <span className="inline-flex items-center gap-1 self-center text-[11px] font-medium text-ok">
+                  <BadgeCheck className="size-3.5" aria-hidden="true" /> Verificado
+                </span>
+              )}
+            </div>
+            <Big value={d.scores.length > 1 ? d.series : d.high} note={d.scores.length > 1 ? `Serie · alto ${d.high}` : 'Pinos'} />
           </div>
-          <Big value={d.scores.length > 1 ? d.series : d.high} note={d.scores.length > 1 ? `Serie · alto ${d.high}` : 'Pinos'} />
+          <MarksLine marks={marks} mine={mine} />
         </div>
       );
     }

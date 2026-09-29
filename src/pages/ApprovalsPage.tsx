@@ -167,7 +167,9 @@ function SubmissionCard({
     });
     const ok = await run(async () => {
       const target = event ?? (await practiceForDate(lid, events, sub.date!, count));
-      const average = entry ? entry.average : ((await fetchEffectiveAverages(lid, [player])).get(player.id) ?? 0);
+      const average = entry
+        ? entry.average
+        : ((await fetchEffectiveAverages(lid, [player], { date: target.date, eventId: target.id || null })).get(player.id) ?? 0);
       await approveSubmission(lid, sub, target, entry, average, map, start);
       return true;
     });

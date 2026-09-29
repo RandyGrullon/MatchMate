@@ -1,11 +1,13 @@
+import { MIN_RANK_GAMES } from '../../lib/stats';
 import { Field, Input, Select } from '../ui';
 import { MAX_INDEX } from '../../sports/golf/course';
 import { racketScale, statKind, teamPositions, type StatDraft } from './logic';
 
 /**
- * Los números del deporte al agregar o editar a alguien: promedio fijo (boliche), nivel (raqueta), Index (golf),
- * posición y dorsal (equipos). Controlado: `draft` es lo escrito; se lee con `parseStats`.
- * `averageHint`: lo que dice debajo del promedio (al editar, el calculado con sus juegos).
+ * Los números del deporte al agregar o editar a alguien: promedio fijo (boliche: el del handicap mientras no tenga
+ * el mínimo de juegos en la temporada ni en la anterior), nivel (raqueta), Index (golf), posición y dorsal (equipos).
+ * Controlado: `draft` es lo escrito; se lee con `parseStats`. `averageHint`: lo que dice debajo del promedio (al
+ * editar, con el que usa hoy su handicap).
  */
 export function SportStatFields({
   sport,
@@ -23,7 +25,10 @@ export function SportStatFields({
 
   if (kind === 'bowling') {
     return (
-      <Field label="Promedio fijo (opcional)" hint={averageHint ?? 'Si no pones uno, se calcula con sus juegos verificados (empieza en 0).'}>
+      <Field
+        label="Promedio fijo (opcional)"
+        hint={averageHint ?? `Cuenta para el handicap mientras no tenga ${MIN_RANK_GAMES} juegos verificados en la temporada; después manda el de sus juegos. Sin él, empieza en 0.`}
+      >
         <Input type="number" inputMode="numeric" min={0} max={300} value={draft.average} onChange={set('average')} placeholder="Automático" />
       </Field>
     );

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { BadgeCheck, ExternalLink, Link2, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
-import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useLeagueMembers, usePlayers } from '../lib/data';
+import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useEvents, useLeagueMembers, usePlayers } from '../lib/data';
+import { useLeagueSeasons } from '../lib/data/seasons';
+import { averageSourceLabel, averageSourceShort, handicapAverages, type SeasonAverage } from '../lib/bowlingSeason';
 import { roleLabel, useLeagueCtx } from '../lib/league';
-import { playerStats, type PlayerStats } from '../lib/stats';
+import { MIN_RANK_GAMES, playerStats, type PlayerStats } from '../lib/stats';
+import { todayIn } from './sports/racket/logic/time';
 import type { Entry, Member, Player } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
 import { playerUrl, shareLink } from '../components/share';
@@ -29,6 +32,17 @@ export function useStatsByPlayer(entries: Entry[]) {
 
 const noStats: PlayerStats = { games: 0, pins: 0, autoAverage: null, high: 0, highSeries: 0, pending: 0 };
 
+/** El promedio del handicap y de dónde sale: el número y, si no es el de la temporada, una marca («fijo», «anterior»…). */
+function HandicapAverage({ value, className }: { value: SeasonAverage | undefined; className?: string }) {
+  const short = value ? averageSourceShort(value.source) : null;
+  return (
+    <span className={cx('inline-flex items-center gap-1.5', className)} title={value ? averageSourceLabel(value.source) : undefined}>
+      {short && <Badge>{short}</Badge>}
+      <span className="tabular-nums">{value && value.source !== 'ninguno' ? value.average : '—'}</span>
+    </span>
+  );
+}
+
 /**
  * Admin: jugadores de la liga, su promedio (boliche) y la cuenta vinculada.
  * `variant="accounts"`: el deporte agrega y edita a su gente en su propia pestaña (`addWhere`: Nadadores, Parejas y
@@ -48,6 +62,13 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const unlinked = members.data.filter((m) => !m.playerId);
   const entries = useAllEntries(bowling ? lid : undefined);
   const stats = useStatsByPlayer(entries.data);
+  // El promedio que toma una inscripción de hoy (el del handicap): la temporada, la anterior, el fijo o el de entrada.
+  const events = useEvents(bowling ? lid : undefined);
+  const seasons = useLeagueSeasons(bowling ? lid : undefined);
+  const handicap = useMemo(
+    () => handicapAverages(players.data, entries.data, new Map(events.data.map((e) => [e.id, e.date])), seasons.data, todayIn(league.tz)),
+    [players.data, entries.data, events.data, seasons.data, league.tz],
+  );
   const [q, setQ] = useState('');
   const sport = leagueSport(league);
   // El número del deporte de cada uno (nivel, Index, posición y dorsal): sale debajo del nombre.
@@ -75,7 +96,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
             {accounts
               ? `Si alguien se unió y ya estaba en la lista (quizá con otro nombre), toca su nombre y vincúlalo con su cuenta: así no sale dos veces.${addWhere ? ` Para agregar ${people[1]}, usa «${addWhere}».` : ''}`
               : bowling
-                ? 'Promedio calculado con los juegos que cuentan.'
+                ? `Promedio del handicap: el de la temporada con al menos ${MIN_RANK_GAMES} juegos verificados; si no, el de la anterior, el fijo o el de su inscripción.`
                 : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
           </p>
         </div>
@@ -115,7 +136,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
           )}
           {filtered.map((p, i) => {
             const s = stats.get(p.id) ?? noStats;
-            const avg = p.averageOverride ?? s.autoAverage;
+            const avg = handicap.get(p.id);
             const account = p.uid ? memberByUid.get(p.uid) : undefined;
             const summary = bowling ? null : statSummary(sport, attrs.data[p.id]);
             return (
@@ -144,8 +165,8 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
                     )}
                     {bowling && (
                       <div className="flex items-center gap-1.5 text-xs text-muted sm:hidden">
-                        <span className="tabular-nums">Prom. {avg ?? '—'}</span>
-                        {p.averageOverride != null && <Badge>fijo</Badge>}
+                        <span>Prom.</span>
+                        <HandicapAverage value={avg} />
                         <span>· {s.games} juegos</span>
                       </div>
                     )}
@@ -158,10 +179,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
                 </button>
                 {bowling && (
                   <>
-                    <div className="hidden items-center justify-end gap-1.5 text-right tabular-nums sm:flex">
-                      {p.averageOverride != null && <Badge>fijo</Badge>}
-                      <span className="font-semibold">{avg ?? '—'}</span>
-                    </div>
+                    <HandicapAverage value={avg} className="hidden justify-end text-right font-semibold sm:flex" />
                     <span className="hidden text-right text-muted tabular-nums sm:block">{s.games}</span>
                     <span className="hidden text-right text-muted tabular-nums sm:block">{s.high || '—'}</span>
                   </>
@@ -206,6 +224,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
         account={editing?.uid ? (memberByUid.get(editing.uid) ?? null) : null}
         open={editing != null}
         stats={editing ? (stats.get(editing.id) ?? noStats) : noStats}
+        handicap={editing ? handicap.get(editing.id) : undefined}
         attrs={editing ? attrs.data[editing.id] : undefined}
         members={members.data}
         players={players.data}
@@ -221,6 +240,7 @@ function PlayerFormModal({
   player,
   account,
   stats,
+  handicap,
   attrs,
   members,
   players,
@@ -230,6 +250,7 @@ function PlayerFormModal({
   player: Player | null;
   account: Member | null;
   stats: PlayerStats;
+  handicap: SeasonAverage | undefined;
   attrs: unknown;
   members: Member[];
   players: Player[];
@@ -317,11 +338,9 @@ function PlayerFormModal({
             sport={sport}
             draft={draft}
             onChange={setDraft}
-            averageHint={
-              stats.autoAverage != null
-                ? `Calculado con sus juegos: ${stats.autoAverage} (${stats.games} juegos). Déjalo vacío para usar ese.`
-                : 'Sin juegos verificados todavía. Si no pones uno, empieza en 0.'
-            }
+            averageHint={`Cuenta mientras no tenga ${MIN_RANK_GAMES} juegos verificados en la temporada (ni en la anterior); después manda el de sus juegos.${
+              handicap && handicap.source !== 'ninguno' ? ` Hoy su handicap usa ${handicap.average} (${averageSourceLabel(handicap.source).toLowerCase()}).` : ''
+            }`}
           />
         )}
         {error && (

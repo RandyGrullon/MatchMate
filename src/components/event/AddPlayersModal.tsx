@@ -60,7 +60,7 @@ export function AddPlayersModal({
     setBusy(true);
     const chosen = players.filter((p) => picked.has(p.id));
     await run(async () => {
-      const averages = await fetchEffectiveAverages(lid, chosen);
+      const averages = await fetchEffectiveAverages(lid, chosen, { date: event.date, eventId: event.id });
       await addEntries(lid, event, chosen.map((p) => ({ id: p.id, average: averages.get(p.id) ?? 0 })));
     }, `${chosen.length} inscrito${chosen.length === 1 ? '' : 's'}`);
     setBusy(false);

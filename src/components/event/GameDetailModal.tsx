@@ -5,9 +5,11 @@ import { frameStats } from '../../lib/bowling';
 import { useLeagueCtx } from '../../lib/league';
 import { entryLine, eventPosition } from '../../lib/stats';
 import { IMPORTED, NO_PHOTO, type BowlingEvent, type Entry } from '../../lib/types';
+import type { GameMark } from '../../lib/bowlingSeason';
 import { FramesGrid } from '../frames/FramesGrid';
 import { PhotoModal } from '../PhotoModal';
 import { Badge, Button, Modal, Position, cx } from '../ui';
+import { GameMarkBadges } from './GameMarks';
 
 /** Juegos de un jugador en un evento: pinos, cuadros tiro por tiro, strikes/spares y la foto. */
 export function GameDetailModal({
@@ -16,6 +18,8 @@ export function GameDetailModal({
   entry,
   name,
   onClose,
+  marks,
+  mine,
   children,
 }: {
   event: BowlingEvent;
@@ -23,6 +27,10 @@ export function GameDetailModal({
   entry: Entry | null;
   name: string;
   onClose: () => void;
+  /** «Récord personal» y «+15 sobre tu promedio» de cada juego (null mientras no se sabe). */
+  marks?: (GameMark | null)[] | null;
+  /** El juego es de quien mira («tu promedio»; si no, «su promedio»). */
+  mine?: boolean;
   /** Debajo de los juegos (p. ej. me gusta y comentarios). */
   children?: ReactNode;
 }) {
@@ -81,7 +89,7 @@ export function GameDetailModal({
             const realPhoto = p && p !== NO_PHOTO && p !== IMPORTED;
             return (
               <section key={i} className="flex flex-col gap-2 rounded-xl border border-line p-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold">Juego {i + 1}</span>
                   {s == null ? (
                     <Badge>Sin jugar</Badge>
@@ -94,6 +102,7 @@ export function GameDetailModal({
                       <Camera className="size-3" /> Falta foto
                     </Badge>
                   )}
+                  {verified && <GameMarkBadges mark={marks?.[i]} mine={mine} />}
                   <span className={cx('ml-auto text-2xl font-bold tabular-nums', !verified && s != null && 'text-warn')}>{s ?? '—'}</span>
                   {isTorneo && s != null && line.hcp > 0 && <span className="text-xs text-muted tabular-nums">+{line.hcp}</span>}
                 </div>
