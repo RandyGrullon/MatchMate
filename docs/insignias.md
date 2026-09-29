@@ -1622,7 +1622,13 @@ del catálogo; la prueba de reclamos lo detecta si se olvida.
 Las migraciones corren después de las de las entregas 1 a 5 (`…1010`): `…1100_insignias.sql` (paso 1),
 `…1110_insignias_motor.sql` (paso 5), `…1120_insignias_creador.sql` (paso 9), `…1180_insignias_temporadas.sql` (lo
 que depende de `public.seasons`, de la migración de temporadas `…0700`, que trae `close_season` y `season_awards`;
-la guarda sigue, pero como `…0700` ya corrió, siempre se aplica) y `…1190_insignias_cron_supabase.sql` (paso 6). Hecho de punta
+la guarda sigue, pero como `…0700` ya corrió, siempre se aplica) y `…1190_insignias_cron_supabase.sql` (paso 6). Lo
+que ya existía sale de su última versión más lo de las insignias: `private.merge_players` envuelve la de `…0700` (con
+las pistas de `…0600` y los premios y tablas guardadas de `…0700`; pasa a llamarse `merge_players_base`),
+`export_my_data` es la de `20260927001500`, `update_entry` y `remove_member` las de `20260926000500`, la vista
+`memberships` la de `20260926000200` y `private.push_category` la de `…0700` con `insignias` e `insignia:` en «Social»
+(«Hay una hazaña por confirmar», `insignia-aval:`, llega siempre). Los reportes del creador (`private.badge_reports`,
+Consola › Insignias) siguen aparte de los de contenido (`public.reports`, Consola › Reportes). Hecho de punta
 a punta: pasos 1 a 7, 9 y 10; del 8, la corrida en seco funciona en local (`tests/sql/insignias-funcion.test.ts`) y
 se corre desde la consola; falta hacerla sobre la copia de producción y calibrar. Pendiente, a propósito:
 - «Empate múltiple: este mes no hubo {figura}» (§6.2): el motor lo detecta (`topWithTies`) pero no hay dónde
