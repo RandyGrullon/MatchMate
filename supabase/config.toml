@@ -477,6 +477,12 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# insignias (el motor de las insignias automáticas): como send-push, la llama pg_net desde el cron (mm-insignias y
+# mm-insignias-diario) con la cabecera x-cron-secret, que se compara con CRON_SECRET por dentro.
+[functions.insignias]
+enabled = true
+verify_jwt = false
+
 # MatchMate: apagado. Levanta 2 contenedores más (logflare y vector) y en Windows pide exponer Docker en el
 # puerto 2375; la app no lo usa. Encenderlo solo para ver los logs en Studio.
 [analytics]
