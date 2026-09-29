@@ -1,19 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { CheckCircle2, ClipboardList, Download, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Flag, Keyboard, LayoutGrid, ListOrdered, Lock, LockOpen, MessageCircle, Play, RefreshCw, Rows3, Settings2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
 import { useMatches, type Match } from '../../../../lib/data/matches';
 import { saveNightRound, savePointsResult, updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
 import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
+import { racketNightComp } from '../../../../prizes/sports';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { MatchCard, ResultEntryModal, StandingsTable, whatsappShareUrl, type StandingsColumn } from '../../../../components/match';
 import { ScorersButton } from '../../../../components/scorers/ScorersButton';
 import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { BackLink } from '../../../../components/BackLink';
+import { ReportButton } from '../../../../components/tournamentReport/ReportButton';
 import { Stepper, appOrigin } from '../../racket/bits';
-import { exportNightExcel } from '../../racket/excel';
 import { levelText, useLevels } from '../../racket/levels';
 import { NIGHT_MAX_PLAYERS, nightRounds, type NightRound, type NextRound } from '../../racket/logic/night';
 import type { SignupSettings } from '../../racket/logic/signup';
@@ -59,7 +60,7 @@ const TABLE_COLUMNS: StandingsColumn[] = [
  */
 export function SocialPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
-  const { leagueRules } = useRacket();
+  const { sport, leagueRules } = useRacket();
   const names = useNames();
   const param = useMatchParam();
   const [search, setSearch] = useSearchParams();
@@ -161,12 +162,15 @@ export function SocialPage({ event }: { event: RacketEvent }) {
     }
   };
 
-  // En el Excel, «Puntos» son los anotados (la tabla va ordenada por ganados).
-  const excel = () =>
-    exportNightExcel({ title, date: event.date, rounds, table: table.map((r) => ({ ...r, points: r.for })), nameOf: names.nameOf }).catch((e) => {
-      console.error(e);
-      toast('No se pudo hacer el Excel', 'error');
-    });
+  // Reporte del round robin (PDF o Excel), para todos: el podio, las rondas y la tabla que se ven aquí.
+  const report = {
+    report: () =>
+      import('../../../../lib/report/racket').then((m) =>
+        m.pickleballSocialReport({ lid, league, event, title, cfg, rounds, table, nameOf: names.nameOf, finished, now }),
+      ),
+    comp: racketNightComp(lid, event, sport),
+    disabled: (q.loading && !matches.length) || names.loading,
+  };
 
   const share = socialShareText({ title, date: formatDateLong(event.date), rows: table, nameOf: names.nameOf, final: finished, url: `${appOrigin()}${base}/e/${event.id}?ver=tabla` });
   const mine = current?.matches.find((m) => [...m.side1, ...m.side2].includes(myPlayerId ?? '')) ?? null;
@@ -196,6 +200,7 @@ export function SocialPage({ event }: { event: RacketEvent }) {
             {cfg.courts.length === 1 ? 'cancha' : 'canchas'}
           </p>
         </div>
+        <ReportButton {...report} />
       </div>
 
       {isAdmin && (
@@ -227,9 +232,6 @@ export function SocialPage({ event }: { event: RacketEvent }) {
             target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
             participants={cfg.players}
           />
-          <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!rounds.length}>
-            Excel
-          </Button>
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
             Borrar
           </Button>
@@ -255,6 +257,9 @@ export function SocialPage({ event }: { event: RacketEvent }) {
           </p>
         </Card>
       )}
+
+      {/* Terminado, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {isAdmin && finished && rounds.length > 0 && <ReportButton {...report} look="card" />}
 
       <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
 

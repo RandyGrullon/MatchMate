@@ -484,6 +484,51 @@ Diseño: `docs/premios-torneo.md`. Contrato: `supabase/README.md` («Premios del
   (`event_podium`, `bowling_team_win`…) siguen aparte, en su tabla, y pueden no coincidir (tienen mínimos y llegan
   después).
 
+## Reporte del torneo (PDF y Excel)
+
+Todo en el teléfono, con lo que la app ya lee (sin tablas ni RPC nuevas). Código en `src/lib/report/` y
+`src/components/tournamentReport/`.
+
+- **Qué sale:** el **PDF** (A4 en blanco y negro con el color del deporte, la marca de MatchMate y el logo de la liga
+  si tiene) trae en la **página «General»** el torneo con todo: nombre, liga, deporte, fecha(s), lugar y formato;
+  «Resultados finales» o «Resultados parciales» con sus avisos; los campeones y podios; los premios entregados (o «Por
+  entregar»); un resumen; y los resultados (tablas de equipos, grupos, partidos por fase…). Las **páginas
+  «Individual»** van aparte (acostadas si tienen muchas columnas). Cada página lleva «Generado con MatchMate · <fecha>»
+  y «Página i de n»; las tablas largas pasan solas de página y repiten el encabezado (jspdf-autotable). El
+  **Excel** tiene las hojas «General» e «Individual» (con una sola tabla, el encabezado queda fijo) y detrás las
+  hojas de detalle de siempre del deporte.
+- **Modelo** (`model.ts`): cada deporte devuelve un `TournamentReport` (encabezado con `reportHeader`, `podiums`,
+  `highlights`, tablas `general` e `individual` de `ReportTable`, `sheets` del Excel) con una función pura, sin React:
+  boliche `bowling.ts` (`bowlingStandings` y `bowlingPodium`: «Equipos (scratch)» e «Individual (handicap)»; Excel
+  con la hoja «Equipos» de `bowlingEventSheets`), raqueta `racket.ts` (torneo por categorías, noches de americano o
+  mexicano y el social del pickleball), equipos `team.ts` (relámpago y playoffs; `matches.ts` es lo común de los
+  partidos), golf `golf.ts` (ronda suelta o el torneo entero, con la tarjeta hoyo por hoyo) y natación
+  `swimming.ts` (encuentros; el control de marcas solo tiene tiempos). **Nada de rankings nuevos:** los podios salen
+  de los mismos proveedores de los premios (`podiumsFrom` + `src/prizes/providers.ts`/`sports.ts`) y las tablas, de
+  las funciones de cada deporte. Los premios entregados los agrega la hoja al hacer el archivo (`prizesFrom` sobre
+  `cardModel`, con la misma regla de menores de la tarjeta: `reportWithPrizes` en `tournamentReport/flow.ts`).
+- **Dibujantes:** `pdf.ts` (jsPDF con la Helvetica: `pdfText` deja solo lo que WinAnsi sabe escribir) y `excel.ts`
+  (write-excel-file; `sheets.ts` tiene lo común de todos los Excel: `excelHead`, `sheetName`, `safeFileName`,
+  `writeSheets`). `file.ts` arma el archivo («reporte-<torneo>-<fecha>.pdf|xlsx») y `logo.ts` baja el logo de la liga
+  (en JPEG; sin señal o si tarda, sale sin logo).
+- **Carga:** nada del reporte va en el archivo principal. El botón (`ReportButton`) es liviano; la hoja
+  (`ReportSheet`) se carga al abrirla, el adaptador del deporte (`import()`) al tocar «PDF» o «Excel», y jsPDF
+  (~126 kB gzip) con jspdf-autotable (~10 kB) solo al hacer el PDF. jsPDF trae html2canvas, dompurify y canvg para `doc.html()` y los SVG, que no se usan:
+  `vite.config.ts` los manda a `src/lib/report/unused.ts` (no salen ni en la app ni en la caché sin conexión).
+- **Pantallas:** el ícono «Reporte del torneo» en la cabecera, para todo el que ve el torneo (también sin cuenta en
+  una liga pública): `EventPage` (torneos del boliche; la práctica sigue con su Excel), `TourneyPage`, `NightPage`,
+  `SocialPage`, `TournamentHub` (relámpago), `PlayoffsPage`, `GolfEvent` y `MeetPage`. Cuando el torneo terminó, el
+  admin ve además la tarjeta grande «Descargar». Terminado es: boliche `bowlingFinished` (`src/prizes/ready.ts`: se
+  puede premiar, nada por verificar y pasó el día o todos completaron sus juegos), raqueta
+  `racketTourneyFinished` (cada categoría con 1.º, 2.º y 3.º), relámpago `teamKoComplete` (final y 3.er lugar),
+  playoff terminado, noche cerrada, ronda o torneo de golf cerrado y encuentro finalizado. En el teléfono el archivo
+  se comparte con el menú del sistema (`shareFile`, para mandarlo por WhatsApp); si no se puede, se descarga.
+- **Pruebas:** `src/lib/report/*.test.ts` dibujan el PDF de verdad con jsPDF en Node y leen el texto de cada página
+  (la «General» primero, la «Individual» después, encabezados repetidos, páginas acostadas, el archivo comprimido) y
+  las filas de cada hoja del Excel; `src/components/tournamentReport/render.test.ts`, la hoja, y `flow.test.ts`, lo
+  que decide la hoja (`flow.ts`: los premios con la regla de menores, la descarga de una vez sin menú para archivos y
+  qué sigue después del menú del teléfono).
+
 ## Sin señal y errores
 
 - `src/lib/persist.ts`: pide al navegador que no borre lo guardado (lo que falta por enviar) cuando haya poco espacio.

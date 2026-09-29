@@ -1,5 +1,6 @@
 import type { SheetData } from 'write-excel-file/browser';
 import type { Match } from '../../../lib/data/matches';
+import { excelHead as head, safeFileName, sheetName, type ExcelSheet } from '../../../lib/report/sheets';
 import type { StandingRow } from '../../../sports/types';
 import { statusInfo } from '../../../components/match';
 import type { NightRound } from './logic/night';
@@ -11,23 +12,17 @@ import { winPct } from './logic/results';
  * Excel de raqueta (write-excel-file, como src/lib/exportExcel.ts; el del boliche no se toca):
  * - la noche: rondas (cancha, parejas y puntos) y la tabla individual;
  * - la liga o el torneo: partidos, tablas (una por competencia o grupo) y jugadores.
+ * Las hojas salen de funciones puras (…Sheets): el reporte del torneo (src/lib/report/racket.ts) las pone de detalle.
  */
 
-type Sheet = { data: SheetData; sheet: string; columns: { width: number }[]; stickyRowsCount: number };
-
-const head = (labels: string[]) => labels.map((value) => ({ value, fontWeight: 'bold' as const, backgroundColor: '#E8E7FB' }));
-const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'MatchMate';
-/** Nombre de hoja válido (≤ 31, sin caracteres raros, sin repetir). */
-function sheetName(s: string, used: Set<string>): string {
-  let base = s.replace(/[\\/?*[\]:]+/g, ' ').trim().slice(0, 31) || 'Hoja';
-  let n = 2;
-  while (used.has(base)) base = `${s.slice(0, 27)} (${n++})`;
-  used.add(base);
-  return base;
+export interface NightExcelInput {
+  rounds: readonly NightRound[];
+  table: readonly StandingRow[];
+  nameOf: (id: string) => string;
 }
 
-export async function exportNightExcel(o: { title: string; date: string; rounds: readonly NightRound[]; table: readonly StandingRow[]; nameOf: (id: string) => string }) {
-  const { default: writeExcelFile } = await import('write-excel-file/browser');
+/** Hojas de la noche: la tabla individual y las rondas. Puro. */
+export function nightSheets(o: NightExcelInput): ExcelSheet[] {
   const pair = (ids: readonly string[]) => ids.map(o.nameOf).join(' / ');
   const roundRows: SheetData = [head(['Ronda', 'Cancha', 'Pareja 1', 'Pareja 2', 'Puntos 1', 'Puntos 2', 'Descansan'])];
   for (const r of o.rounds) {
@@ -60,11 +55,10 @@ export async function exportNightExcel(o: { title: string; date: string; rounds:
       { value: fmtPoints(r.extra.avg ?? 0) },
     ]);
   }
-  const sheets: Sheet[] = [
+  return [
     { sheet: 'Tabla', stickyRowsCount: 1, columns: [{ width: 8 }, { width: 28 }, ...Array.from({ length: 10 }, () => ({ width: 10 }))], data: tableRows },
     { sheet: 'Rondas', stickyRowsCount: 1, columns: [{ width: 8 }, { width: 14 }, { width: 30 }, { width: 30 }, { width: 10 }, { width: 10 }, { width: 40 }], data: roundRows },
   ];
-  await writeExcelFile(sheets).toFile(`${safeName(o.title)} - ${o.date}.xlsx`);
 }
 
 export interface CompetitionTable {
@@ -72,7 +66,7 @@ export interface CompetitionTable {
   rows: readonly StandingRow[];
 }
 
-export async function exportCompetitionExcel(o: {
+export interface CompetitionExcelInput {
   title: string;
   date: string;
   matches: readonly Match[];
@@ -84,8 +78,10 @@ export async function exportCompetitionExcel(o: {
   forLabel: string;
   /** «Sets» (pádel y tenis) o «Juegos» (pickleball). */
   setsLabel?: string;
-}) {
-  const { default: writeExcelFile } = await import('write-excel-file/browser');
+}
+
+/** Hojas de la liga o el torneo: partidos, una tabla por competencia o grupo, y jugadores. Puro. */
+export function competitionSheets(o: CompetitionExcelInput): ExcelSheet[] {
   const used = new Set<string>();
   const matchRows: SheetData = [head(['Jornada o fase', 'Fecha', 'Hora', 'Cancha', 'Lado 1', 'Lado 2', 'Marcador', 'Ganador', 'Estado'])];
   for (const m of o.matches) {
@@ -103,7 +99,7 @@ export async function exportCompetitionExcel(o: {
       { value: statusInfo(m).label },
     ]);
   }
-  const sheets: Sheet[] = [
+  const sheets: ExcelSheet[] = [
     {
       sheet: sheetName('Partidos', used),
       stickyRowsCount: 1,
@@ -152,5 +148,11 @@ export async function exportCompetitionExcel(o: {
       ]),
     ],
   });
-  await writeExcelFile(sheets).toFile(`${safeName(o.title)} - ${o.date}.xlsx`);
+  return sheets;
+}
+
+/** Descarga la liga o las cajas en Excel (el torneo por categorías lo trae su reporte). */
+export async function exportCompetitionExcel(o: CompetitionExcelInput) {
+  const { default: writeExcelFile } = await import('write-excel-file/browser');
+  await writeExcelFile(competitionSheets(o)).toFile(`${safeFileName(o.title)} - ${o.date}.xlsx`);
 }

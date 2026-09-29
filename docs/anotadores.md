@@ -959,7 +959,7 @@ Antes de dar por terminada la entrega: `pnpm typecheck`, `pnpm lint`, `pnpm test
   - en el evento de boliche los íconos de arriba van juntos, sin espacio, para que el nombre quepa en un teléfono
     con los cuatro del admin;
   - en natación, quitar la marca de cronometrista a quien entró solo para anotar pregunta antes (sale de la liga).
-- **Pruebas:** `scripts/supabase/smoke.sql` (sección 9h) y `tests/sql/pistas.test.ts` sí se tocaron.
+- **Pruebas:** `scripts/supabase/smoke.sql` (sección 9i) y `tests/sql/pistas.test.ts` sí se tocaron.
 - **Revisión (antes de publicar):**
   - `?entrar=1` solo entra solo con la marca de que se tocó el botón en ese teléfono (D12): antes, cualquier link con
     `?entrar=1` metía en la liga a quien lo abriera con sesión, sin tocar nada;

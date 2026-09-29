@@ -7,6 +7,8 @@ import type { Match } from '../../../lib/data/matches';
 import { useNow } from '../../../lib/useNow';
 import type { Season } from '../../../lib/seasons';
 import { BracketView } from '../../../components/match';
+import { ReportButton } from '../../../components/tournamentReport/ReportButton';
+import { playoffComp, playoffDate } from '../../../prizes/sports';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
@@ -32,7 +34,7 @@ import {
   winsNeeded,
 } from './playoffs';
 import { SectionHead, TeamName } from './TeamBits';
-import { PlayoffPrizes } from './TeamPrizes';
+import { PlayoffPrizes, teamReportNames } from './TeamPrizes';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -110,6 +112,16 @@ function PlayoffView({ tl, playoff, renderMatch }: { tl: TeamLeague; playoff: Pl
   // Las series que ya tienen a los dos equipos, de la ronda más avanzada a la primera (lo que se está jugando arriba).
   const shown = [...playoff.series].filter((s) => !s.bye && s.teamA && s.teamB).sort((a, b) => b.round - a.round || a.slot - b.slot);
 
+  // Reporte del playoff (PDF o Excel), para todos: las series, sus juegos y el podio de la app.
+  const report = {
+    report: () =>
+      import('../../../lib/report/team').then((m) =>
+        m.playoffReport({ lid: tl.lid, league: tl.league, playoff, matches: tl.matches.data, names: teamReportNames(tl), now }),
+      ),
+    comp: playoffComp(tl.lid, playoff, tl.league.sport ?? 'football', playoffDate(playoff, tl.matches.data, tl.tz, now)),
+    disabled: (tl.matches.loading && !tl.matches.data.length) || tl.players.loading,
+  };
+
   const remove = async () => {
     const ok = await confirm({
       title: `¿Borrar ${playoff.name}?`,
@@ -128,6 +140,7 @@ function PlayoffView({ tl, playoff, renderMatch }: { tl: TeamLeague; playoff: Pl
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-tight">{playoff.name}</h1>
         <Badge tone={playoff.status === 'finished' ? 'ok' : 'accent'}>{playoff.status === 'finished' ? 'Terminado' : 'En juego'}</Badge>
+        <ReportButton {...report} />
       </div>
       {champion && (
         <Card className="flex items-center gap-3 p-4">
@@ -140,6 +153,8 @@ function PlayoffView({ tl, playoff, renderMatch }: { tl: TeamLeague; playoff: Pl
           </div>
         </Card>
       )}
+      {/* Terminado el playoff, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {tl.isAdmin && playoff.status === 'finished' && <ReportButton {...report} look="card" />}
       <PlayoffPrizes tl={tl} playoff={playoff} />
       <BracketView
         bracket={bracket}

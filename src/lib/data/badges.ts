@@ -58,15 +58,25 @@ export interface BadgeAward {
   history: boolean;
 }
 
-/** La vitrina de una cuenta (`profile_badges`). `featured`: ids de las destacadas que se ven, en su orden. */
+/**
+ * La vitrina de una cuenta (`profile_badges`). `featured`: ids de las destacadas que se ven, en su orden, de las dos
+ * listas (20260929001300_insignias_perfil.sql): una automática está en `awards`; una de la liga, en `leagueAwards`.
+ */
 export interface ProfileBadges {
   userId: string;
   isMe: boolean;
   featured: string[];
+  /** Cuáles de `featured` son de la liga (del creador o premios del torneo), en el mismo orden. */
+  featuredLeague: string[];
+  /**
+   * La cuenta eligió alguna destacada que todavía vale, la vea o no quien mira. false: no eligió ninguna y salen solas
+   * (docs/insignias.md §6.1); true con `featured` vacío: eligió, pero quien mira no ve ninguna (no sale nada).
+   */
+  hasChosen: boolean;
   awards: BadgeAward[];
   /** Había más de 1000: la lista viene cortada. */
   truncated: boolean;
-  /** Las del creador de insignias de sus ligas (20260929001120_insignias_creador.sql; nunca cuentan en el total). */
+  /** Las que le dieron sus ligas: del creador y premios del torneo (cuentan en el total y se pueden destacar). */
   leagueAwards: LeagueBadgeAward[];
 }
 
@@ -84,7 +94,26 @@ export interface LeagueBadgeDesign {
   periodText: string;
 }
 
-/** Una insignia que le dio su liga (el creador, §5). */
+/**
+ * El premio del torneo de un otorgamiento (`private.league_award_prize`, docs/premios-torneo.md). Si la competencia
+ * se borró, todo menos `slotId` y `verified` llega null.
+ */
+export interface LeagueBadgePrize {
+  slotId: string;
+  /** El servidor comprobó el orden al entregar (boliche, cuadros, playoffs). */
+  verified: boolean;
+  /** 1 a 3. */
+  place: number | null;
+  /** «1.er lugar». */
+  placeLabel: string | null;
+  category: 'equipo' | 'individual' | 'pareja' | null;
+  /** «Individual (handicap)», «Parejas · Categoría A». */
+  title: string | null;
+  /** «Copa de Octubre», «Torneo del 12 oct». */
+  competition: string | null;
+}
+
+/** Una insignia que le dio su liga (el creador, §5, o un premio del torneo). */
 export interface LeagueBadgeAward {
   id: string;
   badgeId: string;
@@ -101,6 +130,15 @@ export interface LeagueBadgeAward {
   note: string | null;
   seenAt: string | null;
   badge: LeagueBadgeDesign;
+  /** El lugar premiado del torneo (null: la dio una persona con «Dar insignia»). */
+  prizeSlotId: string | null;
+  prize: LeagueBadgePrize | null;
+  /**
+   * Sale en el perfil para los demás (`profile_badges`; en el de otra cuenta, siempre). En el propio: no está oculta y
+   * la liga ya la deja ver (6+ cuentas y 14+ días, o un premio con el orden verificado de una competencia que jugaron
+   * 2+ cuentas; nunca en ligas con menores).
+   */
+  onProfile: boolean;
 }
 
 /** Una hazaña por confirmar (aval, §1.7.5) que la cuenta puede revisar. */
@@ -245,8 +283,27 @@ export function awardFromRow(r: Record<string, unknown>): BadgeAward | null {
 
 const awardsOf = (list: unknown): BadgeAward[] => (Array.isArray(list) ? list.map(toBadgeAward).filter((a): a is BadgeAward => a !== null) : []);
 
-/** Lo que devuelve `profile_badges` (null = no existe o no se ve). */
-/** Una insignia del creador (`private.league_award_json`); null si le falta lo básico. */
+const PRIZE_CATEGORIES: readonly NonNullable<LeagueBadgePrize['category']>[] = ['equipo', 'individual', 'pareja'];
+const trimmed = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** El premio del torneo de un otorgamiento (`prize`); null si no es premio o le falta el lugar premiado. */
+export function toLeagueBadgePrize(raw: unknown, slotId?: string | null): LeagueBadgePrize | null {
+  const slot = (isObj(raw) ? str(raw.slotId) : '') || slotId || '';
+  if (!slot) return null;
+  const p = isObj(raw) ? raw : {};
+  const place = Math.trunc(num(p.place, NaN));
+  return {
+    slotId: slot,
+    verified: p.verified === true,
+    place: place >= 1 && place <= 3 ? place : null,
+    placeLabel: trimmed(p.placeLabel),
+    category: PRIZE_CATEGORIES.includes(p.category as NonNullable<LeagueBadgePrize['category']>) ? (p.category as LeagueBadgePrize['category']) : null,
+    title: trimmed(p.title),
+    competition: trimmed(p.competition),
+  };
+}
+
+/** Una insignia del creador o un premio del torneo (`private.league_award_json`); null si le falta lo básico. */
 export function toLeagueBadgeAward(raw: unknown): LeagueBadgeAward | null {
   if (!isObj(raw) || !isObj(raw.badge)) return null;
   const b = raw.badge;
@@ -255,6 +312,8 @@ export function toLeagueBadgeAward(raw: unknown): LeagueBadgeAward | null {
   const awardedAt = str(raw.awardedAt);
   const name = str(b.name).trim();
   if (!id || !leagueId || !awardedAt || !name) return null;
+  const hidden = raw.hidden === true;
+  const prize = toLeagueBadgePrize(raw.prize, strOrNull(raw.prizeSlotId));
   return {
     id,
     badgeId: str(raw.badgeId) || str(b.id),
@@ -266,7 +325,7 @@ export function toLeagueBadgeAward(raw: unknown): LeagueBadgeAward | null {
     period: str(raw.period),
     division: str(raw.division),
     awardedAt,
-    hidden: raw.hidden === true,
+    hidden,
     note: strOrNull(raw.note),
     seenAt: strOrNull(raw.seenAt),
     badge: {
@@ -280,24 +339,34 @@ export function toLeagueBadgeAward(raw: unknown): LeagueBadgeAward | null {
       topText: str(b.topText),
       periodText: str(b.periodText),
     },
+    prizeSlotId: prize?.slotId ?? null,
+    prize,
+    // Solo `profile_badges` lo trae; en los avisos (o una base de antes) vale lo que dice `hidden`.
+    onProfile: typeof raw.onProfile === 'boolean' ? raw.onProfile : !hidden,
   };
 }
 
 const leagueAwardsOf = (list: unknown): LeagueBadgeAward[] =>
   Array.isArray(list) ? list.map(toLeagueBadgeAward).filter((a): a is LeagueBadgeAward => a !== null) : [];
 
+/** Lo que devuelve `profile_badges` (null = no existe o no se ve). Las destacadas, solo las que vienen en alguna lista. */
 export function toProfileBadges(raw: unknown): ProfileBadges | null {
   if (!isObj(raw)) return null;
   const awards = awardsOf(raw.awards);
+  const leagueAwards = leagueAwardsOf(raw.leagueAwards);
   const ids = new Set(awards.map((a) => a.id));
-  const featured = Array.isArray(raw.featured) ? raw.featured.map(str).filter((id) => id && ids.has(id)) : [];
+  const leagueIds = new Set(leagueAwards.map((a) => a.id));
+  const featured = [...new Set(Array.isArray(raw.featured) ? raw.featured.map(str).filter((id) => id && (ids.has(id) || leagueIds.has(id))) : [])].slice(0, 3);
   return {
     userId: str(raw.userId),
     isMe: raw.isMe === true,
-    featured: [...new Set(featured)].slice(0, 3),
+    featured,
+    featuredLeague: featured.filter((id) => leagueIds.has(id)),
+    // Una base de antes no lo trae: eligió si se ve alguna.
+    hasChosen: raw.hasChosen === true || featured.length > 0,
     awards,
     truncated: raw.truncated === true,
-    leagueAwards: leagueAwardsOf(raw.leagueAwards),
+    leagueAwards,
   };
 }
 
@@ -586,15 +655,27 @@ function patchNotices(fn: (n: BadgeNotices) => BadgeNotices) {
   if (old) queryClient.setQueryData<BadgeNotices>(badgeKeys.notices, fn(old));
 }
 
-/** Hasta 3 destacadas debajo del nombre, en ese orden ([] las quita). Devuelve cómo quedaron. */
+/**
+ * Las destacadas de la vitrina con cuáles de ellas son de la liga (las que están en `leagueAwards`). En la propia, las
+ * que se ven son las elegidas: sin ninguna, salen solas (lo confirma la base al volver a leer).
+ */
+const withFeatured = (p: ProfileBadges, featured: string[]): ProfileBadges => {
+  const league = new Set(p.leagueAwards.map((a) => a.id));
+  return { ...p, featured, featuredLeague: featured.filter((id) => league.has(id)), hasChosen: featured.length > 0 };
+};
+
+/**
+ * Hasta 3 destacadas debajo del nombre, en ese orden ([] las quita): automáticas o de la liga (del creador o premios
+ * del torneo). Devuelve cómo quedaron.
+ */
 export async function setFeaturedBadges(ids: readonly string[]): Promise<string[]> {
   const me = needUser();
   const list = [...new Set(ids)].slice(0, 3);
-  patchMine(me, (p) => ({ ...p, featured: list }));
+  patchMine(me, (p) => withFeatured(p, list));
   try {
     const res = await rpc<string[] | null>('set_featured_badges', { p_ids: list });
     const saved = Array.isArray(res) ? res.map(str).filter(Boolean) : list;
-    patchMine(me, (p) => ({ ...p, featured: saved }));
+    patchMine(me, (p) => withFeatured(p, saved));
     return saved;
   } finally {
     invalidate(badgeTags.user(me));
@@ -604,11 +685,12 @@ export async function setFeaturedBadges(ids: readonly string[]): Promise<string[
 /** Ocultar (true) o mostrar (false) una insignia propia en el perfil. Oculta, deja de ser destacada. */
 export async function setBadgeHidden(award: Pick<BadgeAward, 'id' | 'leagueId'>, hidden: boolean): Promise<boolean> {
   const me = needUser();
-  patchMine(me, (p) => ({
-    ...p,
-    featured: hidden ? p.featured.filter((id) => id !== award.id) : p.featured,
-    awards: p.awards.map((a) => (a.id === award.id ? { ...a, hidden } : a)),
-  }));
+  patchMine(me, (p) =>
+    withFeatured(
+      { ...p, awards: p.awards.map((a) => (a.id === award.id ? { ...a, hidden } : a)) },
+      hidden ? p.featured.filter((id) => id !== award.id) : p.featured,
+    ),
+  );
   patchNotices((n) => ({ ...n, awards: n.awards.map((a) => (a.id === award.id ? { ...a, hidden } : a)) }));
   try {
     return await rpc<boolean>('set_badge_hidden', { p_award: award.id, p_hidden: hidden });
@@ -659,10 +741,18 @@ export async function markLeagueBadgesSeen(ids: readonly string[]): Promise<numb
   }
 }
 
-/** Ocultar (true) o mostrar (false) en tu perfil una insignia que te dio tu liga. */
+/**
+ * Ocultar (true) o mostrar (false) en tu perfil una insignia que te dio tu liga. Oculta, deja de ser destacada (la
+ * base la saca sola); al mostrarla, si los demás la ven lo dice la base al volver a leer.
+ */
 export async function setLeagueBadgeHidden(award: Pick<LeagueBadgeAward, 'id' | 'leagueId'>, hidden: boolean): Promise<boolean> {
   const me = needUser();
-  patchMine(me, (p) => ({ ...p, leagueAwards: p.leagueAwards.map((a) => (a.id === award.id ? { ...a, hidden } : a)) }));
+  patchMine(me, (p) =>
+    withFeatured(
+      { ...p, leagueAwards: p.leagueAwards.map((a) => (a.id === award.id ? { ...a, hidden, onProfile: hidden ? false : a.onProfile } : a)) },
+      hidden ? p.featured.filter((id) => id !== award.id) : p.featured,
+    ),
+  );
   try {
     return await rpc<boolean>('set_league_badge_hidden', { p_award: award.id, p_hidden: hidden });
   } finally {

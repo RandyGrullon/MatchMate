@@ -49,6 +49,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260929001180_insignias_temporadas.sql` | Insignias de temporada: solo hace algo si existe `public.seasons` (`…000700_temporadas.sql`, que corre antes: siempre se aplica): redefine `private.badge_season_rows` (temporadas y premios para la foto) y encola `temporada` cuando una temporada queda `closed` |
 | `migrations/20260929001190_insignias_cron_supabase.sql` | **Solo Supabase**: pg_cron `mm-insignias` cada 10 min (`private.cron_badges()`: avisos y, si hay cola, la Edge Function `insignias` con pg_net) y `mm-insignias-diario` a las 04:30 UTC (`private.badges_daily(now())`). Quita las dos por nombre antes de programarlas (`tests/sql/insignias-funcion.test.ts` lo corre contra un pg_cron de mentira) |
 | `migrations/20260929001200_premios_torneo.sql` | Premios del torneo (ver «Premios del torneo» en RPC y `docs/premios-torneo.md`): `tournament_prizes` (una premiación por competencia: evento, torneo de golf o playoff) y `tournament_prize_slots` (la insignia de cada lugar del podio), `league_badge_awards.prize_slot_id` y `prize_verified` con el índice único `league_badge_awards_once` también por lugar premiado, su RLS, tombstones y tiempo real, y 4 RPC (`set_tournament_prizes`, `tournament_podium`, `deliver_tournament_prizes`, `close_tournament_prizes`). El servidor calcula el podio del boliche (equipos por scratch, individual con handicap: la regla efectiva del evento, como `src/lib/stats.ts`), de los cuadros de raqueta, del torneo relámpago y de los playoffs. Redefine `award_league_badge` (sus cupos y topes no cuentan los premios), `private.merge_badges` (dos premios de lugares distintos se quedan los dos), `private.badge_link_guard` (no retira un premio con el orden verificado), `revoke_league_badge_award` (un premio cerrado solo lo quita el dueño) y `create_event` (un torneo nuevo del boliche nace con `individual_rank_by = 'hcp'` y `team_rank_by = 'scratch'`) |
+| `migrations/20260929001300_insignias_perfil.sql` | Insignias en el perfil (ver «Insignias en el perfil» en RPC): las destacadas (`profiles.featured_badges`) pueden ser también de la liga (del creador o premios del torneo), un premio del torneo con el orden verificado (`prize_verified`) de una competencia que jugaron 2+ cuentas (`league_badge_awards.prize_accounts`, columna nueva sin grant que cuenta el trigger `league_badge_awards_accounts` con `private.prize_accounts` al entregar; los ya entregados se cuentan en la migración) sale en el perfil de otra cuenta con solo `social_league_ok` (aunque la liga sea pequeña o nueva), y cada `LeagueBadgeAward` trae `prizeSlotId` y `prize` (lugar, título y competencia). Ayudas `private.league_award_public` y `private.league_award_prize`; triggers `league_badge_awards_unfeature` y `league_badges_unfeature` (ocultar, retirar o esconder el diseño la saca de las destacadas). Redefine `profile_badges` (la de `001120`: + `featuredLeague`, `hasChosen`, `onProfile`), `set_featured_badges` (la de `001100`) y `private.league_award_json` (la de `001120`) |
 | `migrations/20260929001400_anotadores.sql` | Anotadores del torneo (ver «Anotadores del torneo» en RPC y `docs/anotadores.md`): `league_members.scorer_only` (entró solo para anotar: sin jugador y nadie se lo crea solo; la vista `memberships` lo trae), la invitación de anotador en `league_invites` (`as_player`, `as_scorer`, `scope`, `ref_id`), el link para anotar (`private.scorer_links`) y 7 RPC (`invite_scorers`, `scorer_access`, `create_scorer_link`, `rotate_scorer_link`, `revoke_scorer_link`, `scorer_link_preview` (también sin cuenta) y `join_as_scorer`). En una liga de boliche la marca de anotador ahora vale en sus torneos (no en las prácticas: `private.is_event_scorer`). Cambia la firma de `set_member_scorer` (drop + create: el dueño o un admin, con `p_scope`/`p_ref`) y redefine `private.can_upload_photo` (la marca sin la regla del boliche), `save_game`, `update_entry` (la de `001110`), `save_verified_games`, `private.lanes_event`, `private.ensure_player` (apaga `scorer_only`), `ensure_my_player` (null para quien solo anota), `invite_to_league` y `private.people_item` (una pendiente vale con `private.league_invite_valid`), `respond_league_invite`, `private.accept_invites_on_join`, `my_league_invites`, `league_invite_details` (la de `001000`) y `private.push_category` (la de `001110` más `anotador:` en `liga`) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
@@ -131,8 +132,8 @@ perfil (trigger `profiles_username`): el nombre sin acentos ni símbolos (`ñ` �
 invitaciones.
 Avisos: `push_prefs` jsonb (`{}` por defecto) con `resultados`, `social`, `recordatorios` y `liga` en `true`/`false`: la que
 falta está activa. Se cambia con `set_push_prefs` (la app la lee con el perfil: `select …, username, push_prefs`).
-Insignias: `featured_badges` uuid[] (hasta 3 ids de `badge_awards`, en orden; se cambia con `set_featured_badges`;
-los demás las ven por `profile_badges`).
+Insignias: `featured_badges` uuid[] (hasta 3 ids de `badge_awards` o de `league_badge_awards` (…1300), en orden; se
+cambia con `set_featured_badges`; los demás las ven por `profile_badges`).
 
 ### `leagues` — liga visible
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
@@ -273,11 +274,13 @@ Otorgamientos del creador. Se leen **solo estas columnas** (permiso por columna;
 `id`, `badge_id`, `league_id`, `player_id`, `team_id` (con `by_team`; null si se borró el equipo), `period` (≤10),
 `division` (≤16), `awarded_at`, `revoked_at` (retirada: deshacer, el dueño o una fusión), `hidden`, `updated_at`,
 `prize_slot_id` (…1200: el lugar premiado de un torneo del que salió; null = la dio una persona; sin FK: si el torneo
-se borra, la insignia se queda), `prize_verified` (…1200: el servidor comprobó el orden; no se lee desde la app). `note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` salen por
+se borra, la insignia se queda), `prize_verified` (…1200: el servidor comprobó el orden; no se lee desde la app),
+`prize_accounts` (…1300: cuántas cuentas jugaron la competencia de un premio verificado, contadas al entregar; no se lee
+desde la app). `note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` salen por
 `league_badge_holders` (nota: el jugador y los admins; lo demás, admins), `profile_badges` y `badge_notices` (lo
 propio). Única vigente por `(badge_id, player_id, period, division, prize_slot_id)` (el mismo «Campeón · OCT 2026» se
-gana en dos torneos, o por equipos y en individual del mismo). Nunca cuentan en las oficiales, la rareza ni el total del
-perfil. Sincroniza por `(league_id, updated_at)`.
+gana en dos torneos, o por equipos y en individual del mismo). Nunca cuentan en las oficiales ni la rareza; el total del
+perfil las suma aparte (…1300). Sincroniza por `(league_id, updated_at)`.
 
 ### `tournament_prizes` — liga visible (también sin cuenta en una pública)
 Premios del torneo (…1200): una premiación por competencia. `id`, `league_id`, `scope` (`evento`|`golf_torneo`|
@@ -593,8 +596,8 @@ Las da el motor (`…001110_insignias_motor.sql`); la app lee `badge_awards`, `b
 
 | RPC | Quién | Qué hace |
 |---|---|---|
-| `profile_badges(p_user) → {userId, isMe, featured: [id], awards: [insignia], truncated} \| null` | con sesión | La pestaña «Insignias» del perfil. `null` si no existe o no se ve (como `public_profile`). Insignia: `{id, key, sport, level, periodKey, scope: 'cuenta'\|'liga', status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, seenAt}`, más nuevas primero, hasta 1000 (`truncated`). **Otra cuenta:** las de cuenta y las de sus jugadores en ligas que pasan `social_league_ok` (la ve quien mira, sin menores), `provisional` o `firme` y no ocultas; en las de cuenta, `context` pierde `league` y `event` si esa liga no la ve quien mira; `seenAt` null; una cuenta bloqueada sale vacía (salvo al superadmin). **La propia:** todas (ocultas, en revisión, de ligas con menores) menos las revocadas que nunca vio. `featured`: las destacadas que hoy se ven en público, en su orden. **Del creador** (…1120): además `leagueAwards: [LeagueBadgeAward]` y `leagueTruncated` (hasta 500), ver «Insignias de la liga (creador)». |
-| `set_featured_badges(p_ids uuid[]) → uuid[]` | la cuenta | Hasta 3 (repetidas cuentan una), en ese orden; `null` o `[]` las quita. Cada una suya (`no_permitido`), `provisional` o `firme`, no oculta y no de una liga con menores (`invalido`); `no_existe`. Devuelve cómo quedaron. |
+| `profile_badges(p_user) → {userId, isMe, featured: [id], awards: [insignia], truncated} \| null` | con sesión | La pestaña «Insignias» del perfil. `null` si no existe o no se ve (como `public_profile`). Insignia: `{id, key, sport, level, periodKey, scope: 'cuenta'\|'liga', status, awardedAt, firmAt, leagueId, leagueName, playerId, context, hidden, seenAt}`, más nuevas primero, hasta 1000 (`truncated`). **Otra cuenta:** las de cuenta y las de sus jugadores en ligas que pasan `social_league_ok` (la ve quien mira, sin menores), `provisional` o `firme` y no ocultas; en las de cuenta, `context` pierde `league` y `event` si esa liga no la ve quien mira; `seenAt` null; una cuenta bloqueada sale vacía (salvo al superadmin). **La propia:** todas (ocultas, en revisión, de ligas con menores) menos las revocadas que nunca vio. `featured`: las destacadas que hoy se ven en público, en su orden. **Del creador** (…1120): además `leagueAwards: [LeagueBadgeAward]` y `leagueTruncated` (hasta 500), ver «Insignias de la liga (creador)». **Destacadas de la liga** (…1300): `featured` trae también ids de `league_badge_awards`, `featuredLeague: [id]` dice cuáles (mismo orden) y `hasChosen` si la cuenta eligió alguna que todavía vale (aunque quien mira no vea ninguna); ver «Insignias en el perfil». |
+| `set_featured_badges(p_ids uuid[]) → uuid[]` | la cuenta | Hasta 3 (repetidas cuentan una), en ese orden; `null` o `[]` las quita. Ids de `badge_awards` o (…1300) de `league_badge_awards`. Cada una suya (`no_permitido`); automática: `provisional` o `firme`, no oculta y no de una liga con menores; de la liga: vigente, no oculta, de un diseño no escondido y de una liga sin menores (`invalido`); `no_existe`. Devuelve cómo quedaron. |
 | `set_badge_hidden(p_award, p_hidden boolean) → boolean` | su dueño (la cuenta o la de su jugador) | Ocultar del perfil o «Mostrar en mi perfil» (las privadas por defecto nacen ocultas). Oculta, sale de las destacadas. `no_existe`, `no_permitido`, `invalido` (null). |
 | `mark_badges_seen(p_ids uuid[]) → int` | su dueño | Ya vio el aviso de desbloqueo (no vuelve a salir en ningún teléfono). Hasta 50 (`invalido`); las ajenas o ya vistas se ignoran. Devuelve cuántas marcó. |
 | `set_badges_auto(p_league, p_mode text) → text` | dueño o superadmin | `todas`\|`sin_titulos`\|`ninguna` (`invalido`); `no_existe`. En ligas con menores también (nace `sin_titulos`). |
@@ -629,8 +632,10 @@ Formas JSON:
   dio, también las retiradas; `active` = vigentes; `locked` = `given > 0`: solo cambian `description` y `status`).
 - **`LeagueBadgeAward`** (en el perfil y los avisos): `{id, badgeId, leagueId, leagueName, sport, playerId, teamId,
   teamName, period, division, awardedAt, hidden, note, seenAt, badge: {id, name, description, shape, palette, color,
-  icon, topText, periodText, template, limitKind, byTeam, status}}` (`note` y `seenAt` solo si es de un jugador de
-  quien mira; si no, null).
+  icon, topText, periodText, template, limitKind, byTeam, status}, prizeSlotId, prize}` (`note` y `seenAt` solo si es
+  de un jugador de quien mira; si no, null). `prizeSlotId` y `prize` desde …1300: `prize` es null si la dio una
+  persona; si es un premio del torneo, `{slotId, verified, place, placeLabel, category, title, competition}` (ver
+  «Insignias en el perfil»). En `profile_badges` cada una trae además `onProfile`.
 
 Filtro de texto (`private.badge_text_ok`, en nombre, descripción, textos de arriba y abajo, periodo, división y nota;
 los textos se recortan y quedan con un solo espacio entre palabras): solo letras (con `áéíóúüñ`), números, espacio y
@@ -661,7 +666,8 @@ plural). Error: `texto_bloqueado` («Ese texto no se puede usar.»). El teléfon
 
 En el perfil de otra cuenta (`profile_badges`) salen solo las de ligas que pasan `private.league_badges_public`: la ve
 quien mira y sin menores (`social_league_ok`), 6+ cuentas miembro no bloqueadas y 14+ días de creada; vigentes y no
-ocultas. La propia: todas las vigentes. Nunca las de un diseño escondido. Al juntar dos jugadores
+ocultas (un premio del torneo con el orden verificado de una competencia que jugaron 2+ cuentas, desde …1300, solo
+pide `social_league_ok`: ver «Insignias en el perfil»). La propia: todas las vigentes. Nunca las de un diseño escondido. Al juntar dos jugadores
 (`private.merge_badges`), si los dos tienen vigente la misma insignia, periodo y división, queda la más vieja y la otra
 se retira con motivo `fusión` (sin push); todas pasan al jugador que queda. `export_my_data` saca `league_badge_awards`
 de sus jugadores (la encuentra sola por `player_id`). **Ojo:** esta migración redefine `profile_badges`, `badge_notices`,
@@ -728,6 +734,45 @@ jugador que queda), `private.badge_link_guard` (no retira un premio con `league_
 en el otorgamiento y sigue aunque se borre la competencia), `revoke_league_badge_award` (un premio de una premiación
 cerrada, o de un lugar entregado hace más de 14 días, solo lo quita el dueño: `cerrado`) y `create_event` (misma
 firma).
+
+### Insignias en el perfil
+
+`20260929001300_insignias_perfil.sql` (pruebas: `tests/sql/insignias-perfil.test.ts`). Las insignias de la liga (las
+que da una persona y los premios del torneo) se destacan y salen en el perfil como las automáticas. El total del perfil
+y el orden de las destacadas automáticas los arma el teléfono con lo que devuelve `profile_badges`.
+
+- **Destacadas** (`profiles.featured_badges`, hasta 3): ids de `badge_awards` o de `league_badge_awards`.
+  `set_featured_badges` acepta una de la liga si es de un jugador de la cuenta (`no_permitido`), vigente, no oculta,
+  de un diseño que el superadmin no escondió y de una liga sin menores (`invalido`); una de una liga pequeña o nueva se
+  puede destacar (otra cuenta la ve cuando la liga pase la regla de abajo). `profile_badges.featured` = las de las dos
+  tablas que quien mira puede ver hoy, en su orden; `featuredLeague` = cuáles de esas son de la liga (mismo orden; el
+  teléfono las busca en `leagueAwards`, las otras en `awards`). En el propio perfil, las de la liga destacadas salen si
+  siguen valiendo (sin la regla de abajo). `hasChosen`: la cuenta eligió alguna que todavía vale (la regla de
+  `set_featured_badges`), la vea o no quien mira; `false` = no eligió y el teléfono arma las que salen solas; `true`
+  con `featured` vacío = eligió, pero quien mira no ve ninguna (no sale nada).
+- **Quién las ve en el perfil de otra cuenta** (`private.league_award_public(otorgamiento)`): un premio del torneo con
+  `prize_verified` (el servidor comprobó el orden: boliche, cuadros, relámpago y playoffs) y `prize_accounts >= 2`
+  sale si la liga pasa `social_league_ok` (la ve quien mira y no tiene menores), aunque sea pequeña o nueva. El orden
+  verificado solo dice que el servidor ordenó lo que le dieron: el dueño de una liga de uno que arma un torneo con
+  jugadores sin cuenta no se fabrica un «Campeón» público. `prize_accounts` (`private.prize_accounts`, con el trigger
+  `league_badge_awards_accounts` al entregar; sin grant) = cuántas cuentas distintas no bloqueadas jugaron: en el
+  boliche, las que tienen un juego que cuenta; en cuadros, relámpago y playoffs, la alineación y la plantilla de los
+  lados de los partidos no anulados (en el playoff, también las plantillas de sus series). Se guarda en el otorgamiento:
+  sigue aunque se borre la competencia. Con menos de 2 cuentas, los premios sin orden verificado (golf, natación,
+  noches) y las que da una persona siguen con `private.league_badges_public` (6+ cuentas y 14+ días). Nunca las
+  ocultas, las retiradas ni las de un diseño escondido; una cuenta bloqueada sale vacía (salvo al superadmin).
+- **`LeagueBadgeAward`** (perfil y avisos) trae `prizeSlotId` y `prize` (`private.league_award_prize`): null si la dio
+  una persona; si es un premio, `{slotId, verified, place, placeLabel ('1.er lugar'), category ('equipo'|'individual'|
+  'pareja'), title ('Individual (handicap)', 'Parejas · Categoría A'…), competition ('Copa Aniversario', 'Torneo del 12
+  oct'…)}`. Si la competencia se borró, todo menos `slotId` y `verified` va null (la insignia se queda con su `period`
+  y su liga). En `profile_badges` cada una trae además `onProfile`: para otra cuenta, `true`; en el propio, si otra
+  cuenta que ve la liga la ve en el perfil (no oculta y pasa la regla de arriba).
+- **Salen solas de las destacadas** (triggers `league_badge_awards_unfeature` y `league_badges_unfeature`): al ocultarse
+  (`set_league_badge_hidden`), retirarse (deshacer, quitar, corrección del podio, fusión, el guardia del vínculo) o
+  esconderse su diseño (`hide_league_badge`). Si después vuelve a verse, no vuelve sola a las destacadas.
+
+**Ojo:** esta migración redefine `profile_badges` (la de `001120`), `set_featured_badges` (la de `001100`) y
+`private.league_award_json` (la de `001120`), misma firma: un cambio a esas va aquí o después.
 
 ### Anotadores del torneo
 

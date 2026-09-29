@@ -37,7 +37,7 @@ import {
   type BadgeState,
   type PeriodRibbon,
 } from '../../badges/visual';
-import type { BadgeAward, BadgeProgress, BadgeRarity, BadgeReview, BadgeStat, LeagueBadgeAward, LeagueBadgeDesign, ProfileBadges } from '../../lib/data/badges';
+import type { BadgeAward, BadgeProgress, BadgeRarity, BadgeReview, BadgeStat, LeagueBadgeAward, LeagueBadgeDesign, LeagueBadgePrize, ProfileBadges } from '../../lib/data/badges';
 import type { BadgeShareInput } from '../share/badge';
 import { designLook } from './maker/look';
 import { joinList } from '../../lib/format';
@@ -435,9 +435,21 @@ export function filterChips(sports: readonly string[], tiles: readonly { sport: 
   return [{ key: 'todas', label: 'Todas' }, ...list.map((s) => ({ key: s, label: sportName(s) })), ...(have.has('all') ? [{ key: 'all', label: 'Cuenta' }] : [])];
 }
 
-/** Cuántas insignias oficiales, desbloqueadas y visibles tiene (el contador del perfil). */
+/** Cuántas insignias oficiales, desbloqueadas y visibles tiene. */
 export const officialCount = (awards: readonly BadgeAward[]) =>
   awards.filter((a) => (a.status === 'provisional' || a.status === 'firme') && !a.hidden && !!badgeDef(a.key)).length;
+
+/** Cuántas le dieron sus ligas (del creador y premios del torneo) sin ocultar. */
+export const leagueCount = (awards: readonly LeagueBadgeAward[]) => awards.filter((a) => !a.hidden).length;
+
+/** El contador del perfil: las oficiales y las de sus ligas (docs/insignias.md §6.1). */
+export const profileCount = (data: Pick<ProfileBadges, 'awards' | 'leagueAwards'>) => officialCount(data.awards) + leagueCount(data.leagueAwards ?? []);
+
+/** «20 de MatchMate · 4 de tus ligas» (null si no tiene de sus ligas). */
+export function countSplitText(official: number, league: number, own: boolean): string | null {
+  if (!league) return null;
+  return `${official.toLocaleString('es-DO')} de MatchMate · ${league.toLocaleString('es-DO')} de ${own ? 'tus' : 'sus'} ligas`;
+}
 
 export const countText = (n: number) => (n === 1 ? '1 insignia' : `${n.toLocaleString('es-DO')} insignias`);
 
@@ -626,6 +638,17 @@ export interface YearRecapModel {
 const TARGET_PCT: Readonly<Record<string, number>> = { C: 60, PC: 25, R: 10, E: 3, L: 0.5 };
 
 /**
+ * Qué tan rara es una fila para ordenar (menos = más rara): el porcentaje medido si hay base; si no, el de la rareza
+ * estimada del catálogo (100 sin datos). `stat`: la medida que se usó.
+ */
+export function rarityScore(a: Pick<BadgeAward, 'key' | 'sport' | 'level'>, def: BadgeDef, stats: readonly BadgeStat[]): { score: number; stat: BadgeStat | undefined } {
+  const stat = statFor(stats, a);
+  const measured = stat && stat.rarity !== 'nueva' && stat.base >= RARITY_MIN_BASE ? stat.pct : null;
+  const target = rarityOf(def, lvl(a.level), isSportId(a.sport) ? a.sport : undefined);
+  return { score: measured ?? (target ? (TARGET_PCT[target] ?? 100) : 100), stat: measured !== null ? stat : undefined };
+}
+
+/**
  * El resumen del año que abre `year_recap` el 7 de enero: días jugados, deportes y meses activos (lo que guardó el
  * motor en `context.values`) y la insignia más rara de ese año entre las propias. null si no es un `year_recap`.
  */
@@ -642,11 +665,8 @@ export function yearRecap(award: BadgeAward, all: readonly BadgeAward[], stats: 
     if (!inYear) continue;
     const view = viewAward(a);
     if (!view) continue;
-    const stat = statFor(stats, a);
-    const measured = stat && stat.rarity !== 'nueva' && stat.base >= RARITY_MIN_BASE ? stat.pct : null;
-    const target = rarityOf(view.def, lvl(a.level), isSportId(a.sport) ? a.sport : undefined);
-    const score = measured ?? (target ? (TARGET_PCT[target] ?? 100) : 100);
-    if (!best || score < best.score || (score === best.score && a.level > best.view.award.level)) best = { view, score, stat: measured !== null ? stat : undefined };
+    const { score, stat } = rarityScore(a, view.def, stats);
+    if (!best || score < best.score || (score === best.score && a.level > best.view.award.level)) best = { view, score, stat };
   }
   return {
     year,
@@ -907,6 +927,14 @@ export interface LeagueAwardView {
   /** «Octubre · División A · Los Tigres». */
   detail: string | null;
   date: string;
+  /** El premio del torneo (null si la dio una persona). */
+  prize: LeagueBadgePrize | null;
+  /** «1.er lugar · Individual (handicap) · Copa de Octubre» (null si no es premio o se borró la competencia). */
+  prizeLine: string | null;
+  /** «Campeón · Copa de Octubre · Liga Los Pinos»: el nombre, la competencia (si es premio) y la liga. */
+  headline: string;
+  /** Nombre accesible con el premio y la liga: «Campeón, OCT 2026, 1.er lugar · Copa de Octubre, de Liga Los Pinos». */
+  fullLabel: string;
 }
 
 export function viewLeagueAward(a: LeagueBadgeAward): LeagueAwardView {
@@ -914,27 +942,49 @@ export function viewLeagueAward(a: LeagueBadgeAward): LeagueAwardView {
   const date = shortDate(a.awardedAt);
   const league = a.leagueName || 'tu liga';
   const detail = [a.period, a.division, a.teamName].map((x) => x?.trim()).filter(Boolean).join(' · ');
+  const prize = a.prize;
+  const prizeLine = prize ? [prize.placeLabel, prize.title, prize.competition].filter(Boolean).join(' · ') : '';
+  const label = badgeLabel(a.badge.name, look);
   return {
     award: a,
     name: a.badge.name,
     description: a.badge.description,
     look,
-    label: badgeLabel(a.badge.name, look),
+    label,
     leagueName: league,
     givenBy: `Otorgada por ${league}${date ? ` · ${date}` : ''}`,
     detail: detail || null,
     date,
+    prize,
+    prizeLine: prizeLine || null,
+    headline: [a.badge.name, prize?.competition, a.leagueName || null].filter(Boolean).join(' · '),
+    fullLabel: `${label}${prizeLine ? `, ${prizeLine}` : ''}, de ${league}`,
   };
 }
 
 export interface LeagueTileModel {
-  /** `diseño|oculta`. */
+  /**
+   * `diseño|` (se ve), `diseño|oculta` (oculta) o, en el propio, `diseño|liga` (los demás todavía no la ven en el
+   * perfil). Un cuadro nunca mezcla las que se ven en el perfil con las que no.
+   */
   id: string;
   top: LeagueAwardView;
   views: LeagueAwardView[];
   count: number;
   state: BadgeState;
   hidden: boolean;
+  /** Los demás la ven en el perfil (todas las del cuadro; en el de otra cuenta, siempre). */
+  onProfile: boolean;
+}
+
+/**
+ * Texto chico debajo de una de la liga en la grilla: «Solo tú la ves» (oculta), «Solo en tu liga» (la tuya, que los
+ * demás todavía no ven en tu perfil), la competencia de un premio del torneo o el periodo y la división.
+ */
+export function leagueTileSub(t: Pick<LeagueTileModel, 'hidden' | 'onProfile' | 'top'>, own: boolean): string {
+  if (t.hidden) return 'Solo tú la ves';
+  if (own && !t.onProfile) return 'Solo en tu liga';
+  return t.top.prize?.competition ?? t.top.detail ?? t.top.date;
 }
 
 export interface LeagueShelf {
@@ -943,13 +993,17 @@ export interface LeagueShelf {
   tiles: LeagueTileModel[];
 }
 
-/** «De mis ligas» (§6.1): por liga, una insignia por diseño (×N si se la dieron varias veces). */
+/**
+ * «De mis ligas» (§6.1): por liga, una insignia por diseño (×N si se la dieron varias veces). En el propio, las que los
+ * demás todavía no ven en el perfil (`onProfile` false: liga pequeña o nueva) van en otro cuadro del mismo diseño, así
+ * el cuadro dice bien «Solo en tu liga», su ×N y si se puede destacar.
+ */
 export function leagueShelves(awards: readonly LeagueBadgeAward[], opts: { own: boolean; now: number; opened?: ReadonlySet<string> }): LeagueShelf[] {
   const byLeague = new Map<string, { name: string; tiles: Map<string, LeagueAwardView[]> }>();
   for (const a of awards) {
     if (a.hidden && !opts.own) continue;
     const l = byLeague.get(a.leagueId) ?? { name: a.leagueName, tiles: new Map<string, LeagueAwardView[]>() };
-    const id = `${a.badgeId}|${a.hidden ? 'oculta' : ''}`;
+    const id = `${a.badgeId}|${a.hidden ? 'oculta' : opts.own && !a.onProfile ? 'liga' : ''}`;
     l.tiles.set(id, [...(l.tiles.get(id) ?? []), viewLeagueAward(a)]);
     byLeague.set(a.leagueId, l);
   }
@@ -962,7 +1016,8 @@ export function leagueShelves(awards: readonly LeagueBadgeAward[], opts: { own: 
           const sorted = [...views].sort((x, y) => Date.parse(y.award.awardedAt) - Date.parse(x.award.awardedAt));
           const hidden = sorted[0].award.hidden;
           const fresh = opts.own && !hidden && sorted.some((v) => within(v.award.awardedAt, opts.now, NEW_DAYS) && !opts.opened?.has(v.award.id));
-          return { id, top: sorted[0], views: sorted, count: sorted.length, hidden, state: hidden ? 'hidden' : fresh ? 'new' : 'unlocked' };
+          const onProfile = !hidden && (!opts.own || sorted.every((v) => v.award.onProfile));
+          return { id, top: sorted[0], views: sorted, count: sorted.length, hidden, onProfile, state: hidden ? 'hidden' : fresh ? 'new' : 'unlocked' };
         })
         .sort((x, y) => Date.parse(y.top.award.awardedAt) - Date.parse(x.top.award.awardedAt)),
     }))
@@ -974,13 +1029,104 @@ export function leagueShareInputOf(v: LeagueAwardView, player: string): BadgeSha
   return {
     name: v.name,
     look: v.look,
-    levelLine: v.detail ?? '',
+    levelLine: v.prizeLine ?? v.detail ?? '',
     description: v.description,
     player: player.trim() || 'Un jugador',
     league: v.leagueName,
     footnote: v.givenBy,
     caption: `${v.leagueName} me dio «${v.name}» en MatchMate`,
   };
+}
+
+// ---------- Destacadas (debajo del nombre) ----------
+
+/** Cuántas destacadas caben debajo del nombre. */
+export const FEATURED_MAX = 3;
+
+/** Una destacada: automática (`app`) o de la liga (`liga`, con la marca «LIGA»). `title`: el globito al pasar. */
+export type FeaturedItem =
+  | { kind: 'app'; id: string; view: AwardView; title: string; label: string }
+  | { kind: 'liga'; id: string; view: LeagueAwardView; title: string; label: string };
+
+export interface FeaturedModel {
+  items: FeaturedItem[];
+  /** La cuenta no eligió ninguna (`hasChosen` false): salen solas. */
+  auto: boolean;
+}
+
+const shownAward = (a: BadgeAward) => (a.status === 'provisional' || a.status === 'firme') && !a.hidden;
+const appItem = (v: AwardView): FeaturedItem => ({ kind: 'app', id: v.award.id, view: v, title: `${v.name} · ${levelLine(v)}`, label: v.label });
+const ligaItem = (v: LeagueAwardView): FeaturedItem => ({ kind: 'liga', id: v.award.id, view: v, title: v.headline, label: v.fullLabel });
+/** Primero los premios del torneo; después las más nuevas. */
+const prizeFirst = (x: LeagueBadgeAward, y: LeagueBadgeAward) =>
+  Number(!!y.prizeSlotId) - Number(!!x.prizeSlotId) || Date.parse(y.awardedAt) - Date.parse(x.awardedAt) || x.id.localeCompare(y.id);
+
+/** Las que eligió la cuenta, en su orden: de las dos listas y solo las que se pueden ver. */
+export function chosenFeatured(data: ProfileBadges | null): FeaturedItem[] {
+  if (!data) return [];
+  const auto = new Map(data.awards.map((a) => [a.id, a]));
+  const league = new Map((data.leagueAwards ?? []).map((a) => [a.id, a]));
+  const out: FeaturedItem[] = [];
+  for (const id of data.featured) {
+    const a = auto.get(id);
+    const v = a && shownAward(a) ? viewAward(a) : null;
+    if (v) out.push(appItem(v));
+    const l = a ? undefined : league.get(id);
+    if (l && !l.hidden) out.push(ligaItem(viewLeagueAward(l)));
+  }
+  return out.slice(0, FEATURED_MAX);
+}
+
+/**
+ * Las que salen solas si la cuenta no eligió ninguna (hasta 3, una por diseño o insignia): primero los premios del
+ * torneo, más nuevos primero; después las demás de sus ligas; después las automáticas, las más raras primero (rareza
+ * medida o, sin base, la del catálogo) y de nivel más alto. De la liga, solo las que los demás ven en el perfil.
+ */
+export function autoFeatured(data: ProfileBadges | null, stats: readonly BadgeStat[] = []): FeaturedItem[] {
+  if (!data) return [];
+  const designs = new Map<string, LeagueBadgeAward>();
+  for (const a of (data.leagueAwards ?? []).filter((x) => !x.hidden && x.onProfile).sort(prizeFirst)) if (!designs.has(a.badgeId)) designs.set(a.badgeId, a);
+  const out = [...designs.values()].slice(0, FEATURED_MAX).map((a) => ligaItem(viewLeagueAward(a)));
+  if (out.length < FEATURED_MAX) {
+    const tiles = groupTiles(data.awards, { own: false, now: 0 })
+      .map((t) => ({ t, score: rarityScore(t.top.award, t.def, stats).score }))
+      .sort(
+        (x, y) =>
+          x.score - y.score ||
+          y.t.top.award.level - x.t.top.award.level ||
+          Date.parse(y.t.top.award.awardedAt) - Date.parse(x.t.top.award.awardedAt) ||
+          x.t.id.localeCompare(y.t.id),
+      );
+    for (const { t } of tiles.slice(0, FEATURED_MAX - out.length)) out.push(appItem(t.top));
+  }
+  return out;
+}
+
+/**
+ * Las destacadas debajo del nombre (§6.1): las que eligió la cuenta o, si no eligió ninguna, las que salen solas. Si
+ * eligió y quien mira no ve ninguna de esas, no sale nada (nunca unas que la cuenta no eligió).
+ */
+export function featuredModel(data: ProfileBadges | null, stats: readonly BadgeStat[] = []): FeaturedModel {
+  const chosen = chosenFeatured(data);
+  return data?.hasChosen || chosen.length ? { items: chosen, auto: false } : { items: autoFeatured(data, stats), auto: true };
+}
+
+/** ¿Las destacadas salen solas? (la rareza solo hace falta entonces). */
+export const featuredIsAuto = (data: ProfileBadges | null) => !!data && !data.hasChosen && chosenFeatured(data).length === 0;
+
+/** Los ids de las que se ven debajo del nombre (las elegidas o las que salen solas), en su orden. */
+export const featuredIds = (model: FeaturedModel) => model.items.map((i) => i.id);
+
+/**
+ * Las de la liga que el dueño puede destacar: no ocultas y que los demás ven en su perfil (o ya destacadas, para poder
+ * quitarlas), una por diseño; primero los premios del torneo y después las más nuevas.
+ */
+export function featurableLeagueTiles(data: Pick<ProfileBadges, 'featured' | 'leagueAwards'>, now: number): LeagueTileModel[] {
+  const featured = new Set(data.featured);
+  const list = (data.leagueAwards ?? []).filter((a) => !a.hidden && (a.onProfile || featured.has(a.id)));
+  return leagueShelves(list, { own: true, now })
+    .flatMap((l) => l.tiles)
+    .sort((x, y) => prizeFirst(x.top.award, y.top.award));
 }
 
 // ---------- Aviso al ganar ----------

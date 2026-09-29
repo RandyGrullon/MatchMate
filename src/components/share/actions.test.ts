@@ -18,6 +18,11 @@ describe('nombre del archivo', () => {
     expect(long).toBe(`resultado-${'x'.repeat(50)}-2026-01-01.png`);
     expect(shareFileName([null, undefined, '¡¿?!'], new Date(2026, 0, 1))).toBe('matchmate-2026-01-01.png');
   });
+
+  it('otro tipo de archivo (el reporte del torneo)', () => {
+    expect(shareFileName(['reporte', 'Copa Aniversario'], new Date(2026, 9, 13), 'pdf')).toBe('reporte-copa-aniversario-2026-10-13.pdf');
+    expect(shareFileName(['reporte', 'Copa Aniversario'], new Date(2026, 9, 13), 'xlsx')).toBe('reporte-copa-aniversario-2026-10-13.xlsx');
+  });
 });
 
 describe('compartir con el menú del teléfono', () => {

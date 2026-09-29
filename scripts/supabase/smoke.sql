@@ -14,9 +14,9 @@ begin;
 -- sin cuenta soy yo» que aprueba el dueño, los pendientes del organizador y las pistas), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
--- términos y reportar, juegos sueltos y el logo de la liga, las insignias, los premios y los anotadores del torneo,
--- la consola del superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un
--- miembro llamando admin_*, escrituras sin cuenta).
+-- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
+-- perfil: destacados y quién los ve), los anotadores del torneo, la consola del superadmin y los permisos que TIENEN
+-- que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -113,7 +113,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200', '20260929001400'];
+    '20260929001190', '20260929001200', '20260929001300', '20260929001400'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1795,7 +1795,56 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 
 -- =====================================================================================================================
--- 9h. Anotadores (20260929001400): el dueño crea el link para anotar el torneo; sin cuenta se ve a dónde lleva; alguien
+-- 9h. Insignias en el perfil (20260929001300): el dueño destaca su premio del torneo; Ana (miembro) lo ve con su lugar y
+-- su competencia aunque la liga sea pequeña y nueva (el orden lo verificó el servidor y jugaron 2 cuentas: el dueño y
+-- ella), y la insignia que el dueño le dio a mano a Ana no le sale al dueño en el perfil de ella (esa sigue pidiendo 6+
+-- cuentas y 14+ días)
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v_award uuid;
+  p jsonb;
+begin
+  select a.id into v_award from public.league_badge_awards a
+   where a.prize_slot_id in (select s.id from public.tournament_prize_slots s where s.prize_id = pg_temp.id('prize'))
+     and a.revoked_at is null;
+  assert v_award is not null, 'FAIL insignias en el perfil: el dueño no lee su premio';
+  assert public.set_featured_badges(p_ids => array[v_award]) = array[v_award], 'FAIL insignias en el perfil: set_featured_badges';
+  p := public.profile_badges(p_user => pg_temp.id('u_owner'));
+  assert p -> 'featured' = jsonb_build_array(v_award) and p -> 'featuredLeague' = jsonb_build_array(v_award)
+     and p -> 'hasChosen' = 'true'::jsonb,
+    format('FAIL insignias en el perfil: destacadas del dueño %s', p -> 'featured');
+  p := public.profile_badges(p_user => pg_temp.id('u_ana'));
+  assert not ((p -> 'leagueAwards') @> jsonb_build_array(jsonb_build_object('id', pg_temp.id('badge_award')))),
+    'FAIL insignias en el perfil: la insignia dada a mano en una liga pequeña le sale a otro';
+  perform pg_temp.put('prize_award', v_award::text);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  p jsonb := public.profile_badges(p_user => pg_temp.id('u_owner'));
+begin
+  assert p -> 'featured' = jsonb_build_array(pg_temp.id('prize_award')) and p -> 'hasChosen' = 'true'::jsonb
+     and (p -> 'leagueAwards') @> jsonb_build_array(jsonb_build_object(
+           'id', pg_temp.id('prize_award'), 'onProfile', true,
+           'prize', jsonb_build_object('verified', true, 'place', 1, 'competition', 'Smoke Premio'))),
+    format('FAIL insignias en el perfil: Ana no ve el premio destacado del dueño %s', p);
+  -- Cuántas cuentas jugaron (prize_accounts) solo lo leen las funciones de la base.
+  perform pg_temp.must_fail('insignias en el perfil: un miembro no lee prize_accounts',
+    'select a.prize_accounts from public.league_badge_awards a limit 1', array['42501']);
+  perform pg_temp.ok('insignias en el perfil: el dueño destaca su premio del torneo (set_featured_badges) y Ana lo ve en su perfil con el lugar y la competencia (profile_badges: jugaron 2 cuentas); lo dado a mano en una liga pequeña no sale a otros');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9i. Anotadores (20260929001400): el dueño crea el link para anotar el torneo; sin cuenta se ve a dónde lleva; alguien
 -- de fuera entra (liga privada, sin el código de la liga) y queda anotador sin jugador: anota el torneo, no la
 -- práctica. El dueño le quita el permiso (sale de la liga; el mismo link ya no lo deja volver) y quita el link
 -- =====================================================================================================================

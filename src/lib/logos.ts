@@ -188,6 +188,12 @@ function loadLogoUrl(path: string): Promise<void> {
   return p;
 }
 
+/** La URL pública del logo (la misma que muestra `useLogo`; la pide si hace falta). null si no se pudo pedir. */
+export async function logoUrl(path: string): Promise<string | null> {
+  if (!urls.has(path)) await loadLogoUrl(path);
+  return urls.get(path) ?? null;
+}
+
 const subscribe = (cb: () => void) => {
   listeners.add(cb);
   return () => void listeners.delete(cb);

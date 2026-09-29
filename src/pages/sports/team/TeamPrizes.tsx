@@ -4,6 +4,7 @@ import type { Playoff } from '../../../lib/data/playoffs';
 import { useNow } from '../../../lib/useNow';
 import { koEventOf, playoffComp, playoffDate, playoffProvider, teamKoComp, teamKoFinished, teamKoProvider, type TeamNames } from '../../../prizes/sports';
 import { TournamentPrizes } from '../../../components/prizes/TournamentPrizes';
+import type { TeamReportNames } from '../../../lib/report/team';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -31,6 +32,15 @@ function useTeamNames(tl: TeamLeague): TeamNames {
     }),
     [nameOf, teamOf],
   );
+}
+
+/** Los nombres para el reporte del torneo (el equipo borrado: null, y el reporte usa el nombre copiado). */
+export function teamReportNames(tl: Pick<TeamLeague, 'nameOf' | 'teamOf'>): TeamReportNames {
+  return {
+    nameOf: tl.nameOf,
+    teamName: (teamId) => tl.teamOf(teamId)?.name ?? null,
+    rosterOf: (teamId) => tl.teamOf(teamId)?.roster.map((r) => r.playerId) ?? [],
+  };
 }
 
 /**

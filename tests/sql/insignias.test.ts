@@ -377,14 +377,18 @@ describe('perfil (profile_badges)', () => {
     const { a } = await setup();
     // Desde 20260929000200 cualquier cuenta con sesión ve el perfil de otra sin bloquear (private.social_can_see): sin
     // nada en común, sale el perfil, sin insignias que no pueda ver.
+    // (featuredLeague y hasChosen: las destacadas que son de la liga y si eligió alguna, de
+    // 20260929001300_insignias_perfil.sql.)
     expect(await profile(w.u.extra, w.u.nuevo)).toEqual({
-      userId: w.u.nuevo, isMe: false, featured: [], awards: [], truncated: false, leagueAwards: [], leagueTruncated: false,
+      userId: w.u.nuevo, isMe: false, featured: [], featuredLeague: [], hasChosen: false, awards: [], truncated: false,
+      leagueAwards: [], leagueTruncated: false,
     });
     expect(await profile(w.u.extra, '00000000-0000-0000-0000-000000000000')).toBeNull();
     await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.luis, p_reason: 'x' });
     // (leagueAwards y leagueTruncated: las del creador, de 20260929001120_insignias_creador.sql.)
     expect(await profile(w.u.otro, w.u.luis)).toEqual({
-      userId: w.u.luis, isMe: false, featured: [], awards: [], truncated: false, leagueAwards: [], leagueTruncated: false,
+      userId: w.u.luis, isMe: false, featured: [], featuredLeague: [], hasChosen: false, awards: [], truncated: false,
+      leagueAwards: [], leagueTruncated: false,
     });
     expect((await profile(w.u.dios, w.u.luis))!.awards.map((b) => b.id)).toEqual([a.pub, a.priv, a.acc]);
   });

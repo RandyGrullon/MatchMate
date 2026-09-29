@@ -183,6 +183,26 @@ export function cardTable(lines: readonly SeasonLine[], fair = { yellow: -1, sec
   return [...by.values()].sort((a, b) => a.fairPlay - b.fairPlay || b.reds - a.reds || b.yellows - a.yellows || a.player.localeCompare(b.player));
 }
 
+/** Goleadores (con asistencias, tarjetas y lo del portero) de las líneas de unos partidos: solo quien jugó. */
+export function scorersOf(lines: readonly SeasonLine[]): FootballTotals[] {
+  return footballTotals(
+    lines
+      .filter((l) => l.played)
+      .map((l) => ({
+        player: l.playerId,
+        team: l.team,
+        goals: l.goals,
+        assists: l.assists,
+        ownGoals: l.ownGoals,
+        yellows: l.yellows,
+        red: l.red,
+        keeper: l.keeper,
+        conceded: l.conceded,
+        cleanSheet: l.cleanSheet,
+      })),
+  );
+}
+
 /**
  * La temporada completa. `teamIds` = equipos de la liga (todos salen en la tabla, también sin partidos).
  * Solo partidos entre equipos de la temporada; los anulados y aplazados no cuentan. Los del playoff no suman en la
@@ -215,21 +235,7 @@ export function footballSeason(input: {
     between.filter((m) => !isPlayoffMatch(m)),
     now,
   );
-  const played = lines.filter((l) => l.played);
-  const scorers = footballTotals(
-    played.map((l) => ({
-      player: l.playerId,
-      team: l.team,
-      goals: l.goals,
-      assists: l.assists,
-      ownGoals: l.ownGoals,
-      yellows: l.yellows,
-      red: l.red,
-      keeper: l.keeper,
-      conceded: l.conceded,
-      cleanSheet: l.cleanSheet,
-    })),
-  );
+  const scorers = scorersOf(lines);
   const keepers = scorers
     .filter((s) => s.keeperGames > 0)
     .sort((a, b) => b.cleanSheets - a.cleanSheets || a.conceded / a.keeperGames - b.conceded / b.keeperGames || b.keeperGames - a.keeperGames || a.player.localeCompare(b.player));

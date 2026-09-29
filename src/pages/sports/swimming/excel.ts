@@ -1,18 +1,22 @@
 import type { SheetData } from 'write-excel-file/browser';
+import { excelHead as head, type ExcelSheet } from '../../../lib/report/sheets';
 import { formatSwimTime, GENDER_LABEL, STATUS_LABEL } from '../../../sports/swimming';
-import { meetTitle } from './bits';
 import { eventResults, groupLabel, meetScores, publishedHeats, raceName, raceDetail, scores } from './logic';
 import type { MeetData } from './MeetPage';
 
-const head = (labels: string[]) => labels.map((value) => ({ value, fontWeight: 'bold' as const, backgroundColor: '#E8E7FB' }));
 const time = (cs: number | null) => (cs ? formatSwimTime(cs) : 'NT');
 
-/** Descarga el encuentro en Excel: hoja de series, resultados por prueba y categoría, y puntos por club. */
-export async function exportMeetToExcel(data: MeetData) {
-  const { default: writeExcelFile } = await import('write-excel-file/browser');
+/** Lo que usan las hojas del encuentro. */
+export type MeetSheetData = Pick<MeetData, 'meet' | 'events' | 'entries' | 'clubs' | 'name'>;
+
+/**
+ * Las hojas del Excel del encuentro: hoja de series, resultados por prueba y categoría, y puntos por club. Puro: el
+ * reporte del torneo (src/lib/report/swimming.ts) las pone de detalle, después de «General» e «Individual».
+ */
+export function meetSheets(data: MeetSheetData): ExcelSheet[] {
   const { meet, events, entries, clubs, name } = data;
   const club = (id: string | null) => (id ? (clubs.get(id)?.name ?? '') : '');
-  const sheets: { data: SheetData; sheet: string; columns: { width: number }[]; stickyRowsCount: number }[] = [];
+  const sheets: ExcelSheet[] = [];
 
   const heatRows: SheetData = [head(['Prueba', 'Distancia y estilo', 'Sexo y categorías', 'Serie', 'Carril', 'Nadador', 'Club', 'Categoría', 'Siembra'])];
   for (const ev of events) {
@@ -95,5 +99,5 @@ export async function exportMeetToExcel(data: MeetData) {
     });
   }
 
-  await writeExcelFile(sheets).toFile(`${meetTitle(meet)} - ${meet.date}.xlsx`);
+  return sheets;
 }

@@ -1,14 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ClipboardList, Flag, ListOrdered, Lock, LockOpen, Settings2, Share2, Signature, Trash2, Trophy, Users } from 'lucide-react';
-import { deleteEvent, useEvent, usePlayers } from '../../../lib/data';
-import { closeGolfRound, pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
+import { deleteEvent, useEvent, useEvents, usePlayers } from '../../../lib/data';
+import { closeGolfRound, pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournament, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
 import { sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
 import { eventLabel, formatDateLong, toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { BackLink } from '../../../components/BackLink';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { shareLink } from '../../../components/share';
+import { ReportButton } from '../../../components/tournamentReport/ReportButton';
+import { golfComp } from '../../../prizes/sports';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
 import { ScorersButton } from '../../../components/scorers/ScorersButton';
 import { CardModal } from './bits';
@@ -41,6 +43,10 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const golf = useGolfEvent(lid, eventId);
   const players = usePlayers(lid);
   const tournaments = useGolfTournaments(lid);
+  // Una ronda de un torneo reporta el torneo entero (como los premios): sus rondas, tarjetas y días.
+  const tid = golf.data.round?.tournamentId ?? null;
+  const tournamentData = useGolfTournament(lid, tid);
+  const tournamentEvents = useEvents(tid ? lid : undefined);
   const [log, updateLog] = useCourtLog(eventId ?? '');
   // La firma pendiente en la cola cambia lo que se ofrece (se vuelve a dibujar cuando la cola cambia).
   useOutboxSnapshot();
@@ -73,6 +79,31 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const started = cards.some((c) => holesDone(c) > 0);
   const tournament = round?.tournamentId ? tournaments.data.find((t) => t.id === round.tournamentId) : null;
   const title = eventLabel({ type: ev.type, name: ev.name, date: ev.date }, 'golf');
+
+  // Reporte del torneo (PDF o Excel), para todos: el leaderboard y las tarjetas de la ronda (o de todo el torneo).
+  const roundIds = new Set(tournamentData.data.rounds.map((r) => r.eventId));
+  const dates = tid ? tournamentEvents.data.filter((e) => roundIds.has(e.id)).map((e) => e.date) : [ev.date];
+  const report = round
+    ? {
+        report: () =>
+          import('../../../lib/report/golf').then((m) =>
+            m.golfReport({
+              lid,
+              league,
+              event: { id: eventId, name: ev.name, date: ev.date },
+              title,
+              round,
+              cards,
+              tournament: tid ? { id: tid, name: tournament?.name ?? '', rounds: tournamentData.data.rounds, cards: tournamentData.data.cards, dates } : null,
+              nameOf,
+            }),
+          ),
+        comp: golfComp(lid, { eventId, tournamentId: tid, name: tid ? (tournament?.name ?? '') : ev.name, date: dates.reduce((d, x) => (x > d ? x : d), ev.date) }),
+        // En un torneo espera también sus días y su nombre: si no, el reporte sale con la fecha de esta ronda sola.
+        disabled: players.loading || (!!tid && (tournamentData.loading || tournamentEvents.loading || tournaments.loading)),
+      }
+    : null;
+  const finished = !!round && (tid ? tournamentData.data.rounds.length > 0 && tournamentData.data.rounds.every((r) => (r.eventId === round.eventId ? round.closed : r.closed)) : round.closed);
 
   const tabs: { key: TabKey; label: string; icon: ReactNode }[] = round
     ? [
@@ -178,6 +209,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
             if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
           }}
         />
+        {report && <ReportButton {...report} />}
       </div>
 
       {isAdmin && (
@@ -212,6 +244,8 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
               Terminaste: revisa y firma tu tarjeta
             </Button>
           )}
+          {/* Cerrada la ronda (o el torneo), el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+          {report && isAdmin && finished && <ReportButton {...report} look="card" />}
           <GolfPrizes eventId={eventId} name={ev.name} date={ev.date} round={round} cards={golf.data.cards} tournamentName={tournament?.name} nameOf={nameOf} />
           <Tabs items={tabs} active={tab} onChange={(k) => setSearch({ tab: k }, { replace: true })} />
           <div key={tab} className="animate-fade-up">

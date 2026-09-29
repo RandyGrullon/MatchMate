@@ -3,15 +3,19 @@ import { Link } from 'react-router';
 import { CheckCircle2, ChevronDown, ChevronUp, Radio, Shirt, Trophy, Zap } from 'lucide-react';
 import type { Match } from '../../../lib/data/matches';
 import { formatDateLong } from '../../../lib/format';
+import { useNow } from '../../../lib/useNow';
+import { teamKoComp, teamKoComplete } from '../../../prizes/sports';
 import { BackLink } from '../../../components/BackLink';
 import { ScorersButton } from '../../../components/scorers/ScorersButton';
+import { ReportButton } from '../../../components/tournamentReport/ReportButton';
 import { Badge, Button, Card, Empty, ListSkeleton, cx } from '../../../components/ui';
 import { SectionHead, TeamName } from './TeamBits';
-import { KnockoutPrizes, type KoEvent } from './TeamPrizes';
+import { KnockoutPrizes, teamReportNames, type KoEvent } from './TeamPrizes';
 import { TeamsManager } from './TeamsManager';
 import { stageGroups, tournamentStep, type TournamentStep } from './tournament';
 import { TournamentAdvance, TournamentBuilder } from './TournamentBuilder';
 import type { TeamLeague } from './useTeamLeague';
+import type { FootballSeason } from '../football/season';
 
 /**
  * El torneo de un día de los deportes de equipo (baloncesto, fútbol y sala), sobre todo el «torneo sin liga»:
@@ -32,6 +36,7 @@ export function TournamentHub({
   renderMatch,
   sportWord = 'equipo',
   event = null,
+  footballSeason,
 }: {
   tl: TeamLeague;
   title: string;
@@ -52,6 +57,8 @@ export function TournamentHub({
   sportWord?: string;
   /** El evento del torneo suelto (de él cuelgan los premios del torneo). */
   event?: KoEvent | null;
+  /** Fútbol y sala: la temporada ya calculada (goleadores y sanciones del comité), para el reporte del torneo. */
+  footballSeason?: FootballSeason;
 }) {
   const [building, setBuilding] = useState(false);
   const teams = tl.teams.data;
@@ -61,6 +68,29 @@ export function TournamentHub({
   const live = matches.filter((m) => m.status === 'live' || m.status === 'suspended');
   const standalone = tl.league.kind === 'torneo';
   const loading = (tl.teams.loading && !teams.length) || (tl.matches.loading && !matches.length);
+  const now = useNow(60_000).getTime();
+
+  // Reporte del torneo (PDF o Excel), para todos: se arma al tocar, con las tablas y la eliminatoria de la app.
+  const report = {
+    report: () =>
+      import('../../../lib/report/team').then((m) =>
+        m.teamKoReport({
+          lid: tl.lid,
+          league: tl.league,
+          title,
+          date,
+          matches,
+          teamIds: teams.map((t) => t.id),
+          names: teamReportNames(tl),
+          rules: tl.rules.data,
+          now,
+          football: footballSeason,
+        }),
+      ),
+    comp: teamKoComp(tl.lid, { kind: tl.league.kind ?? 'liga', sport: tl.league.sport ?? 'football', event, leagueName: tl.league.name }),
+    disabled: loading || tl.players.loading,
+  };
+  const finished = step === 'play' && teamKoComplete(matches, now);
 
   return (
     <div className="flex flex-col gap-5">
@@ -76,15 +106,19 @@ export function TournamentHub({
           {date && <p className="text-sm text-muted first-letter:uppercase">{formatDateLong(date)}</p>}
           {announcement && <p className="mt-2 text-sm whitespace-pre-line">{announcement}</p>}
         </div>
-        {/* La mesa: quién anota los partidos (de la liga, por @usuario o con el link). Siempre de la liga (el permiso lo
-            es, y la portada es este torneo): no cambia cuando llega el evento del torneo suelto, así el link que se
-            crea antes sigue siendo el de la hoja. */}
-        {tl.isAdmin && (
-          <ScorersButton
-            target={{ scope: 'liga', refId: null, title }}
-            participants={teams.flatMap((t) => t.roster.map((r) => r.playerId))}
-          />
-        )}
+        {/* Los íconos juntos: el reporte (para todos) y, para el admin, los anotadores. */}
+        <div className="flex shrink-0 items-center">
+          <ReportButton {...report} />
+          {/* La mesa: quién anota los partidos (de la liga, por @usuario o con el link). Siempre de la liga (el permiso lo
+              es, y la portada es este torneo): no cambia cuando llega el evento del torneo suelto, así el link que se
+              crea antes sigue siendo el de la hoja. */}
+          {tl.isAdmin && (
+            <ScorersButton
+              target={{ scope: 'liga', refId: null, title }}
+              participants={teams.flatMap((t) => t.roster.map((r) => r.playerId))}
+            />
+          )}
+        </div>
       </div>
 
       {tl.isAdmin && step !== 'play' && (
@@ -92,6 +126,9 @@ export function TournamentHub({
       )}
 
       {tl.isAdmin && <TournamentAdvance tl={tl} rankGroup={rankGroup} />}
+
+      {/* Terminado el torneo, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {tl.isAdmin && finished && <ReportButton {...report} look="card" />}
 
       <KnockoutPrizes tl={tl} event={event} />
 

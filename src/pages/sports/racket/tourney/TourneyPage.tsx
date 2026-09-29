@@ -1,21 +1,22 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { ArrowDown, ArrowUp, ClipboardList, Download, GitFork, ListOrdered, Plus, Rows3, Settings2, Shuffle, Trash2, Trophy, Wand2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardList, GitFork, ListOrdered, Plus, Rows3, Settings2, Shuffle, Trash2, Trophy, Wand2 } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
 import { createMatches, deleteMatch, setMatchSides, useMatches, type Match } from '../../../../lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
 import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
+import { racketTourneyComp, racketTourneyFinished } from '../../../../prizes/sports';
 import { podium, type Bracket } from '../../../../sports/formats';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { BackLink } from '../../../../components/BackLink';
+import { ReportButton } from '../../../../components/tournamentReport/ReportButton';
 import { BracketView, MatchCard, StandingsTable } from '../../../../components/match';
 import { ScorersButton } from '../../../../components/scorers/ScorersButton';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
 import { Chips, PickList, Section, Stepper, racketColumns } from '../bits';
-import { exportCompetitionExcel } from '../excel';
-import { entrantKey, forLabel, seasonPlayerTable, setsLabel } from '../logic/results';
+import { entrantKey } from '../logic/results';
 import {
   CATEGORY_IDS,
   bracketDrafts,
@@ -114,22 +115,14 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
     }
   };
 
-  const excel = () =>
-    exportCompetitionExcel({
-      title,
-      date: event.date,
-      matches,
-      tables: cfg.categories.flatMap((c) => groupTables(sport, c, matches, { scheme: cfg.points, now }).map((rows, g) => ({ name: groupStage(c, g), rows }))),
-      players: seasonPlayerTable(matches, { sport, rosterOf: names.rosterOf, now }),
-      entrantName: names.entrantName,
-      nameOf: names.nameOf,
-      tz: league.tz,
-      forLabel: forLabel(sport),
-      setsLabel: setsLabel(sport),
-    }).catch((e) => {
-      console.error(e);
-      toast('No se pudo hacer el Excel', 'error');
-    });
+  // Reporte del torneo (PDF o Excel), para todos: se arma al tocar, con los cuadros y las tablas de la pantalla.
+  const report = {
+    report: () =>
+      import('../../../../lib/report/racket').then((m) => m.racketTourneyReport({ lid, league, event, title, sport, leagueRules, matches, names, now })),
+    comp: racketTourneyComp(lid, event, { sport, leagueRules, categories: cfg.categories }),
+    disabled: (q.loading && !matches.length) || names.loading,
+  };
+  const finished = racketTourneyFinished(cfg.categories, matches, names, now);
 
   return (
     <div className="flex flex-col gap-5">
@@ -146,6 +139,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
             {formatDateLong(event.date)} · {cfg.categories.length} {cfg.categories.length === 1 ? 'categoría' : 'categorías'} · {event.playerCount} {side[1]}
           </p>
         </div>
+        {cfg.categories.length > 0 && <ReportButton {...report} />}
       </div>
 
       {isAdmin && (
@@ -165,14 +159,14 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
             target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
             participants={cfg.categories.flatMap((c) => entrantPlayers(c.pairs, names))}
           />
-          <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!matches.length}>
-            Excel
-          </Button>
           <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
             Borrar
           </Button>
         </div>
       )}
+
+      {/* Terminado el torneo, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
+      {isAdmin && finished && <ReportButton {...report} look="card" />}
 
       {cfg.categories.length > 0 && <TourneyPrizes event={event} cfg={cfg} matches={matches} names={names} now={now} />}
 

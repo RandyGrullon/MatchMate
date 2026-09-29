@@ -5,24 +5,35 @@ import {
   canReportAward,
   NOTICE_DAYS,
   UNLOCK_MAX,
+  autoFeatured,
   awardMonth,
   badgeNotices,
+  chosenFeatured,
+  countSplitText,
   countText,
   emptyOwnText,
   eventAwards,
+  featurableLeagueTiles,
+  featuredIds,
+  featuredIsAuto,
+  featuredModel,
   fillBadgeText,
   filterChips,
   groupTiles,
+  leagueCount,
   leagueLookOf,
   leagueShareInputOf,
   leagueShelves,
+  leagueTileSub,
   levelLine,
   lockedModels,
   monthAwards,
   monthText,
   myBadgesPath,
   officialCount,
+  profileCount,
   progressModel,
+  rarityScore,
   rarityShareText,
   rarityText,
   retiredLines,
@@ -343,6 +354,8 @@ describe('por confirmar, avisos y aviso al ganar', () => {
       userId: 'u1',
       isMe: true,
       featured: [],
+      featuredLeague: [],
+      hasChosen: false,
       truncated: false,
       awards: [
         figure({ id: 'F1' }),
@@ -357,6 +370,9 @@ describe('por confirmar, avisos y aviso al ganar', () => {
     expect(list.map((x) => x.id)).toEqual(['insignia:F1', 'insignia-liga:LA1', 'insignias-historial:2', 'insignia-aval:R1']);
     expect(list[0]).toMatchObject({ title: '¡Te ganaste «Figura del mes»!', body: 'Única', url: myBadgesPath('F1'), lid: LID, sport: 'bowling', category: 'social', icon: 'badge' });
     expect(list[1]).toMatchObject({ title: 'Liga Los Pinos te dio «MVP de la noche»', category: 'social' });
+    // Un premio del torneo sale igual que antes en Avisos (el título con la liga y el periodo de siempre).
+    const prized = badgeNotices({ ...profile, awards: [], leagueAwards: [prizeAward({ id: 'P1' })] }, [], NOW);
+    expect(prized).toEqual([expect.objectContaining({ id: 'insignia-liga:P1', title: 'Liga Los Pinos te dio «Campeón»', body: 'OCT 2026 · Individual' })]);
     expect(list[2]).toMatchObject({ title: 'Te dimos 2 insignias por tu historial', url: '/perfil?tab=insignias' });
     expect(list[3]).toMatchObject({ title: 'Hay una hazaña por confirmar', body: 'Hoyo en uno de Ana P.', url: `/l/${LID}/admin?tab=confirmar`, category: 'admin' });
     // De otra cuenta, nada propio.
@@ -408,8 +424,28 @@ function leagueAward(p: Partial<LeagueBadgeAward> = {}): LeagueBadgeAward {
     note: 'Por tu garra',
     seenAt: null,
     badge: { id: 'B1', name: 'MVP de la noche', description: 'La figura del americano.', shape: 'star', palette: 'color', color: '#dc2626', icon: 'flame', topText: '', periodText: 'OCT 2026' },
+    prizeSlotId: null,
+    prize: null,
+    onProfile: true,
     ...p,
   };
+}
+
+/** Un premio del torneo (docs/premios-torneo.md): «Campeón» del 1.er lugar individual de la Copa de Octubre. */
+function prizeAward(p: Partial<LeagueBadgeAward> = {}): LeagueBadgeAward {
+  return leagueAward({
+    id: 'PZ',
+    badgeId: 'B9',
+    sport: 'bowling',
+    period: 'OCT 2026',
+    division: 'Individual',
+    awardedAt: '2026-10-02T12:00:00Z',
+    note: '1.er lugar · Individual (handicap) · Copa de Octubre',
+    badge: { id: 'B9', name: 'Campeón', description: 'Ganó el torneo.', shape: 'shield', palette: 'oro', color: null, icon: 'trophy', topText: 'CAMPEÓN', periodText: 'OCT 2026' },
+    prizeSlotId: 'S1',
+    prize: { slotId: 'S1', verified: true, place: 1, placeLabel: '1.er lugar', category: 'individual', title: 'Individual (handicap)', competition: 'Copa de Octubre' },
+    ...p,
+  });
 }
 
 describe('las del creador (de la liga)', () => {
@@ -433,6 +469,164 @@ describe('las del creador (de la liga)', () => {
     ]);
     expect(leagueShelves(list, { own: false, now: NOW })[0].tiles).toHaveLength(1);
     expect(leagueShareInputOf(v, 'Ana')).toMatchObject({ footnote: 'Otorgada por Liga Los Pinos · 4 oct 2026', caption: 'Liga Los Pinos me dio «MVP de la noche» en MatchMate' });
+  });
+
+  it('un premio del torneo se lee claro: «Campeón · Copa de Octubre · Liga Los Pinos»', () => {
+    const v = viewLeagueAward(prizeAward());
+    expect(v.headline).toBe('Campeón · Copa de Octubre · Liga Los Pinos');
+    expect(v.prizeLine).toBe('1.er lugar · Individual (handicap) · Copa de Octubre');
+    expect(v.fullLabel).toContain('Campeón');
+    expect(v.fullLabel).toContain('1.er lugar · Individual (handicap) · Copa de Octubre, de Liga Los Pinos');
+    // Avisos no cambia: el detalle de siempre.
+    expect(v.detail).toBe('OCT 2026 · Individual');
+    expect(leagueShareInputOf(v, 'Ana').levelLine).toBe('1.er lugar · Individual (handicap) · Copa de Octubre');
+    // Una que dio una persona: sin premio.
+    const manual = viewLeagueAward(leagueAward());
+    expect(manual).toMatchObject({ prize: null, prizeLine: null, headline: 'MVP de la noche · Liga Los Pinos' });
+    // Se borró la competencia: se queda con su liga y su periodo.
+    const gone = viewLeagueAward(prizeAward({ prize: { slotId: 'S1', verified: true, place: null, placeLabel: null, category: null, title: null, competition: null } }));
+    expect(gone).toMatchObject({ prizeLine: null, headline: 'Campeón · Liga Los Pinos', detail: 'OCT 2026 · Individual' });
+  });
+
+  it('en la grilla: la competencia del premio; «Solo tú la ves» y «Solo en tu liga» en la tuya', () => {
+    const tile = (a: LeagueBadgeAward, own = true) => leagueShelves([a], { own, now: NOW })[0].tiles[0];
+    expect(leagueTileSub(tile(prizeAward()), true)).toBe('Copa de Octubre');
+    expect(leagueTileSub(tile(leagueAward()), true)).toBe('OCT');
+    expect(leagueTileSub(tile(leagueAward({ period: '' })), true)).toBe('4 oct 2026');
+    expect(leagueTileSub(tile(prizeAward({ hidden: true, onProfile: false })), true)).toBe('Solo tú la ves');
+    // La tuya que los demás todavía no ven (liga nueva o pequeña).
+    const small = tile(leagueAward({ onProfile: false }));
+    expect(small.onProfile).toBe(false);
+    expect(leagueTileSub(small, true)).toBe('Solo en tu liga');
+    // En el perfil de otra cuenta, lo que llega se ve.
+    expect(tile(leagueAward({ onProfile: false }), false).onProfile).toBe(true);
+  });
+
+  it('del mismo diseño, la que se ve en el perfil y la que no van en cuadros distintos (en la tuya)', () => {
+    // Un premio verificado que los demás ven (20 sep) y un «Campeón» dado a mano, más nuevo, que todavía no (25 sep).
+    const seen = prizeAward({ id: 'V', awardedAt: '2026-09-20T12:00:00Z', onProfile: true });
+    const small = prizeAward({ id: 'M', awardedAt: '2026-09-25T12:00:00Z', onProfile: false, prizeSlotId: null, prize: null, period: 'SEP' });
+    const mine = leagueShelves([small, seen], { own: true, now: NOW })[0].tiles;
+    expect(mine.map((t) => [t.id, t.top.award.id, t.count, t.onProfile, leagueTileSub(t, true)])).toEqual([
+      ['B9|liga', 'M', 1, false, 'Solo en tu liga'],
+      ['B9|', 'V', 1, true, 'Copa de Octubre'],
+    ]);
+    // Al revés (la más nueva se ve y una vieja no): tampoco se mezclan.
+    const flipped = leagueShelves([{ ...small, onProfile: true }, { ...seen, onProfile: false }], { own: true, now: NOW })[0].tiles;
+    expect(flipped.map((t) => [t.top.award.id, t.onProfile])).toEqual([
+      ['M', true],
+      ['V', false],
+    ]);
+    // Lo que ven los demás (solo llega lo que se ve): un cuadro por diseño, ×N como siempre.
+    const theirs = leagueShelves([{ ...small, onProfile: true }, seen], { own: false, now: NOW })[0].tiles;
+    expect(theirs.map((t) => [t.id, t.count, t.onProfile])).toEqual([['B9|', 2, true]]);
+    // El elegidor y la grilla dicen lo mismo: el cuadro que se puede destacar es el del premio que se ve.
+    expect(featurableLeagueTiles({ featured: [], leagueAwards: [small, seen] }, NOW).map((t) => [t.id, t.top.award.id])).toEqual([['B9|', 'V']]);
+  });
+
+  it('el total del perfil cuenta las de sus ligas (no las ocultas)', () => {
+    const awards = [aw({ key: 'debut' }), aw({ key: 'bowling_club', level: 1, hidden: true })];
+    const leagueAwards = [leagueAward({ id: 'A' }), prizeAward(), leagueAward({ id: 'C', hidden: true })];
+    expect(leagueCount(leagueAwards)).toBe(2);
+    expect(profileCount({ awards, leagueAwards })).toBe(3);
+    expect(countSplitText(1, 2, false)).toBe('1 de MatchMate · 2 de sus ligas');
+    expect(countSplitText(1200, 2, true)).toBe(`${(1200).toLocaleString('es-DO')} de MatchMate · 2 de tus ligas`);
+    expect(countSplitText(5, 0, true)).toBeNull();
+  });
+});
+
+describe('destacadas (debajo del nombre)', () => {
+  const debut = aw({ id: 'D', key: 'debut', awardedAt: '2026-01-01T12:00:00Z' });
+  const club = aw({ id: 'C2', key: 'bowling_club', level: 2, awardedAt: '2026-07-01T12:00:00Z' });
+  const clubLow = aw({ id: 'C1', key: 'bowling_club', level: 1, awardedAt: '2026-06-01T12:00:00Z' });
+  const perfect = aw({ id: 'PG', key: 'bowling_perfect_game', periodKey: 'g:x:0', awardedAt: '2026-05-01T12:00:00Z' });
+  const hidden = aw({ id: 'H', key: 'bowling_series', level: 1, hidden: true });
+  const data = (p: Partial<ProfileBadges> = {}): ProfileBadges => ({
+    userId: 'u1',
+    isMe: false,
+    featured: [],
+    featuredLeague: [],
+    hasChosen: (p.featured?.length ?? 0) > 0,
+    truncated: false,
+    awards: [debut, club, clubLow, perfect, hidden],
+    leagueAwards: [],
+    ...p,
+  });
+
+  it('las elegidas: automáticas y de la liga, en su orden, solo las que se ven', () => {
+    const prize = prizeAward();
+    const d = data({ featured: [prize.id, 'H', debut.id, 'LA'], featuredLeague: [prize.id, 'LA'], leagueAwards: [prize, leagueAward({ id: 'LA', hidden: true })] });
+    const items = chosenFeatured(d);
+    expect(items.map((i) => [i.kind, i.id])).toEqual([
+      ['liga', prize.id],
+      ['app', debut.id],
+    ]);
+    expect(items[0]).toMatchObject({ title: 'Campeón · Copa de Octubre · Liga Los Pinos' });
+    expect(items[0].label).toContain('de Liga Los Pinos');
+    expect(featuredModel(d).auto).toBe(false);
+    expect(chosenFeatured(null)).toEqual([]);
+  });
+
+  it('sin elegir salen solas: premios del torneo (más nuevos), las demás de la liga y las automáticas más raras', () => {
+    const leagueAwards = [
+      leagueAward({ id: 'M1', awardedAt: '2026-10-04T12:00:00Z' }),
+      prizeAward({ id: 'P-old', awardedAt: '2026-08-01T12:00:00Z', badgeId: 'B8' }),
+      prizeAward({ id: 'P-new', awardedAt: '2026-09-01T12:00:00Z' }),
+      // Otra vez el mismo diseño: una sola vez.
+      prizeAward({ id: 'P-dup', awardedAt: '2026-07-01T12:00:00Z' }),
+    ];
+    const m = featuredModel(data({ leagueAwards }));
+    expect(m.auto).toBe(true);
+    expect(m.items.map((i) => i.id)).toEqual(['P-new', 'P-old', 'M1']);
+    // Con una sola de la liga, las automáticas completan: la más rara primero (juego perfecto), después por nivel.
+    const one = autoFeatured(data({ leagueAwards: [leagueAward({ id: 'M1' })] }));
+    expect(one.map((i) => [i.kind, i.id])).toEqual([
+      ['liga', 'M1'],
+      ['app', 'PG'],
+      ['app', 'C2'],
+    ]);
+    // Nunca las ocultas ni las de la liga que los demás no ven en tu perfil.
+    const mine = autoFeatured(data({ isMe: true, leagueAwards: [leagueAward({ id: 'X', hidden: true, onProfile: false }), leagueAward({ id: 'Y', onProfile: false })] }));
+    expect(mine.map((i) => i.id)).toEqual(['PG', 'C2', 'D']);
+    expect(mine.map((i) => i.id)).not.toContain('H');
+    expect(autoFeatured(null)).toEqual([]);
+  });
+
+  it('la rareza medida manda sobre la del catálogo', () => {
+    const stats: BadgeStat[] = [{ key: 'debut', sport: 'bowling', level: 0, holders: 1, base: 100, pct: 0.2, rarity: 'legendaria' }];
+    expect(autoFeatured(data(), stats)[0].id).toBe('D');
+    const def = viewAward(debut)!.def;
+    expect(rarityScore(debut, def, stats)).toMatchObject({ score: 0.2, stat: stats[0] });
+    // Con poca base, no cuenta la medida.
+    expect(rarityScore(debut, def, [{ ...stats[0], base: 10 }]).stat).toBeUndefined();
+  });
+
+  it('eligió, pero quien mira no ve ninguna: no sale nada (nunca unas que no eligió); sin elegir, salen solas', () => {
+    const prize = prizeAward();
+    // profile_badges no manda la elegida que quien mira no ve, pero dice que eligió (hasChosen).
+    const chose = data({ featured: [], hasChosen: true, leagueAwards: [prize] });
+    expect(featuredModel(chose)).toEqual({ items: [], auto: false });
+    expect(featuredIsAuto(chose)).toBe(false);
+    const none = data({ featured: [], hasChosen: false, leagueAwards: [prize] });
+    const auto = featuredModel(none);
+    expect(auto.auto).toBe(true);
+    expect(featuredIds(auto)).toEqual([prize.id, 'PG', 'C2']);
+    expect(featuredIsAuto(none)).toBe(true);
+    expect(featuredIsAuto(null)).toBe(false);
+    // Una base de antes sin hasChosen pero con destacadas que se ven: las elegidas.
+    expect(featuredModel(data({ featured: ['D'], hasChosen: false }))).toMatchObject({ auto: false, items: [{ id: 'D' }] });
+  });
+
+  it('el elegidor ofrece las de la liga que los demás ven (o ya destacadas), premios primero', () => {
+    const list = [
+      leagueAward({ id: 'M1', awardedAt: '2026-10-04T12:00:00Z' }),
+      prizeAward({ id: 'P1' }),
+      leagueAward({ id: 'SMALL', badgeId: 'B3', onProfile: false }),
+      leagueAward({ id: 'KEPT', badgeId: 'B4', onProfile: false, awardedAt: '2026-09-04T12:00:00Z' }),
+      leagueAward({ id: 'HID', badgeId: 'B5', hidden: true, onProfile: false }),
+    ];
+    const tiles = featurableLeagueTiles({ featured: ['KEPT'], leagueAwards: list }, NOW);
+    expect(tiles.map((t) => t.top.award.id)).toEqual(['P1', 'M1', 'KEPT']);
   });
 });
 
