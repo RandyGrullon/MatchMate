@@ -124,8 +124,11 @@ describe('permisos', () => {
         order by 1`,
     );
     // Lecturas (y touch_seen, que nunca falla): no escriben nada de la persona. delete_push_subscription solo borra
-    // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones).
-    expect(rows.map((r) => r.fn)).toEqual(['delete_push_subscription', 'invite_preview', 'my_matches', 'server_now', 'sync_ladder', 'touch_seen']);
+    // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones). public_leagues_feed
+    // también la llama quien no tiene cuenta.
+    expect(rows.map((r) => r.fn)).toEqual([
+      'delete_push_subscription', 'invite_preview', 'my_matches', 'public_leagues_feed', 'server_now', 'sync_ladder', 'touch_seen',
+    ]);
   });
 });
 

@@ -108,7 +108,8 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
+    '20260929000600'];
   v_missing text[];
   v_bowling text;
 begin
@@ -571,6 +572,35 @@ end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
 
+-- 2.13 Organizador: pendientes, pistas del torneo (por equipo) con su aviso y lo que cambiaría al suspender hoy.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  v_tour uuid := pg_temp.id('bowl_tour');
+begin
+  r := public.league_pending(p_league => pg_temp.id('bowl'));
+  assert (r ->> 'total')::integer >= 0 and jsonb_typeof(r -> 'submissions' -> 'items') = 'array'
+         and (r -> 'claims' ->> 'count')::integer = 0 and jsonb_typeof(r -> 'checklist') = 'object',
+    format('FAIL organizador: league_pending (%s)', r);
+  r := public.assign_lanes(p_event => v_tour, p_lanes => array[5, 6], p_per_lane => 2, p_mode => 'equipo');
+  assert (r ->> 'count')::integer = 4 and jsonb_array_length(r -> 'lanes') = 2
+         and (select max(t.n) from (select count(distinct x.lane) as n
+                                      from public.event_lanes x
+                                      join public.entries e on e.event_id = x.event_id and e.player_id = x.player_id
+                                     where x.event_id = v_tour group by e.team_id) t) = 1,
+    format('FAIL organizador: assign_lanes por equipo (%s)', r);
+  r := public.publish_lanes(p_event => v_tour);
+  assert (r ->> 'players')::integer = 4 and (r ->> 'pushed')::integer = 4, format('FAIL organizador: publish_lanes (%s)', r);
+  r := public.suspend_day_preview(p_league => pg_temp.id('bowl'), p_date => current_date);
+  assert jsonb_typeof(r -> 'counts') = 'object' and jsonb_array_length(r -> 'events') >= 1,
+    format('FAIL organizador: suspend_day_preview (%s)', r);
+  perform pg_temp.ok('organizador: league_pending, pistas del torneo por equipo con su aviso y suspend_day_preview de hoy');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
 -- =====================================================================================================================
 -- 3. Ligas de otros deportes (en beta solo las crea el superadmin)
 -- =====================================================================================================================
@@ -1005,7 +1035,11 @@ begin
   assert (select count(*) from public.entries where league_id = any (v_leagues)) = 0, 'FAIL permisos: anon ve juegos de ligas privadas';
   assert (select count(*) from public.sport_status) >= 9, 'FAIL permisos: anon no ve los deportes';
   assert (select count(*) from public.invite_preview(p_code => pg_temp.val('bowl_code'))) = 1, 'FAIL permisos: anon no ve la invitación';
-  perform pg_temp.ok('permisos: anon no ve ligas privadas; sí ve los deportes y a qué liga invita un código');
+  assert jsonb_typeof(public.public_leagues_feed(p_limit => 5)) = 'array'
+     and not exists (select 1 from jsonb_array_elements(public.public_leagues_feed(p_query => pg_temp.val('tag'))) x
+                      where (x ->> 'id')::uuid = any (v_leagues)),
+    'FAIL permisos: anon no lee las ligas públicas (o ve una privada)';
+  perform pg_temp.ok('permisos: anon no ve ligas privadas; sí ve los deportes, las ligas públicas y a qué liga invita un código');
   perform pg_temp.must_fail('permisos: anon no crea ligas', format('select public.create_league(p_name => %L)', 'Smoke Anon'), array['42501']);
   perform pg_temp.must_fail('permisos: anon no se une', format('select public.join_league(p_code => %L)', pg_temp.val('bowl_code')), array['42501']);
   perform pg_temp.must_fail('permisos: anon no envía juegos',

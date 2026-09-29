@@ -43,7 +43,7 @@ describe('menores', () => {
     await fails(db.rpc(w.u.org, 'create_player', { p_league: w.priv, p_name: 'Nene', p_is_minor: true }), INVALID);
     await fails(db.rpc(w.u.org, 'update_player', { p_player: w.p.pedro, p_patch: { is_minor: true } }), INVALID);
     const { lid } = await minorsLeague();
-    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Nene', p_is_minor: true, p_guardian_name: 'Mamá' });
+    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Nene', p_is_minor: true, p_guardian_name: 'Mamá', p_consent: true });
     expect(await db.admin('select guardian_name, consent_by, consent_at is not null as consent from public.player_private where player_id = $1', [kid])).toEqual([
       { guardian_name: 'Mamá', consent_by: w.u.org, consent: true },
     ]);
@@ -61,7 +61,7 @@ describe('menores', () => {
 
   it('has_minors solo sube: bajarlo es del superadmin y sin menores adentro', async () => {
     const { lid } = await minorsLeague();
-    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Nene', p_is_minor: true });
+    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Nene', p_is_minor: true, p_guardian_name: 'Mamá', p_consent: true });
     await fails(db.rpc(w.u.org, 'update_league', { p_league: lid, p_patch: { has_minors: false } }), DENIED);
     await fails(db.rpc(w.u.dios, 'update_league', { p_league: lid, p_patch: { has_minors: false } }), INVALID);
     await db.rpc(w.u.org, 'delete_player', { p_player: kid });
@@ -71,7 +71,7 @@ describe('menores', () => {
 
   it('los menores no tienen cuenta, y en su liga no hay fotos ni social', async () => {
     const { lid, e, en } = await minorsLeague();
-    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Ana', p_is_minor: true });
+    const kid = await db.rpc<string>(w.u.org, 'create_player', { p_league: lid, p_name: 'Ana', p_is_minor: true, p_guardian_name: 'Papá', p_consent: true });
     await member(db, lid, w.u.ana, 'member', 'ana');
     // Ni reclamarlo, ni vincularlo, ni el enlace automático por nombre.
     await fails(db.rpc(w.u.ana, 'claim_player', { p_player: kid }), INVALID);

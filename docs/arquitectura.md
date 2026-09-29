@@ -92,7 +92,7 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `organizer` (pendientes y suspender un día), `lanes` (pistas del boliche), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
 
 ## Jugadores sin cuenta y reclamos
@@ -108,6 +108,80 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
   Un dueño o admin que reclama queda aprobado al momento. Los menores nunca se reclaman.
 - Migración `20260929000100_reclamos.sql`; cliente `src/lib/data/claims.ts` y `src/components/claims/`. Tiempo
   real `claims` en `league:<id>` y `user:<id>`; push al admin y a quien pidió; avisos en la campana.
+
+## Organizador: la base (`20260929000600_organizador.sql`)
+
+Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/sql/organizador.test.ts` y
+`tests/sql/pistas.test.ts`.
+
+- **Ligas públicas**: `public_leagues_feed` (también sin cuenta, con un límite suave por IP) da solo las públicas sin
+  menores que siguen vivas, las más activas de los últimos 30 días primero, con miembros, jugadores y el próximo
+  evento o partido; el teléfono arma la línea «24 jugadores · juega el martes». Crear ligas tiene tope por cuenta
+  (5 por día, `rate_limited`; 20 cada 30 días, `rate_limited: mes`; trigger `leagues_quota` en `leagues`, registro en
+  `private.league_creations`); sin sesión (importador de BowlingX, SQL) no cuenta.
+- **Pendientes**: `league_pending` junta para el admin envíos por aprobar, partidos reclamados o sin resultado,
+  reclamos y listas de espera (con enlaces), y los «primeros pasos» de una liga de menos de 30 días.
+- **Juntar jugadores**: `merge_league_players` usa `private.merge_players` (la misma unión de los reclamos, que
+  ahora también mueve las pistas); la cuenta del que se va pasa al que queda, y el promedio fijo y los `attrs` que le
+  falten al que queda salen del otro; queda en `admin_audit`.
+- **Menores**: en cualquier deporte, `create_player` / `set_player_minor` piden el tutor, su teléfono y su permiso;
+  todo va a `player_private` (solo admins), como natación. `update_player` ya no marca menores. Un jugador que pasa
+  a menor (por cualquier camino, también al juntar) rechaza su reclamo pendiente (trigger `players_minor_claims`).
+- **Suspender un día**: `suspend_day` mueve o aplaza los partidos del día (zona de la liga), mueve o cancela los
+  eventos sin resultados (cancela solo los que no tienen nada adentro: `private.event_has_content` revisa todo lo
+  que se borraría en cascada), alarga el plazo de los retos de la escalera afectados y manda UN aviso con
+  `league_announce` si algo cambió (`skipped` dice por qué no salió).
+- **Pistas del boliche**: tabla `event_lanes` (se lee como la liga; borrados en tombstones; tiempo real `lanes` en
+  `event:<id>`). El promedio para armar por promedio lo calcula el teléfono y lo manda como `p_order`.
+
+## Organizador en el teléfono: ligas públicas, unirse, juntar y menores
+
+- **Ligas públicas** (`usePublicLeagues` / `fetchPublicLeagues` en `src/lib/data/leagues.ts`, tipo `PublicLeague`):
+  el Home, el Home del deporte (ya filtrado por deporte), Eventos y el selector de deporte leen
+  `public_leagues_feed` (fresco 2 minutos; en el orden de la base, ya no por nombre). `PublicLeagues` muestra la
+  línea `publicLeagueLine` («24 jugadores · juega el martes», «activa esta semana», un torneo «activo»;
+  `src/components/home/logic.ts`) y el buscador filtra lo cargado y, desde 2 letras, también pregunta a la base
+  (`p_query`). Si el listado o la búsqueda fallan (sin señal, o el límite sin cuenta), se dice eso (`LoadError`) y no
+  «no hay ligas». El tope de ligas nuevas sale con su mensaje, el del día o el de 30 días (`leagueQuotaError`,
+  código `league_quota`).
+- **Unirse**: todo «Unirme» (la tarjeta de la liga, el aviso del boliche, «Mis juegos», las listas de públicas) pasa
+  por `useJoinFlow` (`src/components/league/WhoAreYou.tsx`): sin cuenta, a entrar; con jugadores sin cuenta en la
+  liga, «¿Quién eres?»; después `join_league` con el pedido. La decisión es `joinStep` (`src/components/league/logic.ts`,
+  con pruebas). El link de invitación (`JoinPage`) ya lo preguntaba.
+- **Juntar con…**: en Admin › Jugadores (y en Miembros), la ficha del jugador abre `MergePlayerModal`
+  (`src/components/players/`): elegir al otro, con qué nombre queda, el adelanto
+  (`merge_league_players_preview`: dos cuentas, un menor con cuenta o lo que choca) y juntar
+  (`mergePlayers` en `src/lib/data/players.ts`, error legible con `mergeErrorText`).
+- **Menores**: en una liga con menores, «Agregar jugador» (uno o varios: «Nombre, tutor, teléfono» por línea) y la
+  ficha del jugador preguntan «Es menor de edad» con el tutor, su teléfono y «El tutor dio permiso»
+  (`createPlayer(…, minor)`, `setPlayerMinor`; `useGuardians` lee `player_private`, solo admins, sin guardarlo en el
+  teléfono). Lo que crea jugadores al vuelo (inscribir en un evento del boliche, niveles de raqueta, jugadores de una
+  noche, plantilla de un equipo) pregunta lo mismo debajo del nombre con `useQuickMinor`
+  (`src/components/players/GuardianFields.tsx`); al inscribir en un evento, donde el mismo campo busca, sale después
+  de tocar «Crear…» (no mientras se busca). Natación sigue en Nadadores.
+
+## Organizador en el teléfono: pendientes, suspender un día y pistas
+
+- **Pendientes** (`src/lib/data/organizer.ts`: `useLeaguePending`, `pendingTotal`; pantallas en
+  `src/components/organizer/`): Admin › Pendientes es la primera pestaña en todos los deportes y el Admin abre ahí
+  (`arrangeAdminTabs` pone primero lo de `FIRST_TABS`). Secciones con sus enlaces (`pendingSections`), «Todo al día»
+  sin nada, y los «primeros pasos» mientras la liga es nueva (invitar lleva a «Liga», donde está la invitación; los
+  jugadores, a la pestaña de gente del deporte). En el inicio de la liga, los admins ven una tarjeta con lo pendiente
+  (`PendingHomeCard`). El número de «Admin» (LeagueShell) y el de «Pendientes» son `pendingTotal`: envíos y reclamos
+  contados en vivo, más los partidos reclamados o sin resultado y las listas de espera de `league_pending` (se lee
+  al volver a la pantalla y cada 2 minutos), más las sugerencias nuevas en «Admin».
+- **Suspender un día** (`SuspendDayModal`): día (hoy en la zona de la liga), motivo con opciones listas, nueva fecha
+  opcional; muestra lo que va a pasar (`suspend_day_preview`, `suspendLines`) y el aviso que sale, y confirma. Si sin
+  nueva fecha no cambiaría nada (solo eventos con gente anotada), pide la fecha en vez de dejar suspender
+  (`suspendChanges`); el aviso de listo dice por qué no salió el aviso (`skipped`). Está en
+  Admin › Pendientes y, en el inicio de la liga, solo cuando hoy hay algo que suspender (`SuspendTodayCard`).
+- **Pistas del boliche** (`src/lib/data/lanes.ts`, `src/lib/lanes.ts`, `src/components/lanes/`): pestaña «Pistas» del
+  evento para el admin y el anotador (números como «5-9», «5 a 9» o «3, 5 y 7» con el teclado de texto, que en el
+  iPhone sí tiene guion y coma; jugadores por pista, por promedio / por equipo / al azar;
+  «Mover a…» por jugador, «Copiar para WhatsApp», «Publicar y avisar», «Borrar pistas»). El promedio es el de la app
+  (`fetchEffectiveAverages`) y va como `p_order`. El jugador ve «Tu pista: 7 · con Ana y Luis» (`MyLane`) en el
+  evento, en el tablero en vivo y la próxima práctica de la liga (una sola vez si esa práctica ya está en vivo), y en
+  las tarjetas del Home (en juego y tu próximo evento), solo después de la primera publicación. Tiempo real `lanes` en `event:<id>` (`topics.ts`).
 
 ## Sin señal y errores
 
