@@ -42,7 +42,7 @@ esa cuenta bajo la RLS**, igual que PostgREST y `tests/sql/harness.ts`: `set loc
 
 | Parte | Qué comprueba |
 |---|---|
-| 0. Previo | Las 38 migraciones del repo están en `supabase_migrations.schema_migrations`; el boliche está `open`; lista el estado de cada deporte |
+| 0. Previo | Las 43 migraciones del repo están en `supabase_migrations.schema_migrations`; el boliche está `open`; lista el estado de cada deporte |
 | 1. Cuentas | Alta en `auth.users` → perfil por trigger (nombre, correo, mayor de 18), superadmin sembrado |
 | 2. Boliche | `create_league` (código, membresía, jugador del dueño), `create_player`, `invite_preview`/`invite_details`, `join_league` con código (minúsculas, repetido, código malo), práctica y torneo (handicap, categorías, equipos de 2), `add_entries`, `apply_teams`, `save_game` (sin foto obligatoria = `sin-foto`), `set_rsvp`, `add_practice_game` (no suma dos veces), `publish_live`, `submit_games` sin foto por evento y por fecha (idempotente con `p_op_id`, sale de «en vivo»), `approve_submission` (por fecha crea la práctica), `reject_submission` con nota, reacción y comentario |
 | Ranking | Como un miembro: las mismas lecturas que la app (`events`, `teams`, `event_rsvps`, `players`, `memberships`, `entries`, `submissions`, `reactions`, `comments`, `league_announcements`); promedio de juegos verificados (7 juegos = 180), primero del torneo, promedio global por `memberships`, `export_my_data` |
