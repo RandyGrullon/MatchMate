@@ -5,6 +5,7 @@ import { saveLeagueMatchRules } from '../../../../lib/data/racket';
 import { createSeasonTeam, deleteSeasonTeam, pairName, setRoster, updateSeasonTeam, type SeasonTeam } from '../../../../lib/data/seasonTeams';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useAction, useFeedback } from '../../../../components/feedback';
+import { useQuickMinor } from '../../../../components/players/GuardianFields';
 import { Badge, Button, Card, Empty, Field, Input, Modal, Select } from '../../../../components/ui';
 import { Section } from '../bits';
 import { presetOf, presetsOf, rulesText } from '../logic/rulesText';
@@ -179,6 +180,8 @@ function LevelsSection() {
   const run = useAction();
   const [newName, setNewName] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
+  const minor = useQuickMinor(!!newName.trim());
 
   const save = async (id: string) => {
     const raw = drafts[id];
@@ -201,12 +204,18 @@ function LevelsSection() {
           e.preventDefault();
           const n = newName.trim();
           if (!n) return;
-          if (await run(() => createPlayer(lid, n, null), `${n} agregado`)) setNewName('');
+          const m = minor.take();
+          if (m === undefined) return;
+          if (await run(() => createPlayer(lid, n, null, m), `${n} agregado`)) {
+            setNewName('');
+            minor.reset();
+          }
         }}
       >
         <Input value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} placeholder="Agregar jugador" aria-label="Nombre del jugador nuevo" />
         <Button type="submit" icon={<UserPlus className="size-4" />} disabled={!newName.trim()} aria-label="Agregar jugador" />
       </form>
+      {minor.fields}
       {names.players.length ? (
         <Card className="divide-y divide-line overflow-hidden">
           {names.players.map((p) => (

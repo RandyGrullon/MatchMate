@@ -4,9 +4,10 @@ import { addEntries, createPlayer, fetchEffectiveAverages } from '../../lib/data
 import { useLeagueCtx } from '../../lib/league';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { useAction } from '../feedback';
+import { useQuickMinor } from '../players/GuardianFields';
 import { Button, Input, Modal, cx } from '../ui';
 
-/** Inscribe jugadores del club en el evento (o crea uno nuevo al vuelo). */
+/** Inscribe jugadores del club en el evento (o crea uno nuevo al vuelo; en una liga con menores, con su tutor). */
 export function AddPlayersModal({
   open,
   onClose,
@@ -20,17 +21,21 @@ export function AddPlayersModal({
   entries: Entry[];
   players: Player[];
 }) {
-  const { lid } = useLeagueCtx();
+  const { lid, league } = useLeagueCtx();
   const run = useAction();
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  // Liga con menores: «Es menor de edad» y su tutor salen solo después de tocar «Crear…» (el mismo campo sirve para
+  // buscar, y mientras se busca no deben empujar la lista).
+  const [creating, setCreating] = useState(false);
   const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setQ('');
       setPicked(new Set());
+      setCreating(false);
       // El diálogo enfoca la X al abrirse: se pasa al buscador para escribir de una.
       setTimeout(() => search.current?.focus(), 50);
     }
@@ -39,6 +44,8 @@ export function AddPlayersModal({
   const available = players.filter((p) => !entries.some((e) => e.playerId === p.id));
   const filtered = available.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
   const exact = players.some((p) => p.name.toLowerCase() === q.trim().toLowerCase());
+  const canCreate = !!q.trim() && !exact;
+  const minor = useQuickMinor(creating && canCreate);
 
   const toggle = (id: string) =>
     setPicked((s) => {
@@ -49,10 +56,19 @@ export function AddPlayersModal({
     });
 
   async function createAndPick() {
-    const id = await run(() => createPlayer(lid, q, null), 'Jugador creado');
+    // Primer toque en una liga con menores: pregunta si es menor (y su tutor) antes de crearlo.
+    if (league.hasMinors && !creating) {
+      setCreating(true);
+      return;
+    }
+    const m = minor.take();
+    if (m === undefined) return;
+    const id = await run(() => createPlayer(lid, q, null, m), 'Jugador creado');
     if (id) {
       setPicked((s) => new Set(s).add(id));
       setQ('');
+      setCreating(false);
+      minor.reset();
     }
   }
 
@@ -84,13 +100,24 @@ export function AddPlayersModal({
       <div className="flex flex-col gap-3">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-          <Input ref={search} placeholder="Buscar o escribir un nombre nuevo" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
+          <Input
+            ref={search}
+            placeholder="Buscar o escribir un nombre nuevo"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              // Borró el nombre: vuelve a buscar (sin el tutor abierto).
+              if (!e.target.value.trim()) setCreating(false);
+            }}
+            className="pl-9"
+          />
         </div>
-        {q.trim() && !exact && (
+        {canCreate && (
           <Button variant="secondary" icon={<Plus className="size-4" />} onClick={createAndPick} className="justify-start">
             Crear “{q.trim()}” y agregarlo
           </Button>
         )}
+        {minor.fields}
         <div className="flex max-h-80 flex-col overflow-y-auto rounded-xl border border-line">
           {filtered.map((p) => (
             <label

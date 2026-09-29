@@ -5,19 +5,27 @@ import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
+  cleanGuardianPhone,
   draftFromAttrs,
   emptyDraft,
+  emptyGuardian,
+  guardianProblem,
+  mergeCandidates,
+  mergeSummary,
   parseAverage,
   parseGolfIndex,
   parseJersey,
+  parseManyMinors,
   parseManyNames,
   parseStats,
   readTeamPrefs,
   statKind,
   statSummary,
   teamPositions,
+  validGuardianPhone,
   withTeamPrefs,
 } from './logic';
+import { GuardianFields, MinorCheck } from './GuardianFields';
 import { SportStatFields } from './SportStatFields';
 import { statWord } from './AddPlayerModal';
 
@@ -153,5 +161,86 @@ describe('campos del deporte (sin navegador)', () => {
     expect(basket).toContain('Pívot');
     expect(basket).toContain('Dorsal');
     expect(render('swimming')).toBe('');
+  });
+});
+
+describe('menores de edad (ligas con menores)', () => {
+  const ok = { guardianName: 'Marta Díaz', guardianPhone: '(809) 555-1234', consent: true };
+
+  it('el tutor es obligatorio, el teléfono opcional (solo números y +) y el permiso obligatorio', () => {
+    expect(guardianProblem(ok)).toBeNull();
+    expect(guardianProblem({ ...ok, guardianPhone: '' })).toBeNull();
+    expect(guardianProblem({ ...ok, guardianName: '  ' })).toBe('Escribe el nombre del padre, madre o tutor.');
+    expect(guardianProblem({ ...ok, guardianName: 'x'.repeat(61) })).toBe('El nombre del tutor es muy largo (hasta 60 letras).');
+    expect(guardianProblem({ ...ok, guardianPhone: 'llamar a Marta' })).toBe('El teléfono del tutor lleva solo números (puede empezar con +).');
+    expect(guardianProblem({ ...ok, consent: false })).toBe('Marca que el padre, madre o tutor dio permiso.');
+    expect(guardianProblem(emptyGuardian)).toBe('Escribe el nombre del padre, madre o tutor.');
+  });
+
+  it('el teléfono como lo guarda la base', () => {
+    expect(cleanGuardianPhone('+1 (809) 555-12.34')).toBe('+18095551234');
+    expect(validGuardianPhone('')).toBe(true);
+    expect(validGuardianPhone('809 555 1234')).toBe(true);
+    expect(validGuardianPhone('809-555-1234 ext 2')).toBe(false);
+    expect(validGuardianPhone('1'.repeat(21))).toBe(false);
+  });
+
+  it('«Agregar varios»: nombre, tutor y teléfono por línea (coma, punto y coma o tabulador)', () => {
+    const r = parseManyMinors(
+      [
+        '1. Ana Pérez, María Pérez, 809 555 1234',
+        'Luis Gómez; Carlos Gómez',
+        'Carla Núñez\tRosa Núñez\t+1 809 555 0000',
+        'ana perez, Otra',
+        'Pedro, 809-555-9999',
+        'Juan, Tía Luisa, llamar',
+        'Sofía, Papá',
+      ].join('\n'),
+      ['Sofía'],
+    );
+    expect(r.rows).toEqual([
+      { name: 'Ana Pérez', guardianName: 'María Pérez', guardianPhone: '8095551234' },
+      { name: 'Luis Gómez', guardianName: 'Carlos Gómez', guardianPhone: '' },
+      { name: 'Carla Núñez', guardianName: 'Rosa Núñez', guardianPhone: '+18095550000' },
+      { name: 'Pedro', guardianName: '', guardianPhone: '8095559999' },
+      { name: 'Juan', guardianName: 'Tía Luisa', guardianPhone: 'llamar' },
+    ]);
+    expect(r.repeated).toBe(1);
+    expect(r.existing).toEqual(['Sofía']);
+    expect(r.noGuardian).toEqual(['Pedro']);
+    expect(r.badPhone).toEqual(['Juan']);
+    expect(parseManyMinors('  \n')).toEqual({ rows: [], existing: [], repeated: 0, noGuardian: [], badPhone: [] });
+  });
+
+  it('los campos del tutor y las casillas (sin navegador)', () => {
+    const html = renderToString(h(GuardianFields, { value: ok, onChange: () => undefined }));
+    expect(html).toContain('Padre, madre o tutor');
+    expect(html).toContain('Teléfono del tutor (opcional)');
+    expect(html).toContain('El tutor dio permiso');
+    expect(html).toContain('solo los ven los admins');
+    expect(renderToString(h(MinorCheck, { checked: true, onChange: () => undefined }))).toContain('Es menor de edad');
+  });
+});
+
+describe('«Juntar con…»', () => {
+  it('se puede juntar con cualquiera de los demás, por nombre', () => {
+    const players = [
+      { id: 'c', name: 'Carla' },
+      { id: 'a', name: 'Ana' },
+      { id: 'b', name: 'Beto' },
+    ];
+    expect(mergeCandidates(players, 'b').map((p) => p.id)).toEqual(['a', 'c']);
+  });
+
+  it('lo que pasa al juntar, en palabras', () => {
+    const keep = { name: 'Ana Pérez', isMinor: false };
+    const drop = { name: 'Ana P.', isMinor: false };
+    expect(mergeSummary({ keep, drop, moveAccount: false })).toBe(
+      'Queda Ana Pérez. Los juegos, partidos y «voy» de Ana P. pasan a Ana Pérez, y Ana P. sale de la lista.',
+    );
+    expect(mergeSummary({ keep, drop, moveAccount: true })).toBe(
+      'Queda Ana Pérez, con la cuenta que tenía Ana P. Los juegos, partidos y «voy» de Ana P. pasan a Ana Pérez, y Ana P. sale de la lista.',
+    );
+    expect(mergeSummary({ keep, drop: { ...drop, isMinor: true }, moveAccount: false })).toContain('Queda como menor de edad.');
   });
 });

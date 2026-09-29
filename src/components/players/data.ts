@@ -1,10 +1,10 @@
-import { createPlayer } from '../../lib/data/players';
+import { createPlayer, type MinorInput } from '../../lib/data/players';
 import { invalidate, rpc, select, useLive, type Live } from '../../lib/data/client';
 import { tags } from '../../lib/data/keys';
 import { setGolfIndex } from '../../lib/data/golf';
 import { setLevel } from '../../pages/sports/racket/levels';
 import type { RacketSport } from '../../sports/racket';
-import { readTeamPrefs, statKind, withTeamPrefs, type PlayerStatsInput, type TeamPrefs } from './logic';
+import { readTeamPrefs, statKind, withTeamPrefs, type MinorLine, type PlayerStatsInput, type TeamPrefs } from './logic';
 
 /** attrs de cada jugador de la liga (id → attrs): el número del deporte que sale en la lista. */
 export async function fetchPlayerAttrs(lid: string): Promise<Record<string, unknown>> {
@@ -51,11 +51,17 @@ export async function saveSportStats(lid: string, sport: string, playerId: strin
 }
 
 /**
- * Admin: agrega a alguien sin cuenta con el número de su deporte. Si el jugador entra pero su número no se
- * guarda, `statsSaved` es false (queda en la lista y se corrige al editarlo).
+ * Admin: agrega a alguien sin cuenta con el número de su deporte (y, si es menor, con su tutor y el permiso). Si
+ * el jugador entra pero su número no se guarda, `statsSaved` es false (queda en la lista y se corrige al editarlo).
  */
-export async function addPlayerWithStats(lid: string, sport: string, name: string, stats: PlayerStatsInput): Promise<{ id: string; statsSaved: boolean }> {
-  const id = await createPlayer(lid, name, statKind(sport) === 'bowling' ? stats.averageOverride : null);
+export async function addPlayerWithStats(
+  lid: string,
+  sport: string,
+  name: string,
+  stats: PlayerStatsInput,
+  minor: MinorInput | null = null,
+): Promise<{ id: string; statsSaved: boolean }> {
+  const id = await createPlayer(lid, name, statKind(sport) === 'bowling' ? stats.averageOverride : null, minor);
   try {
     await saveSportStats(lid, sport, id, stats);
     return { id, statsSaved: true };
@@ -76,6 +82,25 @@ export async function addManyPlayers(lid: string, names: readonly string[]): Pro
     } catch (e) {
       console.error(e);
       failed.push(n);
+    }
+  }
+  return { added, failed };
+}
+
+/**
+ * Admin: agrega varios menores sin cuenta, cada uno con su tutor (`consent`: los tutores dieron permiso). Devuelve
+ * cuántos entraron y los que fallaron.
+ */
+export async function addManyMinors(lid: string, rows: readonly MinorLine[], consent: boolean): Promise<{ added: number; failed: string[] }> {
+  let added = 0;
+  const failed: string[] = [];
+  for (const r of rows) {
+    try {
+      await createPlayer(lid, r.name, null, { guardianName: r.guardianName, guardianPhone: r.guardianPhone || null, consent });
+      added++;
+    } catch (e) {
+      console.error(e);
+      failed.push(r.name);
     }
   }
   return { added, failed };
