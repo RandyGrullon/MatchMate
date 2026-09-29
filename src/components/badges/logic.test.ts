@@ -476,10 +476,14 @@ describe('reportar y el aviso al ganar', () => {
     expect(canReportAward({ leagueId: 'L1' }, true, mine)).toBe(false);
   });
 
-  it('el aviso al ganar espera a que la cuenta conteste «¿Tienes 18 años?»', () => {
+  it('el aviso al ganar espera a que la cuenta conteste «¿Tienes 18 años?» y acepte los términos vigentes', () => {
     expect(unlockGateOpen({ user: { uid: 'u' }, needsAdult: true })).toBe(false);
     expect(unlockGateOpen({ user: { uid: 'u' }, needsAdult: false })).toBe(true);
     expect(unlockGateOpen({ user: null, needsAdult: true })).toBe(true);
+    // Después de la de 18 años, la de los términos (LegalGate): tampoco se tapa.
+    expect(unlockGateOpen({ user: { uid: 'u' }, needsAdult: false, needsLegal: true })).toBe(false);
+    expect(unlockGateOpen({ user: { uid: 'u' }, needsAdult: false, needsLegal: false })).toBe(true);
+    expect(unlockGateOpen({ user: null, needsLegal: true })).toBe(true);
   });
 });
 

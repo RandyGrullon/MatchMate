@@ -104,9 +104,9 @@ function PlayerRoute() {
 const inAppFrame = (fallback: ReactNode) => <AppShell>{fallback}</AppShell>;
 
 /**
- * El aviso al ganar una insignia solo con la puerta de «¿Tienes 18 años?» ya contestada: esa pregunta (la de Google y
- * las cuentas de BowlingX, justo las que reciben su historial) no se tapa con una celebración, y «Ver mis insignias»
- * llevaría a una pantalla que la puerta todavía cierra.
+ * El aviso al ganar una insignia solo con las puertas de la cuenta pasadas (AccountGates: «¿Tienes 18 años?» y los
+ * términos vigentes): esas preguntas (la de Google y las cuentas de BowlingX, justo las que reciben su historial) no se
+ * tapan con una celebración, y «Ver mis insignias» llevaría a una pantalla que las puertas todavía cierran.
  */
 function GatedBadgeUnlock() {
   if (!unlockGateOpen(useAuth())) return null;

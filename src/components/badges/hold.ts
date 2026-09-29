@@ -42,7 +42,9 @@ export function blockedNow(doc: Document | undefined = typeof document === 'unde
 }
 
 /**
- * ¿Puede salir el aviso al ganar? No mientras la cuenta tiene pendiente «¿Tienes 18 años?» (AdultGate): esa pregunta
- * no se tapa con una celebración.
+ * ¿Puede salir el aviso al ganar? No mientras la cuenta tiene pendiente «¿Tienes 18 años?» (AdultGate) ni aceptar los
+ * términos vigentes (LegalGate, que va después): esas pantallas no se tapan con una celebración, y «Ver mis
+ * insignias» llevaría a una pantalla que todavía cierran.
  */
-export const unlockGateOpen = (auth: { user: unknown; needsAdult?: boolean }): boolean => !(auth.user && auth.needsAdult);
+export const unlockGateOpen = (auth: { user: unknown; needsAdult?: boolean; needsLegal?: boolean }): boolean =>
+  !(auth.user && (auth.needsAdult || auth.needsLegal));
