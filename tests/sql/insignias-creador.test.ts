@@ -809,9 +809,11 @@ describe('reportes y moderación', () => {
     const hidden = await ins(`insert into public.badge_awards (badge_key, sport, level, period_key, user_id, status, hidden) values ('debut', 'all', 0, '-', $1, 'firme', true) returning id`, [w.u.luis]);
     await db.rpc(w.u.ana, 'report_badge', { p_award: lg });
     await fails(db.rpc(w.u.extra, 'report_badge', { p_award: lg }), DENIED);
-    // extra no ve a luis (no comparten liga ni hay pública): no; con luis en una liga pública, sí.
+    // De cuenta, quien ve el perfil: desde 20260929000200 cualquier cuenta con sesión ve a otra sin bloquear, aunque no
+    // compartan liga (private.social_can_see). Con luis bloqueado, extra ya no lo ve: no.
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.luis, p_reason: 'x' });
     await fails(db.rpc(w.u.extra, 'report_badge', { p_award: acc }), DENIED);
-    await member(db, w.pub, w.u.luis, 'member', 'luis');
+    await db.rpc(w.u.dios, 'admin_unblock_user', { p_user: w.u.luis });
     await db.rpc(w.u.extra, 'report_badge', { p_award: acc, p_reason: 'Raro' });
     await fails(db.rpc(w.u.extra, 'report_badge', { p_award: hidden }), 'no_existe');
     expect(await db.admin('select award_id, league_id, user_id from private.badge_reports order by id')).toEqual([

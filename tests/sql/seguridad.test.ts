@@ -90,6 +90,8 @@ const RPC_AUTHENTICATED = [
 const RPC_SERVICE_ONLY = [
   'claim_push_batch', 'finish_push_batch', 'migration_sync_passwords', 'ping', 'purge_queue_done', 'purge_queue_take',
   'scan_begin', 'scan_finish', 'scan_next_model', 'storage_orphans',
+  // El motor de insignias (la Edge Function `insignias`): tomar, la foto de datos, aplicar, fallar, soltar y terminar.
+  'badge_apply', 'badge_claim', 'badge_fail', 'badge_finish', 'badge_release', 'badge_snapshot',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

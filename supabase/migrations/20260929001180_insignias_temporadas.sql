@@ -1,14 +1,14 @@
 -- MatchMate · Insignias: lo que toca a las temporadas (docs/insignias.md §2.11 y §3.3). Las temporadas las trae
--- 20260929000700_temporadas.sql (otra rama) con este contrato:
+-- 20260929000700_temporadas.sql (corre antes que esta, así que siempre se aplica) con este contrato:
 --   public.seasons (id, league_id, name, starts_on, ends_on, status 'active'|'closed', closed_at, closed_by,
 --                   standings jsonb = la tabla final tal como la calculó el teléfono, created_at, updated_at)
 --   public.season_awards (id, season_id, league_id, kind 'campeon'|'subcampeon'|'tercero'|'mvp'|'mas_mejorado'|
 --                         'fair_play'|'otro', label, player_id | team_id, note)
 --   public.close_season(p_season, p_standings, p_awards): el admin cierra la temporada.
 --
--- Todo va dentro de un guardia: si public.seasons (o public.season_awards) no existe, no hace nada (así corre antes de
--- juntar las ramas). NO se activa sola después: una migración corre una sola vez. Con las ramas juntas, …0700 va antes
--- que esta y todo sale bien. Si una base ya tiene esta aplicada sin temporadas y …0700 llega después (db push
+-- Todo va dentro de un guardia: si public.seasons (o public.season_awards) no existe, no hace nada (así corría antes de
+-- juntar las ramas; se deja, no estorba). NO se activa sola después: una migración corre una sola vez. Con las ramas
+-- juntas, …0700 va antes que esta y todo sale bien (tests/sql/insignias-motor.test.ts lo revisa). Si una base ya tiene esta aplicada sin temporadas y …0700 llega después (db push
 -- --include-all), hay que volver a correr este archivo a mano (se puede: es idempotente) para activar las insignias de
 -- temporada. Cuando existen:
 -- 1. private.badge_season_rows(liga, temporada, desde, hasta) (de …1110, misma firma) lee las temporadas y sus premios

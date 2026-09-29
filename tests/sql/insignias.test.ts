@@ -375,7 +375,11 @@ describe('perfil (profile_badges)', () => {
 
   it('no existe o no se ve: null; cuenta bloqueada: nada (salvo al superadmin)', async () => {
     const { a } = await setup();
-    expect(await profile(w.u.extra, w.u.nuevo)).toBeNull();
+    // Desde 20260929000200 cualquier cuenta con sesión ve el perfil de otra sin bloquear (private.social_can_see): sin
+    // nada en común, sale el perfil, sin insignias que no pueda ver.
+    expect(await profile(w.u.extra, w.u.nuevo)).toEqual({
+      userId: w.u.nuevo, isMe: false, featured: [], awards: [], truncated: false, leagueAwards: [], leagueTruncated: false,
+    });
     expect(await profile(w.u.extra, '00000000-0000-0000-0000-000000000000')).toBeNull();
     await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.luis, p_reason: 'x' });
     // (leagueAwards y leagueTruncated: las del creador, de 20260929001120_insignias_creador.sql.)
@@ -643,6 +647,27 @@ describe('reclamos y fusiones', () => {
     const claim = await db.rpc<string>(w.u.otra, 'request_player_claim', { p_player: dup });
     await fails(db.rpc(w.u.sofi, 'decide_player_claim', { p_claim: claim, p_approve: true }), 'conflicto: prueba');
     expect(await row(c)).toMatchObject({ player_id: again });
+  });
+
+  it('con las entregas 1 a 5: juntar duplicados mueve las insignias, la pista (…0600) y el premio y la tabla guardada (…0700)', async () => {
+    // merge_players_base es la de 20260929000700_temporadas.sql (la última antes de …1100), con las pistas de …0600.
+    const dup = await player(db, w.priv, 'Pedro P.');
+    const ev = await event(db, w.priv, 'torneo', '2026-09-15', 3, 'Copa');
+    await db.admin('insert into public.event_lanes (event_id, player_id, league_id, lane) values ($1, $2, $3, 7)', [ev, dup, w.priv]);
+    const [{ id: season }] = await db.admin<{ id: string }>(`select id from public.seasons where league_id = $1 and status = 'active'`, [w.priv]);
+    await db.rpc(w.u.sofi, 'close_season', {
+      p_season: season,
+      p_standings: { rows: [{ playerId: dup, average: 170 }] },
+      p_awards: [{ kind: 'mas_mejorado', player_id: dup }],
+    });
+    const mine = await award({ key: 'bowling_games', player: dup, league: w.priv });
+    const kept = await award({ key: 'bowling_club', player: w.p.pedro, league: w.priv });
+    await db.rpc(w.u.sofi, 'merge_league_players', { p_league: w.priv, p_keep: w.p.pedro, p_drop: dup });
+    expect(await db.count('public.players', 'id = $1', [dup])).toBe(0);
+    expect((await db.admin<{ id: string }>('select id from public.badge_awards where player_id = $1 order by id', [w.p.pedro])).map((r) => r.id)).toEqual(sorted([mine, kept]));
+    expect(await db.admin('select player_id, lane from public.event_lanes where event_id = $1', [ev])).toEqual([{ player_id: w.p.pedro, lane: 7 }]);
+    expect(await db.admin('select kind, player_id from public.season_awards where season_id = $1', [season])).toEqual([{ kind: 'mas_mejorado', player_id: w.p.pedro }]);
+    expect(await db.admin('select standings from public.seasons where id = $1', [season])).toEqual([{ standings: { rows: [{ playerId: w.p.pedro, average: 170 }] } }]);
   });
 
   it('juntar un duplicado que el admin anotó dos veces (la revocada pierde)', async () => {

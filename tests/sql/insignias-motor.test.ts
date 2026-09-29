@@ -3,7 +3,7 @@
  * triggers que la llenan, la foto de datos de cada trabajo (badge_snapshot), aplicar decisiones (badge_apply) con un
  * motor falso que devuelve decisiones fijas (idempotencia, reactivar, revocar provisionales, avales, progreso,
  * copias de respaldo, en seco), los avisos agrupados con horas tranquilas, la tarea diaria, la rareza, las RPC de la
- * app (badge_notices, badges_backfill) y de la Edge Function (solo service_role), y las temporadas cuando existen.
+ * app (badge_notices, badges_backfill) y de la Edge Function (solo service_role), y las temporadas (las de …0700).
  *
  * Las funciones de private se llaman como superusuario con la hora (p_now) fija: así las horas tranquilas y los
  * días de la tarea diaria no dependen de cuándo corre la prueba.
@@ -1314,29 +1314,27 @@ describe('la Edge Function (service_role) de punta a punta con un motor falso', 
   });
 });
 
-describe('temporadas (20260929001180, solo cuando existe public.seasons)', () => {
-  it('sin public.seasons no hace nada; con el contrato de temporadas, cerrar una encola «temporada» y la foto trae sus premios', async () => {
-    expect(await db.admin(`select to_regclass('public.seasons') is null as none`)).toEqual([{ none: true }]);
-    expect(await db.admin(`select private.badge_season_rows(null, null, null, null) as r`)).toEqual([{ r: {} }]);
-    await db.pg.exec(SEASONS_SQL);
-    expect(await db.admin(`select private.badge_season_rows(null, null, null, null) as r`)).toEqual([{ r: {} }]);
+describe('temporadas (20260929001180: public.seasons ya existe, de 20260929000700_temporadas.sql)', () => {
+  const seasonsTrigger = () =>
+    db.admin(`select count(*)::int as n from pg_trigger where tgname = 'seasons_badges' and tgrelid = 'public.seasons'::regclass`);
 
-    // El contrato de 20260929000700_temporadas.sql (lo mínimo para probar).
-    await db.pg.exec(`
-      create table public.seasons (
-        id uuid primary key default gen_random_uuid(), league_id uuid not null references public.leagues (id) on delete cascade,
-        name text not null, starts_on date not null, ends_on date not null, status text not null default 'active',
-        closed_at timestamptz, closed_by uuid, standings jsonb, created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now());
-      create table public.season_awards (
-        id uuid primary key default gen_random_uuid(), season_id uuid not null references public.seasons (id) on delete cascade,
-        league_id uuid not null, kind text not null, label text not null default '', player_id uuid, team_id uuid, note text);`);
+  it('la migración corrió con las demás: el trigger está puesto y volver a correrla no cambia nada', async () => {
+    expect(await seasonsTrigger()).toEqual([{ n: 1 }]);
+    // La foto lee las temporadas de verdad (una liga sin temporadas: listas vacías, no el {} de …1110).
+    const none = '00000000-0000-4000-8000-000000000000';
+    expect(await db.admin(`select private.badge_season_rows($1, null, null, null) as r`, [none])).toEqual([{ r: { seasons: [], season_awards: [] } }]);
     await db.pg.exec(SEASONS_SQL);
-    const [{ id: season }] = await db.admin<{ id: string }>(
-      `insert into public.seasons (league_id, name, starts_on, ends_on) values ($1, 'Temporada 2026', '2026-01-01', '2026-12-31') returning id`,
-      [w.priv],
+    expect(await seasonsTrigger()).toEqual([{ n: 1 }]);
+  });
+
+  it('cerrar una temporada encola «temporada» y la foto trae la temporada y sus premios', async () => {
+    // Toda liga nace con su temporada activa (…0700): la de la liga privada es «Temporada 2026», todo el año.
+    const [{ id: season }] = await db.admin<{ id: string }>(`select id from public.seasons where league_id = $1 and status = 'active'`, [w.priv]);
+    await db.admin(`update public.seasons set name = 'Temporada 2026', starts_on = '2026-01-01', ends_on = '2026-12-31' where id = $1`, [season]);
+    await db.admin(
+      `insert into public.season_awards (season_id, league_id, kind, label, player_id, name) values ($1, $2, 'campeon', 'Campeón', $3, 'Pedro')`,
+      [season, w.priv, w.p.pedro],
     );
-    await db.admin(`insert into public.season_awards (season_id, league_id, kind, label, player_id) values ($1, $2, 'campeon', 'Campeón', $3)`, [season, w.priv, w.p.pedro]);
     expect(await jobs()).toEqual([]);
     await db.admin(`update public.seasons set status = 'closed', closed_at = now(), standings = '[{"id": "x"}]' where id = $1`, [season]);
     const [j] = await jobs();
@@ -1357,5 +1355,19 @@ describe('temporadas (20260929001180, solo cuando existe public.seasons)', () =>
     await db.admin('delete from private.badge_queue');
     await db.admin(`update public.seasons set status = 'closed', name = 'T26' where id = $1`, [season]);
     expect(await jobs()).toEqual([]);
+  });
+
+  it('el admin cierra la temporada con close_season (…0700): se encola «temporada» con sus premios', async () => {
+    const [{ id: season }] = await db.admin<{ id: string }>(`select id from public.seasons where league_id = $1 and status = 'active'`, [w.priv]);
+    await db.rpc(w.u.sofi, 'close_season', {
+      p_season: season,
+      p_standings: [{ id: w.p.pedro }],
+      p_awards: [{ kind: 'campeon', player_id: w.p.pedro }],
+    });
+    const [j] = await jobs(`kind = 'temporada'`);
+    expect([j.league_id, j.ref]).toEqual([w.priv, `season:${season}`]);
+    const s = await snapshot(j.id);
+    expect(s.seasons).toEqual([expect.objectContaining({ id: season, status: 'closed' })]);
+    expect(s.season_awards).toEqual([expect.objectContaining({ kind: 'campeon', player_id: w.p.pedro })]);
   });
 });
