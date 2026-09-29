@@ -107,10 +107,10 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Se puede ampliar con los dedos (menos en el modo cancha, que lo bloquea src/lib/noZoom.ts); sin la espera
-   del doble toque. El texto tampoco se agranda solo al girar el teléfono. */
+/* Sin zoom con los dedos en toda la app (ni pellizco ni doble toque; ver src/lib/noZoom.ts): solo se desliza. El
+   texto tampoco se agranda solo al girar el teléfono. */
 html {
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
