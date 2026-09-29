@@ -19,7 +19,7 @@ export const PUSH_CATEGORIES: readonly { key: PushCategory; label: string; hint:
   { key: 'resultados', label: 'Resultados', hint: 'Juegos aprobados o rechazados, resultados por confirmar, confirmados y reclamos.' },
   { key: 'social', label: 'Social', hint: 'Me gusta, felicitaciones, comentarios y quién empieza a seguirte.' },
   { key: 'recordatorios', label: 'Recordatorios', hint: 'Prácticas, partidos y torneos que vienen, y anotar tus juegos o el resultado después.' },
-  { key: 'liga', label: 'Tus ligas', hint: 'Avisos de los admins de tus ligas.' },
+  { key: 'liga', label: 'Tus ligas', hint: 'Avisos de los admins de tus ligas, invitaciones a una liga y quién aceptó la tuya.' },
 ];
 
 export const ALL_PUSH_ON: PushPrefs = { resultados: true, social: true, recordatorios: true, liga: true };

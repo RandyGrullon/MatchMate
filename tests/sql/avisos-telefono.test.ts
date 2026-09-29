@@ -121,10 +121,10 @@ describe('preferencias', () => {
     await prefs(w.u.luis, { social: false, resultados: false, recordatorios: false, liga: false });
     expect(await db.admin(`select private.push_category(t) as c from unnest($1::text[]) t`, [
       ['envio:1', 'confirmar:1', 'resultado:1', 'reclamo:1', 'reaccion:1', 'comentario:1', 'seguir:1', 'recordatorio:1', 'partido:1',
-       'despues:1', 'sinresultado:1', 'aviso:1', 'claim:1', 'ronda:1', 'anuncio:1', 'espacio', null],
+       'despues:1', 'sinresultado:1', 'aviso:1', 'invitacion:1', 'invitacion-ok:1', 'claim:1', 'ronda:1', 'anuncio:1', 'espacio', null],
     ])).toEqual(
       ['resultados', 'resultados', 'resultados', 'resultados', 'social', 'social', 'social', 'recordatorios', 'recordatorios',
-       'recordatorios', 'recordatorios', 'liga', null, null, null, null, null].map((c) => ({ c })),
+       'recordatorios', 'recordatorios', 'liga', 'liga', 'liga', null, null, null, null, null].map((c) => ({ c })),
     );
     // Seguir (follow_user encola directo): a luis no le llega.
     await db.rpc(w.u.ana, 'follow_user', { p_user: w.u.luis });
@@ -139,6 +139,30 @@ describe('preferencias', () => {
     await prefs(w.u.luis, { social: true });
     await db.rpc(w.u.sofi, 'follow_user', { p_user: w.u.luis });
     expect(byUser(await pushesLike('seguir:'))).toEqual({ [w.u.luis]: ['sofi te empezó a seguir', 'Toca para ver su perfil y sus juegos.'] });
+  });
+
+  it('las invitaciones a una liga (invite_to_league) y «aceptó tu invitación» son de «liga»: se apagan con ella, la invitación no', async () => {
+    await subscribe(w.u.otra, w.u.extra, w.u.org);
+    await prefs(w.u.otra, { liga: false });
+    await prefs(w.u.org, { liga: false, social: true });
+    // org (dueño de la privada) invita a otra (con «liga» apagada) y a extra: el push solo le llega a extra.
+    const r = await db.rpc<{ sent: number }>(w.u.org, 'invite_to_league', { p_league: w.priv, p_users: [w.u.otra, w.u.extra] });
+    expect(r.sent).toBe(2);
+    expect(byUser(await pushesLike('invitacion:'))).toEqual({ [w.u.extra]: ['org te invitó a Liga del Banco', 'Toca para ver la invitación y unirte.'] });
+    const invite = async (uid: string) =>
+      (await db.asUser<{ id: string }>(uid, `select id from public.league_invites where user_id = $1 and status = 'pending'`, [uid]))[0].id;
+    // La invitación de otra igual está (la ve en Avisos) y la acepta; a org, con «liga» apagada, no le llega «aceptó».
+    expect(await db.rpc<Json>(w.u.otra, 'respond_league_invite', { p_invite: await invite(w.u.otra), p_accept: true })).toMatchObject({
+      status: 'accepted',
+      leagueId: w.priv,
+    });
+    expect(await pushesLike('invitacion-ok:')).toEqual([]);
+    // org la vuelve a prender: cuando extra acepta, sí le llega.
+    await prefs(w.u.org, { liga: true });
+    expect(await db.rpc<Json>(w.u.extra, 'respond_league_invite', { p_invite: await invite(w.u.extra), p_accept: true })).toMatchObject({
+      status: 'accepted',
+    });
+    expect(byUser(await pushesLike('invitacion-ok:'))).toEqual({ [w.u.org]: ['extra aceptó tu invitación', 'Ya está en Liga del Banco.'] });
   });
 });
 

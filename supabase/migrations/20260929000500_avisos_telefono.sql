@@ -5,8 +5,9 @@
 -- 1. Preferencias por cuenta: profiles.push_prefs {resultados, social, recordatorios, liga} (todas activas salvo
 --    las que están en false) y public.set_push_prefs(p_prefs). El trigger push_outbox_prefs las aplica a TODO lo
 --    que entra a la cola por su tag (también a los avisos de antes: seguir, reclamos, recordatorios, avisos de la
---    liga), así no hace falta tocar las funciones que ya encolan. Lo que no es de ninguna categoría (reclamos de
---    jugador, inscripciones, escalera, rondas de la noche, anuncios del superadmin) sale siempre.
+--    liga, invitaciones a una liga y «aceptó tu invitación»), así no hace falta tocar las funciones que ya encolan.
+--    Lo que no es de ninguna categoría (reclamos de jugador, inscripciones, escalera, rondas de la noche, anuncios del
+--    superadmin) sale siempre.
 -- 2. private.queue_push(): la forma de encolar de aquí en adelante. Salta cuentas bloqueadas, sin teléfonos o con
 --    la categoría apagada; no repite un tag que sigue esperando; con p_group_title junta en el que espera («Ana y
 --    2 más…»); nunca falla (solo avisa) y llama a send-push.
@@ -90,6 +91,8 @@ language sql immutable set search_path = '' as $$
     when 'despues' then 'recordatorios'
     when 'sinresultado' then 'recordatorios'
     when 'aviso' then 'liga'
+    when 'invitacion' then 'liga'
+    when 'invitacion-ok' then 'liga'
   end
 $$;
 

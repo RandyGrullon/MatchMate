@@ -534,7 +534,7 @@ teléfono si la cuenta apagó la categoría de su tag, también en los avisos qu
 | `resultados` | `envio:` (envíos del boliche), `confirmar:` (resultado por confirmar), `resultado:` (confirmado), `reclamo:` |
 | `social` | `reaccion:` (felicitaciones y me gusta), `comentario:`, `seguir:` |
 | `recordatorios` | `recordatorio:` (boliche, golf, natación, noches), `partido:`, `despues:`, `sinresultado:` |
-| `liga` | `aviso:` (avisos del admin a su liga) |
+| `liga` | `aviso:` (avisos del admin a su liga), `invitacion:` (te invitaron a una liga), `invitacion-ok:` (aceptaron tu invitación) |
 
 Sin categoría (salen siempre): `claim:`, inscripciones, escalera, `ronda:`, `anuncio:` (superadmin) y `espacio`.
 
