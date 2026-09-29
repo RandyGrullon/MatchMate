@@ -182,8 +182,8 @@ export interface JoinFlow {
 }
 
 /**
- * «Unirme» por el mismo camino desde todas partes (la tarjeta de la liga, el aviso del boliche, «Mis juegos» y las
- * listas de ligas públicas): sin cuenta, a entrar y volver; si la liga tiene jugadores sin cuenta (los que el admin
+ * «Unirme» por el mismo camino desde todas partes (la tarjeta de la liga, el aviso del boliche, «Mis juegos», las
+ * listas de ligas públicas y «Me apunto» de la agenda en una liga ajena): sin cuenta, a entrar y volver; si la liga tiene jugadores sin cuenta (los que el admin
  * anotó), primero «¿Quién eres?» para no quedar dos veces en la tabla; después join_league (con el pedido del
  * jugador elegido) y el aviso de cómo quedó. `onJoined`: después de unirse (p. ej. abrir la liga).
  */

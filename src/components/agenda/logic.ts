@@ -60,6 +60,23 @@ export function spotsText(i: Pick<AgendaItem, 'join' | 'cap' | 'taken' | 'spotsL
 /** «Me apunto» se hace en el evento: los torneos de raqueta (categoría, pareja). */
 export const joinsInEvent = (i: Pick<AgendaItem, 'join' | 'categories'>) => i.join === 'signup' && i.categories != null;
 
+/**
+ * Qué hace «Me apunto»: un torneo de raqueta (categoría, pareja) se apunta en su evento; sin cuenta, a entrar y volver;
+ * en una liga de la que todavía no es miembro, primero se une como en todas partes (useJoinFlow de
+ * src/components/league/WhoAreYou.tsx: si la liga tiene jugadores sin cuenta, «¿Quién eres?» para no quedar dos veces en
+ * la tabla) y después se apunta; si ya es miembro, o sus ligas no se han leído (`leagues` null), se apunta directo.
+ */
+export type AgendaJoinStep = 'event' | 'login' | 'league' | 'direct';
+export function agendaJoinStep(
+  i: Pick<AgendaItem, 'join' | 'categories' | 'leagueId'>,
+  me: { signedIn: boolean; leagues: ReadonlySet<string> | null },
+): AgendaJoinStep {
+  if (joinsInEvent(i)) return 'event';
+  if (!me.signedIn) return 'login';
+  if (me.leagues && !me.leagues.has(i.leagueId)) return 'league';
+  return 'direct';
+}
+
 /** Lo que dice la tarjeta cuando ya es mío. */
 export const mineLabel = (i: Pick<AgendaItem, 'join'>) => (i.join === 'rsvp' ? 'Vas' : i.join === 'golf' ? 'Inscrito' : 'Apuntado');
 

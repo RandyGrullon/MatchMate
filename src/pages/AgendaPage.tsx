@@ -4,14 +4,27 @@ import { Check, ChevronRight, Clock, MapPin, Search, Users } from 'lucide-react'
 import { displayName, useAuth } from '../lib/auth';
 import { dayLabel } from '../lib/calendar';
 import { joinAgendaItem, useAgenda, type AgendaItem } from '../lib/data/agenda';
+import { useMyMemberships } from '../lib/data/members';
 import { toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
 import { isSportId, sportMeta } from '../sports/registry';
 import { SportBadge, SportIcon } from './sports/SportBits';
-import { agendaSports, agendaTitle, filterAgenda, groupByDay, JOIN_PARAM, joinedMessage, joinsInEvent, loginNext, mineLabel, spotsText } from '../components/agenda/logic';
+import {
+  agendaJoinStep,
+  agendaSports,
+  agendaTitle,
+  filterAgenda,
+  groupByDay,
+  JOIN_PARAM,
+  joinedMessage,
+  loginNext,
+  mineLabel,
+  spotsText,
+} from '../components/agenda/logic';
 import { BackLink } from '../components/BackLink';
 import { useAction, useFeedback } from '../components/feedback';
 import { SportTint } from '../components/home/SportTint';
+import { useJoinFlow } from '../components/league/WhoAreYou';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
 import { AppShell } from '../components/Shell';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, cx } from '../components/ui';
@@ -27,7 +40,8 @@ const untilLabel = (iso: string) => {
 /**
  * «¿Dónde juego esta semana?» (`/agenda`): lo que viene en los próximos 14 días en las ligas públicas donde uno se
  * puede apuntar y hay lugar (boliche, golf, noches y torneos de raqueta), por día, con filtro por deporte (`?deporte=`)
- * y por día (`?dia=`). «Me apunto» usa el flujo de siempre; sin cuenta, primero entra y vuelve aquí a apuntarse.
+ * y por día (`?dia=`). «Me apunto» usa el flujo de siempre; sin cuenta, primero entra y vuelve aquí a apuntarse; en
+ * una liga de la que no es miembro, primero se une como en todas partes («¿Quién eres?» si hay jugadores sin cuenta).
  */
 export default function AgendaPage() {
   const auth = useAuth();
@@ -41,6 +55,11 @@ export default function AgendaPage() {
   const today = toIsoDate(now);
   const [busy, setBusy] = useState<string | null>(null);
   const [joined, setJoined] = useState<Record<string, string>>({});
+  const memberships = useMyMemberships(auth.user?.uid);
+  const myLeagues = useMemo(
+    () => (memberships.loading && !memberships.data.length ? null : new Set(memberships.data.map((m) => m.leagueId))),
+    [memberships.loading, memberships.data],
+  );
 
   const items = agenda.data.items;
   const rawSport = params.get('deporte');
@@ -69,17 +88,9 @@ export default function AgendaPage() {
     [setParams],
   );
 
-  const join = useCallback(
+  const apuntar = useCallback(
     async (item: AgendaItem) => {
-      // Un torneo de raqueta (categoría, pareja) se apunta en su evento.
-      if (joinsInEvent(item)) {
-        navigate(auth.user ? item.url : `/login?next=${encodeURIComponent(item.url)}`);
-        return;
-      }
-      if (!auth.user) {
-        navigate(loginNext(location.search, item.eventId));
-        return;
-      }
+      if (!auth.user) return;
       setBusy(item.eventId);
       const r = await run(() => joinAgendaItem(item, { uid: auth.user!.uid, name: displayName(auth) }));
       setBusy(null);
@@ -88,19 +99,56 @@ export default function AgendaPage() {
         toast(joinedMessage(item, r));
       }
     },
-    [auth, location.search, navigate, run, toast],
+    [auth, run, toast],
+  );
+
+  // Todavía no es de la liga: se une como en todas partes y, ya dentro, se apunta.
+  const waiting = useRef<AgendaItem | null>(null);
+  const flow = useJoinFlow((t) => {
+    const item = waiting.current;
+    waiting.current = null;
+    if (item && item.leagueId === t.lid) void apuntar(item);
+  });
+  const startJoin = flow.start;
+
+  const join = useCallback(
+    async (item: AgendaItem) => {
+      switch (agendaJoinStep(item, { signedIn: !!auth.user, leagues: myLeagues })) {
+        case 'event':
+          // Un torneo de raqueta (categoría, pareja) se apunta en su evento.
+          navigate(auth.user ? item.url : `/login?next=${encodeURIComponent(item.url)}`);
+          return;
+        case 'login':
+          navigate(loginNext(location.search, item.eventId));
+          return;
+        case 'league':
+          waiting.current = item;
+          await startJoin({
+            lid: item.leagueId,
+            name: item.leagueName,
+            sport: item.sport,
+            kind: item.leagueKind === 'torneo' ? 'torneo' : 'liga',
+            next: `/agenda?${JOIN_PARAM}=${encodeURIComponent(item.eventId)}`,
+          });
+          return;
+        default:
+          await apuntar(item);
+      }
+    },
+    [auth.user, myLeagues, location.search, navigate, startJoin, apuntar],
   );
 
   // De vuelta del login con ?apuntar=<evento>: se apunta una sola vez y se quita de la dirección.
   const pending = params.get(JOIN_PARAM);
   const done = useRef(false);
   useEffect(() => {
-    if (!pending || done.current || !auth.user || agenda.loading) return;
+    // Espera también sus ligas: si todavía no es de esa, primero «¿Quién eres?».
+    if (!pending || done.current || !auth.user || agenda.loading || !myLeagues) return;
     done.current = true;
     setParam(JOIN_PARAM, null);
     const item = items.find((i) => i.eventId === pending);
     if (item && !item.mine) void join(item);
-  }, [pending, auth.user, agenda.loading, items, join, setParam]);
+  }, [pending, auth.user, agenda.loading, myLeagues, items, join, setParam]);
 
   const sportChips: ChipItem<string>[] = [
     { key: ALL, label: 'Todos' },
@@ -145,7 +193,7 @@ export default function AgendaPage() {
                     item={item}
                     i={i}
                     showSport={sports.length > 1 && !sport}
-                    busy={busy === item.eventId}
+                    busy={busy === item.eventId || flow.busy === item.leagueId}
                     joined={joined[item.eventId] ?? null}
                     onJoin={() => void join(item)}
                   />
@@ -155,6 +203,7 @@ export default function AgendaPage() {
           ))
         )}
       </div>
+      {flow.modal}
     </AppShell>
   );
 }

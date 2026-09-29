@@ -178,7 +178,8 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   (`p_query`). Si el listado o la búsqueda fallan (sin señal, o el límite sin cuenta), se dice eso (`LoadError`) y no
   «no hay ligas». El tope de ligas nuevas sale con su mensaje, el del día o el de 30 días (`leagueQuotaError`,
   código `league_quota`).
-- **Unirse**: todo «Unirme» (la tarjeta de la liga, el aviso del boliche, «Mis juegos», las listas de públicas) pasa
+- **Unirse**: todo «Unirme» (la tarjeta de la liga, el aviso del boliche, «Mis juegos», las listas de públicas y
+  «Me apunto» de la agenda en una liga de la que todavía no es miembro: `agendaJoinStep`) pasa
   por `useJoinFlow` (`src/components/league/WhoAreYou.tsx`): sin cuenta, a entrar; con jugadores sin cuenta en la
   liga, «¿Quién eres?»; después `join_league` con el pedido. La decisión es `joinStep` (`src/components/league/logic.ts`,
   con pruebas). El link de invitación (`JoinPage`) ya lo preguntaba.
@@ -235,7 +236,9 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
 - `public_agenda` («¿Dónde juego esta semana?», también sin cuenta) lista lo que viene en ligas públicas donde uno se
   puede apuntar; «Me apunto» usa el flujo de siempre (`set_rsvp`, `golf_register`, `join_signup`). Cliente:
   `src/lib/data/agenda.ts` y la página `/agenda` (`src/pages/AgendaPage.tsx`, con la entrada en el Home y en el Home de
-  boliche, golf y raqueta); sin cuenta, «Me apunto» pasa por el login y vuelve con `?apuntar=<evento>`.
+  boliche, golf y raqueta); sin cuenta, «Me apunto» pasa por el login y vuelve con `?apuntar=<evento>`; si todavía
+  no es de esa liga, primero se une con `useJoinFlow` («¿Quién eres?» si hay jugadores sin cuenta) y después se apunta
+  (`agendaJoinStep` en `src/components/agenda/logic.ts`).
 - Temporadas en el teléfono: `src/lib/seasons.ts` (de qué temporada es un día), `src/lib/data/seasons.ts`
   (`league_seasons`, `league_champions`; tiempo real `seasons`) y `src/components/season/SeasonSelect.tsx` (el selector
   y los premios de una cerrada).

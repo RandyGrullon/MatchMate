@@ -7,6 +7,7 @@ import { AgendaCard } from '../../pages/AgendaPage';
 import { AgendaLinkCard } from '../home/AgendaLinkCard';
 import {
   agendaCardNote,
+  agendaJoinStep,
   agendaSports,
   agendaTitle,
   filterAgenda,
@@ -112,6 +113,19 @@ describe('agenda: textos de cada tarjeta', () => {
     const next = loginNext('?deporte=bowling', 'ev1');
     expect(next.startsWith('/login?next=')).toBe(true);
     expect(decodeURIComponent(next.slice('/login?next='.length))).toBe('/agenda?deporte=bowling&apuntar=ev1');
+  });
+
+  it('«Me apunto» en una liga de la que no es miembro pasa primero por unirse («¿Quién eres?»); si ya es, directo', () => {
+    const torneo = item({ join: 'signup', categories: [{ id: 'a', name: 'A', cap: 8, taken: 2, spotsLeft: 6 }] });
+    const mine = new Set(['l1']);
+    expect(agendaJoinStep(torneo, { signedIn: true, leagues: new Set() })).toBe('event');
+    expect(agendaJoinStep(item(), { signedIn: false, leagues: null })).toBe('login');
+    expect(agendaJoinStep(item(), { signedIn: true, leagues: new Set(['otra']) })).toBe('league');
+    expect(agendaJoinStep(item({ join: 'golf' }), { signedIn: true, leagues: new Set() })).toBe('league');
+    expect(agendaJoinStep(item({ join: 'signup' }), { signedIn: true, leagues: new Set() })).toBe('league');
+    expect(agendaJoinStep(item(), { signedIn: true, leagues: mine })).toBe('direct');
+    // Sus ligas todavía no se leyeron: como antes, directo (join_league deja el reclamo si se llama igual que uno).
+    expect(agendaJoinStep(item(), { signedIn: true, leagues: null })).toBe('direct');
   });
 });
 
