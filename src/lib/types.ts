@@ -94,6 +94,11 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
+  /**
+   * @usuario (sin la @): 3 a 20 minúsculas, números, '_' y puntos por dentro (src/lib/data/people.ts). La base se lo
+   * pone a toda cuenta; puede faltar en una copia vieja guardada en el teléfono, hasta que se vuelve a leer.
+   */
+  username: string;
   /** Superadmin: administra todas las ligas y las cuentas (profiles.is_superadmin). */
   superadmin?: boolean;
 }

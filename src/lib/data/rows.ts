@@ -58,6 +58,8 @@ export interface ProfileRow {
   id: string;
   email: string | null;
   name: string;
+  /** Falta si la consulta no lo pidió. */
+  username?: string | null;
   is_superadmin: boolean;
 }
 
@@ -206,6 +208,7 @@ export const toProfile = (r: ProfileRow): UserProfile => ({
   id: r.id,
   email: r.email ?? '',
   name: r.name,
+  username: r.username ?? '',
   superadmin: r.is_superadmin === true,
 });
 

@@ -14,7 +14,7 @@ import { FollowersSheet } from './FollowersSheet';
 import { GameList } from './GameList';
 import { SportBadge } from './SportBadge';
 import { SportStats } from './SportStats';
-import { initialProfileSport, knownSports } from './socialFormat';
+import { atUsername, initialProfileSport, knownSports } from './socialFormat';
 
 type ProfileTab = 'juegos' | 'estadisticas';
 
@@ -62,13 +62,14 @@ function Counter({ value, label, onClick, icon }: { value: number; label: string
 }
 
 /**
- * Perfil de una cuenta (el público `/u/:userId` y el tuyo `/perfil`): cabecera con iniciales, nombre, deportes y
- * los números Seguidores / Siguiendo / Me gusta (tocar abre la lista), el botón Seguir (no en el tuyo: ahí van
- * `actions`) y las pestañas «Juegos» (con me gusta y «Ver más») y «Estadísticas» (resumen por deporte).
+ * Perfil de una cuenta (el público `/u/:userId` y el tuyo `/perfil`): cabecera con iniciales, nombre, @usuario,
+ * deportes y los números Seguidores / Siguiendo / Me gusta (tocar abre la lista), el botón Seguir (no en el tuyo:
+ * ahí van `actions`) y las pestañas «Juegos» (con me gusta y «Ver más») y «Estadísticas» (resumen por deporte).
  */
 export function ProfileView({
   userId,
   fallbackName,
+  fallbackUsername,
   actions,
   back,
   statsTop,
@@ -77,6 +78,8 @@ export function ProfileView({
   userId: string;
   /** Tu nombre mientras el perfil no llega (tu propio perfil). */
   fallbackName?: string;
+  /** Tu @usuario mientras el perfil no llega (sin la @). */
+  fallbackUsername?: string;
   /** En tu propio perfil: editar y cuenta (en vez de «Seguir»). */
   actions?: ReactNode;
   /** Flecha para volver (arriba a la izquierda). */
@@ -104,7 +107,7 @@ export function ProfileView({
   const p: PublicProfile | null =
     profile.data ??
     (fallbackName && !profile.loading
-      ? { id: userId, name: fallbackName, since: null, sports: [], followers: 0, following: 0, likesReceived: 0, gamesCount: 0, isFollowing: false, followsYou: false, isMe: true }
+      ? { id: userId, name: fallbackName, username: fallbackUsername ?? '', since: null, sports: [], followers: 0, following: 0, likesReceived: 0, gamesCount: 0, isFollowing: false, followsYou: false, isMe: true }
       : null);
 
   if (profile.loading && !p) return <ProfileSkeleton />;
@@ -112,7 +115,7 @@ export function ProfileView({
   if (!p) {
     return (
       <Empty icon={<UserRound className="size-7" aria-hidden="true" />} title="No encontramos este perfil">
-        Puede que la cuenta ya no exista o que no juegue en ligas que puedas ver.
+        Puede que la cuenta ya no exista o que no esté disponible.
         <div className="mt-3 flex justify-center">
           <Link to="/" className="inline-flex h-11 items-center rounded-xl px-4 text-sm font-semibold text-accent hover:bg-accent-soft">
             Volver al Home
@@ -124,6 +127,7 @@ export function ProfileView({
 
   const sports = knownSports(p.sports);
   const since = sinceText(p.since);
+  const handle = atUsername(p.username);
 
   return (
     <div className="flex flex-col gap-5">
@@ -132,6 +136,7 @@ export function ProfileView({
         <Avatar name={p.name} className="size-20 text-2xl ring-4 ring-surface" />
         <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
           <h1 className="max-w-full truncate text-2xl font-bold tracking-tight">{p.name}</h1>
+          {handle && <p className="-mt-1 max-w-full truncate text-sm text-muted">{handle}</p>}
           <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-muted">
             {p.followsYou && !p.isMe && <Badge>Te sigue</Badge>}
             {since && <span>{since}</span>}

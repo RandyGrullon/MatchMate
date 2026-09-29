@@ -65,7 +65,7 @@ export const useLeagueMembers = (lid: string | undefined): Live<Member[]> =>
   });
 
 export const fetchUsers = async (): Promise<UserProfile[]> =>
-  (await select<ProfileRow>({ table: 'profiles', columns: 'id,email,name,is_superadmin', order: [{ col: 'name' }] })).map(toProfile);
+  (await select<ProfileRow>({ table: 'profiles', columns: 'id,email,name,username,is_superadmin', order: [{ col: 'name' }] })).map(toProfile);
 
 /** Cuentas registradas (solo el superadmin puede leerlas todas). Tienen correos: no se guardan en el teléfono. */
 export const useUsers = (enabled: boolean): Live<UserProfile[]> =>

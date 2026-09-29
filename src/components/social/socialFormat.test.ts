@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ProfileGame } from '../../lib/data/profileGames';
+import { USERNAME_RULES } from '../../lib/data/people';
 import {
+  atUsername,
   bowlingSummary,
   compactCount,
   gameDateLabel,
@@ -11,7 +13,9 @@ import {
   matchResult,
   plural,
   sportShort,
+  usernameHint,
   winRate,
+  type UsernameCheck,
 } from './socialFormat';
 
 describe('compactCount', () => {
@@ -104,5 +108,58 @@ describe('textos de la tarjeta', () => {
   it('me gusta para lectores de pantalla', () => {
     expect(likeLabel(false, 0)).toBe('Me gusta (0 me gusta)');
     expect(likeLabel(true, 1)).toBe('Quitar me gusta (1 me gusta)');
+  });
+});
+
+describe('@usuario', () => {
+  it('con la @ delante; sin @usuario (copia vieja del teléfono), nada', () => {
+    expect(atUsername('ana_perez')).toBe('@ana_perez');
+    expect(atUsername('@ana')).toBe('@ana');
+    expect(atUsername(' luis.m ')).toBe('@luis.m');
+    expect(atUsername('')).toBeNull();
+    expect(atUsername('  ')).toBeNull();
+    expect(atUsername(null)).toBeNull();
+    expect(atUsername(undefined)).toBeNull();
+  });
+
+  it('el de ahora (escrito con @, mayúsculas o espacios) se puede guardar sin preguntar', () => {
+    for (const v of ['ana', '@ana', ' ANA ']) expect(usernameHint(v, 'ana', null)).toEqual({ text: 'Es tu usuario de ahora.', tone: 'muted', canSave: true, checking: false });
+  });
+
+  it('vacío: las reglas, sin guardar', () => {
+    expect(usernameHint('', 'ana', null)).toEqual({ text: USERNAME_RULES, tone: 'muted', canSave: false, checking: false });
+    expect(usernameHint('@', 'ana', null).canSave).toBe(false);
+  });
+
+  it('el formato se mira aquí mismo (sin esperar a la base)', () => {
+    expect(usernameHint('ab', 'ana', null)).toMatchObject({ tone: 'danger', canSave: false, text: 'Usa al menos 3 caracteres.' });
+    expect(usernameHint('a'.repeat(21), 'ana', null)).toMatchObject({ tone: 'danger', canSave: false, text: 'Usa 20 caracteres o menos.' });
+    expect(usernameHint('ana-p', 'ana', null)).toMatchObject({ tone: 'danger', canSave: false, text: 'Usa solo letras sin acentos, números, _ y puntos.' });
+    expect(usernameHint('josé', 'ana', null)).toMatchObject({ tone: 'danger', canSave: false });
+    for (const v of ['.ana', 'ana.', 'an..a']) {
+      expect(usernameHint(v, 'ana', null)).toMatchObject({ tone: 'danger', canSave: false, text: 'Los puntos van solo por dentro, y nunca dos seguidos.' });
+    }
+  });
+
+  it('bien escrito: «Revisando…» hasta que la base contesta por ese mismo valor', () => {
+    expect(usernameHint('ana.p', 'ana', null)).toEqual({ text: 'Revisando…', tone: 'muted', canSave: false, checking: true });
+    // La respuesta de otro valor (lo que había antes de la última tecla) no cuenta.
+    expect(usernameHint('ana.p', 'ana', { value: 'ana.', status: 'ok' }).checking).toBe(true);
+  });
+
+  it('lo que dijo la base', () => {
+    const hint = (status: UsernameCheck['status']) => usernameHint('@Ana.P', 'ana', { value: 'ana.p', status });
+    expect(hint('ok')).toEqual({ text: 'Disponible', tone: 'ok', canSave: true, checking: false });
+    expect(hint('taken')).toEqual({ text: 'Ya está en uso', tone: 'danger', canSave: false, checking: false });
+    expect(hint('reserved')).toEqual({ text: 'No disponible', tone: 'danger', canSave: false, checking: false });
+    expect(hint('invalid')).toMatchObject({ text: USERNAME_RULES, tone: 'danger', canSave: false });
+    expect(hint('mine')).toMatchObject({ text: 'Es tu usuario de ahora.', canSave: true });
+    // Sin respuesta (sin señal, muchas consultas): no se muestra el error y set_username revisa al guardar.
+    expect(hint('unknown')).toEqual({ text: USERNAME_RULES, tone: 'muted', canSave: true, checking: false });
+  });
+
+  it('sin @usuario guardado en el teléfono todavía: cualquiera bien escrito se revisa', () => {
+    expect(usernameHint('ana', '', null).checking).toBe(true);
+    expect(usernameHint('ana', '', { value: 'ana', status: 'mine' }).canSave).toBe(true);
   });
 });

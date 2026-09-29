@@ -52,7 +52,7 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
   const read = () =>
     select<AccountProfileRow>({
       table: 'profiles',
-      columns: 'id,email,name,is_superadmin,adult_confirmed_at',
+      columns: 'id,email,name,username,is_superadmin,adult_confirmed_at',
       filters: [{ col: 'id', op: 'eq', value: uid }],
     });
   let rows = await read();

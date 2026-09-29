@@ -2,6 +2,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from '../Avatar';
 import { cx } from '../ui';
+import { atUsername } from './socialFormat';
 
 /** Ruta del perfil público de una cuenta. */
 export const userPath = (userId: string) => `/u/${encodeURIComponent(userId)}`;
@@ -14,6 +15,7 @@ export const userPath = (userId: string) => `/u/${encodeURIComponent(userId)}`;
 export function UserLink({
   userId,
   name,
+  username,
   avatar = true,
   hideName,
   avatarClassName,
@@ -22,6 +24,8 @@ export function UserLink({
 }: {
   userId?: string | null;
   name: string;
+  /** Su @usuario (sin la @), debajo del nombre. */
+  username?: string | null;
   /** Mostrar las iniciales al lado del nombre. */
   avatar?: boolean;
   /** Solo las iniciales (con el nombre para lectores de pantalla). */
@@ -32,12 +36,14 @@ export function UserLink({
   children?: ReactNode;
 }) {
   const shown = name.trim() || 'Jugador';
+  const handle = atUsername(username);
   const inner = (
     <>
       {avatar && <Avatar name={shown} className={avatarClassName} />}
       {!hideName && (
         <span className="min-w-0">
           <span className={cx('block truncate font-semibold', userId && 'group-hover/user:underline')}>{shown}</span>
+          {handle && <span className="block truncate text-xs font-normal text-muted">{handle}</span>}
           {children}
         </span>
       )}
