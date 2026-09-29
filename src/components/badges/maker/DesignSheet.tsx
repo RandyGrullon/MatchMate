@@ -11,6 +11,7 @@ import {
   reportLeagueBadge,
   revokeLeagueBadgeAward,
   useBadgeHolders,
+  useLeagueBadges,
   type BadgeHolder,
   type LeagueBadge,
 } from '../../../lib/data/leagueBadges';
@@ -72,6 +73,9 @@ function SheetContent({
   const { user, isSuper } = useAuth();
   const { confirm, toast } = useFeedback();
   const holders = useBadgeHolders(user ? listed : null);
+  // Los otorgamientos que salieron de un premio del torneo (docs/premios-torneo.md §6.5): «Premio del torneo».
+  const made = useLeagueBadges(user ? ctx.lid : null);
+  const prizes = new Set(made.data.awards.filter((a) => a.prizeSlotId).map((a) => a.id));
   const [asking, setAsking] = useState<Asking | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // Lo de la base manda (cuántas veces se dio de verdad, reportes); mientras llega, lo de la lista.
@@ -196,6 +200,7 @@ function SheetContent({
             owner={ctx.isOwner}
             tz={ctx.league.tz}
             busy={busy}
+            prizes={prizes}
             onRevoke={(h) => setAsking({ kind: 'quitar', holder: h, undo: undoes(h, user.uid, ctx.isOwner) })}
             onToggleMine={(h) => void toggleMine(h)}
           />
@@ -272,6 +277,7 @@ export function HoldersList({
   owner = false,
   tz,
   busy,
+  prizes,
   onRevoke,
   onToggleMine,
 }: {
@@ -280,6 +286,8 @@ export function HoldersList({
   owner?: boolean;
   tz?: string;
   busy?: string | null;
+  /** Los otorgamientos que son premios del torneo (ids). */
+  prizes?: ReadonlySet<string>;
   onRevoke: (h: BadgeHolder) => void;
   onToggleMine: (h: BadgeHolder) => void;
 }) {
@@ -297,6 +305,7 @@ export function HoldersList({
                   {h.playerName}
                   {mine && <Badge>Tú</Badge>}
                   {!h.userId && <Badge>Sin cuenta</Badge>}
+                  {prizes?.has(h.id) && <Badge tone="accent">Premio del torneo</Badge>}
                   {h.hidden && !h.revokedAt && <Badge>Oculta en su perfil</Badge>}
                 </p>
                 <p className="text-xs text-muted">{sub}</p>

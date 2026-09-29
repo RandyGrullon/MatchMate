@@ -68,6 +68,8 @@ export interface MadeAward {
   awardedAt: string;
   revokedAt: string | null;
   hidden: boolean;
+  /** De qué lugar de un premio del torneo salió (docs/premios-torneo.md); null o sin él = la dio una persona. */
+  prizeSlotId?: string | null;
 }
 
 /** Los diseños de una liga y sus otorgamientos (más nuevos primero). */
@@ -232,6 +234,7 @@ export function madeAwardFromRow(r: Record<string, unknown>): MadeAward | null {
     awardedAt,
     revokedAt: strOrNull(r.revoked_at),
     hidden: r.hidden === true,
+    prizeSlotId: strOrNull(r.prize_slot_id),
   };
 }
 
@@ -316,7 +319,7 @@ export function toGiveResult(raw: unknown): GiveResult {
 const DESIGN_COLUMNS =
   'id, league_id, template, name, description, shape, palette, color, icon, top_text, period_text, limit_kind, by_team, status, created_by, created_at, updated_at';
 // Las que se pueden leer directo (la base niega note, awarded_by, revoked_by, revoke_reason y seen_at).
-const AWARD_COLUMNS = 'id, badge_id, league_id, player_id, team_id, period, division, awarded_at, revoked_at, hidden';
+const AWARD_COLUMNS = 'id, badge_id, league_id, player_id, team_id, period, division, awarded_at, revoked_at, hidden, prize_slot_id';
 
 export const leagueBadgeKeys = {
   league: (lid: string) => `badges:made:${lid}`,

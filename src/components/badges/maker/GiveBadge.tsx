@@ -66,12 +66,13 @@ function GiveFlow({ initial, designs, awards, onClose }: { initial: LeagueBadge 
   const nameOf = (id: string) => byId.get(id)?.name ?? 'Jugador';
   const cleanPeriod = cleanBadgeText(period).toUpperCase();
   const cleanDivision = cleanBadgeText(division);
-  // Quiénes ya la tienen vigente con este periodo y división (no se les puede volver a dar).
+  // Quiénes ya la tienen vigente con este periodo y división (no se les puede volver a dar). Un premio del torneo no
+  // cuenta: no choca con un regalo (docs/premios-torneo.md §1 D4), como en la base.
   const holders = useMemo(
     () =>
       new Set(
         awards
-          .filter((a) => badge && a.badgeId === badge.id && !a.revokedAt && slotKey(a.period) === slotKey(cleanPeriod) && slotKey(a.division) === slotKey(cleanDivision))
+          .filter((a) => badge && a.badgeId === badge.id && !a.revokedAt && !a.prizeSlotId && slotKey(a.period) === slotKey(cleanPeriod) && slotKey(a.division) === slotKey(cleanDivision))
           .map((a) => a.playerId),
       ),
     [awards, badge, cleanPeriod, cleanDivision],
@@ -103,7 +104,7 @@ function GiveFlow({ initial, designs, awards, onClose }: { initial: LeagueBadge 
     textLength(cleanBadgeText(note)) <= BADGE_TEXT_MAX.note;
 
   // El cupo que se ve en el teléfono (la base decide igual): con una por equipo, el equipo cuenta 1.
-  const overQuota = badge ? (badge.byTeam ? left < 1 && !awards.some((a) => a.badgeId === badge.id && !a.revokedAt && a.teamId === teamId && a.period === cleanPeriod && a.division === cleanDivision) : picked.length > left) : false;
+  const overQuota = badge ? (badge.byTeam ? left < 1 && !awards.some((a) => a.badgeId === badge.id && !a.revokedAt && !a.prizeSlotId && a.teamId === teamId && a.period === cleanPeriod && a.division === cleanDivision) : picked.length > left) : false;
   const quotaText = badge ? quotaFullText({ name: badge.name, limitKind: badge.limitKind, period: cleanPeriod, holders: [...holders].map(nameOf) }) : '';
 
   async function give() {

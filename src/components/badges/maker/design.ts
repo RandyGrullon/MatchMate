@@ -334,13 +334,16 @@ export const slotKey = (text: string): string =>
     .replace(/[áéíóúüñ]/g, (c) => ({ á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ü: 'u', ñ: 'n' })[c] ?? c)
     .replace(/[^a-z0-9]+/g, '');
 
-/** Cuántos (jugadores, o equipos con `byTeam`) la tienen vigente en ese periodo y división. */
+/**
+ * Cuántos (jugadores, o equipos con `byTeam`) la tienen vigente en ese periodo y división. Los premios del torneo no
+ * cuentan (no usan el cupo del diseño: docs/premios-torneo.md §1 D4), como en la base.
+ */
 export function unitsTaken(badge: Pick<LeagueBadge, 'id' | 'byTeam'>, awards: readonly MadeAward[], period: string, division: string): number {
   const units = new Set<string>();
   const p = slotKey(period);
   const d = slotKey(division);
   for (const a of awards) {
-    if (a.badgeId !== badge.id || a.revokedAt || slotKey(a.period) !== p || slotKey(a.division) !== d) continue;
+    if (a.badgeId !== badge.id || a.revokedAt || a.prizeSlotId || slotKey(a.period) !== p || slotKey(a.division) !== d) continue;
     units.add(badge.byTeam ? (a.teamId ?? a.playerId) : a.playerId);
   }
   return units.size;
@@ -420,6 +423,9 @@ export function makerErrorText(e: unknown, ctx: ErrorContext = {}): string {
           : 'Diste muchas insignias en la última hora. Espera un rato.';
     case 'no_permitido':
       return ctx.action === 'quitar' ? 'Ya no puedes deshacerla: pasaron 24 horas. Solo el dueño la puede quitar.' : 'No tienes permiso para esto en la liga.';
+    case 'cerrado':
+      // Un premio del torneo con los premios cerrados (o entregado hace más de 14 días).
+      return 'Los premios de este torneo ya se cerraron. Solo el dueño puede quitarla.';
     case 'invalido':
       return 'Revisa los datos: algo no está bien.';
     default:

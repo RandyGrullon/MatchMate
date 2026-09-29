@@ -228,6 +228,11 @@ describe('dar', () => {
     expect(quotaLeft(badge(), list, 'temp 2026.', '')).toBe(0);
     expect(unitsTaken(badge(), list, 'TEMP 2026', 'cat a')).toBe(1);
     expect([slotKey('Cat. Á-1'), slotKey('Niño'), slotKey('TEMP 2027')]).toEqual(['cata1', 'nino', 'temp2027']);
+    // Los premios del torneo no usan el cupo del diseño (docs/premios-torneo.md §1 D4), como en la base.
+    const prizes = [aw({ playerId: 'p6', prizeSlotId: 'S1' }), aw({ playerId: 'p7', prizeSlotId: 'S2' })];
+    expect(unitsTaken(badge(), prizes, 'TEMP 2026', '')).toBe(0);
+    expect(quotaLeft(badge(), [...prizes, ...list], 'TEMP 2026', '')).toBe(0);
+    expect(quotaLeft(badge(), prizes, 'TEMP 2026', '')).toBe(1);
   });
 
   it('los textos de listo y de los nombres', () => {
@@ -255,6 +260,8 @@ describe('dar', () => {
     expect(makerErrorText(p0001('limite: activas'))).toBe('Llegaste a 30 insignias activas. Archiva una para crear otra.');
     expect(makerErrorText(p0001('texto_bloqueado'))).toBe('Ese texto no se puede usar.');
     expect(makerErrorText(p0001('a_si_mismo'))).toBe('No puedes darte insignias a ti mismo. Pídele a otro admin o al dueño.');
+    // Quitar un premio del torneo ya cerrado (o con más de 14 días): solo el dueño.
+    expect(makerErrorText(p0001('cerrado'), { action: 'quitar' })).toBe('Los premios de este torneo ya se cerraron. Solo el dueño puede quitarla.');
     expect(makerErrorText(p0001('ya_dada'), { action: 'guardar' })).toBe('Esta insignia ya se dio: solo puedes cambiar la descripción. Duplícala para hacer otra versión.');
     expect(makerErrorText(p0001('ya_dada'), { action: 'borrar' })).toBe('Esta insignia ya se dio: no se puede borrar. Archívala.');
     expect(makerErrorText(p0001('rate_limited'), { action: 'guardar' })).toBe('Guardaste muchos diseños en la última hora. Espera un rato.');

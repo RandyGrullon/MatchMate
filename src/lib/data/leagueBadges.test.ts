@@ -40,7 +40,9 @@ describe('creador de insignias: de la base a la pantalla', () => {
       madeAwardFromRow({ id: 'a1', badge_id: 'B1', league_id: 'L1', player_id: 'p1', period: 'TEMP 2026', division: '', awarded_at: 'x', revoked_at: null, hidden: false })!,
       madeAwardFromRow({ id: 'a2', badge_id: 'B1', league_id: 'L1', player_id: 'p2', team_id: 'T1', period: '', division: 'Cat. A', awarded_at: 'x', revoked_at: 'y', hidden: true })!,
     ];
-    expect(awards[1]).toMatchObject({ teamId: 'T1', revokedAt: 'y', hidden: true, division: 'Cat. A' });
+    expect(awards[1]).toMatchObject({ teamId: 'T1', revokedAt: 'y', hidden: true, division: 'Cat. A', prizeSlotId: null });
+    // Un premio del torneo (docs/premios-torneo.md) dice de qué lugar salió.
+    expect(madeAwardFromRow({ id: 'a4', badge_id: 'B1', player_id: 'p3', awarded_at: 'x', prize_slot_id: 'S1' })).toMatchObject({ prizeSlotId: 'S1' });
     expect(madeAwardFromRow({ id: 'a3' })).toBeNull();
     expect(withCounts([d], awards)[0]).toMatchObject({ given: 2, active: 1, locked: true });
     expect(withCounts([d], [])[0]).toMatchObject({ given: 0, active: 0, locked: false });
