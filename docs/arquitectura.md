@@ -261,7 +261,10 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   (`src/lib/data/bowlingContext.ts`). Una temporada cerrada muestra el promedio y el mejor juego de la tabla que se
   guardó al cerrarla (`readBowlingSnapshot`).
 - Migración `20260929000700_temporadas.sql`; contrato en `supabase/README.md`; pruebas `tests/sql/temporadas.test.ts`,
-  `playoffs.test.ts` y `agenda.test.ts`.
+  `playoffs.test.ts` y `agenda.test.ts`. Va después de la del organizador y tapa dos de sus funciones: `private.merge_players`
+  (la de `000600`, con las pistas, más los premios y las tablas guardadas) y `private.push_category` (más `temporada:`,
+  el push del cierre, en «Tus ligas»). El aviso del cierre es automático (no gasta el tope de avisos del admin);
+  «Suspender un día» sigue siendo un aviso del admin y sí lo gasta.
 
 ## Términos, privacidad y reportes
 
