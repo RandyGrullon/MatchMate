@@ -311,7 +311,7 @@ export function safeAppPath(url: string | null | undefined): string | null {
 }
 
 /** Qué juego le gustó a alguien, según el tipo de juego del perfil social. */
-const GAME_NOUN: Record<string, string> = { match: 'tu partido', golf: 'tu ronda', swim: 'tu prueba' };
+const GAME_NOUN: Record<string, string> = { match: 'tu partido', golf: 'tu ronda', swim: 'tu prueba', solo: 'tu juego suelto' };
 
 const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
 const idText = (v: unknown): string => (typeof v === 'string' || typeof v === 'number' ? String(v) : '');

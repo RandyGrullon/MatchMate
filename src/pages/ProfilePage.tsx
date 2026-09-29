@@ -1,20 +1,41 @@
 import { Link } from 'react-router';
-import { LogIn, Pencil, Search, Settings, UserPlus } from 'lucide-react';
+import { ChevronRight, LogIn, Pencil, Search, Settings, UserPlus } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
+import { getSport } from '../sports/registry';
 import { AppShell } from '../components/Shell';
 import { ProfileStats } from '../components/GlobalStats';
 import { ProfileView } from '../components/social/ProfileView';
-import { Empty, Loading, StatsSkeleton } from '../components/ui';
+import { Card, Empty, Loading, StatsSkeleton } from '../components/ui';
 
 const actionLink = 'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.97]';
 const iconLink =
   'inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:bg-surface-2 hover:text-fg';
 
+/** Debajo de los números del boliche: tus juegos sueltos (los de fuera de una liga o torneo) y anotar uno. */
+function SoloGamesLink() {
+  const Icon = getSport('bowling').icon;
+  return (
+    <Card className="overflow-hidden">
+      <Link to="/juegos-sueltos" className="flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+          <Icon className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">Juegos sueltos</span>
+          <span className="block text-xs text-muted">Boliche sin liga ni torneo: tus juegos y tu promedio</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
+      </Link>
+    </Card>
+  );
+}
+
 /**
  * Tu perfil (/perfil): como te ven los demás (tu @usuario, seguidores, seguidos, me gusta, tus juegos con sus me
  * gusta y tus números por deporte), más editar tu cuenta, buscar personas (/buscar) y tus números del boliche
- * sumando todas tus ligas y torneos (cada liga tiene además su propio perfil, con los números de su deporte).
+ * sumando todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil, con los números de su
+ * deporte), con el link a tus juegos sueltos.
  */
 export default function ProfilePage() {
   const auth = useAuth();
@@ -67,7 +88,10 @@ export default function ProfilePage() {
               <StatsSkeleton />
             </section>
           ) : (
-            <ProfileStats memberships={memberships.data} leagues={leagues.data} />
+            <>
+              <ProfileStats memberships={memberships.data} leagues={leagues.data} />
+              <SoloGamesLink />
+            </>
           )
         }
       />

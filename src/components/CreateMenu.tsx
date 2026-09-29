@@ -26,7 +26,8 @@ const Ctx = createContext<CreateMenuApi>({ openMenu: () => undefined, startCreat
 export const useCreateMenu = () => useContext(Ctx);
 
 /**
- * El menú "Crear": crear una liga, un torneo sin liga o unirse con un código. Va una sola vez en la raíz
+ * El menú "Crear": crear una liga, un torneo sin liga, anotar un juego suelto de boliche (sin deporte o en el
+ * boliche) o unirse con un código. Va una sola vez en la raíz
  * de la app (no dentro de la barra, que se esconde según el tamaño de la pantalla: un modal ahí se trababa
  * al girar el teléfono). El deporte se elige en el primer paso de LeagueFormModal; si estás en un deporte (y lo
  * puedes crear), sale marcado y se va de una a los datos.
@@ -67,6 +68,12 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
     setCreating({ kind, sport: active });
   }
 
+  // Juego suelto: la hoja se abre en su página (sin cuenta no se llega aquí: el menú manda a entrar).
+  function solo() {
+    setOpen(false);
+    navigate('/juegos-sueltos?nuevo=1');
+  }
+
   function join(e: FormEvent) {
     e.preventDefault();
     const c = code.trim().toUpperCase();
@@ -82,6 +89,7 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
         <div className="flex flex-col gap-2">
           <LeagueOption sport={active} onClick={() => pick('liga')} />
           <TournamentOption sport={active} onClick={() => pick('torneo')} />
+          {(!active || active === 'bowling') && <SoloOption onClick={solo} />}
           <form onSubmit={join} className="flex flex-col gap-2 rounded-2xl border border-line p-3">
             <span className="flex items-center gap-2 text-sm font-medium">
               <Ticket className="size-5 text-accent" /> ¿Te invitaron? Pon el código
@@ -143,6 +151,19 @@ function TournamentOption({ sport, onClick }: { sport: SportId | null; onClick: 
       icon={<Trophy className="size-5" />}
       title={here ? `Torneo de ${getSport(here).lower} sin liga` : 'Torneo sin liga'}
       text="Un torneo suelto con sus jugadores, equipos y clasificación."
+      onClick={onClick}
+    />
+  );
+}
+
+/** «Anotar un juego suelto»: boliche fuera de una liga o torneo (solo sin deporte o en el boliche). */
+export function SoloOption({ onClick }: { onClick: () => void }) {
+  const Icon = getSport('bowling').icon;
+  return (
+    <Option
+      icon={<Icon className="size-5" />}
+      title="Anotar un juego suelto"
+      text="Boliche sin liga ni torneo: tus juegos y tu promedio"
       onClick={onClick}
     />
   );

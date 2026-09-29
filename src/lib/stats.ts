@@ -151,7 +151,7 @@ export interface PlayerStats {
   pending: number;
 }
 
-export function playerStats(entries: Entry[]): PlayerStats {
+export function playerStats(entries: readonly Pick<Entry, 'scores' | 'photos'>[]): PlayerStats {
   let games = 0;
   let pins = 0;
   let high = 0;

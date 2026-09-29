@@ -229,6 +229,9 @@ export function tagsForOp(item: OutboxItem): string[] {
     case 'suspend_match':
     case 'set_match_players':
       return [];
+    // Juegos sueltos: no son de ninguna liga (el grupo es 'solo'); solo.ts vuelve a leer lo suyo.
+    case 'save_solo_session':
+      return [];
     default:
       return [tags.league(lid)];
   }
