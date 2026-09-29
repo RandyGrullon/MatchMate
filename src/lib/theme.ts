@@ -1,12 +1,16 @@
 /**
- * Apariencia de la app en este dispositivo: claro, oscuro o como el teléfono, y el color principal.
- * Se guarda en el teléfono; index.html la aplica antes de pintar (sin parpadeo).
+ * Apariencia de la app en este dispositivo: claro, oscuro o como el teléfono. El color ya no se elige: lo pone
+ * el deporte en que estás (el morado de MatchMate fuera de un deporte y en el boliche).
+ * Se guarda en el teléfono; index.html pone el modo antes de pintar (sin parpadeo).
  */
 export type ThemeMode = 'system' | 'light' | 'dark';
 
 export interface ThemePrefs {
   mode: ThemeMode;
-  /** Color principal (hex) o null = el morado de MatchMate. */
+  /**
+   * Color principal (hex) o null = el morado de MatchMate. Ya no se elige en Configuración: `loadTheme` siempre
+   * da null (lo que quedó guardado de antes no cuenta) y cada deporte pone su color.
+   */
   accent: string | null;
 }
 
@@ -23,7 +27,7 @@ export const ACCENT_PRESETS: { name: string; hex: string }[] = [
 ];
 
 const PREFS_KEY = 'mm:tema';
-/** CSS ya calculado del color: index.html lo pone antes de que cargue la app. */
+/** Donde antes se guardaba el CSS del color elegido: ahora solo se borra (aquí y en index.html). */
 const CSS_KEY = 'mm:tema-css';
 const STYLE_ID = 'mm-acento';
 
@@ -204,8 +208,8 @@ export function loadTheme(): ThemePrefs {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null') as Partial<ThemePrefs> | null;
     const mode = p?.mode === 'light' || p?.mode === 'dark' ? p.mode : 'system';
-    const accent = typeof p?.accent === 'string' && parseHex(p.accent) ? p.accent : null;
-    return { mode, accent };
+    // Un color elegido antes (cuando se podía) se ignora: el color es el del deporte.
+    return { mode, accent: null };
   } catch {
     return { mode: 'system', accent: null };
   }
@@ -213,24 +217,14 @@ export function loadTheme(): ThemePrefs {
 
 const systemDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 
-/** Pone el modo y el color en la página (y el color de la barra del teléfono). */
-export function applyTheme(p: ThemePrefs) {
+/** Pone el modo en la página (y el color de la barra del teléfono). El color es el del deporte (applySportAccent). */
+export function applyTheme(p: Pick<ThemePrefs, 'mode'>) {
   const root = document.documentElement;
   if (p.mode === 'system') delete root.dataset.theme;
   else root.dataset.theme = p.mode;
 
-  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-  const css = accentCss(p.accent);
-  if (css) {
-    if (!style) {
-      style = document.createElement('style');
-      style.id = STYLE_ID;
-      document.head.appendChild(style);
-    }
-    style.textContent = css;
-  } else {
-    style?.remove();
-  }
+  // El color que se elegía antes en Configuración ya no se pone.
+  document.getElementById(STYLE_ID)?.remove();
 
   // Barra de estado del teléfono: el fondo de las tarjetas del modo que se ve.
   const dark = p.mode === 'dark' || (p.mode === 'system' && systemDark());
@@ -252,8 +246,8 @@ export function applyTheme(p: ThemePrefs) {
 
 export function saveTheme(p: ThemePrefs) {
   try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-    localStorage.setItem(CSS_KEY, accentCss(p.accent));
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: p.mode }));
+    localStorage.removeItem(CSS_KEY);
   } catch {
     // sin almacenamiento: vale solo mientras la app está abierta
   }

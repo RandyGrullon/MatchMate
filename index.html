@@ -34,7 +34,7 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#161922" media="(prefers-color-scheme: dark)" />
     <script>
-      // Apariencia elegida en Configuración (claro/oscuro y color), antes de pintar: sin parpadeo.
+      // Claro u oscuro elegido en Configuración, antes de pintar: sin parpadeo. El color lo pone cada deporte.
       (function () {
         try {
           var p = JSON.parse(localStorage.getItem('mm:tema') || 'null');
@@ -47,13 +47,8 @@
               m.setAttribute('content', bar);
             });
           }
-          var css = localStorage.getItem('mm:tema-css');
-          if (css) {
-            var st = document.createElement('style');
-            st.id = 'mm-acento';
-            st.textContent = css;
-            document.head.appendChild(st);
-          }
+          // El color de la app ya no se elige: se borra el que quedó guardado de antes.
+          localStorage.removeItem('mm:tema-css');
         } catch (e) {}
       })();
     </script>
