@@ -28,6 +28,18 @@ export function rememberSport(sport: SportId) {
   }
 }
 
+/**
+ * Olvida el deporte de la animación: la próxima vez la app abre con la genérica de MatchMate. Va al salir a «Todos los
+ * deportes» (si cierras la app en el Home general, no debe abrir con la animación del último deporte).
+ */
+export function forgetSport() {
+  try {
+    localStorage.removeItem(SPORT_KEY);
+  } catch {
+    // sin almacenamiento: nada que olvidar
+  }
+}
+
 /** El último deporte usado en este teléfono (null si no hay). */
 export function lastSport(): string | null {
   try {

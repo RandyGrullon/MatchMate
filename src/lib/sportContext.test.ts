@@ -60,6 +60,8 @@ describe('deporte en que estás: guardado', () => {
     setActiveSport(null);
     expect(getActiveSport()).toBeNull();
     expect(store.data.has(ACTIVE_SPORT_KEY)).toBe(false);
+    // En el Home general la próxima apertura sale con la animación genérica, no con la del último deporte.
+    expect(store.data.has('mm:sport')).toBe(false);
     expect(calls).toBe(2);
     off();
   });
