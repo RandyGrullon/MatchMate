@@ -1,6 +1,8 @@
 import {
   forwardRef,
   useEffect,
+  useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -340,6 +342,144 @@ export function Modal({
           </div>
           <div className="modal-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
           {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+/** Menos que esto no es el teclado (barras del navegador que aparecen y se van). */
+const KEYBOARD_MIN = 80;
+
+/**
+ * Cuánto tapa el teclado del teléfono la parte de abajo de la ventana: lo que queda debajo de lo que se ve
+ * (`visualViewport`). iOS y Chrome en Android no achican la ventana (ni `dvh`) al abrir el teclado, así que lo
+ * fijo abajo queda detrás de él. 0 si no está abierto, sin `visualViewport` o con zoom (pellizco).
+ */
+export function keyboardInset(innerHeight: number, vv: { height: number; offsetTop: number; scale?: number } | null | undefined): number {
+  if (!vv || (vv.scale ?? 1) > 1.01) return 0;
+  const kb = Math.round(innerHeight - vv.height - vv.offsetTop);
+  return kb >= KEYBOARD_MIN ? kb : 0;
+}
+
+/**
+ * Hoja: en el teléfono sube desde abajo, de lado a lado (como el selector de deporte); en la computadora es un
+ * cuadro en el centro, como los modales. Arriba el título (y una línea debajo, opcional) con la X; en medio lo que
+ * se desliza; abajo, opcional, lo que queda fijo (botones). Se cierra con la X, tocando fuera o con Esc.
+ *
+ * La barrita de arriba es solo adorno: la hoja no se arrastra con el dedo (ver dialog en index.css). La animación
+ * (mm-sheet-up en index.css) se apaga si el teléfono pide menos movimiento. Con el teclado abierto (un buscador
+ * adentro) la hoja se para encima de él y marca `data-kb`: lo de clase `mm-kb-hide` se esconde mientras tanto.
+ */
+export function Sheet({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: ReactNode;
+  subtitle?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) {
+      d.showModal();
+      // Los avisos que están en pantalla vuelven a ponerse encima de esta hoja.
+      window.dispatchEvent(new Event(MODAL_OPENED));
+    }
+    if (!open && d.open) d.close();
+  }, [open]);
+  // Si se desmonta abierta (se cierra quitándola, o la pantalla se va), que no quede el fondo oscuro. Antes de que
+  // React la saque de la página (efecto de layout, como el selector de deporte): así close() devuelve el foco al
+  // botón que la abrió; después ya no es modal y el foco se pierde en <body>.
+  useLayoutEffect(() => {
+    const d = ref.current;
+    return () => {
+      if (d?.open) d.close();
+    };
+  }, []);
+  // Con el teclado del teléfono abierto la hoja sube encima de él (si no, tapa el pie con los botones) y no pasa de
+  // lo que se ve. Sin teclado, las clases de siempre.
+  useEffect(() => {
+    const d = ref.current;
+    const vv = typeof window === 'undefined' ? null : window.visualViewport;
+    if (!open || !d || !vv) return;
+    const reset = () => {
+      delete d.dataset.kb;
+      d.style.marginBottom = '';
+      d.style.maxHeight = '';
+    };
+    const sync = () => {
+      const kb = keyboardInset(window.innerHeight, vv);
+      if (!kb) return reset();
+      d.dataset.kb = '';
+      d.style.marginBottom = `${kb}px`;
+      d.style.maxHeight = `min(88dvh, 44rem, ${Math.max(0, Math.floor(vv.height) - 12)}px)`;
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+      reset();
+    };
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => e.target === ref.current && onClose()}
+      className={cx(
+        'mm-sheet overflow-hidden overscroll-none border border-line bg-surface p-0 text-fg shadow-2xl',
+        // Teléfono: hoja desde abajo, de lado a lado.
+        'm-0 mt-auto max-h-[88dvh] w-full max-w-none rounded-t-3xl border-b-0',
+        // Computadora: cuadro en el centro.
+        'sm:m-auto sm:max-h-[min(44rem,calc(100dvh-3rem))] sm:w-[calc(100%-1.5rem)] sm:max-w-lg sm:rounded-2xl sm:border-b',
+      )}
+    >
+      {open && (
+        <div className="flex max-h-[inherit] flex-col">
+          <div aria-hidden="true" className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-line sm:hidden" />
+          <div className="flex items-start gap-3 px-5 pt-2 pb-3 sm:pt-4">
+            <div className="min-w-0 flex-1 pt-1">
+              <h2 id={titleId} className="text-base font-semibold">
+                {title}
+              </h2>
+              {subtitle && <p className="truncate text-sm text-muted">{subtitle}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="-mt-0.5 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+          <div
+            className={cx(
+              'modal-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5',
+              // Lo último de la hoja deja libre la barra del teléfono (iPhone).
+              footer ? 'pb-4' : 'pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4',
+            )}
+          >
+            {children}
+          </div>
+          {footer && <div className="border-t border-line px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3">{footer}</div>}
         </div>
       )}
     </dialog>

@@ -223,6 +223,20 @@ html:has(dialog[open]) { overflow: hidden; }
 html:has(dialog[open]) body { overflow: hidden; touch-action: none; }
 dialog[open]::backdrop { animation: fade-in 0.2s ease-out; }
 
+/* Hojas (Sheet en ui.tsx y el selector de deporte): en el teléfono suben desde abajo; en la computadora aparecen
+   como los modales. Con menos movimiento, la regla del final las deja quietas. */
+@keyframes mm-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+.mm-sheet[open] { animation: mm-sheet-up 0.3s var(--ease-out); }
+@media (min-width: 640px) {
+  .mm-sheet[open] { animation: pop-in 0.2s var(--ease-out); }
+}
+/* Con el teclado del teléfono abierto, Sheet (ui.tsx) sube la hoja encima de él y le pone data-kb: lo que no hace
+   falta mientras se escribe (el link para compartir) se esconde para que quepan la lista y el botón de enviar. */
+dialog[data-kb] .mm-kb-hide { display: none; }
+
 .card-shadow { box-shadow: var(--shadow-card); }
 
 /* Pestañas que se deslizan con el dedo sin mostrar la barra de scroll. */

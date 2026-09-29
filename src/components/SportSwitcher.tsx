@@ -75,13 +75,10 @@ function popoverPlace(anchor: HTMLElement | null): CSSProperties {
   return { '--pop-top': `${Math.round(r.bottom + 8)}px`, '--pop-left': `${Math.round(left)}px` } as CSSProperties;
 }
 
-const SHEET_CSS = [
-  '@keyframes mm-sheet-up{from{transform:translateY(100%)}to{transform:none}}',
-  '.mm-sheet[open]{animation:mm-sheet-up .3s var(--ease-out)}',
-  '@media (min-width:640px){.mm-sheet[open]{animation:pop-in .2s var(--ease-out)}}',
-].join('\n');
-
-/** El selector de deporte (montado solo mientras está abierto: así sus datos se piden solo al abrirlo). */
+/**
+ * El selector de deporte (montado solo mientras está abierto: así sus datos se piden solo al abrirlo). Sube desde
+ * abajo con la animación de las hojas (mm-sheet en index.css, la misma de Sheet en ui.tsx).
+ */
 function SportSheet({ anchor, onClose }: { anchor: HTMLElement | null; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const { user, isSuper } = useAuth();
@@ -146,9 +143,6 @@ function SportSheet({ anchor, onClose }: { anchor: HTMLElement | null; onClose: 
         'sm:mt-(--pop-top) sm:mr-auto sm:mb-auto sm:ml-(--pop-left) sm:max-h-[min(36rem,calc(100dvh_-_var(--pop-top)_-_1rem))] sm:w-[26rem] sm:rounded-2xl sm:border-b sm:backdrop:bg-black/20 sm:backdrop:backdrop-blur-none',
       )}
     >
-      <style href="mm-sheet" precedence="default">
-        {SHEET_CSS}
-      </style>
       <div className="flex max-h-[inherit] flex-col">
         <div className="flex items-start gap-3 px-5 pt-4 pb-3">
           <div className="min-w-0 flex-1">
