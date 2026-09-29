@@ -36,6 +36,7 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260927001190_consola_supabase.sql` | **Solo Supabase**: pg_cron `mm-consola-limpieza` (días vistos → números por día) y la política de Storage para borrar fotos sin cuentas bloqueadas (la prueba `consola.test.ts` corre este archivo en PGlite) |
 | `migrations/20260928000200_social.sql` | Seguir cuentas (`follows`), me gusta en partidos, golf y natación (`game_likes`; en el boliche son `reactions`), perfil público, juegos y números por deporte, «Siguiendo» del Home y avisos sociales de la campana. Nada de ligas privadas que no ves ni de ligas con menores |
 | `migrations/20260929000100_reclamos.sql` | Reclamos «ese jugador sin cuenta soy yo» (`player_claims`, `request_player_claim`, `cancel_player_claim`, `decide_player_claim`, `player_claim_conflicts`): el dueño o un admin aprueba y los dos jugadores se juntan. `claim_player`, `join_league` (`p_prefer`) y `ensure_my_player` (`p_prefer` o el mismo nombre) ya no vinculan al momento: dejan el pedido. Los menores nunca se reclaman |
+| `migrations/20260929000900_legal.sql` | Términos y privacidad con versión y aceptación guardada (`legal_acceptances`, `accept_legal`, el trigger `on_auth_user_legal` del registro, `admin_legal_stats`) y reportes de contenido (`reports`, `report_content`, `resolve_report`, `list_reports`, `my_reports`; push a los superadmins). Ver «Términos, privacidad y reportes» |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
@@ -185,6 +186,20 @@ Ambas: `id`, `league_id`, `entry_id`, `event_id`, `player_id` (dueño del juego)
 `event_rsvps` `'<event_id>:<player_id>'`, `league_members` `'<league_id>:<user_id>'`, `live_states`
 `'<event_id>:<subject_key>'`. Al borrar una liga solo queda `{tbl:'leagues', row_key: <league_id>}`: purgar todo lo local de esa liga.
 
+### `legal_acceptances` — con sesión: las propias (el superadmin, todas)
+`user_id`, `doc` (`terminos`|`privacidad`), `version` (`'YYYY-MM-DD'`), `accepted_at`, `user_agent` (≤ 300, de la
+cabecera; null en el registro y en PGlite). Clave `(user_id, doc, version)`. Se borra con la cuenta; sale en
+`export_my_data`.
+
+### `reports` — quien reportó (las suyas), el superadmin (todas), admins de la liga (comentarios, avisos y juegos de su liga que no son suyos)
+`id`, `target_kind` (`comment`|`league`|`user`|`game`|`announcement`), `target_id`, `league_id` (de lo reportado;
+null en una cuenta), `reason` (`spam`|`ofensivo`|`acoso`|`falso`|`menores`|`otro`), `note` (≤ 500), `status`
+(`open`|`dismissed`|`actioned`), `created_at`, `handled_at`, `action_note` (≤ 500). `reporter_id`, `handled_by` y
+`target_owner_id` (de quién era lo reportado al reportarlo: ese admin no ve el reporte, porque la nota y la hora le
+dirían quién fue) existen pero **no se leen directo** (el `GRANT SELECT` es por columnas): un admin de liga no sabe
+quién reportó; la lista va por `list_reports`. Uno abierto por cuenta y cosa. No tiene `user_id`: «Descargar mis
+datos» trae los de la cuenta con `my_reports`.
+
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
@@ -332,6 +347,23 @@ a la otra (el superadmin, todas). De lo que se ve solo sale lo de ligas que quie
 | `profile_stats(p_user) → {bowling, matches, golf, swim}` | con sesión | Números por deporte (boliche: solo juegos verificados). |
 | `set_game_like(p_kind, p_id, p_liked, p_player=null) → {likes, liked}` | ve la liga (sin menores) | `bowling` = reacción `like`; `match` (con `p_player`: de quién es el juego; hay que haberlo jugado con resultado), `golf`, `swim`. 300 cambios por hora. |
 | `social_notices(p_limit=30) → [{kind: 'follow'\|'like', …}]` | con sesión | Lo de los últimos 30 días (los me gusta del boliche llegan por las reacciones de la liga). |
+
+### Términos, privacidad y reportes
+
+`20260929000900_legal.sql` (pruebas: `tests/sql/legal.test.ts`; cliente: `src/lib/legal.ts`,
+`src/lib/data/legal.ts`, `src/lib/data/reports.ts`). Las versiones vigentes están en `private.legal_versions()` →
+`{terms, privacy}` y en `src/lib/legal.ts` (una prueba revisa que sean iguales). Registro con correo: la metadata
+`{legal: {terms, privacy}}` con las versiones vigentes (la casilla «Acepto…») queda guardada al crear la cuenta
+(trigger `on_auth_user_legal`, después de `on_auth_user_created`; nunca hace fallar el registro).
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `accept_legal(p_terms, p_privacy) → void` | con sesión (también bloqueada) | Tienen que ser las vigentes (si no, `invalido`). Guarda los dos documentos con el `user-agent` de la cabecera. Idempotente. |
+| `admin_legal_stats() → {terms, privacy, accounts, accepted, acceptedTerms, acceptedPrivacy, never, last7d, byVersion}` | superadmin | Cuántas cuentas aceptaron lo vigente, cuántas nunca aceptaron nada y por versión. |
+| `report_content(p_kind, p_target, p_reason, p_note=null) → uuid` | con sesión (`require_uid`) | Lo reportado tiene que existir y verse (liga legible; una cuenta: `social_can_see`), si no `no_existe`; lo propio (comentario, aviso, juego de su jugador, liga que es suya, su cuenta): `invalido`. Uno abierto por cuenta y cosa (devuelve el mismo id). 10 nuevos por día (`report:<cuenta>`, `rate_limited`). Push a los superadmins «Nuevo reporte: <motivo>» → `/superadmin/reportes`, tag `reporte:<tipo>:<id>` (lo que no salió de lo mismo se reemplaza). |
+| `resolve_report(p_report, p_status 'dismissed'\|'actioned', p_note=null) → void` | superadmin (queda en la auditoría: `resolve_report`); admin de la liga para comentarios, avisos y juegos de su liga que no sean suyos | Solo un reporte abierto: si ya lo cerró alguien (otro admin o el superadmin), `cerrado` y su decisión y su nota se quedan. Cierra también los demás abiertos de lo mismo. `invalido`, `no_existe`, `no_permitido`, `cerrado`. |
+| `list_reports(p_status='open', p_league=null, p_kind=null, p_limit=50, p_offset=0) → {rows, total, open, all}` | superadmin (todo); admin de liga (con `p_league`) | `p_status` `open\|closed\|dismissed\|actioned\|all`. Un admin de liga no recibe los de lo suyo. Cada fila con `target` (título, texto, autor, liga, link; null si se borró), `sameTarget` y, solo para el superadmin, `reporterId`/`reporterName`. |
+| `my_reports() → [{id, kind, targetId, leagueId, leagueName, reason, note, status, createdAt, handledAt, actionNote}]` | con sesión (`require_uid`) | Los reportes que hizo la cuenta (hasta 5000), sin quién los atendió. La app los junta con `export_my_data` en «Descargar mis datos» (`reports` no tiene `user_id`, así que el export no los encuentra solo). |
 
 ### Push
 

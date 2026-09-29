@@ -76,6 +76,7 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   ['admin_unblock_user', { p_user: w.u.luis }],
   ['admin_announce', ANNOUNCE],
   ['admin_count_recipients', { p_audience: { kind: 'all' } }],
+  ['admin_legal_stats', {}],
 ];
 
 describe('permisos', () => {
@@ -124,8 +125,11 @@ describe('permisos', () => {
         order by 1`,
     );
     // Lecturas (y touch_seen, que nunca falla): no escriben nada de la persona. delete_push_subscription solo borra
-    // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones).
-    expect(rows.map((r) => r.fn)).toEqual(['delete_push_subscription', 'invite_preview', 'my_matches', 'server_now', 'sync_ladder', 'touch_seen']);
+    // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones). accept_legal solo
+    // guarda que la propia cuenta aceptó los términos vigentes (una bloqueada también, para poder seguir leyendo).
+    expect(rows.map((r) => r.fn)).toEqual([
+      'accept_legal', 'delete_push_subscription', 'invite_preview', 'list_reports', 'my_matches', 'server_now', 'sync_ladder', 'touch_seen',
+    ]);
   });
 });
 

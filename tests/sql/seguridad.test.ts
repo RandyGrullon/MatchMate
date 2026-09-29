@@ -59,6 +59,8 @@ const RPC_AUTHENTICATED = [
   'social_notices', 'unfollow_user',
   // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
   'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
+  // Legal: aceptar los términos vigentes y reportar contenido (y los reportes propios, para «Descargar mis datos»).
+  'accept_legal', 'admin_legal_stats', 'list_reports', 'my_reports', 'report_content', 'resolve_report',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

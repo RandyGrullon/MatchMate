@@ -13,8 +13,8 @@ begin;
 -- add_practice_game, en vivo, envíos sin foto, aprobar y rechazar, lo que lee el ranking, el reclamo «ese jugador
 -- sin cuenta soy yo» que aprueba el dueño), pádel (partidos, resultado
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
--- natación (lo mínimo), league_announce, bloqueo de cuentas, la consola del superadmin y los permisos que TIENEN
--- que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
+-- natación (lo mínimo), league_announce, bloqueo de cuentas, aceptar los términos y reportar, la consola del
+-- superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -108,7 +108,8 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
+    '20260929000900'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1173,6 +1174,105 @@ begin
   assert public.unfollow_user(p_user => pg_temp.id('u_owner')) ->> 'followers' = '0', 'FAIL social: dejar de seguir dos veces';
   perform pg_temp.ok('social: Ana quita el me gusta y deja de seguir (idempotente)');
 end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9c. Legal: aceptar los términos vigentes y reportar contenido (todo se deshace con el ROLLBACK)
+-- =====================================================================================================================
+
+-- 9c.1 Las versiones vigentes (como quien corre el archivo: private no lo ejecuta la app).
+do $$
+begin
+  perform pg_temp.guard();
+  perform pg_temp.put('legal_terms', private.legal_versions() ->> 'terms');
+  perform pg_temp.put('legal_privacy', private.legal_versions() ->> 'privacy');
+  perform pg_temp.ok(format('legal: versiones vigentes términos %s, privacidad %s', pg_temp.val('legal_terms'), pg_temp.val('legal_privacy')));
+end $$;
+
+-- 9c.2 Ana acepta lo vigente y reporta: el comentario de Luis, el juego del dueño y la cuenta del dueño.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_comment uuid;
+  v_id uuid;
+begin
+  perform public.accept_legal(p_terms => pg_temp.val('legal_terms'), p_privacy => pg_temp.val('legal_privacy'));
+  perform public.accept_legal(p_terms => pg_temp.val('legal_terms'), p_privacy => pg_temp.val('legal_privacy'));
+  assert (select count(*) from public.legal_acceptances a) = 2, 'FAIL legal: Ana no ve sus dos aceptaciones (o ve ajenas)';
+  select c.id into v_comment from public.comments c where c.league_id = pg_temp.id('bowl') and c.user_id = pg_temp.id('u_luis') limit 1;
+  assert v_comment is not null, 'FAIL legal: no está el comentario de Luis';
+  v_id := public.report_content(p_kind => 'comment', p_target => v_comment, p_reason => 'ofensivo', p_note => 'Smoke');
+  assert public.report_content(p_kind => 'comment', p_target => v_comment, p_reason => 'acoso') = v_id, 'FAIL legal: reportar dos veces crea otro';
+  perform pg_temp.put('rep_comment', v_id::text);
+  perform pg_temp.put('rep_game', public.report_content(p_kind => 'game', p_target => pg_temp.id('bowl_e_owner'), p_reason => 'falso')::text);
+  perform pg_temp.put('rep_user', public.report_content(p_kind => 'user', p_target => pg_temp.id('u_owner'), p_reason => 'spam')::text);
+  assert (select count(*) from public.reports r where r.status = 'open') = 3, 'FAIL legal: Ana no ve sus reportes';
+  assert jsonb_array_length(public.my_reports()) = 3, 'FAIL legal: my_reports («Descargar mis datos») no trae sus 3 reportes';
+  perform pg_temp.ok('legal: Ana acepta lo vigente (idempotente) y reporta un comentario (una vez), un juego y una cuenta');
+end $$;
+select pg_temp.must_fail('legal: aceptar otra versión',
+  'select public.accept_legal(p_terms => ''2000-01-01'', p_privacy => ''2000-01-01'')', array['invalido']);
+select pg_temp.must_fail('legal: nadie lee quién reportó directo',
+  'select reporter_id from public.reports', array['42501']);
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.3 Alguien de fuera no reporta lo que no ve ni lee reportes.
+select set_config('request.jwt.claims', pg_temp.jwt('out'), true);
+set local role authenticated;
+select pg_temp.must_fail('legal: el de fuera no reporta la liga privada',
+  format('select public.report_content(p_kind => %L, p_target => %L::uuid, p_reason => %L)', 'league', pg_temp.val('bowl'), 'spam'),
+  array['no_existe']);
+select pg_temp.must_fail('legal: el de fuera no lee la lista de la liga',
+  format('select public.list_reports(p_league => %L::uuid)', pg_temp.val('bowl')), array['no_permitido', '42501']);
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.4 El dueño (admin de la liga) ve el comentario (sin quién reportó) y no el de su propio juego; atiende el
+-- comentario y no su juego.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.list_reports(p_league => pg_temp.id('bowl'));
+  assert (r ->> 'total')::integer = 1 and not exists (select 1 from jsonb_array_elements(r -> 'rows') x
+                                                       where x ->> 'reporterId' is not null or x ->> 'kind' <> 'comment'),
+    format('FAIL legal: list_reports del dueño %s', r);
+  perform public.resolve_report(p_report => pg_temp.id('rep_comment'), p_status => 'dismissed', p_note => 'Smoke');
+  assert (select r2.status from public.reports r2 where r2.id = pg_temp.id('rep_comment')) = 'dismissed', 'FAIL legal: el dueño no descarta';
+  perform pg_temp.ok('legal: el dueño ve los reportes de su liga sin quién reportó (no el de su juego) y descarta el del comentario');
+end $$;
+select pg_temp.must_fail('legal: el dueño no decide el reporte de su propio juego',
+  format('select public.resolve_report(p_report => %L::uuid, p_status => %L)', pg_temp.val('rep_game'), 'dismissed'),
+  array['no_permitido', '42501']);
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.5 El superadmin ve todo con quién reportó, atiende la cuenta (queda en la auditoría) y ve quién aceptó.
+select set_config('request.jwt.claims', pg_temp.jwt('super'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  s jsonb;
+begin
+  r := public.list_reports(p_status => 'all', p_league => pg_temp.id('bowl'));
+  assert (r ->> 'all')::integer = 2 and exists (select 1 from jsonb_array_elements(r -> 'rows') x where x ->> 'reporterId' = pg_temp.val('u_ana')),
+    format('FAIL legal: list_reports del superadmin %s', r);
+  perform public.resolve_report(p_report => pg_temp.id('rep_user'), p_status => 'actioned', p_note => 'Smoke');
+  assert exists (select 1 from public.admin_audit a where a.action = 'resolve_report' and a.target_id = pg_temp.val('rep_user')),
+    'FAIL legal: resolve_report no quedó en la auditoría';
+  s := public.admin_legal_stats();
+  assert (s ->> 'accepted')::integer >= 1 and s ->> 'terms' = pg_temp.val('legal_terms'), format('FAIL legal: admin_legal_stats %s', s);
+  perform pg_temp.ok('legal: el superadmin ve quién reportó, atiende la cuenta (auditoría) y cuántos aceptaron');
+end $$;
+select pg_temp.must_fail('legal: lo que descartó el dueño no se vuelve a decidir',
+  format('select public.resolve_report(p_report => %L::uuid, p_status => %L)', pg_temp.val('rep_comment'), 'actioned'),
+  array['cerrado']);
 reset role;
 select set_config('request.jwt.claims', '', true);
 
