@@ -310,7 +310,9 @@ $$;
 
 -- Igual que en 20260927001500_cuenta.sql, con tres cambios: una tabla con `holder` (badge_awards, badge_progress)
 -- sale por la cuenta Y por sus jugadores (holder = el jugador o la cuenta), cada liga dice su badgesAuto y
--- badgeReports trae los reportes de insignias que hizo (private.my_badge_reports). El perfil lleva sus destacadas.
+-- badgeReports trae los reportes de insignias que hizo (private.my_badge_reports). El perfil lleva sus destacadas y
+-- lo que le pusieron las entregas que no volvieron a definir esta función: su @usuario (username, …0200) y sus
+-- preferencias de avisos del teléfono (pushPrefs, …0500). profiles no tiene user_id ni player_id: el catálogo no la ve.
 create or replace function public.export_my_data() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -384,6 +386,8 @@ begin
         'blockedAt', private.iso(p.blocked_at),
         'blockedReason', p.blocked_reason,
         'bowlingxId', p.firebase_uid,
+        'username', p.username,
+        'pushPrefs', p.push_prefs,
         'featuredBadges', to_jsonb(p.featured_badges),
         'provider', nullif(a.raw_app_meta_data ->> 'provider', ''),
         'emailConfirmedAt', private.iso(a.email_confirmed_at),

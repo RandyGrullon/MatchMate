@@ -723,6 +723,16 @@ describe('bajar mis datos y borrar la cuenta', () => {
     expect((await db.rpc<{ tables: Record<string, Json[]> }>(w.u.nuevo, 'export_my_data')).tables.badge_awards).toHaveLength(1);
   });
 
+  it('export_my_data (la de insignias, la última) trae también el @usuario (…0200) y los avisos del teléfono (…0500) del perfil', async () => {
+    const before = await db.rpc<{ account: Json }>(w.u.luis, 'export_my_data');
+    const [{ username }] = await db.admin<{ username: string }>('select username from public.profiles where id = $1', [w.u.luis]);
+    expect(before.account).toMatchObject({ username, pushPrefs: {} });
+    await db.rpc(w.u.luis, 'set_username', { p_username: 'luis_bolos' });
+    await db.rpc(w.u.luis, 'set_push_prefs', { p_prefs: { social: false } });
+    const d = await db.rpc<{ account: Json }>(w.u.luis, 'export_my_data');
+    expect(d.account).toMatchObject({ id: w.u.luis, username: 'luis_bolos', pushPrefs: { social: false } });
+  });
+
   it('al borrar la cuenta se van las de cuenta; las de liga se quedan en su jugador (sin cuenta)', async () => {
     const acc = await award({ key: 'month_streak', sport: 'all', user: w.u.luis });
     const lg = await award({ key: 'bowling_club', player: w.p.luis, league: w.priv });

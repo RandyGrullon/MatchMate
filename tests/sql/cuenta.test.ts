@@ -141,6 +141,9 @@ describe('bajar mis datos', () => {
   it('una cuenta sin ligas: vacío pero completo', async () => {
     const d = await db.rpc<Json>(w.u.nuevo, 'export_my_data');
     expect(d.account.email).toBe('new@x.com');
+    // Lo que las entregas le pusieron al perfil (@usuario de …0200, avisos del teléfono de …0500) también sale.
+    expect(d.account.username).toEqual(expect.any(String));
+    expect(d.account.pushPrefs).toEqual({});
     expect(d.leagues).toEqual([]);
     expect(d.players).toEqual([]);
     expect(d.matches).toEqual([]);
