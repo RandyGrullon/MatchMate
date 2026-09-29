@@ -5,6 +5,7 @@ import {
   CalendarRange,
   Camera,
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
   ClipboardX,
   Clock,
@@ -58,6 +59,8 @@ import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, To
 import { AnnouncePanel } from '../components/league/Announce';
 import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
 import { usePendingClaimCount } from '../components/claims/data';
+import { PendingPanel } from '../components/organizer/Pending';
+import { pendingTotal, useLeaguePending } from '../lib/data/organizer';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
@@ -74,10 +77,11 @@ interface AdminTab {
 }
 
 /**
- * Administración de la liga (dueño, admins y superadmin). En el boliche, las pestañas de siempre (abre en
- * Jugadores). En los otros deportes van primero las suyas (Equipos, Campos, Nadadores, Parejas y niveles: lo que
- * hace falta para arrancar) y abre en la primera; si el deporte maneja a su gente en su pestaña, la general
- * «Jugadores» no sale y lo de vincular cuentas queda en Miembros.
+ * Administración de la liga (dueño, admins y superadmin). Abre en «Pendientes» (todos los deportes: lo que espera
+ * por el admin, los primeros pasos y «Suspender un día»). Después, en el boliche, las pestañas de siempre. En los
+ * otros deportes van primero las suyas (Equipos, Campos, Nadadores, Parejas y niveles: lo que hace falta para
+ * arrancar); si el deporte maneja a su gente en su pestaña, la general «Jugadores» no sale y lo de vincular cuentas
+ * queda en Miembros.
  */
 export default function AdminPage() {
   const { lid, isAdmin, league } = useLeagueCtx();
@@ -91,7 +95,11 @@ export default function AdminPage() {
   // Reclamos de jugadores sin cuenta («ese soy yo»): todos los deportes.
   const uid = useAuth().user?.uid;
   const claims = usePendingClaimCount(isAdmin ? lid : null, uid);
+  // Todo lo que espera por el admin (envíos y reclamos en vivo; partidos reclamados o atrasados y listas de espera).
+  const toDo = pendingTotal(useLeaguePending(isAdmin ? lid : null).data, { submissions: bowling ? pending : undefined, claims });
   const generic: AdminTab[] = [
+    // Primero en todos los deportes (arrangeAdminTabs) y abre ahí.
+    { key: 'pendientes', label: 'Pendientes', icon: <ClipboardCheck className="size-4" />, count: toDo },
     { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
     // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
     ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
@@ -134,6 +142,7 @@ export default function AdminPage() {
           onChange={(k) => setParams({ tab: k }, { replace: true })}
           Own={Own}
           accountsOf={playersMerged ? (peopleTab?.label ?? null) : null}
+          playersTab={playersMerged ? (peopleTab?.key ?? null) : null}
         />
       )}
     </div>
@@ -155,12 +164,15 @@ function AdminTabs({
   onChange,
   Own,
   accountsOf,
+  playersTab,
 }: {
   tabs: AdminTab[];
   tab: Tab;
   onChange: (k: Tab) => void;
   Own: ComponentType | undefined;
   accountsOf: string | null;
+  /** Donde se agregan jugadores en este deporte, si no es «Jugadores» (los primeros pasos llevan ahí). */
+  playersTab: string | null;
 }) {
   return (
     <>
@@ -171,6 +183,8 @@ function AdminTabs({
         <div key={tab} className="animate-fade-up">
           {Own ? (
             <Own />
+          ) : tab === 'pendientes' ? (
+            <PendingPanel playersTab={playersTab} />
           ) : tab === 'jugadores' ? (
             <PlayersPage />
           ) : tab === 'aprobar' ? (

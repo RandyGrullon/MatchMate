@@ -152,12 +152,12 @@ export const ADMIN_TOUR: TourStep[] = [
   {
     target: 'admin-secciones',
     title: 'Administrar la liga',
-    body: 'Jugadores (la lista y sus promedios), Aprobar (los juegos que suben los jugadores), Miembros (permisos: admins y anotadores), Buzón (sugerencias anónimas) y los datos de la liga.',
+    body: 'Pendientes (lo que espera por ti y «Suspender un día»), Jugadores (la lista y sus promedios), Aprobar (los juegos que suben los jugadores), Miembros (permisos: admins y anotadores), Buzón (sugerencias anónimas) y los datos de la liga.',
   },
   {
     target: 'tab-admin',
     title: 'El número rojo',
-    body: 'Te avisa cuántos juegos esperan tu aprobación y cuántas sugerencias nuevas hay.',
+    body: 'Te avisa cuántas cosas esperan por ti (juegos por aprobar, reclamos, resultados) y cuántas sugerencias nuevas hay.',
   },
 ];
 
