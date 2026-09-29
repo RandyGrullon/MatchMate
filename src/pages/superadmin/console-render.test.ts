@@ -34,6 +34,7 @@ vi.mock('../../lib/data/admin', async (importOriginal) => {
     useAdminLeagues: () => page(d.leagues),
     useAdminAudit: (_enabled: boolean, q: { action?: string }) => page(q.action ? d.audit.filter((e) => e.action === q.action) : d.audit),
     useAdminSystem: () => live(d.system, null),
+    useAdminStorageUsage: () => live(d.storageUsage, null),
     useAdminScanStats: () => live(d.scan, null),
     useAdminClientErrors: () => live(d.clientErrors, { rows: [], total: 0, hits: 0, users: 0 }),
     clearClientErrors: async () => 2,
@@ -236,6 +237,16 @@ describe('consola del superadmin', () => {
     expect(out).toContain('2 migraciones');
     expect(out).toContain('Respaldo completo');
     expect(out).toContain('Fallaron (24 h)');
+    // Espacio del plan gratis (admin_storage_usage): barras con el porcentaje, la marca del aviso y lo que falta borrar.
+    expect(out).toContain('Espacio del plan gratis');
+    expect(out).toContain('Desde el 70 % llega un aviso');
+    expect(out).toContain('Base de datos 36 %');
+    expect(out).toContain('180 MB de 500 MB');
+    expect(out).toContain('Fotos (Storage) 75 %');
+    expect(out).toContain('768 MB de 1 GB');
+    expect(out).toContain('Último aviso de espacio');
+    expect(out).toContain('Fotos por quitar del bucket 12');
+    expect(html('/superadmin/sistema')).toContain('aria-valuetext="75 % (768 MB de 1 GB)"');
   });
 
   it('errores: agrupados, con veces, cuentas, teléfono, rutas, versión y detalle', () => {

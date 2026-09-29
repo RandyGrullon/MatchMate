@@ -208,7 +208,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
 ## Paso 9. Secretos de las Edge Functions y publicarlas
 
-**Quién: tú.** `scan-bowling`, `send-push` y `delete-account` ya están en el repo (`supabase/functions`).
+**Quién: tú.** `scan-bowling`, `send-push`, `delete-account` y `purge-photos` ya están en el repo (`supabase/functions`).
 
 - [ ] **Claves VAPID** (notificaciones). En la terminal:
   ```powershell
@@ -216,7 +216,7 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
   ```
   Salen dos: *Public Key* y *Private Key*. Guárdalas en tu gestor. La pública va también en Vercel
   (`VITE_VAPID_PUBLIC_KEY`, paso 5, y *Redeploy*). Las mismas sirven para los dos proyectos.
-- [ ] **CRON_SECRET** (una contraseña larga al azar que solo usan el cron y `send-push`). En la terminal:
+- [ ] **CRON_SECRET** (una contraseña larga al azar que solo usan el cron, `send-push` y `purge-photos`). En la terminal:
   ```powershell
   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   ```
@@ -237,13 +237,14 @@ normal por ahora; más adelante se cambia al botón de Google con tu dominio.)
 
   No agregues nada que empiece con `SUPABASE_`: esos los pone Supabase solo (`delete-account` usa la clave
   secreta, `SUPABASE_SECRET_KEYS`, para borrar la cuenta con la API de administración).
-- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto). Publica las tres:
+- [ ] Publicar las funciones (primero staging; `REF` es el del proyecto). Publica las cuatro:
   ```powershell
   npx -y supabase@2 functions deploy --project-ref REF
   ```
-  Si ya tenías las otras y solo falta la de borrar cuentas: `npx -y supabase@2 functions deploy delete-account --project-ref REF`.
+  Si ya tenías las otras y solo falta una: `npx -y supabase@2 functions deploy purge-photos --project-ref REF` (o
+  `delete-account`).
 
-**Comprobar:** *Edge Functions* muestra `scan-bowling`, `send-push` y `delete-account`, las tres con *Verify JWT*
+**Comprobar:** *Edge Functions* muestra `scan-bowling`, `send-push`, `delete-account` y `purge-photos`, las cuatro con *Verify JWT*
 **apagado** (es a propósito: cada función revisa por dentro quién la llama). En la app, envía un juego con foto: a
 los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* se ve la llamada sin errores.
 

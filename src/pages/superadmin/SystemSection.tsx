@@ -1,12 +1,19 @@
 import { useState } from 'react';
 import { DatabaseBackup, HeartPulse, Server } from 'lucide-react';
 import { useFeedback } from '../../components/feedback';
-import { Badge, Button, Skeleton } from '../../components/ui';
+import { Badge, Button, Skeleton, cx } from '../../components/ui';
 import { backendMode } from '../../lib/backend';
-import { useAdminOverview, useAdminSystem, type AdminSystem } from '../../lib/data/admin';
+import {
+  STORAGE_ALERT_PCT,
+  useAdminOverview,
+  useAdminStorageUsage,
+  useAdminSystem,
+  type AdminStorageUsage,
+  type AdminSystem,
+} from '../../lib/data/admin';
 import { Meter } from './charts';
 import { ErrorRetry, Fact, Panel, SectionHeader } from './bits';
-import { fmtDateTime, fmtNum, fmtPct, relativeTime } from './format';
+import { fmtBytes, fmtDateTime, fmtNum, fmtPct, relativeTime } from './format';
 import { planLimits } from './plan';
 import { sectionMeta } from './sections';
 
@@ -53,14 +60,19 @@ export function BackupButton({ className }: { className?: string }) {
   );
 }
 
-/** Sistema: backend, límites del plan gratis, «mantener despierto», tareas, cola de avisos, migraciones y respaldo. */
+/**
+ * Sistema: backend, espacio y límites del plan gratis, «mantener despierto», tareas, cola de avisos, migraciones y
+ * respaldo. El aviso de espacio al teléfono de los superadmins abre esta sección (/superadmin/sistema).
+ */
 export default function SystemSection() {
   const system = useAdminSystem(true);
   const overview = useAdminOverview(true);
+  const storage = useAdminStorageUsage(true);
   const sys = system.data;
   const o = overview.data;
+  const usage = storage.data;
   const mode = sys?.backend ?? backendMode();
-  const limits = planLimits(o);
+  const limits = planLimits(o, usage);
 
   return (
     <>
@@ -118,6 +130,21 @@ export default function SystemSection() {
           <BackupButton className="w-full max-sm:min-h-11" />
         </Panel>
       </div>
+
+      <Panel
+        title="Espacio del plan gratis"
+        subtitle={`Base de datos y fotos. Desde el ${STORAGE_ALERT_PCT} % llega un aviso al teléfono de los superadmins (uno cada 3 días).`}
+      >
+        {!usage ? (
+          storage.error ? (
+            <ErrorRetry error={storage.error} compact />
+          ) : (
+            <Skeleton className="h-24" />
+          )
+        ) : (
+          <StorageUsage usage={usage} local={mode === 'local'} />
+        )}
+      </Panel>
 
       <Panel title="Límites del plan gratis" subtitle="Supabase Free: si algo se llena, la app se pone lenta o deja de guardar">
         {overview.error && !o && <ErrorRetry error={overview.error} compact />}
@@ -247,6 +274,52 @@ function HeartbeatValue({ at }: { at: string | null }) {
       <HeartPulse className={old ? 'size-4 text-warn' : 'size-4 text-ok'} aria-hidden="true" />
       {relativeTime(at)}
     </span>
+  );
+}
+
+/**
+ * Dos barras con el porcentaje del plan gratis (base y fotos) y una marca donde sale el aviso; abajo, la última alerta
+ * y las fotos borradas que purge-photos todavía no quitó del bucket. Sin Storage (modo local) las fotos no se miden.
+ */
+function StorageUsage({ usage, local }: { usage: AdminStorageUsage; local: boolean }) {
+  const rows = [
+    { key: 'db', label: 'Base de datos', bytes: usage.dbBytes, limit: usage.dbLimit, pct: usage.dbPct, measured: true },
+    { key: 'storage', label: 'Fotos (Storage)', bytes: usage.storageBytes, limit: usage.storageLimit, pct: usage.storagePct, measured: !local },
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {rows.map((r) => {
+          const pct = fmtPct(r.pct / 100);
+          const of = `${fmtBytes(r.bytes)} de ${fmtBytes(r.limit)}`;
+          return (
+            <div key={r.key} className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{r.label}</span>
+                <span className={cx('text-lg font-bold tabular-nums', r.measured && r.pct >= STORAGE_ALERT_PCT && 'text-warn')}>{r.measured ? pct : '—'}</span>
+              </div>
+              <div className="relative">
+                <Meter value={r.measured ? r.pct : 0} max={100} label={`${r.label}: uso del plan gratis`} valueText={r.measured ? `${pct} (${of})` : 'No se mide'} />
+                <span aria-hidden="true" className="absolute -inset-y-0.5 w-0.5 rounded-full bg-fg/40" style={{ left: `${STORAGE_ALERT_PCT}%` }} />
+              </div>
+              <span className="text-xs text-muted tabular-nums">{r.measured ? of : 'En modo local no hay Storage: las fotos viven en este navegador.'}</span>
+            </div>
+          );
+        })}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line pt-3">
+        <Fact label="Último aviso de espacio">
+          {usage.lastAlertAt ? (
+            <time dateTime={usage.lastAlertAt} title={fmtDateTime(usage.lastAlertAt)}>
+              {relativeTime(usage.lastAlertAt)}
+            </time>
+          ) : (
+            'Ninguno'
+          )}
+        </Fact>
+        <Fact label="Fotos por quitar del bucket">{fmtNum(usage.purgePending)}</Fact>
+      </dl>
+    </div>
   );
 }
 

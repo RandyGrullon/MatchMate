@@ -1,9 +1,10 @@
 /**
  * Límites del plan gratis de Supabase y cuánto se usa de cada uno (lo que la consola pueda saber).
  * Lo que no se mide desde la base (transferencia, invocaciones, conexiones de tiempo real) sale como «—»
- * con dónde verlo.
+ * con dónde verlo. La base y los archivos salen de admin_storage_usage cuando ya llegó (lo que pesan de verdad en
+ * Storage, todos los buckets); si no, del resumen.
  */
-import type { AdminOverview } from '../../lib/data/admin';
+import type { AdminOverview, AdminStorageUsage } from '../../lib/data/admin';
 import { LIMITS } from './alerts';
 import { GB, fmtBytes, fmtNum, ratio } from './format';
 
@@ -27,9 +28,10 @@ export const FREE_PLAN = {
   realtimeConnections: 200,
 } as const;
 
-export function planLimits(o: AdminOverview | null): PlanLimit[] {
-  const db = o?.storage.dbBytes ?? null;
-  const photos = o?.storage.photosBytes ?? null;
+export function planLimits(o: AdminOverview | null, usage: AdminStorageUsage | null = null): PlanLimit[] {
+  const db = usage?.dbBytes ?? o?.storage.dbBytes ?? null;
+  // Lo que pesa Storage cuando lo hay; sin Storage (modo local) admin_storage_usage da 0 y vale lo del resumen.
+  const photos = usage && usage.storageBytes > 0 ? usage.storageBytes : (o?.storage.photosBytes ?? usage?.storageBytes ?? null);
   const mau = o ? o.users.active30d : null;
   return [
     {

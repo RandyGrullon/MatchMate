@@ -104,6 +104,9 @@ Paso a paso para el dueño (cuentas, claves, Vercel, Google, correo, IA, push, r
 [docs/CONFIGURAR-SUPABASE.md](docs/CONFIGURAR-SUPABASE.md). Las variables de la app están en
 [.env.example](.env.example); ningún secreto va en el repo ni en variables `VITE_*`.
 
+Cada versión nueva se publica en orden (pruebas, base de datos, app) y, si la CLI no llega a la base, las
+migraciones se pegan en el *SQL Editor*: [docs/despliegue.md](docs/despliegue.md).
+
 Tareas automáticas en GitHub Actions:
 
 - [keepalive.yml](.github/workflows/keepalive.yml): cada día llama a la RPC `ping` para que Supabase no pause

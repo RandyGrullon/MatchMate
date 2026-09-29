@@ -9,6 +9,7 @@ import type {
   AdminOverview,
   AdminScanStats,
   AdminSeriesPoint,
+  AdminStorageUsage,
   AdminSystem,
   AdminUser,
   AdminUserDetail,
@@ -203,6 +204,18 @@ export const system: AdminSystem = {
     { sport: 'padel', status: 'beta', leagues: 20 },
     { sport: 'tennis', status: 'closed', leagues: 0 },
   ],
+};
+
+/** Base al 36 % y fotos al 75 % (pasó el aviso del 70 %). */
+export const storageUsage: AdminStorageUsage = {
+  dbBytes: 180 * MB,
+  dbLimit: 524_288_000,
+  storageBytes: 768 * MB,
+  storageLimit: 1_073_741_824,
+  dbPct: 36,
+  storagePct: 75,
+  lastAlertAt: daysAgo(1),
+  purgePending: 12,
 };
 
 export const scan: AdminScanStats = {

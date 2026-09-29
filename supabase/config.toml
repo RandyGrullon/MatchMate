@@ -459,7 +459,7 @@ deno_version = 2
 # CRON_SECRET = "env(CRON_SECRET)"
 # APP_ORIGIN = "env(APP_ORIGIN)"
 
-# Edge Functions de MatchMate. verify_jwt = false en las dos (crítica 1): con las claves nuevas (sb_publishable_ /
+# Edge Functions de MatchMate. verify_jwt = false en todas (crítica 1): con las claves nuevas (sb_publishable_ /
 # sb_secret_) la verificación de la puerta no sirve, así que cada función valida por dentro:
 # - scan-bowling: el JWT del usuario (auth.getClaims) y sus permisos (can_scan / consume_scan).
 # - send-push: la cabecera x-cron-secret contra CRON_SECRET (la llama pg_net desde el cron, con el secreto en Vault).
@@ -474,6 +474,12 @@ verify_jwt = false
 # delete-account («Borrar mi cuenta»): valida el JWT por dentro (auth.getClaims), revisa con
 # prepare_delete_account como la cuenta y borra con la API de administración (clave secreta).
 [functions.delete-account]
+enabled = true
+verify_jwt = false
+
+# purge-photos: igual que send-push, la cabecera x-cron-secret contra CRON_SECRET (la llama pg_net una vez al día,
+# tarea 'mm-limpiar-fotos'). Borra del bucket scoreboards la cola de fotos borradas y los archivos huérfanos.
+[functions.purge-photos]
 enabled = true
 verify_jwt = false
 

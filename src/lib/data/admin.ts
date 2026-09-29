@@ -132,6 +132,24 @@ export interface AdminSystem {
   sportStatus: { sport: string; status: SportStatus; leagues: number }[];
 }
 
+/**
+ * Espacio usado contra los topes del plan gratis (admin_storage_usage, 20260929000500_avisos_telefono.sql). La base:
+ * pg_database_size; los archivos: lo que pesan en Storage (0 en local, que no tiene Storage). Porcentajes de 0 a 100
+ * con un decimal. Al 70 % la base avisa al teléfono de los superadmins (una vez cada 3 días).
+ */
+export interface AdminStorageUsage {
+  dbBytes: number;
+  dbLimit: number;
+  storageBytes: number;
+  storageLimit: number;
+  dbPct: number;
+  storagePct: number;
+  /** La última alerta de espacio que salió (ISO), o null. */
+  lastAlertAt: string | null;
+  /** Fotos borradas que faltan por quitar del bucket (las quita purge-photos cada día). */
+  purgePending: number;
+}
+
 export interface AdminScanStats {
   days: { day: string; scans: number }[];
   models: { model: string; today: number; total: number }[];
@@ -209,6 +227,11 @@ export const ANNOUNCES_PER_HOUR = 5;
 export const CLIENT_ERROR_KINDS: readonly ClientErrorKind[] = ['error', 'promise', 'render', 'chunk'];
 /** Días hacia atrás que se pueden ver (la base guarda 30). */
 export const CLIENT_ERROR_DAYS = [1, 7, 30] as const;
+/** Topes del plan gratis que usa private.storage_usage(): base 500 MB y archivos 1 GB. */
+export const FREE_DB_BYTES = 524_288_000;
+export const FREE_STORAGE_BYTES = 1_073_741_824;
+/** Desde este porcentaje (de la base o de los archivos) private.check_storage_alert avisa a los superadmins. */
+export const STORAGE_ALERT_PCT = 70;
 
 /** Nombre en español de cada acción de la auditoría (las que no están aquí se muestran tal cual). */
 export const ADMIN_ACTION_LABELS: Readonly<Record<string, string>> = {
@@ -481,6 +504,30 @@ export function toAdminScanStats(raw: unknown): AdminScanStats | null {
   };
 }
 
+/** Porcentaje con un decimal, como lo redondea la base. */
+const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part * 1000) / whole) / 10 : 0);
+
+/** Sin topes (base vieja o fila rara): los del plan gratis. Sin porcentaje: se calcula de los bytes. */
+export function toAdminStorageUsage(raw: unknown): AdminStorageUsage | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = obj(raw);
+  const dbBytes = Math.max(0, num(r.dbBytes));
+  const storageBytes = Math.max(0, num(r.storageBytes));
+  const dbLimit = num(r.dbLimit) > 0 ? num(r.dbLimit) : FREE_DB_BYTES;
+  const storageLimit = num(r.storageLimit) > 0 ? num(r.storageLimit) : FREE_STORAGE_BYTES;
+  const pct = (v: unknown, part: number, whole: number) => (numOrNull(v) == null || v === '' ? pctOf(part, whole) : Math.max(0, num(v)));
+  return {
+    dbBytes,
+    dbLimit,
+    storageBytes,
+    storageLimit,
+    dbPct: pct(r.dbPct, dbBytes, dbLimit),
+    storagePct: pct(r.storagePct, storageBytes, storageLimit),
+    lastAlertAt: strOrNull(r.lastAlertAt),
+    purgePending: num(r.purgePending),
+  };
+}
+
 // ---------- Páginas ----------
 
 /**
@@ -561,6 +608,8 @@ export const fetchAdminSystem = async (): Promise<AdminSystem | null> => toAdmin
 
 export const fetchAdminScanStats = async (days: number): Promise<AdminScanStats | null> =>
   toAdminScanStats(await rpc('admin_scan_stats', { p_days: days }));
+
+export const fetchAdminStorageUsage = async (): Promise<AdminStorageUsage | null> => toAdminStorageUsage(await rpc('admin_storage_usage'));
 
 export interface AdminClientErrorsQuery {
   /** Días hacia atrás (1–90; la base guarda 30). */
@@ -670,6 +719,11 @@ export function useAdminSystem(enabled: boolean): Live<AdminSystem | null> {
 
 export function useAdminScanStats(enabled: boolean, days: 30 | 90): Live<AdminScanStats | null> {
   return useAdminQuery(enabled ? keys.adminScan(days) : null, () => fetchAdminScanStats(days), null, [tags.admin, tags.adminStats]);
+}
+
+/** Espacio del plan gratis (base y archivos) con la última alerta y las fotos por quitar del bucket. */
+export function useAdminStorageUsage(enabled: boolean): Live<AdminStorageUsage | null> {
+  return useAdminQuery(enabled ? keys.adminStorage : null, fetchAdminStorageUsage, null, [tags.admin, tags.adminSystem, tags.adminStats]);
 }
 
 /** Etiqueta de caché de los errores de los teléfonos (se invalida al borrar un grupo). */

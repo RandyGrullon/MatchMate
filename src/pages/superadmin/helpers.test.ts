@@ -23,7 +23,7 @@ import {
 } from './model';
 import { planLimits } from './plan';
 import { SECTIONS, sectionFromParam, sectionPath } from './sections';
-import { NOW, audit, leagues, overview, series, users } from './testData';
+import { NOW, audit, leagues, overview, series, storageUsage, users } from './testData';
 
 describe('avisos de salud', () => {
   it('todo bien: sin avisos', () => {
@@ -185,6 +185,17 @@ describe('límites del plan gratis', () => {
     expect(rows[4].limit).toBe('500,000 al mes');
     expect(rows[5].limit).toBe('200 conexiones');
     expect(planLimits(null).every((r) => r.current == null && r.used == null)).toBe(true);
+  });
+
+  it('con admin_storage_usage: la base y lo que pesa Storage; sin Storage (0) vale lo del resumen', () => {
+    const o = overview({ storage: { dbBytes: 250 * MB, photosBytes: 300 * MB, photos: 12 } });
+    const rows = planLimits(o, storageUsage);
+    expect(rows[0]).toMatchObject({ current: '180 MB', used: (180 * MB) / (500 * MB) });
+    expect(rows[1]).toMatchObject({ current: '768 MB', used: 0.75 });
+    const local = planLimits(o, { ...storageUsage, storageBytes: 0, storagePct: 0 });
+    expect(local[1]).toMatchObject({ current: '300 MB' });
+    expect(planLimits(null, storageUsage)[1]).toMatchObject({ current: '768 MB' });
+    expect(planLimits(null, { ...storageUsage, storageBytes: 0 })[1]).toMatchObject({ current: '0 B', used: 0 });
   });
 });
 

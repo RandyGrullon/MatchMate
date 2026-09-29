@@ -11,11 +11,15 @@ import {
   adminDeleteLeague,
   blockUser,
   countAnnouncementRecipients,
+  FREE_DB_BYTES,
+  FREE_STORAGE_BYTES,
+  STORAGE_ALERT_PCT,
   fetchAdminAudit,
   fetchAdminLeagues,
   fetchAdminOverview,
   fetchAdminScanStats,
   fetchAdminSeries,
+  fetchAdminStorageUsage,
   fetchAdminSystem,
   fetchAdminUser,
   fetchAdminUsers,
@@ -30,6 +34,7 @@ import {
   toAdminOverview,
   toAdminScanStats,
   toAdminSeries,
+  toAdminStorageUsage,
   toAdminSystem,
   toAdminUser,
   toAdminUserDetail,
@@ -163,6 +168,42 @@ describe('de la base a los tipos', () => {
       perUserLimit: 0,
     });
   });
+
+  it('espacio del plan gratis: números aunque lleguen como texto; sin topes, los del plan; sin porcentaje, de los bytes', () => {
+    expect(
+      toAdminStorageUsage({
+        dbBytes: '52428800',
+        dbLimit: 524288000,
+        storageBytes: 805306368,
+        storageLimit: '1073741824',
+        dbPct: 10,
+        storagePct: '75.0',
+        lastAlertAt: '2026-09-27T12:00:00.000Z',
+        purgePending: '4',
+      }),
+    ).toEqual({
+      dbBytes: 52428800,
+      dbLimit: 524288000,
+      storageBytes: 805306368,
+      storageLimit: 1073741824,
+      dbPct: 10,
+      storagePct: 75,
+      lastAlertAt: '2026-09-27T12:00:00.000Z',
+      purgePending: 4,
+    });
+    expect(toAdminStorageUsage({ dbBytes: 393216000, storageBytes: -5, dbPct: null, storagePct: 'x' })).toEqual({
+      dbBytes: 393216000,
+      dbLimit: FREE_DB_BYTES,
+      storageBytes: 0,
+      storageLimit: FREE_STORAGE_BYTES,
+      dbPct: 75,
+      storagePct: 0,
+      lastAlertAt: null,
+      purgePending: 0,
+    });
+    expect(toAdminStorageUsage(null)).toBeNull();
+    expect(STORAGE_ALERT_PCT).toBe(70);
+  });
 });
 
 describe('páginas y anuncios', () => {
@@ -267,6 +308,7 @@ describe('con la base de verdad', () => {
     await w.as('ana@x.com');
     await expect(fetchAdminOverview()).rejects.toMatchObject({ kind: 'permission' });
     await expect(fetchAdminUsers({ page: 0, pageSize: 10 })).rejects.toMatchObject({ kind: 'permission' });
+    await expect(fetchAdminStorageUsage()).rejects.toMatchObject({ kind: 'permission' });
     await expect(blockUser(beto, 'x')).rejects.toMatchObject({ kind: 'permission' });
   });
 
@@ -300,6 +342,12 @@ describe('con la base de verdad', () => {
 
     const sys = await fetchAdminSystem();
     expect(sys).toMatchObject({ backend: 'local', migrations: null, cron: null });
+
+    // Espacio: en local no hay Storage (0) y la base sí se mide; sin alertas ni fotos por quitar.
+    const usage = await fetchAdminStorageUsage();
+    expect(usage).toMatchObject({ dbLimit: FREE_DB_BYTES, storageBytes: 0, storageLimit: FREE_STORAGE_BYTES, storagePct: 0, lastAlertAt: null, purgePending: 0 });
+    expect(usage!.dbBytes).toBeGreaterThanOrEqual(0);
+    expect(usage!.dbPct).toBeCloseTo(Math.round((usage!.dbBytes * 1000) / FREE_DB_BYTES) / 10, 5);
     expect(sys?.sportStatus.find((s) => s.sport === 'bowling')).toEqual({ sport: 'bowling', status: 'open', leagues: 1 });
 
     const scan = await fetchAdminScanStats(30);
