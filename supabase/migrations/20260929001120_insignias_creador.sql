@@ -26,7 +26,8 @@
 --    (social_league_ok), 6+ cuentas miembro no bloqueadas y 14+ días de creada. El dueño las ve todas.
 -- 7. Cambian (misma firma): private.merge_badges (también las de liga: si chocan, queda la más vieja y la otra se
 --    retira con 'fusión'), public.profile_badges (+ leagueAwards), public.badge_notices (+ leagueAwards, leagueUnseen),
---    public.remove_member (un admin no saca a quien diseña insignias) y la vista public.memberships (+ badge_maker).
+--    public.remove_member (un admin no saca a quien diseña insignias), la vista public.memberships (+ badge_maker) y
+--    private.my_badge_reports (…1100: badgeReports de export_my_data, aquí con los reportes de la cuenta).
 --    report_badge (reportar una insignia automática) va aquí porque usa private.badge_reports.
 -- 8. Tiempo real (private.emit_league_badges): el mismo aviso 'badges' que las automáticas, por league:<liga> y por
 --    user:<cuenta del jugador>.
@@ -1166,6 +1167,27 @@ begin
   insert into private.badge_reports (award_id, league_id, user_id, reason) values (p_award, a.league_id, v_uid, v_reason);
 end $$;
 
+-- «Descargar mis datos» (badgeReports de export_my_data, …1100, que aquí devolvía []): los reportes de insignias que
+-- hizo la cuenta, del más viejo al más nuevo (hasta 5000, como cada tabla del export): [{id, kind: 'diseno'|
+-- 'insignia', targetId, leagueId, leagueName, reason, createdAt, resolvedAt, resolution}]. Sin quién lo atendió (como
+-- my_reports de …0900).
+create or replace function private.my_badge_reports(p_user uuid) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', x.id,
+           'kind', case when x.badge_id is not null then 'diseno' else 'insignia' end,
+           'targetId', coalesce(x.badge_id, x.award_id),
+           'leagueId', x.league_id,
+           'leagueName', l.name,
+           'reason', x.reason,
+           'createdAt', private.iso(x.created_at),
+           'resolvedAt', private.iso(x.resolved_at),
+           'resolution', x.resolution)
+           order by x.created_at, x.id), '[]'::jsonb)
+    from (select r.* from private.badge_reports r where r.user_id = p_user order by r.created_at, r.id limit 5000) x
+    left join public.leagues l on l.id = x.league_id
+$$;
+
 -- Superadmin: la cola de reportes (p_open true: abiertos; false: cerrados), más nuevos primero, hasta p_limit (1–200).
 -- {open: cuántos abiertos, rows: [{id, kind: 'diseno'|'insignia', reason, createdAt, resolvedAt, resolution,
 --  reporterId, reporterName, leagueId, leagueName, sameTarget (abiertos del mismo diseño o insignia), design:
@@ -1507,7 +1529,7 @@ declare
   v_private constant text[] := array[
     'can_badges', 'league_badges_public', 'badge_clean', 'badge_fold', 'badge_text_ok', 'badge_icon_ok',
     'badge_design_text', 'league_badge_look', 'league_badge_json', 'league_award_json', 'badge_reports_on_revoke',
-    'emit_league_badges', 'merge_badges', 'badge_slot_key', 'badge_link_guard', 'badges_on_link_guard'];
+    'emit_league_badges', 'merge_badges', 'badge_slot_key', 'badge_link_guard', 'badges_on_link_guard', 'my_badge_reports'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

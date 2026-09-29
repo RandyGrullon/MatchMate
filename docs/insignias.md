@@ -1628,7 +1628,8 @@ las pistas de `…0600` y los premios y tablas guardadas de `…0700`; pasa a ll
 `export_my_data` es la de `20260927001500`, `update_entry` y `remove_member` las de `20260926000500`, la vista
 `memberships` la de `20260926000200` y `private.push_category` la de `…0700` con `insignias` e `insignia:` en «Social»
 («Hay una hazaña por confirmar», `insignia-aval:`, llega siempre). Los reportes del creador (`private.badge_reports`,
-Consola › Insignias) siguen aparte de los de contenido (`public.reports`, Consola › Reportes). Hecho de punta
+Consola › Insignias) siguen aparte de los de contenido (`public.reports`, Consola › Reportes); «Descargar mis datos»
+los trae en `badgeReports` de `export_my_data` (`private.my_badge_reports`), como `my_reports` trae los otros. Hecho de punta
 a punta: pasos 1 a 7, 9 y 10; del 8, la corrida en seco funciona en local (`tests/sql/insignias-funcion.test.ts`) y
 se corre desde la consola; falta hacerla sobre la copia de producción y calibrar. Pendiente, a propósito:
 - «Empate múltiple: este mes no hubo {figura}» (§6.2): el motor lo detecta (`topWithTies`) pero no hay dónde

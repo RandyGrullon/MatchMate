@@ -944,6 +944,37 @@ describe('fusiones, menores y mis datos', () => {
     await db.rpc(w.u.org, 'delete_league', { p_league: w.priv });
     expect(await db.count('public.league_badges')).toBe(0);
   });
+
+  it('export_my_data trae en badgeReports los reportes de insignias que hizo la cuenta (private.badge_reports), sin quién los atendió', async () => {
+    const design = await makeDesign(w.u.org, w.priv, { name: 'Burla' });
+    const [{ id: official }] = await db.admin<{ id: string }>(
+      `insert into public.badge_awards (badge_key, sport, level, period_key, player_id, league_id, status) values ('bowling_club', 'bowling', 1, '-', $1, $2, 'firme') returning id`,
+      [w.p.luis, w.priv],
+    );
+    expect((await db.rpc<{ badgeReports: Json[] }>(w.u.ana, 'export_my_data')).badgeReports).toEqual([]);
+    await db.rpc(w.u.ana, 'report_league_badge', { p_badge: design, p_reason: 'Es una burla' });
+    await db.rpc(w.u.ana, 'report_badge', { p_award: official, p_reason: 'No jugó eso' });
+    await db.rpc(w.u.sofi, 'report_league_badge', { p_badge: design, p_reason: 'De otra cuenta' });
+    await db.admin(`update private.badge_reports set created_at = now() - interval '1 hour' where badge_id is not null`);
+    const [mine] = await db.admin<{ id: string }>(`select id from private.badge_reports where award_id = $1`, [official]);
+    await db.rpc(w.u.dios, 'admin_resolve_badge_reports', { p_ids: [Number(mine.id)] });
+
+    const d = await db.rpc<{ badgeReports: Json[] }>(w.u.ana, 'export_my_data');
+    expect(d.badgeReports).toEqual([
+      expect.objectContaining({ kind: 'diseno', targetId: design, leagueId: w.priv, leagueName: 'Liga del Banco', reason: 'Es una burla', resolvedAt: null, resolution: null }),
+      expect.objectContaining({ kind: 'insignia', targetId: official, leagueId: w.priv, reason: 'No jugó eso', resolution: 'descartado' }),
+    ]);
+    expect(d.badgeReports[1].resolvedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    for (const r of d.badgeReports) {
+      expect(r).not.toHaveProperty('resolvedBy');
+      expect(r).not.toHaveProperty('userId');
+    }
+    const all = JSON.stringify(d);
+    expect(all).not.toContain('De otra cuenta');
+    expect(all).not.toContain(w.u.dios);
+    // Nadie de la app llama la ayuda directo.
+    await fails(db.as(w.u.ana, 'select private.my_badge_reports($1)', [w.u.sofi]), DENIED);
+  });
 });
 
 describe('tiempo real', () => {

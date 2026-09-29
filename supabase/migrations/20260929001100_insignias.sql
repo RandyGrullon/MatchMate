@@ -19,7 +19,7 @@
 --    el cierre de temporada lo hace public.close_season (20260929000700_temporadas.sql).
 -- 7. Cambian (misma firma): private.merge_players (junta también las insignias de los dos jugadores al aprobar un
 --    reclamo, con private.merge_badges) y public.export_my_data (las tablas con `holder` salen por la cuenta y por
---    sus jugadores, y las ligas llevan badgesAuto).
+--    sus jugadores, las ligas llevan badgesAuto y badgeReports trae los reportes de insignias que hizo la cuenta).
 --
 -- private.badge_signal(evento, liga, jugador, insignia) no hace nada aquí: el motor la redefine para encolar lo que
 -- corresponde ('merge' después de juntar dos jugadores, 'review' al confirmar un aval).
@@ -300,9 +300,17 @@ end $$;
 -- Bajar mis datos: también las insignias de sus jugadores
 -- =====================================================================
 
--- Igual que en 20260927001500_cuenta.sql, con dos cambios: una tabla con `holder` (badge_awards, badge_progress)
--- sale por la cuenta Y por sus jugadores (holder = el jugador o la cuenta), y cada liga dice su badgesAuto. El
--- perfil lleva sus destacadas.
+-- Los reportes de insignias que hizo la cuenta (badgeReports de export_my_data). Van en private.badge_reports, que
+-- trae el creador (…1120) y que el catálogo de export_my_data (solo public) no ve; my_reports (…0900) lee solo
+-- public.reports. Aquí no hay reportes todavía: …1120 la redefine con la tabla.
+create function private.my_badge_reports(p_user uuid) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select '[]'::jsonb
+$$;
+
+-- Igual que en 20260927001500_cuenta.sql, con tres cambios: una tabla con `holder` (badge_awards, badge_progress)
+-- sale por la cuenta Y por sus jugadores (holder = el jugador o la cuenta), cada liga dice su badgesAuto y
+-- badgeReports trae los reportes de insignias que hizo (private.my_badge_reports). El perfil lleva sus destacadas.
 create or replace function public.export_my_data() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -411,6 +419,7 @@ begin
     'scanUsage', coalesce((
       select jsonb_agg(jsonb_build_object('day', to_char(s.day, 'YYYY-MM-DD'), 'photos', s.n) order by s.day)
         from private.scan_usage s where s.user_id = v_uid), '[]'::jsonb),
+    'badgeReports', private.my_badge_reports(v_uid),
     'truncated', to_jsonb(v_truncated));
 end $$;
 
@@ -716,7 +725,7 @@ declare
   v_rpc constant text[] := array['profile_badges', 'set_featured_badges', 'set_badge_hidden', 'mark_badges_seen',
                                  'set_badges_auto', 'review_badge', 'super_revoke_badge', 'export_my_data'];
   v_private constant text[] := array['badges_auto_minors', 'badge_signal', 'merge_badges', 'badge_can_review',
-                                     'badge_context_hidden', 'merge_players', 'merge_players_base'];
+                                     'badge_context_hidden', 'merge_players', 'merge_players_base', 'my_badge_reports'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
