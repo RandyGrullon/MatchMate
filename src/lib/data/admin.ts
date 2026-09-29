@@ -221,6 +221,7 @@ export const ADMIN_ACTION_LABELS: Readonly<Record<string, string>> = {
   transfer_league: 'Traspasó liga',
   clear_errors: 'Borró errores',
   delete_account: 'Cuenta borrada',
+  resolve_report: 'Atendió reporte',
 };
 
 /**

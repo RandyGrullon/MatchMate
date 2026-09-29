@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useLeagueCtx } from '../../lib/league';
 import { sportLeagueTour, type LeagueTabNames } from '../../lib/tours';
 import { ClaimBanner } from '../claims/ClaimBanner';
+import { ReportButton } from '../report/ReportButton';
 import { SuggestionBox } from '../SuggestionBox';
 import { Tour } from '../Tour';
 import { LeagueNotices } from './Announce';
@@ -15,7 +16,8 @@ import { JoinLeagueCard, LeagueInfoCard } from './LeagueInfo';
  *   ser un jugador sin cuenta y espera al admin) o «¿Ya jugabas en esta liga? Busca tu nombre» (src/components/claims);
  * - los otros deportes: la portada (escena, color, nombre, lugar, cuántos son e «Invitar»); para quien mira una
  *   liga pública sin ser miembro, «Unirme» con los datos de la liga y «¿Quién eres?»; para los miembros, los datos
- *   de la liga al final (lugar, horario, WhatsApp), el buzón de sugerencias y el tour de su liga.
+ *   de la liga al final (lugar, horario, WhatsApp), el buzón de sugerencias y el tour de su liga;
+ * - quien mira una liga pública sin ser miembro (de cualquier deporte): «Reportar esta liga» al final.
  * El boliche ya tiene todo eso en su pantalla (LeagueHomePage).
  */
 export function LeagueHomeFrame({ bowling, tabs, children }: { bowling: boolean; tabs: LeagueTabNames; children: ReactNode }) {
@@ -31,6 +33,11 @@ export function LeagueHomeFrame({ bowling, tabs, children }: { bowling: boolean;
       {!bowling && !observer && <LeagueInfoCard />}
       {!bowling && <SuggestionBox />}
       {!bowling && <Tour name={`liga-${league.sport ?? 'otro'}`} steps={sportLeagueTour(tabs)} when={!!member} />}
+      {observer && (
+        <div className="-mt-2 flex justify-center">
+          <ReportButton kind="league" targetId={lid} ownerId={league.ownerUid} variant="text" />
+        </div>
+      )}
     </div>
   );
 }

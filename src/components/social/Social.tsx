@@ -9,6 +9,7 @@ import { relativeTime } from '../../lib/notifications';
 import type { Entry, GameComment, Reaction, ReactionType } from '../../lib/types';
 import { Avatar } from '../Avatar';
 import { useAction, useFeedback } from '../feedback';
+import { ReportButton } from '../report/ReportButton';
 import { Button, cx } from '../ui';
 
 const REACTIONS: { type: ReactionType; label: string; icon: typeof ThumbsUp }[] = [
@@ -255,6 +256,8 @@ export function PostSocial({
             {(c.uid === user?.uid || isAdmin) && (
               <Button variant="ghost" size="sm" aria-label="Borrar comentario" title="Borrar" icon={<Trash2 className="size-4 text-muted" />} onClick={() => remove(c)} />
             )}
+            {/* Reportar el comentario de otro (lo revisan el equipo de MatchMate y los admins de la liga). */}
+            {user && c.uid !== user.uid && <ReportButton kind="comment" targetId={c.id} ownerId={c.uid} className="-my-1.5 -mr-2" />}
           </div>
         ))}
         {sorted.length === 0 && <p className="text-sm text-muted">{isMine ? 'Todavía nadie comenta tu juego.' : 'Sé el primero en comentar.'}</p>}

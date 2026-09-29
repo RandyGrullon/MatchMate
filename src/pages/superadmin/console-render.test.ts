@@ -48,6 +48,68 @@ vi.mock('../../lib/data/admin', async (importOriginal) => {
   };
 });
 
+// Reportes y legal (20260929000900_legal.sql): las lecturas simuladas igual que las de arriba.
+vi.mock('../../lib/data/reports', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../lib/data/reports')>();
+  const target = (title: string, extra: Record<string, unknown> = {}) => ({
+    title,
+    text: null,
+    url: '/l/l1',
+    userId: 'u-luis',
+    userName: 'Luis Soto',
+    leagueId: 'l1',
+    leagueName: 'Liga del Martes',
+    sport: 'bowling',
+    ...extra,
+  });
+  const base = { leagueId: 'l1', leagueName: 'Liga del Martes', note: null, status: 'open', createdAt: '2026-09-27T10:00:00.000Z', handledAt: null, handledByName: null, actionNote: null, reporterId: 'u-ana', reporterName: 'Ana Pérez', sameTarget: 1 };
+  const rows = [
+    real.toReport({ ...base, id: 'r1', kind: 'comment', targetId: 'c1', reason: 'acoso', note: 'Me insulta siempre', sameTarget: 2, target: target('Comentario de Luis Soto', { text: 'Eres malísimo', url: '/l/l1/juegos?juego=e1&evento=ev1' }) }),
+    real.toReport({ ...base, id: 'r2', kind: 'league', targetId: 'l2', reason: 'spam', target: target('Liga Falsa', { leagueId: 'l2', kind: 'liga', members: 3, events: 0, url: '/l/l2' }) }),
+    real.toReport({ ...base, id: 'r3', kind: 'user', targetId: 'u-x', reason: 'falso', leagueId: null, leagueName: null, target: null, reporterId: null, reporterName: null }),
+  ];
+  const page = { rows, total: rows.length, open: rows.length, all: 5 };
+  const empty = { rows: [], total: 0, open: 0, all: 0 };
+  const live = <T>(data: T, emptyData: T) =>
+    state.mode === 'data'
+      ? { data, loading: false, error: null }
+      : state.mode === 'loading'
+        ? { data: emptyData, loading: true, error: null }
+        : state.mode === 'error'
+          ? { data: emptyData, loading: false, error: new Error('Failed to fetch') }
+          : { data: emptyData, loading: false, error: null };
+  return {
+    ...real,
+    useReports: () => live(page, empty),
+    useReportCounts: () => live({ open: 3, all: 5 }, { open: 0, all: 0 }),
+    resolveReport: async () => undefined,
+    deleteReportedComment: async () => true,
+  };
+});
+
+vi.mock('../../lib/data/legal', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../lib/data/legal')>();
+  const { TERMS_VERSION, PRIVACY_VERSION } = await import('../../lib/legal');
+  const stats = {
+    terms: TERMS_VERSION,
+    privacy: PRIVACY_VERSION,
+    accounts: 1240,
+    accepted: 930,
+    acceptedTerms: 940,
+    acceptedPrivacy: 935,
+    never: 210,
+    last7d: 88,
+    byVersion: [{ doc: 'terminos', version: TERMS_VERSION, accounts: 940 }],
+  };
+  return {
+    ...real,
+    useAdminLegalStats: () =>
+      state.mode === 'data'
+        ? { data: stats, loading: false, error: null }
+        : { data: null, loading: state.mode === 'loading', error: state.mode === 'error' ? new Error('Failed to fetch') : null },
+  };
+});
+
 vi.mock('../../lib/auth', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../lib/auth')>();
   return {
@@ -110,7 +172,7 @@ function html(url: string): string {
     );
 }
 
-const SECTIONS = ['', '/cuentas', '/ligas', '/deportes', '/anuncios', '/fotos', '/sistema', '/errores', '/auditoria', '/logo'];
+const SECTIONS = ['', '/cuentas', '/ligas', '/reportes', '/deportes', '/anuncios', '/fotos', '/sistema', '/errores', '/legal', '/auditoria', '/logo'];
 
 describe('consola del superadmin', () => {
   it('guarda: sin superadmin no se dibuja la consola; secciones que no existen tampoco', () => {
@@ -125,9 +187,54 @@ describe('consola del superadmin', () => {
   it('el marco: menú con todas las secciones, avisos en Resumen y el selector del teléfono', () => {
     const out = render('/superadmin');
     expect(out).toContain('Consola');
-    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Auditoría', 'Marca']) expect(out).toContain(label);
+    for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Reportes', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Legal', 'Auditoría', 'Marca']) expect(out).toContain(label);
     expect(out).toContain('Superadmin: Randy Dueño');
     expect(out).toContain('(1 avisos)');
+    // Reportes abiertos al lado de «Reportes».
+    expect(out).toContain('Reportes (3 avisos)');
+  });
+
+  it('reportes: filtros, lo reportado con link, quién reportó, cuántos de lo mismo y las herramientas', () => {
+    const out = render('/superadmin/reportes');
+    expect(out).toContain('Lo que la gente reportó');
+    expect(out).toContain('Abiertos');
+    expect(out).toContain('Cerrados');
+    expect(out).toContain('Acoso o amenazas');
+    expect(out).toContain('Comentario · Liga del Martes');
+    expect(out).toContain('Eres malísimo');
+    expect(out).toContain('«Me insulta siempre»');
+    expect(out).toContain('Lo reportó Ana Pérez');
+    expect(out).toContain('Lo reportó una cuenta borrada');
+    expect(out).toContain('2 reportes abiertos de esto');
+    expect(out).toContain('Ya no existe (se borró).');
+    expect(out).toContain('Borrar comentario');
+    expect(out).toContain('Bloquear cuenta');
+    expect(out).toContain('Borrar liga');
+    expect(out).toContain('Descartar');
+    expect(out).toContain('Marcar como atendido');
+    const raw = html('/superadmin/reportes');
+    expect(raw).toContain('href="/l/l1/juegos?juego=e1&amp;evento=ev1"');
+    expect(raw).toContain('href="/superadmin/cuentas?u=u-ana"');
+    expect(raw).toContain('href="/superadmin/cuentas?u=u-luis"');
+  });
+
+  it('legal: versiones, cuántas cuentas aceptaron y lo que falta completar', () => {
+    const out = render('/superadmin/legal');
+    expect(out).toContain('Versiones vigentes');
+    expect(out).toContain('Términos de uso');
+    expect(out).toContain('Política de privacidad');
+    expect(out).toContain('vigente desde');
+    expect(out).toContain('Aceptaron lo vigente');
+    expect(out).toContain('930');
+    expect(out).toContain('Les falta aceptar');
+    expect(out).toContain('310');
+    expect(out).toContain('Nunca aceptaron');
+    expect(out).toContain('Lo que cambió en esta versión');
+    expect(out).toContain('Falta completar');
+    expect(out).toContain('Pendiente: revisión por un abogado dominicano');
+    expect(out).toContain('[Nombre legal del titular]');
+    expect(out).toContain('[RNC o cédula del titular]');
+    expect(out).not.toContain('versiones distintas');
   });
 
   it('resumen: números, actividad, ligas por deporte, avisos y accesos', () => {
@@ -284,7 +391,7 @@ describe('consola del superadmin', () => {
     for (const s of SECTIONS) {
       const out = render(`/superadmin${s}`);
       expect(out, s).toContain('Consola');
-      if (mode === 'error' && ['', '/cuentas', '/ligas', '/fotos', '/errores', '/auditoria'].includes(s)) expect(out, s).toContain('Intentar de nuevo');
+      if (mode === 'error' && ['', '/cuentas', '/ligas', '/reportes', '/fotos', '/errores', '/legal', '/auditoria'].includes(s)) expect(out, s).toContain('Intentar de nuevo');
     }
     if (mode === 'empty') {
       expect(render('/superadmin/cuentas')).toContain('Todavía nadie se ha registrado');
@@ -293,6 +400,7 @@ describe('consola del superadmin', () => {
       expect(render('/superadmin/auditoria')).toContain('Todavía no hay nada en la auditoría');
       expect(render('/superadmin/anuncios')).toContain('Todavía no se ha mandado ningún anuncio');
       expect(render('/superadmin/errores')).toContain('Sin errores en estos días');
+      expect(render('/superadmin/reportes')).toContain('Nada por revisar');
     }
   });
 });

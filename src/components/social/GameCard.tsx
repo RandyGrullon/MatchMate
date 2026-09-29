@@ -6,6 +6,7 @@ import { gameSummary, type ProfileGame } from '../../lib/data/profileGames';
 import { formatSwimTime } from '../../sports/swimming/time';
 import { STROKE_LABEL } from '../../sports/swimming/events';
 import { Badge, Card, cx } from '../ui';
+import { ReportButton } from '../report/ReportButton';
 import { LikeButton } from './LikeButton';
 import { SportBadge } from './SportBadge';
 import { UserLink } from './UserLink';
@@ -15,8 +16,8 @@ const strokeText = (s: string) => (STROKE_LABEL as Record<string, string>)[s] ??
 
 /**
  * Tarjeta de un juego para el perfil y el inicio (de cualquier deporte): quién (si `showUser`), el deporte, la liga
- * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo) y el me gusta. Tocar «Ver» abre el juego
- * en su liga.
+ * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo), el me gusta y «Reportar» (no en los tuyos).
+ * Tocar «Ver» abre el juego en su liga.
  */
 export function GameCard({ game, showUser, i = 0, today }: { game: ProfileGame; showUser?: boolean; i?: number; today?: string }) {
   const date = gameDateLabel(game.eventDate, today ?? toIsoDate(new Date()));
@@ -44,13 +45,16 @@ export function GameCard({ game, showUser, i = 0, today }: { game: ProfileGame; 
 
       <div className="-mx-2 flex items-center justify-between border-t border-line pt-1">
         <LikeButton game={game} />
-        <Link
-          to={game.url}
-          className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft"
-          aria-label={`Ver el juego: ${gameSummary(game)}`}
-        >
-          Ver <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
+        <div className="flex items-center">
+          <ReportButton kind="game" targetId={game.id} ownerId={game.userId} />
+          <Link
+            to={game.url}
+            className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft"
+            aria-label={`Ver el juego: ${gameSummary(game)}`}
+          >
+            Ver <ChevronRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
       </div>
     </Card>
   );

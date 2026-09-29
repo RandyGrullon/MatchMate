@@ -92,7 +92,7 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `legal` (aceptación de los términos), `reports` (reportes de contenido), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
 
 ## Jugadores sin cuenta y reclamos
@@ -108,6 +108,35 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
   Un dueño o admin que reclama queda aprobado al momento. Los menores nunca se reclaman.
 - Migración `20260929000100_reclamos.sql`; cliente `src/lib/data/claims.ts` y `src/components/claims/`. Tiempo
   real `claims` en `league:<id>` y `user:<id>`; push al admin y a quien pidió; avisos en la campana.
+
+## Términos, privacidad y reportes
+
+- **Versiones**: `src/lib/legal.ts` es el único lugar de `TERMS_VERSION` y `PRIVACY_VERSION` (fechas
+  `'YYYY-MM-DD'`, con desde cuándo rigen), la lista corta de lo que cambió (`LEGAL_CHANGES`), los datos del titular
+  (`LEGAL_CONTACT`; lo que falta va entre corchetes y la consola › Legal lo lista) y `LEGAL_DRAFT`. La base tiene las
+  mismas fechas en `private.legal_versions()` y `tests/sql/legal.test.ts` revisa que coincidan. Cambiar un texto:
+  la página (`src/pages/legal`), la fecha y los cambios en `legal.ts`, y una migración nueva que redefine
+  `private.legal_versions()`. Se publica primero la migración y después la app; si la app sale antes,
+  `accept_legal` dice `invalido` y `LegalGate` deja seguir sin guardar por esa vez (queda en Errores de la consola).
+- **Aceptación** (`legal_acceptances`, una fila por cuenta, documento y versión, con fecha y navegador): al crear la
+  cuenta con correo, la casilla obligatoria «Acepto los Términos y la Política de privacidad»
+  (`src/components/AcceptTermsBox.tsx`) viaja en la metadata (`{legal: {terms, privacy}}`) y la base la guarda al
+  crear la cuenta; con Google se recuerda (`mm:acepto-legal`, 1 hora) y se acepta al volver, solo si la cuenta se
+  creó después de marcarla (y se olvida al salir de la cuenta; igual la de 18 años, `mm:mayor-de-edad`). El perfil de
+  `auth.tsx` trae la última versión aceptada (`profile.legal`) y `needsLegal`: quien tiene una vieja (o ninguna,
+  si su cuenta es de antes de `LEGAL_TRACKED_SINCE`) ve `src/components/LegalGate.tsx` («Actualizamos los términos»
+  con lo nuevo, los links, «Acepto», salir o borrar la cuenta) después de la pantalla de 18 años; una cuenta nueva
+  sin nada aceptado (Google sin la casilla) ve la misma pantalla como «Antes de seguir». Las páginas legales se leen
+  igual. Arriba de cada página: «Versión … · vigente desde …»; el aviso de borrador (falta un abogado dominicano)
+  solo lo ve el superadmin.
+- **Reportes** (`reports`): «Reportar» (`src/components/report/`) en los comentarios del boliche, los juegos de los
+  perfiles y el inicio (`GameCard`), los avisos de la liga, el inicio de una liga pública para quien no es miembro y
+  el perfil de otra cuenta. Motivo y nota; uno abierto por cuenta y cosa; 10 por día. Push a los superadmins (uno
+  por cosa reportada). Consola › Reportes (todo, con quién reportó y las herramientas: borrar el comentario,
+  bloquear la cuenta, borrar la liga) y Admin › Reportes en cada liga (comentarios, avisos y juegos de su liga, sin
+  saber quién reportó y sin los de lo suyo; sale solo si la liga tuvo alguno). Un reporte cerrado no se vuelve a
+  decidir (`cerrado`). «Descargar mis datos» trae también los reportes que hizo la cuenta (`my_reports`).
+  Migración `20260929000900_legal.sql`.
 
 ## Sin señal y errores
 
