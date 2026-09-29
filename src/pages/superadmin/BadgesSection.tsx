@@ -24,7 +24,7 @@ import { ErrorRetry, KpiCard, KpiSkeleton, Panel, SectionHeader, Segmented } fro
 import { RARITY_NAME, VERDICT_LABEL, jobKindLabel, rarityRows, raritySummary, reportedView, shortError, sportLabel, type RarityRow } from './badgesModel';
 import { fmtDateTime, fmtDay, fmtNum, relativeTime } from './format';
 import { refreshAll, useRun, useSearchState } from './hooks';
-import { sectionMeta } from './sections';
+import { sectionMeta, sectionPath } from './sections';
 
 // La galería (todo el catálogo dibujado) se descarga solo al abrirla.
 const BadgesGallery = lazy(() => import('./BadgesGallery'));
@@ -116,7 +116,16 @@ function ReportsPanel() {
   return (
     <Panel
       title="Reportes"
-      subtitle="Diseños del creador y insignias automáticas que alguien reportó"
+      subtitle={
+        <>
+          Diseños del creador e insignias automáticas que alguien reportó. Los de comentarios, avisos, juegos, ligas y
+          cuentas van en{' '}
+          <Link to={sectionPath('reportes')} className="font-medium text-accent hover:underline">
+            Reportes
+          </Link>
+          .
+        </>
+      }
       actions={
         <Segmented
           label="Reportes"

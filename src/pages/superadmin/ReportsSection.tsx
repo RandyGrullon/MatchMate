@@ -9,7 +9,7 @@ import { REPORT_KINDS, REPORT_KIND_LABEL, deleteReportedComment, useReports, typ
 import { ErrorRetry, FilterChips, Pager, SectionHeader, TableSkeleton } from './bits';
 import { PAGE_SIZES, intParam, useRun, useSearchState } from './hooks';
 import { DeleteLeagueModal } from './LeagueActions';
-import { sectionMeta } from './sections';
+import { sectionMeta, sectionPath } from './sections';
 import { BlockModal } from './UserDetail';
 
 type KindFilter = 'all' | ReportKind;
@@ -22,6 +22,7 @@ const isFilter = (v: string): v is ReportFilter => v === 'open' || v === 'closed
  * como atendido (con nota) y las herramientas de siempre: borrar el comentario, bloquear la cuenta (admin_block_user)
  * o borrar la liga (delete_league). Descartar o atender cierra todos los abiertos de lo mismo y queda en la auditoría.
  * Los admins de cada liga ven y atienden los comentarios, avisos y juegos de su liga (Admin › Reportes).
+ * Los reportes de insignias (diseños del creador e insignias automáticas) son otra cola: Consola › Insignias.
  */
 export default function ReportsSection() {
   const s = useSearchState();
@@ -38,7 +39,18 @@ export default function ReportsSection() {
 
   return (
     <>
-      <SectionHeader title="Reportes" hint={sectionMeta('reportes').hint} />
+      <SectionHeader
+        title="Reportes"
+        hint={
+          <>
+            {sectionMeta('reportes').hint} Los de insignias van en{' '}
+            <Link to={sectionPath('insignias')} className="font-medium text-accent hover:underline">
+              Insignias
+            </Link>
+            .
+          </>
+        }
+      />
 
       <div className="flex flex-col gap-3">
         <FilterChips

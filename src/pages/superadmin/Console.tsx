@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, type ComponentType } from 'react';
 import { useAdminOverview } from '../../lib/data/admin';
+import { useBadgeReports } from '../../lib/data/badgeAdmin';
 import { useReportCounts } from '../../lib/data/reports';
 import { Loading } from '../../components/ui';
 import { healthAlerts, urgentCount } from './alerts';
@@ -42,11 +43,13 @@ export function Console({ section }: { section: SectionKey }) {
   // El resumen se comparte (una sola consulta): marca en el menú cuántos avisos hay que revisar.
   const overview = useAdminOverview(true).data;
   const urgent = useMemo(() => (overview ? urgentCount(healthAlerts(overview)) : 0), [overview]);
-  // Reportes abiertos de toda la app: el número al lado de «Reportes».
+  // Reportes abiertos de toda la app: el número al lado de «Reportes». Los de insignias (diseños del creador e
+  // insignias automáticas) son otra cola (private.badge_reports): su número va al lado de «Insignias».
   const reports = useReportCounts(true).data.open;
+  const badgeReports = useBadgeReports(true).data.open;
   const View = SECTION_VIEWS[section];
   return (
-    <ConsoleShell section={section} badges={{ resumen: urgent, reportes: reports }}>
+    <ConsoleShell section={section} badges={{ resumen: urgent, reportes: reports, insignias: badgeReports }}>
       <Suspense fallback={<Loading />}>
         <View />
       </Suspense>

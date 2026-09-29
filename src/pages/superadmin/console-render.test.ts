@@ -88,6 +88,18 @@ vi.mock('../../lib/data/reports', async (importOriginal) => {
   };
 });
 
+// Los reportes de insignias (otra cola, private.badge_reports): solo su número, al lado de «Insignias».
+vi.mock('../../lib/data/badgeAdmin', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../lib/data/badgeAdmin')>();
+  return {
+    ...real,
+    useBadgeReports: () =>
+      state.mode === 'data'
+        ? { data: { open: 2, rows: [] }, loading: false, error: null }
+        : { data: { open: 0, rows: [] }, loading: state.mode === 'loading', error: state.mode === 'error' ? new Error('Failed to fetch') : null },
+  };
+});
+
 vi.mock('../../lib/data/legal', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../lib/data/legal')>();
   const { TERMS_VERSION, PRIVACY_VERSION } = await import('../../lib/legal');
@@ -191,13 +203,17 @@ describe('consola del superadmin', () => {
     for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Reportes', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Legal', 'Auditoría', 'Marca', 'Insignias']) expect(out).toContain(label);
     expect(out).toContain('Superadmin: Randy Dueño');
     expect(out).toContain('(1 avisos)');
-    // Reportes abiertos al lado de «Reportes».
+    // Reportes abiertos al lado de «Reportes»; los de insignias (otra cola), al lado de «Insignias».
     expect(out).toContain('Reportes (3 avisos)');
+    expect(out).toContain('Insignias (2 avisos)');
   });
 
   it('reportes: filtros, lo reportado con link, quién reportó, cuántos de lo mismo y las herramientas', () => {
     const out = render('/superadmin/reportes');
     expect(out).toContain('Lo que la gente reportó');
+    // Los reportes de insignias son otra cola: el link a Insignias.
+    expect(out).toContain('Los de insignias van en Insignias');
+    expect(html('/superadmin/reportes')).toContain('href="/superadmin/insignias"');
     expect(out).toContain('Abiertos');
     expect(out).toContain('Cerrados');
     expect(out).toContain('Acoso o amenazas');
