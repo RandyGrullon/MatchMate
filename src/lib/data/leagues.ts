@@ -113,6 +113,16 @@ const createArgs = (input: LeagueInput) => ({
 const afterJoin = (lid: string) => invalidate(tags.leagues, tags.members, tags.feeds, tags.league(lid));
 
 /**
+ * Después de entrar a una liga ya creada (join_league o aceptar una invitación, src/lib/data/invites.ts): lo de
+ * afterJoin y además sus jugadores, sus miembros, los reclamos (el de «¿Quién eres?», si eligió uno) y sus
+ * invitaciones (entrar acepta la que tenía pendiente para esa liga).
+ */
+export function afterJoinLeague(lid: string) {
+  afterJoin(lid);
+  invalidate(tags.players(lid), tags.leagueMembers(lid), `claims:${lid}`, 'claims:me', 'invites:me');
+}
+
+/**
  * Crea la liga y deja a quien la crea como dueño, con su código de invitación y su jugador (el dueño también
  * juega), todo en una sola RPC. El id sale del teléfono. `owner` queda por compatibilidad: la base usa la sesión.
  */
@@ -241,8 +251,7 @@ export async function joinLeagueClaim(
       p_prefer: prefer,
     });
     if (!r) throw new BackendError('Ese código de invitación ya no sirve. Pide uno nuevo a un admin.', 'validation', 'invalid_code');
-    afterJoin(lid);
-    invalidate(tags.players(lid), tags.leagueMembers(lid), `claims:${lid}`, 'claims:me');
+    afterJoinLeague(lid);
     return { playerId: r.player_id ?? null, claimId: r.claim_id ?? null };
   } finally {
     setJoining(lid, false);

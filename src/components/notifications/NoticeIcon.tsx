@@ -9,6 +9,7 @@ import {
   Heart,
   Inbox,
   Lightbulb,
+  MailPlus,
   MapPin,
   Megaphone,
   MessageCircle,
@@ -54,11 +55,12 @@ const KINDS: Record<NoticeKind, Look> = {
   social: { icon: Heart, tone: DANGER },
 };
 
-/** Los sociales de afuera: te siguieron, les gustó tu juego o lo comentaron. */
+/** Los sociales de afuera: te siguieron, les gustó tu juego, lo comentaron o te invitaron a una liga. */
 const SOCIAL: Record<SocialIcon, Look> = {
   follow: { icon: UserPlus, tone: ACCENT },
   like: { icon: Heart, tone: DANGER },
   comment: { icon: MessageCircle, tone: OK },
+  invite: { icon: MailPlus, tone: ACCENT },
 };
 
 const FALLBACK: Look = { icon: Bell, tone: ACCENT };

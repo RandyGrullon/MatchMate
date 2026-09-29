@@ -7,6 +7,7 @@
  * - `leagues`: listas de ligas. `members`: membresías de la cuenta. `feeds`: la campana.
  * - `events:<liga>` / `event:<evento>`, `entries:<liga>` / `entries:e:<evento>`, `subs:<liga>` / `subs:e:<evento>`,
  *   `live:e:<evento>`, `players:<liga>`, `members:<liga>`, `social:<liga>`, `suggestions:<liga>`.
+ * - Invitaciones a una liga (src/lib/data/invites.ts): `invites:me` (las mías) e `invites:<liga>` (las de esa liga).
  * - Consola del superadmin: `admin` (todo), `admin:users`, `admin:leagues`, `admin:audit`, `admin:system`,
  *   `admin:stats` (resumen, series y lecturas de fotos).
  */
@@ -66,6 +67,10 @@ export const tags = {
   players: (lid: string) => `players:${lid}`,
   social: (lid: string) => `social:${lid}`,
   suggestions: (lid: string) => `suggestions:${lid}`,
+  /** Las invitaciones pendientes de la cuenta de la sesión. */
+  myInvites: 'invites:me',
+  /** Las invitaciones a esa liga (y quién ya tiene una, en la búsqueda de personas). */
+  invites: (lid: string) => `invites:${lid}`,
   users: 'users',
   profile: (uid: string) => `profile:${uid}`,
   // Consola del superadmin: `admin` = todo; las demás, por sección.

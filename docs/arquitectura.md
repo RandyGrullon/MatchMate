@@ -39,7 +39,7 @@ Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, 
   `is_superadmin` (sin UPDATE directo de esa columna).
 - Errores: `raise exception '<codigo>' using errcode = 'P0001'` con códigos en español corto:
   `no_permitido`, `rate_limited`, `invalido`, `no_existe`, `duplicado`, `cerrado`, `conflicto: <qué choca>` (aprobar
-  un reclamo de jugador). `42501` para permisos.
+  un reclamo de jugador), `reservado` (un @usuario que la app no deja usar). `42501` para permisos.
 - Tiempo real: triggers llaman `private.emit(topic text, event text, payload jsonb)`. Si existe `realtime.send`
   (Supabase) lo usa con canal privado; si no (PGlite), `pg_notify('mm', json)`. Temas: `event:<id>`,
   `league:<id>`, `user:<id>`.
@@ -58,8 +58,10 @@ Motores de deporte (src/sports/<familia>/*.ts) ← funciones puras con pruebas, 
   siempre dice en qué deporte estás; entrar a una liga lo cambia al de la liga. Con deporte, Home, Eventos y Avisos
   son de ese deporte y la app toma su color. Rutas: `/` Home de todos (si hay deporte activo manda a `/d/:sport`;
   volver atrás hasta `/` sí quita el deporte), `/d/:sport` Home del deporte, `/ligas` Eventos, `/avisos` página de
-  avisos, `/u/:userId` perfil público, `/perfil` el propio. «Home» de la barra: fuera del Home del deporte va a él;
-  en él, quita el deporte y va a `/`. Para ir al Home de todos: `setActiveSport(null)` y luego `/`.
+  avisos, `/u/:userId` perfil público, `/perfil` el propio, `/buscar` buscar personas (nombre o @usuario) e
+  `/invitacion/:inviteId` una invitación a una liga (ahí llevan el push y el aviso de la campana). «Home» de la
+  barra: fuera del Home del deporte va a él; en él, quita el deporte y va a `/`. Para ir al Home de todos:
+  `setActiveSport(null)` y luego `/`.
 - Cola sin conexión solo para lo de cancha: anotar juegos/puntos, en vivo, «Voy», +1 juego, envíos.
   El resto lee en línea con copia persistida para ver sin señal.
 - Textos en español dominicano sencillo, comentarios en español (como BowlingX); identificadores en inglés.
@@ -92,7 +94,7 @@ ni el backend:
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
 `rows` (filas → tipos de la app), `leagues`, `members`, `players`, `events`, `teams`, `entries`,
-`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
+`submissions`, `social`, `follows`/`profileGames` (seguir, perfil público, juegos con me gusta), `claims` (reclamos de jugadores), `people` (@usuario y buscar personas), `invites` (invitaciones a una liga), `suggestions`, `liveScores`, `feeds`, `uploads`/`pending` (fotos y cola), y los de
 cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimming`).
 
 ## Jugadores sin cuenta y reclamos
@@ -108,6 +110,37 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
   Un dueño o admin que reclama queda aprobado al momento. Los menores nunca se reclaman.
 - Migración `20260929000100_reclamos.sql`; cliente `src/lib/data/claims.ts` y `src/components/claims/`. Tiempo
   real `claims` en `league:<id>` y `user:<id>`; push al admin y a quien pidió; avisos en la campana.
+
+## Usuarios, buscar personas e invitaciones
+
+- **@usuario** (`profiles.username`, obligatorio y único): 3 a 20 minúsculas, números, `_` y puntos solo por
+  dentro (sin `..`); el mismo formato en el CHECK de la tabla y en `USERNAME_RE` (`src/lib/data/people.ts`). Un
+  trigger se lo pone a toda cuenta nueva a partir del nombre (sin acentos ni símbolos, hasta 15) o, si no da, del
+  correo o «jugador»; si está tomado o reservado (admin, soporte, buscar, invitacion…), con 4 números al final.
+  Se cambia en /cuenta («Tu usuario», con `set_username`: 5 cambios por día) y mientras se escribe
+  `username_status` dice si está libre. Sale debajo del nombre en el perfil, en las listas de seguidores y en la
+  búsqueda.
+- **Quién se ve**: con sesión, cualquier cuenta sin bloquear (se busca y se abre su perfil); sus juegos, me gusta
+  y números siguen saliendo solo de las ligas que quien mira puede leer y sin menores (`private.social_players`).
+- **Buscar personas** (`search_people`, pantalla `/buscar`): por @usuario (empieza con) o nombre (lo contiene, sin
+  acentos), desde 2 letras; vacío, las cuentas que sigo. Primero el @usuario exacto y luego a quien sigo. Con una
+  liga (hay que ser miembro), dice quién ya está en ella y quién ya tiene invitación.
+- **Invitaciones** (`league_invites`: `pending` → `accepted` | `declined` | `cancelled`, una pendiente por liga y
+  cuenta): un miembro invita a una liga pública; a una privada (también las de menores), solo el dueño o un
+  admin. `invite_to_league` (hasta 50 por vez, 100 por día) manda un push «Ana te invitó a <liga>»; la cuenta
+  invitada lo ve en la campana, en la tarjeta «Invitaciones» de /avisos y en `/invitacion/<id>`, donde acepta
+  (`respond_league_invite`: entra con su jugador y, si eligió uno en «¿Quién eres?», queda el reclamo, como con el
+  código) o rechaza (no se le vuelve a invitar en 7 días). Quien invitó o un admin la retira
+  (`cancel_league_invite`). Entrar por otro camino acepta la pendiente; salir de la liga cancela las que mandó
+  esa cuenta. Si la liga ya no es pública y quien invitó ya no es admin, aceptar la deja `cancelled`.
+- **Hoja de invitar** (`src/components/invite/`, sobre `Sheet` de `src/components/ui.tsx`: en el teléfono sube
+  desde abajo, en la computadora es un cuadro en el centro): buscador, las personas que sigues en tarjetas para
+  elegir y, abajo, el link (copiar, WhatsApp, «Más»): el admin, el de invitación con código; un miembro de una
+  liga pública, el de la liga. Se abre desde el ícono al lado del nombre de la liga, «Invitar» de la portada y
+  «Invitar personas» en Admin › Liga, solo si la cuenta puede invitar.
+- Migración `20260929000200_invitaciones.sql`; cliente `src/lib/data/people.ts` y `src/lib/data/invites.ts`.
+  Tiempo real `invites` en `user:<invitada>`, `user:<quien invitó>` y `league:<id>`; push a la invitada y, al
+  aceptar, a quien invitó.
 
 ## Sin señal y errores
 

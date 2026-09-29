@@ -12,6 +12,7 @@ import {
   MessageCircleHeart,
   Plus,
   Settings2,
+  Share2,
   Shirt,
   Swords,
   Target,
@@ -31,6 +32,8 @@ import { SportBadge } from '../pages/sports/SportBits';
 import { usePendingClaimCount } from './claims/data';
 import { useNotifications } from './Notifications';
 import { useCreateMenu } from './CreateMenu';
+import { InviteSheet } from './invite/InviteSheet';
+import { canInviteTo, inviteTitle } from './invite/logic';
 import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
 import { AppFrame, AppShell } from './Shell';
 import { Empty, Loading, Modal, PageSkeleton, cx } from './ui';
@@ -56,7 +59,8 @@ function tabIcons(sport: string, standalone: boolean): { home: LucideIcon; feed:
 }
 
 /**
- * Marco de lo que pasa dentro de una liga: arriba el nombre (toca para cambiar de liga) y sus
+ * Marco de lo que pasa dentro de una liga: arriba el nombre (toca para cambiar de liga), al lado «Invitar» (si la
+ * cuenta puede: abre la hoja de invitar, src/components/invite) y sus
  * pestañas (Calendario · Juegos · Ranking · Mis juegos · Admin); abajo, la barra de la app (Home · Eventos · Perfil).
  * Dentro de la liga todo toma el color de su deporte (el boliche, el de la app) y el inicio lleva lo común de
  * todas las ligas (portada, aviso del admin, «Unirme», datos y buzón: src/components/league/LeagueHome.tsx).
@@ -70,6 +74,7 @@ export default function LeagueShell() {
   const league = useLeague(lid);
   const membership = useMembership(lid, user?.uid);
   const [switching, setSwitching] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   const ctx = useMemo<LeagueCtx | null>(() => {
     if (!lid || !league.data) return null;
@@ -156,11 +161,34 @@ export default function LeagueShell() {
     </button>
   );
 
+  // Invitar (al lado del nombre): el admin a cualquiera de sus ligas; un miembro, solo a una pública.
+  const canInvite = canInviteTo(ctx.league, ctx.isAdmin, !!ctx.member);
+  const middle = (
+    <div className="flex min-w-0 items-center gap-0.5">
+      {switcher}
+      {canInvite && (
+        <button
+          type="button"
+          onClick={() => setInviting(true)}
+          aria-label={inviteTitle(ctx.league.kind)}
+          aria-haspopup="dialog"
+          title={inviteTitle(ctx.league.kind)}
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-fg active:scale-95"
+        >
+          <Share2 className="size-5" />
+        </button>
+      )}
+    </div>
+  );
+  const invite = (
+    <InviteSheet league={ctx.league} lid={ctx.lid} isAdmin={ctx.isAdmin} member={!!ctx.member} open={inviting} onClose={() => setInviting(false)} />
+  );
+
   if (sport && sport.kind !== 'ready') {
     return (
       <LeagueContext.Provider value={ctx}>
         <SportTheme sport={sportId}>
-          <AppFrame wide middle={switcher}>
+          <AppFrame wide middle={middle}>
             <Suspense fallback={<PageSkeleton />}>
               {sport.kind === 'unknown' ? (
                 <UpdateAppScreen sport={sport.sport} leagueName={ctx.league.name} />
@@ -170,6 +198,7 @@ export default function LeagueShell() {
             </Suspense>
           </AppFrame>
           <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+          {invite}
         </SportTheme>
       </LeagueContext.Provider>
     );
@@ -203,7 +232,7 @@ export default function LeagueShell() {
       <SportTheme sport={sportId}>
         <AppFrame
           wide
-          middle={switcher}
+          middle={middle}
           subnav={
             <nav ref={tabsRef} className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4" aria-label="Secciones de la liga" data-tour="secciones">
               {tabs.map(({ to, label, icon: Icon, end, count, tour }) => (
@@ -238,6 +267,7 @@ export default function LeagueShell() {
           )}
         </AppFrame>
         <LeagueSwitcher open={switching} onClose={() => setSwitching(false)} current={ctx.lid} />
+        {invite}
       </SportTheme>
     </LeagueContext.Provider>
   );

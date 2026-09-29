@@ -1,21 +1,27 @@
 import { useEffect, useState } from 'react';
-import { Copy, QrCode as QrIcon, RefreshCw, Share2, Ticket } from 'lucide-react';
+import { Copy, QrCode as QrIcon, RefreshCw, Share2, Ticket, UserPlus } from 'lucide-react';
 import { getInviteCode, renewInviteCode } from '../lib/data';
 import type { League } from '../lib/types';
 import { useAction, useFeedback } from './feedback';
+import { InviteSheet } from './invite/InviteSheet';
+import { codeInviteUrl } from './invite/logic';
 import { QrCode } from './QrCode';
 import { shareLink } from './share';
 import { Button, Card, Skeleton } from './ui';
 
-export const inviteUrl = (code: string) => `${location.origin}/unirse/${code}`;
+export const inviteUrl = (code: string) => codeInviteUrl(location.origin, code);
 
-/** Invitación a la liga: código, link y QR. Cambiar el código invalida el anterior. */
+/**
+ * Invitación a la liga (Admin › Liga, solo el dueño y los admins): «Invitar personas» (la hoja de invitar, con las
+ * cuentas de la app) y el código, el link y el QR. Cambiar el código invalida el anterior.
+ */
 export function InviteCard({ league }: { league: League }) {
   const run = useAction();
   const { confirm, toast } = useFeedback();
   const [code, setCode] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -57,6 +63,11 @@ export function InviteCard({ league }: { league: League }) {
           </p>
         </div>
       </div>
+
+      <Button className="h-11" icon={<UserPlus className="size-4" />} onClick={() => setInviting(true)} aria-haspopup="dialog">
+        Invitar personas
+      </Button>
+      <InviteSheet league={league} lid={league.id} isAdmin member open={inviting} onClose={() => setInviting(false)} onCode={setCode} />
 
       {code === undefined ? (
         <Skeleton className="h-16 w-full rounded-xl" />

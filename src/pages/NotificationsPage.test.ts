@@ -1,19 +1,24 @@
 /**
  * Página de avisos dibujada sin navegador (renderToString) con avisos de mentira: sin cuenta, cargando, vacía, con
- * error, los filtros por tipo y por deporte (también el deporte en el que está la app) y lo sin leer.
+ * error, los filtros por tipo y por deporte (también el deporte en el que está la app), lo sin leer y la tarjeta de
+ * invitaciones a ligas.
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeagueFeed } from '../lib/data';
+import type { LeagueInvite } from '../lib/data/invites';
 import type { Notice } from '../lib/notifications';
 import type { League } from '../lib/types';
+import { FeedbackProvider } from '../components/feedback';
 
 const state = vi.hoisted(() => ({
   auth: { user: { uid: 'u1' } as { uid: string } | null, loading: false },
   current: null as string | null,
   notices: {} as Record<string, unknown>,
+  invites: [] as LeagueInvite[],
+  askedInvites: [] as (string | null | undefined)[],
 }));
 
 vi.mock('../lib/auth', () => ({ useAuth: () => state.auth }));
@@ -21,6 +26,14 @@ vi.mock('../components/Notifications', () => ({ useNotifications: () => state.no
 vi.mock('../components/NotificationsOptIn', () => ({ PushOptInCard: () => null }));
 vi.mock('../components/notifications/bridge', () => ({ useCurrentSport: () => state.current }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
+vi.mock('../lib/data/invites', () => ({
+  useMyInvites: (uid: string | null | undefined) => {
+    state.askedInvites.push(uid);
+    return { data: state.invites, loading: false, error: null };
+  },
+  respondInvite: vi.fn(),
+  respondErrorText: () => 'No se pudo responder la invitación. Prueba otra vez.',
+}));
 
 const { default: NotificationsPage } = await import('./NotificationsPage');
 
@@ -68,13 +81,28 @@ function setNotices(extra: Record<string, unknown> = {}) {
   };
 }
 
-const render = (url = '/avisos') => renderToString(h(MemoryRouter, { initialEntries: [url] }, h(NotificationsPage)));
+const render = (url = '/avisos') => renderToString(h(MemoryRouter, { initialEntries: [url] }, h(FeedbackProvider, null, h(NotificationsPage))));
 /** Texto visible (sin etiquetas), para buscar frases. */
 const text = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&#x27;/g, "'");
+
+const invite = (id: string, extra: Partial<LeagueInvite> = {}): LeagueInvite => ({
+  id,
+  leagueId: `l-${id}`,
+  leagueName: `Liga ${id}`,
+  sport: 'bowling',
+  kind: 'liga',
+  visibility: 'private',
+  members: 8,
+  invitedBy: { id: 'u9', name: 'Ana Pérez', username: 'ana' },
+  createdAt: new Date(now - 2 * HOUR).toISOString(),
+  ...extra,
+});
 
 beforeEach(() => {
   state.auth = { user: { uid: 'u1' }, loading: false };
   state.current = null;
+  state.invites = [];
+  state.askedInvites = [];
   setNotices();
 });
 
@@ -174,5 +202,47 @@ describe('página de avisos', () => {
     const out = render();
     expect(text(out)).toContain('Estás al día');
     expect(out).toMatch(/<button[^>]*disabled=""[^>]*>.*Marcar todo como leído/);
+  });
+});
+
+describe('invitaciones en la página de avisos', () => {
+  it('sin invitaciones pendientes no sale la tarjeta', () => {
+    const t = text(render());
+    expect(t).not.toContain('Invitaciones');
+    expect(state.askedInvites).toContain('u1');
+  });
+
+  it('arriba de la lista: la liga, quién invitó, Aceptar / Rechazar y «Ver»', () => {
+    state.invites = [invite('a'), invite('b', { invitedBy: null, kind: 'torneo', leagueName: 'Copa Verano' })];
+    const out = render();
+    const t = text(out);
+    expect(t).toContain('Invitaciones');
+    expect(t).toContain('Liga a');
+    expect(t).toContain('Ana Pérez (@ana) te invitó · Liga privada');
+    expect(t).toContain('hace 2 h');
+    expect(t).toContain('Copa Verano');
+    expect(t).toContain('Te invitaron · Torneo');
+    expect(out).toContain('href="/invitacion/a"');
+    expect(out).toContain('href="/invitacion/b"');
+    expect(out).toContain('aria-label="Aceptar la invitación a Liga a"');
+    expect(out).toContain('aria-label="Rechazar la invitación a Copa Verano"');
+    expect(out.match(/>Aceptar</g)).toHaveLength(2);
+    expect(out.match(/>Rechazar</g)).toHaveLength(2);
+    // La tarjeta va antes de la lista de avisos.
+    expect(t.indexOf('Invitaciones')).toBeLessThan(t.indexOf('Aviso partido'));
+  });
+
+  it('los botones nunca van dentro de un link', () => {
+    state.invites = [invite('a')];
+    const out = render();
+    for (const link of out.match(/<a [^>]*>.*?<\/a>/g) ?? []) expect(link).not.toContain('<button');
+  });
+
+  it('también con la lista vacía (sin otros avisos)', () => {
+    state.invites = [invite('a')];
+    setNotices({ items: [] });
+    const t = text(render());
+    expect(t).toContain('Invitaciones');
+    expect(t).toContain('No tienes avisos');
   });
 });
