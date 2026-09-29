@@ -41,7 +41,7 @@ describe('qué te avisamos', () => {
     expect(html).toContain('Qué te avisamos');
     expect(html).toContain('En todos tus teléfonos.');
     for (const label of ['Resultados', 'Social', 'Recordatorios', 'Tus ligas']) expect(html).toContain(label);
-    expect(html).toContain('Me gusta, felicitaciones, comentarios y quién empieza a seguirte.');
+    expect(html).toContain('Me gusta, felicitaciones, comentarios, quién empieza a seguirte y las insignias que te ganas.');
     expect(switches(html)).toEqual([true, false, true, false]);
   });
 

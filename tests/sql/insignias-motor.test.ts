@@ -984,6 +984,36 @@ describe('aplicar decisiones (badge_apply)', () => {
 });
 
 describe('avisos (push agrupado)', () => {
+  it('preferencias (private.push_category): con «Social» apagado no llegan; «Hay una hazaña por confirmar» llega siempre', async () => {
+    expect(
+      await db.admin(`select private.push_category('insignias') as auto, private.push_category('insignia:x') as liga,
+                             private.push_category('insignia-aval:x') as aval, private.push_category('temporada:x') as temporada,
+                             private.push_category('pista:x') as pista`),
+    ).toEqual([{ auto: 'social', liga: 'social', aval: null, temporada: 'liga', pista: 'recordatorios' }]);
+    for (const u of [w.u.org, w.u.luis]) await phone(u);
+    await db.rpc(w.u.luis, 'set_push_prefs', { p_prefs: { social: false } });
+    await db.rpc(w.u.org, 'set_push_prefs', { p_prefs: { resultados: false, social: false, recordatorios: false, liga: false } });
+    // Luis apagó lo social: la insignia no le llega al teléfono, pero queda sin ver (la campana y el aviso de la app).
+    await apply(await enqueue('resultado', w.priv, null, 'x'), [
+      give({ ...toUser(w.u.luis), badge_key: 'month_streak', sport: 'all', level: 3, context: { name: 'Constancia', level_name: 'oro' } }),
+    ]);
+    await notices(NOON);
+    expect(await pushes(w.u.luis)).toEqual([]);
+    expect(await awards()).toEqual([expect.objectContaining({ user_id: w.u.luis, seen_at: null })]);
+    // El dueño apagó todo: «Hay una hazaña por confirmar» le llega igual (solo él o un admin la puede confirmar).
+    const { id: e1 } = await counted(300, 'importado');
+    await db.admin('delete from private.badge_queue');
+    const d = {
+      ...give({ ...toPlayer(w.p.luis, w.priv), badge_key: 'bowling_perfect_game', level: 0, period_key: `g:${e1}:0`, refs: [`entry:${e1}:0`] }),
+      kind: 'review',
+      reviewers: [w.u.org],
+      context: { name: 'Juego perfecto' },
+    };
+    expect(await apply(await enqueue('resultado', w.priv, null, `entry:${e1}`), [d])).toMatchObject({ ok: true, reviews: 1 });
+    const [a] = await awards(`badge_key = 'bowling_perfect_game'`);
+    expect((await pushes(w.u.org)).map((x) => [x.title, x.tag])).toEqual([['Hay una hazaña por confirmar', `insignia-aval:${a.id}`]]);
+  });
+
   it('una: «¡Te ganaste una insignia!»; varias: agrupadas; solo lo no avisado', async () => {
     await phone(w.u.luis);
     await apply(await enqueue('resultado', w.priv, null, 'x'), [

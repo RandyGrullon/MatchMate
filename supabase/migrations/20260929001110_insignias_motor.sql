@@ -36,6 +36,8 @@
 --    desbloqueo sale en segundos) y por league:<liga> cuando cambia algo que se ve en la liga.
 -- 10. public.update_entry (misma firma): una marca nueva que valida un juego ('importado' o una foto) tiene que ser
 --    una foto de la liga; 'importado' solo lo escribe el importador.
+-- 11. private.push_category (la de 20260929000700_temporadas.sql, misma firma): 'insignias' e 'insignia:' en «Social»;
+--    'insignia-aval:' sin categoría (llega siempre).
 
 -- =====================================================================
 -- Tablas (solo servidor)
@@ -2672,6 +2674,41 @@ create trigger badge_awards_emit_update after update on public.badge_awards refe
   for each statement execute function private.emit_badges();
 
 -- =====================================================================
+-- Los avisos de insignias en las preferencias del teléfono
+-- =====================================================================
+-- Igual que en 20260929000700_temporadas.sql (la última) y además los tags de las insignias:
+-- - 'insignias' («¡Te ganaste una insignia!», las automáticas agrupadas, private.badge_send_notices) e
+--   'insignia:<otorgamiento>' («¡Tienes una insignia nueva!», las que da la liga, …1120) son de 'social' («Social»):
+--   quien apaga lo social deja de recibirlas en el teléfono (la campana y la vitrina las siguen mostrando).
+-- - 'insignia-aval:<insignia>' («Hay una hazaña por confirmar», al dueño o admin que puede dar el aval,
+--   private.badge_push_reviewers) no tiene categoría: llega siempre, como las solicitudes de «soy este jugador». Es
+--   algo que solo ese admin puede resolver y, sin aval, la hazaña se queda en revisión.
+-- Un tag nuevo que se pueda apagar va aquí (o en una migración después de esta), con su categoría.
+create or replace function private.push_category(p_tag text) returns text
+language sql immutable set search_path = '' as $$
+  select case split_part(coalesce(p_tag, ''), ':', 1)
+    when 'envio' then 'resultados'
+    when 'confirmar' then 'resultados'
+    when 'resultado' then 'resultados'
+    when 'reclamo' then 'resultados'
+    when 'reaccion' then 'social'
+    when 'comentario' then 'social'
+    when 'seguir' then 'social'
+    when 'insignias' then 'social'
+    when 'insignia' then 'social'
+    when 'recordatorio' then 'recordatorios'
+    when 'partido' then 'recordatorios'
+    when 'despues' then 'recordatorios'
+    when 'sinresultado' then 'recordatorios'
+    when 'pista' then 'recordatorios'
+    when 'aviso' then 'liga'
+    when 'temporada' then 'liga'
+    when 'invitacion' then 'liga'
+    when 'invitacion-ok' then 'liga'
+  end
+$$;
+
+-- =====================================================================
 -- Permisos: la app solo badge_notices, badges_backfill y las dos de la consola; la Edge Function solo sus seis; lo
 -- demás, nadie
 -- =====================================================================
@@ -2690,7 +2727,7 @@ declare
     'badge_league_months', 'badge_family_rows', 'badge_season_rows', 'badge_cheers', 'badge_service', 'badge_merge_rows',
     'badge_snapshot', 'badge_claim', 'badge_fail', 'badge_release', 'badge_apply', 'badge_apply_decisions', 'badge_push_label',
     'badge_push_reviewers', 'badge_send_notices', 'badge_stats_refresh', 'badge_cleanup', 'badge_enqueue_period',
-    'badges_daily', 'kick_badges', 'cron_badges', 'emit_badges'];
+    'badges_daily', 'kick_badges', 'cron_badges', 'emit_badges', 'push_category'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname, p.proname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

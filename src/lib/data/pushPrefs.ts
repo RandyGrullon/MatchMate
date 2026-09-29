@@ -4,8 +4,8 @@ import { keys, tags } from './keys';
 /**
  * Qué avisos llegan al teléfono (profiles.push_prefs, 20260929000500_avisos_telefono.sql): cuatro categorías, todas
  * activas salvo las que la cuenta apagó. Valen para todos sus teléfonos: la base las revisa al encolar cada aviso (por
- * el principio de su tag). Lo que no es de ninguna (solicitudes de «soy este jugador», inscripciones, escalera, anuncios
- * de MatchMate) llega siempre.
+ * el principio de su tag). Lo que no es de ninguna (solicitudes de «soy este jugador», hazañas por confirmar, inscripciones,
+ * escalera, anuncios de MatchMate) llega siempre.
  *
  * La cuenta las lee con su perfil (auth.tsx, `profile.pushPrefs`) y las cambia con set_push_prefs.
  */
@@ -17,7 +17,7 @@ export type PushPrefs = Record<PushCategory, boolean>;
 /** En el orden de Configuración › Notificaciones, con lo que entra en cada una. */
 export const PUSH_CATEGORIES: readonly { key: PushCategory; label: string; hint: string }[] = [
   { key: 'resultados', label: 'Resultados', hint: 'Juegos aprobados o rechazados, resultados por confirmar, confirmados y reclamos.' },
-  { key: 'social', label: 'Social', hint: 'Me gusta, felicitaciones, comentarios y quién empieza a seguirte.' },
+  { key: 'social', label: 'Social', hint: 'Me gusta, felicitaciones, comentarios, quién empieza a seguirte y las insignias que te ganas.' },
   { key: 'recordatorios', label: 'Recordatorios', hint: 'Prácticas, partidos y torneos que vienen, tu pista en el boliche, y anotar tus juegos o el resultado después.' },
   { key: 'liga', label: 'Tus ligas', hint: 'Avisos de los admins de tus ligas, el fin de temporada con sus campeones, invitaciones a una liga y quién aceptó la tuya.' },
 ];
