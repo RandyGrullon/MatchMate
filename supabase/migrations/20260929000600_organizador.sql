@@ -26,7 +26,8 @@
 --    la liga con league_announce («Se suspende el martes 29 de septiembre: lluvia. Nueva fecha: …»), si algo cambió.
 -- 6. Pistas del boliche (C15). public.event_lanes: la pista (y el orden) de cada jugador en un evento. assign_lanes
 --    las arma (por promedio, por equipo o al azar), set_player_lane mueve a uno, clear_lanes las borra y
---    publish_lanes avisa por push a cada jugador con cuenta «Tu pista: 7 · <evento>».
+--    publish_lanes avisa por push a cada jugador con cuenta «Tu pista: 7 · <evento>» (tag 'pista:': categoría
+--    «recordatorios» de private.push_category, 20260929000500_avisos_telefono.sql, redefinida al final de este archivo).
 --
 -- Contrato completo: supabase/README.md («Organizador»).
 
@@ -1261,6 +1262,33 @@ begin
 end $$;
 
 -- =====================================================================
+-- 7. El aviso de la pista en las preferencias del teléfono
+-- =====================================================================
+-- Igual que en 20260929000500_avisos_telefono.sql y además 'pista' (publish_lanes): «Tu pista: 7» es de un evento que
+-- viene, como el «¿Vas?» y el partido de mañana, así que se apaga con «Recordatorios». Un tag nuevo que se pueda
+-- apagar va aquí (o en una migración después de esta), con su categoría.
+create or replace function private.push_category(p_tag text) returns text
+language sql immutable set search_path = '' as $$
+  select case split_part(coalesce(p_tag, ''), ':', 1)
+    when 'envio' then 'resultados'
+    when 'confirmar' then 'resultados'
+    when 'resultado' then 'resultados'
+    when 'reclamo' then 'resultados'
+    when 'reaccion' then 'social'
+    when 'comentario' then 'social'
+    when 'seguir' then 'social'
+    when 'recordatorio' then 'recordatorios'
+    when 'partido' then 'recordatorios'
+    when 'despues' then 'recordatorios'
+    when 'sinresultado' then 'recordatorios'
+    when 'pista' then 'recordatorios'
+    when 'aviso' then 'liga'
+    when 'invitacion' then 'liga'
+    when 'invitacion-ok' then 'liga'
+  end
+$$;
+
+-- =====================================================================
 -- Permisos: las RPC solo con sesión (el listado de ligas públicas, también sin cuenta); las ayudas, nadie de la app
 -- =====================================================================
 do $$
@@ -1275,7 +1303,7 @@ declare
                                      'league_has_result', 'merge_players', 'merge_block', 'guardian', 'reject_minor_claims',
                                      'players_minor_claims',
                                      'event_has_results', 'event_has_content', 'suspend_plan', 'check_event_lane',
-                                     'emit_event_lanes', 'lanes_event', 'lanes_json', 'lanes_publish_limit'];
+                                     'emit_event_lanes', 'lanes_event', 'lanes_json', 'lanes_publish_limit', 'push_category'];
 begin
   for f in select p.oid::regprocedure as sig, n.nspname, p.proname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

@@ -226,6 +226,27 @@ describe('arreglar, borrar y avisar', () => {
     await fails(db.rpc(w.u.luis, 'publish_lanes', { p_event: prac }), DENIED);
   });
 
+  it('el aviso de la pista es de «Recordatorios» (push_category): con esa categoría apagada no llega; con otra apagada, sí', async () => {
+    const { ev, p } = await copa();
+    expect(await db.admin(`select private.push_category($1) as c`, [`pista:${ev}:${p.ana}`])).toEqual([{ c: 'recordatorios' }]);
+    await phone(w.u.luis);
+    await phone(w.u.ana);
+    await db.rpc(w.u.ana, 'set_push_prefs', { p_prefs: { recordatorios: false } });
+    await db.rpc(w.u.luis, 'set_push_prefs', { p_prefs: { liga: false, social: false } });
+    await assign(w.u.org, ev, [5, 6, 7], 3, 'promedio', [p.ana, p.beto, p.caro, p.dani, p.eva, p.luis, p.pedro]);
+    // pushed cuenta a quién se le mandó (las dos cuentas); el filtro del teléfono de Ana lo descarta.
+    expect(await db.rpc(w.u.org, 'publish_lanes', { p_event: ev })).toEqual({ players: 7, pushed: 2 });
+    expect(await db.admin(`select user_id, tag from public.push_outbox where tag like 'pista:%'`)).toEqual([
+      { user_id: w.u.luis, tag: `pista:${ev}:${p.luis}` },
+    ]);
+    // Vuelve a prender «Recordatorios»: el siguiente aviso sí le llega.
+    await db.rpc(w.u.ana, 'set_push_prefs', { p_prefs: { recordatorios: true } });
+    await db.admin('delete from public.push_outbox');
+    await db.rpc(w.u.org, 'publish_lanes', { p_event: ev });
+    const again = await db.admin<{ user_id: string }>(`select user_id from public.push_outbox where tag like 'pista:%' order by title`);
+    expect(again.map((r) => r.user_id)).toEqual([w.u.ana, w.u.luis]);
+  });
+
   it('publicar: 6 veces por hora y evento; sin pistas no hace nada', async () => {
     const { ev } = await copa();
     expect(await db.rpc(w.u.org, 'publish_lanes', { p_event: ev })).toEqual({ players: 0, pushed: 0 });

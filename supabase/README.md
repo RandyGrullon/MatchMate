@@ -579,7 +579,7 @@ teléfono si la cuenta apagó la categoría de su tag, también en los avisos qu
 |---|---|
 | `resultados` | `envio:` (envíos del boliche), `confirmar:` (resultado por confirmar), `resultado:` (confirmado), `reclamo:` |
 | `social` | `reaccion:` (felicitaciones y me gusta), `comentario:`, `seguir:` |
-| `recordatorios` | `recordatorio:` (boliche, golf, natación, noches), `partido:`, `despues:`, `sinresultado:` |
+| `recordatorios` | `recordatorio:` (boliche, golf, natación, noches), `partido:`, `despues:`, `sinresultado:`, `pista:` (tu pista en el boliche: `20260929000600_organizador.sql`) |
 | `liga` | `aviso:` (avisos del admin a su liga), `invitacion:` (te invitaron a una liga), `invitacion-ok:` (aceptaron tu invitación) |
 
 Sin categoría (salen siempre): `claim:`, inscripciones, escalera, `ronda:`, `anuncio:` (superadmin), `espacio` y
@@ -702,14 +702,17 @@ WhatsApp).
 - `clear_lanes(p_event) → int` (cuántas había).
 - `publish_lanes(p_event) → {players, pushed}`: push a cada jugador con cuenta (sin bloquear y en la liga) «Tu pista:
   7 · <evento>» con el texto de su pista, `url` `/l/<liga>/e/<evento>`, `tag` `pista:<evento>:<jugador>` (el nuevo
-  reemplaza al anterior en el teléfono); marca todas como avisadas. 6 veces por hora y evento (`rate_limited`). Sin
+  reemplaza al anterior en el teléfono; categoría `recordatorios`: no le llega a quien la apagó, aunque cuenta en
+  `pushed`); marca todas como avisadas. 6 veces por hora y evento (`rate_limited`). Sin
   pistas: `{players: 0, pushed: 0}`.
 
 Al juntar dos jugadores (reclamo o `merge_league_players`) la pista pasa al que queda (si los dos tenían, queda la
 suya).
 
-**Ojo al cambiar migraciones viejas:** esta redefine `private.merge_players` (mueve también las pistas) y cambia la
-firma de `public.create_player` (drop + create con `p_guardian_phone` y `p_consent` al final).
+**Ojo al cambiar migraciones viejas:** esta redefine `private.merge_players` (mueve también las pistas) y
+`private.push_category` (la de `20260929000500_avisos_telefono.sql` más `pista:` en `recordatorios`: un tag nuevo que
+se pueda apagar se agrega aquí o en una migración después) y cambia la firma de `public.create_player` (drop + create
+con `p_guardian_phone` y `p_consent` al final).
 
 ## Seguridad (lo que prueban `tests/sql/seguridad.test.ts` y `nuevas.test.ts`)
 

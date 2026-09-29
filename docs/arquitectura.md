@@ -165,7 +165,8 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   que se borraría en cascada), alarga el plazo de los retos de la escalera afectados y manda UN aviso con
   `league_announce` si algo cambió (`skipped` dice por qué no salió).
 - **Pistas del boliche**: tabla `event_lanes` (se lee como la liga; borrados en tombstones; tiempo real `lanes` en
-  `event:<id>`). El promedio para armar por promedio lo calcula el teléfono y lo manda como `p_order`.
+  `event:<id>`). El promedio para armar por promedio lo calcula el teléfono y lo manda como `p_order`. El aviso
+  «Tu pista» (tag `pista:`) es de «Recordatorios»: esta migración redefine `private.push_category` para sumarlo.
 
 ## Organizador en el teléfono: ligas públicas, unirse, juntar y menores
 
