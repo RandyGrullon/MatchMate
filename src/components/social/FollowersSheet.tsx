@@ -1,4 +1,5 @@
-import { Users } from 'lucide-react';
+import { Link } from 'react-router';
+import { Search, Users } from 'lucide-react';
 import { useFollowList, type FollowKind, type FollowPerson } from '../../lib/data/follows';
 import { Badge, Button, Empty, ListSkeleton, LoadError, Modal, Tabs } from '../ui';
 import { FollowButton } from './FollowButton';
@@ -6,8 +7,8 @@ import { UserLink } from './UserLink';
 import { compactCount } from './socialFormat';
 
 /**
- * Seguidores y seguidos de una cuenta en una hoja con dos pestañas. Cada persona lleva a su perfil y trae su botón
- * de seguir (menos tú). Por páginas de 30 con «Ver más».
+ * Seguidores y seguidos de una cuenta en una hoja con dos pestañas. Cada persona lleva a su perfil (con su
+ * @usuario) y trae su botón de seguir (menos tú). Por páginas de 30 con «Ver más». Abajo, «Buscar personas» (/buscar).
  */
 export function FollowersSheet({
   userId,
@@ -26,7 +27,20 @@ export function FollowersSheet({
   onClose: () => void;
 }) {
   return (
-    <Modal open={kind != null} onClose={onClose} title={name}>
+    <Modal
+      open={kind != null}
+      onClose={onClose}
+      title={name}
+      footer={
+        <Link
+          to="/buscar"
+          onClick={onClose}
+          className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft active:scale-[0.97]"
+        >
+          <Search className="size-4" aria-hidden="true" /> Buscar personas
+        </Link>
+      }
+    >
       {kind && (
         <div className="flex flex-col gap-4">
           <Tabs<FollowKind>
@@ -76,7 +90,7 @@ function PersonRow({ person, onPick }: { person: FollowPerson; onPick: () => voi
   return (
     <li className="flex items-center gap-2 rounded-xl px-2 py-1.5">
       <div className="min-w-0 flex-1" onClickCapture={onPick}>
-        <UserLink userId={person.id} name={person.name}>
+        <UserLink userId={person.id} name={person.name} username={person.username}>
           {person.isMe ? (
             <span className="block text-xs font-normal text-muted">Tú</span>
           ) : person.followsYou ? (

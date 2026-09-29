@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { Check, ChevronRight, Compass, Crown, KeyRound, LogOut, Pencil, Settings } from 'lucide-react';
+import { AtSign, Check, ChevronRight, Compass, Crown, KeyRound, LogOut, Pencil, Settings } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
@@ -14,12 +14,14 @@ import { useCreateMenu } from '../components/CreateMenu';
 import { Avatar } from '../components/Avatar';
 import { useAction, useFeedback } from '../components/feedback';
 import { PasswordInput } from '../components/PasswordInput';
+import { atUsername } from '../components/social/socialFormat';
+import { UsernameForm } from '../components/social/UsernameForm';
 import { Badge, Button, Card, Field, Input, ListSkeleton, Loading } from '../components/ui';
 import { AccountDataCard } from './legal/AccountDataCard';
 
 /**
- * Configuración (engrane de arriba): nombre, correo, apariencia, mis ligas, tus datos (privacidad, términos, bajar
- * mis datos y borrar la cuenta), superadmin y cerrar sesión.
+ * Configuración (engrane de arriba): nombre, @usuario, correo, apariencia, mis ligas, tus datos (privacidad,
+ * términos, bajar mis datos y borrar la cuenta), superadmin y cerrar sesión.
  */
 export default function AccountPage() {
   const auth = useAuth();
@@ -32,6 +34,7 @@ export default function AccountPage() {
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
   const [editing, setEditing] = useState(false);
+  const [editingUser, setEditingUser] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -68,6 +71,9 @@ export default function AccountPage() {
 
   // Cuenta sin perfil (el registro no alcanzó a crearlo): se completa con el nombre.
   const needsProfile = !auth.profile;
+  // Puede faltar en una copia vieja del teléfono hasta que el perfil se vuelve a leer.
+  const username = auth.profile?.username ?? '';
+  const handle = atUsername(username);
 
   return (
     <AppShell>
@@ -90,6 +96,7 @@ export default function AccountPage() {
                   </Badge>
                 )}
               </div>
+              {handle && <p className="truncate text-sm font-medium text-muted">{handle}</p>}
               <p className="truncate text-sm text-muted">{user.email}</p>
             </div>
             {!editing && !needsProfile && (
@@ -115,6 +122,21 @@ export default function AccountPage() {
               </Button>
             </form>
           )}
+          {!needsProfile &&
+            (editingUser ? (
+              <div className="border-t border-line pt-4">
+                <UsernameForm uid={user.uid} current={username} onDone={() => setEditingUser(false)} />
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                className="-ml-2 self-start max-sm:h-11"
+                icon={<AtSign className="size-4" />}
+                onClick={() => setEditingUser(true)}
+              >
+                Cambiar tu usuario
+              </Button>
+            ))}
         </Card>
 
         <PasswordCard />

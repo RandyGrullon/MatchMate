@@ -109,7 +109,7 @@ declare
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
-    '20260929000500', '20260929000510'];
+    '20260929000200', '20260929000500', '20260929000510'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1186,6 +1186,136 @@ begin
   assert not (r ->> 'following')::boolean and (r ->> 'followers')::integer = 0, format('FAIL social: unfollow_user %s', r);
   assert public.unfollow_user(p_user => pg_temp.id('u_owner')) ->> 'followers' = '0', 'FAIL social: dejar de seguir dos veces';
   perform pg_temp.ok('social: Ana quita el me gusta y deja de seguir (idempotente)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9c. Usuarios e invitaciones: @usuario, buscar personas e invitar a la liga (todo se deshace con el ROLLBACK)
+-- =====================================================================================================================
+
+-- 9c.1 El dueño (ya tiene un @usuario del trigger) se pone otro y lo ve en su perfil; los reservados no.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v text := 'smoke_' || pg_temp.val('tag');
+begin
+  assert (select p.username from public.profiles p where p.id = pg_temp.id('u_owner')) ~ '^[a-z0-9_][a-z0-9_.]{1,18}[a-z0-9_]$',
+    'FAIL usuarios: el perfil nuevo no tiene un @usuario válido';
+  assert public.username_status(p_username => v) = 'ok', 'FAIL usuarios: username_status (ok)';
+  assert public.set_username(p_username => '@' || upper(v)) = v, 'FAIL usuarios: set_username';
+  assert public.username_status(p_username => v) = 'mine', 'FAIL usuarios: username_status (mine)';
+  assert public.public_profile(p_user => pg_temp.id('u_owner')) ->> 'username' = v, 'FAIL usuarios: public_profile sin el @usuario';
+  perform pg_temp.put('owner_username', v);
+  perform pg_temp.ok('usuarios: el dueño se pone su @usuario (set_username, username_status) y lo ve en su perfil');
+  perform pg_temp.must_fail('usuarios: nadie se pone un @usuario reservado',
+    format('select public.set_username(p_username => %L)', 'admin'), array['reservado']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.2 Ana encuentra al dueño por su @usuario.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  assert public.username_status(p_username => pg_temp.val('owner_username')) = 'taken', 'FAIL usuarios: username_status (taken)';
+  r := public.search_people(p_query => '@' || pg_temp.val('owner_username'));
+  assert r -> 0 ->> 'id' = pg_temp.val('u_owner') and r -> 0 ->> 'username' = pg_temp.val('owner_username'),
+    format('FAIL usuarios: Ana no encuentra al dueño por su @usuario (%s)', r);
+  perform pg_temp.ok('usuarios: Ana encuentra al dueño por su @usuario (search_people)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.3 El dueño invita a Beto a la liga del boliche: como ya está, no se manda nada. Beto sale de la liga y el dueño
+-- lo vuelve a invitar; Luis (miembro de una liga privada) no puede invitar ni ver la invitación.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb := public.invite_to_league(p_league => pg_temp.id('bowl'), p_users => array[pg_temp.id('u_beto')]);
+begin
+  assert (r ->> 'sent')::integer = 0 and r -> 'results' -> 0 ->> 'status' = 'member', format('FAIL invitaciones: Beto ya es miembro (%s)', r);
+  perform pg_temp.ok('invitaciones: invitar a quien ya está en la liga no manda nada');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('beto'), true);
+set local role authenticated;
+do $$
+begin
+  perform public.leave_league(p_league => pg_temp.id('bowl'));
+  assert (select count(*) from public.league_members m where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_beto')) = 0,
+    'FAIL invitaciones: Beto no salió de la liga';
+  perform pg_temp.ok('invitaciones: Beto sale de la liga del boliche');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb := public.invite_to_league(p_league => pg_temp.id('bowl'), p_users => array[pg_temp.id('u_beto')]);
+  p jsonb;
+  v_id uuid;
+begin
+  assert (r ->> 'sent')::integer = 1 and r -> 'results' -> 0 ->> 'status' = 'sent', format('FAIL invitaciones: invite_to_league %s', r);
+  select i.id into v_id from public.league_invites i
+   where i.league_id = pg_temp.id('bowl') and i.user_id = pg_temp.id('u_beto') and i.status = 'pending';
+  assert v_id is not null, 'FAIL invitaciones: el dueño no ve la invitación pendiente';
+  -- Por su nombre (el dueño no lee el perfil de Beto directo: RLS).
+  p := public.search_people(p_query => 'Smoke Beto ' || pg_temp.val('tag'), p_league => pg_temp.id('bowl'));
+  assert exists (select 1 from jsonb_array_elements(p) x
+                  where x ->> 'id' = pg_temp.val('u_beto') and (x ->> 'invited')::boolean and not (x ->> 'inLeague')::boolean),
+    format('FAIL invitaciones: search_people no marca a Beto como invitado (%s)', p);
+  perform pg_temp.put('bowl_invite', v_id::text);
+  perform pg_temp.ok('invitaciones: el dueño invita a Beto (sale como invitado en la búsqueda de la liga)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('luis'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select count(*) from public.league_invites i where i.id = pg_temp.id('bowl_invite')) = 0, 'FAIL invitaciones: un miembro lee invitaciones ajenas';
+  assert public.league_invite_details(p_invite => pg_temp.id('bowl_invite')) is null, 'FAIL invitaciones: un miembro ve el detalle ajeno';
+  perform pg_temp.must_fail('invitaciones: un miembro no invita a una liga privada',
+    format('select public.invite_to_league(p_league => %L, p_users => array[%L]::uuid[])', pg_temp.id('bowl'), pg_temp.id('u_out')),
+    array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9c.4 Beto ve la invitación y la acepta: queda en la liga con su jugador.
+select set_config('request.jwt.claims', pg_temp.jwt('beto'), true);
+set local role authenticated;
+do $$
+declare
+  v_id uuid := pg_temp.id('bowl_invite');
+  d jsonb;
+  r jsonb;
+begin
+  assert exists (select 1 from jsonb_array_elements(public.my_league_invites()) x
+                  where x ->> 'id' = v_id::text and x ->> 'leagueId' = pg_temp.val('bowl')), 'FAIL invitaciones: Beto no ve su invitación';
+  d := public.league_invite_details(p_invite => v_id);
+  assert d ->> 'status' = 'pending' and d -> 'league' ->> 'id' = pg_temp.val('bowl') and d -> 'invitedBy' ->> 'id' = pg_temp.val('u_owner')
+     and not (d ->> 'member')::boolean, format('FAIL invitaciones: league_invite_details %s', d);
+  r := public.respond_league_invite(p_invite => v_id, p_accept => true);
+  assert r ->> 'status' = 'accepted' and r ->> 'leagueId' = pg_temp.val('bowl') and r ->> 'playerId' is not null,
+    format('FAIL invitaciones: aceptar %s', r);
+  assert (select m.role = 'member' and m.player_id = (r ->> 'playerId')::uuid
+            from public.memberships m where m.league_id = pg_temp.id('bowl') and m.user_id = pg_temp.id('u_beto')),
+    'FAIL invitaciones: Beto no quedó de miembro con su jugador';
+  assert (select i.status from public.league_invites i where i.id = v_id) = 'accepted', 'FAIL invitaciones: la invitación no quedó aceptada';
+  assert public.respond_league_invite(p_invite => v_id, p_accept => false) ->> 'status' = 'accepted', 'FAIL invitaciones: responder otra vez';
+  perform pg_temp.ok('invitaciones: Beto ve la invitación (my_league_invites, league_invite_details), la acepta y queda en la liga');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

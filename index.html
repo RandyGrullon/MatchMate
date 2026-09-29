@@ -12,8 +12,8 @@
     <meta property="og:locale" content="es_DO" />
     <meta property="og:title" content="MatchMate — ligas y torneos de tu deporte" />
     <meta property="og:description" content="Tu liga en el teléfono: tablas, resultados en vivo y estadísticas de pádel, tenis, pickleball, boliche, baloncesto, fútbol, golf y natación. Gratis y en español." />
-    <meta property="og:image" content="https://matchmate.vercel.app/icon-512.png" />
-    <meta property="og:image:secure_url" content="https://matchmate.vercel.app/icon-512.png" />
+    <meta property="og:image" content="https://matchmate-oficial.vercel.app/icon-512.png" />
+    <meta property="og:image:secure_url" content="https://matchmate-oficial.vercel.app/icon-512.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
@@ -21,7 +21,7 @@
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="MatchMate — ligas y torneos de tu deporte" />
     <meta name="twitter:description" content="Tu liga en el teléfono: tablas, resultados en vivo y estadísticas. Gratis y en español." />
-    <meta name="twitter:image" content="https://matchmate.vercel.app/icon-512.png" />
+    <meta name="twitter:image" content="https://matchmate-oficial.vercel.app/icon-512.png" />
     <meta name="twitter:image:alt" content="Logo de MatchMate" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -34,7 +34,7 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#161922" media="(prefers-color-scheme: dark)" />
     <script>
-      // Apariencia elegida en Configuración (claro/oscuro y color), antes de pintar: sin parpadeo.
+      // Claro u oscuro elegido en Configuración, antes de pintar: sin parpadeo. El color lo pone cada deporte.
       (function () {
         try {
           var p = JSON.parse(localStorage.getItem('mm:tema') || 'null');
@@ -47,13 +47,8 @@
               m.setAttribute('content', bar);
             });
           }
-          var css = localStorage.getItem('mm:tema-css');
-          if (css) {
-            var st = document.createElement('style');
-            st.id = 'mm-acento';
-            st.textContent = css;
-            document.head.appendChild(st);
-          }
+          // El color de la app ya no se elige: se borra el que quedó guardado de antes.
+          localStorage.removeItem('mm:tema-css');
         } catch (e) {}
       })();
     </script>

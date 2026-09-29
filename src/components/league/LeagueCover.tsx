@@ -1,56 +1,29 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
 import { CircleHelp, Globe, Lock, MapPin, Share2, Trophy, Users } from 'lucide-react';
-import { getInviteCode } from '../../lib/data/leagues';
 import { usePlayers } from '../../lib/data/players';
 import { useLeagueCtx } from '../../lib/league';
 import { sportMeta } from '../../sports/registry';
-import { useFeedback } from '../feedback';
-import { inviteUrl } from '../InviteCard';
-import { shareLink } from '../share';
+import { InviteSheet } from '../invite/InviteSheet';
+import { canInviteTo } from '../invite/logic';
 import { SportSplash } from '../splash/SportSplash';
 import { Button } from '../ui';
 import { countLabel, peopleWord } from './logic';
 
 /**
  * Portada de la liga (arriba en su inicio): la escena y el color del deporte, el nombre, el lugar y cuántos son, y
- * «Invitar» (el admin manda el link de invitación; en una liga pública, cualquier miembro manda el de la liga).
- * Así una liga de pádel y una de fútbol no se ven iguales.
+ * «Invitar», que abre la hoja de invitar (personas de la app y el link: el admin manda el de invitación; en una
+ * liga pública, cualquier miembro manda el de la liga). Así una liga de pádel y una de fútbol no se ven iguales.
  */
 export function LeagueCover() {
-  const { lid, league, member, isAdmin, base } = useLeagueCtx();
-  const navigate = useNavigate();
-  const { toast } = useFeedback();
+  const { lid, league, member, isAdmin } = useLeagueCtx();
   const players = usePlayers(lid);
-  const [sharing, setSharing] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const meta = sportMeta(league.sport);
   const Icon = meta?.icon ?? CircleHelp;
   const torneo = league.kind === 'torneo';
   const isPublic = league.visibility === 'public';
-  const canInvite = isAdmin || (!!member && isPublic);
+  const canInvite = canInviteTo(league, isAdmin, !!member);
   const count = players.data.length;
-
-  async function invite() {
-    setSharing(true);
-    try {
-      let url: string;
-      if (isAdmin) {
-        const code = await getInviteCode(lid).catch(() => null);
-        if (!code) {
-          // Todavía no hay código: se crea en Admin › Liga.
-          navigate(`${base}/admin?tab=liga`);
-          return;
-        }
-        url = inviteUrl(code);
-      } else {
-        url = `${location.origin}${base}`;
-      }
-      const copied = await shareLink(url, `${league.name} · MatchMate`);
-      if (copied) toast('Link copiado: pégalo en WhatsApp');
-    } finally {
-      setSharing(false);
-    }
-  }
 
   return (
     <section
@@ -88,7 +61,7 @@ export function LeagueCover() {
           </p>
           {canInvite && (
             <div className="mt-1.5">
-              <Button size="sm" icon={<Share2 className="size-4" />} loading={sharing} onClick={invite}>
+              <Button size="sm" className="h-11" icon={<Share2 className="size-4" />} onClick={() => setInviting(true)} aria-haspopup="dialog">
                 Invitar
               </Button>
             </div>
@@ -99,6 +72,7 @@ export function LeagueCover() {
           <SportSplash scene={meta.scene} word={false} className="pointer-events-none -my-1 shrink-0 [--sp-w:104px] sm:[--sp-w:136px]" />
         )}
       </div>
+      <InviteSheet league={league} lid={lid} isAdmin={isAdmin} member={!!member} open={inviting} onClose={() => setInviting(false)} />
     </section>
   );
 }

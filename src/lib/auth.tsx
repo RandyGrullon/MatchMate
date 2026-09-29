@@ -54,19 +54,27 @@ const sameUser = (u: AppUser | null, s: Session | null) =>
 type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; push_prefs?: unknown };
 
 const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at';
+/** Columnas que llegaron después, en el orden de sus migraciones: username (20260929000200) y push_prefs (20260929000500). */
+const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs'];
 
 /**
  * Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. Si la base todavía no
- * tiene push_prefs (42703: la app salió antes que la migración), se lee sin esa columna en vez de quedarse sin perfil.
+ * tiene username o push_prefs (42703: la app salió antes que la migración), se lee sin esa columna (la que nombra el
+ * error, o la más nueva) en vez de quedarse sin perfil.
  */
 export async function fetchProfile(uid: string): Promise<AccountProfile | null> {
   const query = (columns: string) => select<AccountProfileRow>({ table: 'profiles', columns, filters: [{ col: 'id', op: 'eq', value: uid }] });
+  let newer = PROFILE_NEWER_COLUMNS;
   const read = async () => {
-    try {
-      return await query(`${PROFILE_COLUMNS},push_prefs`);
-    } catch (e) {
-      if (asBackendError(e)?.code !== '42703') throw e;
-      return query(PROFILE_COLUMNS);
+    for (;;) {
+      try {
+        return await query([PROFILE_COLUMNS, ...newer].join(','));
+      } catch (e) {
+        const err = asBackendError(e);
+        if (err?.code !== '42703' || !newer.length) throw e;
+        const missing = newer.find((c) => err.message.includes(c)) ?? newer[newer.length - 1];
+        newer = newer.filter((c) => c !== missing);
+      }
     }
   };
   let rows = await read();

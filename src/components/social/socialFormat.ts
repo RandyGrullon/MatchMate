@@ -1,3 +1,4 @@
+import { normalizeUsername, USERNAME_RULES, usernameProblem, usernameProblemText, type UsernameStatus } from '../../lib/data/people';
 import type { ProfileGame, ProfileStats } from '../../lib/data/profileGames';
 import { isSportId, sportMeta } from '../../sports/registry';
 import type { SportId } from '../../sports/types';
@@ -18,6 +19,57 @@ export function compactCount(n: number): string {
 
 /** «1 seguidor», «3 seguidores». */
 export const plural = (n: number, one: string, many: string) => `${compactCount(n)} ${n === 1 ? one : many}`;
+
+/** «@ana_perez»; null sin @usuario (una copia vieja del teléfono, hasta que se vuelve a leer). */
+export function atUsername(username: string | null | undefined): string | null {
+  const u = username?.trim().replace(/^@/, '');
+  return u ? `@${u}` : null;
+}
+
+/** Lo que dijo la base de un @usuario (`checkUsername`); 'unknown' = no se pudo preguntar (sin señal, muchas veces). */
+export interface UsernameCheck {
+  value: string;
+  status: UsernameStatus | 'unknown';
+}
+
+/** El texto debajo del campo «Tu usuario», su color y si «Guardar» se puede tocar. */
+export interface UsernameHint {
+  text: string;
+  tone: 'muted' | 'ok' | 'danger';
+  canSave: boolean;
+  /** Esperando la respuesta de la base (o a que deje de escribir). */
+  checking: boolean;
+}
+
+/**
+ * Cómo va el @usuario que se escribe en /cuenta: el formato se mira aquí mismo; si está libre lo dice `check` (la
+ * respuesta de la base para ese mismo valor). «Guardar» solo con uno libre o el de ahora. Si la base no pudo
+ * contestar, se deja guardar: set_username vuelve a revisar todo.
+ */
+export function usernameHint(input: string, current: string, check: UsernameCheck | null): UsernameHint {
+  const v = normalizeUsername(input);
+  const muted = (text: string, canSave = false, checking = false): UsernameHint => ({ text, tone: 'muted', canSave, checking });
+  const bad = (text: string): UsernameHint => ({ text, tone: 'danger', canSave: false, checking: false });
+  if (!v) return muted(USERNAME_RULES);
+  if (v === normalizeUsername(current)) return muted('Es tu usuario de ahora.', true);
+  const problem = usernameProblem(v);
+  if (problem) return bad(usernameProblemText(problem));
+  if (!check || check.value !== v) return muted('Revisando…', false, true);
+  switch (check.status) {
+    case 'ok':
+      return { text: 'Disponible', tone: 'ok', canSave: true, checking: false };
+    case 'mine':
+      return muted('Es tu usuario de ahora.', true);
+    case 'taken':
+      return bad('Ya está en uso');
+    case 'reserved':
+      return bad('No disponible');
+    case 'invalid':
+      return bad(USERNAME_RULES);
+    default:
+      return muted(USERNAME_RULES, true);
+  }
+}
 
 /** Resumen del boliche con las series de cada participación (pinos verificados). */
 export interface BowlingSummary {

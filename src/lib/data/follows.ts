@@ -27,6 +27,8 @@ export const peopleTags = {
   feed: 'people:feed',
   /** Avisos sociales de la campana. */
   notices: 'people:notices',
+  /** Búsqueda de personas y la lista de a quién sigo (src/lib/data/people.ts). */
+  search: 'people:search',
 };
 
 export type FollowKind = 'followers' | 'following';
@@ -43,6 +45,8 @@ export const peopleKeys = {
 export interface PublicProfile {
   id: string;
   name: string;
+  /** @usuario, sin la @ (falta en una copia vieja del teléfono hasta que se vuelve a leer). */
+  username: string;
   /** Desde cuándo tiene cuenta (ISO). */
   since: string | null;
   /** Deportes donde juega (solo de ligas que se ven y sin menores), en el orden de la app. */
@@ -63,6 +67,8 @@ export interface PublicProfile {
 export interface FollowPerson {
   id: string;
   name: string;
+  /** @usuario, sin la @ (falta en una copia vieja del teléfono hasta que se vuelve a leer). */
+  username: string;
   at: string;
   isFollowing: boolean;
   followsYou: boolean;
@@ -304,14 +310,18 @@ export async function setFollowing(target: string, follow: boolean): Promise<Fol
   patchProfile(target, (p) => ({ ...p, isFollowing: follow, followers: Math.max(0, p.followers + delta) }));
   if (delta) patchProfile(me, (p) => ({ ...p, following: Math.max(0, p.following + delta) }));
   patchPaged<FollowPerson>('followList', (it) => (it.id === target && it.isFollowing !== follow ? { ...it, isFollowing: follow } : it));
+  // La búsqueda de personas (src/lib/data/people.ts) también lleva el botón.
+  updateCached<{ id: string; isFollowing: boolean }[]>('peopleSearch', (list) =>
+    list.some((it) => it.id === target && it.isFollowing !== follow) ? list.map((it) => (it.id === target ? { ...it, isFollowing: follow } : it)) : list,
+  );
 
   try {
     const res = await rpc<FollowResult>(follow ? 'follow_user' : 'unfollow_user', { p_user: target });
     patchProfile(target, (p) => ({ ...p, isFollowing: res.following, followers: res.followers }));
     return res;
   } finally {
-    // Lo de las dos cuentas (listas, números) y los juegos de quienes sigo.
-    invalidate(peopleTags.user(target), peopleTags.user(me), peopleTags.feed);
+    // Lo de las dos cuentas (listas, números), los juegos de quienes sigo y la búsqueda (a quién sigo).
+    invalidate(peopleTags.user(target), peopleTags.user(me), peopleTags.feed, peopleTags.search);
   }
 }
 

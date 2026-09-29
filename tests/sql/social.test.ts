@@ -196,10 +196,8 @@ describe('seguir', () => {
     await fails(follow(w.u.ana, randomUUID()), 'no_existe');
     await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.otra, p_reason: 'x' });
     await fails(follow(w.u.ana, w.u.otra), DENIED);
-    // extra no está en ninguna liga: nadie lo ve (salvo el superadmin).
-    await fails(follow(w.u.ana, w.u.extra), DENIED);
-    expect(await follow(w.u.dios, w.u.extra)).toMatchObject({ following: true });
-    // Como dios lo sigue, extra ahora ve a dios y lo puede seguir de vuelta.
+    // extra no está en ninguna liga: con sesión igual se ve (20260929000200_invitaciones.sql) y se sigue.
+    expect(await follow(w.u.ana, w.u.extra)).toMatchObject({ following: true });
     expect(await follow(w.u.extra, w.u.dios)).toMatchObject({ following: true });
   });
 
@@ -243,15 +241,21 @@ describe('seguir', () => {
     expect(page2.map((r) => r.name)).toEqual(['ana']);
     expect((await db.rpc<Json[]>(w.u.ana, 'follow_list', { p_user: w.u.luis, p_kind: 'following' })).map((r) => r.name)).toEqual(['ana']);
     await fails(db.rpc(w.u.ana, 'follow_list', { p_user: w.u.luis, p_kind: 'amigos' }), INVALID);
-    // De alguien que no se ve (org solo está en ligas privadas): vacío.
+    // org solo está en ligas privadas: con sesión igual se ve (con su @usuario). Bloqueado ya no se ve: vacío.
     await follow(w.u.sofi, w.u.org);
+    expect(await db.rpc<Json[]>(w.u.extra, 'follow_list', { p_user: w.u.org, p_kind: 'followers' })).toEqual([
+      expect.objectContaining({ id: w.u.sofi, name: 'sofi', username: 'sofi' }),
+    ]);
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.org, p_reason: 'x' });
     expect(await db.rpc(w.u.extra, 'follow_list', { p_user: w.u.org, p_kind: 'followers' })).toEqual([]);
+    // Quien comparte la liga con org lo sigue viendo.
     expect(await db.rpc<Json[]>(w.u.ana, 'follow_list', { p_user: w.u.org, p_kind: 'followers' })).toEqual([
       expect.objectContaining({ id: w.u.sofi, name: 'sofi' }),
     ]);
-    // En la lista de alguien que se ve no sale quien no se ve (extra no está en ninguna liga), aunque cuente.
+    // En la lista de alguien que se ve no sale quien no se ve (extra: sin ligas y bloqueado), aunque cuente.
     await follow(w.u.dios, w.u.extra);
     await follow(w.u.extra, w.u.luis);
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.extra, p_reason: 'x' });
     expect((await db.rpc<Json[]>(w.u.ana, 'follow_list', { p_user: w.u.luis, p_kind: 'followers' })).map((r) => r.name)).not.toContain('extra');
     expect(await db.rpc<Json>(w.u.ana, 'public_profile', { p_user: w.u.luis })).toMatchObject({ followers: 3 });
     // Luis sí ve a extra en sus seguidores (lo sigue a él).
@@ -283,7 +287,10 @@ describe('perfil público', () => {
     expect(await profile(w.u.otra, w.u.luis)).toMatchObject({ gamesCount: 2, likesReceived: 2, followers: 2 });
     // extra no ve a luis por ninguna liga... pero luis es miembro de ligas públicas: sí lo ve.
     expect(await profile(w.u.extra, w.u.luis)).toMatchObject({ name: 'luis', gamesCount: 2, isFollowing: false });
-    // org solo juega en ligas privadas (una con menores): extra no lo ve.
+    // org solo juega en ligas privadas (una con menores): extra lo ve (con sesión se ve cualquier cuenta sin
+    // bloquear), pero sin nada de esas ligas. Bloqueado, ya no.
+    expect(await profile(w.u.extra, w.u.org)).toMatchObject({ name: 'org', username: 'org', sports: [], gamesCount: 0, likesReceived: 0 });
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.org, p_reason: 'x' });
     expect(await profile(w.u.extra, w.u.org)).toBeNull();
     expect(await profile(w.u.extra, randomUUID())).toBeNull();
     // Su propio perfil.
@@ -351,6 +358,9 @@ describe('perfil público', () => {
     expect((await db.rpc<Json>(w.u.luis, 'profile_stats', { p_user: w.u.otra })).matches).toEqual([
       { sport: 'padel', played: 1, won: 0, lost: 1, drawn: 0 },
     ]);
+    // A org se le ve, pero sus ligas son privadas o con menores: nada. Bloqueado, null.
+    expect(await db.rpc(w.u.extra, 'profile_stats', { p_user: w.u.org })).toEqual({ bowling: null, matches: [], golf: null, swim: null });
+    await db.rpc(w.u.dios, 'admin_block_user', { p_user: w.u.org, p_reason: 'x' });
     expect(await db.rpc(w.u.extra, 'profile_stats', { p_user: w.u.org })).toBeNull();
   });
 });

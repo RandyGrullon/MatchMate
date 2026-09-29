@@ -18,7 +18,7 @@ correr con la app en uso: solo toca filas que ella misma crea (y `lock_timeout` 
 
 **Qué se ve**
 
-- **Pasó**: sale sin error (código 0) y muestra la tabla del resumen, `paso | ok`, con unas 80 filas
+- **Pasó**: sale sin error (código 0) y muestra la tabla del resumen, `paso | ok`, con unas 100 filas
   (`boliche: …`, `pádel: …`, `permisos: … [falla como debe: no_permitido]`, …). Con `--linked` los `NOTICE`
   («OK …») no se muestran; con un cliente que sí los muestra (psql, abajo) sale además `SMOKE OK: N pasos`.
 - **Falló**: la CLI muestra el error de la API (`unexpected status 400: …`) con el mensaje `FAIL <paso>: <qué>`
@@ -42,7 +42,7 @@ esa cuenta bajo la RLS**, igual que PostgREST y `tests/sql/harness.ts`: `set loc
 
 | Parte | Qué comprueba |
 |---|---|
-| 0. Previo | Las 27 migraciones del repo están en `supabase_migrations.schema_migrations`; el boliche está `open`; lista el estado de cada deporte |
+| 0. Previo | Las 33 migraciones del repo están en `supabase_migrations.schema_migrations`; el boliche está `open`; lista el estado de cada deporte |
 | 1. Cuentas | Alta en `auth.users` → perfil por trigger (nombre, correo, mayor de 18), superadmin sembrado |
 | 2. Boliche | `create_league` (código, membresía, jugador del dueño), `create_player`, `invite_preview`/`invite_details`, `join_league` con código (minúsculas, repetido, código malo), práctica y torneo (handicap, categorías, equipos de 2), `add_entries`, `apply_teams`, `save_game` (sin foto obligatoria = `sin-foto`), `set_rsvp`, `add_practice_game` (no suma dos veces), `publish_live`, `submit_games` sin foto por evento y por fecha (idempotente con `p_op_id`, sale de «en vivo»), `approve_submission` (por fecha crea la práctica), `reject_submission` con nota, reacción y comentario |
 | Ranking | Como un miembro: las mismas lecturas que la app (`events`, `teams`, `event_rsvps`, `players`, `memberships`, `entries`, `submissions`, `reactions`, `comments`, `league_announcements`); promedio de juegos verificados (7 juegos = 180), primero del torneo, promedio global por `memberships`, `export_my_data` |
@@ -52,6 +52,7 @@ esa cuenta bajo la RLS**, igual que PostgREST y `tests/sql/harness.ts`: `set loc
 | Golf | `golf_save_course` (9 hoyos), `golf_create_round`, `golf_register`, `golf_save_hole_scores`, `golf_sign_card` |
 | Natación | `swim_create_meet`, `swim_save_events`, `swim_save_club`, `swim_register_swimmer`, `swim_enter` (admin y la propia nadadora), `swim_publish_heats`, `swim_record_heat` |
 | Bloqueo | `admin_block_user` (superadmin) → `submit_games`, `set_rsvp`, `join_league`, `add_comment` fallan con `bloqueada`; leer sigue; `admin_unblock_user` y los dos quedan en `admin_audit_log`; vuelve a escribir |
+| 9c. Usuarios e invitaciones | El perfil nuevo trae un `@usuario` válido; el dueño se pone otro (`username_status` `ok` → `set_username` → `mine`, lo ve en `public_profile`; uno reservado falla con `reservado`); Ana lo ve `taken` y lo encuentra con `search_people('@…')`. El dueño invita a Beto a la liga del boliche (`invite_to_league`): como ya está, `member`; Beto sale (`leave_league`), el dueño lo invita otra vez (`sent`, y `search_people` con la liga lo marca `invited`); Luis (miembro de la privada) no la lee, `league_invite_details` le da null e invitar le da `no_permitido`. Beto la ve (`my_league_invites`, `league_invite_details`), la acepta (`respond_league_invite`) y queda de miembro con su jugador; responder otra vez no cambia nada |
 | Consola | `admin_overview`, `admin_system` (backend, migraciones, cron), `admin_users`, `admin_leagues` |
 | **Tiene que fallar** | Alguien de fuera: no ve la liga privada (ni jugadores, miembros, código, partidos), no entra sin código, no confirma resultados. Un miembro: `approve_submission`, `create_event`, `save_game`, `renew_invite_code`, `league_announce`, `delete_league`, todos los `admin_*`, `set_superadmin`, `set_sport_status`, crear liga de un deporte en beta → `no_permitido`; `insert`/`update`/`delete` directo → `42501`; no lee perfiles ajenos ni la auditoría. Quien propone no confirma ni reclama lo suyo; la capitana no nombra capitanes ni se lleva a alguien de otro equipo; un jugador no maneja la plantilla; una nadadora no inscribe a otro. Sin cuenta (`anon`): no ve ligas privadas; `create_league`, `join_league`, `submit_games`, `publish_live`, `admin_overview`, `insert` directo y leer `profiles` → `42501` |
 

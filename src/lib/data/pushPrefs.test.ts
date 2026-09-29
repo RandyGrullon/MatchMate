@@ -1,8 +1,8 @@
 /**
  * Qué avisos llegan al teléfono (src/lib/data/pushPrefs.ts): de lo que guarda la base a las cuatro categorías, y de
  * punta a punta con la base de verdad (PGlite con las migraciones): el perfil las trae, set_push_prefs las cambia solo
- * para la cuenta que entró y el perfil guardado se pone al día. Si la base todavía no tiene la columna, el perfil se lee
- * igual (sin ellas).
+ * para la cuenta que entró y el perfil guardado se pone al día. Si la base todavía no tiene la columna (ni la de
+ * username), el perfil se lee igual (sin ellas).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fetchProfile, type AccountProfile } from '../auth';
@@ -71,31 +71,67 @@ describe('con la base de verdad', () => {
     ]);
   });
 
-  it('una columna que la base no tiene es 42703; sin push_prefs el perfil se lee igual (sin ellas)', async () => {
+  it('una columna que la base no tiene es 42703; sin push_prefs (o sin username) el perfil se lee igual (sin ellas)', async () => {
     await w.as('ana@x.com');
     await expect(select({ table: 'profiles', columns: 'id,nada', filters: [{ col: 'id', op: 'eq', value: ana }] })).rejects.toMatchObject({ code: '42703' });
 
     const base = w.b as Backend;
-    const reads: string[] = [];
-    // La base de antes de 20260929000500: sin la columna push_prefs.
-    const old = new Proxy(base, {
+    /** La base de antes de esas migraciones: sin esas columnas. 42703 nombra la primera que falta, como Postgres. */
+    const without = async (missing: string[], check: (profile: AccountProfile | null) => void) => {
+      const reads: string[] = [];
+      const old = new Proxy(base, {
+        get(target, prop) {
+          if (prop === 'select')
+            return async (q: { table: string; columns?: string }) => {
+              reads.push(q.columns ?? '*');
+              const col = (q.columns ?? '').split(',').find((c) => missing.includes(c));
+              if (col) throw new BackendError(`column profiles.${col} does not exist`, 'unknown', '42703');
+              return target.select(q);
+            };
+          const v = Reflect.get(target, prop);
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+      });
+      w.use(old);
+      try {
+        check(await fetchProfile(ana));
+      } finally {
+        w.use(base);
+      }
+      return reads;
+    };
+
+    // Antes de 20260929000500 (sin push_prefs): con su @usuario, sin preferencias.
+    expect(
+      await without(['push_prefs'], (profile) => {
+        expect(profile).toMatchObject({ id: ana, name: 'Ana', username: 'ana', adultConfirmedAt: null });
+        expect(profile && 'pushPrefs' in profile).toBe(false);
+      }),
+    ).toEqual(['id,email,name,is_superadmin,adult_confirmed_at,username,push_prefs', 'id,email,name,is_superadmin,adult_confirmed_at,username']);
+
+    // Antes de 20260929000200 (tampoco username): el perfil igual, con el @usuario vacío.
+    expect(
+      await without(['username', 'push_prefs'], (profile) => {
+        expect(profile).toMatchObject({ id: ana, name: 'Ana', username: '', adultConfirmedAt: null });
+        expect(profile && 'pushPrefs' in profile).toBe(false);
+      }),
+    ).toEqual([
+      'id,email,name,is_superadmin,adult_confirmed_at,username,push_prefs',
+      'id,email,name,is_superadmin,adult_confirmed_at,push_prefs',
+      'id,email,name,is_superadmin,adult_confirmed_at',
+    ]);
+
+    // Otro error no se tapa.
+    const broken = new Proxy(base, {
       get(target, prop) {
-        if (prop === 'select')
-          return async (q: { table: string; columns?: string }) => {
-            reads.push(q.columns ?? '*');
-            if (q.columns?.includes('push_prefs')) throw new BackendError('column profiles.push_prefs does not exist', 'unknown', '42703');
-            return target.select(q);
-          };
+        if (prop === 'select') return async () => Promise.reject(new BackendError('no_permitido', 'permission', '42501'));
         const v = Reflect.get(target, prop);
         return typeof v === 'function' ? v.bind(target) : v;
       },
     });
-    w.use(old);
+    w.use(broken);
     try {
-      const profile = await fetchProfile(ana);
-      expect(profile).toMatchObject({ id: ana, name: 'Ana', adultConfirmedAt: null });
-      expect(profile && 'pushPrefs' in profile).toBe(false);
-      expect(reads).toEqual(['id,email,name,is_superadmin,adult_confirmed_at,push_prefs', 'id,email,name,is_superadmin,adult_confirmed_at']);
+      await expect(fetchProfile(ana)).rejects.toMatchObject({ code: '42501' });
     } finally {
       w.use(base);
     }

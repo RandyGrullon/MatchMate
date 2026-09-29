@@ -10,6 +10,7 @@ import { useNotifications } from '../components/Notifications';
 import { PushOptInCard } from '../components/NotificationsOptIn';
 import { useCurrentSport } from '../components/notifications/bridge';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
+import { InvitesCard } from '../components/notifications/InvitesCard';
 import { NoticeList, NoticeListSkeleton } from '../components/notifications/NoticeList';
 import { AppShell } from '../components/Shell';
 import { Button, Empty, Loading, LoadError } from '../components/ui';
@@ -30,7 +31,8 @@ const FILTER_EMPTY: Record<NoticeFilter, string> = {
  * comentarios y seguidores, lo que falta por aprobar), del más nuevo al más viejo, por Hoy, Esta semana y Antes.
  * Se filtra por tipo (`?ver=`) y, con ligas de varios deportes, por deporte (`?deporte=`; si la app está en un
  * deporte, arranca en ese). Tocar un aviso lleva a lo suyo y lo marca leído. Sale de la copia del teléfono: sin
- * señal se ve lo último que llegó.
+ * señal se ve lo último que llegó. Arriba de todo, las invitaciones a ligas que faltan por responder (con
+ * Aceptar y Rechazar ahí mismo).
  */
 export default function NotificationsPage() {
   const auth = useAuth();
@@ -208,6 +210,8 @@ export default function NotificationsPage() {
         </div>
 
         <PushOptInCard />
+
+        <InvitesCard uid={auth.user.uid} now={now} />
 
         <div className="flex flex-col">
           <FilterChips label="Filtrar avisos por tipo" items={filterItems} value={filter} onChange={(f) => setParam('ver', f === 'todo' ? null : f)} />

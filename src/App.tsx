@@ -26,6 +26,8 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const SportHomePage = lazy(() => import('./pages/SportHomePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
+const PeopleSearchPage = lazy(() => import('./pages/PeopleSearchPage'));
+const InvitePage = lazy(() => import('./pages/InvitePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
 const JoinPage = lazy(() => import('./pages/JoinPage'));
@@ -125,6 +127,9 @@ export default function App() {
                       <Route path="/d/:sport" element={<Screen area="deporte" framed><SportHomeRoute /></Screen>} />
                       <Route path="/avisos" element={<Screen area="avisos" framed><NotificationsPage /></Screen>} />
                       <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
+                      <Route path="/buscar" element={<Screen area="buscar" framed><PeopleSearchPage /></Screen>} />
+                      {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}
+                      <Route path="/invitacion/:inviteId" element={<Screen area="invitacion" framed><InvitePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
                       <Route path="/ligas" element={<Screen area="ligas" framed><LeaguesPage /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />

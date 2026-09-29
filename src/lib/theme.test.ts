@@ -1,6 +1,35 @@
-import { describe, expect, it } from 'vitest';
-import { ACCENT_PRESETS, accentCss, accentVars, contrast, parseHex, scopedVarsCss, sportAccentCss } from './theme';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ACCENT_PRESETS, accentCss, accentVars, contrast, loadTheme, parseHex, saveTheme, scopedVarsCss, sportAccentCss } from './theme';
 import { SPORTS } from '../sports/registry';
+
+describe('apariencia guardada', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const memory = (init: Record<string, string>) => {
+    const m = new Map(Object.entries(init));
+    return {
+      map: m,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  };
+
+  it('el color que se eligió antes ya no cuenta: queda el modo y el color lo pone el deporte', () => {
+    vi.stubGlobal('localStorage', memory({ 'mm:tema': JSON.stringify({ mode: 'dark', accent: '#dc2626' }) }));
+    expect(loadTheme()).toEqual({ mode: 'dark', accent: null });
+  });
+
+  it('al guardar se borra el color viejo y solo queda el modo', () => {
+    const store = memory({ 'mm:tema': JSON.stringify({ mode: 'system', accent: '#dc2626' }), 'mm:tema-css': 'html:root{--accent:#dc2626}' });
+    vi.stubGlobal('localStorage', store);
+    // Sin página (Node): saveTheme guarda y no pinta nada.
+    vi.stubGlobal('document', { documentElement: { dataset: {} }, getElementById: () => null, querySelectorAll: () => [] });
+    saveTheme({ mode: 'light', accent: '#dc2626' });
+    expect(JSON.parse(store.map.get('mm:tema')!)).toEqual({ mode: 'light' });
+    expect(store.map.has('mm:tema-css')).toBe(false);
+  });
+});
 
 describe('color de la app', () => {
   it('cualquier color se lee sobre el fondo claro y el oscuro, con su texto encima', () => {
