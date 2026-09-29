@@ -885,6 +885,35 @@ describe('fusiones, menores y mis datos', () => {
     expect((await profile(w.u.nuevo, w.u.nuevo))!.leagueAwards.map((x) => x.id).sort()).toEqual(sorted([oldOne, other, onlyMine]));
   });
 
+  const selfLinks = () => db.admin<{ player_id: string; user_id: string }>('select player_id, user_id from private.badge_self_links order by created_at, player_id');
+
+  it('un admin que se vinculó él mismo reclama otro jugador: se aprueba y la marca queda en el reclamado (no frena el guardia)', async () => {
+    const mine = await player(db, w.priv, 'Sofi vieja');
+    await db.rpc(w.u.sofi, 'link_account_to_player', { p_player: mine, p_user: w.u.sofi });
+    expect(await selfLinks()).toEqual([{ player_id: mine, user_id: w.u.sofi }]);
+    const claim = await db.rpc<string>(w.u.sofi, 'request_player_claim', { p_player: w.p.pedro });
+    expect(await db.admin('select status from public.player_claims where id = $1', [claim])).toEqual([{ status: 'approved' }]);
+    expect(await db.count('public.players', 'id = $1', [mine])).toBe(0);
+    expect(await db.admin('select user_id from public.players where id = $1', [w.p.pedro])).toEqual([{ user_id: w.u.sofi }]);
+    expect(await selfLinks()).toEqual([{ player_id: w.p.pedro, user_id: w.u.sofi }]);
+  });
+
+  it('juntar duplicados con el jugador que un admin se vinculó como el que se va: se junta y la marca pasa al que queda', async () => {
+    const mine = await player(db, w.priv, 'Sofi vieja');
+    const keep = await player(db, w.priv, 'Sofi');
+    await db.rpc(w.u.sofi, 'link_account_to_player', { p_player: mine, p_user: w.u.sofi });
+    expect(await db.rpc(w.u.org, 'merge_league_players_preview', { p_league: w.priv, p_keep: keep, p_drop: mine })).toMatchObject({ canMerge: true });
+    // Lo junta el dueño (no la misma cuenta): la marca del que queda sale de merge_badges, no del trigger del vínculo.
+    expect(await db.rpc(w.u.org, 'merge_league_players', { p_league: w.priv, p_keep: keep, p_drop: mine })).toMatchObject({
+      playerId: keep,
+      removedId: mine,
+      userId: w.u.sofi,
+    });
+    expect(await db.count('public.players', 'id = $1', [mine])).toBe(0);
+    expect(await selfLinks()).toEqual([{ player_id: keep, user_id: w.u.sofi }]);
+    expect(await db.admin('select private.badge_verified_only($1, $2) as v', [keep, w.u.sofi])).toEqual([{ v: true }]);
+  });
+
   it('liga con menores: se diseña y se da igual, pero solo la ven sus miembros', async () => {
     const { kids, kid, luis: kidsLuis } = await kidsLeague();
     const badge = await makeDesign(w.u.org, kids, { limit_kind: 'abierta', name: 'Buen compañero' });

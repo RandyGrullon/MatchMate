@@ -426,10 +426,13 @@ begin
                     and (o.awarded_at, o.id) < (f.awarded_at, f.id));
   update public.league_badge_awards x set player_id = p_into where x.player_id = p_from;
 
-  -- «Se vinculó él mismo» (…1110, §1.6) pasa al que queda: ese historial ahora está ahí.
+  -- «Se vinculó él mismo» (…1110, §1.6) pasa al que queda: ese historial ahora está ahí. La fila del que se va se
+  -- borra aquí (tiene FK a players: si quedara, el guardia del catálogo de merge_players_base frenaría toda unión de
+  -- un jugador marcado con 'conflicto: private.badge_self_links').
   insert into private.badge_self_links (player_id, user_id, created_at)
   select p_into, s.user_id, s.created_at from private.badge_self_links s where s.player_id = p_from
   on conflict (player_id) do nothing;
+  delete from private.badge_self_links s where s.player_id = p_from;
   -- Si el que queda ya es de una cuenta (juntar un jugador sin cuenta con el de un admin), lo que esa cuenta le dio o
   -- le confirmó se va (nadie se da insignias a sí mismo).
   perform private.badge_link_guard(p_into);
