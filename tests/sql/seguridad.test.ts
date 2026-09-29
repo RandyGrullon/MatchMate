@@ -59,10 +59,13 @@ const RPC_AUTHENTICATED = [
   'social_notices', 'unfollow_user',
   // Reclamos: «ese jugador soy yo» y el admin lo aprueba.
   'cancel_player_claim', 'decide_player_claim', 'player_claim_conflicts', 'request_player_claim',
+  // Temporadas, campeones, playoffs, marcas del boliche y «¿Dónde juego esta semana?».
+  'close_season', 'start_season', 'league_seasons', 'league_champions', 'create_playoffs', 'delete_playoffs', 'sync_playoffs',
+  'bowling_game_context', 'public_agenda',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
-const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview'];
+const ANON_ALLOWED = ['private.readable_leagues', 'public.invite_preview', 'public.public_agenda'];
 
 describe('canario: la RLS se aplica en PGlite', () => {
   it('como authenticated no es superusuario y solo ve lo suyo', async () => {

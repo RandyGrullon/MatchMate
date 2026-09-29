@@ -108,7 +108,8 @@ declare
     '20260926000700', '20260926001000', '20260926001100', '20260926001200', '20260926001300', '20260927000100',
     '20260927000400', '20260927000500', '20260927000600', '20260927000690', '20260927000700', '20260927000790',
     '20260927000800', '20260927000900', '20260927001100', '20260927001190', '20260927001200', '20260927001290',
-    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100'];
+    '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
+    '20260929000700'];
   v_missing text[];
   v_bowling text;
 begin
@@ -838,6 +839,65 @@ begin
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
+
+-- 5.3 Temporadas y playoffs: la liga nació con su temporada; el admin arma la final (al mejor de 1), la juegan, cierra
+-- la temporada con el campeón (aviso a la liga) y empieza otra copiando los equipos.
+select set_config('request.jwt.claims', pg_temp.jwt('super'), true);
+set local role authenticated;
+do $$
+declare
+  v_league uuid := pg_temp.id('foot');
+  v_season uuid;
+  v_po uuid;
+  v_game uuid;
+  v_next uuid;
+begin
+  select s.id into v_season from public.seasons s where s.league_id = v_league and s.status = 'active';
+  assert v_season is not null, 'FAIL temporadas: la liga no nació con su temporada activa';
+  assert (select count(*) from public.teams t where t.league_id = v_league and t.season_id = v_season) = 2, 'FAIL temporadas: los equipos no son de la temporada';
+  v_po := public.create_playoffs(p_league => v_league, p_season => v_season, p_teams => array[pg_temp.id('foot_team'),
+            (select t.id from public.teams t where t.league_id = v_league and t.name = 'Smoke Rival')], p_best_of => array[1]);
+  select m.id into v_game from public.matches m join public.playoff_series x on x.id = m.series_id where x.playoff_id = v_po;
+  assert v_game is not null, 'FAIL playoffs: no se programó el juego de la final';
+  perform public.finish_match(p_match => v_game, p_score => '{"text": "2-1", "sides": [2, 1]}', p_winner => 1::smallint);
+  assert (select p.status = 'finished' and p.winner = pg_temp.id('foot_team') from public.playoffs p where p.id = v_po),
+    'FAIL playoffs: la final no dejó campeón';
+  perform pg_temp.ok('playoffs: el admin arma la final, se juega y Smoke FC queda campeón');
+  perform public.close_season(p_season => v_season, p_standings => '{"rows": []}',
+                              p_awards => jsonb_build_array(jsonb_build_object('kind', 'campeon', 'team_id', pg_temp.id('foot_team'))));
+  assert (select a.body from public.league_announcements a where a.league_id = v_league) like 'Terminó % campeón Smoke FC',
+    'FAIL temporadas: no salió el aviso del campeón';
+  v_next := public.start_season(p_league => v_league, p_name => 'Smoke Temporada 2', p_starts_on => current_date + 1, p_copy_teams => true);
+  assert (select count(*) from public.teams t where t.season_id = v_next) = 2, 'FAIL temporadas: no se copiaron los equipos';
+  perform pg_temp.put('foot_season', v_season::text);
+  perform pg_temp.ok('temporadas: el admin cierra la temporada con el campeón (aviso a la liga) y empieza otra con los equipos copiados');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 5.4 Luis (jugador) lee las temporadas y los campeones, y no cierra nada; sin cuenta, la agenda pública responde.
+select set_config('request.jwt.claims', pg_temp.jwt('luis'), true);
+set local role authenticated;
+do $$
+declare
+  v jsonb := public.league_seasons(p_league => pg_temp.id('foot'));
+begin
+  assert jsonb_array_length(v) = 2 and v -> 1 -> 'playoffs' -> 0 -> 'champion' ->> 'name' = 'Smoke FC', format('FAIL temporadas: league_seasons %s', v);
+  assert public.league_champions(p_league => pg_temp.id('foot')) -> 0 -> 'champion' ->> 'name' = 'Smoke FC', 'FAIL temporadas: league_champions';
+  perform pg_temp.ok('temporadas: un jugador lee las temporadas (con la final) y los campeones');
+  perform pg_temp.must_fail('permisos: un jugador no cierra la temporada',
+    format('select public.close_season(p_season => %L, p_standings => %L)', pg_temp.id('foot_season'), '{}'), array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+set local role anon;
+do $$
+begin
+  assert jsonb_typeof(public.public_agenda(p_days => 7) -> 'items') = 'array', 'FAIL agenda: public_agenda sin cuenta';
+  perform pg_temp.ok('agenda: «¿Dónde juego esta semana?» responde sin cuenta');
+end $$;
+reset role;
 
 -- =====================================================================================================================
 -- 6. Golf (lo mínimo): campo de 9 hoyos, ronda, inscripción, tarjeta y firma

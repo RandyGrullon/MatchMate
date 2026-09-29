@@ -270,7 +270,7 @@ at, origin, parent }`. Más de 400 jugadas: las viejas pasan a `base` (se pueden
 | `StandingsTable` | `StandingRow[]` con PJ G (E) P, a favor/en contra/dif. y Pts; «i» con el desempate (`decidedBy`) | `rows`, `nameOf`, `columns` (`defaultColumns({draws, forLabel:'Sets'})`), `highlight`, `primary` |
 | `ResultEntryModal` | Modo «solo resultado» en 10 s con lector enchufable; `mode` `finish` \| `correct` \| `resolve` | `lid`, `match`, `parser`, `examples`, `placeholder`, `onSubmit?` |
 | `ScheduleList` | Calendario por ronda/jornada o por día | `matches`, `groupBy`, `roundWord`, `linkOf`, `mySide`, `renderMatch` |
-| `BracketView` | Cuadro de `src/sports/formats/knockout` (columnas por ronda, 3.er lugar, campeón) | `bracket`, `nameOf`, `matchOf(bracketKey)`, `onMatch` |
+| `BracketView` | Cuadro de `src/sports/formats/knockout` (columnas por ronda, 3.er lugar, campeón); también la llave de los playoffs (`playoffBracket`, con las victorias de cada serie) | `bracket`, `nameOf`, `matchOf(bracketKey)`, `scoreOf(bm)`, `onMatch` |
 | `ShareResultCard` | Texto para WhatsApp (link `wa.me`), compartir o copiar | `match`, `title`, `roundWord`, `url` |
 
 Lectores de marcador (`parsers.ts`): `racketResultParser(rules, setup?)` («6-4 3-6 10-7», «7-6(5) 6-4», «11-7 9-11
@@ -283,6 +283,8 @@ Lectores de marcador (`parsers.ts`): `racketResultParser(rules, setup?)` («6-4 
 1. Sus pantallas en `src/pages/sports/<sportId>/screens.tsx` (`Home`, `Event`, `Standings`, `Feed`, `MyProfile`…).
 2. Arma el calendario con `src/sports/formats` y lo guarda con `createMatches` (ids del teléfono, un lote).
 3. Su `CourtAdapter` y su lector de «solo resultado».
-4. Sus tablas: `finalMatches` → `MatchResult` de su motor → `StandingsTable`.
+4. Sus tablas: `finalMatches` → `MatchResult` de su motor → `StandingsTable`, con los partidos de la temporada elegida
+   (`seasonMatches` de `src/components/season/logic.ts`, sin los del playoff: `isPlayoffMatch`) y el selector de
+   `src/components/season/SeasonView.tsx`. Para cerrar la temporada, `SportScreens.useSeasonTable` arma la foto.
 5. Si necesita más validación en la base (p. ej. límites del marcador de su deporte), la agrega en **su** migración
    con un trigger sobre `matches` que mire `private.league_family`/`leagues.sport` (sin tocar esta).
