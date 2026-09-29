@@ -3,6 +3,7 @@ import { getBackend } from '../backend';
 import { BackendError, type Backend, type SelectQuery } from '../backend/types';
 import { createOutbox, useOutbox, type EnqueueOptions, type Outbox, type OutboxItem, type OutboxSnapshot, type SettleOutcome } from '../db/outbox';
 import { createQueryClient, type QueryOptions } from '../db/query';
+import { appVersion } from '../errorReport';
 import { stamped, type Wire } from './stamp';
 import { sweepPhotos, withPhotoUploads } from './uploads';
 
@@ -129,6 +130,8 @@ function openOutbox(userId: string): Outbox {
     userId,
     onEnqueue: (item) => run(enqueueHooks, item),
     onSettled: (item, outcome) => run(settledHooks, item, outcome),
+    // Lo que el servidor no reconoció espera la versión nueva; si con otra versión sigue igual, es un rechazo.
+    appVersion: appVersion(),
   });
   // Las fotos guardadas que ya ninguna operación usa (se enviaron o se descartaron) se borran.
   void ob.ready.then(() => sweepPhotos(userId, [...ob.listPending(), ...ob.listFailed()]));

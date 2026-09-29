@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, Share, X } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { NEEDS_UPDATE_MESSAGE, reloadOnTakeover, startUpdateChecks, updateApp, updatePrompt, updateRequested } from '../lib/appUpdate';
+import { useOutboxSnapshot } from '../lib/data';
+import { currentOutbox } from '../lib/data/client';
 import { Button } from './ui';
 
 interface InstallEvent extends Event {
@@ -35,16 +38,39 @@ function Banner({ icon, children, onClose }: { icon: React.ReactNode; children: 
 
 /**
  * Avisos de la app instalable:
- * - hay una versión nueva → botón para actualizar (sin perder lo que se está haciendo hasta que el usuario toque);
+ * - algo de la cola espera la versión nueva (el servidor ya no tiene esa función) → actualizar para enviarlo;
+ * - hay una versión nueva → botón para actualizar (sin perder lo que se está haciendo hasta que el usuario toque).
+ *   Se pregunta por ella al volver a la app, al volver la señal y cada 30 minutos (src/lib/appUpdate.ts). Si otra
+ *   pestaña la activó y aquí hay algo por enviar, no se recarga sola: se muestra el aviso;
  * - en Android, botón "Instalar"; en iPhone, cómo agregarla a la pantalla de inicio.
  */
 export function PwaPrompts() {
+  const outbox = useOutboxSnapshot();
+  const [takenOver, setTakenOver] = useState(false);
+  // Otra versión nueva que quedó esperando después de la primera (workbox ya no la avisa: ver appUpdate.ts).
+  const [waitingFound, setWaitingFound] = useState(false);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW();
+  } = useRegisterSW({
+    onRegisteredSW: (_url, reg) => {
+      if (reg) startUpdateChecks(reg, () => setWaitingFound(true));
+    },
+    // La versión nueva tomó el control (la activó esta pestaña u otra): sin nada por enviar se recarga como siempre.
+    onNeedReload: () => {
+      const pending = currentOutbox()?.getSnapshot().pendingCount ?? 0;
+      if (reloadOnTakeover({ requested: updateRequested(), pending })) location.reload();
+      else setTakenOver(true);
+    },
+  });
+  const [updating, setUpdating] = useState(false);
+  const [hideNeedsUpdate, setHideNeedsUpdate] = useState(false);
   const [installEvent, setInstallEvent] = useState<InstallEvent | null>(null);
   const [showIos, setShowIos] = useState(false);
+
+  // Si se cerró el aviso y la cola vuelve a quedar esperando otra vez, se muestra de nuevo.
+  useEffect(() => {
+    if (!outbox.needsUpdate) setHideNeedsUpdate(false);
+  }, [outbox.needsUpdate]);
 
   useEffect(() => {
     if (standalone() || recentlyDismissed()) return;
@@ -71,11 +97,37 @@ export function PwaPrompts() {
     setShowIos(false);
   }
 
-  if (needRefresh) {
+  function update() {
+    setUpdating(true);
+    void updateApp();
+  }
+
+  const prompt = updatePrompt({ needsUpdate: outbox.needsUpdate && !hideNeedsUpdate, newVersion: needRefresh || takenOver || waitingFound });
+
+  if (prompt === 'needs_update') {
     return (
-      <Banner icon={<RefreshCw className="size-5" />} onClose={() => setNeedRefresh(false)}>
+      <Banner icon={<RefreshCw className="size-5" />} onClose={() => setHideNeedsUpdate(true)}>
+        <p className="font-medium">{NEEDS_UPDATE_MESSAGE}</p>
+        <Button size="sm" variant="primary" className="mt-1.5" loading={updating} onClick={update}>
+          Actualizar
+        </Button>
+      </Banner>
+    );
+  }
+
+  if (prompt === 'new_version') {
+    return (
+      <Banner
+        icon={<RefreshCw className="size-5" />}
+        onClose={() => {
+          setNeedRefresh(false);
+          setTakenOver(false);
+          setWaitingFound(false);
+        }}
+      >
         <p className="font-medium">Hay una versión nueva</p>
-        <Button size="sm" variant="primary" className="mt-1.5" onClick={() => updateServiceWorker(true)}>
+        {outbox.pendingCount > 0 && <p className="text-xs text-muted">Lo que tienes por enviar queda guardado y sale después de actualizar.</p>}
+        <Button size="sm" variant="primary" className="mt-1.5" loading={updating} onClick={update}>
           Actualizar
         </Button>
       </Banner>

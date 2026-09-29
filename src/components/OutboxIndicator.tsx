@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, CloudUpload, Copy, LogIn, RotateCcw, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CloudUpload, Copy, LogIn, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { updateApp } from '../lib/appUpdate';
 import { useCurrentOutbox, useOutboxSnapshot } from '../lib/data';
+import { isOutdatedCode } from '../lib/db/errors';
 import type { OutboxItem } from '../lib/db/outbox';
 import { useFeedback } from './feedback';
 import { Button, Modal } from './ui';
 
 /** Por qué el servidor no aceptó una operación de la cola, en palabras sencillas. */
 function reason(item: OutboxItem): string {
+  // Ya se intentó con la app actualizada y el servidor sigue sin reconocerla (ver src/lib/db/outbox.ts).
+  if (isOutdatedCode(item.errorCode)) return 'Se hizo con una versión vieja de la app y el servidor ya no lo acepta. Cópialo y anótalo de nuevo.';
   switch (item.errorKind) {
     case 'permission':
       return 'Ya no tienes permiso (¿te sacaron de la liga o te cambiaron el rol?).';
@@ -32,7 +36,8 @@ function copyText(item: OutboxItem): string {
 
 /**
  * Lo que está en la cola sin conexión: «N por enviar» mientras hay pendientes, «Enviado» cuando termina,
- * «No se pudo enviar» (para copiar, reintentar o descartar) y «Entra de nuevo» si venció la sesión.
+ * «No se pudo enviar» (para copiar, reintentar o descartar), «Entra de nuevo» si venció la sesión y «Actualiza»
+ * si algo espera la versión nueva de la app.
  */
 export function OutboxIndicator() {
   const snap = useOutboxSnapshot();
@@ -40,6 +45,7 @@ export function OutboxIndicator() {
   const { toast } = useFeedback();
   const [open, setOpen] = useState(false);
   const [justSent, setJustSent] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const before = useRef(0);
 
   useEffect(() => {
@@ -72,6 +78,19 @@ export function OutboxIndicator() {
           <span className="flex items-center gap-1.5 font-medium text-warn">
             <LogIn className="size-4" /> Sesión vencida: {snap.pendingCount} {snap.pendingCount === 1 ? 'pendiente espera' : 'pendientes esperan'} a que entres de nuevo
           </span>
+        ) : snap.needsUpdate ? (
+          // El servidor no reconoce algo de la cola: se envía con la versión nueva de la app.
+          <button
+            type="button"
+            disabled={updating}
+            onClick={() => {
+              setUpdating(true);
+              void updateApp();
+            }}
+            className="flex items-center gap-1.5 font-medium text-warn"
+          >
+            <RefreshCw className={`size-4${updating ? ' animate-spin' : ''}`} /> {snap.pendingCount} por enviar: actualiza la app
+          </button>
         ) : snap.pendingCount > 0 ? (
           <span className="flex items-center gap-1.5 text-muted">
             <CloudUpload className="size-4" /> {snap.pendingCount} por enviar

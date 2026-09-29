@@ -371,6 +371,235 @@ describe('cola sin conexión', () => {
     expect(box.getSnapshot()).toMatchObject({ pendingCount: 0, needsAuth: false });
   });
 
+  describe('el servidor no tiene la función o la columna (app vieja)', () => {
+    const missingFn = () => new BackendError('Could not find the function public.op_v1 in the schema cache', 'not_found', 'PGRST202');
+    /** ¿La promesa ya se cumplió o se rechazó? */
+    const isSettled = async (p: Promise<unknown>) => {
+      let settled = false;
+      p.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      for (let i = 0; i < 10; i++) await new Promise<void>((r) => nextTask(r));
+      return settled;
+    };
+
+    it('queda guardada esperando la versión nueva: no va a «no se pudo enviar», su grupo se detiene y los otros siguen', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      be.onRpc = (fn, args) => {
+        if (fn === 'op_v1') throw missingFn();
+        return args.i;
+      };
+      const box = make(be, newUser());
+      await box.ready;
+      const a1 = box.enqueue('op_v1', { i: 1 }, { group: 'A', label: 'Juegos del martes' });
+      const a2 = box.enqueue('op', { i: 2 }, { group: 'A' });
+      const b = box.enqueue('op', { i: 3 }, { group: 'B' });
+      await expect(b.done).resolves.toBe(3);
+      await box.idle();
+
+      expect(box.listFailed()).toEqual([]);
+      expect(box.getSnapshot()).toMatchObject({ pendingCount: 2, needsUpdate: true, needsAuth: false, failed: [] });
+      expect(box.listPending('A').map((i) => [i.args.i, i.status])).toEqual([
+        [1, 'needs_update'],
+        [2, 'pending'], // no se adelanta a la que espera
+      ]);
+      expect(box.listPending('A')[0]).toMatchObject({ attempts: 1, errorKind: 'not_found', errorCode: 'PGRST202', label: 'Juegos del martes' });
+      expect(box.listPending('A')[0].nextAttemptAt).toBeUndefined();
+
+      // En esta sesión no se reintenta: ni con el tiempo, ni al volver la señal o a la app (flush).
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      await box.flush();
+      await box.idle();
+      expect(be.calls.map((c) => c.args.i)).toEqual([1, 3]);
+      // No se perdió: quien esperaba sigue esperando (como sin señal).
+      expect(await isSettled(a1.done)).toBe(false);
+      expect(await isSettled(a2.done)).toBe(false);
+      expect((await pendingByUser())[box.userId]).toEqual({ pending: 2, failed: 0 });
+    });
+
+    it.each([
+      ['PGRST202 (PostgREST no encuentra la función)', () => new BackendError('x', 'not_found', 'PGRST202')],
+      ['PGRST204 (PostgREST no encuentra la columna)', () => new BackendError('x', 'validation', 'PGRST204')],
+      ['42883 (Postgres: no existe la función)', () => new BackendError('x', 'not_found', '42883')],
+      ['42703 (Postgres: no existe la columna)', () => new BackendError('x', 'unknown', '42703')],
+      ['un error crudo con el código', () => Object.assign(new Error('column "x" does not exist'), { code: '42703' })],
+    ])('%s: espera la versión nueva', async (_name, error) => {
+      be.onRpc = () => {
+        throw error();
+      };
+      const box = make(be, newUser());
+      box.enqueue('op', {});
+      await until(() => be.calls.length === 1);
+      await box.idle();
+      expect(box.getSnapshot()).toMatchObject({ pendingCount: 1, needsUpdate: true, failed: [] });
+      expect(box.listPending()[0].status).toBe('needs_update');
+    });
+
+    it.each([
+      ['no_existe de nuestras RPC', () => new BackendError('no_existe', 'not_found', 'P0001')],
+      ['invalido', () => new BackendError('invalido: puntaje', 'validation', 'P0001')],
+      ['no_permitido', () => new BackendError('no_permitido', 'permission', 'P0001')],
+    ])('los errores del negocio (%s) siguen yendo a «no se pudo enviar»', async (_name, error) => {
+      be.onRpc = () => {
+        throw error();
+      };
+      const box = make(be, newUser());
+      const { done } = box.enqueue('op', {});
+      await expect(done).rejects.toMatchObject({ code: 'P0001' });
+      await box.idle();
+      expect(box.getSnapshot()).toMatchObject({ pendingCount: 0, needsUpdate: false });
+      expect(box.listFailed()).toHaveLength(1);
+    });
+
+    it('al abrir de nuevo se reintenta como siempre, en orden (la base ya tiene la función)', async () => {
+      let serverHasIt = false;
+      be.onRpc = (fn, args) => {
+        if (fn === 'op_v2' && !serverHasIt) throw missingFn();
+        return args.i;
+      };
+      const user = newUser();
+      const first = make(be, user, { appVersion: 'v1' });
+      first.enqueue('op_v2', { i: 1 }, { group: 'L' });
+      first.enqueue('op', { i: 2 }, { group: 'L' });
+      await until(() => be.calls.length === 1);
+      await first.idle();
+      expect(first.getSnapshot().needsUpdate).toBe(true);
+      first.dispose(); // se tocó «Actualizar»: la página se recarga
+
+      serverHasIt = true;
+      const second = make(be, user, { appVersion: 'v2', autoStart: false });
+      await second.ready;
+      expect(second.getSnapshot()).toMatchObject({ pendingCount: 2, needsUpdate: true }); // guardada, no perdida
+      await second.flush();
+      expect(be.calls.map((c) => [c.fn, c.args.i])).toEqual([
+        ['op_v2', 1],
+        ['op_v2', 1],
+        ['op', 2],
+      ]);
+      expect(be.calls[0].args.p_op_id).toBe(be.calls[1].args.p_op_id); // el mismo opId: el servidor no duplica
+      expect(second.getSnapshot()).toMatchObject({ pendingCount: 0, needsUpdate: false, failed: [] });
+    });
+
+    it('con la misma versión (no había nada nuevo) se prueba una vez al abrir y vuelve a esperar', async () => {
+      be.onRpc = (fn, args) => {
+        if (fn === 'op_v2') throw missingFn();
+        return args.i;
+      };
+      const user = newUser();
+      const first = make(be, user, { appVersion: 'v1' });
+      first.enqueue('op_v2', { i: 1 }, { group: 'L' });
+      first.enqueue('op', { i: 2 }, { group: 'L' });
+      await until(() => be.calls.length === 1);
+      await first.idle();
+      first.dispose();
+
+      const second = make(be, user, { appVersion: 'v1' });
+      await until(() => be.calls.length === 2);
+      await second.idle();
+      await second.flush(); // en la misma sesión ya no
+      expect(be.calls.map((c) => c.args.i)).toEqual([1, 1]);
+      expect(second.getSnapshot()).toMatchObject({ pendingCount: 2, needsUpdate: true, failed: [] });
+      expect(second.listPending()[0]).toMatchObject({ status: 'needs_update', attempts: 2, outdatedIn: 'v1' });
+    });
+
+    it('si la versión nueva tampoco la reconoce, ya no es cosa de versiones: va a «no se pudo enviar» y el grupo sigue', async () => {
+      be.onRpc = (fn, args) => {
+        if (fn === 'op_v1') throw missingFn();
+        return args.i;
+      };
+      const user = newUser();
+      const first = make(be, user, { appVersion: 'v1' });
+      first.enqueue('op_v1', { i: 1 }, { group: 'L' });
+      first.enqueue('op', { i: 2 }, { group: 'L' });
+      await until(() => be.calls.length === 1);
+      await first.idle();
+      first.dispose();
+
+      const second = make(be, user, { appVersion: 'v2' });
+      await until(() => be.calls.length === 3);
+      await second.idle();
+      expect(be.calls.map((c) => c.args.i)).toEqual([1, 1, 2]);
+      expect(second.getSnapshot()).toMatchObject({ pendingCount: 0, needsUpdate: false });
+      expect(second.listFailed()).toEqual([expect.objectContaining({ status: 'failed', errorCode: 'PGRST202', outdatedIn: 'v1' })]);
+    });
+
+    it('se puede descartar mientras espera', async () => {
+      be.onRpc = () => {
+        throw missingFn();
+      };
+      const box = make(be, newUser());
+      const { opId, done } = box.enqueue('op_v1', {});
+      await until(() => be.calls.length === 1);
+      await box.idle();
+      await box.discard(opId);
+      await expect(done).rejects.toThrow('Se descartó sin enviar.');
+      expect(box.getSnapshot()).toMatchObject({ pendingCount: 0, needsUpdate: false });
+    });
+
+    it('en IndexedDB queda como pendiente con un reintento más tarde: una versión anterior de la app no se traba con ella', async () => {
+      be.onRpc = (fn, args) => {
+        if (fn === 'op_v1') throw missingFn();
+        return args.i;
+      };
+      const user = newUser();
+      const box = make(be, user);
+      const { opId } = box.enqueue('op_v1', { i: 1 }, { group: 'L' });
+      box.enqueue('op', { i: 2 }, { group: 'L' });
+      await until(() => be.calls.length === 1);
+      await box.idle();
+      expect(box.getSnapshot().needsUpdate).toBe(true);
+      box.dispose();
+      await new Promise<void>((r) => nextTask(r));
+
+      const db = await openDB('mm-outbox', 1);
+      const stored = (await db.getAll('ops')).filter((i) => i.userId === user);
+      const raw = stored.find((i) => i.opId === opId);
+      // Solo estados que conocen las versiones de antes (pending, sending, failed) y un reintento dentro de lo que
+      // aguanta setTimeout (2^31 − 1 ms).
+      expect(raw).toMatchObject({ status: 'pending', waitingUpdate: true });
+      expect(raw.nextAttemptAt).toBeGreaterThan(Date.now());
+      expect(raw.nextAttemptAt - Date.now()).toBeLessThan(2 ** 31 - 1);
+      // La vuelta de envío de esas versiones (29334d1): la primera de cada grupo que no falló y cuyo reintento ya
+      // llegó; si alguna de esas no estaba 'pending', su for (;;) no terminaba nunca.
+      const oldReady = (items: typeof stored, force: boolean) => {
+        const first = new Map<string, (typeof stored)[number]>();
+        for (const it of items) {
+          if (it.status === 'failed') continue;
+          const cur = first.get(it.group);
+          if (!cur || it.seq < cur.seq) first.set(it.group, it);
+        }
+        return [...first.values()].filter((h) => (force ? 0 : (h.nextAttemptAt ?? 0)) <= Date.now());
+      };
+      expect(oldReady(stored, false)).toEqual([]); // espera su reintento
+      expect(oldReady(stored, true).map((h) => [h.opId, h.status])).toEqual([[opId, 'pending']]); // al abrir, la envía
+
+      // Si la versión anterior la tomó y la dejó en «no se pudo enviar», la de ahora la ve así (no como esperando).
+      await db.put('ops', { ...raw, status: 'failed', lastError: 'x', nextAttemptAt: undefined });
+      db.close();
+      const next = make(be, user, { autoStart: false });
+      await next.ready;
+      expect(next.getSnapshot()).toMatchObject({ needsUpdate: false, pendingCount: 1 });
+      expect(next.listFailed().map((i) => i.opId)).toEqual([opId]);
+    });
+
+    it('las otras pestañas de la cuenta también se enteran (para mostrar el aviso) y no la reintentan', async () => {
+      be.onRpc = () => {
+        throw missingFn();
+      };
+      const user = newUser();
+      const tab1 = make(be, user);
+      const tab2 = make(be, user);
+      await Promise.all([tab1.ready, tab2.ready]);
+      await Promise.all([tab1.idle(), tab2.idle()]);
+      tab1.enqueue('op_v1', {});
+      await until(() => tab2.getSnapshot().needsUpdate, 'el aviso en la otra pestaña');
+      await Promise.all([tab1.idle(), tab2.idle()]);
+      expect(be.calls).toHaveLength(1);
+      expect(tab2.getSnapshot()).toMatchObject({ pendingCount: 1, needsUpdate: true });
+    });
+  });
+
   it('sin señal espera y envía solo cuando vuelve la conexión (evento online)', async () => {
     const win = new EventTarget();
     vi.stubGlobal('window', win);

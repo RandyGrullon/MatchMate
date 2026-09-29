@@ -2,46 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui';
-
-/** Espera (hasta 8 s) a que termine de instalarse la versión nueva que encontró `update()`. */
-function whenInstalled(reg: ServiceWorkerRegistration): Promise<ServiceWorker | null> {
-  const sw = reg.installing;
-  if (!sw) return Promise.resolve(reg.waiting);
-  return new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      resolve(reg.waiting);
-    };
-    const timer = setTimeout(done, 8000);
-    sw.addEventListener('statechange', () => {
-      if (sw.state === 'installed' || sw.state === 'redundant') done();
-    });
-  });
-}
-
-/**
- * Busca la versión nueva de la app (service worker) y recarga con ella. Sin service worker (o si no hay
- * nada nuevo todavía), solo recarga: lo nuevo llega igual la próxima vez que abra.
- */
-export async function updateApp(): Promise<void> {
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    if (reg) {
-      await reg.update().catch(() => undefined);
-      const waiting = reg.waiting ?? (await whenInstalled(reg));
-      if (waiting) {
-        navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
-        // El service worker de vite-plugin-pwa (registerType 'prompt') espera este mensaje para activarse.
-        waiting.postMessage({ type: 'SKIP_WAITING' });
-        setTimeout(() => location.reload(), 4000);
-        return;
-      }
-    }
-  } catch {
-    // sin service worker: recargar basta
-  }
-  location.reload();
-}
+import { updateApp } from '../../lib/appUpdate';
 
 /**
  * La liga es de un deporte que esta versión no conoce (la base ya tiene uno nuevo y el teléfono tiene la app

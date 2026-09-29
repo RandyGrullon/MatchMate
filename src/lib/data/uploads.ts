@@ -16,6 +16,13 @@ import { uploadScoreboardPhoto, type UploadedPhoto } from '../photos';
 
 export const PENDING_PHOTO = 'mm_pending_photo';
 
+/**
+ * Una foto subida hace más de esto se vuelve a subir antes de su RPC. Un archivo sin fila en photos se borra a los
+ * 30 días (storage_orphans en purge-photos), y la RPC puede esperar semanas en la cola (sin señal, o esperando la
+ * versión nueva de la app). Si el archivo sigue ahí, Storage dice que ya existe (misma ruta) y cuenta como subido.
+ */
+export const REUPLOAD_AFTER_MS = 7 * 86400_000;
+
 interface StashedPhoto {
   key: string;
   /** Cuenta que la envió (la cola es por cuenta). */
@@ -25,6 +32,8 @@ interface StashedPhoto {
   photoId: string;
   img: CompressedImage;
   uploaded?: UploadedPhoto;
+  /** Cuándo se subió (ms). Las guardadas antes no lo tienen: cuenta `at`. */
+  uploadedAt?: number;
   at: number;
 }
 
@@ -87,14 +96,16 @@ export const pendingPhotoKey = (p: unknown): string | null => {
 /** Lo que espera la RPC en `p_photo`. */
 export const photoArg = (up: UploadedPhoto) => ({ id: up.photoId, width: up.width, height: up.height, bytes: up.bytes, content_type: up.contentType });
 
-/** Sube la foto guardada (si no se subió ya) y devuelve el `p_photo` de verdad. */
+/** Sube la foto guardada (si no se subió ya, o si se subió hace más de REUPLOAD_AFTER_MS) y devuelve el `p_photo` de verdad. */
 async function uploadStashed(key: string): Promise<ReturnType<typeof photoArg> | null> {
   const s = await store();
   const stashed = await s.get(key);
   // Ya no está (se envió en otra pestaña o se borró): se manda sin foto antes que perder los juegos.
   if (!stashed) return null;
-  if (!stashed.uploaded) {
+  const now = Date.now();
+  if (!stashed.uploaded || now - (stashed.uploadedAt ?? stashed.at) > REUPLOAD_AFTER_MS) {
     stashed.uploaded = await uploadScoreboardPhoto(stashed.lid, stashed.img, stashed.photoId);
+    stashed.uploadedAt = now;
     await s.put(stashed);
   }
   return photoArg(stashed.uploaded);

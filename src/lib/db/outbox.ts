@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { BackendError, type Backend, type BackendErrorKind } from '../backend/types';
-import { asBackendError, classifyError, toError } from './errors';
+import { asBackendError, classifyError, isOutdatedAppError, toError } from './errors';
 import { uuidv7 } from './ids';
 
 /**
@@ -17,13 +17,19 @@ import { uuidv7 } from './ids';
  * - Sin señal o servidor caído: se reintenta con esperas crecientes (con algo de azar).
  * - Si el servidor dice que no (evento cerrado, sin permiso, datos malos): pasa a «no se pudo enviar»,
  *   visible para copiar o descartar, y no frena el resto.
+ * - Si el servidor no tiene esa función o columna (la app del teléfono es vieja, o la base todavía no se puso al
+ *   día): NO se pierde ni va a «no se pudo enviar». Queda guardada como `needs_update`, su grupo se detiene (no se
+ *   adelanta lo que venía detrás) y la pantalla pide actualizar. Al abrir de nuevo se vuelve a intentar; si con
+ *   otra versión de la app sigue igual, ya no es cosa de versiones y pasa a «no se pudo enviar». En IndexedDB va
+ *   como pendiente con `waitingUpdate` (ver StoredItem): una versión anterior de la app la reintenta sin trabarse.
  * - Se reanuda al volver la señal, al volver a la app y al abrirla (en iPhone no hay Background Sync).
  *
  * `done` se cumple cuando el servidor confirma y falla con el error si el servidor dijo que no: lo mismo que
- * las escrituras de Firestore que la app ya espera con Promise.race y un tiempo límite.
+ * las escrituras de Firestore que la app ya espera con Promise.race y un tiempo límite. Sin señal o esperando la
+ * versión nueva, sigue esperando.
  */
 
-export type OutboxStatus = 'pending' | 'sending' | 'failed';
+export type OutboxStatus = 'pending' | 'sending' | 'failed' | 'needs_update';
 
 export interface OutboxItem {
   opId: string;
@@ -47,6 +53,8 @@ export interface OutboxItem {
   nextAttemptAt?: number;
   /** Texto corto para la lista de «no se pudo enviar» (p. ej. «Juegos del martes»). */
   label?: string;
+  /** Versión de la app con la que el servidor no reconoció la función o columna (la primera vez). */
+  outdatedIn?: string;
 }
 
 export interface EnqueueOptions {
@@ -67,6 +75,8 @@ export interface OutboxSnapshot {
   sending: boolean;
   /** La sesión venció: hay que entrar de nuevo (o esperar a que se renueve) para enviar. */
   needsAuth: boolean;
+  /** Algo espera una versión nueva de la app (el servidor no tiene su función o columna): hay que actualizar. */
+  needsUpdate: boolean;
 }
 
 export interface OutboxOptions {
@@ -86,6 +96,11 @@ export interface OutboxOptions {
   /** Una RPC que no responde en este tiempo se trata como sin señal (se reintenta con el mismo opId). */
   sendTimeoutMs?: number;
   random?: () => number;
+  /**
+   * Versión de la app que corre (errorReport.appVersion). Con ella, lo que esperaba la versión nueva y ya se intentó
+   * con otra versión pasa a «no se pudo enviar»; sin ella, siempre sigue esperando.
+   */
+  appVersion?: string | null;
 }
 
 export interface Outbox {
@@ -122,8 +137,35 @@ const AUTH_MIN_WAIT_MS = 30_000;
 
 // ---------- Dónde se guarda ----------
 
+/**
+ * Así queda en IndexedDB. Lo que espera la versión nueva se guarda como `pending` con `waitingUpdate` y un reintento
+ * dentro de WAITING_UPDATE_RETRY_MS: las versiones de la app de antes de `needs_update` (p. ej. al volver a la versión
+ * anterior en Vercel) solo conocen pending, sending y failed, y con un estado que no conocen su vuelta de envío no
+ * terminaba nunca (se congelaba la pestaña y el candado de la cola). Para ellas es una pendiente que se reintenta más
+ * tarde (o ya, al abrir). En memoria la cola la ve como `needs_update`.
+ */
+type StoredItem = Omit<OutboxItem, 'status'> & { status: Exclude<OutboxStatus, 'needs_update'>; waitingUpdate?: true };
+
+/** Menos que el máximo de setTimeout (2^31 − 1 ms, unos 24 días): una versión anterior lo programa tal cual. */
+const WAITING_UPDATE_RETRY_MS = 6 * 3600_000;
+
+function toStored(item: OutboxItem): StoredItem {
+  const { status, ...rest } = item;
+  if (status === 'needs_update') return { ...rest, status: 'pending', waitingUpdate: true, nextAttemptAt: Date.now() + WAITING_UPDATE_RETRY_MS };
+  return { ...rest, status };
+}
+
+function fromStored(stored: StoredItem): OutboxItem {
+  const { waitingUpdate, ...item } = stored;
+  // Una versión anterior pudo tomarla y dejarla enviando, fallida o con otro reintento: entonces vale lo que dejó.
+  if (!waitingUpdate || item.status !== 'pending') return item;
+  const waiting: OutboxItem = { ...item, status: 'needs_update' };
+  delete waiting.nextAttemptAt;
+  return waiting;
+}
+
 interface OutboxDB extends DBSchema {
-  ops: { key: string; value: OutboxItem; indexes: { user: string } };
+  ops: { key: string; value: StoredItem; indexes: { user: string } };
 }
 
 interface Store {
@@ -153,15 +195,15 @@ async function openOutboxDB(): Promise<IDBPDatabase<OutboxDB>> {
 
 function idbStore(db: IDBPDatabase<OutboxDB>): Store {
   return {
-    all: (userId) => db.getAllFromIndex('ops', 'user', userId),
+    all: async (userId) => (await db.getAllFromIndex('ops', 'user', userId)).map(fromStored),
     async replace(remove, item) {
       const tx = db.transaction('ops', 'readwrite');
-      await Promise.all([...remove.map((id) => tx.store.delete(id)), ...(item ? [tx.store.put(item)] : []), tx.done]);
+      await Promise.all([...remove.map((id) => tx.store.delete(id)), ...(item ? [tx.store.put(toStored(item))] : []), tx.done]);
     },
     async patch(opId, patch) {
       const tx = db.transaction('ops', 'readwrite');
       const old = await tx.store.get(opId);
-      if (old) await tx.store.put(merge(old, patch));
+      if (old) await tx.store.put(toStored(merge(fromStored(old), patch)));
       await tx.done;
     },
     close: () => db.close(),
@@ -195,7 +237,7 @@ export async function pendingByUser(): Promise<Record<string, { pending: number;
   if (typeof indexedDB !== 'undefined') {
     try {
       const db = await openOutboxDB();
-      items = items.concat(await db.getAll('ops'));
+      items = items.concat((await db.getAll('ops')).map(fromStored));
       db.close();
     } catch {
       // sin IndexedDB solo cuenta la memoria
@@ -252,6 +294,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
   const maxMs = options.backoff?.maxMs ?? DEFAULT_MAX_MS;
   const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
   const random = options.random ?? Math.random;
+  const appVersion = options.appVersion ?? null;
   const lockName = `mm-outbox:${userId}`;
 
   const useIdb = (options.storage ?? (typeof indexedDB === 'undefined' ? 'memory' : 'idb')) === 'idb';
@@ -278,6 +321,8 @@ export function createOutbox(options: OutboxOptions): Outbox {
   let needsAuth = false;
   /** Con la sesión vencida, antes de esta hora solo se intenta si alguien fuerza (flush, online, volver a la app). */
   let authRetryAt = 0;
+  /** Lo que esperaba la versión nueva se vuelve a probar una vez por cola (al abrir la app, ya actualizada). */
+  let recheckOutdated = true;
   let disposed = false;
   let closed = false;
   let running: Promise<void> | null = null;
@@ -322,6 +367,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
       failed: all.filter((i) => i.status === 'failed').sort(bySeq),
       sending: all.some((i) => i.status === 'sending'),
       needsAuth,
+      needsUpdate: all.some((i) => i.status === 'needs_update'),
     };
   };
   let snapshot = computeSnapshot();
@@ -331,6 +377,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
       next.pendingCount === snapshot.pendingCount &&
       next.sending === snapshot.sending &&
       next.needsAuth === snapshot.needsAuth &&
+      next.needsUpdate === snapshot.needsUpdate &&
       next.failed.length === snapshot.failed.length &&
       next.failed.every((f, i) => f === snapshot.failed[i]);
     if (same) return;
@@ -474,7 +521,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
     return Promise.race([p, timeout]).finally(() => clearTimeout(t));
   }
 
-  /** La primera de cada grupo (las fallidas no frenan). */
+  /** La primera de cada grupo (las fallidas no frenan; las que esperan la versión nueva sí). */
   function heads(): OutboxItem[] {
     const first = new Map<string, OutboxItem>();
     for (const it of items.values()) {
@@ -485,7 +532,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
     return [...first.values()].sort(bySeq);
   }
 
-  async function sendOne(item: OutboxItem): Promise<'ok' | 'retry' | 'auth' | 'final' | 'stopped'> {
+  async function sendOne(item: OutboxItem): Promise<'ok' | 'retry' | 'auth' | 'final' | 'outdated' | 'stopped'> {
     update(item.opId, { status: 'sending' });
     emit();
     try {
@@ -514,6 +561,16 @@ export function createOutbox(options: OutboxOptions): Outbox {
       const cls = classifyError(err);
       const attempts = item.attempts + 1;
       const info = { attempts, lastError: error.message, errorKind: be?.kind ?? 'unknown', errorCode: be?.code ?? null } as const;
+      // El servidor no tiene esa función o columna: no es culpa de la operación. Se guarda hasta actualizar la app y
+      // su grupo espera. Si ya se intentó con otra versión de la app y sigue igual, va a «no se pudo enviar».
+      const since = item.outdatedIn;
+      if (isOutdatedAppError(err) && !(since && appVersion && since !== appVersion)) {
+        update(item.opId, { ...info, status: 'needs_update', nextAttemptAt: undefined, outdatedIn: since ?? appVersion ?? undefined });
+        emit();
+        // Las otras pestañas también muestran el aviso de actualizar (cuando ya quedó guardado).
+        void writes.then(() => post({ type: 'changed' }));
+        return 'outdated';
+      }
       if (cls === 'final') {
         update(item.opId, { ...info, status: 'failed', nextAttemptAt: undefined });
         emit();
@@ -577,13 +634,19 @@ export function createOutbox(options: OutboxOptions): Outbox {
       if (it.status === 'sending') update(it.opId, { status: 'pending' });
       if (force && it.nextAttemptAt != null && it.status !== 'failed') update(it.opId, { nextAttemptAt: undefined });
     }
+    // La primera vuelta con señal de esta cola (al abrir la app, quizás ya actualizada): lo que esperaba la versión
+    // nueva se vuelve a intentar. Después no: su grupo queda quieto hasta la próxima vez que se abra.
+    if (recheckOutdated && isOnline()) {
+      recheckOutdated = false;
+      for (const it of [...items.values()]) if (it.status === 'needs_update') update(it.opId, { status: 'pending' });
+    }
     collapseStored();
     emit();
     for (;;) {
       if (disposed || !isOnline()) return;
       if (needsAuth && !force && Date.now() < authRetryAt) return;
       const now = Date.now();
-      const ready = heads().filter((h) => (h.nextAttemptAt ?? 0) <= now);
+      const ready = heads().filter((h) => h.status !== 'needs_update' && (h.nextAttemptAt ?? 0) <= now);
       if (!ready.length) return;
       for (const head of ready) {
         const current = items.get(head.opId);
@@ -606,7 +669,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
     if (disposed || !isOnline()) return;
     const now = Date.now();
     let next = Infinity;
-    for (const h of heads()) next = Math.min(next, h.nextAttemptAt ?? now);
+    for (const h of heads()) if (h.status !== 'needs_update') next = Math.min(next, h.nextAttemptAt ?? now);
     if (!Number.isFinite(next)) return;
     if (needsAuth) next = Math.max(next, authRetryAt);
     timer = setTimeout(
@@ -753,10 +816,10 @@ export function createOutbox(options: OutboxOptions): Outbox {
   };
 }
 
-const EMPTY: OutboxSnapshot = { pendingCount: 0, failed: [], sending: false, needsAuth: false };
+const EMPTY: OutboxSnapshot = { pendingCount: 0, failed: [], sending: false, needsAuth: false, needsUpdate: false };
 const noopSubscribe = () => () => {};
 
-/** Estado de la cola para la pantalla («N por enviar», «no se pudo enviar», «entra de nuevo»). */
+/** Estado de la cola para la pantalla («N por enviar», «no se pudo enviar», «entra de nuevo», «actualiza»). */
 export function useOutbox(outbox: Outbox | null): OutboxSnapshot {
   return useSyncExternalStore(
     outbox ? outbox.subscribe : noopSubscribe,
