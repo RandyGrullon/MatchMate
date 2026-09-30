@@ -67,7 +67,7 @@ async function captureRealtime() {
 describe('deportes', () => {
   it('todos quedan abiertos; el superadmin todavía los pone en beta o los cierra', async () => {
     expect(await db.admin(`select id from public.sport_status where status <> 'open'`)).toEqual([]);
-    expect((await db.asAnon('select id from public.sport_status')).length).toBe(9);
+    expect((await db.asAnon('select id from public.sport_status')).length).toBe(10);
     // Cualquier cuenta crea ligas de cualquier deporte.
     const r = await db.rpc<{ league_id: string }>(w.u.nuevo, 'create_league', { p_name: 'Pádel del barrio', p_sport: 'padel' });
     expect(await db.admin('select sport from public.leagues where id = $1', [r.league_id])).toEqual([{ sport: 'padel' }]);
