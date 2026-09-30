@@ -11,7 +11,7 @@ import { seasonLeague, seasonStaff } from './season';
 import { basketballCareer, basketballMatch, footballCareer, footballMatch, teamCareer, teamMatch, teamPodium } from './team';
 import { yearAccount, yearLeague } from './year';
 
-/** Pádel, tenis y pickleball (§2.3), con su debut y su podio de torneo. */
+/** Pádel, tenis, pickleball y ping pong (§2.3), con su debut y su podio de torneo. */
 export const RACKET_EVALUATORS: EvaluatorSet = {
   debut: racketDebut,
   racket_career: racketCareer,

@@ -33,13 +33,13 @@ import type {
 // Ayudas para escribir el catálogo
 
 const ALL_SPORTS = Object.keys(SPORT_FAMILY) as SportId[];
-const RACKET: readonly SportId[] = ['padel', 'tennis', 'pickleball'];
+const RACKET: readonly SportId[] = ['padel', 'tennis', 'pickleball', 'table_tennis'];
 const TEAM: readonly SportId[] = ['basketball', 'football', 'futsal'];
 const FOOTBALL: readonly SportId[] = ['football', 'futsal'];
 /** Deportes con título del mes y del año (una tabla individual que el servidor puede recalcular). */
-const FIGURE: readonly SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'golf'];
+const FIGURE: readonly SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'table_tennis', 'golf'];
 /** Deportes con progreso contra la línea base (§1.7.6). */
-const PROGRESS: readonly SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'golf', 'swimming'];
+const PROGRESS: readonly SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'table_tennis', 'golf', 'swimming'];
 
 /** Niveles 1, 2, 3… con su umbral y la rareza de cada uno ('C PC R E'). */
 function tiers(rarities: string, thresholds: readonly ByVariant<number>[], extra: readonly (Partial<LevelDef> | undefined)[] = []): LevelDef[] {
@@ -81,6 +81,7 @@ const GENERAL: BadgeDef[] = [
       padel: 'Debut en la cancha',
       tennis: 'Debut en la cancha',
       pickleball: 'Debut en la cancha',
+      table_tennis: 'Debut en la mesa',
       basketball: 'Debut en la cancha',
       football: 'Debut en la cancha',
       futsal: 'Debut en la cancha',
@@ -243,7 +244,7 @@ const GENERAL: BadgeDef[] = [
   {
     key: 'event_podium',
     group: 'general',
-    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf'],
+    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'table_tennis', 'basketball', 'football', 'futsal', 'golf'],
     scope: 'liga',
     period: 'evento',
     category: 'resultados',
@@ -485,7 +486,7 @@ const BOWLING: BadgeDef[] = [
 ];
 
 // ---------------------------------------------------------------------------------------------------------
-// 2.3 Raqueta: pádel, tenis y pickleball
+// 2.3 Raqueta: pádel, tenis, pickleball y ping pong
 
 const RACKET_BADGES: BadgeDef[] = [
   {
@@ -517,7 +518,10 @@ const RACKET_BADGES: BadgeDef[] = [
     icon: 'award',
     name: 'Victorias',
     description: 'Ya llevas {n} victorias.',
-    how: 'Gana {n} partidos a sets que confirme el rival (máximo 3 por mes contra el mismo).',
+    how: {
+      default: 'Gana {n} partidos a sets que confirme el rival (máximo 3 por mes contra el mismo).',
+      table_tennis: 'Gana {n} partidos que confirme el rival (máximo 3 por mes contra el mismo).',
+    },
     unit: units('victoria', 'victorias'),
     compare: 'gte',
     levels: tiers('C PC R E', [5, 15, 40, 100]),
@@ -550,11 +554,16 @@ const RACKET_BADGES: BadgeDef[] = [
     category: 'marcas',
     shape: 'star',
     icon: 'target',
-    name: { default: 'Rosco', padel: 'Set en blanco', tennis: 'Set en blanco', pickleball: 'Juego en blanco' },
-    description: { default: 'Ganaste un set 6-0.', pickleball: 'Ganaste un juego sin que te anotaran.' },
-    how: { default: 'Gana un set sin ceder un juego, en un partido confirmado.', pickleball: 'Gana un juego sin que el rival anote, en un partido confirmado.' },
+    // «Zapatero»: así se dice en la República Dominicana cuando alguien pierde sin anotar (en el dominó y en la mesa).
+    name: { default: 'Rosco', padel: 'Set en blanco', tennis: 'Set en blanco', pickleball: 'Juego en blanco', table_tennis: 'Zapatero' },
+    description: { default: 'Ganaste un set 6-0.', pickleball: 'Ganaste un juego sin que te anotaran.', table_tennis: 'Ganaste un juego 11-0.' },
+    how: {
+      default: 'Gana un set sin ceder un juego, en un partido confirmado.',
+      pickleball: 'Gana un juego sin que el rival anote, en un partido confirmado.',
+      table_tennis: 'Gana un juego 11-0 en un partido confirmado.',
+    },
     compare: 'none',
-    levels: one({ padel: 'PC', tennis: 'PC', pickleball: 'R' }),
+    levels: one({ padel: 'PC', tennis: 'PC', pickleball: 'R', table_tennis: 'R' }),
     repeatable: true,
     evaluator: 'racket_match',
   },
@@ -568,10 +577,20 @@ const RACKET_BADGES: BadgeDef[] = [
     shape: 'star',
     icon: 'repeat',
     name: 'Remontada',
-    description: { default: 'Perdiste el primer set y le diste la vuelta.', pickleball: 'Perdiste el primer juego y le diste la vuelta.' },
-    how: { default: 'Gana un partido después de perder el primer set, sin retiro.', pickleball: 'Gana un partido después de perder el primer juego, sin retiro.' },
+    description: {
+      default: 'Perdiste el primer set y le diste la vuelta.',
+      pickleball: 'Perdiste el primer juego y le diste la vuelta.',
+      table_tennis: 'Ibas 0-2 en juegos y le diste la vuelta.',
+    },
+    how: {
+      default: 'Gana un partido después de perder el primer set, sin retiro.',
+      pickleball: 'Gana un partido después de perder el primer juego, sin retiro.',
+      table_tennis: 'Gana un partido al mejor de 5 o 7 después de perder los dos primeros juegos, sin retiro.',
+    },
     compare: 'none',
     levels: one('PC'),
+    // Sets (o juegos) perdidos al empezar: en ping pong, los dos primeros (0-2 en juegos).
+    params: { down: { default: 1, table_tennis: 2 } },
     repeatable: true,
     evaluator: 'racket_match',
   },
@@ -584,10 +603,18 @@ const RACKET_BADGES: BadgeDef[] = [
     category: 'marcas',
     shape: 'star',
     icon: 'zap',
-    name: { default: 'Sangre fría', pickleball: 'Al filo' },
-    description: { default: 'Ganaste {n} tie-breaks.', pickleball: 'Ganaste {n} juegos que se fueron más allá de {tope}.' },
-    how: { default: 'Gana {n} tie-breaks en partidos confirmados.', pickleball: 'Gana {n} juegos que se vayan más allá de los puntos del juego.' },
-    unit: { default: units('tie-break', 'tie-breaks'), pickleball: units('juego', 'juegos') },
+    name: { default: 'Sangre fría', pickleball: 'Al filo', table_tennis: 'Al filo' },
+    description: {
+      default: 'Ganaste {n} tie-breaks.',
+      pickleball: 'Ganaste {n} juegos que se fueron más allá de {tope}.',
+      table_tennis: 'Ganaste {n} juegos después del 10-10.',
+    },
+    how: {
+      default: 'Gana {n} tie-breaks en partidos confirmados.',
+      pickleball: 'Gana {n} juegos que se vayan más allá de los puntos del juego.',
+      table_tennis: 'Gana {n} juegos que se vayan más allá del 10-10 (12-10, 13-11…).',
+    },
+    unit: { default: units('tie-break', 'tie-breaks'), pickleball: units('juego', 'juegos'), table_tennis: units('juego', 'juegos') },
     compare: 'gte',
     levels: tiers('PC R E', [3, 10, 25]),
     evaluator: 'racket_career',
@@ -1382,7 +1409,7 @@ const MONTHLY: BadgeDef[] = [
     how: 'Sé el mejor de tu liga en el mes (promedio, victorias o diferencial), con el mínimo de juegos.',
     compare: 'none',
     levels: one('E'),
-    params: { minGames: { bowling: 9 }, minDates: { bowling: 3 }, minMatches: { padel: 4, tennis: 4, pickleball: 4 }, minCards: { golf: 2 } },
+    params: { minGames: { bowling: 9 }, minDates: { bowling: 3 }, minMatches: { padel: 4, tennis: 4, pickleball: 4, table_tennis: 4 }, minCards: { golf: 2 } },
     repeatable: true,
     title: true,
     evaluator: 'month_league',
@@ -1401,7 +1428,7 @@ const MONTHLY: BadgeDef[] = [
     how: 'Mejora más que nadie de tu liga contra tu propio nivel del mes anterior.',
     compare: 'none',
     levels: one('R'),
-    params: { minGain: { bowling: 6, padel: 8, tennis: 8, pickleball: 8, golf: 2, swimming: 2 } },
+    params: { minGain: { bowling: 6, padel: 8, tennis: 8, pickleball: 8, table_tennis: 8, golf: 2, swimming: 2 } },
     repeatable: true,
     title: true,
     evaluator: 'month_league',
@@ -1409,7 +1436,7 @@ const MONTHLY: BadgeDef[] = [
   {
     key: 'streak_month',
     group: 'mensual',
-    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf'],
+    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'table_tennis', 'basketball', 'football', 'futsal', 'golf'],
     scope: 'liga',
     period: 'mes',
     category: 'constancia',
@@ -1421,6 +1448,7 @@ const MONTHLY: BadgeDef[] = [
       padel: '¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.',
       tennis: '¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.',
       pickleball: '¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.',
+      table_tennis: '¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.',
       basketball: '{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.',
       football: '{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.',
       futsal: '{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.',
@@ -1429,7 +1457,7 @@ const MONTHLY: BadgeDef[] = [
     how: 'Ten la racha más larga de tu liga en el mes, contra tu propio nivel.',
     compare: 'none',
     levels: one('R'),
-    params: { minRun: { bowling: 6, padel: 4, tennis: 4, pickleball: 4, basketball: 4, football: 4, futsal: 4, golf: 3 }, teamShare: 0.75 },
+    params: { minRun: { bowling: 6, padel: 4, tennis: 4, pickleball: 4, table_tennis: 4, basketball: 4, football: 4, futsal: 4, golf: 3 }, teamShare: 0.75 },
     repeatable: true,
     title: true,
     evaluator: 'month_league',
@@ -1437,7 +1465,7 @@ const MONTHLY: BadgeDef[] = [
   {
     key: 'perfect_attendance_month',
     group: 'mensual',
-    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf'],
+    sports: ['bowling', 'padel', 'tennis', 'pickleball', 'table_tennis', 'basketball', 'football', 'futsal', 'golf'],
     scope: 'liga',
     period: 'mes',
     category: 'asistencia',
@@ -1660,7 +1688,7 @@ const YEARLY: BadgeDef[] = [
     how: 'Sé el mejor de tu liga en todo el año, con el mínimo de juegos.',
     compare: 'none',
     levels: one('E'),
-    params: { minGames: { bowling: 36 }, minMatches: { padel: 12, tennis: 12, pickleball: 12 }, minCards: { golf: 8 }, minAttendancePct: 40 },
+    params: { minGames: { bowling: 36 }, minMatches: { padel: 12, tennis: 12, pickleball: 12, table_tennis: 12 }, minCards: { golf: 8 }, minAttendancePct: 40 },
     repeatable: true,
     title: true,
     evaluator: 'year_league',
@@ -1680,10 +1708,10 @@ const YEARLY: BadgeDef[] = [
     compare: 'none',
     levels: one('E'),
     params: {
-      minGain: { bowling: 8, padel: 10, tennis: 10, pickleball: 10, golf: 2.5 },
+      minGain: { bowling: 8, padel: 10, tennis: 10, pickleball: 10, table_tennis: 10, golf: 2.5 },
       minPersonalBests: { swimming: 4 },
       window: { bowling: 30, golf: 6 },
-      minMatchesPerHalf: { padel: 8, tennis: 8, pickleball: 8 },
+      minMatchesPerHalf: { padel: 8, tennis: 8, pickleball: 8, table_tennis: 8 },
     },
     repeatable: true,
     title: true,
@@ -1755,10 +1783,10 @@ const SEASON: BadgeDef[] = [
     levels: one('E'),
     params: {
       minEligible: 6,
-      minGain: { bowling: 8, padel: 10, tennis: 10, pickleball: 10, golf: 2.5 },
+      minGain: { bowling: 8, padel: 10, tennis: 10, pickleball: 10, table_tennis: 10, golf: 2.5 },
       minPersonalBests: { swimming: 3 },
       minGames: { bowling: 24 },
-      minPerHalf: { padel: 5, tennis: 5, pickleball: 5, golf: 3 },
+      minPerHalf: { padel: 5, tennis: 5, pickleball: 5, table_tennis: 5, golf: 3 },
     },
     repeatable: true,
     title: true,
@@ -1797,7 +1825,7 @@ const SEASON: BadgeDef[] = [
     how: 'Juega el {n} % de las fechas de la temporada desde que empezaste.',
     compare: 'gte',
     levels: tiers('C PC R', [75, 90, 100]),
-    params: { minDates: { bowling: 8, padel: 6, tennis: 6, pickleball: 6, basketball: 6, football: 6, futsal: 6, golf: 4, swimming: 3 }, lineupShare: 0.8 },
+    params: { minDates: { bowling: 8, padel: 6, tennis: 6, pickleball: 6, table_tennis: 6, basketball: 6, football: 6, futsal: 6, golf: 4, swimming: 3 }, lineupShare: 0.8 },
     highestOnly: true,
     evaluator: 'season_league',
   },

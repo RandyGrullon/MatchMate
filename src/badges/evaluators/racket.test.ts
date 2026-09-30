@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { evaluate } from '../engine';
 import type { BadgeSnapshot, SnapEvent, SnapLadderChallenge, SnapMatch, SnapMatchPlayer, SnapMatchSide } from '../snapshot';
 import { matchSides, snapEvent, snapLeague, snapMatch } from '../testkit';
+import type { RacketSport } from '../../sports/racket';
 import { gives, job, NOW, of, player, revokes, row, snap, world } from './fixtures';
 
 /** Cuentas de los jugadores de raqueta (p9 sin cuenta). */
@@ -52,7 +53,7 @@ const join = (...bs: Built[]): Built => ({
 
 const day = (month: number, d: number) => `2026-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-function run(b: Built, over: Partial<BadgeSnapshot> = {}, j = job('resultado', { ref: `match:${b.matches[b.matches.length - 1].id}` }), sport: 'padel' | 'tennis' | 'pickleball' = 'padel') {
+function run(b: Built, over: Partial<BadgeSnapshot> = {}, j = job('resultado', { ref: `match:${b.matches[b.matches.length - 1].id}` }), sport: RacketSport = 'padel') {
   const w = world(sport, { players: PLAYERS, ...b, ...over });
   return evaluate(j, snap(j, w), NOW);
 }
@@ -130,6 +131,27 @@ describe('racket_career', () => {
     expect(of(ds, 'racket_tiebreaks').find((d) => d.user_id === 'u1')).toMatchObject({ sport: 'pickleball', level: 1 });
   });
 
+  it('Al filo (ping pong): juegos ganados después del 10-10 (12-10, 13-11…); un 11-9 no cuenta', () => {
+    const ms = [
+      mk('f1', day(3, 1), ['p1'], ['p3'], '12-10 11-5 13-11'),
+      mk('f2', day(3, 2), ['p1'], ['p5'], '11-9 14-12 8-11 11-3'),
+    ];
+    const ds = run(join(...ms), {}, undefined, 'table_tennis');
+    // f1: 2, f2: 1 → 3 (el bronce).
+    expect(of(ds, 'racket_tiebreaks').find((d) => d.user_id === 'u1')).toMatchObject({ sport: 'table_tennis', level: 1, refs: ['match:f2'] });
+    expect(of(ds, 'racket_tiebreaks', 'progress').find((d) => d.user_id === 'u1')).toMatchObject({ value: 3, target: 10 });
+    expect(of(ds, 'racket_tiebreaks').filter((d) => d.user_id === 'u3')).toEqual([]);
+  });
+
+  it('las de carrera corren para el ping pong (racketTargets): victorias y racha', () => {
+    const win = (id: string, d: string, rival: string) => mk(id, d, ['p1'], [rival], '11-7 11-8 11-9');
+    const ms = [win('w1', day(9, 1), 'p3'), win('w2', day(9, 2), 'p5'), win('w3', day(9, 3), 'p3'), win('w4', day(9, 4), 'p5'), win('w5', day(9, 5), 'p7')];
+    const ds = run(join(...ms), {}, undefined, 'table_tennis');
+    expect(of(ds, 'racket_wins').filter((d) => d.user_id === 'u1')).toEqual([expect.objectContaining({ sport: 'table_tennis', level: 1 })]);
+    expect(of(ds, 'racket_win_streak').filter((d) => d.user_id === 'u1').map((d) => `${d.sport}:${d.level}`)).toEqual(['table_tennis:1', 'table_tennis:2']);
+    expect(of(ds, 'racket_matches', 'progress').find((d) => d.user_id === 'u1')).toMatchObject({ sport: 'table_tennis', value: 5 });
+  });
+
   it('Buena química: victorias R2 en dobles con 3 compañeros distintos', () => {
     const ms = [mk('c1', day(4, 1), ['p1', 'p2'], ['p3', 'p4'], '6-2 6-2'), mk('c2', day(4, 2), ['p1', 'p5'], ['p3', 'p4'], '6-2 6-2'), mk('c3', day(4, 3), ['p1', 'p6'], ['p3', 'p4'], '6-2 6-2')];
     const ds = run(join(...ms));
@@ -187,6 +209,24 @@ describe('racket_match', () => {
   it('Juego en blanco (pickleball): 11-0', () => {
     const ds = run(mk('b2', day(6, 2), ['p1', 'p2'], ['p3', 'p4'], '11-0', { rules: { match: { gameTo: 11, bestOf: 1 } } }), {}, undefined, 'pickleball');
     expect(of(ds, 'racket_bagel').map((d) => d.player_id)).toEqual(['p1', 'p2']);
+  });
+
+  it('Zapatero (ping pong): un juego 11-0; con 11-1 no', () => {
+    const ds = run(mk('z1', day(6, 2), ['p1'], ['p3'], '11-0 9-11 11-5 11-8'), {}, undefined, 'table_tennis');
+    expect(of(ds, 'racket_bagel')).toEqual([expect.objectContaining({ player_id: 'p1', sport: 'table_tennis' })]);
+    // También perdiendo el partido.
+    const lost = run(mk('z2', day(6, 2), ['p1'], ['p3'], '11-0 9-11 5-11 8-11'), {}, undefined, 'table_tennis');
+    expect(of(lost, 'racket_bagel').map((d) => d.player_id)).toEqual(['p1']);
+    expect(of(run(mk('z3', day(6, 2), ['p1'], ['p3'], '11-1 11-5 11-8'), {}, undefined, 'table_tennis'), 'racket_bagel')).toEqual([]);
+  });
+
+  it('Remontada (ping pong): desde 0-2 en juegos al mejor de 5 y de 7; con 0-1 o al mejor de 3 no', () => {
+    const tt = (id: string, text: string, rules?: Record<string, unknown>) =>
+      of(run(mk(id, day(6, 4), ['p1'], ['p3'], text, rules ? { rules } : {}), {}, undefined, 'table_tennis'), 'racket_comeback').map((d) => d.player_id);
+    expect(tt('c5', '5-11 9-11 11-7 11-8 11-9')).toEqual(['p1']);
+    expect(tt('c7', '5-11 9-11 11-7 11-8 9-11 11-9 11-3', { match: { bestOf: 7 } })).toEqual(['p1']);
+    expect(tt('c1', '5-11 11-9 11-7 11-8')).toEqual([]);
+    expect(tt('c3', '5-11 11-9 11-7', { match: { bestOf: 3 } })).toEqual([]);
   });
 
   it('Remontada: perdió el primer set y ganó el partido, sin retiro', () => {

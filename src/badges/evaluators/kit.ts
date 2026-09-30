@@ -43,7 +43,7 @@ import type {
 export type Evaluator = (job: BadgeJob, snap: BadgeSnapshot, now: number) => BadgeDecision[];
 
 export type TeamSportId = 'basketball' | 'football' | 'futsal';
-export const RACKET_SPORTS: readonly RacketSport[] = ['padel', 'tennis', 'pickleball'];
+export const RACKET_SPORTS: readonly RacketSport[] = ['padel', 'tennis', 'pickleball', 'table_tennis'];
 export const TEAM_SPORTS: readonly TeamSportId[] = ['basketball', 'football', 'futsal'];
 export const isRacketSport = (s: SportId | null | undefined): s is RacketSport => !!s && SPORT_FAMILY[s] === 'racket';
 export const isTeamSport = (s: SportId | null | undefined): s is TeamSportId => s === 'basketball' || s === 'football' || s === 'futsal';

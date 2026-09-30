@@ -71,6 +71,7 @@ function bestName(sport: Sport): string {
     case 'padel':
     case 'tennis':
     case 'pickleball':
+    case 'table_tennis':
       return 'Mejor récord';
     default:
       return 'Mejor promedio';
@@ -91,6 +92,7 @@ function bestText(sport: Sport): string {
     case 'padel':
     case 'tennis':
     case 'pickleball':
+    case 'table_tennis':
       return 'Nadie tuvo mejor récord que tú esta temporada.';
     default:
       return 'Nadie tuvo mejor promedio que tú esta temporada.';

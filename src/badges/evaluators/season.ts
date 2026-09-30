@@ -21,6 +21,7 @@ import { isPointsMatch, pairStandings, playerSide, seasonNightTable, seasonPlaye
 import { golfLeaderboard, orderOfMerit } from '../../sports/golf/leaderboard';
 import type { GolfRound } from '../../sports/golf/scoring';
 import { placeResults, type SwimResult } from '../../sports/swimming/results';
+import type { RacketSport } from '../../sports/racket';
 import type { SportId, StandingRow } from '../../sports/types';
 import type { SnapLeague, SnapSeason } from '../snapshot';
 import type { BadgeContext, BadgeDecision, BadgeDef } from '../types';
@@ -191,7 +192,7 @@ function seasonPodium(run: SeasonRun) {
   }
 }
 
-function racketSeasonPodium(run: SeasonRun, sport: 'padel' | 'tennis' | 'pickleball') {
+function racketSeasonPodium(run: SeasonRun, sport: RacketSport) {
   const { kit, league, w } = run;
   const events = [...kit.events.values()].filter((e) => e.league_id === league.id && inWin(e.date, w));
   // Torneo suelto: el cuadro de cada categoría.

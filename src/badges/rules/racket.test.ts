@@ -81,7 +81,7 @@ describe('R1 y R2 (§1.7.5)', () => {
 });
 
 describe('sets leídos del marcador (§2.3)', () => {
-  const read = (text: string, sport: 'padel' | 'tennis' | 'pickleball' = 'padel', over: Partial<SnapMatch> = {}) =>
+  const read = (text: string, sport: 'padel' | 'tennis' | 'pickleball' | 'table_tennis' = 'padel', over: Partial<SnapMatch> = {}) =>
     readSets(pairMatch({ score: { text }, ...over }), sport);
 
   it('sets normales, tie-break y súper tie-break', () => {
@@ -109,6 +109,22 @@ describe('sets leídos del marcador (§2.3)', () => {
     ]);
   });
 
+  it('ping pong: juegos a 11 (mejor de 5); con retiro, solo los juegos terminados', () => {
+    const r = read('11-0 9-11 12-10 11-8', 'table_tennis')!;
+    expect(r.rules.sport).toBe('table_tennis');
+    expect(r.sets.map((s) => [s.games, s.winner, s.tiebreak])).toEqual([
+      [[11, 0], 1, false],
+      [[9, 11], 2, false],
+      [[12, 10], 1, false],
+      [[11, 8], 1, false],
+    ]);
+    const ret = read('11-7 3-5 ret.', 'table_tennis')!;
+    expect(ret.retired).toBe(true);
+    expect(ret.sets.map((s) => s.games)).toEqual([[11, 7]]);
+    // Un 11-10 no termina un juego de ping pong.
+    expect(read('11-10 11-5 11-3', 'table_tennis')).toBeNull();
+  });
+
   it('W.O., partidos de puntos y marcadores que no se entienden no dan sets', () => {
     expect(readSets(pairMatch({ status: 'walkover', walkover_side: 2 }), 'padel')).toBeNull();
     expect(read('24-8', 'padel', { format: 'americano' })).toBeNull();
@@ -120,6 +136,9 @@ describe('sets leídos del marcador (§2.3)', () => {
     expect(racketGames(pairMatch({ score: { text: '6-4 3-6 10-7' } }), 'padel')).toEqual([10, 10]);
     expect(racketGames(pairMatch({ score: { text: '6-4 3-2 ret.' } }), 'tennis')).toEqual([6, 4]);
     expect(racketGames(pairMatch({ score: { text: '11-7 11-9' }, rules: { match: { bestOf: 3 } } }), 'pickleball')).toEqual([2, 0]);
+    // Ping pong: juegos, no puntos (también con retiro).
+    expect(racketGames(pairMatch({ score: { text: '11-7 9-11 11-5 11-8' } }), 'table_tennis')).toEqual([3, 1]);
+    expect(racketGames(pairMatch({ score: { text: '11-7 9-11 3-5 ret.' } }), 'table_tennis')).toEqual([1, 1]);
     expect(racketGames(pairMatch({ score: { text: '24-8' }, format: 'mexicano' }), 'padel')).toBeNull();
   });
 });

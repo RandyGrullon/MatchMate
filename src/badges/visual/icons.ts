@@ -1,9 +1,9 @@
 /**
- * Íconos de las insignias en formato lucide (grilla de 24, trazo 2, puntas redondas): los 52 que ofrece el creador
+ * Íconos de las insignias en formato lucide (grilla de 24, trazo 2, puntas redondas): los 53 que ofrece el creador
  * (§5.4), que son también los emblemas de las oficiales, y los de estado (candado, reloj de arena, ojo tachado).
  * Los de lucide se copiaron de lucide-react 1.47 (licencia ISC): no se importan sus rutas internas porque
  * `__iconData` no se reexporta. Los glifos nuevos (boliche, pádel, pickleball, fútbol y el golf compuesto) siguen su
- * mismo trazo; tenis y baloncesto son los de src/sports/registry.ts. React los pinta como `<g>` y el canvas los pasa
+ * mismo trazo; tenis, baloncesto y ping pong son los de src/sports/registry.ts. React los pinta como `<g>` y el canvas los pasa
  * a caminos con `iconToPath`.
  */
 import type { SportId } from '../../sports/types';
@@ -118,6 +118,17 @@ const ICON_DATA = {
       ['path', { d: 'M7 13h10' }],
       ['path', { d: 'M7 9h10' }],
       ['path', { d: 'M9 5a2 2 0 0 0-2 2v11' }],
+    ],
+  },
+  // La paleta de ping pong de src/sports/registry.ts (la clave con guion: el check es ^[a-z0-9-]{1,32}$).
+  'ping-pong': {
+    tab: 'deporte',
+    label: 'Ping pong',
+    tags: ['pingpong', 'mesa', 'paleta', 'pelota'],
+    node: [
+      ['circle', { cx: '9.5', cy: '14.5', r: '6.5' }],
+      ['path', { d: 'M13 8.8l3.2-3.2a1.5 1.5 0 0 1 2.1 2.1L15.2 11' }],
+      ['circle', { cx: '4.3', cy: '4.3', r: '1.8' }],
     ],
   },
   whistle: {
@@ -593,7 +604,7 @@ const ICON_DATA = {
 /** Clave de un ícono de la lista curada (es lo que guarda `league_badges.icon`). */
 export type BadgeIconKey = keyof typeof ICON_DATA;
 
-/** Los 52 íconos curados, en el orden de las pestañas. */
+/** Los 53 íconos curados, en el orden de las pestañas. */
 export const BADGE_ICONS: Readonly<Record<BadgeIconKey, BadgeIconDef>> = ICON_DATA;
 export const BADGE_ICON_KEYS = Object.keys(ICON_DATA) as BadgeIconKey[];
 
@@ -632,6 +643,7 @@ export const SPORT_EMBLEM: Readonly<Record<SportId, BadgeIconKey>> = {
   futsal: 'football',
   golf: 'golf',
   swimming: 'swimming',
+  table_tennis: 'ping-pong',
 };
 
 /** Emblema cuando la clave no se conoce (un diseño viejo o un error): el trofeo. */

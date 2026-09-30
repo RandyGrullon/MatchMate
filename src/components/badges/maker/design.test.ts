@@ -33,7 +33,7 @@ import { TEMPLATES, byTeamAllowed, templateDescription, templateName, templatesF
 const NOW = Date.parse('2026-10-05T15:00:00Z');
 const SEASON = { seasonStart: '2026-01-10', seasonEnd: '2026-11-28', tz: 'America/Santo_Domingo' };
 const choices = periodChoices(SEASON, NOW);
-const SPORTS = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming'];
+const SPORTS = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis'];
 
 function badge(p: Partial<LeagueBadge> = {}): LeagueBadge {
   return {
@@ -96,7 +96,8 @@ describe('plantillas (§5.5)', () => {
   });
 
   it('«Por equipo» solo en raqueta y equipos; el podio de los equipos arranca por equipo', () => {
-    expect(SPORTS.filter(byTeamAllowed)).toEqual(['padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal']);
+    expect(SPORTS.filter(byTeamAllowed)).toEqual(['padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'table_tennis']);
+    expect(templateName('best_average', 'table_tennis')).toBe('Mejor récord');
     expect(templateDraft('champion', 'football').byTeam).toBe(true);
     expect(templateDraft('champion', 'padel').byTeam).toBe(false);
     expect(templateDraft('mvp', 'basketball').byTeam).toBe(false);

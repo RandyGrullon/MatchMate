@@ -1,5 +1,5 @@
 /**
- * Evaluadores de raqueta (pádel, tenis y pickleball; docs/insignias.md §2.3): hitos y marcas de carrera
+ * Evaluadores de raqueta (pádel, tenis, pickleball y ping pong; docs/insignias.md §2.3): hitos y marcas de carrera
  * (`racket_career`), marcas de un partido (`racket_match`), la figura de la noche de americano o mexicano
  * (`racket_night`) y el podio de un torneo por categorías (`event_podium`, la parte de raqueta). Los partidos se
  * leen con los helpers de la app (tablas, cuadro, noches) y se validan con R1 y R2 (rules/racket.ts).
@@ -13,7 +13,7 @@ import { isFinal, type Match } from '../../lib/data/matchCore';
 import { nightRounds, nightTable, parseNightConfig, isNightType } from '../../pages/sports/racket/logic/night';
 import { entrantKey, isPointsMatch, isSetsMatch, matchRules, matchTime, playerSide, sidePlayers } from '../../pages/sports/racket/logic/results';
 import { categoryBracket, matchAt, parseTourneyConfig, winnerId, type TourneyCategory } from '../../pages/sports/racket/logic/tourney';
-import { other, type RacketSport } from '../../sports/racket';
+import { isGameSportRules, other, type RacketSport } from '../../sports/racket';
 import type { Side } from '../../sports/types';
 import type { BadgeDecision, BadgeDef, BadgeHolder, BadgeJob } from '../types';
 import type { BadgeSnapshot } from '../snapshot';
@@ -160,16 +160,14 @@ export function racketCareerFor(kit: Kit, t: AccountTarget, sport: RacketSport):
   }
   add('racket_win_streak', streak, best, { actual: true, req: (_l, s, req) => Number(s.values?.rivales ?? 0) >= (req.rivals ?? 0) });
 
-  // Tie-breaks ganados (pickleball: juegos que se fueron más allá del tope).
+  // Tie-breaks ganados (pickleball y ping pong: juegos que se fueron más allá del tope, 12-10 o más a 11).
   const tb: Step[] = [];
   let tbs = 0;
   for (const x of r2.filter((y) => isSetsMatch(y.m))) {
     const read = readSets(x.m, sport);
     if (!read) continue;
-    const gameTo = read.rules.sport === 'pickleball' ? read.rules.gameTo : 0;
-    const won = read.sets.filter((s) =>
-      s.winner === x.side && (read.rules.sport === 'pickleball' ? s.games[x.side - 1] > gameTo : s.tiebreak || s.matchTiebreak),
-    ).length;
+    const r = read.rules;
+    const won = read.sets.filter((s) => s.winner === x.side && (isGameSportRules(r) ? s.games[x.side - 1] > r.gameTo : s.tiebreak || s.matchTiebreak)).length;
     if (!won) continue;
     tbs += won;
     tb.push({ n: tbs, ref: ref(x.m), date: x.date });
@@ -252,15 +250,19 @@ function matchMarks(kit: Kit, m: Match, p: string, side: Side, sport: RacketSpor
   const won = wonBy(m, p, kit.rosterOf);
   if (read) {
     const r = read.rules;
-    // Rosco: un set (o un juego de pickleball) terminado que su lado ganó sin ceder nada; el partido puede perderse.
+    // Rosco (Zapatero en ping pong): un set (o un juego de pickleball o ping pong) terminado que su lado ganó sin ceder
+    // nada; el partido puede perderse.
     const bagel = read.sets.some((s) => {
       const [mine, theirs] = [s.games[side - 1], s.games[2 - side]];
       if (s.winner !== side || s.matchTiebreak || theirs !== 0) return false;
-      return r.sport === 'pickleball' ? mine >= r.gameTo : mine === r.gamesPerSet;
+      return isGameSportRules(r) ? mine >= r.gameTo : mine === r.gamesPerSet;
     });
     if (bagel) out.push({ key: 'racket_bagel' });
-    // Remontada: a 3+ sets o juegos, perdió el primero y ganó el partido jugado hasta el final.
-    if (won && r.bestOf >= 3 && !read.retired && read.sets.length >= 2 && read.sets[0].winner !== side) out.push({ key: 'racket_comeback' });
+    // Remontada: perdió los primeros `down` sets o juegos (1; en ping pong 2, o sea 0-2) y ganó el partido jugado hasta
+    // el final. Hace falta un partido donde se pueda remontar: al mejor de 3 o más (de 5 o más en ping pong).
+    const down = paramOf(def('racket_comeback'), 'down', sport) ?? 1;
+    const behind = read.sets.slice(0, down);
+    if (won && r.bestOf >= 2 * down + 1 && !read.retired && read.sets.length > down && behind.every((s) => s.winner !== side)) out.push({ key: 'racket_comeback' });
   }
   if (won) {
     const d = def('racket_upset');
