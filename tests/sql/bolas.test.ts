@@ -174,6 +174,8 @@ describe('bolas', () => {
           retired: false,
           createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
           updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          // Sin diseño (20260930000300_diseno_bolas.sql: set_ball_design).
+          design: null,
         },
       ],
       lastUsed: null,

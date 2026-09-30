@@ -15,9 +15,9 @@ begin;
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
 -- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
--- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas, la consola del superadmin y los permisos
--- que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin
--- cuenta).
+-- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas (y su diseño), la consola del superadmin
+-- y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*,
+-- escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -114,7 +114,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100'];
+    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000300'];
   v_missing text[];
   v_bowling text;
 begin
@@ -2050,6 +2050,44 @@ begin
   assert exists (select 1 from public.solo_sessions s where s.id = pg_temp.id('ball_solo_ana')), 'FAIL mis bolas: borrar la bola borró el juego';
   perform public.delete_solo_session(p_id => pg_temp.id('ball_solo_ana'));
   perform pg_temp.ok('mis bolas: Ana borra su bola (delete_ball) y se van sus marcas; el juego queda');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9j.4 Ana diseña una bola (20260930000300): set_ball_design la guarda y le pone el color base, my_balls la trae y unas
+-- iniciales con marcado no se guardan; el dueño no diseña la bola de Ana.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_ball uuid;
+  v_design jsonb := '{"v": 1, "base": "#7c3aed", "second": "#f0abfc", "third": null, "pattern": "galaxia", "scale": 1.2,
+                      "softness": 0.6, "angle": 45, "shine": true, "holes": true,
+                      "stickers": [{"shape": "iniciales", "text": "AN", "color": "#facc15", "x": 0, "y": 0.4, "size": 0.3,
+                                    "rotation": 0}]}';
+  r jsonb;
+begin
+  v_ball := public.save_ball(p_id => null, p_name => 'Smoke Galaxia', p_weight => 14, p_color => '#1d4ed8');
+  assert public.set_ball_design(p_ball => v_ball, p_design => v_design) = v_design, 'FAIL mis bolas: set_ball_design';
+  r := public.my_balls();
+  assert exists (select 1 from jsonb_array_elements(r -> 'balls') x
+                  where x ->> 'id' = v_ball::text and x -> 'design' = v_design and x ->> 'color' = '#7c3aed'),
+    format('FAIL mis bolas: my_balls no trae el diseño %s', r);
+  perform pg_temp.put('ball_design_ana', v_ball::text);
+  perform pg_temp.ok('mis bolas: Ana diseña su bola (set_ball_design le pone el color base; my_balls trae el diseño)');
+  perform pg_temp.must_fail('mis bolas: unas iniciales con marcado no se guardan',
+    format('select public.set_ball_design(p_ball => %L, p_design => %L)', v_ball,
+           jsonb_set(v_design, '{stickers,0,text}', '"<b>"')), array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+begin
+  perform pg_temp.must_fail('mis bolas: nadie diseña la bola de otra cuenta',
+    format('select public.set_ball_design(p_ball => %L, p_design => null)', pg_temp.val('ball_design_ana')), array['no_permitido']);
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

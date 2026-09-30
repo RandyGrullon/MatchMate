@@ -148,6 +148,9 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK mis bolas: Ana registra dos bolas',
       'OK mis bolas: el dueño no lee las bolas de Ana',
       'OK mis bolas: nadie marca la bola de un juego suelto de otra cuenta [falla como debe: no_permitido]',
+      'OK mis bolas: Ana diseña su bola',
+      'OK mis bolas: unas iniciales con marcado no se guardan [falla como debe: invalido]',
+      'OK mis bolas: nadie diseña la bola de otra cuenta [falla como debe: no_permitido]',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }

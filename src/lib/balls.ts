@@ -5,6 +5,7 @@
  *
  * Los datos: src/lib/data/balls.ts (public.bowling_balls y public.ball_games, 20260930000100_bolas.sql).
  */
+import type { BallDesign } from './ballDesign';
 import { countedFrames, frameRates } from './bowlingStats';
 import { isValidScore } from './stats';
 import type { GameFrames } from './types';
@@ -30,6 +31,11 @@ export interface Ball {
   retired: boolean;
   createdAt: string | null;
   updatedAt: string | null;
+  /**
+   * Cómo se ve dibujada (src/lib/ballDesign.ts; set_ball_design, 20260930000300_diseno_bolas.sql); null o sin la
+   * clave: lisa con su color (ballDesignOf).
+   */
+  design?: BallDesign | null;
 }
 
 /** Lo que se edita en la hoja de una bola (sin `id`: una nueva). */
