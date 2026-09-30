@@ -48,7 +48,8 @@ describe('fábrica y reglas', () => {
   });
 
   it('todas las plantillas son válidas y no hay ids repetidos', () => {
-    for (const sport of ['tennis', 'padel', 'pickleball'] as RacketSport[]) {
+    expect(Object.keys(RULE_PRESETS).sort()).toEqual(['padel', 'pickleball', 'table_tennis', 'tennis']);
+    for (const sport of ['tennis', 'padel', 'pickleball', 'table_tennis'] as RacketSport[]) {
       const ids = RULE_PRESETS[sport].map((p) => p.id);
       expect(new Set(ids).size).toBe(ids.length);
       for (const p of RULE_PRESETS[sport]) {
@@ -195,10 +196,10 @@ describe('en vivo y solo resultado', () => {
     const padel = stateFromScore(defaultRules('padel'), '6-4 3-6 10-7');
     expect(racketResult(padel)).toEqual({ winner: 1, summary: '6-4 3-6 10-7' });
     const tb = stateFromScore(defaultRules('tennis'), ' 6-7(10), 6-4  7–6(3) ');
-    expect(tb.sport !== 'pickleball' && tb.sets.map((x) => x.tiebreak ?? null)).toEqual([[10, 12], null, [7, 3]]);
+    expect(tb.sport === 'tennis' && tb.sets.map((x) => x.tiebreak ?? null)).toEqual([[10, 12], null, [7, 3]]);
     expect(racketResult(tb)).toEqual({ winner: 1, summary: '6-7(10) 6-4 7-6(3)' });
     const f4 = stateFromScore(RULE_PRESETS.tennis.find((p) => p.id === 'fast4')!.rules, '4-3(4) 4-1');
-    expect(f4.sport !== 'pickleball' && f4.sets[0].tiebreak).toEqual([5, 4]);
+    expect(f4.sport === 'tennis' && f4.sets[0].tiebreak).toEqual([5, 4]);
     const pk = stateFromScore({ ...defaultRules('pickleball'), bestOf: 3 }, '11-7 9-11 11-5');
     expect(racketResult(pk)).toEqual({ winner: 1, summary: '11-7 9-11 11-5' });
     expect(stateFromScore(defaultRules('padel'), '4-6 6-3 [8-10]').winner).toBe(2);

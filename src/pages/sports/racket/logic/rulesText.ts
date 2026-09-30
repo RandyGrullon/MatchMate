@@ -14,6 +14,10 @@ export function rulesText(r: RacketRules): string {
     ];
     return parts.join(' · ');
   }
+  if (r.sport === 'table_tennis') {
+    // Juegos a 11 ganando por 2 (fijos, ITTF): lo que cambia es individual o dobles y el largo del partido.
+    return [r.doubles ? 'Dobles' : 'Individual', `al mejor de ${r.bestOf} juegos a ${r.gameTo}`, 'ganando por 2', 'saque cada 2 puntos'].join(' · ');
+  }
   const parts = [r.deuce === 'star' ? `Star Point (${r.starAdvantages} ventaja${r.starAdvantages === 1 ? '' : 's'})` : DEUCE[r.deuce]];
   parts.push(r.bestOf === 1 ? 'a un set' : `al mejor de ${r.bestOf}`);
   if (r.gamesPerSet !== 6) parts.push(`sets a ${r.gamesPerSet}`);

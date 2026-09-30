@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -18,12 +19,29 @@ import {
   groupSports,
   isSportId,
   leagueSport,
+  PingPong,
   sportMeta,
   sportsOf,
   TennisBall,
 } from './registry';
 
 const ALL = Object.keys(SPORT_FAMILY) as SportId[];
+
+/** Distancia entre dos colores en OKLab, × 100 (≈ 2 es lo mínimo que se nota). */
+function oklabDistance(a: string, b: string): number {
+  const lab = (hex: string) => {
+    const [r, g, bl] = parseHex(hex)!.map((c) => {
+      const x = c / 255;
+      return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    });
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  };
+  const [x, y] = [lab(a), lab(b)];
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) * 100;
+}
 
 // Filas que deja la base en sport_status (todas las migraciones, en orden), para comparar con el registro: lo que
 // siembran y después los cambios de estado de todos a la vez (p. ej. 20260929001000 abrió los que estaban en beta).
@@ -85,6 +103,25 @@ describe('registro de deportes: contrato', () => {
       expect(svg).toContain('stroke-width="2"');
       expect(svg).toContain('<circle cx="12" cy="12" r="10">');
     }
+    // Ping pong: la paleta (cara, mango) y la pelota, con el mismo trazo.
+    expect(SPORTS.table_tennis.icon).toBe(PingPong);
+    const pp = renderToString(createElement(PingPong, { className: 'size-4' }));
+    expect(pp).toMatch(/^<svg[^>]*viewBox="0 0 24 24"/);
+    expect(pp).toContain('stroke-width="2"');
+    expect(pp).toContain('<circle cx="9.5" cy="14.5" r="6.5">');
+    expect(pp).toContain('<circle cx="4.3" cy="4.3" r="1.8">');
+  });
+
+  it('ping pong: se llama así, con «Tenis de mesa» como alias, y es de raqueta', () => {
+    const m = SPORTS.table_tennis;
+    expect([m.name, m.label, m.short, m.lower, m.alias]).toEqual(['Ping pong', 'Ping pong', 'Ping pong', 'ping pong', 'Tenis de mesa']);
+    expect(m.family).toBe('racket');
+    expect(m.venue).toBe('Club');
+    expect(m.units.score).toBe('juegos');
+    expect(m.order).toBe(10);
+    expect(m.eventTypes.map((t) => t.id)).toEqual(['liga', 'torneo', 'cajas', 'escalera']);
+    expect((m.defaultRules().match as { sport: string; bestOf: number }).bestOf).toBe(5);
+    expect(SPORT_LIST.filter((x) => x.alias).map((x) => x.id)).toEqual(['table_tennis']);
   });
 
   it('color por deporte: el boliche usa el de la app; los demás, uno propio que se lee en claro y en oscuro', () => {
@@ -102,6 +139,31 @@ describe('registro de deportes: contrato', () => {
       // Ninguno es el morado de la app (así se nota que es otra liga).
       expect(m.color).not.toBe('#4338ca');
     }
+  });
+
+  it('el color de cada deporte no se confunde con el rojo de peligro ni con el ámbar de aviso (claro y oscuro)', () => {
+    // El color del deporte pinta toda la app (botones, insignias, lo elegido): no puede parecer un error o un aviso.
+    const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8');
+    const light = css.slice(css.indexOf(':root {'));
+    const dark = css.slice(css.indexOf('@media (prefers-color-scheme: dark)'));
+    const token = (block: string, name: string) => new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i').exec(block)![1];
+    expect([token(light, 'danger'), token(dark, 'danger')]).toEqual(['#c62828', '#f07070']);
+    for (const m of SPORT_LIST.filter((x) => x.id !== 'bowling')) {
+      const v = accentVars(m.color!)!;
+      for (const [mode, accent, block] of [
+        ['claro', v.light.accent, light],
+        ['oscuro', v.dark.accent, dark],
+      ] as const) {
+        // El más cercano hoy es el naranja del baloncesto (≈ 6).
+        for (const name of ['danger', 'warn']) expect(oklabDistance(accent, token(block, name)), `${m.id} (${mode}) contra --${name}`).toBeGreaterThanOrEqual(5);
+      }
+    }
+    // El ping pong, bien lejos (antes era #dc2626: casi el mismo rojo de --danger, a 1 de distancia).
+    const tt = accentVars(SPORTS.table_tennis.color!)!;
+    expect(oklabDistance(tt.light.accent, token(light, 'danger'))).toBeGreaterThanOrEqual(15);
+    expect(oklabDistance(tt.dark.accent, token(dark, 'danger'))).toBeGreaterThanOrEqual(15);
+    expect(oklabDistance(tt.light.accent, token(light, 'warn'))).toBeGreaterThanOrEqual(15);
+    expect(oklabDistance(tt.dark.accent, token(dark, 'warn'))).toBeGreaterThanOrEqual(15);
   });
 
   it('las reglas por defecto pasan su propia validación, son JSON plano y salen como copia nueva', () => {
@@ -230,8 +292,11 @@ describe('registro de deportes: funciones', () => {
   });
 
   it('grupos del selector: el fútbol junta campo y sala', () => {
-    expect(SPORT_GROUPS.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming']);
+    expect(SPORT_GROUPS.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis']);
     expect(SPORT_GROUPS.find((g) => g.id === 'football')).toMatchObject({ name: 'Fútbol', sports: ['football', 'futsal'] });
+    // El ping pong lleva su otro nombre («Tenis de mesa») para el selector; los demás no tienen.
+    expect(SPORT_GROUPS.find((g) => g.id === 'table_tennis')).toMatchObject({ name: 'Ping pong', alias: 'Tenis de mesa', sports: ['table_tennis'] });
+    expect(SPORT_GROUPS.filter((g) => g.alias).map((g) => g.id)).toEqual(['table_tennis']);
     expect(groupSports(['futsal', 'bowling'])).toMatchObject([
       { id: 'bowling', sports: ['bowling'] },
       { id: 'football', sports: ['futsal'] },

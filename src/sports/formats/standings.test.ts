@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MatchResult } from '../types';
 import {
   buildRows,
+  gamesMatchResult,
   pickleballMatchResult,
   pickleballStandings,
   racketMatchResult,
@@ -9,6 +10,8 @@ import {
   RACKET_POINTS_2_0,
   resolveTies,
   standings,
+  tableTennisStandings,
+  TABLE_TENNIS_POINTS,
   tiebreak,
   type TableConfig,
 } from './standings';
@@ -244,5 +247,104 @@ describe('pickleball (USA Pickleball 15.B.4)', () => {
       ['B', 1],
       ['A', 0],
     ]);
+  });
+});
+
+describe('ping pong (grupos de la ITTF 3.7.5)', () => {
+  let n = 0;
+  const g = (side1: string, side2: string, ...games: [number, number][]) => gamesMatchResult({ id: `t${++n}`, side1, side2, games });
+  const x3 = (a: number, b: number): [number, number][] => [
+    [a, b],
+    [a, b],
+    [a, b],
+  ];
+
+  it('ganar 2, perder jugando 1, W.O. 0 (y el presente gana 11-0 en cada juego que hacía falta)', () => {
+    expect(TABLE_TENNIS_POINTS).toEqual({ win: 2, draw: 0, loss: 1, walkoverLoss: 0, retiredLoss: 0 });
+    const wo = gamesMatchResult({ id: 'w', side1: 'C', side2: 'A', games: [], walkover: 1, walkoverGames: x3(11, 0) });
+    expect(wo).toMatchObject({ winner: 2, walkover: 1, totals: { games: [0, 3], points: [0, 33] } });
+    const t = tableTennisStandings(['A', 'B', 'C'], [g('A', 'B', [11, 7], [9, 11], [11, 5], [11, 8]), wo]);
+    expect(t.map((x) => [x.id, x.points, x.played])).toEqual([
+      ['A', 4, 2],
+      ['B', 1, 1],
+      ['C', 0, 1],
+    ]);
+    // PF, PC y Dif. son puntos; «Jue.» lee la dif. de juegos.
+    expect(t[0]).toMatchObject({ for: 42 + 33, against: 31, diff: 44 });
+    expect(t[0].extra.gamesDiff).toBe(2 + 3);
+  });
+
+  it('retiro: el que no terminó suma 0 como en el W.O. (ITTF 3.7.5.1); sus juegos y puntos siguen contando', () => {
+    // A le gana a B «11-7 3-5 ret.» (se retira B): los totales vienen completados, 11-7 11-5 11-0.
+    const ret: MatchResult = { ...g('A', 'B', [11, 7], [11, 5], [11, 0]), retired: 2 };
+    const list = [ret, g('C', 'A', ...x3(11, 9)), g('B', 'C', ...x3(11, 5))];
+    const t = tableTennisStandings(['A', 'B', 'C'], list);
+    // A 2 + 1 = 3, C 2 + 1 = 3, B 0 + 2 = 2. Con 1 por el retiro, B tendría 3 y serían tres empatados.
+    expect(t.map((x) => [x.id, x.points, x.won, x.lost])).toEqual([
+      ['C', 3, 1, 1],
+      ['A', 3, 1, 1],
+      ['B', 2, 1, 1],
+    ]);
+    expect(t.find((x) => x.id === 'B')).toMatchObject({ for: 12 + 33, against: 33 + 15, extra: { gamesDiff: 0 } });
+    // Entre A y C decide el directo (C le ganó a A).
+    expect(t[1].decidedBy).toBe('enfrentamiento directo');
+    // Una tabla sin `retiredLoss`: el retiro es una derrota más (pádel y tenis dan 1 al que pierde).
+    const padel = racketStandings(['A', 'B'], [{ ...r('A', 'B', [6, 4], [6, 0]), retired: 2 }]);
+    expect(padel.map((x) => [x.id, x.points])).toEqual([
+      ['A', 3],
+      ['B', 1],
+    ]);
+  });
+
+  it('2 empatados: gana el enfrentamiento directo aunque el otro tenga mejor diferencia', () => {
+    const t = tableTennisStandings(
+      ['A', 'B', 'C', 'D'],
+      [
+        g('A', 'B', [11, 9], [9, 11], [11, 9], [9, 11], [11, 9]),
+        g('B', 'C', ...x3(11, 1)),
+        g('C', 'A', [11, 9], [9, 11], [11, 9], [9, 11], [11, 9]),
+        g('A', 'D', ...x3(11, 9)),
+        g('B', 'D', ...x3(11, 2)),
+        g('D', 'C', ...x3(11, 9)),
+      ],
+    );
+    const row = (id: string) => t.find((x) => x.id === id)!;
+    expect([row('A').points, row('B').points]).toEqual([5, 5]);
+    expect(row('B').extra.gamesDiff).toBeGreaterThan(row('A').extra.gamesDiff);
+    expect(order(t)).toEqual(['A', 'B', 'D', 'C']);
+    expect(row('B').decidedBy).toBe('enfrentamiento directo');
+  });
+
+  it('3 empatados en círculo: dif. de juegos entre ellos y, si sigue, vuelve a empezar solo con los que quedan', () => {
+    const t = tableTennisStandings(['A', 'B', 'C'], [g('A', 'B', ...x3(11, 5)), g('B', 'C', [11, 5], [5, 11], [11, 5], [9, 11], [11, 5]), g('C', 'A', [11, 5], [5, 11], [11, 5], [11, 5])]);
+    // Todos 3 puntos. Juegos entre ellos: A +3 −2 = +1, B −3 +1 = −2, C −1 +2 = +1 → B abajo; A y C: C le ganó a A.
+    expect(order(t)).toEqual(['C', 'A', 'B']);
+    expect(t.map((x) => x.decidedBy)).toEqual([undefined, 'enfrentamiento directo', 'dif. de juegos entre empatados']);
+  });
+
+  it('3 empatados en círculo con la misma dif. de juegos: decide la dif. de puntos entre ellos', () => {
+    const t = tableTennisStandings(
+      ['A', 'B', 'C'],
+      [
+        g('A', 'B', [11, 5], [11, 5], [5, 11], [11, 5]),
+        g('B', 'C', [11, 9], [11, 9], [9, 11], [11, 9]),
+        g('C', 'A', [11, 8], [11, 8], [8, 11], [11, 8]),
+      ],
+    );
+    // Juegos: todos +2 −2 = 0. Puntos: A +12 −6 = +6, B −12 +4 = −8, C −4 +6 = +2.
+    expect(t.map((x) => x.extra.gamesDiff)).toEqual([0, 0, 0]);
+    expect(order(t)).toEqual(['A', 'C', 'B']);
+    expect(t.map((x) => x.decidedBy)).toEqual([undefined, 'dif. de puntos entre empatados', 'dif. de puntos entre empatados']);
+  });
+
+  it('sin haberse enfrentado: dif. de juegos de toda la tabla y después el sorteo', () => {
+    const t = tableTennisStandings(['A', 'B', 'C', 'D'], [g('A', 'C', ...x3(11, 4)), g('B', 'D', [11, 4], [4, 11], [11, 4], [11, 4])]);
+    expect(order(t)).toEqual(['A', 'B', 'D', 'C']);
+    expect(t.map((x) => x.decidedBy)).toEqual([undefined, 'dif. de juegos', 'puntos', 'dif. de juegos']);
+    // Todo igual: sorteo (siempre el mismo con la misma semilla).
+    const same = [g('A', 'C', ...x3(11, 4)), g('B', 'D', ...x3(11, 4))];
+    const a = tableTennisStandings(['A', 'B', 'C', 'D'], same, { lotSeed: 'liga-1' });
+    expect(a[1].decidedBy).toBe('sorteo');
+    expect(order(tableTennisStandings(['A', 'B', 'C', 'D'], same, { lotSeed: 'liga-1' }))).toEqual(order(a));
   });
 });

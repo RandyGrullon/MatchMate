@@ -11,8 +11,8 @@ import { dispatchSport, leagueSport, type SportDispatch } from './registry';
  * Pantallas de cada deporte (menos el boliche, que usa las de siempre).
  *
  * CONTRATO: cada deporte exporta por defecto un `SportScreens` desde `src/pages/sports/<sportId>/screens.tsx`
- * (la carpeta se llama igual que el SportId: padel, tennis, pickleball, basketball, football, futsal, golf,
- * swimming). La app lo encuentra sola (import.meta.glob): no hace falta tocar rutas ni el registro. Un deporte
+ * (la carpeta se llama igual que el SportId: padel, tennis, pickleball, table_tennis, basketball, football, futsal,
+ * golf, swimming). La app lo encuentra sola (import.meta.glob): no hace falta tocar rutas ni el registro. Un deporte
  * que comparte pantallas con otro reexporta: `export { default } from '../racket/screens';`.
  * Mientras un deporte no tiene su `screens.tsx`, la liga muestra «Pronto».
  */

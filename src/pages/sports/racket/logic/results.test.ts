@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { applyRacket, initRacket, resolveRules } from '../../../../sports/racket';
 import { racketColumns } from '../bits';
-import { inSeason, pairStandings, playerRecord, racketResultOf, seasonDay, seasonNightTable, seasonPlayerTable, setsLabel, winPct } from './results';
+import { racketScore } from '../court/adapters';
+import { forLabel, inSeason, pairStandings, playerRecord, pointsRule, racketResultOf, seasonDay, seasonNightTable, seasonPlayerTable, setsLabel, winPct } from './results';
 import { mkMatch, pts, sets } from './testMatch';
 
 const RULES = { match: { sport: 'padel' } };
@@ -158,5 +160,86 @@ describe('individual (tenis): el lado es el jugador', () => {
       ['ana', 3],
       ['luis', 1],
     ]);
+  });
+});
+
+describe('ping pong: juegos y puntos, tabla de la ITTF', () => {
+  const TT = { match: { sport: 'table_tennis' } };
+  const tt = (a: string, b: string, text: string, winner: 1 | 2, extra: Parameters<typeof mkMatch>[0] = {}) =>
+    mkMatch({ a: [a], b: [b], status: 'confirmed', winner, score: { text }, ...extra });
+
+  it('el resultado: de los totales, del texto y de un W.O. (11-0 en cada juego que hacía falta)', () => {
+    const text = '11-7 9-11 11-5 11-8';
+    const saved = sets(['ana'], ['luis'], text, 1, { sets: [3, 1], games: [3, 1] }, { score: { text, sides: [3, 1], totals: { sets: [3, 1], games: [3, 1], points: [42, 31] } } });
+    expect(racketResultOf(saved, 'table_tennis', TT)?.totals).toEqual({ games: [3, 1], points: [42, 31] });
+    expect(racketResultOf(tt('ana', 'luis', text, 1), 'table_tennis', TT)?.totals).toEqual({ games: [3, 1], points: [42, 31] });
+    const wo = mkMatch({ a: ['ana'], b: ['luis'], status: 'walkover', walkoverSide: 2, winner: 1 });
+    expect(racketResultOf(wo, 'table_tennis', TT)).toMatchObject({ walkover: 2, winner: 1, totals: { games: [3, 0], points: [33, 0] } });
+    // Al mejor de 7 son 4 juegos.
+    expect(racketResultOf(wo, 'table_tennis', { match: { sport: 'table_tennis', bestOf: 7 } })?.totals).toEqual({ games: [4, 0], points: [44, 0] });
+  });
+
+  it('la tabla usa los puntos de la ITTF (ganar 2, perder 1, W.O. o retiro 0) y no hace caso del esquema', () => {
+    expect(pointsRule('table_tennis', '2-0')).toEqual({ win: 2, draw: 0, loss: 1, walkoverLoss: 0, retiredLoss: 0 });
+    const list = [tt('ana', 'luis', '11-7 11-9 11-5', 1), mkMatch({ a: ['rosa'], b: ['ana'], status: 'walkover', walkoverSide: 1, winner: 2 })];
+    const rows = pairStandings('table_tennis', ['ana', 'luis', 'rosa'], list, { scheme: '2-0', rules: TT, now: NOW });
+    expect(rows.map((r) => [r.id, r.points])).toEqual([
+      ['ana', 4],
+      ['luis', 1],
+      ['rosa', 0],
+    ]);
+    // PF, PC y Dif. son puntos; «Jue.» la dif. de juegos.
+    expect(rows[0]).toMatchObject({ for: 33 + 33, against: 21, extra: { gamesDiff: 6 } });
+  });
+
+  it('retiro desde la mesa («11-7 3-5 ret.»): el que se retira suma 0 en la tabla y en el ranking; sus juegos cuentan', () => {
+    let s = initRacket(resolveRules('table_tennis', {}));
+    s = applyRacket(s, { type: 'correct', games: [[11, 7]], score: [3, 5] });
+    s = applyRacket(s, { type: 'retire', side: 2 });
+    const score = racketScore(s);
+    expect(score.text).toBe('11-7 3-5 ret.');
+    const m = tt('ana', 'luis', score.text ?? '', 1, { score });
+    // Los totales guardados ya vienen completados (11-7 11-5 11-0) y el resultado marca quién se retiró.
+    expect(racketResultOf(m, 'table_tennis', TT)).toMatchObject({ winner: 1, retired: 2, totals: { games: [3, 0], points: [33, 12] } });
+    expect(racketResultOf(m, 'table_tennis', TT)?.walkover).toBeUndefined();
+    const list = [m, tt('luis', 'rosa', '11-3 11-3 11-3', 1)];
+    const rows = pairStandings('table_tennis', ['ana', 'luis', 'rosa'], list, { rules: TT, now: NOW });
+    // Luis: 0 por el retiro + 2 por ganar; Rosa: 1 por perder jugando. Con 1 por el retiro, Luis tendría 3.
+    expect(rows.map((r) => [r.id, r.points])).toEqual([
+      ['ana', 2],
+      ['luis', 2],
+      ['rosa', 1],
+    ]);
+    expect(rows.find((r) => r.id === 'luis')).toMatchObject({ for: 12 + 33, against: 33 + 9 });
+    const season = seasonPlayerTable(list, { sport: 'table_tennis', rules: TT, now: NOW });
+    expect(season.find((r) => r.id === 'luis')).toMatchObject({ points: 2, won: 1, lost: 1 });
+    // En pádel y tenis el retiro sigue siendo una derrota más (perder 1).
+    const padel = mkMatch({ a: ['ana'], b: ['luis'], status: 'confirmed', winner: 1, score: { text: '6-4 3-2 ret.' } });
+    expect(racketResultOf(padel, 'padel', RULES)).toMatchObject({ retired: 2 });
+    expect(pairStandings('padel', ['ana', 'luis'], [padel], { rules: RULES, now: NOW }).map((r) => [r.id, r.points])).toEqual([
+      ['ana', 3],
+      ['luis', 1],
+    ]);
+  });
+
+  it('ranking de la temporada: 2 y 1, con columnas de juegos y puntos', () => {
+    const list = [tt('ana', 'luis', '11-7 9-11 11-5 11-8', 1), tt('luis', 'rosa', '11-3 11-3 11-3', 1)];
+    const t = seasonPlayerTable(list, { sport: 'table_tennis', rules: TT, now: NOW });
+    // Luis perdió jugando (1) y ganó (2); Ana ganó (2); Rosa perdió jugando (1).
+    expect(t.map((r) => [r.id, r.points, r.won, r.lost])).toEqual([
+      ['luis', 3, 1, 1],
+      ['ana', 2, 1, 0],
+      ['rosa', 1, 0, 1],
+    ]);
+    expect(t.find((r) => r.id === 'ana')).toMatchObject({ for: 42, against: 31, extra: { setsDiff: 2, gamesDiff: 2 } });
+    const col = racketColumns('table_tennis').find((c) => c.key === 'sets')!;
+    expect(col.label).toBe('Jue.');
+    expect(racketColumns('table_tennis').map((c) => c.label)).toEqual(['PJ', 'G', 'P', 'Jue.', 'PF', 'PC', 'Dif.']);
+    expect([setsLabel('table_tennis'), forLabel('table_tennis')]).toEqual(['Juegos', 'Puntos']);
+  });
+
+  it('el récord del jugador: juegos y puntos', () => {
+    const rec = playerRecord('ana', [tt('ana', 'luis', '11-7 9-11 11-5 11-8', 1)], { sport: 'table_tennis', rules: TT, now: NOW });
+    expect(rec.sets).toMatchObject({ played: 1, won: 1, setsFor: 3, setsAgainst: 1, gamesFor: 42, gamesAgainst: 31 });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Deportes de raqueta: tenis, pádel y pickleball. Punto de entrada de la familia.
+ * Deportes de raqueta: tenis, pádel, pickleball y ping pong. Punto de entrada de la familia.
  *
  * Uso típico:
  *   const engine = createRacketEngine('padel');              // reglas por defecto (punto de oro, súper tie-break)
@@ -21,48 +21,81 @@ import {
   type RacketRules,
   type RacketSport,
   type SetScore,
+  type TableTennisRules,
   type TennisRules,
 } from './rules';
+import {
+  applyTableTennis,
+  initTableTennis,
+  tableTennisEngine,
+  tableTennisResult,
+  type TableTennisEvent,
+  type TableTennisState,
+} from './tableTennis';
 import { applyTennis, initTennis, setText, tennisEngine, tennisResult, type TennisEvent, type TennisState } from './tennis';
 
 export * from './rules';
 export * from './tennis';
 export * from './pickleball';
+export * from './tableTennis';
 
-export type RacketState = TennisState | PickleballState;
-export type RacketEvent = TennisEvent | PickleballEvent;
+export type RacketState = TennisState | PickleballState | TableTennisState;
+export type RacketEvent = TennisEvent | PickleballEvent | TableTennisEvent;
 
 /** Aplica una jugada a cualquier partido de raqueta (usa las reglas guardadas en el estado). */
 export function applyRacket(state: RacketState, ev: RacketEvent): RacketState {
-  return state.sport === 'pickleball' ? applyPickleball(state, ev as PickleballEvent) : applyTennis(state, ev as TennisEvent);
+  switch (state.sport) {
+    case 'pickleball':
+      return applyPickleball(state, ev as PickleballEvent);
+    case 'table_tennis':
+      return applyTableTennis(state, ev as TableTennisEvent);
+    default:
+      return applyTennis(state, ev as TennisEvent);
+  }
 }
 
 export function racketResult(state: RacketState): { winner: Side | null; summary: string } {
-  return state.sport === 'pickleball' ? pickleballResult(state) : tennisResult(state);
+  switch (state.sport) {
+    case 'pickleball':
+      return pickleballResult(state);
+    case 'table_tennis':
+      return tableTennisResult(state);
+    default:
+      return tennisResult(state);
+  }
 }
 
 /**
  * Motor del deporte con las reglas de por defecto más los cambios de `rules`. Lanza un Error (en español) si
  * las reglas no son válidas. `init` recibe el sorteo (quién saca, orden de cada pareja, lado inicial).
  */
+export function createRacketEngine(sport: 'table_tennis', rules?: Partial<TableTennisRules>): MatchEngine<MatchSetup, TableTennisState, TableTennisEvent>;
 export function createRacketEngine(sport: 'pickleball', rules?: Partial<PickleballRules>): MatchEngine<MatchSetup, PickleballState, PickleballEvent>;
 export function createRacketEngine(sport: 'tennis' | 'padel', rules?: Partial<TennisRules>): MatchEngine<MatchSetup, TennisState, TennisEvent>;
 export function createRacketEngine(sport: RacketSport, rules?: Partial<RacketRules>): MatchEngine<MatchSetup, RacketState, RacketEvent>;
 export function createRacketEngine(sport: RacketSport, rules: Partial<RacketRules> = {}): MatchEngine<MatchSetup, RacketState, RacketEvent> {
   const full = resolveRules(sport, rules);
-  const engine = full.sport === 'pickleball' ? pickleballEngine(full) : tennisEngine(full);
+  const engine = full.sport === 'pickleball' ? pickleballEngine(full) : full.sport === 'table_tennis' ? tableTennisEngine(full) : tennisEngine(full);
   return engine as unknown as MatchEngine<MatchSetup, RacketState, RacketEvent>;
 }
 
 /** Estado inicial con reglas completas (sin pasar por `createRacketEngine`). */
 export function initRacket(rules: RacketRules, setup?: MatchSetup): RacketState {
-  return rules.sport === 'pickleball' ? initPickleball(rules, setup) : initTennis(rules, setup);
+  switch (rules.sport) {
+    case 'pickleball':
+      return initPickleball(rules, setup);
+    case 'table_tennis':
+      return initTableTennis(rules, setup);
+    default:
+      return initTennis(rules, setup);
+  }
 }
 
 /**
  * Para la tabla: si hubo retiro o W.O., completa el partido como si el ganador ganara todos los puntos que
- * faltaban (W.O. = 6-0 6-0 en tenis y pádel, 11-0 en pickleball; retiro = se termina el set o juego en curso
- * a favor del ganador y, si hace falta, los que siguen). Si no, devuelve el mismo estado.
+ * faltaban (W.O. = 6-0 6-0 en tenis y pádel, 11-0 en pickleball y 11-0 en cada juego que hace falta en ping pong,
+ * 11-0 11-0 11-0 al mejor de 5; retiro = se termina el set o juego en curso a favor del ganador y, si hace falta, los
+ * que siguen). Si no, devuelve el mismo estado.
  */
 export function completeMatch(state: RacketState): RacketState {
   if (state.winner === null || state.finish === 'played') return state;
@@ -73,11 +106,11 @@ export function completeMatch(state: RacketState): RacketState {
 }
 
 export interface RacketTotals {
-  /** Sets ganados (en pickleball, juegos ganados: cada juego hace de set). */
+  /** Sets ganados (en pickleball y ping pong, juegos ganados: cada juego hace de set). */
   sets: Pair<number>;
-  /** Juegos ganados (el súper tie-break cuenta como un juego 1-0). En pickleball, igual que `sets`. */
+  /** Juegos ganados (el súper tie-break cuenta como un juego 1-0). En pickleball y ping pong, igual que `sets`. */
   games: Pair<number>;
-  /** Puntos ganados (en tenis y pádel, todos los puntos jugados, tie-breaks incluidos). */
+  /** Puntos ganados (en tenis y pádel, todos los puntos jugados, tie-breaks incluidos; en los juegos, sus puntos). */
   points: Pair<number>;
 }
 
@@ -85,7 +118,7 @@ export interface RacketTotals {
 export function matchTotals(state: RacketState): RacketTotals {
   const s = completeMatch(state);
   const count = (list: Pair<number>[], side: 0 | 1) => list.filter((x) => x[side] > x[1 - side]).length;
-  if (s.sport === 'pickleball') {
+  if (s.sport === 'pickleball' || s.sport === 'table_tennis') {
     const done = s.games;
     const wins: Pair<number> = [count(done, 0), count(done, 1)];
     const points: Pair<number> = [s.score[0], s.score[1]];
@@ -115,19 +148,23 @@ export function toMatchResult(state: RacketState, meta: { id: string; side1: str
 /** Foto chica del marcador para la pantalla «En vivo» (lo que ve el público; para retomar se guarda el estado entero). */
 export interface RacketLive {
   sport: RacketSport;
-  /** Sets (tenis/pádel) o juegos (pickleball) terminados como texto: "6-4", "7-6(5)", "10-7", "11-7". */
+  /** Sets (tenis/pádel) o juegos (pickleball y ping pong) terminados como texto: "6-4", "7-6(5)", "10-7", "11-7". */
   done: string[];
-  /** Juegos del set en curso (tenis/pádel) o puntos del juego en curso (pickleball). */
+  /** Juegos del set en curso (tenis/pádel) o puntos del juego en curso (pickleball y ping pong). */
   now: Pair<number>;
   /** Tenis/pádel: marcador del juego ('15', '40', 'AD' o puntos del tie-break). */
   points?: Pair<string>;
-  /** Pickleball: canto ("5-3-2"). */
+  /** Pickleball: canto ("5-3-2"). Ping pong: puntos de quien saca primero ("5-3"). */
   call?: string;
   server: Side;
   serverPlayer: Player;
+  /** Ping pong en dobles: quién de la otra pareja recibe (en individual, 0). */
+  receiverPlayer?: Player;
+  /** Ping pong: saques que le quedan a quien saca en su turno (2 o 1; desde 10-10, 1). */
+  servesLeft?: 1 | 2;
   serveFrom: 'right' | 'left' | null;
   leftSide: Side;
-  /** Aviso del punto ("Punto de oro", "Tie-break"…). */
+  /** Aviso del punto ("Punto de oro", "Tie-break", "Un saque cada uno"…). */
   label: string | null;
   changeEnds: boolean;
   over: boolean;
@@ -153,6 +190,17 @@ export function toLive(state: RacketState): RacketLive {
   if (state.sport === 'pickleball') {
     return { ...base, done: state.games.map((g) => `${g[0]}-${g[1]}`), now: [state.score[0], state.score[1]], call: state.call, label: null };
   }
+  if (state.sport === 'table_tennis') {
+    return {
+      ...base,
+      done: state.games.map((g) => `${g[0]}-${g[1]}`),
+      now: [state.score[0], state.score[1]],
+      call: state.call,
+      label: state.label,
+      receiverPlayer: state.receiverPlayer,
+      servesLeft: state.servesLeft,
+    };
+  }
   return {
     ...base,
     done: state.sets.map(setText),
@@ -165,7 +213,7 @@ export function toLive(state: RacketState): RacketLive {
 const TOKEN = /^\[?(\d{1,2})\s*[-–—:/]\s*(\d{1,2})\]?(?:\((\d{1,2})\))?$/;
 
 /**
- * Modo «solo resultado»: lee "6-4 3-6 10-7", "7-6(5) 6-4" o "11-7 9-11 11-5" (lado 1 primero) y devuelve un
+ * Modo «solo resultado»: lee "6-4 3-6 10-7", "7-6(5) 6-4" o "11-7 9-11 11-5 11-8" (lado 1 primero) y devuelve un
  * estado terminado con esas reglas, listo para `matchTotals` y `racketResult`. Lanza un Error si no cuadra.
  */
 export function stateFromScore(rules: RacketRules, text: string, setup?: MatchSetup): RacketState {
@@ -180,9 +228,10 @@ export function stateFromScore(rules: RacketRules, text: string, setup?: MatchSe
     });
   if (!tokens.length) throw new Error('Escribe el marcador.');
   let s = initRacket(rules, setup);
-  if (s.sport === 'pickleball') {
-    if (tokens.some((t) => t.tb !== null)) throw new Error('En pickleball no hay tie-break.');
-    s = applyPickleball(s, { type: 'correct', games: tokens.map((t) => [t.a, t.b]), score: [0, 0] });
+  if (s.sport === 'pickleball' || s.sport === 'table_tennis') {
+    if (tokens.some((t) => t.tb !== null)) throw new Error(s.sport === 'pickleball' ? 'En pickleball no hay tie-break.' : 'En ping pong no hay tie-break.');
+    const games: Pair<number>[] = tokens.map((t) => [t.a, t.b]);
+    s = s.sport === 'pickleball' ? applyPickleball(s, { type: 'correct', games, score: [0, 0] }) : applyTableTennis(s, { type: 'correct', games, score: [0, 0] });
   } else {
     const r = s.rules;
     const sets: SetScore[] = tokens.map((t) => {

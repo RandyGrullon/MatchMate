@@ -41,6 +41,8 @@ export interface SportMeta {
   id: SportId;
   /** Nombre del deporte. Fútbol de campo y sala comparten «Fútbol» (se eligen con la modalidad). */
   name: string;
+  /** Otro nombre del deporte («Tenis de mesa»): sale debajo del nombre en la portada y en el selector. */
+  alias?: string;
   /** Modalidad dentro del deporte: solo el fútbol ('Campo' | 'Sala'). */
   modality: string | null;
   /** Nombre completo: «Pádel», «Fútbol de campo», «Fútbol sala». */
@@ -188,6 +190,16 @@ export const Basketball: LucideIcon = createLucideIcon('basketball', [
   ['path', { d: 'M19.07 4.93c-3.9 3.9-3.9 10.24 0 14.14', key: 'r' }],
 ]);
 
+/**
+ * Paleta de ping pong: la cara redonda abajo, el mango corto y grueso hacia arriba (así no parece una lupa) y la
+ * pelota en el aire.
+ */
+export const PingPong: LucideIcon = createLucideIcon('ping-pong', [
+  ['circle', { cx: '9.5', cy: '14.5', r: '6.5', key: 'blade' }],
+  ['path', { d: 'M13 8.8l3.2-3.2a1.5 1.5 0 0 1 2.1 2.1L15.2 11', key: 'handle' }],
+  ['circle', { cx: '4.3', cy: '4.3', r: '1.8', key: 'ball' }],
+]);
+
 // ---------- Los deportes ----------
 
 const BOWLING_EVENTS: readonly EventTypeMeta[] = [
@@ -210,7 +222,7 @@ const racket = (sport: RacketSport) => ({
   ready: true,
 });
 
-// Liga por cajas y escalera: los tres deportes de raqueta (src/pages/sports/racket-formats).
+// Liga por cajas y escalera: los cuatro deportes de raqueta (src/pages/sports/racket-formats).
 const RACKET_FORMATS: readonly EventTypeMeta[] = [
   { id: 'liga', label: 'Liga', plural: 'Ligas' },
   { id: 'torneo', label: 'Torneo', plural: 'Torneos' },
@@ -428,6 +440,27 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     order: 9,
     color: '#0891b2',
   },
+  table_tennis: {
+    ...racket('table_tennis'),
+    id: 'table_tennis',
+    name: 'Ping pong',
+    alias: 'Tenis de mesa',
+    modality: null,
+    label: 'Ping pong',
+    short: 'Ping pong',
+    lower: 'ping pong',
+    group: 'table_tennis',
+    icon: PingPong,
+    venueHint: 'Club o salón donde están las mesas',
+    units: { match: MATCH, score: 'juegos', side: PLAYER },
+    eventTypes: RACKET_FORMATS,
+    phase: 3, // llega con el motor de raqueta de la fase 3
+    scene: 'table_tennis',
+    order: 10,
+    // Fucsia: ni el rojo de --danger ni el ámbar de --warn (registry.test.ts), lejos del morado de la marca y del rosa
+    // del pickleball.
+    color: '#b01cbd',
+  },
 };
 
 /** Los deportes en orden (el de `sport_status.sort_order`). */
@@ -481,6 +514,8 @@ export function dispatchSport(sport: string | null | undefined): SportDispatch {
 export interface SportGroup {
   id: string;
   name: string;
+  /** Otro nombre del deporte («Tenis de mesa»), si el grupo tiene uno solo. */
+  alias?: string;
   icon: LucideIcon;
   sports: readonly SportId[];
 }
@@ -490,8 +525,10 @@ export function groupSports(ids: readonly SportId[]): SportGroup[] {
   for (const meta of SPORT_LIST) {
     if (!ids.includes(meta.id)) continue;
     const g = groups.find((x) => x.id === meta.group);
-    if (g) g.sports = [...g.sports, meta.id];
-    else groups.push({ id: meta.group, name: meta.name, icon: meta.icon, sports: [meta.id] });
+    if (g) {
+      g.sports = [...g.sports, meta.id];
+      delete g.alias;
+    } else groups.push({ id: meta.group, name: meta.name, ...(meta.alias ? { alias: meta.alias } : {}), icon: meta.icon, sports: [meta.id] });
   }
   return groups;
 }

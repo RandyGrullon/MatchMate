@@ -7,7 +7,7 @@
  *   entre los empatados; cuando un criterio separa a una parte del grupo, los que siguen empatados vuelven a
  *   pasar por la lista desde el principio, solo entre ellos (recursivo). Así, 3 empatados que se reducen a 2 se
  *   deciden por su enfrentamiento directo.
- * - Presets de pádel/tenis y de pickleball. Los deportes de equipo arman los suyos con `tiebreak` y `resolveTies`.
+ * - Presets de pádel/tenis, de pickleball y de ping pong (grupos de la ITTF). Los deportes de equipo arman los suyos con `tiebreak` y `resolveTies`.
  */
 
 import type { MatchResult, Side, StandingRow } from '../types';
@@ -22,6 +22,8 @@ export interface PointsRule {
   walkoverLoss: number;
   /** Puntos del que ganó por W.O. Por defecto, lo mismo que ganar. */
   walkoverWin?: number;
+  /** Puntos del que se retiró (`MatchResult.retired`). Por defecto, lo mismo que perder. */
+  retiredLoss?: number;
 }
 
 /** Arma filas (sin ordenar) para unos ids con unos partidos. La usa la minitabla. */
@@ -87,7 +89,7 @@ function addSide(row: StandingRow, m: MatchResult, side: Side, pts: PointsRule, 
     row.points += pts.draw;
   } else {
     row.lost++;
-    row.points += pts.loss;
+    row.points += m.retired === side ? (pts.retiredLoss ?? pts.loss) : pts.loss;
   }
   for (const [key, pair] of Object.entries(m.totals)) {
     const mine = side === 1 ? pair[0] : pair[1];
@@ -440,4 +442,43 @@ export function pickleballMatchResult(input: {
   const result: MatchResult = { id: input.id, side1: input.side1, side2: input.side2, winner, totals: { games: won, points: pts } };
   if (input.walkover) result.walkover = input.walkover;
   return result;
+}
+
+/** MatchResult de un deporte a juegos (pickleball y ping pong): es el mismo cálculo, con otro nombre. */
+export const gamesMatchResult = pickleballMatchResult;
+
+// ---------------------------------------------------------------------------------------------------------
+// Ping pong
+
+/**
+ * Ping pong (ITTF 3.7.5.1): ganar 2, perder un partido jugado 1 y perder uno sin jugar (W.O.) o sin terminar (retiro)
+ * 0. En el retiro los juegos y puntos completados siguen contando para los desempates.
+ */
+export const TABLE_TENNIS_POINTS: PointsRule = { win: 2, draw: 0, loss: 1, walkoverLoss: 0, retiredLoss: 0 };
+
+/**
+ * Grupos de la ITTF (Reglamento 3.7.5), con diferencias en lugar de cocientes: puntos → entre los empatados
+ * (puntos, dif. de juegos, dif. de puntos) → dif. de juegos → dif. de puntos → sorteo. Los que sigan empatados
+ * vuelven a empezar solo entre ellos (3.7.5.3). Los dos pasos de toda la tabla no son de la ITTF: sirven cuando
+ * los empatados todavía no jugaron entre ellos (una liga a medias). Totales esperados en MatchResult: `games` y
+ * `points` (ver `gamesMatchResult`).
+ */
+export function tableTennisTable(points: PointsRule = TABLE_TENNIS_POINTS, lotSeed = ''): TableConfig {
+  return {
+    points,
+    primary: 'points',
+    criteria: [
+      tiebreak.points(),
+      tiebreak.h2h(),
+      tiebreak.h2h((r) => r.extra.gamesDiff ?? 0, 'dif. de juegos entre empatados'),
+      tiebreak.h2h((r) => r.extra.pointsDiff ?? 0, 'dif. de puntos entre empatados'),
+      tiebreak.stat('gamesDiff', 'dif. de juegos'),
+      tiebreak.stat('pointsDiff', 'dif. de puntos'),
+      tiebreak.lot(lotSeed),
+    ],
+  };
+}
+
+export function tableTennisStandings(ids: readonly string[], results: readonly MatchResult[], opts: { points?: PointsRule; lotSeed?: string } = {}): StandingRow[] {
+  return standings(ids, results, tableTennisTable(opts.points, opts.lotSeed));
 }
