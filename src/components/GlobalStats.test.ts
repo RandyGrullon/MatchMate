@@ -141,6 +141,19 @@ describe('perfil global con juegos sueltos', () => {
     expect(t).toContain('1 liga');
   });
 
+  it('con cuadros: los porcentajes y la tendencia (solo los cuadros que cuadran con el puntaje)', () => {
+    const perfect = { rolls: Array.from({ length: 12 }, () => 10) };
+    const s = { ...solo('b', '2026-09-20', [300, 290, 200]), frames: { '0': perfect, '1': perfect } };
+    const html = renderStats([], [], [s, solo('a', '2026-08-01', [150])]).replace(/<!-- -->/g, '');
+    const t = text(html);
+    expect(t).toContain('Por cuadros');
+    expect(t).toContain('Con 1 juego anotado por cuadros (de 4)');
+    expect(t).toContain('Strikes 100% 12 de 12');
+    expect(t).toContain('Por mes');
+    // Ya no van las insignias sueltas de «N strikes» (los números están en «Por cuadros»).
+    expect(t).not.toMatch(/\d strikes/);
+  });
+
   it('sin ligas ni juegos sueltos: invita a anotar uno', () => {
     const html = renderStats([], [], []);
     expect(text(html)).toContain('anota un juego suelto');

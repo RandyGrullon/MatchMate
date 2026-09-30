@@ -122,4 +122,27 @@ describe('juegos sueltos', () => {
     state.solo = { data: LIST, loading: false, error: null };
     expect(text(render('/juegos-sueltos?juego=otro'))).not.toContain('Que salga en mi perfil');
   });
+
+  it('«Por día» es la lista; «Estadísticas» (?ver=estadisticas) la cambia por la tendencia y los cuadros', () => {
+    const perfect = { rolls: Array.from({ length: 12 }, () => 10) };
+    state.solo = {
+      data: [...LIST, session('s4', '2026-08-01', [300, 290], { frames: { '0': perfect, '1': perfect } })],
+      loading: false,
+      error: null,
+    };
+    const list = render();
+    expect(list).toMatch(/role="tab" aria-selected="true"[^>]*>(?:(?!<\/button>).)*Por día/);
+    expect(text(list)).not.toContain('Por cuadros');
+
+    const out = render('/juegos-sueltos?ver=estadisticas');
+    const t = text(out).replace(/<!-- -->/g, '');
+    expect(out).toMatch(/role="tab" aria-selected="true"[^>]*>(?:(?!<\/button>).)*Estadísticas/);
+    expect(t).not.toContain('Bolera Norte');
+    expect(t).toContain('Últimos 8 juegos');
+    expect(t).toContain('Por mes');
+    expect(t).toContain('Por cuadros');
+    // El 290 con los cuadros de un 300 no cuenta (no cuadra con lo anotado).
+    expect(out.replace(/<!-- -->/g, '')).toContain('Con 1 juego anotado por cuadros (de 8)');
+    expect(t).toContain('Anota pino por pino (Pines)');
+  });
 });

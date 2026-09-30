@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronRight, Clock, Flame, Globe, Hash, Layers, LogOut, Share2, Sigma, Target, Trophy, Upload, UserPlus, UserRound, XCircle } from 'lucide-react';
-import { frameStats } from '../lib/bowling';
 import { useAuth } from '../lib/auth';
+import { byDate, countedFrames, entryStatGames } from '../lib/bowlingStats';
 import { removeMember, useEntriesOfEvents, useEvents, usePlayer, usePlayerEntries, usePlayerSubmissions } from '../lib/data';
 import { useLeagueSeasons } from '../lib/data/seasons';
 import { averageForDay, averageSourceLabel, buildGameContexts, entryMarks, type GameMark } from '../lib/bowlingSeason';
@@ -11,7 +11,8 @@ import { rememberLeague, useLeagueCtx } from '../lib/league';
 import { currentSeason, inSeason } from '../lib/seasons';
 import { effectiveAverage, entryLine, eventPosition, playerStats } from '../lib/stats';
 import type { BowlingEvent, Entry } from '../lib/types';
-import { ScoreChart, type ChartPoint } from '../components/ScoreChart';
+import { FrameStatsPanel } from '../components/stats/FrameStatsPanel';
+import { TrendSection } from '../components/stats/TrendSection';
 import { SubmitGamesModal } from '../components/SubmitGamesModal';
 import { NextPracticeCard } from '../components/NextPracticeCard';
 import { useAction, useFeedback } from '../components/feedback';
@@ -96,16 +97,14 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   const practices = mine.filter((e) => eventById.get(e.eventId)!.type === 'practica');
   const thisYear = String(new Date().getFullYear());
 
-  // Últimos 30 juegos verificados, del más viejo al más nuevo.
-  const points: ChartPoint[] = [...mine]
-    .reverse()
-    .flatMap((e) => {
+  // Los juegos verificados, del más viejo al más nuevo: la tendencia y, con los cuadros que cuadran, el análisis.
+  const games = byDate(
+    [...mine].reverse().flatMap((e) => {
       const ev = eventById.get(e.eventId)!;
-      return (e.scores ?? []).flatMap((s, i) =>
-        s != null && e.photos?.[i] ? [{ score: s, label: `${eventLabel(ev)} · J${i + 1} · ${formatDate(ev.date)}` }] : [],
-      );
-    })
-    .slice(-30);
+      return entryStatGames(e, ev.date, (i) => `${eventLabel(ev)} · J${i + 1} · ${formatDate(ev.date)}`);
+    }),
+  );
+  const frames = countedFrames(games);
 
   // Sus números por temporada (sin temporadas leídas, por año).
   const byYear = new Map<string, Entry[]>();
@@ -125,14 +124,6 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
     .filter((s) => s.status !== 'aprobado' || (s.createdAt && Date.now() - s.createdAt.toMillis() < 7 * 86400_000))
     .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
     .slice(0, 6);
-
-  // Strikes y spares de los juegos anotados por cuadros (y verificados).
-  const framed = mine.flatMap((e) =>
-    Object.entries(e.frames ?? {})
-      .filter(([i]) => e.scores?.[+i] != null && e.photos?.[+i] != null)
-      .map(([, f]) => frameStats(f.rolls)),
-  );
-  const framesTotal = framed.reduce((a, f) => ({ strikes: a.strikes + f.strikes, spares: a.spares + f.spares }), { strikes: 0, spares: 0 });
 
   async function share() {
     if (await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`)) toast('Link copiado');
@@ -210,14 +201,6 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
           <Stat icon={<CalendarCheck className="size-4" />} label="Asistencia" value={attended} sub={attended === 1 ? 'evento' : 'eventos'} />
         </div>
 
-        {framed.length > 0 && (
-          <p className="-mt-3 flex flex-wrap gap-2 text-xs text-muted">
-            <Badge tone="accent">{framesTotal.strikes} strikes</Badge>
-            <Badge tone="accent">{framesTotal.spares} spares</Badge>
-            <span className="self-center">en {framed.length} juegos anotados por cuadros</span>
-          </p>
-        )}
-
         {isOwner && (
           <Link
             to="/perfil"
@@ -261,21 +244,9 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
           </section>
         )}
 
-        {points.length >= 2 && (
-          <section className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-muted">Últimos {points.length} juegos</h2>
-              {average > 0 && (
-                <span className="flex items-center gap-1.5 text-xs text-muted">
-                  <span className="inline-block h-px w-4 bg-muted" /> promedio {average}
-                </span>
-              )}
-            </div>
-            <Card className="px-2 pt-3 pb-1 sm:px-4">
-              <ScoreChart points={points} average={average || null} />
-            </Card>
-          </section>
-        )}
+        <TrendSection games={games} average={average || null} heading="h2" mine={isOwner} />
+
+        <FrameStatsPanel frames={frames} games={stats.games} heading="h2" mine={isOwner} />
 
         <section className="flex flex-col gap-2">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted">
