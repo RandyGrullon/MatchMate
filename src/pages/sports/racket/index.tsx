@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { Users } from 'lucide-react';
 import type { SportScreens } from '../../../sports/screens';
-import type { RacketSport } from '../../../sports/racket';
+import { defaultRules, type RacketSport } from '../../../sports/racket';
 import PairsAdmin from './admin/PairsAdmin';
 import RacketEventPage from './EventPage';
 import RacketFeed from './Feed';
@@ -27,7 +27,8 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     W.displayName = `${sport}:${C.displayName ?? C.name ?? 'pantalla'}`;
     return W;
   };
-  const doubles = sport !== 'tennis';
+  // Parejas en pádel y en los deportes que juegan en dobles por defecto (pickleball); tenis y ping pong, jugadores.
+  const doubles = defaultRules(sport).doubles || sport === 'padel';
   const extras = ext ?? {};
   return {
     Home: wrap(RacketHome),

@@ -46,6 +46,7 @@ export function SportPicker({
               </span>
               <span className="min-w-0 flex-1">
                 <span className={cx('block truncate font-semibold', active && 'text-accent')}>{g.name}</span>
+                {g.alias && <span className="block truncate text-xs text-muted">{g.alias}</span>}
                 {beta(g.sports) && <span className="text-xs text-muted">Beta</span>}
               </span>
               {active && <Check className="size-4 shrink-0 text-accent" />}

@@ -6,6 +6,7 @@ import { useMatches, type Match } from '../../../lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
+import { isGameSport } from '../../../sports/racket/rules';
 import type { StandingRow } from '../../../sports/types';
 import { useFeedback, saveErrorMessage } from '../../../components/feedback';
 import { MatchCard, StandingsTable, type StandingsColumn } from '../../../components/match';
@@ -19,7 +20,7 @@ import { tiebreakText } from '../racket/logic/tiebreaks';
 import { todayIn } from '../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../racket/match/MatchDetail';
 import { useNames } from '../racket/names';
-import { useRacket } from '../racket/sport';
+import { courtWords, useRacket } from '../racket/sport';
 import { BoxRulesFields } from './BoxForm';
 import { saveBoxMonth } from './data';
 import {
@@ -51,7 +52,7 @@ type Tab = 'cajas' | 'historial' | 'participantes';
  */
 export function BoxPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
-  const { sport, leagueRules } = useRacket();
+  const { sport, ext, leagueRules } = useRacket();
   const names = useNames();
   const param = useMatchParam();
   const [search, setSearch] = useSearchParams();
@@ -165,6 +166,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
       tz: league.tz,
       forLabel: forLabel(sport),
       setsLabel: setsLabel(sport),
+      courtLabel: courtWords(ext).One,
     }).catch((e) => {
       console.error(e);
       toast('No se pudo hacer el Excel', 'error');
@@ -502,7 +504,8 @@ function RulesModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; busy: bool
     >
       <div className="flex flex-col gap-4">
         <BoxRulesFields value={rules} onChange={setRules} />
-        {sport !== 'pickleball' && (
+        {/* Pickleball y ping pong traen sus propios puntos de tabla. */}
+        {!isGameSport(sport) && (
           <div className="grid grid-cols-2 gap-2">
             {(['standard', '2-0'] as const).map((k) => (
               <button

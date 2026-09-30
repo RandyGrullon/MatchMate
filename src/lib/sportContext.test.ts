@@ -140,7 +140,8 @@ describe('qué deportes se ofrecen', () => {
 
   it('hoy, sin nada en beta: todos a cualquier cuenta', () => {
     const normal = offeredSports({ status: DEFAULT_SPORT_STATUS, isSuper: false });
-    expect(normal).toHaveLength(9);
+    expect(normal).toHaveLength(10);
+    expect(normal.at(-1)).toBe('table_tennis');
     expect(normal).toEqual(offeredSports({ status: DEFAULT_SPORT_STATUS, isSuper: true }));
     expect(normal[0]).toBe('bowling');
   });

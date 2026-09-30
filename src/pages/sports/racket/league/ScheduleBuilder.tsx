@@ -10,21 +10,23 @@ import { PickList, Stepper } from '../bits';
 import { buildLeagueSchedule, clashText, leagueConfigJson, type PairsLeagueConfig } from '../logic/league';
 import { localParts, timeLabel } from '../logic/time';
 import { useNames } from '../names';
-import { useRacket } from '../sport';
+import { isGameSport } from '../../../../sports/racket/rules';
+import { courtWords, useRacket } from '../sport';
 
 /**
  * Armar el calendario de la liga: quiénes juegan, ida o ida y vuelta, fecha de la jornada 1 y cada cuántos días,
- * canchas y horas. Muestra cómo queda (jornadas, partidos sin hora y choques) antes de crearlo.
+ * canchas (mesas en ping pong) y horas. Muestra cómo queda (jornadas, partidos sin hora y choques) antes de crearlo.
  */
 export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: PairsLeagueConfig }) {
   const { lid, base, league } = useLeagueCtx();
-  const { doubles, side, leagueRules } = useRacket();
+  const { sport, ext, doubles, side, leagueRules } = useRacket();
+  const w = courtWords(ext);
   const names = useNames();
   const { toast } = useFeedback();
   const existing = useMatches({ lid }).data;
   const [draft, setDraft] = useState<PairsLeagueConfig>(() => ({
     ...cfg,
-    courts: cfg.courts.length ? cfg.courts : ['Cancha 1', 'Cancha 2'],
+    courts: cfg.courts.length ? cfg.courts : [`${w.One} 1`, `${w.One} 2`],
     times: cfg.times.length ? cfg.times : [event.startTime ?? '19:00'],
   }));
   const [busy, setBusy] = useState(false);
@@ -87,7 +89,7 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
       </Card>
 
       <Card className="flex flex-col gap-4 p-4">
-        <p className="font-semibold">2. Fechas, canchas y horas</p>
+        <p className="font-semibold">2. Fechas, {w.many} y horas</p>
         <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
           <input type="checkbox" checked={draft.double} onChange={(e) => set({ double: e.target.checked })} className="size-5 accent-[var(--accent)]" />
           <span className="text-sm font-medium">Ida y vuelta</span>
@@ -99,17 +101,17 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
           <Stepper label="Cada cuántos días" value={draft.everyDays} min={1} max={30} onChange={(everyDays) => set({ everyDays })} suffix="días" />
         </div>
         <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium text-muted">Canchas</span>
+          <span className="text-xs font-medium text-muted">{w.Many}</span>
           <div className="grid grid-cols-2 gap-2">
             {draft.courts.map((c, i) => (
               <div key={i} className="flex gap-1">
-                <Input value={c} maxLength={40} aria-label={`Cancha ${i + 1}`} onChange={(e) => set({ courts: draft.courts.map((x, j) => (j === i ? e.target.value : x)) })} />
-                <Button variant="ghost" icon={<X className="size-4" />} aria-label="Quitar cancha" onClick={() => set({ courts: draft.courts.filter((_, j) => j !== i) })} />
+                <Input value={c} maxLength={40} aria-label={`${w.One} ${i + 1}`} onChange={(e) => set({ courts: draft.courts.map((x, j) => (j === i ? e.target.value : x)) })} />
+                <Button variant="ghost" icon={<X className="size-4" />} aria-label={`Quitar ${w.one}`} onClick={() => set({ courts: draft.courts.filter((_, j) => j !== i) })} />
               </div>
             ))}
           </div>
-          <Button size="sm" className="self-start" icon={<Plus className="size-4" />} onClick={() => set({ courts: [...draft.courts, `Cancha ${draft.courts.length + 1}`] })}>
-            Cancha
+          <Button size="sm" className="self-start" icon={<Plus className="size-4" />} onClick={() => set({ courts: [...draft.courts, `${w.One} ${draft.courts.length + 1}`] })}>
+            {w.One}
           </Button>
         </div>
         <div className="flex flex-col gap-2">
@@ -138,12 +140,15 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Stepper label="Minutos por partido" value={draft.minutes} min={30} max={180} step={15} onChange={(minutes) => set({ minutes })} />
-          <Field label="Puntos de la tabla">
-            <Select value={draft.points} onChange={(e) => set({ points: e.target.value === '2-0' ? '2-0' : 'standard' })}>
-              <option value="standard">Ganar 3, perder 1, W.O. 0</option>
-              <option value="2-0">Ganar 2, perder 0</option>
-            </Select>
-          </Field>
+          {/* Pickleball y ping pong traen sus propios puntos de tabla (partidos ganados; ganar 2, perder 1). */}
+          {!isGameSport(sport) && (
+            <Field label="Puntos de la tabla">
+              <Select value={draft.points} onChange={(e) => set({ points: e.target.value === '2-0' ? '2-0' : 'standard' })}>
+                <option value="standard">Ganar 3, perder 1, W.O. 0</option>
+                <option value="2-0">Ganar 2, perder 0</option>
+              </Select>
+            </Field>
+          )}
         </div>
       </Card>
 
@@ -171,7 +176,7 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
             {plan.unassigned > 0 && (
               <p className="flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                {plan.unassigned} {plan.unassigned === 1 ? 'partido no cabe' : 'partidos no caben'} en las canchas y horas: {plan.unassigned === 1 ? 'queda' : 'quedan'} sin hora. Agrega una cancha o una hora.
+                {plan.unassigned} {plan.unassigned === 1 ? 'partido no cabe' : 'partidos no caben'} en las {w.many} y horas: {plan.unassigned === 1 ? 'queda' : 'quedan'} sin hora. Agrega una {w.one} o una hora.
               </p>
             )}
             {plan.clashes.length > 0 && (

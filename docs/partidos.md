@@ -1,6 +1,6 @@
 # Partidos: el contrato común de raqueta y deportes de equipo
 
-Base compartida por pádel, tenis, pickleball, baloncesto, fútbol y futsal. Todo lo de aquí ya existe y tiene
+Base compartida por pádel, tenis, pickleball, ping pong, baloncesto, fútbol y futsal. Todo lo de aquí ya existe y tiene
 pruebas; las pantallas de cada deporte (`src/pages/sports/<sportId>/screens.tsx`, ver `src/sports/screens.tsx`)
 lo usan sin tocarlo.
 

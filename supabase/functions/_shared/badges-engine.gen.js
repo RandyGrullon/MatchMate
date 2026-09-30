@@ -1,9 +1,9 @@
 // @ts-self-types="./badges-engine.gen.d.ts"
 // GENERADO por scripts/badges/bundle.mjs (pnpm badges:bundle): no se edita a mano.
-// El motor de las insignias (src/badges/edge.ts y lo que importa: 66 archivos) en un solo ESM sin imports para la
+// El motor de las insignias (src/badges/edge.ts y lo que importa: 67 archivos) en un solo ESM sin imports para la
 // Edge Function supabase/functions/insignias (Deno). src/badges/bundle.test.ts falla si quedó viejo.
-// fuente: sha256-1528c458e17c07cf604926b5e301aa66fe8d18bca567b0a8fd37b6595a573b7b
-// salida: sha256-584cb84ad7cbe08372817f32e5042d5d2cb76dffe1b4dfe7f9cdf7f62314115e
+// fuente: sha256-906e9ef5222f994c09a6934f15cf577b3ad118300b08051cb79e98e2e1040189
+// salida: sha256-62c5097f4f0e3556283158c2674208529f559064c28c9fcfd93c03d0fafe8906
 // ---
 //#region src/sports/types.ts
 const SPORT_FAMILY = {
@@ -13,6 +13,7 @@ const SPORT_FAMILY = {
 	padel: "racket",
 	tennis: "racket",
 	pickleball: "racket",
+	table_tennis: "racket",
 	basketball: "team",
 	football: "team",
 	futsal: "team"
@@ -37,7 +38,8 @@ const ALL_SPORTS = Object.keys(SPORT_FAMILY);
 const RACKET = [
 	"padel",
 	"tennis",
-	"pickleball"
+	"pickleball",
+	"table_tennis"
 ];
 const TEAM = [
 	"basketball",
@@ -51,6 +53,7 @@ const FIGURE = [
 	"padel",
 	"tennis",
 	"pickleball",
+	"table_tennis",
 	"golf"
 ];
 /** Deportes con progreso contra la línea base (§1.7.6). */
@@ -59,6 +62,7 @@ const PROGRESS = [
 	"padel",
 	"tennis",
 	"pickleball",
+	"table_tennis",
 	"golf",
 	"swimming"
 ];
@@ -117,6 +121,7 @@ const GENERAL = [
 			padel: "Debut en la cancha",
 			tennis: "Debut en la cancha",
 			pickleball: "Debut en la cancha",
+			table_tennis: "Debut en la mesa",
 			basketball: "Debut en la cancha",
 			football: "Debut en la cancha",
 			futsal: "Debut en la cancha",
@@ -332,6 +337,7 @@ const GENERAL = [
 			"padel",
 			"tennis",
 			"pickleball",
+			"table_tennis",
 			"basketball",
 			"football",
 			"futsal",
@@ -693,7 +699,10 @@ const RACKET_BADGES = [
 		icon: "award",
 		name: "Victorias",
 		description: "Ya llevas {n} victorias.",
-		how: "Gana {n} partidos a sets que confirme el rival (máximo 3 por mes contra el mismo).",
+		how: {
+			default: "Gana {n} partidos a sets que confirme el rival (máximo 3 por mes contra el mismo).",
+			table_tennis: "Gana {n} partidos que confirme el rival (máximo 3 por mes contra el mismo)."
+		},
 		unit: units("victoria", "victorias"),
 		compare: "gte",
 		levels: tiers("C PC R E", [
@@ -743,21 +752,25 @@ const RACKET_BADGES = [
 			default: "Rosco",
 			padel: "Set en blanco",
 			tennis: "Set en blanco",
-			pickleball: "Juego en blanco"
+			pickleball: "Juego en blanco",
+			table_tennis: "Zapatero"
 		},
 		description: {
 			default: "Ganaste un set 6-0.",
-			pickleball: "Ganaste un juego sin que te anotaran."
+			pickleball: "Ganaste un juego sin que te anotaran.",
+			table_tennis: "Ganaste un juego 11-0."
 		},
 		how: {
 			default: "Gana un set sin ceder un juego, en un partido confirmado.",
-			pickleball: "Gana un juego sin que el rival anote, en un partido confirmado."
+			pickleball: "Gana un juego sin que el rival anote, en un partido confirmado.",
+			table_tennis: "Gana un juego 11-0 en un partido confirmado."
 		},
 		compare: "none",
 		levels: one({
 			padel: "PC",
 			tennis: "PC",
-			pickleball: "R"
+			pickleball: "R",
+			table_tennis: "R"
 		}),
 		repeatable: true,
 		evaluator: "racket_match"
@@ -774,14 +787,20 @@ const RACKET_BADGES = [
 		name: "Remontada",
 		description: {
 			default: "Perdiste el primer set y le diste la vuelta.",
-			pickleball: "Perdiste el primer juego y le diste la vuelta."
+			pickleball: "Perdiste el primer juego y le diste la vuelta.",
+			table_tennis: "Ibas 0-2 en juegos y le diste la vuelta."
 		},
 		how: {
 			default: "Gana un partido después de perder el primer set, sin retiro.",
-			pickleball: "Gana un partido después de perder el primer juego, sin retiro."
+			pickleball: "Gana un partido después de perder el primer juego, sin retiro.",
+			table_tennis: "Gana un partido al mejor de 5 o 7 después de perder los dos primeros juegos, sin retiro."
 		},
 		compare: "none",
 		levels: one("PC"),
+		params: { down: {
+			default: 1,
+			table_tennis: 2
+		} },
 		repeatable: true,
 		evaluator: "racket_match"
 	},
@@ -796,19 +815,23 @@ const RACKET_BADGES = [
 		icon: "zap",
 		name: {
 			default: "Sangre fría",
-			pickleball: "Al filo"
+			pickleball: "Al filo",
+			table_tennis: "Al filo"
 		},
 		description: {
 			default: "Ganaste {n} tie-breaks.",
-			pickleball: "Ganaste {n} juegos que se fueron más allá de {tope}."
+			pickleball: "Ganaste {n} juegos que se fueron más allá de {tope}.",
+			table_tennis: "Ganaste {n} juegos después del 10-10."
 		},
 		how: {
 			default: "Gana {n} tie-breaks en partidos confirmados.",
-			pickleball: "Gana {n} juegos que se vayan más allá de los puntos del juego."
+			pickleball: "Gana {n} juegos que se vayan más allá de los puntos del juego.",
+			table_tennis: "Gana {n} juegos que se vayan más allá del 10-10 (12-10, 13-11…)."
 		},
 		unit: {
 			default: units("tie-break", "tie-breaks"),
-			pickleball: units("juego", "juegos")
+			pickleball: units("juego", "juegos"),
+			table_tennis: units("juego", "juegos")
 		},
 		compare: "gte",
 		levels: tiers("PC R E", [
@@ -1766,7 +1789,8 @@ const MONTHLY = [
 			minMatches: {
 				padel: 4,
 				tennis: 4,
-				pickleball: 4
+				pickleball: 4,
+				table_tennis: 4
 			},
 			minCards: { golf: 2 }
 		},
@@ -1793,6 +1817,7 @@ const MONTHLY = [
 			padel: 8,
 			tennis: 8,
 			pickleball: 8,
+			table_tennis: 8,
 			golf: 2,
 			swimming: 2
 		} },
@@ -1808,6 +1833,7 @@ const MONTHLY = [
 			"padel",
 			"tennis",
 			"pickleball",
+			"table_tennis",
 			"basketball",
 			"football",
 			"futsal",
@@ -1824,6 +1850,7 @@ const MONTHLY = [
 			padel: "¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.",
 			tennis: "¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.",
 			pickleball: "¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.",
+			table_tennis: "¡Qué racha! {n} victorias seguidas, la mejor de {liga} en {mes}.",
 			basketball: "{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.",
 			football: "{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.",
 			futsal: "{equipo} no perdió en {n} partidos seguidos, la mejor racha de {liga} en {mes}.",
@@ -1838,6 +1865,7 @@ const MONTHLY = [
 				padel: 4,
 				tennis: 4,
 				pickleball: 4,
+				table_tennis: 4,
 				basketball: 4,
 				football: 4,
 				futsal: 4,
@@ -1857,6 +1885,7 @@ const MONTHLY = [
 			"padel",
 			"tennis",
 			"pickleball",
+			"table_tennis",
 			"basketball",
 			"football",
 			"futsal",
@@ -2127,7 +2156,8 @@ const YEARLY = [
 			minMatches: {
 				padel: 12,
 				tennis: 12,
-				pickleball: 12
+				pickleball: 12,
+				table_tennis: 12
 			},
 			minCards: { golf: 8 },
 			minAttendancePct: 40
@@ -2156,6 +2186,7 @@ const YEARLY = [
 				padel: 10,
 				tennis: 10,
 				pickleball: 10,
+				table_tennis: 10,
 				golf: 2.5
 			},
 			minPersonalBests: { swimming: 4 },
@@ -2166,7 +2197,8 @@ const YEARLY = [
 			minMatchesPerHalf: {
 				padel: 8,
 				tennis: 8,
-				pickleball: 8
+				pickleball: 8,
+				table_tennis: 8
 			}
 		},
 		repeatable: true,
@@ -2251,6 +2283,7 @@ const SEASON = [
 				padel: 10,
 				tennis: 10,
 				pickleball: 10,
+				table_tennis: 10,
 				golf: 2.5
 			},
 			minPersonalBests: { swimming: 3 },
@@ -2259,6 +2292,7 @@ const SEASON = [
 				padel: 5,
 				tennis: 5,
 				pickleball: 5,
+				table_tennis: 5,
 				golf: 3
 			}
 		},
@@ -2312,6 +2346,7 @@ const SEASON = [
 				padel: 6,
 				tennis: 6,
 				pickleball: 6,
+				table_tennis: 6,
 				basketball: 6,
 				football: 6,
 				futsal: 6,
@@ -4088,6 +4123,7 @@ const DAY_WEIGHT = {
 	padel: 1,
 	tennis: 1,
 	pickleball: 1,
+	table_tennis: 1,
 	basketball: 1,
 	football: 1,
 	futsal: 1,
@@ -4408,7 +4444,7 @@ function addSide(row, m, side, pts, keys) {
 		row.points += pts.draw;
 	} else {
 		row.lost++;
-		row.points += pts.loss;
+		row.points += m.retired === side ? pts.retiredLoss ?? pts.loss : pts.loss;
 	}
 	for (const [key, pair] of Object.entries(m.totals)) {
 		const mine = side === 1 ? pair[0] : pair[1];
@@ -4766,6 +4802,44 @@ function pickleballMatchResult(input) {
 	if (input.walkover) result.walkover = input.walkover;
 	return result;
 }
+/** MatchResult de un deporte a juegos (pickleball y ping pong): es el mismo cálculo, con otro nombre. */
+const gamesMatchResult = pickleballMatchResult;
+/**
+* Ping pong (ITTF 3.7.5.1): ganar 2, perder un partido jugado 1 y perder uno sin jugar (W.O.) o sin terminar (retiro)
+* 0. En el retiro los juegos y puntos completados siguen contando para los desempates.
+*/
+const TABLE_TENNIS_POINTS = {
+	win: 2,
+	draw: 0,
+	loss: 1,
+	walkoverLoss: 0,
+	retiredLoss: 0
+};
+/**
+* Grupos de la ITTF (Reglamento 3.7.5), con diferencias en lugar de cocientes: puntos → entre los empatados
+* (puntos, dif. de juegos, dif. de puntos) → dif. de juegos → dif. de puntos → sorteo. Los que sigan empatados
+* vuelven a empezar solo entre ellos (3.7.5.3). Los dos pasos de toda la tabla no son de la ITTF: sirven cuando
+* los empatados todavía no jugaron entre ellos (una liga a medias). Totales esperados en MatchResult: `games` y
+* `points` (ver `gamesMatchResult`).
+*/
+function tableTennisTable(points = TABLE_TENNIS_POINTS, lotSeed = "") {
+	return {
+		points,
+		primary: "points",
+		criteria: [
+			tiebreak.points(),
+			tiebreak.h2h(),
+			tiebreak.h2h((r) => r.extra.gamesDiff ?? 0, "dif. de juegos entre empatados"),
+			tiebreak.h2h((r) => r.extra.pointsDiff ?? 0, "dif. de puntos entre empatados"),
+			tiebreak.stat("gamesDiff", "dif. de juegos"),
+			tiebreak.stat("pointsDiff", "dif. de puntos"),
+			tiebreak.lot(lotSeed)
+		]
+	};
+}
+function tableTennisStandings(ids, results, opts = {}) {
+	return standings(ids, results, tableTennisTable(opts.points, opts.lotSeed));
+}
 //#endregion
 //#region src/sports/formats/social.ts
 const round2$1 = (x) => Math.round(x * 100) / 100;
@@ -5110,8 +5184,11 @@ function closeBoxMonth(boxes, standings, opts = {}) {
 const RACKET_SPORTS$1 = [
 	"tennis",
 	"padel",
-	"pickleball"
+	"pickleball",
+	"table_tennis"
 ];
+const isGameSport = (sport) => sport === "pickleball" || sport === "table_tennis";
+const isGameSportRules = (r) => isGameSport(r.sport);
 const TENNIS = {
 	sport: "tennis",
 	doubles: false,
@@ -5141,6 +5218,14 @@ const PICKLEBALL = {
 	bestOf: 1,
 	switchAt: 6,
 	gamePointOnServeOnly: false
+};
+const TABLE_TENNIS = {
+	sport: "table_tennis",
+	doubles: false,
+	gameTo: 11,
+	winBy: 2,
+	bestOf: 5,
+	switchAt: 5
 };
 /** Plantillas probadas por deporte. La primera es la de por defecto. */
 const RULE_PRESETS = {
@@ -5290,6 +5375,55 @@ const RULE_PRESETS = {
 				bestOf: 3
 			}
 		}
+	],
+	table_tennis: [
+		{
+			id: "bo5",
+			label: "Individual, al mejor de 5 juegos a 11",
+			rules: TABLE_TENNIS
+		},
+		{
+			id: "bo3",
+			label: "Individual, al mejor de 3 juegos a 11",
+			rules: {
+				...TABLE_TENNIS,
+				bestOf: 3
+			}
+		},
+		{
+			id: "bo7",
+			label: "Individual, al mejor de 7 juegos a 11",
+			rules: {
+				...TABLE_TENNIS,
+				bestOf: 7
+			}
+		},
+		{
+			id: "dobles",
+			label: "Dobles, al mejor de 5 juegos a 11",
+			rules: {
+				...TABLE_TENNIS,
+				doubles: true
+			}
+		},
+		{
+			id: "dobles-bo3",
+			label: "Dobles, al mejor de 3 juegos a 11",
+			rules: {
+				...TABLE_TENNIS,
+				doubles: true,
+				bestOf: 3
+			}
+		},
+		{
+			id: "dobles-bo7",
+			label: "Dobles, al mejor de 7 juegos a 11",
+			rules: {
+				...TABLE_TENNIS,
+				doubles: true,
+				bestOf: 7
+			}
+		}
 	]
 };
 function defaultRules(sport) {
@@ -5304,6 +5438,13 @@ function validateRules(rules) {
 	const r = rules;
 	if (!r || typeof r !== "object" || !RACKET_SPORTS$1.includes(r.sport)) return ["Deporte de raqueta no válido."];
 	if (typeof r.doubles !== "boolean") e.push("Falta decir si es individual o dobles.");
+	if (r.sport === "table_tennis") {
+		if (r.bestOf !== 3 && r.bestOf !== 5 && r.bestOf !== 7) e.push("El partido es al mejor de 3, 5 o 7 juegos.");
+		if (r.gameTo !== 11) e.push("El juego es a 11 puntos.");
+		if (r.winBy !== 2) e.push("El juego se gana por 2.");
+		if (r.switchAt !== 5 && r.switchAt !== null) e.push("El cambio de lado del juego decisivo es a los 5 puntos.");
+		return e;
+	}
 	if (!isBestOf(r.bestOf)) e.push("El partido es a 1, 3 o 5.");
 	if (r.sport === "pickleball") {
 		if (r.scoring !== "sideout" && r.scoring !== "rally") e.push("El conteo es tradicional o por rally.");
@@ -5336,7 +5477,7 @@ function resolveRules(sport, partial = {}) {
 	};
 	if (merged.sport === "pickleball") {
 		if (!("switchAt" in given)) merged.switchAt = Math.ceil(merged.gameTo / 2);
-	} else if (!("tiebreakAt" in given) && "gamesPerSet" in given) merged.tiebreakAt = merged.gamesPerSet;
+	} else if (merged.sport !== "table_tennis" && !("tiebreakAt" in given) && "gamesPerSet" in given) merged.tiebreakAt = merged.gamesPerSet;
 	const errors = validateRules(merged);
 	if (errors.length) throw new Error(errors.join(" "));
 	return merged;
@@ -5357,7 +5498,7 @@ function resolveSetup(setup, doubles) {
 }
 const other$1 = (side) => side === 1 ? 2 : 1;
 const flip = (p) => p === 0 ? 1 : 0;
-/** Sets (o juegos) que hay que ganar: 1, 2 o 3. */
+/** Sets (o juegos) que hay que ganar: 1, 2, 3 o 4 (ping pong al mejor de 7). */
 const needed = (bestOf) => Math.ceil(bestOf / 2);
 function assertSide(side) {
 	if (side !== 1 && side !== 2) throw new Error("Lado no válido.");
@@ -5451,7 +5592,7 @@ function normalizeSets(r, input) {
 		return set;
 	});
 }
-/** Revisa juegos terminados de pickleball ([11, 7], [9, 11]…). Lanza un Error si alguno no cuadra. */
+/** Revisa juegos terminados de pickleball o ping pong ([11, 7], [9, 11]…). Lanza un Error si alguno no cuadra. */
 function normalizeGames(r, input) {
 	if (!Array.isArray(input)) throw new Error("Juegos no válidos.");
 	if (input.length > r.bestOf) throw new Error(`El partido es a ${r.bestOf} juego${r.bestOf === 1 ? "" : "s"} como máximo.`);
@@ -5495,7 +5636,7 @@ function initPickleball(rules, setup) {
 		changeEnds: false
 	};
 	startGame(s, su.firstServer);
-	return refresh$1(s);
+	return refresh$2(s);
 }
 /** Deja listo un juego nuevo: 0-0, cada pareja en su lugar inicial y saca `first` desde la derecha. */
 function startGame(s, first) {
@@ -5517,18 +5658,18 @@ function applyPickleball(state, ev) {
 	switch (ev.type) {
 		case "rally":
 			if (ev.won !== "serving" && ev.won !== "receiving") throw new Error("Falta decir quién ganó el peloteo.");
-			playing$1(s);
+			playing$2(s);
 			rally(s, ev.won);
 			break;
 		case "point":
 			assertSide(ev.side);
-			playing$1(s);
+			playing$2(s);
 			rally(s, ev.side === s.server ? "serving" : "receiving");
 			break;
 		case "positions":
 			assertSide(ev.side);
 			assertPlayer(ev.right);
-			playing$1(s);
+			playing$2(s);
 			if (!s.rules.doubles) throw new Error("En individual no hay lugares de pareja.");
 			if (s.rallies > 0) throw new Error("Los lugares se eligen antes del primer saque del juego.");
 			s.right[ev.side - 1] = ev.right;
@@ -5536,30 +5677,30 @@ function applyPickleball(state, ev) {
 			break;
 		case "retire":
 			assertSide(ev.side);
-			playing$1(s);
+			playing$2(s);
 			s.winner = other$1(ev.side);
 			s.finish = "retired";
 			s.quitter = ev.side;
 			break;
 		case "walkover":
 			assertSide(ev.side);
-			playing$1(s);
+			playing$2(s);
 			if (s.games.length || s.rallies) throw new Error("Ya se jugaron puntos: usa «Retiro».");
 			s.winner = other$1(ev.side);
 			s.finish = "walkover";
 			s.quitter = ev.side;
 			break;
 		case "correct":
-			correct$1(s, ev);
+			correct$2(s, ev);
 			break;
 		default: throw new Error("Jugada no válida para pickleball.");
 	}
-	return refresh$1(s);
+	return refresh$2(s);
 }
-function playing$1(s) {
+function playing$2(s) {
 	if (s.winner !== null) throw new Error("El partido ya terminó.");
 }
-function changeEnds$1(s) {
+function changeEnds$2(s) {
 	s.leftSide = other$1(s.leftSide);
 	s.changeEnds = true;
 }
@@ -5594,13 +5735,13 @@ function rally(s, won) {
 }
 function scored$1(s, side) {
 	const r = s.rules;
-	if (raceWinner(r.gameTo, r.winBy, s.score) === side) return gameOver(s, side);
+	if (raceWinner(r.gameTo, r.winBy, s.score) === side) return gameOver$1(s, side);
 	if (s.games.length === r.bestOf - 1 && r.switchAt !== null && !s.switched && Math.max(s.score[0], s.score[1]) >= r.switchAt) {
 		s.switched = true;
-		changeEnds$1(s);
+		changeEnds$2(s);
 	}
 }
-function gameOver(s, side) {
+function gameOver$1(s, side) {
 	const r = s.rules;
 	s.games.push([s.score[0], s.score[1]]);
 	s.score = [0, 0];
@@ -5611,9 +5752,9 @@ function gameOver(s, side) {
 		return;
 	}
 	startGame(s, other$1(s.gameFirstServer));
-	changeEnds$1(s);
+	changeEnds$2(s);
 }
-function correct$1(s, ev) {
+function correct$2(s, ev) {
 	if (s.finish === "retired" || s.finish === "walkover") throw new Error("Primero deshaz el retiro o el W.O.");
 	const r = s.rules;
 	const games = normalizeGames(r, ev.games);
@@ -5651,10 +5792,301 @@ function correct$1(s, ev) {
 	const flips = games.length + (s.switched ? 1 : 0);
 	s.leftSide = ev.leftSide ?? (flips % 2 === 0 ? s.setup.leftSide : other$1(s.setup.leftSide));
 }
-function refresh$1(s) {
+function refresh$2(s) {
 	const srv = s.server - 1;
 	s.serveFrom = s.rules.doubles ? s.right[srv] === s.serverPlayer ? "right" : "left" : s.score[srv] % 2 === 0 ? "right" : "left";
 	s.call = s.winner !== null ? "" : `${s.score[srv]}-${s.score[1 - srv]}${s.serverNumber !== null ? `-${s.serverNumber}` : ""}`;
+	return s;
+}
+//#endregion
+//#region src/sports/racket/tableTennis.ts
+/** Turno de saque del próximo punto con `played` puntos ya jugados: cada 2 puntos; desde 10-10, cada punto. */
+const serveTurn = (played, gameTo = 11) => {
+	const deuce = 2 * (gameTo - 1);
+	return played < deuce ? Math.floor(played / 2) : gameTo - 1 + (played - deuce);
+};
+/** Saques que le quedan a quien saca con `played` puntos ya jugados: 2 al empezar su turno, 1 en el segundo o desde 10-10. */
+const servesLeftAt = (played, gameTo = 11) => played >= 2 * (gameTo - 1) ? 1 : played % 2 === 0 ? 2 : 1;
+/** Orden de un juego de dobles: [primer sacador, primer receptor, compañero del sacador, compañero del receptor]. */
+const rotationOf = (first, receiver) => [
+	{
+		side: first.side,
+		player: first.player
+	},
+	{
+		side: receiver.side,
+		player: receiver.player
+	},
+	{
+		side: first.side,
+		player: flip(first.player)
+	},
+	{
+		side: receiver.side,
+		player: flip(receiver.player)
+	}
+];
+/**
+* Juego siguiente: saca `player` (de la pareja que recibió primero en `prev`) y recibe quien le sacó a él en el juego
+* anterior (el turno de antes del suyo en `prev`).
+*/
+function nextRotation(prev, player) {
+	const side = prev[1].side;
+	const i = prev.findIndex((x) => x.side === side && x.player === player);
+	if (i < 0) throw new Error("El orden de saque no es válido.");
+	return rotationOf({
+		side,
+		player
+	}, prev[(i + 3) % 4]);
+}
+/** Cruce del decisivo: la pareja que recibe el próximo punto (turno `turn`) cambia su orden de recepción. */
+const swapReceivers = (rot, turn) => {
+	const out = rot.map((x) => ({
+		side: x.side,
+		player: x.player
+	}));
+	const a = (turn + 1) % 4;
+	const b = (turn + 3) % 4;
+	[out[a], out[b]] = [out[b], out[a]];
+	return out;
+};
+/** Orden armado alrededor del turno `turn`: ahí saca `server` y recibe `receiver`; los compañeros en los dos siguientes. */
+function rotationAround(turn, server, receiver) {
+	const base = rotationOf(server, receiver);
+	const out = new Array(4);
+	for (let j = 0; j < 4; j++) out[(turn + j) % 4] = base[j];
+	return out;
+}
+/** Orden del juego 1 según el sorteo: saca `firstPlayer` del lado que saca y recibe `firstPlayer` del otro. */
+function firstRotation(su) {
+	const f = su.firstServer;
+	const r = other$1(f);
+	return rotationOf({
+		side: f,
+		player: su.firstPlayer[f - 1]
+	}, {
+		side: r,
+		player: su.firstPlayer[r - 1]
+	});
+}
+/** Cadena por defecto del juego `k` (0 = el primero): en cada juego saca primero quien recibió primero en el anterior. */
+function defaultRotation(su, k) {
+	let rot = firstRotation(su);
+	for (let i = 0; i < k; i++) rot = nextRotation(rot, rot[1].player);
+	return rot;
+}
+const copyRotation = (rot) => rot.map((x) => ({
+	side: x.side,
+	player: x.player
+}));
+const gamesWon = (games, side) => games.filter((g) => (g[0] > g[1] ? 1 : 2) === side).length;
+const isDeciding$1 = (s) => s.games.length === s.rules.bestOf - 1;
+function initTableTennis(rules, setup) {
+	const errors = validateRules(rules);
+	if (errors.length || rules.sport !== "table_tennis") throw new Error(errors.join(" ") || "Reglas no válidas.");
+	const su = resolveSetup(setup, rules.doubles);
+	const rot = rules.doubles ? firstRotation(su) : [];
+	return refresh$1({
+		sport: "table_tennis",
+		rules: { ...rules },
+		setup: su,
+		games: [],
+		score: [0, 0],
+		gameFirstServer: su.firstServer,
+		rotation: rot,
+		gameRotation: copyRotation(rot),
+		switched: false,
+		leftSide: su.leftSide,
+		winner: null,
+		finish: null,
+		quitter: null,
+		n: 0,
+		server: su.firstServer,
+		serverPlayer: 0,
+		receiverPlayer: 0,
+		servesLeft: 2,
+		serveFrom: null,
+		call: "",
+		label: null,
+		changeEnds: false,
+		receiveSwap: false
+	});
+}
+function applyTableTennis(state, ev) {
+	if (!ev || typeof ev !== "object") throw new Error("Jugada no válida.");
+	const s = structuredClone(state);
+	s.n++;
+	s.changeEnds = false;
+	s.receiveSwap = false;
+	switch (ev.type) {
+		case "point":
+			assertSide(ev.side);
+			playing$1(s);
+			point$1(s, ev.side);
+			break;
+		case "order":
+			assertSide(ev.side);
+			assertPlayer(ev.player);
+			playing$1(s);
+			order$1(s, ev.side, ev.player);
+			break;
+		case "retire":
+			assertSide(ev.side);
+			playing$1(s);
+			s.winner = other$1(ev.side);
+			s.finish = "retired";
+			s.quitter = ev.side;
+			break;
+		case "walkover":
+			assertSide(ev.side);
+			playing$1(s);
+			if (s.games.length || s.score[0] + s.score[1]) throw new Error("Ya se jugaron puntos: usa «Retiro».");
+			s.winner = other$1(ev.side);
+			s.finish = "walkover";
+			s.quitter = ev.side;
+			break;
+		case "correct":
+			correct$1(s, ev);
+			break;
+		default: throw new Error("Jugada no válida para ping pong.");
+	}
+	return refresh$1(s);
+}
+function playing$1(s) {
+	if (s.winner !== null) throw new Error("El partido ya terminó.");
+}
+function changeEnds$1(s) {
+	s.leftSide = other$1(s.leftSide);
+	s.changeEnds = true;
+}
+function point$1(s, side) {
+	const r = s.rules;
+	s.score[side - 1]++;
+	if (raceWinner(r.gameTo, r.winBy, s.score) === side) return gameOver(s, side);
+	if (isDeciding$1(s) && r.switchAt !== null && !s.switched && Math.max(s.score[0], s.score[1]) >= r.switchAt) {
+		s.switched = true;
+		changeEnds$1(s);
+		if (r.doubles) {
+			s.rotation = swapReceivers(s.rotation, serveTurn(s.score[0] + s.score[1], r.gameTo));
+			s.receiveSwap = true;
+		}
+	}
+}
+function gameOver(s, side) {
+	const r = s.rules;
+	s.games.push([s.score[0], s.score[1]]);
+	s.score = [0, 0];
+	if (gamesWon(s.games, side) >= needed(r.bestOf)) {
+		s.winner = side;
+		s.finish = "played";
+		return;
+	}
+	s.gameFirstServer = other$1(s.gameFirstServer);
+	if (r.doubles) {
+		s.gameRotation = nextRotation(s.gameRotation, s.gameRotation[1].player);
+		s.rotation = copyRotation(s.gameRotation);
+	}
+	s.switched = false;
+	changeEnds$1(s);
+}
+function order$1(s, side, player) {
+	if (!s.rules.doubles) throw new Error("En individual no hay orden de pareja.");
+	if (s.score[0] + s.score[1] > 0) throw new Error("El orden se elige antes del primer saque del juego.");
+	const rot = s.rotation;
+	const firstGame = s.games.length === 0;
+	if (side === rot[0].side) {
+		if (firstGame) s.rotation = rotationOf({
+			side,
+			player
+		}, rot[1]);
+		else if (player !== rot[0].player) s.rotation = [
+			rot[2],
+			rot[3],
+			rot[0],
+			rot[1]
+		];
+	} else {
+		if (!firstGame) throw new Error("En este juego recibe primero quien le sacó en el juego anterior.");
+		s.rotation = rotationOf(rot[0], {
+			side,
+			player
+		});
+	}
+	s.gameRotation = copyRotation(s.rotation);
+}
+function correct$1(s, ev) {
+	if (s.finish === "retired" || s.finish === "walkover") throw new Error("Primero deshaz el retiro o el W.O.");
+	const r = s.rules;
+	const games = normalizeGames(r, ev.games);
+	const score = intPair(ev.score, "Puntos del juego en curso no válidos.");
+	for (const side of [ev.server, ev.leftSide]) if (side !== void 0) assertSide(side);
+	for (const p of [ev.serverPlayer, ev.receiverPlayer]) if (p !== void 0) assertPlayer(p);
+	const need = needed(r.bestOf);
+	const winner = gamesWon(games, 1) >= need ? 1 : gamesWon(games, 2) >= need ? 2 : null;
+	if (winner !== null) {
+		if (score[0] || score[1]) throw new Error("El partido ya terminó con esos juegos: los puntos van 0-0.");
+	} else if (!raceOpen(r.gameTo, r.winBy, score)) throw new Error(`Puntos no válidos para el juego en curso: ${score[0]}-${score[1]}.`);
+	const sameGame = s.winner === null && winner === null && games.length === s.games.length;
+	let firstServer = sameGame ? s.gameFirstServer : games.length % 2 === 0 ? s.setup.firstServer : other$1(s.setup.firstServer);
+	let gameRotation = r.doubles ? sameGame ? copyRotation(s.gameRotation) : defaultRotation(s.setup, games.length) : [];
+	const switched = winner === null && games.length === r.bestOf - 1 && r.switchAt !== null && Math.max(score[0], score[1]) >= r.switchAt;
+	const crossTurn = r.switchAt === null ? 0 : serveTurn(r.switchAt + Math.min(score[0], score[1], r.switchAt - 1), r.gameTo);
+	let rotation = [];
+	if (r.doubles) rotation = sameGame && switched && s.switched ? copyRotation(s.rotation) : switched ? swapReceivers(gameRotation, crossTurn) : copyRotation(gameRotation);
+	const k = serveTurn(score[0] + score[1], r.gameTo);
+	if (ev.server !== void 0 || r.doubles && (ev.serverPlayer !== void 0 || ev.receiverPlayer !== void 0)) {
+		if (r.doubles) {
+			const cur = rotation[k % 4];
+			const rcv = rotation[(k + 1) % 4];
+			const side = ev.server ?? cur.side;
+			const keep = side === cur.side;
+			const sp = ev.serverPlayer ?? (keep ? cur.player : rcv.player);
+			const rp = ev.receiverPlayer ?? (keep ? rcv.player : cur.player);
+			rotation = rotationAround(k, {
+				side,
+				player: sp
+			}, {
+				side: other$1(side),
+				player: rp
+			});
+			gameRotation = switched ? swapReceivers(rotation, crossTurn) : copyRotation(rotation);
+			firstServer = rotation[0].side;
+		} else {
+			const side = ev.server;
+			firstServer = k % 2 === 0 ? side : other$1(side);
+		}
+	}
+	s.games = games;
+	s.score = score;
+	s.winner = winner;
+	s.finish = winner ? "played" : null;
+	s.quitter = null;
+	s.gameFirstServer = firstServer;
+	s.rotation = rotation;
+	s.gameRotation = gameRotation;
+	s.switched = switched;
+	const flips = games.length + (switched ? 1 : 0);
+	s.leftSide = ev.leftSide ?? (flips % 2 === 0 ? s.setup.leftSide : other$1(s.setup.leftSide));
+}
+function refresh$1(s) {
+	const r = s.rules;
+	const played = s.score[0] + s.score[1];
+	const turn = serveTurn(played, r.gameTo);
+	if (r.doubles) {
+		const srv = s.rotation[turn % 4];
+		s.server = srv.side;
+		s.serverPlayer = srv.player;
+		s.receiverPlayer = s.rotation[(turn + 1) % 4].player;
+	} else {
+		s.server = turn % 2 === 0 ? s.gameFirstServer : other$1(s.gameFirstServer);
+		s.serverPlayer = 0;
+		s.receiverPlayer = 0;
+	}
+	s.servesLeft = servesLeftAt(played, r.gameTo);
+	s.serveFrom = r.doubles ? "right" : null;
+	const i = s.server - 1;
+	s.call = s.winner !== null ? "" : `${s.score[i]}-${s.score[1 - i]}`;
+	s.label = s.winner === null && s.score[0] >= r.gameTo - 1 && s.score[1] >= r.gameTo - 1 ? "Un saque cada uno" : null;
 	return s;
 }
 //#endregion
@@ -5880,16 +6312,25 @@ function refresh(s) {
 //#region src/sports/racket/index.ts
 /** Aplica una jugada a cualquier partido de raqueta (usa las reglas guardadas en el estado). */
 function applyRacket(state, ev) {
-	return state.sport === "pickleball" ? applyPickleball(state, ev) : applyTennis(state, ev);
+	switch (state.sport) {
+		case "pickleball": return applyPickleball(state, ev);
+		case "table_tennis": return applyTableTennis(state, ev);
+		default: return applyTennis(state, ev);
+	}
 }
 /** Estado inicial con reglas completas (sin pasar por `createRacketEngine`). */
 function initRacket(rules, setup) {
-	return rules.sport === "pickleball" ? initPickleball(rules, setup) : initTennis(rules, setup);
+	switch (rules.sport) {
+		case "pickleball": return initPickleball(rules, setup);
+		case "table_tennis": return initTableTennis(rules, setup);
+		default: return initTennis(rules, setup);
+	}
 }
 /**
 * Para la tabla: si hubo retiro o W.O., completa el partido como si el ganador ganara todos los puntos que
-* faltaban (W.O. = 6-0 6-0 en tenis y pádel, 11-0 en pickleball; retiro = se termina el set o juego en curso
-* a favor del ganador y, si hace falta, los que siguen). Si no, devuelve el mismo estado.
+* faltaban (W.O. = 6-0 6-0 en tenis y pádel, 11-0 en pickleball y 11-0 en cada juego que hace falta en ping pong,
+* 11-0 11-0 11-0 al mejor de 5; retiro = se termina el set o juego en curso a favor del ganador y, si hace falta, los
+* que siguen). Si no, devuelve el mismo estado.
 */
 function completeMatch(state) {
 	if (state.winner === null || state.finish === "played") return state;
@@ -5910,7 +6351,7 @@ function completeMatch(state) {
 function matchTotals(state) {
 	const s = completeMatch(state);
 	const count = (list, side) => list.filter((x) => x[side] > x[1 - side]).length;
-	if (s.sport === "pickleball") {
+	if (s.sport === "pickleball" || s.sport === "table_tennis") {
 		const done = s.games;
 		const wins = [count(done, 0), count(done, 1)];
 		const points = [s.score[0], s.score[1]];
@@ -5938,7 +6379,7 @@ function matchTotals(state) {
 }
 const TOKEN$1 = /^\[?(\d{1,2})\s*[-–—:/]\s*(\d{1,2})\]?(?:\((\d{1,2})\))?$/;
 /**
-* Modo «solo resultado»: lee "6-4 3-6 10-7", "7-6(5) 6-4" o "11-7 9-11 11-5" (lado 1 primero) y devuelve un
+* Modo «solo resultado»: lee "6-4 3-6 10-7", "7-6(5) 6-4" o "11-7 9-11 11-5 11-8" (lado 1 primero) y devuelve un
 * estado terminado con esas reglas, listo para `matchTotals` y `racketResult`. Lanza un Error si no cuadra.
 */
 function stateFromScore(rules, text, setup) {
@@ -5953,11 +6394,16 @@ function stateFromScore(rules, text, setup) {
 	});
 	if (!tokens.length) throw new Error("Escribe el marcador.");
 	let s = initRacket(rules, setup);
-	if (s.sport === "pickleball") {
-		if (tokens.some((t) => t.tb !== null)) throw new Error("En pickleball no hay tie-break.");
-		s = applyPickleball(s, {
+	if (s.sport === "pickleball" || s.sport === "table_tennis") {
+		if (tokens.some((t) => t.tb !== null)) throw new Error(s.sport === "pickleball" ? "En pickleball no hay tie-break." : "En ping pong no hay tie-break.");
+		const games = tokens.map((t) => [t.a, t.b]);
+		s = s.sport === "pickleball" ? applyPickleball(s, {
 			type: "correct",
-			games: tokens.map((t) => [t.a, t.b]),
+			games,
+			score: [0, 0]
+		}) : applyTableTennis(s, {
+			type: "correct",
+			games,
 			score: [0, 0]
 		});
 	} else {
@@ -6019,8 +6465,8 @@ function matchRules(sport, rules) {
 const PAIRS = /(\d{1,2})\s*-\s*(\d{1,2})/g;
 /**
 * MatchResult de un partido a sets que ya cuenta (confirmado, W.O. o con las 48 h). Totales: tenis y pádel
-* `sets` y `games` (y `points` si se sabe); pickleball `games` y `points`. null si no se puede usar (W.O. doble,
-* sin ganador, sin marcador legible).
+* `sets` y `games` (y `points` si se sabe); pickleball y ping pong `games` y `points`. null si no se puede usar
+* (W.O. doble, sin ganador, sin marcador legible).
 */
 function racketResultOf(m, sport, rules) {
 	const meta = {
@@ -6032,13 +6478,17 @@ function racketResultOf(m, sport, rules) {
 	if (m.status === "walkover") {
 		if (m.walkoverSide !== 1 && m.walkoverSide !== 2) return null;
 		const winner = m.walkoverSide === 1 ? 2 : 1;
-		if (sport === "pickleball") return pickleballMatchResult({
-			...meta,
-			games: [],
-			walkover: m.walkoverSide
-		});
-		const sets = r && r.sport !== "pickleball" ? Math.ceil(r.bestOf / 2) : 2;
-		const gps = r && r.sport !== "pickleball" ? r.gamesPerSet : 6;
+		if (isGameSport(sport)) {
+			const walkoverGames = r && r.sport === "table_tennis" ? Array.from({ length: needed(r.bestOf) }, () => [11, 0]) : void 0;
+			return gamesMatchResult({
+				...meta,
+				games: [],
+				walkover: m.walkoverSide,
+				walkoverGames
+			});
+		}
+		const sets = r && !isGameSportRules(r) ? Math.ceil(r.bestOf / 2) : 2;
+		const gps = r && !isGameSportRules(r) ? r.gamesPerSet : 6;
 		return racketMatchResult({
 			...meta,
 			sets: [],
@@ -6049,22 +6499,27 @@ function racketResultOf(m, sport, rules) {
 	}
 	if (m.winner !== 1 && m.winner !== 2) return null;
 	const score = m.score ?? {};
+	const text = typeof score.text === "string" ? score.text : "";
+	const retired = /ret/i.test(text);
+	const base = {
+		...meta,
+		winner: m.winner,
+		...retired ? { retired: m.winner === 1 ? 2 : 1 } : {}
+	};
 	const totals = isObj$7(score.totals) ? score.totals : null;
 	const tSets = pair(totals?.sets);
 	const tGames = pair(totals?.games);
 	const tPoints = pair(totals?.points);
 	if (tSets && tGames) {
-		if (sport === "pickleball") return {
-			...meta,
-			winner: m.winner,
+		if (isGameSport(sport)) return {
+			...base,
 			totals: {
 				games: tSets,
 				points: tPoints ?? [0, 0]
 			}
 		};
 		return {
-			...meta,
-			winner: m.winner,
+			...base,
 			totals: {
 				sets: tSets,
 				games: tGames,
@@ -6072,20 +6527,17 @@ function racketResultOf(m, sport, rules) {
 			}
 		};
 	}
-	const text = typeof score.text === "string" ? score.text : "";
 	if (r && text) try {
 		const t = matchTotals(stateFromScore(r, text));
-		if (sport === "pickleball") return {
-			...meta,
-			winner: m.winner,
+		if (isGameSport(sport)) return {
+			...base,
 			totals: {
 				games: t.sets,
 				points: t.points
 			}
 		};
 		return {
-			...meta,
-			winner: m.winner,
+			...base,
 			totals: {
 				sets: t.sets,
 				games: t.games
@@ -6093,26 +6545,30 @@ function racketResultOf(m, sport, rules) {
 		};
 	} catch {}
 	const sets = [...text.matchAll(PAIRS)].map((x) => [Number(x[1]), Number(x[2])]);
-	if (sport === "pickleball") return {
-		...pickleballMatchResult({
+	if (isGameSport(sport)) return {
+		...gamesMatchResult({
 			...meta,
 			games: sets
 		}),
-		winner: m.winner
+		...base
 	};
-	const tennis = r && r.sport !== "pickleball" ? r : null;
-	return racketMatchResult({
-		...meta,
-		sets,
-		winner: m.winner,
-		status: /ret/i.test(text) ? "retired" : "normal",
-		gamesPerSet: tennis?.gamesPerSet ?? 6,
-		setsToWin: tennis ? Math.ceil(tennis.bestOf / 2) : 2,
-		superTiebreak: tennis ? tennis.finalSet === "tiebreak" : sport === "padel"
-	});
+	const tennis = r && !isGameSportRules(r) ? r : null;
+	return {
+		...racketMatchResult({
+			...meta,
+			sets,
+			winner: m.winner,
+			status: retired ? "retired" : "normal",
+			gamesPerSet: tennis?.gamesPerSet ?? 6,
+			setsToWin: tennis ? Math.ceil(tennis.bestOf / 2) : 2,
+			superTiebreak: tennis ? tennis.finalSet === "tiebreak" : sport === "padel"
+		}),
+		...base
+	};
 }
 function pointsRule(sport, scheme = "standard") {
 	if (sport === "pickleball") return PICKLEBALL_POINTS;
+	if (sport === "table_tennis") return TABLE_TENNIS_POINTS;
 	return scheme === "2-0" ? {
 		win: 2,
 		draw: 0,
@@ -6127,6 +6583,7 @@ function pairStandings(sport, ids, matches, opts = {}) {
 		points: pointsRule(sport, opts.scheme),
 		lotSeed: opts.lotSeed
 	};
+	if (sport === "table_tennis") return tableTennisStandings(ids, results, o);
 	return sport === "pickleball" ? pickleballStandings(ids, results, o) : racketStandings(ids, results, o);
 }
 /** Jugadores de un lado: los del partido; si no hay, la plantilla de la pareja. */
@@ -6184,7 +6641,7 @@ function seasonPlayerTable(matches, opts) {
 		[1, 2].forEach((side) => {
 			const i = side - 1;
 			const sets = res.totals.sets ?? res.totals.games ?? [0, 0];
-			const games = opts.sport === "pickleball" ? res.totals.points ?? [0, 0] : res.totals.games ?? [0, 0];
+			const games = isGameSport(opts.sport) ? res.totals.points ?? [0, 0] : res.totals.games ?? [0, 0];
 			for (const p of sidePlayers(m.sides[i], opts.rosterOf)) {
 				const r = row(p);
 				r.played++;
@@ -6197,7 +6654,7 @@ function seasonPlayerTable(matches, opts) {
 					r.points += res.walkover ? pts.walkoverWin ?? pts.win : pts.win;
 				} else {
 					r.lost++;
-					r.points += pts.loss;
+					r.points += res.retired === side ? pts.retiredLoss ?? pts.loss : pts.loss;
 				}
 				r.for += games[i];
 				r.against += games[1 - i];
@@ -6209,13 +6666,14 @@ function seasonPlayerTable(matches, opts) {
 	for (const r of rows.values()) {
 		r.diff = r.for - r.against;
 		r.extra.setsDiff = r.extra.setsFor - r.extra.setsAgainst;
-		if (opts.sport === "pickleball") r.extra.gamesDiff = r.extra.setsDiff;
+		if (isGameSport(opts.sport)) r.extra.gamesDiff = r.extra.setsDiff;
 	}
+	const games = isGameSport(opts.sport);
 	return resolveTies([...rows.values()], [], [
 		tiebreak.points(),
 		tiebreak.wins(),
-		tiebreak.stat("setsDiff", opts.sport === "pickleball" ? "dif. de juegos" : "dif. de sets"),
-		tiebreak.diff(opts.sport === "pickleball" ? "dif. de puntos" : "dif. de juegos"),
+		tiebreak.stat("setsDiff", games ? "dif. de juegos" : "dif. de sets"),
+		tiebreak.diff(games ? "dif. de puntos" : "dif. de juegos"),
 		tiebreak.lot(opts.lotSeed ?? "")
 	]);
 }
@@ -6397,7 +6855,7 @@ function readSets(m, sport) {
 	const retired = /ret/i.test(text);
 	if (!retired) try {
 		const s = stateFromScore(rules, text);
-		if (s.sport === "pickleball") return {
+		if (s.sport === "pickleball" || s.sport === "table_tennis") return {
 			rules,
 			retired,
 			sets: s.games.map((g) => ({
@@ -6429,7 +6887,7 @@ function readSets(m, sport) {
 		const x = TOKEN.exec(t);
 		if (!x) return null;
 		const games = [Number(x[1]), Number(x[2])];
-		if (rules.sport === "pickleball") {
+		if (isGameSportRules(rules)) {
 			const w = raceFinal(rules.gameTo, rules.winBy, games);
 			if (w) sets.push({
 				games,
@@ -6456,7 +6914,7 @@ function readSets(m, sport) {
 }
 /**
 * Juegos de cada lado para el % de juegos ganados (línea base de raqueta): `score.totals.games` o, si falta, los del
-* texto (el súper tie-break cuenta como un juego 1-0; en pickleball, los juegos). null en W.O., partidos de puntos o
+* texto (el súper tie-break cuenta como un juego 1-0; en pickleball y ping pong, los juegos). null en W.O., partidos de puntos o
 * marcadores que no se entienden.
 */
 function racketGames(m, sport) {
@@ -6472,7 +6930,7 @@ function racketGames(m, sport) {
 		return null;
 	}
 	const out = [0, 0];
-	for (const s of read.sets) if (read.rules.sport === "pickleball" || s.matchTiebreak) out[s.winner - 1]++;
+	for (const s of read.sets) if (isGameSportRules(read.rules) || s.matchTiebreak) out[s.winner - 1]++;
 	else {
 		out[0] += s.games[0];
 		out[1] += s.games[1];
@@ -7059,7 +7517,8 @@ function personalBestSteps(swims) {
 const RACKET_SPORTS = [
 	"padel",
 	"tennis",
-	"pickleball"
+	"pickleball",
+	"table_tennis"
 ];
 const TEAM_SPORTS = [
 	"basketball",
@@ -8629,7 +9088,7 @@ function applyWinner(b, cat, key, matches, now) {
 //#endregion
 //#region src/badges/evaluators/racket.ts
 /**
-* Evaluadores de raqueta (pádel, tenis y pickleball; docs/insignias.md §2.3): hitos y marcas de carrera
+* Evaluadores de raqueta (pádel, tenis, pickleball y ping pong; docs/insignias.md §2.3): hitos y marcas de carrera
 * (`racket_career`), marcas de un partido (`racket_match`), la figura de la noche de americano o mexicano
 * (`racket_night`) y el podio de un torneo por categorías (`event_podium`, la parte de raqueta). Los partidos se
 * leen con los helpers de la app (tablas, cuadro, noches) y se validan con R1 y R2 (rules/racket.ts).
@@ -8747,8 +9206,8 @@ function racketCareerFor(kit, t, sport) {
 	for (const x of r2.filter((y) => isSetsMatch(y.m))) {
 		const read = readSets(x.m, sport);
 		if (!read) continue;
-		const gameTo = read.rules.sport === "pickleball" ? read.rules.gameTo : 0;
-		const won = read.sets.filter((s) => s.winner === x.side && (read.rules.sport === "pickleball" ? s.games[x.side - 1] > gameTo : s.tiebreak || s.matchTiebreak)).length;
+		const r = read.rules;
+		const won = read.sets.filter((s) => s.winner === x.side && (isGameSportRules(r) ? s.games[x.side - 1] > r.gameTo : s.tiebreak || s.matchTiebreak)).length;
 		if (!won) continue;
 		tbs += won;
 		tb.push({
@@ -8843,9 +9302,11 @@ function matchMarks(kit, m, p, side, sport) {
 		if (read.sets.some((s) => {
 			const [mine, theirs] = [s.games[side - 1], s.games[2 - side]];
 			if (s.winner !== side || s.matchTiebreak || theirs !== 0) return false;
-			return r.sport === "pickleball" ? mine >= r.gameTo : mine === r.gamesPerSet;
+			return isGameSportRules(r) ? mine >= r.gameTo : mine === r.gamesPerSet;
 		})) out.push({ key: "racket_bagel" });
-		if (won && r.bestOf >= 3 && !read.retired && read.sets.length >= 2 && read.sets[0].winner !== side) out.push({ key: "racket_comeback" });
+		const down = paramOf(def$8("racket_comeback"), "down", sport) ?? 1;
+		const behind = read.sets.slice(0, down);
+		if (won && r.bestOf >= 2 * down + 1 && !read.retired && read.sets.length > down && behind.every((s) => s.winner !== side)) out.push({ key: "racket_comeback" });
 	}
 	if (won) {
 		const d = def$8("racket_upset");
@@ -10815,7 +11276,7 @@ const boxMonth = (job, snap, now) => {
 	const minMatches = paramOf(top, "minMatches", sport) ?? 2;
 	tables.forEach((rows, b) => {
 		if (photo.boxes[b].filter((id) => r1Count(kit, photo, id) >= minMatches).length < minPlayers) return;
-		const games = (r) => sport === "pickleball" ? Number(r.extra?.setsDiff ?? 0) : r.diff;
+		const games = (r) => isGameSport(sport) ? Number(r.extra?.gamesDiff ?? 0) : r.diff;
 		const sorted = [...rows].sort((a, c) => c.won - a.won || games(c) - games(a));
 		const first = sorted[0];
 		if (!first) return;
@@ -12149,7 +12610,7 @@ const yearLeague = (job, snap, now) => {
 };
 //#endregion
 //#region src/badges/evaluators/families.ts
-/** Pádel, tenis y pickleball (§2.3), con su debut y su podio de torneo. */
+/** Pádel, tenis, pickleball y ping pong (§2.3), con su debut y su podio de torneo. */
 const RACKET_EVALUATORS = {
 	debut: racketDebut,
 	racket_career: racketCareer,
@@ -13224,4 +13685,4 @@ function withPushLabels(decisions) {
 }
 //#endregion
 export { evaluateJob, pushLabel, withPushLabels };
-export const SOURCE_HASH = "sha256-1528c458e17c07cf604926b5e301aa66fe8d18bca567b0a8fd37b6595a573b7b";
+export const SOURCE_HASH = "sha256-906e9ef5222f994c09a6934f15cf577b3ad118300b08051cb79e98e2e1040189";

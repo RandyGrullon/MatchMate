@@ -32,6 +32,7 @@ export const SPORT_COLORS: Readonly<Record<string, string>> = {
   futsal: '#1d4ed8',
   golf: '#065f46',
   swimming: '#0e7490',
+  table_tennis: '#86198f',
 };
 
 /** Color del deporte (el de la marca si no se conoce). */

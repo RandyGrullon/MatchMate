@@ -33,7 +33,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 /**
  * ¿Los premios del torneo de raqueta son por pareja? (`private.prize_racket_doubles`; lo mismo que
  * `useRacket().doubles` con reglas válidas): el pádel siempre; si no, `leagues.rules.match.doubles`, y sin eso el
- * pickleball en dobles y el tenis individual.
+ * pickleball en dobles y el tenis y el ping pong individual.
  */
 export function racketPrizeDoubles(sport: string, leagueRules: unknown): boolean {
   if (sport === 'padel') return true;

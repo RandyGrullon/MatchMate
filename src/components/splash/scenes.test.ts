@@ -38,8 +38,10 @@ describe('escenas de apertura', () => {
   });
 
   it('cada deporte tiene escena; sin deporte, desconocido o apagado: la genérica', () => {
-    const sports: SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming'];
+    const sports: SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis'];
     for (const s of sports) expect(SCENE_ORDER).toContain(SCENE_FOR_SPORT[s]);
+    expect(SCENE_FOR_SPORT.table_tennis).toBe('table_tennis');
+    expect(sceneForSport('table_tennis')).toBe('table_tennis');
     expect(SCENE_FOR_SPORT.futsal).toBe('football');
     expect(sceneForSport('bowling')).toBe('bowling');
     expect(sceneForSport(null)).toBe('generic');

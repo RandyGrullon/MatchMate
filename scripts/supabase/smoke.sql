@@ -15,9 +15,9 @@ begin;
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
 -- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
--- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas (y su diseño), la consola del superadmin
--- y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*,
--- escrituras sin cuenta).
+-- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas (y su diseño), el ping pong (liga,
+-- nivel y un partido al mejor de 7), la consola del superadmin y los permisos que TIENEN que fallar (alguien de
+-- fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -114,7 +114,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000300'];
+    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000200', '20260930000300'];
   v_missing text[];
   v_bowling text;
 begin
@@ -2088,6 +2088,61 @@ do $$
 begin
   perform pg_temp.must_fail('mis bolas: nadie diseña la bola de otra cuenta',
     format('select public.set_ball_design(p_ball => %L, p_design => null)', pg_temp.val('ball_design_ana')), array['no_permitido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9k. Ping pong (20260930000200): Ana (cuenta normal) crea su liga, pone el nivel de un jugador, crea la liga del club
+-- (sin noches de puntos) y anota un partido al mejor de 7 (4-3 en juegos); más de 4 juegos no pasa
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+  v_league uuid;
+  v_a uuid;
+  v_b uuid;
+  v_ids uuid[];
+  v_bo7 jsonb := '{"text": "11-9 8-11 12-10 6-11 11-7 5-11 15-13", "sides": [4, 3],
+                   "totals": {"sets": [4, 3], "games": [4, 3], "points": [68, 72]}}';
+begin
+  assert (select s.status from public.sport_status s where s.id = 'table_tennis') is not null,
+    'FAIL ping pong: falta table_tennis en sport_status';
+  if (select s.status from public.sport_status s where s.id = 'table_tennis') <> 'open' then
+    raise notice 'AVISO: el ping pong no está abierto; Ana no puede crear su liga y se salta esta parte';
+    return;
+  end if;
+  r := public.create_league(p_name => 'Smoke Ping pong ' || pg_temp.val('tag'), p_sport => 'table_tennis',
+                            p_rules => '{"match": {"sport": "table_tennis", "bestOf": 7}}');
+  v_league := (r ->> 'league_id')::uuid;
+  v_a := public.create_player(p_league => v_league, p_name => 'Smoke Zurdo');
+  v_b := public.create_player(p_league => v_league, p_name => 'Smoke Diestro');
+  perform public.update_player(p_player => v_a, p_patch => '{"attrs": {"tt": 5.5}}');
+  perform public.create_event(p_league => v_league, p_type => 'liga', p_date => current_date, p_name => 'Smoke Liga del club');
+  perform pg_temp.ok('ping pong: Ana crea su liga (abierta para todos), sus jugadores con nivel 5.5 y la liga del club');
+  perform pg_temp.must_fail('ping pong: sin noches de puntos',
+    format('select public.create_event(p_league => %L, p_type => %L, p_date => current_date)', v_league, 'americano'), array['invalido']);
+  perform pg_temp.must_fail('ping pong: el nivel va de 1 a 10',
+    format('select public.update_player(p_player => %L, p_patch => %L)', v_b, '{"attrs": {"tt": 11}}'), array['invalido']);
+  v_ids := public.create_matches(p_league => v_league, p_matches => jsonb_build_array(
+    jsonb_build_object('sides', jsonb_build_array(
+      jsonb_build_object('side', 1, 'players', jsonb_build_array(jsonb_build_object('player_id', v_a))),
+      jsonb_build_object('side', 2, 'players', jsonb_build_array(jsonb_build_object('player_id', v_b))))),
+    jsonb_build_object('format', 'sets', 'sides', jsonb_build_array(
+      jsonb_build_object('side', 1, 'players', jsonb_build_array(jsonb_build_object('player_id', v_a))),
+      jsonb_build_object('side', 2, 'players', jsonb_build_array(jsonb_build_object('player_id', v_b)))))));
+  r := public.finish_match(p_match => v_ids[1], p_score => v_bo7, p_winner => 1::smallint);
+  assert (select m.status = 'confirmed' and m.score -> 'sides' = '[4, 3]'::jsonb from public.matches m where m.id = v_ids[1]),
+    format('FAIL ping pong: el partido al mejor de 7 no quedó confirmado (%s)', r);
+  perform pg_temp.ok('ping pong: el admin anota un partido al mejor de 7 (4-3 en juegos) y queda confirmado');
+  perform pg_temp.must_fail('ping pong: más de 4 juegos no es un marcador',
+    format('select public.finish_match(p_match => %L, p_score => %L, p_winner => 1::smallint)', v_ids[2], '{"text": "11-0", "sides": [5, 0]}'),
+    array['invalido']);
+  perform pg_temp.must_fail('ping pong: un marcador que no termina el partido (4-4 en juegos) no pasa',
+    format('select public.finish_match(p_match => %L, p_score => %L, p_winner => 1::smallint)', v_ids[2], '{"text": "4-4", "sides": [4, 4]}'),
+    array['invalido']);
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

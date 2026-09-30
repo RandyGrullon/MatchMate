@@ -74,12 +74,13 @@ describe('catálogo: totales del diseño (§2.0 y §2.13)', () => {
     }
   });
 
-  it('instanciadas por deporte: 457 en total, todos los deportes abiertos desde el inicio', () => {
+  it('instanciadas por deporte: 505 en total, todos los deportes abiertos desde el inicio', () => {
     const want: Record<BadgeSport, number> = {
       bowling: 54,
       padel: 49,
       pickleball: 49,
       tennis: 48,
+      table_tennis: 48,
       basketball: 48,
       football: 51,
       futsal: 51,
@@ -93,8 +94,8 @@ describe('catálogo: totales del diseño (§2.0 y §2.13)', () => {
       expect([sport, got]).toEqual([sport, n]);
       total += got;
     }
-    expect(total).toBe(457);
-    // Cada uno de los 9 deportes tiene su debut, su «Fijo del mes», «Todo el año» y la asistencia de temporada.
+    expect(total).toBe(505);
+    // Cada uno de los 10 deportes tiene su debut, su «Fijo del mes», «Todo el año» y la asistencia de temporada.
     for (const s of ALL_SPORTS) {
       for (const key of ['debut', 'monthly_regular', 'full_year', 'season_attendance']) expect(badgesForSport(s).map((b) => b.key)).toContain(key);
     }
@@ -251,6 +252,10 @@ describe('catálogo: ayudas', () => {
     expect(thresholdOf(barrier, 4, 'golf9')).toBe(40);
     expect(rarityOf(badgeDef('racket_bagel')!, 0, 'pickleball')).toBe('R');
     expect(rarityOf(badgeDef('racket_bagel')!, 0, 'padel')).toBe('PC');
+    expect(rarityOf(badgeDef('racket_bagel')!, 0, 'table_tennis')).toBe('R');
+    // Remontada: desde 0-1 en sets (o juegos); en ping pong desde 0-2 en juegos.
+    expect(paramOf(badgeDef('racket_comeback')!, 'down', 'tennis')).toBe(1);
+    expect(paramOf(badgeDef('racket_comeback')!, 'down', 'table_tennis')).toBe(2);
     expect(paramOf(badgeDef('most_improved_month')!, 'minGain', 'golf')).toBe(2);
   });
 
@@ -296,5 +301,42 @@ describe('catálogo: ayudas', () => {
     expect([allowedBy(attendance, 'sin_titulos'), allowedBy(attendance, 'ninguna')]).toEqual([true, false]);
     expect(allowedBy(regular, 'ninguna')).toBe(true);
     expect(BADGES.filter((b) => !allowedBy(b, 'sin_titulos'))).toHaveLength(24);
+  });
+});
+
+describe('catálogo: ping pong', () => {
+  it('entra en las de raqueta (no en la noche) con sus propios textos', () => {
+    const keys = badgesForSport('table_tennis').map((b) => b.key);
+    const racket = ['racket_matches', 'racket_wins', 'racket_win_streak', 'racket_bagel', 'racket_comeback', 'racket_tiebreaks', 'racket_upset', 'racket_partners'];
+    const formats = ['racket_ladder_climber', 'box_top_month', 'box_promoted', 'ladder_top', 'honor_word'];
+    const titles = ['event_podium', 'streak_month', 'perfect_attendance_month', 'player_of_month', 'figure_of_year'];
+    for (const k of [...racket, ...formats, ...titles]) expect(keys).toContain(k);
+    expect(keys).not.toContain('racket_night_champion');
+    const o = { sport: 'table_tennis' as const };
+    expect(nameOf(badgeDef('debut')!, o)).toBe('Debut en la mesa');
+    expect(nameOf(badgeDef('racket_bagel')!, o)).toBe('Zapatero');
+    expect(descriptionOf(badgeDef('racket_bagel')!, o)).toBe('Ganaste un juego 11-0.');
+    expect(howOf(badgeDef('racket_bagel')!, o)).toBe('Gana un juego 11-0 en un partido confirmado.');
+    expect(descriptionOf(badgeDef('racket_comeback')!, o)).toBe('Ibas 0-2 en juegos y le diste la vuelta.');
+    expect(nameOf(badgeDef('racket_tiebreaks')!, o)).toBe('Al filo');
+    expect(descriptionOf(badgeDef('racket_tiebreaks')!, o)).toBe('Ganaste {n} juegos después del 10-10.');
+    expect(unitOf(badgeDef('racket_tiebreaks')!, 2, o)).toBe('juegos');
+    expect(howOf(badgeDef('racket_wins')!, o)).toBe('Gana {n} partidos que confirme el rival (máximo 3 por mes contra el mismo).');
+    // Los demás deportes de raqueta no cambian.
+    expect(nameOf(badgeDef('racket_bagel')!, { sport: 'tennis' })).toBe('Set en blanco');
+    expect(howOf(badgeDef('racket_wins')!, { sport: 'padel' })).toBe('Gana {n} partidos a sets que confirme el rival (máximo 3 por mes contra el mismo).');
+    for (const [key, name, n] of [
+      ['player_of_month', 'minMatches', 4],
+      ['most_improved_month', 'minGain', 8],
+      ['streak_month', 'minRun', 4],
+      ['figure_of_year', 'minMatches', 12],
+      ['progress_of_year', 'minGain', 10],
+      ['progress_of_year', 'minMatchesPerHalf', 8],
+      ['season_most_improved', 'minGain', 10],
+      ['season_most_improved', 'minPerHalf', 5],
+      ['season_attendance', 'minDates', 6],
+    ] as const) {
+      expect([key, name, paramOf(badgeDef(key)!, name, 'table_tennis')]).toEqual([key, name, n]);
+    }
   });
 });

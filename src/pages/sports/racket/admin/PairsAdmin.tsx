@@ -16,7 +16,8 @@ import { useRacket } from '../sport';
 /**
  * Admin › Parejas y niveles: las reglas del partido de la liga, las parejas de la temporada (id estable: la tabla
  * es de la pareja; las estadísticas, de quien juega) y el nivel de cada jugador en la escala del deporte
- * (pádel Playtomic 0–7, tenis NTRP, pickleball DUPR: ronda 1 del mexicano, cajas del primer mes y siembra).
+ * (pádel Playtomic 0–7, tenis NTRP, pickleball DUPR, ping pong 1–10: ronda 1 del mexicano, cajas del primer mes y
+ * siembra).
  */
 export default function PairsAdmin() {
   const { sport, rules, doubles } = useRacket();
@@ -45,8 +46,8 @@ export default function PairsAdmin() {
           <p className="text-xs text-muted">Valen para los partidos nuevos. Los que ya están creados se quedan con sus reglas (el admin las cambia antes de empezar cada uno).</p>
         </Card>
       </Section>
-      {/* Pádel siempre es de dobles; en tenis y pickleball, aunque las reglas sean de individual, las cajas y la escalera
-          de dobles piden parejas. */}
+      {/* Pádel siempre es de dobles; en tenis, pickleball y ping pong, aunque las reglas sean de individual, las cajas y
+          la escalera de dobles piden parejas. */}
       {(doubles || sport !== 'padel') && <PairsSection />}
       <LevelsSection />
     </div>
@@ -197,7 +198,7 @@ function LevelsSection() {
   };
 
   return (
-    <Section title={`Jugadores y ${scale.key === 'level' ? 'nivel' : scale.label} (${names.players.length})`}>
+    <Section title={`Jugadores y ${scale.label === 'Nivel' ? 'nivel' : scale.label} (${names.players.length})`}>
       <form
         className="flex gap-2"
         onSubmit={async (e) => {

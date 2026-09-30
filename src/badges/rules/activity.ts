@@ -16,6 +16,7 @@ export const DAY_WEIGHT: Readonly<Record<SportId, 1 | 2>> = {
   padel: 1,
   tennis: 1,
   pickleball: 1,
+  table_tennis: 1,
   basketball: 1,
   football: 1,
   futsal: 1,

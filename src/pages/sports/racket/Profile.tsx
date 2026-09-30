@@ -5,6 +5,7 @@ import { useMatches, type Match } from '../../../lib/data/matches';
 import { useWithPendingPoints } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
+import { isGameSport } from '../../../sports/racket/rules';
 import { playerUrl, shareLink } from '../../../components/share';
 import { useFeedback } from '../../../components/feedback';
 import { BackLink } from '../../../components/BackLink';
@@ -49,7 +50,7 @@ type Filter = 'todo' | 'sets' | 'noches' | Modality;
 /**
  * Estadísticas del jugador: partidos a sets (jugados, ganados, % de victorias, racha, sets y juegos), noches de
  * americano y mexicano (puntos y promedio), récord con cada compañero y contra cada rival, y sus partidos. Si
- * juega individual y dobles (tenis, pickleball), cada modalidad va por separado.
+ * juega individual y dobles (tenis, pickleball, ping pong), cada modalidad va por separado.
  */
 function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean }) {
   const { lid, base, league } = useLeagueCtx();
@@ -204,7 +205,8 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
 }
 
 function SetsStats({ title, s, sport }: { title: string; s: PlayerRecord['sets']; sport: string }) {
-  const pk = sport === 'pickleball';
+  // Pickleball y ping pong: «Juegos 12-7» y debajo «Puntos 190-151 (+39)».
+  const pk = isGameSport(sport);
   const pointDiff = s.gamesFor - s.gamesAgainst;
   return (
     <Section title={title}>

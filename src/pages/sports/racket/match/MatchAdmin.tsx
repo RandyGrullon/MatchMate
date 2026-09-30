@@ -17,17 +17,18 @@ import { walkoverScore } from '../court/adapters';
 import { isPointsMatch } from '../logic/results';
 import { localParts, todayIn, zonedIso } from '../logic/time';
 import { useNames } from '../names';
-import { useRacket } from '../sport';
+import { courtWords, useRacket } from '../sport';
 
 type Dialog = null | 'walkover' | 'postpone' | 'reschedule' | 'players';
 
 /**
- * Lo que el admin hace con un partido: W.O., aplazar, reprogramar (fecha, hora y cancha), anular, quién jugó
+ * Lo que el admin hace con un partido: W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), anular, quién jugó
  * (suplente) y borrar. Los resultados (anotar, corregir, decidir un reclamo) están en la pantalla del partido.
  */
 export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: () => void }) {
   const { lid, league } = useLeagueCtx();
-  const { sport } = useRacket();
+  const { sport, ext } = useRacket();
+  const w = courtWords(ext);
   const { toast, confirm } = useFeedback();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
@@ -72,7 +73,7 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
       )}
       {(m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended') && (
         <Button size="sm" icon={<CalendarClock className="size-4" />} onClick={() => setDialog('reschedule')}>
-          {m.scheduledAt ? 'Reprogramar' : 'Poner fecha y cancha'}
+          {m.scheduledAt ? 'Reprogramar' : `Poner fecha y ${w.one}`}
         </Button>
       )}
       <Button size="sm" icon={<UserRoundCog className="size-4" />} onClick={() => setDialog('players')}>
@@ -100,7 +101,7 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
         open={dialog === 'postpone'}
         title="Aplazar el partido"
         hint="Queda sin fecha hasta que lo reprogrames. Avísale a los jugadores el motivo."
-        placeholder="Lluvia, no hay cancha…"
+        placeholder={`Lluvia, no hay ${w.one}…`}
         busy={busy}
         onClose={() => setDialog(null)}
         onSave={(note) => act(() => postponeMatch(lid, m.id, note), 'Partido aplazado')}
@@ -108,6 +109,7 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
       <RescheduleDialog
         open={dialog === 'reschedule'}
         match={m}
+        words={w}
         tz={league.tz}
         busy={busy}
         onClose={() => setDialog(null)}
@@ -199,6 +201,7 @@ function NoteDialog({
 function RescheduleDialog({
   open,
   match,
+  words: w,
   tz,
   busy,
   onClose,
@@ -206,6 +209,8 @@ function RescheduleDialog({
 }: {
   open: boolean;
   match: Match;
+  /** «cancha» o «mesa» (ver courtWords). */
+  words: ReturnType<typeof courtWords>;
   tz?: string;
   busy: boolean;
   onClose: () => void;
@@ -228,7 +233,7 @@ function RescheduleDialog({
     <Modal
       open={open}
       onClose={onClose}
-      title="Fecha, hora y cancha"
+      title={`Fecha, hora y ${w.one}`}
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
@@ -245,8 +250,8 @@ function RescheduleDialog({
         <Field label="Hora">
           <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
         </Field>
-        <Field label="Cancha" className="col-span-2">
-          <Input value={court} maxLength={40} onChange={(e) => setCourt(e.target.value)} placeholder="Cancha 2" />
+        <Field label={w.One} className="col-span-2">
+          <Input value={court} maxLength={40} onChange={(e) => setCourt(e.target.value)} placeholder={`${w.One} 2`} />
         </Field>
         <Field label="Nota para los jugadores (opcional)" className="col-span-2">
           <Input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Se pasó por lluvia" />

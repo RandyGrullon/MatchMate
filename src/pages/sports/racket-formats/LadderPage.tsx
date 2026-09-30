@@ -15,6 +15,7 @@ import { levelText, useLevels } from '../racket/levels';
 import { todayIn, zonedIso } from '../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../racket/match/MatchDetail';
 import { useNames } from '../racket/names';
+import { courtWords, useRacket } from '../racket/sport';
 import { acceptChallenge, cancelChallenge, createChallenge, joinLadder, leaveLadder, setLadder, syncLadder, useLadderChallenges, useLadderRungs } from './data';
 import { entrantLevel } from './logic/box';
 import {
@@ -340,9 +341,12 @@ function ChallengeCard({
   );
 }
 
-function AcceptModal({ c, eventId, onClose }: { c: LadderChallenge; eventId: string; onClose: () => void }) {
+/** Aceptar un reto: fecha, hora y dónde (se puede dejar para después). */
+export function AcceptModal({ c, eventId, onClose }: { c: LadderChallenge; eventId: string; onClose: () => void }) {
   const { lid, league } = useLeagueCtx();
   const names = useNames();
+  // «Cancha» o, en ping pong, «Mesa».
+  const w = courtWords(useRacket().ext);
   const { toast } = useFeedback();
   const [date, setDate] = useState(todayIn(league.tz));
   const [time, setTime] = useState('');
@@ -385,8 +389,8 @@ function AcceptModal({ c, eventId, onClose }: { c: LadderChallenge; eventId: str
             <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
         </div>
-        <Field label="Cancha">
-          <Input value={court} maxLength={40} onChange={(e) => setCourt(e.target.value)} placeholder="Cancha 2" />
+        <Field label={w.One}>
+          <Input value={court} maxLength={40} onChange={(e) => setCourt(e.target.value)} placeholder={`${w.One} 2`} />
         </Field>
       </div>
     </Modal>

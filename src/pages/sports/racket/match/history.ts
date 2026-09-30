@@ -2,8 +2,8 @@
 import type { MatchHistoryItem } from '../../../../lib/data/matches';
 import { localParts, timeLabel } from '../logic/time';
 
+/** Lo que hizo cada acción. `schedule` («Cambió la hora o la cancha») lo arma `historyLines` con la palabra del deporte. */
 const ACTIONS: Record<string, string> = {
-  schedule: 'Cambió la hora o la cancha',
   reschedule: 'Reprogramado',
   postpone: 'Aplazado',
   suspend: 'Suspendido',
@@ -33,10 +33,18 @@ const place = (v: unknown, tz?: string | null) => {
   return [p ? `${p.date.slice(8, 10)}/${p.date.slice(5, 7)} ${timeLabel(p.time)}` : 'sin fecha', o.court].filter(Boolean).join(', ');
 };
 
-/** Líneas del historial, la más nueva primero. `nameOf(uid)` = nombre de la cuenta en la liga. */
-export function historyLines(items: readonly MatchHistoryItem[] | undefined, nameOf: (uid: string) => string | null, tz?: string | null): HistoryLine[] {
+/**
+ * Líneas del historial, la más nueva primero. `nameOf(uid)` = nombre de la cuenta en la liga; `court` = cómo se llama
+ * donde se juega (`courtWords(ext).one`: «cancha» o «mesa»).
+ */
+export function historyLines(
+  items: readonly MatchHistoryItem[] | undefined,
+  nameOf: (uid: string) => string | null,
+  tz?: string | null,
+  court = 'cancha',
+): HistoryLine[] {
   return [...(items ?? [])].reverse().map((h) => {
-    let text = ACTIONS[h.a] ?? h.a;
+    let text = h.a === 'schedule' ? `Cambió la hora o la ${court}` : (ACTIONS[h.a] ?? h.a);
     if ((h.a === 'finish' || h.a === 'resolve') && typeof h.score === 'string') text += `: ${h.score}`;
     if (h.a === 'correct') text += `: ${typeof h.from === 'string' ? `${h.from} → ` : ''}${typeof h.score === 'string' ? h.score : ''}`;
     if (h.a === 'walkover') text += h.absent === 0 ? ': no vino nadie' : `: no vino el lado ${h.absent}`;

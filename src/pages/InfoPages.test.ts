@@ -18,7 +18,7 @@ vi.mock('../lib/auth', () => ({
 }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 
-const { default: AboutPage, ABOUT_FEATURES, ABOUT_STEPS, ABOUT_TAGLINE } = await import('./AboutPage');
+const { default: AboutPage, ABOUT_FEATURES, ABOUT_STEPS, ABOUT_TAGLINE, sportGridCols } = await import('./AboutPage');
 const { default: ContactPage, CONTACT_EMAIL, CONTACT_MAX, CONTACT_REASONS, contactMailto } = await import('./ContactPage');
 
 const render = (page: () => ReactNode, url: string) => renderToString(h(MemoryRouter, { initialEntries: [url] }, h(FeedbackProvider, null, h(page))));
@@ -35,15 +35,21 @@ beforeEach(() => {
 });
 
 describe('Acerca de', () => {
-  it('sin cuenta: el logo, la frase, los 8 deportes, qué puedes hacer, cómo empezar, entrar y crear cuenta', () => {
+  it('sin cuenta: el logo, la frase, los 9 deportes, qué puedes hacer, cómo empezar, entrar y crear cuenta', () => {
     const out = render(AboutPage, '/acerca');
     const t = text(out);
     expect(out).toContain('aria-label="MatchMate"');
     expect(t).toContain(ABOUT_TAGLINE);
     expect(ABOUT_TAGLINE).toBe('Tus ligas, tus juegos y tus estadísticas en un solo lugar');
-    for (const name of ['Boliche', 'Pádel', 'Tenis', 'Pickleball', 'Baloncesto', 'Fútbol', 'Golf', 'Natación']) expect(t).toContain(name);
+    for (const name of ['Boliche', 'Pádel', 'Tenis', 'Pickleball', 'Baloncesto', 'Fútbol', 'Golf', 'Natación', 'Ping pong']) expect(t).toContain(name);
     // Un cuadro por deporte (el fútbol de campo y el de sala, uno solo), que lleva a su Home.
-    expect(out.match(/href="\/d\/[a-z]+"/g)).toHaveLength(8);
+    expect(out.match(/href="\/d\/[a-z_]+"/g)).toHaveLength(9);
+    // 9 cuadros en 3 columnas: 3 filas llenas (con 4 columnas el ping pong quedaba solo en la tercera).
+    expect(out).toContain('class="grid grid-cols-3 gap-2"');
+    expect([8, 9, 10, 12].map(sportGridCols)).toEqual(['grid-cols-4', 'grid-cols-3', 'grid-cols-4', 'grid-cols-4']);
+    // El ping pong lleva su otro nombre en el nombre accesible del cuadro.
+    expect(out).toContain('href="/d/table_tennis"');
+    expect(out).toContain('aria-label="Ping pong (tenis de mesa)"');
     expect(out).toContain('href="/d/bowling"');
     expect(t).toContain('Qué puedes hacer');
     expect(ABOUT_FEATURES).toHaveLength(6);

@@ -84,7 +84,7 @@ Motor de insignias (src/badges/*.ts)           ← puro; corre en el servidor (E
 `StandingRow` y `MatchResult`. Cada familia vive en su carpeta con pruebas (`*.test.ts`) y no importa React
 ni el backend:
 
-- `src/sports/racket/`  tenis, pádel y pickleball (puntos, juegos, sets, tie-breaks, saque y lados).
+- `src/sports/racket/`  tenis, pádel, pickleball y ping pong (puntos, juegos, sets, tie-breaks, saque y lados).
 - `src/sports/formats/` americano/mexicano, round robin, grupos + cuadro, liga por cajas, escalera, tablas.
 - `src/sports/team/`    baloncesto y fútbol/futsal (mesa anotadora, faltas, tarjetas, tablas, disciplina).
 - `src/sports/golf/` y `src/sports/swimming/`.
@@ -104,6 +104,40 @@ ni el backend:
 - Lo común de los partidos (raqueta y equipos: anotador, confirmación del rival, W.O., modo cancha) está en
   `docs/partidos.md`, `src/court/` y `src/components/match/`.
 
+## Ping pong (`20260930000200_ping_pong.sql`, docs/ping-pong.md)
+
+- **El deporte:** id `table_tennis` (familia `racket`, abierto, orden 10), «Ping pong» con el alias «Tenis de mesa»
+  (`SportMeta.alias`: sale en la portada y en el selector), ícono `PingPong`, color `#b01cbd` (fucsia; `#86198f` en las
+  imágenes para compartir), escena `table_tennis` de la animación de apertura. Donde se juega se llama «mesa»
+  (`RacketExtensions.words.court` y `courtWords`: reprogramar, aplazar, «Anotar en la mesa», Excel, informe).
+- **Reglas y motor** (`src/sports/racket/tableTennis.ts`, reglas en `rules.ts`): juegos a 11 ganando por 2, al mejor
+  de 3, 5 (por defecto) o 7; saque cada 2 puntos y uno cada uno desde 10-10; cambio de lado en cada juego y a los 5
+  del decisivo (aviso); dobles con la rotación de saque de la ITTF (el orden de recepción se cruza a los 5 del
+  decisivo). `isGameSport` (pickleball y ping pong) decide dónde los «sets» son juegos y los «juegos», puntos
+  (tablas, perfil, ranking, informe, insignias). Plantillas `RULE_PRESETS.table_tennis`: bo5, bo3, bo7, dobles,
+  dobles-bo3.
+- **Pantallas:** las de raqueta con `TABLE_TENNIS_EXT` (`src/pages/sports/table_tennis/screens.tsx`): liga, torneo
+  (grupos + cuadro), liga por cajas y escalera; **sin** americano, mexicano ni noches (`hasNights`, `NIGHT_SPORTS`,
+  `night_league` y el premio `racket_night` no lo incluyen: las parejas que rotan no son de ping pong). Modo cancha
+  propio `court/TableTennisCourt.tsx` (quién saca y recibe, 2.º saque, «Un saque cada uno», punto de juego o de
+  partido, cambio de lado, «Orden» en dobles) sobre `tableTennisAdapter`/`ttView` de `court/logic.ts`; «Solo el
+  resultado» con `tableTennisEntry` (juego por juego). W.O.: 11-0 en cada juego que hace falta.
+- **Tabla:** la de grupos de la ITTF (`tableTennisStandings`, `TABLE_TENNIS_POINTS`: ganar 2, perder 1, W.O. o retiro 0;
+  entre los empatados puntos, dif. de juegos y de puntos; luego dif. de juegos, de puntos y sorteo). Nivel manual
+  `players.attrs.tt` de 1 a 10 (`LEVEL_SCALES.table_tennis`). Individual salvo `leagues.rules.match.doubles`.
+- **Base:** `private.tt_score_ok` (marcador de hasta 4 juegos ganados, para el mejor de 7), `private.tt_result_ok`
+  (con ganador, un final posible del mejor de 3, 5 o 7 que cuadra con él y con los totales) y, redefinidas desde su
+  última versión, `raq_sport`, `raq_check_event` (liga, torneo, cajas, escalera), `raq_check_match` (`''` o
+  `'sets'`), `raq_check_player` (`tt`), `prize_comp` (`racket_tourney`), `badge_activity`, `badge_apply_decisions`
+  y `badge_icon_ok` (`'ping-pong'`, 53 íconos); los checks de deporte de `badge_awards`, `badge_progress` y
+  `badge_stats` suman `table_tennis`. Una migración posterior que redefina alguna tiene que copiar la de aquí.
+- **Insignias:** entra en todas las de raqueta (`catalog.ts` `RACKET`, `FIGURE`, `PROGRESS` y las de todos los
+  deportes), con sus textos: «Zapatero» (juego 11-0), remontada desde 0-2 en juegos y «Al filo» (juegos después del
+  10-10). No hay keys nuevas. Premios del torneo e informe (`src/prizes/sports.ts`, `src/lib/report/racket.ts`) y
+  la agenda («Torneos de ping pong con lugar») van por el camino de la raqueta.
+- Pruebas: `src/sports/racket/tableTennis.test.ts`, `src/pages/sports/table_tennis/*.test.ts` y
+  `court/logic.test.ts`, `tests/sql/ping-pong.test.ts` y la sección 9k de `scripts/supabase/smoke.sql`.
+
 ## Datos por módulo (`src/lib/data/`)
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),
@@ -116,7 +150,7 @@ cada deporte (`matches`, `seasonTeams`, `racket`, `teamSports`, `golf`, `swimmin
 ## Jugadores sin cuenta y reclamos
 
 - El admin agrega personas que no tienen cuenta desde Admin › Jugadores («Agregar jugador», uno o varios por nombre)
-  con el dato de su deporte: promedio (boliche), nivel (pádel 0–7, tenis NTRP, pickleball DUPR), Handicap Index
+  con el dato de su deporte: promedio (boliche), nivel (pádel 0–7, tenis NTRP, pickleball DUPR, ping pong 1–10), Handicap Index
   (golf), posición y dorsal (baloncesto y fútbol, en `players.attrs.team`); los nadadores, en Nadadores. Pantalla:
   `src/components/players/`. RPC existentes: `create_player`, `update_player` (`attrs`), `golf_set_index`.
 - Si esa persona se crea una cuenta, dice «ese jugador soy yo» (al unirse en «¿Quién eres?», en la página del
@@ -483,7 +517,7 @@ resultados, vínculos, cierres ──trigger──▶ private.badge_queue ◀─
           badge_awards · badge_progress · push agrupado (push_outbox) · tiempo real `badges` (user: y league:)
 ```
 
-- **Catálogo y reglas en código, una sola fuente:** `src/badges/catalog.ts` (100 keys, 197 niveles, 9 deportes) y
+- **Catálogo y reglas en código, una sola fuente:** `src/badges/catalog.ts` (100 keys, 197 niveles, 10 deportes) y
   `src/badges/rules/` (actividad válida, ligas reales, juez y parte, líneas base). Los usan la app (textos, progreso,
   galería) y el motor.
 - **El servidor decide, nunca el teléfono:** `src/badges/engine.ts` (`evaluate(job, snapshot, now)` corre los
@@ -532,7 +566,7 @@ Diseño: `docs/premios-torneo.md`. Contrato: `supabase/README.md` («Premios del
     evento (`individualRule`/`teamRule`/`bowlingStandings` de `src/lib/stats.ts`; con 0 % de handicap, scratch). Todo
     torneo nuevo nace con individual por handicap y equipos por scratch (`create_event`, `create_tournament` y el
     formulario, que dice la regla); se cambia en «Configurar» del evento.
-  - raqueta: en el torneo por categorías, pareja (pádel; tenis y pickleball según `rules.match.doubles`) o individual
+  - raqueta: en el torneo por categorías, pareja (pádel; tenis, pickleball y ping pong según `rules.match.doubles`) o individual
     por categoría; en las noches de americano o mexicano y el social del pickleball, individual.
   - baloncesto, fútbol y sala: el equipo del torneo relámpago (cuelga del evento del torneo suelto) y el de cada playoff.
   - golf: individual (la competencia oficial, gross y neto) de la ronda suelta o del torneo de varias rondas.

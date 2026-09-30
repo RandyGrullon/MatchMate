@@ -1,5 +1,6 @@
 import { MAX_INDEX, MIN_INDEX, isValidIndex } from '../../sports/golf/course';
 import type { RacketSport } from '../../sports/racket';
+import { SPORT_FAMILY, type SportId } from '../../sports/types';
 import { formatLevel, levelScale, parseLevelInput, readLevel, type LevelScale } from '../../pages/sports/racket/levels';
 import { indexText } from '../../pages/sports/golf/logic';
 import { BASKETBALL_POSITIONS } from '../../pages/sports/basketball/bits';
@@ -8,7 +9,7 @@ import { FOOTBALL_POSITIONS } from '../../pages/sports/football/bits';
 /**
  * «Agregar jugador» según el deporte: qué números se piden al anotar a alguien sin cuenta y cómo se leen.
  * - boliche: promedio fijo (0–300), igual que siempre;
- * - pádel, tenis, pickleball: el nivel con la escala del deporte (0–7, NTRP, DUPR);
+ * - pádel, tenis, pickleball y ping pong: el nivel con la escala del deporte (0–7, NTRP, DUPR, 1–10);
  * - golf: el Handicap Index (-10 a 54; «+1.2» es plus);
  * - baloncesto, fútbol, fútbol sala: posición y dorsal preferidos (players.attrs.team);
  * - natación: los nadadores se anotan en su pestaña (con las reglas de menores).
@@ -16,13 +17,15 @@ import { FOOTBALL_POSITIONS } from '../../pages/sports/football/bits';
 
 export type StatKind = 'bowling' | 'racket' | 'golf' | 'team' | 'swimming' | 'plain';
 
-const RACKET: ReadonlySet<string> = new Set(['padel', 'tennis', 'pickleball']);
 const TEAM: ReadonlySet<string> = new Set(['basketball', 'football', 'futsal']);
+
+/** Deporte de raqueta según el registro (pádel, tenis, pickleball y ping pong). */
+const isRacket = (s: string): boolean => Object.hasOwn(SPORT_FAMILY, s) && SPORT_FAMILY[s as SportId] === 'racket';
 
 export function statKind(sport: string | null | undefined): StatKind {
   const s = sport || 'bowling';
   if (s === 'bowling') return 'bowling';
-  if (RACKET.has(s)) return 'racket';
+  if (isRacket(s)) return 'racket';
   if (TEAM.has(s)) return 'team';
   if (s === 'golf') return 'golf';
   if (s === 'swimming') return 'swimming';
@@ -30,7 +33,7 @@ export function statKind(sport: string | null | undefined): StatKind {
 }
 
 /** Escala del nivel del deporte de raqueta (pádel si no es de raqueta). */
-export const racketScale = (sport: string): LevelScale => levelScale((RACKET.has(sport) ? sport : 'padel') as RacketSport);
+export const racketScale = (sport: string): LevelScale => levelScale((isRacket(sport) ? sport : 'padel') as RacketSport);
 
 /** Posiciones del deporte de equipo (las mismas de las plantillas). */
 export function teamPositions(sport: string): readonly string[] {

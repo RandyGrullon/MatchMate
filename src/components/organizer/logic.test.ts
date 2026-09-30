@@ -241,6 +241,7 @@ describe('suspender un día', () => {
   it('motivos listos según el deporte', () => {
     expect(suspendReasons('bowling')).toContain('La bolera está cerrada');
     expect(suspendReasons('padel')).toContain('La cancha está ocupada');
+    expect(suspendReasons('table_tennis')).toContain('Las mesas están ocupadas');
     expect(suspendReasons('swimming')[0]).toBe('Lluvia');
   });
 });

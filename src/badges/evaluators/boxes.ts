@@ -11,7 +11,7 @@ import { isR1, r2Reason } from '../rules/racket';
 import { isFinal, type Match } from '../../lib/data/matchCore';
 import { pairStandings, playerSide } from '../../pages/sports/racket/logic/results';
 import { closeBoxMonth, type BoxMove } from '../../sports/formats/box';
-import type { RacketSport } from '../../sports/racket';
+import { isGameSport, type RacketSport } from '../../sports/racket/rules';
 import type { StandingRow } from '../../sports/types';
 import type { SnapLadderRung } from '../snapshot';
 import type { BadgeDecision, BadgeDef } from '../types';
@@ -98,13 +98,14 @@ export const boxMonth: Evaluator = (job, snap, now) => {
     for (const p of peopleOf(kit, id)) out.push(awardOf(d, playerHolderOf(p, league.id), sport, 0, periodKey.box(event.id, photo.n), 'firme', [`event:${event.id}`], { ...ctx, values }));
   };
 
-  // Cima de la caja: caja con 3+ que jugaron 2+ partidos R1; primero por victorias y diferencia de juegos.
+  // Cima de la caja: caja con 3+ que jugaron 2+ partidos R1; primero por victorias y diferencia de juegos (en tenis y
+  // pádel `diff` son juegos; en pickleball y ping pong `diff` son puntos y los juegos van en `extra.gamesDiff`).
   const minPlayers = paramOf(top, 'minPlayers', sport) ?? 3;
   const minMatches = paramOf(top, 'minMatches', sport) ?? 2;
   tables.forEach((rows, b) => {
     const active = photo.boxes[b].filter((id) => r1Count(kit, photo, id) >= minMatches);
     if (active.length < minPlayers) return;
-    const games = (r: StandingRow) => (sport === 'pickleball' ? Number(r.extra?.setsDiff ?? 0) : r.diff);
+    const games = (r: StandingRow) => (isGameSport(sport) ? Number(r.extra?.gamesDiff ?? 0) : r.diff);
     const sorted = [...rows].sort((a, c) => c.won - a.won || games(c) - games(a));
     const first = sorted[0];
     if (!first) return;

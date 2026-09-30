@@ -5,7 +5,7 @@ import { Input, cx } from '../../ui';
 import { IconGlyph } from './parts';
 
 /**
- * «Ícono» del editor (§5.4): los 52 curados en 5 pestañas (Deporte, Premios, Esfuerzo, Comunidad, Nuestra tierra) y
+ * «Ícono» del editor (§5.4): los 53 curados en 5 pestañas (Deporte, Premios, Esfuerzo, Comunidad, Nuestra tierra) y
  * la búsqueda sin tildes («Busca: trofeo, fuego, cigua…»). Con texto busca en todos; cada botón mide 44 px.
  */
 export function IconPicker({ value, onChange, id = 'insignia-icono' }: { value: BadgeIconKey; onChange: (k: BadgeIconKey) => void; id?: string }) {

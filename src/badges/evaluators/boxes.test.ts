@@ -84,3 +84,48 @@ describe('ladder_month: número 1 de la escalera', () => {
     expect(runLadder(rungs, [{ ...challenge, resolved_at: '2026-09-28T12:00:00.000Z' }])).toEqual([]);
   });
 });
+
+describe('box_month en los deportes a juegos: la cima desempata por dif. de juegos', () => {
+  // Ciclo r1 > r2 > r3 > r1 y los tres le ganan a r4: los tres con 2 victorias. Dif. de juegos: r1 +5, r2 +1, r3 +1;
+  // dif. de puntos: r3 +11 (le pasó por encima a r4), r1 +10, r2 +2. Manda la de juegos.
+  const box = ['r1', 'r2', 'r3', 'r4'];
+  const results: [string, string, string][] = [
+    ['r1', 'r2', '11-9 11-9 11-9'],
+    ['r2', 'r3', '11-9 9-11 11-9 9-11 11-9'],
+    ['r3', 'r1', '11-9 9-11 11-9 9-11 11-9'],
+    ['r1', 'r4', '11-9 11-9 11-9'],
+    ['r2', 'r4', '11-9 11-9 11-9'],
+    ['r3', 'r4', '11-0 0-11 11-0 0-11 11-0'],
+  ];
+  const pick3 = { match: { bestOf: 5 } };
+  const payload = {
+    month: { n: 1, label: 'Octubre 2026', start: '2026-10-01', end: '2026-10-31', boxes: [box], moves: [], closed: true },
+    rules: { min: 4, max: 6, up: 2, down: 2, minToPromote: 2, minToStay: 2 },
+    points: 'standard',
+  };
+  const runBox = (sport: 'table_tennis' | 'pickleball', rules: Record<string, unknown>, rows: [string, string, string][]) => {
+    const ms = rows.map(([a, b, text], i) =>
+      racketMatch(`t${i}`, day(10, 2 + i), [a], [b], text, userOf, { event_id: 'BOX', round: 1, stage: 'Caja 1', rules }),
+    );
+    const data = merge({ events: [snapEvent('BOX', { type: 'cajas', date: '2026-10-01' })] }, ...ms);
+    const j = job('cajas', { ref: 'box:BOX:1', payload });
+    return evaluate(j, snap(j, world(sport, { players: PLAYERS, ...data })), NOW);
+  };
+
+  it('ping pong: gana la caja el de mejor dif. de juegos, aunque otro tenga mejor dif. de puntos', () => {
+    expect(of(runBox('table_tennis', pick3, results), 'box_top_month').map((d) => d.player_id)).toEqual(['r1']);
+  });
+
+  it('pickleball: igual (antes leía una dif. de sets que sus filas no tienen y daba empate)', () => {
+    const pb = { match: { bestOf: 3, gameTo: 11 } };
+    const rows: [string, string, string][] = [
+      ['r1', 'r2', '11-5 11-5'],
+      ['r2', 'r3', '11-9 9-11 11-9'],
+      ['r3', 'r1', '11-9 9-11 11-9'],
+      ['r1', 'r4', '11-2 11-2'],
+      ['r2', 'r4', '11-2 11-2'],
+      ['r3', 'r4', '11-2 11-2'],
+    ];
+    expect(of(runBox('pickleball', pb, rows), 'box_top_month').map((d) => d.player_id)).toEqual(['r1']);
+  });
+});

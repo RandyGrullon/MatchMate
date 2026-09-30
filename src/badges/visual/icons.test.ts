@@ -16,10 +16,10 @@ const coords = (node: IconNode) =>
   });
 
 describe('lista curada', () => {
-  it('52 íconos en 5 pestañas: deporte 13, premios 9, esfuerzo 11, comunidad 10, nuestra tierra 9', () => {
-    expect(BADGE_ICON_KEYS).toHaveLength(52);
+  it('53 íconos en 5 pestañas: deporte 14, premios 9, esfuerzo 11, comunidad 10, nuestra tierra 9', () => {
+    expect(BADGE_ICON_KEYS).toHaveLength(53);
     expect(ICON_TABS.map((t) => [t.key, BADGE_ICON_KEYS.filter((k) => BADGE_ICONS[k].tab === t.key).length])).toEqual([
-      ['deporte', 13],
+      ['deporte', 14],
       ['premios', 9],
       ['esfuerzo', 11],
       ['comunidad', 10],
@@ -49,10 +49,15 @@ describe('lista curada', () => {
   it('cada deporte tiene su emblema; fútbol y sala comparten balón', () => {
     for (const s of Object.keys(SPORT_FAMILY) as SportId[]) expect(isBadgeIconKey(SPORT_EMBLEM[s]), s).toBe(true);
     expect(SPORT_EMBLEM.futsal).toBe(SPORT_EMBLEM.football);
-    expect(new Set(Object.values(SPORT_EMBLEM)).size).toBe(8);
+    expect(new Set(Object.values(SPORT_EMBLEM)).size).toBe(9);
     // Los de tenis y baloncesto son los mismos de src/sports/registry.ts.
     expect(BADGE_ICONS.tennis.node[0]).toEqual(['circle', { cx: '12', cy: '12', r: '10' }]);
     expect(BADGE_ICONS.swimming.node.length).toBe(5);
+    // Ping pong: la paleta del registro, con su clave de guion.
+    expect(SPORT_EMBLEM.table_tennis).toBe('ping-pong');
+    expect(BADGE_ICONS['ping-pong'].node[0]).toEqual(['circle', { cx: '9.5', cy: '14.5', r: '6.5' }]);
+    expect(searchIcons('ping pong')).toEqual(['ping-pong']);
+    expect(searchIcons('pingpong')).toEqual(['ping-pong']);
   });
 
   it('una clave que no existe da el trofeo; los de estado no salen en el creador', () => {
@@ -77,7 +82,7 @@ describe('búsqueda', () => {
 
   it('sin texto: los de la pestaña', () => {
     expect(searchIcons('', 'premios')).toEqual(['trophy', 'medal', 'award', 'crown', 'star', 'gem', 'ribbon', 'badge-check', 'sparkles']);
-    expect(searchIcons('  ')).toHaveLength(13);
+    expect(searchIcons('  ')).toHaveLength(14);
   });
 });
 

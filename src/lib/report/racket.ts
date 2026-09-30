@@ -14,7 +14,7 @@ import { matchesTable, numCol, pendingCount, pendingNote, playedCount, standingH
 import { podiumsFrom, reportHeader, type ReportColumn, type ReportFact, type ReportLeague, type ReportRow, type ReportTable, type TournamentReport } from './model';
 
 /**
- * El reporte de la raqueta (pádel, tenis y pickleball), con las tablas y los podios de la app:
+ * El reporte de la raqueta (pádel, tenis, pickleball y ping pong), con las tablas y los podios de la app:
  * - torneo por categorías (TourneyPage): campeones de cada categoría (el cuadro, `racketTourneyProvider`), las tablas
  *   de los grupos (`groupTables`) y los partidos por fase; en «Individual», cada jugador de cada categoría
  *   (`seasonPlayerTable`). Detalle del Excel: el de siempre (partidos, grupos y jugadores);
@@ -97,6 +97,8 @@ export function racketTourneyReport(input: RacketTourneyReportInput): Tournament
   const unit = doubles ? (['pareja', 'parejas'] as const) : (['jugador', 'jugadores'] as const);
   const who = { nameOf: names.nameOf, rosterOf: names.rosterOf };
   const live = matches.filter((m) => m.status !== 'void');
+  // En ping pong se juega en mesas (la columna del Excel dice «Mesa»).
+  const court = sport === 'table_tennis' ? 'Mesa' : undefined;
   const cats = cfg.categories;
   // Terminado: todas las categorías tienen su podio (1.º, 2.º y 3.º) con los partidos que ya cuentan.
   const final = racketTourneyFinished(cats, matches, who, now);
@@ -176,6 +178,7 @@ export function racketTourneyReport(input: RacketTourneyReportInput): Tournament
         now,
         tz: league.tz,
         winner: true,
+        courtLabel: court,
         empty: 'Todavía no hay partidos.',
       }),
     );
@@ -259,6 +262,7 @@ export function racketTourneyReport(input: RacketTourneyReportInput): Tournament
       tz: league.tz,
       forLabel: games,
       setsLabel: sets,
+      courtLabel: court,
     }),
   };
 }

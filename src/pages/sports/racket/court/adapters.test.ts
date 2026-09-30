@@ -26,6 +26,14 @@ describe('partido a sets en la cancha', () => {
     expect(walkoverScore('padel', {}, 1)).toMatchObject({ text: '0-6 0-6', sides: [0, 2], totals: { sets: [0, 2], games: [0, 12] } });
     expect(walkoverScore('pickleball', { match: { sport: 'pickleball' } }, 2)).toMatchObject({ text: '11-0', sides: [1, 0] });
   });
+
+  it('ping pong: reglas de la liga (mejor de 3, 5 o 7) y W.O. a 11-0 en cada juego', () => {
+    expect(engineRules('table_tennis', null)).toMatchObject({ sport: 'table_tennis', bestOf: 5, gameTo: 11, winBy: 2, doubles: false });
+    expect(engineRules('table_tennis', { match: { bestOf: 7, doubles: true } })).toMatchObject({ bestOf: 7, doubles: true });
+    expect(engineRules('table_tennis', { match: { bestOf: 4 } })).toMatchObject({ bestOf: 5 });
+    expect(walkoverScore('table_tennis', {}, 2)).toMatchObject({ text: '11-0 11-0 11-0', sides: [3, 0], totals: { sets: [3, 0], games: [3, 0], points: [33, 0] } });
+    expect(walkoverScore('table_tennis', { match: { bestOf: 3 } }, 1)).toMatchObject({ text: '0-11 0-11', sides: [0, 2] });
+  });
 });
 
 describe('partido a puntos (americano)', () => {

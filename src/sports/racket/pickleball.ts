@@ -20,6 +20,7 @@ import {
   assertPlayer,
   assertSide,
   flip,
+  gamesSummary,
   intPair,
   needed,
   normalizeGames,
@@ -309,13 +310,7 @@ function refresh(s: PickleballState): PickleballState {
 
 /** Marcador corto, siempre lado 1 primero: "11-7 9-11 11-5", "11-7 3-5 ret.", "W.O."; en curso agrega el juego actual. */
 export function pickleballSummary(s: PickleballState): string {
-  if (s.finish === 'walkover') return 'W.O.';
-  const parts = s.games.map((g) => `${g[0]}-${g[1]}`);
-  if (s.finish !== 'played') {
-    if (s.score[0] + s.score[1] > 0 || (!parts.length && s.finish === null)) parts.push(`${s.score[0]}-${s.score[1]}`);
-    if (s.finish === 'retired') parts.push('ret.');
-  }
-  return parts.join(' ');
+  return gamesSummary(s);
 }
 
 export function pickleballResult(s: PickleballState): { winner: Side | null; summary: string } {

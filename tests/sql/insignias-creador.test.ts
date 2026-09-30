@@ -306,15 +306,16 @@ describe('diseños', () => {
     await fails(save(w.u.org, '00000000-0000-0000-0000-000000000000', CAMPEON), 'no_existe');
   });
 
-  it('los 52 íconos curados son los de src/badges/visual/icons.ts', async () => {
-    expect(BADGE_ICON_KEYS).toHaveLength(52);
+  it('los 53 íconos curados son los de src/badges/visual/icons.ts', async () => {
+    // 52 de 20260929001120_insignias_creador.sql más 'ping-pong' (20260930000200_ping_pong.sql).
+    expect(BADGE_ICON_KEYS).toHaveLength(53);
     for (const key of BADGE_ICON_KEYS) {
       expect(await db.admin('select private.badge_icon_ok($1) as ok', [key]), key).toEqual([{ ok: true }]);
     }
     const [{ n }] = await db.admin<{ n: number }>(
       `select count(*)::int as n from pg_proc p, regexp_matches(p.prosrc, '''[a-z0-9-]+''', 'g') where p.proname = 'badge_icon_ok'`,
     );
-    expect(n).toBe(52);
+    expect(n).toBe(53);
     expect(await db.admin(`select private.badge_icon_ok('dollar-sign') as a, private.badge_icon_ok(null) as b`)).toEqual([{ a: false, b: false }]);
   });
 

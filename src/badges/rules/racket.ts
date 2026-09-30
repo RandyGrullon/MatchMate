@@ -7,6 +7,7 @@ import { isFinal, toMatch, type Match, type MatchRow } from '../../lib/data/matc
 import { toStamp } from '../../lib/data/stamp';
 import { isPointsMatch, matchRules, playerSide, sidePlayers } from '../../pages/sports/racket/logic/results';
 import {
+  isGameSportRules,
   isTiebreakSet,
   matchTotals,
   other,
@@ -162,7 +163,7 @@ export function racketActivity(
 // ---------------------------------------------------------------------------------------------------------
 // Sets y juegos leídos del marcador
 
-/** Un set (o un juego de pickleball) terminado, en orden lado 1 – lado 2. */
+/** Un set (o un juego de pickleball o de ping pong) terminado, en orden lado 1 – lado 2. */
 export interface RacketSet {
   games: Pair<number>;
   winner: Side;
@@ -194,7 +195,9 @@ export function readSets(m: Pick<Match, 'status' | 'format' | 'score' | 'rules'>
   if (!retired) {
     try {
       const s = stateFromScore(rules, text);
-      if (s.sport === 'pickleball') return { rules, retired, sets: s.games.map((g) => ({ games: g, winner: g[0] > g[1] ? 1 : 2, tiebreak: false, matchTiebreak: false })) };
+      if (s.sport === 'pickleball' || s.sport === 'table_tennis') {
+        return { rules, retired, sets: s.games.map((g) => ({ games: g, winner: g[0] > g[1] ? 1 : 2, tiebreak: false, matchTiebreak: false })) };
+      }
       return {
         rules,
         retired,
@@ -214,7 +217,7 @@ export function readSets(m: Pick<Match, 'status' | 'format' | 'score' | 'rules'>
     const x = TOKEN.exec(t);
     if (!x) return null;
     const games: Pair<number> = [Number(x[1]), Number(x[2])];
-    if (rules.sport === 'pickleball') {
+    if (isGameSportRules(rules)) {
       const w = raceFinal(rules.gameTo, rules.winBy, games);
       if (w) sets.push({ games, winner: w, tiebreak: false, matchTiebreak: false });
       continue;
@@ -228,7 +231,7 @@ export function readSets(m: Pick<Match, 'status' | 'format' | 'score' | 'rules'>
 
 /**
  * Juegos de cada lado para el % de juegos ganados (línea base de raqueta): `score.totals.games` o, si falta, los del
- * texto (el súper tie-break cuenta como un juego 1-0; en pickleball, los juegos). null en W.O., partidos de puntos o
+ * texto (el súper tie-break cuenta como un juego 1-0; en pickleball y ping pong, los juegos). null en W.O., partidos de puntos o
  * marcadores que no se entienden.
  */
 export function racketGames(m: Pick<Match, 'status' | 'format' | 'score' | 'rules'>, sport: RacketSport): Pair<number> | null {
@@ -247,8 +250,8 @@ export function racketGames(m: Pick<Match, 'status' | 'format' | 'score' | 'rule
   }
   const out: Pair<number> = [0, 0];
   for (const s of read.sets) {
-    // Pickleball cuenta juegos, no puntos; el súper tie-break vale un juego.
-    if (read.rules.sport === 'pickleball' || s.matchTiebreak) out[s.winner - 1]++;
+    // Pickleball y ping pong cuentan juegos, no puntos; el súper tie-break vale un juego.
+    if (isGameSportRules(read.rules) || s.matchTiebreak) out[s.winner - 1]++;
     else {
       out[0] += s.games[0];
       out[1] += s.games[1];

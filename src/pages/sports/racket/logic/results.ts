@@ -7,15 +7,26 @@ import { finalMatches, sideKey, type Match, type MatchSide } from '../../../../l
 import {
   PICKLEBALL_POINTS,
   RACKET_POINTS,
-  pickleballMatchResult,
+  TABLE_TENNIS_POINTS,
+  gamesMatchResult,
   pickleballStandings,
   racketMatchResult,
   racketStandings,
   resolveTies,
+  tableTennisStandings,
   tiebreak,
   type PointsRule,
 } from '../../../../sports/formats';
-import { matchTotals, resolveRules, stateFromScore, type RacketRules, type RacketSport } from '../../../../sports/racket';
+import {
+  isGameSport,
+  isGameSportRules,
+  matchTotals,
+  needed,
+  resolveRules,
+  stateFromScore,
+  type RacketRules,
+  type RacketSport,
+} from '../../../../sports/racket';
 import type { MatchResult, Side, StandingRow } from '../../../../sports/types';
 import { localParts } from './time';
 
@@ -55,8 +66,8 @@ const PAIRS = /(\d{1,2})\s*-\s*(\d{1,2})/g;
 
 /**
  * MatchResult de un partido a sets que ya cuenta (confirmado, W.O. o con las 48 h). Totales: tenis y pádel
- * `sets` y `games` (y `points` si se sabe); pickleball `games` y `points`. null si no se puede usar (W.O. doble,
- * sin ganador, sin marcador legible).
+ * `sets` y `games` (y `points` si se sabe); pickleball y ping pong `games` y `points`. null si no se puede usar
+ * (W.O. doble, sin ganador, sin marcador legible).
  */
 export function racketResultOf(m: Match, sport: RacketSport, rules?: unknown): MatchResult | null {
   const meta = { id: m.id, side1: entrantKey(m.sides[0]), side2: entrantKey(m.sides[1]) };
@@ -64,49 +75,62 @@ export function racketResultOf(m: Match, sport: RacketSport, rules?: unknown): M
   if (m.status === 'walkover') {
     if (m.walkoverSide !== 1 && m.walkoverSide !== 2) return null;
     const winner: Side = m.walkoverSide === 1 ? 2 : 1;
-    if (sport === 'pickleball') return pickleballMatchResult({ ...meta, games: [], walkover: m.walkoverSide });
-    const sets = r && r.sport !== 'pickleball' ? Math.ceil(r.bestOf / 2) : 2;
-    const gps = r && r.sport !== 'pickleball' ? r.gamesPerSet : 6;
+    if (isGameSport(sport)) {
+      // Ping pong: 11-0 en cada juego que hacía falta (3 al mejor de 5). Pickleball: un 11-0.
+      const walkoverGames = r && r.sport === 'table_tennis' ? Array.from({ length: needed(r.bestOf) }, () => [11, 0] as const) : undefined;
+      return gamesMatchResult({ ...meta, games: [], walkover: m.walkoverSide, walkoverGames });
+    }
+    const sets = r && !isGameSportRules(r) ? Math.ceil(r.bestOf / 2) : 2;
+    const gps = r && !isGameSportRules(r) ? r.gamesPerSet : 6;
     return racketMatchResult({ ...meta, sets: [], winner, status: 'walkover', walkoverSets: Array.from({ length: sets }, () => [gps, 0] as const) });
   }
   if (m.winner !== 1 && m.winner !== 2) return null;
   const score = m.score ?? {};
+  const text = typeof score.text === 'string' ? score.text : '';
+  // Retiro («11-7 3-5 ret.», lo manda así la cancha): pierde el que no terminó. Los totales ya vienen completados a
+  // favor del ganador; cuántos puntos de tabla le quedan al que se retiró lo dice la tabla del deporte (retiredLoss).
+  const retired = /ret/i.test(text);
+  const base = { ...meta, winner: m.winner, ...(retired ? { retired: (m.winner === 1 ? 2 : 1) as Side } : {}) };
   const totals = isObj(score.totals) ? score.totals : null;
   const tSets = pair(totals?.sets);
   const tGames = pair(totals?.games);
   const tPoints = pair(totals?.points);
   if (tSets && tGames) {
-    if (sport === 'pickleball') return { ...meta, winner: m.winner, totals: { games: tSets, points: tPoints ?? [0, 0] } };
-    return { ...meta, winner: m.winner, totals: { sets: tSets, games: tGames, ...(tPoints ? { points: tPoints } : {}) } };
+    if (isGameSport(sport)) return { ...base, totals: { games: tSets, points: tPoints ?? [0, 0] } };
+    return { ...base, totals: { sets: tSets, games: tGames, ...(tPoints ? { points: tPoints } : {}) } };
   }
-  const text = typeof score.text === 'string' ? score.text : '';
   if (r && text) {
     try {
       const t = matchTotals(stateFromScore(r, text));
-      if (sport === 'pickleball') return { ...meta, winner: m.winner, totals: { games: t.sets, points: t.points } };
-      return { ...meta, winner: m.winner, totals: { sets: t.sets, games: t.games } };
+      if (isGameSport(sport)) return { ...base, totals: { games: t.sets, points: t.points } };
+      return { ...base, totals: { sets: t.sets, games: t.games } };
     } catch {
       // «6-4 3-2 ret.» y marcadores a medias: se completan abajo.
     }
   }
   const sets = [...text.matchAll(PAIRS)].map((x) => [Number(x[1]), Number(x[2])] as const);
-  if (sport === 'pickleball') return { ...pickleballMatchResult({ ...meta, games: sets }), winner: m.winner };
-  const tennis = r && r.sport !== 'pickleball' ? r : null;
-  return racketMatchResult({
+  if (isGameSport(sport)) return { ...gamesMatchResult({ ...meta, games: sets }), ...base };
+  const tennis = r && !isGameSportRules(r) ? r : null;
+  const res = racketMatchResult({
     ...meta,
     sets,
     winner: m.winner,
-    status: /ret/i.test(text) ? 'retired' : 'normal',
+    status: retired ? 'retired' : 'normal',
     gamesPerSet: tennis?.gamesPerSet ?? 6,
     setsToWin: tennis ? Math.ceil(tennis.bestOf / 2) : 2,
     superTiebreak: tennis ? tennis.finalSet === 'tiebreak' : sport === 'padel',
   });
+  return { ...res, ...base };
 }
 
-/** Puntos de tabla: 'standard' = ganar 3, perder 1, W.O. 0; '2-0' = ganar 2, perder 0. Pickleball: 1 por partido ganado. */
+/**
+ * Puntos de tabla: 'standard' = ganar 3, perder 1, W.O. 0; '2-0' = ganar 2, perder 0. Pickleball: 1 por partido
+ * ganado. Ping pong: los de la ITTF (ganar 2, perder jugando 1, W.O. o retiro 0). Estos dos no hacen caso de `scheme`.
+ */
 export type PointsScheme = 'standard' | '2-0';
 export function pointsRule(sport: RacketSport, scheme: PointsScheme = 'standard'): PointsRule {
   if (sport === 'pickleball') return PICKLEBALL_POINTS;
+  if (sport === 'table_tennis') return TABLE_TENNIS_POINTS;
   return scheme === '2-0' ? { win: 2, draw: 0, loss: 0, walkoverLoss: 0 } : RACKET_POINTS;
 }
 
@@ -121,13 +145,14 @@ export function pairStandings(
     .map((m) => racketResultOf(m, sport, opts.rules))
     .filter((x): x is MatchResult => !!x);
   const o = { points: pointsRule(sport, opts.scheme), lotSeed: opts.lotSeed };
+  if (sport === 'table_tennis') return tableTennisStandings(ids, results, o);
   return sport === 'pickleball' ? pickleballStandings(ids, results, o) : racketStandings(ids, results, o);
 }
 
 /** Qué tan grande es cada columna de la tabla (sets o juegos) según el deporte. */
-export const forLabel = (sport: RacketSport) => (sport === 'pickleball' ? 'Puntos' : 'Juegos');
-/** Lo que se cuenta como «set» en las tablas: en pickleball son juegos. */
-export const setsLabel = (sport: RacketSport) => (sport === 'pickleball' ? 'Juegos' : 'Sets');
+export const forLabel = (sport: RacketSport) => (isGameSport(sport) ? 'Puntos' : 'Juegos');
+/** Lo que se cuenta como «set» en las tablas: en pickleball y ping pong son juegos. */
+export const setsLabel = (sport: RacketSport) => (isGameSport(sport) ? 'Juegos' : 'Sets');
 
 // ---------------------------------------------------------------------------------------------------------
 // Jugadores
@@ -243,7 +268,7 @@ export function playerRecord(
       else rec.sets.lost++;
       if (res.walkover === side) rec.sets.walkovers++;
       const sets = res.totals.sets ?? res.totals.games ?? [0, 0];
-      const games = opts.sport === 'pickleball' ? (res.totals.points ?? [0, 0]) : (res.totals.games ?? [0, 0]);
+      const games = isGameSport(opts.sport) ? (res.totals.points ?? [0, 0]) : (res.totals.games ?? [0, 0]);
       rec.sets.setsFor += sets[i];
       rec.sets.setsAgainst += sets[1 - i];
       rec.sets.gamesFor += games[i];
@@ -319,7 +344,7 @@ export function seasonPlayerTable(
     ([1, 2] as const).forEach((side) => {
       const i = side - 1;
       const sets = res.totals.sets ?? res.totals.games ?? [0, 0];
-      const games = opts.sport === 'pickleball' ? (res.totals.points ?? [0, 0]) : (res.totals.games ?? [0, 0]);
+      const games = isGameSport(opts.sport) ? (res.totals.points ?? [0, 0]) : (res.totals.games ?? [0, 0]);
       for (const p of sidePlayers(m.sides[i], opts.rosterOf)) {
         const r = row(p);
         r.played++;
@@ -332,7 +357,7 @@ export function seasonPlayerTable(
           r.points += res.walkover ? (pts.walkoverWin ?? pts.win) : pts.win;
         } else {
           r.lost++;
-          r.points += pts.loss;
+          r.points += res.retired === side ? (pts.retiredLoss ?? pts.loss) : pts.loss;
         }
         r.for += games[i];
         r.against += games[1 - i];
@@ -344,17 +369,18 @@ export function seasonPlayerTable(
   for (const r of rows.values()) {
     r.diff = r.for - r.against;
     r.extra.setsDiff = r.extra.setsFor - r.extra.setsAgainst;
-    // En pickleball los «sets» son juegos: la columna «Jue.» (racketColumns) lee gamesDiff.
-    if (opts.sport === 'pickleball') r.extra.gamesDiff = r.extra.setsDiff;
+    // En pickleball y ping pong los «sets» son juegos: la columna «Jue.» (racketColumns) lee gamesDiff.
+    if (isGameSport(opts.sport)) r.extra.gamesDiff = r.extra.setsDiff;
   }
+  const games = isGameSport(opts.sport);
   return resolveTies(
     [...rows.values()],
     [],
     [
       tiebreak.points(),
       tiebreak.wins(),
-      tiebreak.stat('setsDiff', opts.sport === 'pickleball' ? 'dif. de juegos' : 'dif. de sets'),
-      tiebreak.diff(opts.sport === 'pickleball' ? 'dif. de puntos' : 'dif. de juegos'),
+      tiebreak.stat('setsDiff', games ? 'dif. de juegos' : 'dif. de sets'),
+      tiebreak.diff(games ? 'dif. de puntos' : 'dif. de juegos'),
       tiebreak.lot(opts.lotSeed ?? ''),
     ],
   );

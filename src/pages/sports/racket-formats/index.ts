@@ -1,7 +1,7 @@
 /**
  * Liga por cajas y escalera como extensiones de las pantallas de raqueta (src/pages/sports/racket): plantillas de
  * «Nuevo», su página de evento, su línea en las listas y las tablas de las cajas en «Tabla». Sirven para tenis,
- * pickleball y pádel:
+ * pickleball, pádel y ping pong:
  *   racketScreens('tennis', withFormats('tennis', { ...lo del deporte }))
  */
 import { Boxes, ChevronsUp } from 'lucide-react';

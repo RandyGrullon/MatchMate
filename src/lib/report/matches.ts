@@ -56,6 +56,8 @@ export interface MatchesTableOptions {
   sideName?: (m: Match, side: 1 | 2) => string;
   /** Con la columna «Ganador» (la raqueta: el marcador de sets no dice quién ganó a primera vista). */
   winner?: boolean;
+  /** Cómo se llama el lugar del partido en el Excel: «Cancha» (por defecto) o «Mesa» (ping pong). */
+  courtLabel?: string;
   empty?: string;
 }
 
@@ -69,7 +71,7 @@ export function matchesTable(o: MatchesTableOptions): ReportTable {
   const status = all.some((m) => !!pendingText(m, o.now));
   const columns: ReportColumn[] = [
     { label: 'Fecha y hora', width: 22, only: 'excel' },
-    { label: 'Cancha', width: 14, only: 'excel' },
+    { label: o.courtLabel ?? 'Cancha', width: 14, only: 'excel' },
     { label: o.sides[0], width: 28 },
     { label: 'Marcador', align: 'center', width: 18 },
     { label: o.sides[1], width: 28 },

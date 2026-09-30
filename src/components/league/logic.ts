@@ -111,10 +111,10 @@ export function recentNotices<T extends NoticeLike>(list: readonly T[], now: num
 
 /**
  * Textos listos para el aviso («Se suspende por lluvia»…): lo más común en RD. El lugar sale con el nombre del
- * deporte (cancha, pista, piscina, campo).
+ * deporte (cancha, pista, piscina, campo, mesa).
  */
 export function announceTemplates(sport: string | null | undefined): string[] {
-  const where: Record<string, string> = { bowling: 'pista', golf: 'hora de salida', swimming: 'piscina' };
+  const where: Record<string, string> = { bowling: 'pista', golf: 'hora de salida', swimming: 'piscina', table_tennis: 'mesa' };
   const place = where[sport ?? 'bowling'] ?? 'cancha';
   return ['Hoy se suspende por lluvia.', 'Hoy se suspende: no hay luz en el lugar.', `Cambio de ${place}: `, 'Empezamos 30 minutos más tarde.'];
 }

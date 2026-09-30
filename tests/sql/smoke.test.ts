@@ -151,6 +151,11 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK mis bolas: Ana diseña su bola',
       'OK mis bolas: unas iniciales con marcado no se guardan [falla como debe: invalido]',
       'OK mis bolas: nadie diseña la bola de otra cuenta [falla como debe: no_permitido]',
+      'OK ping pong: Ana crea su liga (abierta para todos)',
+      'OK ping pong: sin noches de puntos [falla como debe: invalido]',
+      'OK ping pong: el admin anota un partido al mejor de 7 (4-3 en juegos) y queda confirmado',
+      'OK ping pong: más de 4 juegos no es un marcador [falla como debe: invalido]',
+      'OK ping pong: un marcador que no termina el partido (4-4 en juegos) no pasa [falla como debe: invalido]',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }

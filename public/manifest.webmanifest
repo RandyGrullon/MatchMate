@@ -2,7 +2,7 @@
   "id": "/",
   "name": "MatchMate — ligas y torneos de tu deporte",
   "short_name": "MatchMate",
-  "description": "Ligas, torneos y partidos entre amigos, en español: pádel, tenis, pickleball, boliche, baloncesto, fútbol, golf y natación. Tablas, estadísticas y resultados en vivo.",
+  "description": "Ligas, torneos y partidos entre amigos, en español: pádel, tenis, pickleball, ping pong, boliche, baloncesto, fútbol, golf y natación. Tablas, estadísticas y resultados en vivo.",
   "lang": "es",
   "dir": "ltr",
   "start_url": "/",

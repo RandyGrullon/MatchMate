@@ -3,7 +3,7 @@
  * (sin React, sin backend, sin fechas del sistema): reciben datos y devuelven datos, y se prueban solos.
  */
 
-export type SportId = 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'futsal' | 'golf' | 'swimming';
+export type SportId = 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'futsal' | 'golf' | 'swimming' | 'table_tennis';
 
 /** series: cada quien anota su número (pinos, golpes, tiempo). racket: partidos con sets. team: equipos por tiempos. */
 export type SportFamily = 'series' | 'racket' | 'team';
@@ -15,6 +15,7 @@ export const SPORT_FAMILY: Record<SportId, SportFamily> = {
   padel: 'racket',
   tennis: 'racket',
   pickleball: 'racket',
+  table_tennis: 'racket',
   basketball: 'team',
   football: 'team',
   futsal: 'team',
@@ -71,6 +72,8 @@ export interface MatchResult {
   winner: Side | null;
   /** W.O.: quien no se presentó. */
   walkover?: Side;
+  /** Retiro: quien empezó el partido y no lo terminó (lo perdió). Los totales ya vienen completados a favor del otro. */
+  retired?: Side;
   /** Totales por lado (sets, juegos, puntos, goles…) según el deporte. */
   totals: Record<string, [number, number]>;
 }

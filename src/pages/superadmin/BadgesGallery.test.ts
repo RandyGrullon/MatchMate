@@ -47,7 +47,7 @@ describe('galería de insignias', () => {
     expect(html).toContain('>Sin movimiento<');
   });
 
-  it('los 52 íconos del creador y los de estado', () => {
+  it('los 53 íconos del creador y los de estado', () => {
     const icons = html.slice(html.indexOf('>Íconos del creador</h2>'), html.indexOf('>Colores de liga</h2>'));
     for (const k of BADGE_ICON_KEYS) expect(icons, k).toContain(`title="${k}"`);
     for (const k of ['lock', 'hourglass', 'eye-off']) expect(icons).toContain(`<code>${k}</code>`);

@@ -1,12 +1,12 @@
 /**
- * Reglas de los deportes de raqueta (tenis, pádel y pickleball): tipos, valores por defecto, plantillas,
+ * Reglas de los deportes de raqueta (tenis, pádel, pickleball y ping pong): tipos, valores por defecto, plantillas,
  * validación y las cuentas de "¿este set o juego ya terminó?" que usan los motores y el modo «solo resultado».
  * Todo puro: sin React, sin backend.
  */
 import type { Side } from '../types';
 
-export type RacketSport = 'tennis' | 'padel' | 'pickleball';
-export const RACKET_SPORTS: readonly RacketSport[] = ['tennis', 'padel', 'pickleball'];
+export type RacketSport = 'tennis' | 'padel' | 'pickleball' | 'table_tennis';
+export const RACKET_SPORTS: readonly RacketSport[] = ['tennis', 'padel', 'pickleball', 'table_tennis'];
 
 /** Par de valores [lado 1, lado 2]. */
 export type Pair<T> = [T, T];
@@ -62,7 +62,27 @@ export interface PickleballRules {
   gamePointOnServeOnly: boolean;
 }
 
-export type RacketRules = TennisRules | PickleballRules;
+/** Ping pong (ITTF 2.11–2.14): juegos a 11 ganando por 2, al mejor de 3, 5 o 7, individual o dobles. */
+export interface TableTennisRules {
+  sport: 'table_tennis';
+  /** Dobles: orden de saque A1→B1→A2→B2 (ver tableTennis.ts). */
+  doubles: boolean;
+  /** Puntos del juego: 11 (fijo; el campo existe para las cuentas de carrera, como en pickleball). */
+  gameTo: 11;
+  /** Siempre por 2: en 10-10 se sigue hasta sacar 2 de ventaja. */
+  winBy: 2;
+  bestOf: 3 | 5 | 7;
+  /** Cambio de lado en el juego decisivo cuando alguien llega a estos puntos (5). null = sin aviso. */
+  switchAt: 5 | null;
+}
+
+export type RacketRules = TennisRules | PickleballRules | TableTennisRules;
+
+/** Deportes de raqueta a juegos de puntos (sin sets): en las tablas los «sets» son juegos y los «juegos», puntos. */
+export type GameSport = 'pickleball' | 'table_tennis';
+export const isGameSport = (sport: string | null | undefined): sport is GameSport => sport === 'pickleball' || sport === 'table_tennis';
+export type GameSportRules = PickleballRules | TableTennisRules;
+export const isGameSportRules = (r: RacketRules): r is GameSportRules => isGameSport(r.sport);
 
 /** Datos del sorteo, antes del primer punto. Todo es opcional. */
 export interface MatchSetup {
@@ -70,7 +90,8 @@ export interface MatchSetup {
   firstServer?: Side;
   /**
    * Dobles: qué jugador de cada pareja saca primero (índice 0 o 1). En pickleball ese jugador empieza cada juego
-   * en la derecha (el primer saque siempre sale de la derecha). Por defecto [0, 0].
+   * en la derecha (el primer saque siempre sale de la derecha). En ping pong, el de la pareja que recibe es quien
+   * recibe primero en el juego 1. Por defecto [0, 0].
    */
   firstPlayer?: Pair<Player>;
   /** Qué lado empieza a la izquierda (de la pantalla del anotador). Por defecto el lado 1. */
@@ -122,8 +143,15 @@ const PICKLEBALL: PickleballRules = {
   gamePointOnServeOnly: false,
 };
 
+const TABLE_TENNIS: TableTennisRules = { sport: 'table_tennis', doubles: false, gameTo: 11, winBy: 2, bestOf: 5, switchAt: 5 };
+
 /** Plantillas probadas por deporte. La primera es la de por defecto. */
-export const RULE_PRESETS: { tennis: RulePreset<TennisRules>[]; padel: RulePreset<TennisRules>[]; pickleball: RulePreset<PickleballRules>[] } = {
+export const RULE_PRESETS: {
+  tennis: RulePreset<TennisRules>[];
+  padel: RulePreset<TennisRules>[];
+  pickleball: RulePreset<PickleballRules>[];
+  table_tennis: RulePreset<TableTennisRules>[];
+} = {
   tennis: [
     { id: 'normal', label: 'Mejor de 3 sets con ventaja', rules: TENNIS },
     { id: 'mtb', label: 'Mejor de 3, el tercero a súper tie-break', rules: { ...TENNIS, finalSet: 'tiebreak' } },
@@ -151,9 +179,18 @@ export const RULE_PRESETS: { tennis: RulePreset<TennisRules>[]; padel: RulePrese
     { id: 'rally', label: 'Conteo por rally, un juego a 21', rules: { ...PICKLEBALL, scoring: 'rally', gameTo: 21, switchAt: 11 } },
     { id: 'individual', label: 'Individual, mejor de 3 juegos a 11', rules: { ...PICKLEBALL, doubles: false, bestOf: 3 } },
   ],
+  table_tennis: [
+    { id: 'bo5', label: 'Individual, al mejor de 5 juegos a 11', rules: TABLE_TENNIS },
+    { id: 'bo3', label: 'Individual, al mejor de 3 juegos a 11', rules: { ...TABLE_TENNIS, bestOf: 3 } },
+    { id: 'bo7', label: 'Individual, al mejor de 7 juegos a 11', rules: { ...TABLE_TENNIS, bestOf: 7 } },
+    { id: 'dobles', label: 'Dobles, al mejor de 5 juegos a 11', rules: { ...TABLE_TENNIS, doubles: true } },
+    { id: 'dobles-bo3', label: 'Dobles, al mejor de 3 juegos a 11', rules: { ...TABLE_TENNIS, doubles: true, bestOf: 3 } },
+    { id: 'dobles-bo7', label: 'Dobles, al mejor de 7 juegos a 11', rules: { ...TABLE_TENNIS, doubles: true, bestOf: 7 } },
+  ],
 };
 
 /** Reglas por defecto del deporte (copia nueva). */
+export function defaultRules(sport: 'table_tennis'): TableTennisRules;
 export function defaultRules(sport: 'pickleball'): PickleballRules;
 export function defaultRules(sport: 'tennis' | 'padel'): TennisRules;
 export function defaultRules(sport: RacketSport): RacketRules;
@@ -171,6 +208,14 @@ export function validateRules(rules: RacketRules): string[] {
   const r = rules as unknown as Record<string, unknown>;
   if (!r || typeof r !== 'object' || !RACKET_SPORTS.includes(r.sport as RacketSport)) return ['Deporte de raqueta no válido.'];
   if (typeof r.doubles !== 'boolean') e.push('Falta decir si es individual o dobles.');
+  // Ping pong: reglas fijas de la ITTF, salvo el largo del partido (antes de la revisión general, que topa en 5).
+  if (r.sport === 'table_tennis') {
+    if (r.bestOf !== 3 && r.bestOf !== 5 && r.bestOf !== 7) e.push('El partido es al mejor de 3, 5 o 7 juegos.');
+    if (r.gameTo !== 11) e.push('El juego es a 11 puntos.');
+    if (r.winBy !== 2) e.push('El juego se gana por 2.');
+    if (r.switchAt !== 5 && r.switchAt !== null) e.push('El cambio de lado del juego decisivo es a los 5 puntos.');
+    return e;
+  }
   if (!isBestOf(r.bestOf)) e.push('El partido es a 1, 3 o 5.');
   if (r.sport === 'pickleball') {
     if (r.scoring !== 'sideout' && r.scoring !== 'rally') e.push('El conteo es tradicional o por rally.');
@@ -200,8 +245,9 @@ export function validateRules(rules: RacketRules): string[] {
 /**
  * Reglas completas a partir de un cambio parcial sobre las de por defecto. Lanza un Error si no son válidas.
  * Si cambian `gamesPerSet` sin `tiebreakAt`, el tie-break va en el empate a `gamesPerSet`;
- * si cambian `gameTo` sin `switchAt`, el cambio de lado va a la mitad (6, 8 u 11).
+ * si cambian `gameTo` sin `switchAt`, el cambio de lado va a la mitad (6, 8 u 11). En ping pong no se recalcula nada.
  */
+export function resolveRules(sport: 'table_tennis', partial?: Partial<TableTennisRules>): TableTennisRules;
 export function resolveRules(sport: 'pickleball', partial?: Partial<PickleballRules>): PickleballRules;
 export function resolveRules(sport: 'tennis' | 'padel', partial?: Partial<TennisRules>): TennisRules;
 export function resolveRules(sport: RacketSport, partial?: Partial<RacketRules>): RacketRules;
@@ -210,7 +256,7 @@ export function resolveRules(sport: RacketSport, partial: Partial<RacketRules> =
   const merged = { ...defaultRules(sport), ...given, sport } as RacketRules;
   if (merged.sport === 'pickleball') {
     if (!('switchAt' in given)) merged.switchAt = Math.ceil(merged.gameTo / 2);
-  } else if (!('tiebreakAt' in given) && 'gamesPerSet' in given) {
+  } else if (merged.sport !== 'table_tennis' && !('tiebreakAt' in given) && 'gamesPerSet' in given) {
     merged.tiebreakAt = merged.gamesPerSet;
   }
   const errors = validateRules(merged);
@@ -233,7 +279,7 @@ export function resolveSetup(setup: MatchSetup | undefined, doubles: boolean): R
 
 export const other = (side: Side): Side => (side === 1 ? 2 : 1);
 export const flip = (p: Player): Player => (p === 0 ? 1 : 0);
-/** Sets (o juegos) que hay que ganar: 1, 2 o 3. */
+/** Sets (o juegos) que hay que ganar: 1, 2, 3 o 4 (ping pong al mejor de 7). */
 export const needed = (bestOf: number) => Math.ceil(bestOf / 2);
 
 export function assertSide(side: unknown): asserts side is Side {
@@ -244,13 +290,27 @@ export function assertPlayer(p: unknown): asserts p is Player {
   if (p !== 0 && p !== 1) throw new Error('Jugador no válido.');
 }
 
+/**
+ * Marcador corto de un partido a juegos (pickleball y ping pong), siempre lado 1 primero: "11-7 9-11 11-5",
+ * "11-7 3-5 ret.", "W.O."; en curso agrega el juego actual.
+ */
+export function gamesSummary(s: { games: readonly Pair<number>[]; score: Pair<number>; finish: Finish | null }): string {
+  if (s.finish === 'walkover') return 'W.O.';
+  const parts = s.games.map((g) => `${g[0]}-${g[1]}`);
+  if (s.finish !== 'played') {
+    if (s.score[0] + s.score[1] > 0 || (!parts.length && s.finish === null)) parts.push(`${s.score[0]}-${s.score[1]}`);
+    if (s.finish === 'retired') parts.push('ret.');
+  }
+  return parts.join(' ');
+}
+
 /** Par de enteros de 0 a 99, o Error con `msg`. */
 export function intPair(v: unknown, msg: string): Pair<number> {
   if (!Array.isArray(v) || v.length !== 2 || !v.every((x) => isInt(x, 0, 99))) throw new Error(msg);
   return [v[0], v[1]];
 }
 
-// ---- ¿Terminó? Tie-breaks y juegos de pickleball ("carrera a N ganando por 1 o 2") ----
+// ---- ¿Terminó? Tie-breaks y juegos de pickleball y ping pong ("carrera a N ganando por 1 o 2") ----
 
 /** Quién ganó una carrera a `to` puntos ganando por `winBy`, si el marcador ya la terminó. */
 export function raceWinner(to: number, winBy: number, [a, b]: Pair<number>): Side | null {
@@ -345,8 +405,8 @@ export function normalizeSets(r: TennisRules, input: readonly (SetScore | Pair<n
   });
 }
 
-/** Revisa juegos terminados de pickleball ([11, 7], [9, 11]…). Lanza un Error si alguno no cuadra. */
-export function normalizeGames(r: PickleballRules, input: readonly Pair<number>[]): Pair<number>[] {
+/** Revisa juegos terminados de pickleball o ping pong ([11, 7], [9, 11]…). Lanza un Error si alguno no cuadra. */
+export function normalizeGames(r: Pick<GameSportRules, 'gameTo' | 'winBy' | 'bestOf'>, input: readonly Pair<number>[]): Pair<number>[] {
   if (!Array.isArray(input)) throw new Error('Juegos no válidos.');
   if (input.length > r.bestOf) throw new Error(`El partido es a ${r.bestOf} juego${r.bestOf === 1 ? '' : 's'} como máximo.`);
   const need = needed(r.bestOf);

@@ -15,7 +15,12 @@ export const hasAgenda = (sport: string | null | undefined): boolean =>
 export function agendaCardNote(sport: string | null | undefined): string {
   if (sport === 'bowling') return 'Prácticas y torneos de boliche abiertos';
   if (sport === 'golf') return 'Rondas de golf con inscripción abierta';
-  if (sport && hasAgenda(sport)) return `Noches y torneos de ${sportMeta(sport)?.lower ?? 'raqueta'} con lugar`;
+  if (sport && hasAgenda(sport)) {
+    const meta = sportMeta(sport);
+    // Tenis y ping pong no tienen noches de americano: solo torneos con inscripción.
+    const nights = meta?.eventTypes.some((t) => t.id === 'americano') ?? true;
+    return `${nights ? 'Noches y torneos' : 'Torneos'} de ${meta?.lower ?? 'raqueta'} con lugar`;
+  }
   return 'Prácticas, rondas y noches abiertas en ligas públicas';
 }
 

@@ -491,6 +491,8 @@ const quoted = (note: string | null | undefined) => {
 const stamp = (t: { toMillis(): number } | string | null | undefined): number | null =>
   typeof t === 'string' ? (valid(t) ? Date.parse(t) : null) : t && typeof t.toMillis === 'function' ? t.toMillis() : null;
 const matchUrl = (m: Pick<Match, 'leagueId' | 'id'>) => `/l/${m.leagueId}/juegos?partido=${m.id}`;
+/** Donde se juega el partido: «mesa» en ping pong; «cancha» en los demás. */
+const placeWord = (sport: string) => (sport === 'table_tennis' ? 'mesa' : 'cancha');
 /** «la Cancha 2», «la cancha 3» o «la cancha Central». */
 function courtPhrase(court: string): string {
   const c = court.trim();
@@ -631,7 +633,7 @@ export function buildMatchNotices(feed: MatchNoticeFeed | null | undefined, leag
             ? dayIn(Date.parse(newAt), tz) === dayIn(Date.parse(oldAt), tz)
               ? 'Cambiaron la hora de tu partido'
               : 'Cambiaron la fecha de tu partido'
-            : 'Cambiaron la cancha de tu partido';
+            : `Cambiaron la ${placeWord(sportOf(m.leagueId))} de tu partido`;
         const where = [newAt ? whenShort(newAt, tz, now) : 'sin fecha', change.toCourt?.trim() || ''].filter(Boolean).join(', ');
         add(m.leagueId, {
           id: `hora:${m.id}`,
