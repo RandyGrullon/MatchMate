@@ -12,6 +12,7 @@ import {
   type BallGameKind,
   type GameBall,
 } from '../balls';
+import { ballDesignProblem, normalizeBallDesign, type BallDesign } from '../ballDesign';
 import { asBackendError } from '../db/errors';
 import { uuidv7 } from '../db/ids';
 import type { OutboxItem } from '../db/outbox';
@@ -29,7 +30,10 @@ import { currentOutbox, enqueue, getUserId, invalidate, onOutbox, queryClient, r
  * suelto va siempre con todos sus juegos y una sola clave por juego suelto: guardarlo otra vez sin señal la reemplaza y
  * la deja detrás del último guardado (si no, saldría antes que él y se perdería o caería en otro juego).
  *
- * RPC: save_ball, retire_ball, resurface_ball, delete_ball, set_game_balls, my_balls y my_ball_games.
+ * El diseño (cómo se ve dibujada, src/lib/ballDesign.ts) también necesita señal: se ve enseguida en la lista (cambio
+ * optimista) y, si la base dice que no, vuelve a como estaba (set_ball_design, 20260930000300_diseno_bolas.sql).
+ *
+ * RPC: save_ball, retire_ball, resurface_ball, delete_ball, set_ball_design, set_game_balls, my_balls y my_ball_games.
  */
 
 export interface MyBalls {
@@ -160,6 +164,41 @@ export async function resurfaceBall(id: string, on: string | null = null): Promi
   afterBalls();
 }
 
+/** Cambia una bola de la lista en la caché (si está). */
+function patchBall(uid: string, id: string, fn: (b: Ball) => Ball) {
+  const key = ballKeys.list(uid);
+  const old = queryClient.getQueryData<MyBalls>(key);
+  if (old?.balls.some((b) => b.id === id)) queryClient.setQueryData<MyBalls>(key, { ...old, balls: old.balls.map((b) => (b.id === id ? fn(b) : b)) });
+}
+
+/** Lo que dice cuando el diseño no se puede guardar (lo revisa aquí y la base). */
+export const BALL_DESIGN_INVALID = 'Ese diseño no se puede guardar. Prueba con «Restablecer».';
+
+/**
+ * Pone el diseño de una bola (null lo quita: se dibuja lisa, de su color y su cubierta). Necesita señal. Se ve enseguida
+ * en la lista (también el color, que la base copia de `base`) y, si la base dice que no, vuelve a como estaba. Va
+ * arreglado (normalizeBallDesign: números redondeados y en su rango) y revisado antes de salir del teléfono. Devuelve el
+ * diseño que quedó.
+ */
+export async function setBallDesign(id: string, design: BallDesign | null): Promise<BallDesign | null> {
+  const uid = getUserId();
+  if (!uid) throw noSession();
+  const key = ballKeys.list(uid);
+  const before = queryClient.getQueryData<MyBalls>(key)?.balls.find((b) => b.id === id);
+  const next = design == null ? null : normalizeBallDesign(design, before?.color);
+  if (next && ballDesignProblem(next)) throw new BackendError(BALL_DESIGN_INVALID, 'validation', 'invalido');
+  patchBall(uid, id, (b) => ({ ...b, design: next, color: next?.base ?? b.color }));
+  try {
+    return (await rpc<BallDesign | null>('set_ball_design', { p_ball: id, p_design: next })) ?? null;
+  } catch (e) {
+    // Vuelve a como estaba (sin señal no se puede volver a leer).
+    if (before) patchBall(uid, id, (b) => ({ ...b, design: before.design ?? null, color: before.color }));
+    throw e;
+  } finally {
+    afterBalls();
+  }
+}
+
 /** Borra la bola y con cuál juego se usó (los juegos quedan). */
 export async function deleteBall(id: string): Promise<void> {
   if (!getUserId()) throw noSession();
@@ -235,6 +274,9 @@ export function requeueGameBalls(kind: BallGameKind, ref: string, games: number,
 
 const LOCAL_PROBLEMS = (['name', 'brand', 'weight', 'color', 'dates'] as const).map(ballProblemText);
 
+/** Lo que dice la base cuando algo de la bola no vale (en la hoja de la bola). */
+const BALL_INVALID = 'Revisa el nombre, el peso y las fechas de la bola.';
+
 /** El error de guardar o cambiar una bola, en palabras simples. */
 export function ballErrorText(e: unknown): string {
   if (isBlockedError(e)) return BLOCKED_MESSAGE;
@@ -248,8 +290,14 @@ export function ballErrorText(e: unknown): string {
   if (be?.kind === 'auth') return 'Entra a tu cuenta para guardar tus bolas.';
   // Los de la revisión de aquí ya vienen en palabras simples.
   if (be?.kind === 'validation' && LOCAL_PROBLEMS.includes(be.message)) return be.message;
-  if (be?.kind === 'validation' || code === 'invalido') return 'Revisa el nombre, el peso y las fechas de la bola.';
+  if (be?.kind === 'validation' || code === 'invalido') return BALL_INVALID;
   return 'No se pudo guardar. Prueba otra vez.';
+}
+
+/** El error de guardar el diseño de una bola: lo mismo, pero lo que no vale es el diseño. */
+export function ballDesignErrorText(e: unknown): string {
+  const text = ballErrorText(e);
+  return text === BALL_INVALID ? BALL_DESIGN_INVALID : text;
 }
 
 // ---------- Al confirmar ----------

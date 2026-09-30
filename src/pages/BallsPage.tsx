@@ -7,6 +7,7 @@ import { ballErrorText, resurfaceBall, retireBall, useMyBallGames, useMyBalls } 
 import { formatDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
 import { BackLink } from '../components/BackLink';
+import { BallDesigner } from '../components/balls/BallDesigner';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallSheet } from '../components/balls/BallSheet';
 import { BallCard } from '../components/balls/BallStats';
@@ -15,11 +16,12 @@ import { AppShell } from '../components/Shell';
 import { Button, Empty, ListSkeleton, Loading, LoadError } from '../components/ui';
 
 /**
- * Mis bolas (/bolas): las bolas de boliche de la cuenta con sus números (juegos, promedio, el más alto y strikes de los
- * juegos anotados por cuadros), con cuál tiras mejor y cuántos juegos lleva cada una desde la última pulida (a los 60,
- * avisa). Se agregan, cambian, pulen, retiran y borran aquí; la bola de cada juego se elige al anotarlo (juegos
- * sueltos, «Mis juegos» y «Subir mis juegos» en la liga). `?bola=<id>` abre esa; `?nueva=1`, una nueva. Solo la cuenta
- * ve sus bolas. Sin cuenta, invita a entrar y vuelve aquí.
+ * Mis bolas (/bolas): las bolas de boliche de la cuenta, dibujadas con su diseño, con sus números (juegos, promedio, el
+ * más alto y strikes de los juegos anotados por cuadros), con cuál tiras mejor y cuántos juegos lleva cada una desde la
+ * última pulida (a los 60, avisa). Se agregan, cambian, diseñan, pulen, retiran y borran aquí; la bola de cada juego se
+ * elige al anotarlo (juegos sueltos, «Mis juegos» y «Subir mis juegos» en la liga). `?bola=<id>` abre esa; `?nueva=1`,
+ * una nueva; `?disenar=<id>`, el creador de esa. Solo la cuenta ve sus bolas. Sin cuenta, invita a entrar y vuelve
+ * aquí.
  */
 export default function BallsPage() {
   const auth = useAuth();
@@ -80,18 +82,22 @@ function Balls() {
 
   const openId = params.get('bola');
   const isNew = params.get('nueva') === '1';
+  const designId = params.get('disenar');
   const editing = openId ? (balls.find((b) => b.id === openId) ?? null) : null;
+  const designing = designId ? (balls.find((b) => b.id === designId) ?? null) : null;
   const full = balls.length >= BALL_MAX;
 
+  /** Abre la hoja de una bola (`as` 'bola'), una nueva ('nueva') o el creador de una ('disenar'); null cierra. */
   const setOpen = useCallback(
-    (id: string | 'nueva' | null) =>
+    (id: string | 'nueva' | null, as: 'bola' | 'disenar' = 'bola') =>
       setParams(
         (p) => {
           const next = new URLSearchParams(p);
           next.delete('bola');
           next.delete('nueva');
+          next.delete('disenar');
           if (id === 'nueva') next.set('nueva', '1');
-          else if (id) next.set('bola', id);
+          else if (id) next.set(as, id);
           return next;
         },
         { replace: true },
@@ -167,6 +173,7 @@ function Balls() {
             stats={s}
             busy={busy === s.ball.id}
             onEdit={() => setOpen(s.ball.id)}
+            onDesign={() => setOpen(s.ball.id, 'disenar')}
             onResurface={() => void resurface(s.ball)}
             onRetire={() => void retire(s.ball.id, s.ball.name, true)}
           />
@@ -184,6 +191,7 @@ function Balls() {
                 stats={s}
                 busy={busy === s.ball.id}
                 onEdit={() => setOpen(s.ball.id)}
+                onDesign={() => setOpen(s.ball.id, 'disenar')}
                 onResurface={() => undefined}
                 onRetire={() => void retire(s.ball.id, s.ball.name, false)}
               />
@@ -211,7 +219,19 @@ function Balls() {
         </div>
         {content}
       </div>
-      {(isNew || editing) && <BallSheet key={editing?.id ?? 'nueva'} ball={editing} today={today} onClose={() => setOpen(null)} />}
+      {designing ? (
+        <BallDesigner key={designing.id} ball={designing} onClose={() => setOpen(null)} />
+      ) : (
+        (isNew || editing) && (
+          <BallSheet
+            key={editing?.id ?? 'nueva'}
+            ball={editing}
+            today={today}
+            onClose={() => setOpen(null)}
+            onDesign={editing ? () => setOpen(editing.id, 'disenar') : undefined}
+          />
+        )
+      )}
     </AppShell>
   );
 }

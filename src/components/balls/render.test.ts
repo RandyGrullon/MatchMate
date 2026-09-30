@@ -48,7 +48,9 @@ describe('elegir la bola al anotar', () => {
     expect(t).not.toContain('Vieja');
     expect(t).toContain('Para todos los juegos.');
     expect(out).toMatch(/<option value="b" selected="">/);
-    expect(out).toContain('background-color:#f8fafc');
+    // La elegida, dibujada (<BallArt> a 24 px, con su color).
+    expect(out).toMatch(/<svg[^>]*width="24" height="24"/);
+    expect(out).toContain('fill="#f8fafc"');
     // Alto de 44 px para el dedo.
     expect(out).toContain('h-11');
   });

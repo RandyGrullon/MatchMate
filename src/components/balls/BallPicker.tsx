@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type RefObject } from 'react';
 import { ballLabel, defaultBall, pickableBalls, type Ball } from '../../lib/balls';
 import { storedBall, useMyBalls } from '../../lib/data/balls';
 import { cx } from '../ui';
+import { BallArt } from './BallArt';
 
 /**
  * Las bolas para elegir al anotar: todas las de la cuenta, si hay alguna para elegir (no retirada) y la que se pone sola
@@ -41,9 +42,10 @@ export function BallDot({ color, className }: { color: string | null | undefined
 const MIXED = '__varias__';
 
 /**
- * Elegir la bola (opcional): el color y una lista del teléfono con «Sin bola» y las que no están retiradas (y la que ya
- * tenía, aunque esté retirada). `value` undefined = los juegos tienen bolas distintas («Varias bolas»). Sin bolas que
- * elegir no sale nada.
+ * Elegir la bola (opcional): la elegida dibujada (con su diseño, <BallArt> a 24 px) y una lista del teléfono con «Sin
+ * bola» y las que no están retiradas (y la que ya tenía, aunque esté retirada). La lista del teléfono solo muestra
+ * texto: la bola dibujada es la de afuera. `value` undefined = los juegos tienen bolas distintas («Varias bolas»). Sin
+ * bolas que elegir no sale nada.
  */
 export function BallSelect({
   balls,
@@ -70,7 +72,11 @@ export function BallSelect({
         {label}
       </label>
       <div className="relative flex items-center">
-        <BallDot color={current?.color} className="pointer-events-none absolute left-3 size-5" />
+        {current ? (
+          <BallArt ball={current} size={24} className="pointer-events-none absolute left-2.5" />
+        ) : (
+          <BallDot color={null} className="pointer-events-none absolute left-3 size-5" />
+        )}
         <select
           id={id}
           value={value === undefined ? MIXED : (value ?? '')}

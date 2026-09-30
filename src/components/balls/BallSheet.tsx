@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, Palette, Trash2 } from 'lucide-react';
 import {
   BALL_BRAND_MAX,
   BALL_COLORS,
@@ -18,6 +18,7 @@ import {
 import { ballErrorText, deleteBall, saveBall } from '../../lib/data/balls';
 import { useFeedback } from '../feedback';
 import { Button, Field, Input, Select, Sheet, cx } from '../ui';
+import { BallArt } from './BallArt';
 import { BallDot } from './BallPicker';
 
 /** Peso con el que arranca una nueva (el más común en adultos). */
@@ -42,10 +43,12 @@ export function ballToDraft(ball: Ball | null): BallDraft {
 
 /**
  * Hoja para registrar o cambiar una bola: nombre, marca, peso, color (para reconocerla al anotar), cubierta y cuándo se
- * perforó y se pulió por última vez (todo opcional menos el nombre y el peso). «Borrar» pregunta antes (mejor
- * retirarla: sus números se quedan). Se monta abierta: la página la quita al cerrar.
+ * perforó y se pulió por última vez (todo opcional menos el nombre y el peso). Arriba, cómo se ve (con el color y la
+ * cubierta que se eligen) y «Diseñar» (`onDesign`, en una que ya existe). Una bola con diseño no elige el color aquí:
+ * sale de su diseño (set_ball_design lo copia; si se cambiara aquí, el dibujo seguiría con el de antes). «Borrar»
+ * pregunta antes (mejor retirarla: sus números se quedan). Se monta abierta: la página la quita al cerrar.
  */
-export function BallSheet({ ball, today, onClose }: { ball: Ball | null; today: string; onClose: () => void }) {
+export function BallSheet({ ball, today, onClose, onDesign }: { ball: Ball | null; today: string; onClose: () => void; onDesign?: () => void }) {
   const { toast, confirm } = useFeedback();
   const [draft, setDraft] = useState<BallDraft>(() => ballToDraft(ball));
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
@@ -90,6 +93,21 @@ export function BallSheet({ ball, today, onClose }: { ball: Ball | null; today: 
   }
 
   const show = (p: typeof problem) => tried && problem === p;
+  const designed = ball?.design != null;
+
+  /** «Diseñar»: lo que se cambió aquí sin guardar se pierde (pregunta antes). */
+  async function design() {
+    if (!ball || !onDesign || busy) return;
+    if (JSON.stringify(draft) !== JSON.stringify(ballToDraft(ball))) {
+      const ok = await confirm({
+        title: '¿Diseñarla sin guardar?',
+        message: 'Lo que cambiaste aquí se pierde. Si lo quieres, guarda primero y después la diseñas.',
+        confirmText: 'Diseñar sin guardar',
+      });
+      if (!ok) return;
+    }
+    onDesign();
+  }
 
   return (
     <Sheet
@@ -117,6 +135,22 @@ export function BallSheet({ ball, today, onClose }: { ball: Ball | null; today: 
       }
     >
       <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-3">
+          <BallArt design={ball?.design ?? null} color={draft.color} cover={draft.cover} size={64} className="shrink-0" />
+          <p className="min-w-0 flex-1 text-sm text-muted">
+            {!ball
+              ? 'Así se verá. Cuando la agregues la puedes diseñar: colores, dibujo y figuras.'
+              : designed
+                ? 'Su color y su dibujo se cambian en «Diseñar».'
+                : 'Hazla como la tuya: colores, dibujo y figuras.'}
+          </p>
+          {ball && onDesign && (
+            <Button className="h-11 shrink-0" icon={<Palette className="size-4" />} disabled={!!busy} onClick={() => void design()}>
+              Diseñar
+            </Button>
+          )}
+        </div>
+
         <Field label="Nombre" hint={show('name') ? <span className="text-danger">{ballProblemText('name')}</span> : undefined}>
           <Input
             value={draft.name}
@@ -144,31 +178,33 @@ export function BallSheet({ ball, today, onClose }: { ball: Ball | null; today: 
           </Field>
         </div>
 
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5 text-xs font-medium text-muted">Color</legend>
-          <div role="radiogroup" aria-label="Color de la bola" className="flex flex-wrap gap-1">
-            {BALL_COLORS.map((c) => {
-              const on = draft.color.toLowerCase() === c.hex;
-              return (
-                <button
-                  key={c.hex}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  aria-label={c.label}
-                  title={c.label}
-                  onClick={() => set('color', c.hex)}
-                  className={cx(
-                    'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                    on ? 'bg-accent-soft ring-2 ring-accent' : 'hover:bg-surface-2',
-                  )}
-                >
-                  <BallDot color={c.hex} className={on ? 'size-8' : 'size-7'} />
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
+        {!designed && (
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1.5 text-xs font-medium text-muted">Color</legend>
+            <div role="radiogroup" aria-label="Color de la bola" className="flex flex-wrap gap-1">
+              {BALL_COLORS.map((c) => {
+                const on = draft.color.toLowerCase() === c.hex;
+                return (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    aria-label={c.label}
+                    title={c.label}
+                    onClick={() => set('color', c.hex)}
+                    className={cx(
+                      'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                      on ? 'bg-accent-soft ring-2 ring-accent' : 'hover:bg-surface-2',
+                    )}
+                  >
+                    <BallDot color={c.hex} className={on ? 'size-8' : 'size-7'} />
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
 
         <Field label="Cubierta (opcional)">
           <Select value={draft.cover ?? ''} onChange={(e) => set('cover', (e.target.value || null) as BallCover | null)} className="h-11">

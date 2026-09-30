@@ -425,6 +425,20 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   `eventGameBall`). Lo que se manda en cada lugar sale de funciones puras con pruebas (`eventBallUpdate`,
   `draftBallsAfter`, `submissionBalls`). Las bolas no hacen volver a leer la liga (`tagsForOp`). Pantalla `/bolas` (`src/pages/BallsPage.tsx`: con cuál tiras mejor, cada bola con sus números, «La pulí
   hoy», retirar y la hoja `BallSheet`), con link desde /perfil y «Por bola» en Mis estadísticas (`BallStatsSection`).
+- Diseño de la bola («Diseñar»): `bowling_balls.design` (jsonb, null = lisa de su color y su cubierta) con un CHECK
+  (`private.ball_design_ok`) y `set_ball_design(p_ball, p_design)` (solo las propias, mismo límite de 100 cambios al
+  día que las otras escrituras, poner el mismo no cuenta; copia `base` a `color`, así el puntito de color de las listas
+  sigue igual). Migración `20260930000300_diseno_bolas.sql`. El diseño es un JSON con versión y todo de listas y rangos
+  (`src/lib/ballDesign.ts`: colores `#rrggbb`, 8 dibujos, tamaño, suavidad, ángulo, brillo, huecos y hasta 5 figuras;
+  el texto del número y de las iniciales, solo cifras o letras), así algo lo puede llenar solo más adelante.
+  `ballDesignProblem` revisa lo mismo que la base. `<BallArt>` (`src/components/balls/BallArt.tsx`) la dibuja en SVG,
+  sin nada al azar (semilla del dibujo y el color base) y se ve a 24, 40, 64 y 160 px en los dos temas: en la tarjeta
+  de «Mis bolas» (tocarla abre el creador), en «Por bola», en la hoja de la bola y en `BallSelect` al anotar (la lista
+  del teléfono solo muestra texto). El creador (`BallDesigner.tsx`, `?disenar=<id>` en /bolas; las cuentas en
+  `designer.ts`): la bola grande arriba y las pestañas «Colores», «Dibujo» y «Figuras» (moverlas con flechas o tocando
+  la bola); guardar igual a la lisa manda null. `setBallDesign` en `src/lib/data/balls.ts` necesita señal, cambia la
+  lista enseguida y la deja como estaba si la base dice que no. Una bola con diseño no elige el color en `BallSheet`
+  (el dibujo seguiría con el de antes): se cambia en «Diseñar».
 
 ## Logo de ligas y torneos
 

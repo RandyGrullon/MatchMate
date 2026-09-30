@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, Archive, ChevronRight, Pencil, RotateCcw, Sparkles } from 'lucide-react';
+import { AlertTriangle, Archive, ChevronRight, Palette, Pencil, RotateCcw, Sparkles } from 'lucide-react';
 import { ballDetail, ballStats, bestBallText, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
 import { useMyBallGames, useMyBalls } from '../../lib/data/balls';
 import { formatDate } from '../../lib/format';
 import { Button, Card, cx } from '../ui';
-import { BallDot } from './BallPicker';
+import { BallArt } from './BallArt';
 
 /** Un número chico de la tarjeta de una bola. */
 function Mini({ label, value }: { label: string; value: string | number }) {
@@ -18,20 +18,23 @@ function Mini({ label, value }: { label: string; value: string | number }) {
 }
 
 /**
- * Una bola en «Mis bolas»: su color, nombre y detalle; juegos, promedio, el más alto y strikes (de los juegos anotados
- * por cuadros); cuántos juegos lleva desde la última pulida (en amarillo cuando ya le toca) y las acciones: editar,
- * «La pulí hoy» y retirar (o volver a usar).
+ * Una bola en «Mis bolas»: la bola dibujada (con su diseño; tocarla abre «Diseñar»), nombre y detalle; juegos,
+ * promedio, el más alto y strikes (de los juegos anotados por cuadros); cuántos juegos lleva desde la última pulida (en
+ * amarillo cuando ya le toca) y las acciones: editar, «La pulí hoy» y retirar (o volver a usar).
  */
 export function BallCard({
   stats: s,
   busy,
   onEdit,
+  onDesign,
   onResurface,
   onRetire,
 }: {
   stats: BallStats;
   busy?: boolean;
   onEdit: () => void;
+  /** Abre el creador de la bola (sin esto, la bola solo se ve). */
+  onDesign?: () => void;
   onResurface: () => void;
   onRetire: () => void;
 }) {
@@ -39,7 +42,22 @@ export function BallCard({
   return (
     <Card className={cx('flex flex-col gap-3 p-4', b.retired && 'opacity-80')}>
       <div className="flex items-center gap-3">
-        <BallDot color={b.color} className="size-10" />
+        {onDesign ? (
+          <button
+            type="button"
+            onClick={onDesign}
+            aria-label={`Diseñar la ${b.name}`}
+            title="Diseñar"
+            className="-m-1 flex shrink-0 flex-col items-center gap-0.5 rounded-2xl p-1 transition hover:bg-surface-2 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <BallArt ball={b} size={64} />
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-accent">
+              <Palette className="size-3" aria-hidden="true" /> Diseñar
+            </span>
+          </button>
+        ) : (
+          <BallArt ball={b} size={64} className="shrink-0" />
+        )}
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-semibold">{b.name}</h3>
           <p className="truncate text-xs text-muted">
@@ -100,11 +118,11 @@ export function BallCard({
   );
 }
 
-/** Una fila de «Por bola»: color, nombre, juegos, mejor juego y strikes, y el promedio grande. */
+/** Una fila de «Por bola»: la bola dibujada, nombre, juegos, mejor juego y strikes, y el promedio grande. */
 function BallRow({ stats: s }: { stats: BallStats }) {
   return (
     <Link to="/bolas" className="flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-      <BallDot color={s.ball.color} className="size-8" />
+      <BallArt ball={s.ball} size={40} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{s.ball.name}</div>
         <div className="text-xs text-muted tabular-nums">
