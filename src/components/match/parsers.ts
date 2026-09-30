@@ -1,6 +1,6 @@
 import type { MatchScore } from '../../lib/data/matches';
 import { validatePointsScore, type PointsConfig } from '../../sports/formats/social';
-import { matchTotals, racketResult, stateFromScore, type MatchSetup, type RacketRules } from '../../sports/racket';
+import { isGameSportRules, matchTotals, racketResult, stateFromScore, type MatchSetup, type RacketRules } from '../../sports/racket';
 import type { Side } from '../../sports/types';
 
 /**
@@ -48,7 +48,7 @@ export function twoNumbersParser(opts: { allowDraw?: boolean; max?: number; unit
 }
 
 /**
- * Raqueta (tenis, pádel, pickleball) con las reglas de la liga: «6-4 3-6 10-7», «7-6(5) 6-4», «11-7 9-11 11-5».
+ * Raqueta (tenis, pádel, pickleball, ping pong) con las reglas de la liga: «6-4 3-6 10-7», «7-6(5) 6-4», «11-7 9-11 11-5».
  * Usa el motor de src/sports/racket: el marcador tiene que terminar el partido con esas reglas. `score.totals`
  * lleva sets, juegos y puntos (para las tablas sin volver a leer el estado).
  */
@@ -57,7 +57,7 @@ export function racketResultParser(rules: RacketRules, setup?: MatchSetup): Resu
     const state = stateFromScore(rules, text, setup);
     const r = racketResult(state);
     const t = matchTotals(state);
-    const unit = rules.sport === 'pickleball' ? 'juegos' : 'sets';
+    const unit = isGameSportRules(rules) ? 'juegos' : 'sets';
     return {
       score: { text: r.summary, sides: [t.sets[0], t.sets[1]], totals: { sets: t.sets, games: t.games, points: t.points } },
       winner: r.winner,

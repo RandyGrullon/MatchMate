@@ -82,7 +82,7 @@ describe('tour de Admin', () => {
   });
 
   it('no sale en los otros deportes (no tienen «Aprobar» ni promedios)', () => {
-    for (const sport of ['padel', 'tennis', 'pickleball', 'golf', 'swimming', 'basketball', 'football', 'futsal']) {
+    for (const sport of ['padel', 'tennis', 'pickleball', 'table_tennis', 'golf', 'swimming', 'basketball', 'football', 'futsal']) {
       expect(adminTourWhen(sport), sport).toBe(false);
     }
   });

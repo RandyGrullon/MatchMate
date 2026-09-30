@@ -19,6 +19,7 @@ notificaciones.
 | Fútbol de campo y sala | 5 | Tablas, tarjetas y disciplina |
 | Golf | 6 | Tarjeta por hoyos, índice de dificultad y ventajas |
 | Natación | 7 | Series y tiempos |
+| Ping pong (tenis de mesa) | 3 | Motor propio de juegos a 11 (saque cada 2, dobles con rotación), liga por cajas y escalera |
 
 Todos los deportes están abiertos. El superadmin puede poner uno en **beta** (existe en la base, pero solo él
 crea ligas de él) o cerrarlo: lo decide la tabla `sport_status`, no la pantalla.

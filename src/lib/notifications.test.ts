@@ -585,6 +585,12 @@ describe('avisos de partidos', () => {
       ['hora:nueva', 'Tu partido ya tiene fecha', 'Luis / Ana contra Pedro / Rosa · Ahora: hoy, 9:00 pm.'],
     ]);
     expect(notices[0]).toMatchObject({ kind: 'cambio-hora', to: '/l/mm/juegos?partido=fecha', time: NOW - HOUR });
+    // En ping pong se juega en una mesa.
+    const pp = league('mm', { name: 'Ping Pong Club', sport: 'table_tennis', tz: TZ });
+    const mesa = build({ mine: [moved('mesa', { fromAt: '2026-10-12T00:00:00Z', toAt: '2026-10-12T00:00:00Z', fromCourt: 'Mesa 1', toCourt: 'Mesa 3' })] }, [pp]);
+    expect(mesa.filter((n) => n.kind === 'cambio-hora').map((n) => [n.title, n.body])).toEqual([
+      ['Cambiaron la mesa de tu partido', 'Luis / Ana contra Pedro / Rosa · Ahora: dom 11 oct, 8:00 pm, Mesa 3.'],
+    ]);
   });
 
   it('aplazado (mientras siga aplazado)', () => {

@@ -18,7 +18,7 @@ function contrast(a: string, b: string): number {
 
 describe('colores de las imágenes', () => {
   it('cada deporte tiene color y todos se leen con letras blancas', () => {
-    for (const id of ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming']) {
+    for (const id of ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis']) {
       const c = SPORT_COLORS[id];
       expect(c, id).toMatch(/^#[0-9a-f]{6}$/i);
       expect(contrast(c, INK.onColor), id).toBeGreaterThanOrEqual(4.5);

@@ -1,6 +1,6 @@
 /**
- * Motores de raqueta enchufados al modo cancha (src/court): partido a sets (tenis, pádel, pickleball) y partido
- * a puntos (americano / mexicano). Puro: sin React.
+ * Motores de raqueta enchufados al modo cancha (src/court): partido a sets (tenis, pádel, pickleball y ping pong) y
+ * partido a puntos (americano / mexicano). Puro: sin React.
  */
 import type { CourtAdapter } from '../../../../court';
 import type { MatchScore } from '../../../../lib/data/matches';
@@ -59,7 +59,10 @@ export function racketAdapter(sport: RacketSport, rules: unknown): CourtAdapter<
   };
 }
 
-/** Marcador de un W.O. con el motor: el que vino gana todo (6-0 6-0 en pádel y tenis; 11-0 en pickleball). */
+/**
+ * Marcador de un W.O. con el motor: el que vino gana todo (6-0 6-0 en pádel y tenis; 11-0 en pickleball; 11-0 en cada
+ * juego que hace falta en ping pong).
+ */
 export function walkoverScore(sport: RacketSport, rules: unknown, absent: Side): MatchScore {
   const s = applyRacket(initRacket(engineRules(sport, rules)), { type: 'walkover', side: absent });
   const full = completeMatch(s);

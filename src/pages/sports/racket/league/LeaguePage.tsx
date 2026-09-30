@@ -18,18 +18,18 @@ import { forLabel, pairStandings, seasonPlayerTable, setsLabel } from '../logic/
 import { pointsText, tiebreakText } from '../logic/tiebreaks';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
 import { useNames } from '../names';
-import { useRacket } from '../sport';
+import { courtWords, useRacket } from '../sport';
 import { ScheduleBuilder } from './ScheduleBuilder';
 
 type Tab = 'jornadas' | 'tabla' | 'parejas';
 
 /**
- * Liga de parejas: jornadas (calendario con canchas y horas), tabla con los desempates del pádel y las parejas.
- * Sin calendario, el admin lo arma aquí (ScheduleBuilder).
+ * Liga de parejas: jornadas (calendario con canchas o mesas y horas), tabla con los desempates del pádel y las
+ * parejas. Sin calendario, el admin lo arma aquí (ScheduleBuilder).
  */
 export function LeaguePage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
-  const { sport, doubles, side } = useRacket();
+  const { sport, ext, doubles, side } = useRacket();
   const names = useNames();
   const param = useMatchParam();
   const [search, setSearch] = useSearchParams();
@@ -89,6 +89,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
       tz: league.tz,
       forLabel: forLabel(sport),
       setsLabel: setsLabel(sport),
+      courtLabel: courtWords(ext).One,
     }).catch((e) => {
       console.error(e);
       toast('No se pudo hacer el Excel', 'error');
@@ -133,7 +134,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
           <ScheduleBuilder event={event} cfg={cfg} />
         ) : (
           <Empty icon={<CalendarDays className="size-8" />} title="El calendario todavía no está">
-            Cuando el admin arme las jornadas, aquí salen tus partidos con cancha y hora.
+            Cuando el admin arme las jornadas, aquí salen tus partidos con {courtWords(ext).one} y hora.
           </Empty>
         )
       ) : (

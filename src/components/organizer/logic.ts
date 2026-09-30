@@ -171,7 +171,12 @@ export function checklistSteps(c: Checklist | null | undefined, lid: string, opt
 
 /** Motivos listos (lo más común en RD). */
 export function suspendReasons(sport: string | null | undefined): string[] {
-  const place: Record<string, string> = { bowling: 'La bolera está cerrada', golf: 'El campo está cerrado', swimming: 'La piscina está cerrada' };
+  const place: Record<string, string> = {
+    bowling: 'La bolera está cerrada',
+    golf: 'El campo está cerrado',
+    swimming: 'La piscina está cerrada',
+    table_tennis: 'Las mesas están ocupadas',
+  };
   return ['Lluvia', 'No hay luz en el lugar', place[sport ?? 'bowling'] ?? 'La cancha está ocupada', 'Muy pocos confirmaron'];
 }
 

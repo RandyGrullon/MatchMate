@@ -171,6 +171,7 @@ describe('avisos a toda la liga', () => {
     expect(announceTemplates('padel')).toContain('Cambio de cancha: ');
     expect(announceTemplates('bowling')).toContain('Cambio de pista: ');
     expect(announceTemplates('swimming')).toContain('Cambio de piscina: ');
+    expect(announceTemplates('table_tennis')).toContain('Cambio de mesa: ');
     for (const t of [...announceTemplates('golf'), ...announceTemplates(null)]) expect(t.length).toBeLessThanOrEqual(180);
     expect(announceTemplates('football')[0]).toMatch(/lluvia/);
   });

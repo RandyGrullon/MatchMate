@@ -43,6 +43,9 @@ describe('las competencias de cada deporte', () => {
     expect(racketPrizeDoubles('pickleball', null)).toBe(true);
     expect(racketPrizeDoubles('pickleball', { match: { doubles: false } })).toBe(false);
     expect(racketPrizeDoubles('pickleball', { match: { doubles: 'no' } })).toBe(true);
+    // Ping pong: individual, salvo que la liga juegue en dobles.
+    expect(racketPrizeDoubles('table_tennis', {})).toBe(false);
+    expect(racketPrizeDoubles('table_tennis', { match: { sport: 'table_tennis', doubles: true } })).toBe(true);
   });
 
   it('raqueta: el torneo por categorías (parejas en dobles, individual en singles) y las noches', () => {
@@ -60,8 +63,12 @@ describe('las competencias de cada deporte', () => {
     expect(racketTourneyComp('l', ev, { sport: 'tennis', leagueRules: {}, categories }).name).toMatch(/^Torneo del 12/);
     expect(cats(racketNightComp('l', ev, 'padel'))).toEqual([['individual', '', '', 'Individual']]);
     expect(racketNightComp('l', ev, 'pickleball')?.name).toMatch(/^Noche del 12/);
-    // El tenis no tiene noches.
+    // El tenis y el ping pong no tienen noches.
     expect(racketNightComp('l', ev, 'tennis')).toBeNull();
+    expect(racketNightComp('l', ev, 'table_tennis')).toBeNull();
+    const tt = racketTourneyComp('l', { ...ev, name: 'Abierto de ping pong' }, { sport: 'table_tennis', leagueRules: {}, categories });
+    expect(tt).toMatchObject({ kind: 'racket_tourney', sport: 'table_tennis' });
+    expect(cats(tt)?.map((c) => c[3])).toEqual(['Individual · Categoría A', 'Individual · Damas Open']);
   });
 
   it('equipos: el relámpago solo en un torneo suelto (con su evento) y los playoffs', () => {

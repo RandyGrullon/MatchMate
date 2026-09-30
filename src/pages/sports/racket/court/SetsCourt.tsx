@@ -3,7 +3,7 @@ import { ArrowLeftRight, Flag, Repeat2, Settings2 } from 'lucide-react';
 import { CourtLayout, TwoHalves, useCourt } from '../../../../court';
 import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
-import { toLive, type MatchSetup, type Pair, type Player, type RacketEvent, type RacketSport, type RacketState } from '../../../../sports/racket';
+import { isGameSport, toLive, type MatchSetup, type Pair, type Player, type RacketEvent, type RacketSport, type RacketState } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
 import { useAction } from '../../../../components/feedback';
 import { Badge, Button, Modal, cx } from '../../../../components/ui';
@@ -12,10 +12,11 @@ import { useNames } from '../names';
 import { engineRules, racketAdapter } from './adapters';
 
 /**
- * La cancha de un partido a sets (pádel, tenis, pickleball): antes de empezar, el sorteo (quién saca, orden de
- * saque de cada pareja, quién empieza a la izquierda) y las reglas; después, dos mitades gigantes (se toca la
- * pareja que ganó el punto) con sets, juegos, 15/30/40/AD, «Punto de oro» o «Star point», quién saca y desde
- * qué lado, y el aviso de cambio de lado. El tie-break y el súper tie-break entran solos.
+ * La cancha de un partido a sets (pádel, tenis, pickleball; el ping pong tiene la suya, TableTennisCourt, y esta
+ * queda solo de respaldo): antes de empezar, el sorteo (quién saca, orden de saque de cada pareja, quién empieza a
+ * la izquierda) y las reglas; después, dos mitades gigantes (se toca la pareja que ganó el punto) con sets, juegos,
+ * 15/30/40/AD, «Punto de oro» o «Star point», quién saca y desde qué lado, y el aviso de cambio de lado. El
+ * tie-break y el súper tie-break entran solos.
  */
 export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Match; sport: RacketSport; onExit: () => void; isAdmin: boolean; userId: string | null }) {
   const { lid } = useLeagueCtx();
@@ -29,7 +30,7 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
   const live = s ? toLive(s) : null;
   const labels = [match.sides[0].label, match.sides[1].label] as const;
   const people = match.sides.map((x) => x.players.map((p) => names.nameOf(p.playerId)));
-  const pickle = sport === 'pickleball';
+  const pickle = isGameSport(sport);
 
   const title = [match.stage || (match.round != null ? `Jornada ${match.round}` : null), match.court].filter(Boolean).join(' · ') || 'Partido';
 
@@ -52,8 +53,9 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
 
   const serverName = live && rules.doubles ? people[live.server - 1]?.[live.serverPlayer] : null;
   const winner = court.over ? court.winner : null;
-  const tb = s && s.sport !== 'pickleball' ? s.tiebreak : false;
-  const canOrder = !!s && s.sport !== 'pickleball' && rules.doubles && !court.over && s.points[0] + s.points[1] === 0 && (!tb || s.matchTiebreak) && s.games[0] + s.games[1] <= 1;
+  const sets = s && (s.sport === 'tennis' || s.sport === 'padel') ? s : null;
+  const tb = sets ? sets.tiebreak : false;
+  const canOrder = !!sets && rules.doubles && !court.over && sets.points[0] + sets.points[1] === 0 && (!tb || sets.matchTiebreak) && sets.games[0] + sets.games[1] <= 1;
 
   const header = live && (
     <div className="flex flex-col gap-2">
@@ -71,7 +73,7 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
             </span>
           )}
         </div>
-        {live.label && <Badge tone={s && s.sport !== 'pickleball' && s.decidingPoint ? 'warn' : 'accent'}>{live.label}</Badge>}
+        {live.label && <Badge tone={sets?.decidingPoint ? 'warn' : 'accent'}>{live.label}</Badge>}
       </div>
       {!court.over && (
         <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
@@ -232,7 +234,7 @@ function SetupForm({
   const [fp, setFp] = useState<Pair<Player>>([0, 0]);
   const [left, setLeft] = useState<Side>(1);
   const [changing, setChanging] = useState(false);
-  const pickle = sport === 'pickleball';
+  const pickle = isGameSport(sport);
   const current = presetOf(sport, engineRules(sport, match.rules));
   const canChange = isAdmin && match.status === 'scheduled' && match.seq === 0;
 

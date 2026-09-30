@@ -30,6 +30,12 @@ export const ABOUT_STEPS: readonly { title: string; text: string }[] = [
   { title: 'Anota y compite', text: 'Tus juegos, la tabla, tus estadísticas y los avisos, todo en el celular.' },
 ];
 
+/**
+ * Columnas de la grilla de deportes: 4 cuando llenan las filas; si no, 3 cuando esas sí (9 grupos = 3 × 3, sin un
+ * cuadro solo en la última fila). Clases enteras para que Tailwind las vea.
+ */
+export const sportGridCols = (n: number): string => (n % 4 !== 0 && n % 3 === 0 ? 'grid-cols-3' : 'grid-cols-4');
+
 const linkBtn = 'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.97]';
 
 /**
@@ -56,14 +62,18 @@ export default function AboutPage() {
           <h2 id="acerca-deportes" className="text-lg font-bold tracking-tight">
             Los deportes
           </h2>
-          <ul className="grid grid-cols-4 gap-2">
+          <ul className={`grid ${sportGridCols(SPORT_GROUPS.length)} gap-2`}>
             {SPORT_GROUPS.map((g) => {
               const sport = g.sports[0] as SportId;
+              // El otro nombre («Tenis de mesa») va en el nombre accesible y en el título: en 11 px solo cabe «Ping pong».
+              const full = g.alias ? `${g.name} (${g.alias.toLowerCase()})` : undefined;
               return (
                 <li key={g.id}>
                   <SportTint sport={sport} className="h-full">
                     <Link
                       to={sportHomePath(sport)}
+                      aria-label={full}
+                      title={full}
                       className="flex h-full min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border border-line bg-surface px-1 py-2 text-center transition hover:bg-surface-2 active:scale-[0.97]"
                     >
                       <span className="flex size-10 items-center justify-center rounded-2xl bg-accent-soft text-accent">

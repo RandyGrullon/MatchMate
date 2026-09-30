@@ -76,14 +76,16 @@ export interface CompetitionExcelInput {
   nameOf: (id: string) => string;
   tz?: string | null;
   forLabel: string;
-  /** «Sets» (pádel y tenis) o «Juegos» (pickleball). */
+  /** «Sets» (pádel y tenis) o «Juegos» (pickleball y ping pong). */
   setsLabel?: string;
+  /** Columna del lugar del partido: «Cancha» (por defecto) o «Mesa» (ping pong). */
+  courtLabel?: string;
 }
 
 /** Hojas de la liga o el torneo: partidos, una tabla por competencia o grupo, y jugadores. Puro. */
 export function competitionSheets(o: CompetitionExcelInput): ExcelSheet[] {
   const used = new Set<string>();
-  const matchRows: SheetData = [head(['Jornada o fase', 'Fecha', 'Hora', 'Cancha', 'Lado 1', 'Lado 2', 'Marcador', 'Ganador', 'Estado'])];
+  const matchRows: SheetData = [head(['Jornada o fase', 'Fecha', 'Hora', o.courtLabel ?? 'Cancha', 'Lado 1', 'Lado 2', 'Marcador', 'Ganador', 'Estado'])];
   for (const m of o.matches) {
     const p = localParts(m.scheduledAt, o.tz);
     const winner = m.winner ? m.sides[m.winner - 1].label : '';

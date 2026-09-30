@@ -79,6 +79,11 @@ describe('agenda: filtros y grupos', () => {
     expect(['bowling', 'golf', 'padel', 'tennis', 'pickleball'].every(hasAgenda)).toBe(true);
     expect(['basketball', 'football', 'futsal', 'swimming', null].some(hasAgenda)).toBe(false);
     expect(agendaCardNote('padel')).toBe('Noches y torneos de pádel con lugar');
+    expect(agendaCardNote('pickleball')).toBe('Noches y torneos de pickleball con lugar');
+    // Sin noches de americano: solo torneos.
+    expect(agendaCardNote('table_tennis')).toBe('Torneos de ping pong con lugar');
+    expect(agendaCardNote('tennis')).toBe('Torneos de tenis con lugar');
+    expect(hasAgenda('table_tennis')).toBe(true);
     expect(agendaCardNote(null)).toBe('Prácticas, rondas y noches abiertas en ligas públicas');
   });
 });

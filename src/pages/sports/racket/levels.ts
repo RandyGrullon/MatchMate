@@ -9,18 +9,19 @@ import { useRacket } from './sport';
  * Nivel manual de cada jugador según el deporte, guardado en players.attrs:
  * - pádel: `level` (Playtomic 0–7; lo lee también src/lib/data/racket.ts);
  * - tenis: `ntrp` (NTRP 1.5–7.0, de medio en medio; la base acepta de 1.0 a 7.0);
- * - pickleball: `dupr` (DUPR 2.000–8.000).
+ * - pickleball: `dupr` (DUPR 2.000–8.000);
+ * - ping pong: `tt` (nivel del club de 1 a 10, con un decimal).
  * Sirve para sembrar torneos, armar las cajas del primer mes, la ronda 1 del mexicano y mostrarlo en el perfil.
  */
 
 export interface LevelScale {
   /** Clave en players.attrs. */
-  key: 'level' | 'ntrp' | 'dupr';
+  key: 'level' | 'ntrp' | 'dupr' | 'tt';
   /** «Nivel», «NTRP», «DUPR». */
   label: string;
   min: number;
   max: number;
-  /** Decimales que se guardan (pádel 1, tenis 2, DUPR 3). */
+  /** Decimales que se guardan (pádel 1, tenis 2, DUPR 3, ping pong 1). */
   decimals: number;
   placeholder: string;
   hint: string;
@@ -54,6 +55,15 @@ export const LEVEL_SCALES: Readonly<Record<RacketSport, LevelScale>> = {
     placeholder: '2.0–8.0',
     hint: 'DUPR de 2.000 a 8.000 (como sale en la app de DUPR). Sirve para las cajas del primer mes y para sembrar los torneos.',
   },
+  table_tennis: {
+    key: 'tt',
+    label: 'Nivel',
+    min: 1,
+    max: 10,
+    decimals: 1,
+    placeholder: '1–10',
+    hint: 'Nivel del club de 1 a 10 (1 empieza, 5 juega liga, 8 o más compite). Sirve para las cajas del primer mes y para sembrar los torneos.',
+  },
 };
 
 export const levelScale = (sport: RacketSport): LevelScale => LEVEL_SCALES[sport] ?? LEVEL_SCALES.padel;
@@ -82,10 +92,10 @@ export function parseLevelInput(raw: string, scale: LevelScale): number | null |
   return round(v, scale.decimals);
 }
 
-/** 4.5 → «4.5»; 3.752 → «3.752»; 4 → «4.0» en NTRP y DUPR. */
+/** 4.5 → «4.5»; 3.752 → «3.752»; 4 → «4.0» en NTRP y DUPR (en las escalas «Nivel» de pádel y ping pong, «4»). */
 export function formatLevel(v: number, scale: LevelScale): string {
   const r = round(v, scale.decimals);
-  if (scale.key === 'level') return String(r);
+  if (scale.key === 'level' || scale.key === 'tt') return String(r);
   const s = String(r);
   return s.includes('.') ? s : `${s}.0`;
 }
@@ -111,7 +121,7 @@ export async function fetchSportLevels(lid: string, scale: LevelScale): Promise<
 export function useSportLevels(lid: string | undefined, sport: RacketSport): Live<Record<string, number>> {
   const scale = levelScale(sport);
   const padel = scale.key === 'level';
-  // El pádel usa la lectura de siempre (la comparte con la capa de datos); tenis y pickleball, la suya.
+  // El pádel usa la lectura de siempre (la comparte con la capa de datos); tenis, pickleball y ping pong, la suya.
   const old = usePlayerLevels(padel ? lid : undefined);
   const mine = useLive<Record<string, number>>(
     !padel && lid ? levelKeys.league(lid, scale.key) : null,

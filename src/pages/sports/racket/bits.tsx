@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowUpDown, Boxes, Check, ChevronsUp, ListOrdered, Minus, Moon, Plus, Search, Shuffle, Trophy, type LucideIcon } from 'lucide-react';
 import type { StandingsColumn } from '../../../components/match';
 import { Card, Input, cx } from '../../../components/ui';
+import { isGameSport } from '../../../sports/racket/rules';
 
 /** Piezas chicas de las pantallas de raqueta. */
 
@@ -195,9 +196,12 @@ export const plural = (n: number, [one, many]: readonly [string, string]) => `${
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
-/** Columnas de la tabla de raqueta: PJ, G, P, dif. de sets, juegos a favor y en contra, dif. de juegos (pickleball: juegos y puntos). */
+/**
+ * Columnas de la tabla de raqueta: PJ, G, P, dif. de sets, juegos a favor y en contra, dif. de juegos (pickleball y
+ * ping pong: juegos y puntos).
+ */
 export function racketColumns(sport: string): StandingsColumn[] {
-  const pk = sport === 'pickleball';
+  const pk = isGameSport(sport);
   return [
     { key: 'played', label: 'PJ', title: 'Partidos jugados', value: (r) => r.played },
     { key: 'won', label: 'G', title: 'Ganados', value: (r) => r.won },

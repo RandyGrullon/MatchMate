@@ -5,7 +5,7 @@ import { useLeagueCtx } from '../../../lib/league';
 import { inSeason, type Season } from '../../../lib/seasons';
 import { useNow } from '../../../lib/useNow';
 import { awardees, makeSnapshot, snapshotTable, type SeasonSnapshot, type SeasonTableResult, type SnapshotField, type SnapshotTable } from '../../../components/season/logic';
-import type { RacketSport } from '../../../sports/racket';
+import { isGameSport, type RacketSport } from '../../../sports/racket';
 import type { StandingRow } from '../../../sports/types';
 import { engineRules } from './court/adapters';
 import { parseLeagueConfig } from './logic/league';
@@ -16,7 +16,7 @@ import { useNames, type Names } from './names';
 import type { RacketExtensions } from './sport';
 
 /**
- * La temporada de raqueta (pádel, tenis y pickleball): los partidos de sus fechas y sus tablas (las ligas de parejas
+ * La temporada de raqueta (pádel, tenis, pickleball y ping pong): los partidos de sus fechas y sus tablas (las ligas de parejas
  * y los grupos de los torneos, las cajas y demás formatos del deporte, el ranking individual y las noches). La usan
  * la pantalla Tabla y Admin › Temporada (la foto que se guarda al cerrarla). Aquí la temporada va solo por fecha:
  * las parejas sirven de una temporada a otra.
@@ -77,7 +77,7 @@ export function useRacketSeason(season: Season | null, sport: RacketSport, ext: 
     () => [...competitions(sport, events.data, matches, now), ...(ext.competitions?.(events.data, matches, now) ?? [])],
     [sport, events.data, matches, now, ext],
   );
-  // Individual y dobles van por separado (tenis y pickleball pueden tener de los dos en la misma liga).
+  // Individual y dobles van por separado (tenis, pickleball y ping pong pueden tener de los dos en la misma liga).
   const kinds = useMemo(() => byModality(matches.filter(isSetsMatch), names.rosterOf), [matches, names]);
   const nights = useMemo(() => seasonNightTable(matches, { now }), [matches, now]);
   return { q, all, events, matches, comps, kinds, split: kinds.individual.length > 0 && kinds.dobles.length > 0, nights, names, now };
@@ -87,7 +87,7 @@ const signed = (n: number) => (n > 0 ? `+${n}` : n);
 
 /** Columnas de las tablas de raqueta en la foto (las mismas de racketColumns, más Pts). */
 export function racketFields(sport: string): SnapshotField<StandingRow>[] {
-  const pk = sport === 'pickleball';
+  const pk = isGameSport(sport);
   return [
     { label: 'PJ', title: 'Partidos jugados', value: (r) => r.played },
     { label: 'G', title: 'Ganados', value: (r) => r.won },

@@ -10,7 +10,7 @@ import type { ResultParser } from '../../../components/match';
 import { engineRules } from './court/adapters';
 
 /**
- * El deporte de raqueta de las pantallas compartidas (pádel, tenis y pickleball): cada pantalla lee aquí su
+ * El deporte de raqueta de las pantallas compartidas (pádel, tenis, pickleball y ping pong): cada pantalla lee aquí su
  * deporte, las palabras del registro, las reglas del partido de la liga y lo que el deporte agrega (`ext`).
  */
 
@@ -70,8 +70,11 @@ export interface RacketExtensions {
   court?: (m: Match) => ComponentType<RacketCourtProps> | null;
   /** «Solo el resultado» de un partido (null = lo de siempre). */
   resultEntry?: (m: Match) => ResultEntrySpec | null;
-  /** Palabras: cómo se llaman las noches de puntos del deporte («Round robin»). */
-  words?: { nights?: string; nightsLong?: string };
+  /**
+   * Palabras: cómo se llaman las noches de puntos del deporte («Round robin») y dónde se juega, en singular y plural
+   * (por defecto «cancha» y «canchas»; en ping pong, «mesa» y «mesas»).
+   */
+  words?: { nights?: string; nightsLong?: string; court?: readonly [string, string] };
   /** Tablas extra de la temporada (las cajas del mes, por ejemplo), después de las de ligas y torneos. */
   competitions?: (events: readonly RacketEvent[], matches: readonly Match[], now: number) => { key: string; name: string; rows: StandingRow[] }[];
 }
@@ -86,8 +89,15 @@ const Ctx = createContext<RacketSportValue | null>(null);
 
 const NO_EXT: RacketExtensions = {};
 
-/** El deporte tiene noches de puntos (americano del pádel, round robin del pickleball; como private.night_league). El tenis no. */
+/** El deporte tiene noches de puntos (americano del pádel, round robin del pickleball; como private.night_league). El tenis y el ping pong no. */
 export const hasNights = (sport: RacketSport): boolean => sport === 'padel' || sport === 'pickleball';
+
+/** Dónde se juega en las pantallas del admin y del partido: «cancha» / «canchas» o «mesa» / «mesas» (y con mayúscula). */
+export function courtWords(ext: RacketExtensions | null | undefined): { one: string; many: string; One: string; Many: string } {
+  const [one, many] = ext?.words?.court ?? ['cancha', 'canchas'];
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  return { one, many, One: cap(one), Many: cap(many) };
+}
 
 export function RacketProvider({ sport, ext, children }: { sport: RacketSport; ext?: RacketExtensions; children: ReactNode }) {
   const value = useMemo(() => ({ sport, meta: getSport(sport), ext: ext ?? NO_EXT }), [sport, ext]);

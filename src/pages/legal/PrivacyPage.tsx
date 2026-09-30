@@ -34,7 +34,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          MatchMate es una app para organizar ligas y torneos de boliche, pádel, tenis, pickleball, baloncesto, fútbol, golf y natación. El
+          MatchMate es una app para organizar ligas y torneos de boliche, pádel, tenis, pickleball, ping pong, baloncesto, fútbol, golf y natación. El
           responsable de tus datos es <Fill>{LEGAL_CONTACT.responsible}</Fill> (<Fill>{LEGAL_CONTACT.taxId}</Fill>), con domicilio en{' '}
           <Fill>{LEGAL_CONTACT.address}</Fill>, {LEGAL_CONTACT.place}.
         </p>

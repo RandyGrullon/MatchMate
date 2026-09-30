@@ -183,6 +183,48 @@ describe('reporte del torneo de raqueta por categorías', () => {
   });
 });
 
+describe('reporte del torneo de ping pong', () => {
+  const TT = { ...LEAGUE, sport: 'table_tennis', venue: 'Club Naco' };
+  const singles = (id: string, stage: string, key: string, a: string, b: string, text: string, winner: 1 | 2, g: [number, number], p: [number, number]) =>
+    mkMatch({
+      id,
+      eventId: 'E1',
+      stage,
+      bracketKey: key,
+      sides: [side(1, [a], null, PEOPLE[a]), side(2, [b], null, PEOPLE[b])],
+      status: 'confirmed',
+      score: { text, sides: g, totals: { sets: g, games: g, points: p } },
+      winner,
+    });
+  const cat = { id: 'A', name: 'Primera', pairs: ['a', 'c', 'e', 'g'], groups: 0, perGroup: 2, thirdPlace: true, seeds: ['a', 'c', 'e', 'g'] };
+  const matches = [
+    singles('s1', 'Primera · Semifinal', 'A-R1-1', 'a', 'g', '11-5 11-7 11-3', 1, [3, 0], [33, 15]),
+    singles('s2', 'Primera · Semifinal', 'A-R1-2', 'c', 'e', '11-9 9-11 11-8 11-9', 1, [3, 1], [42, 37]),
+    singles('p3', 'Primera · 3.er lugar', 'A-P3', 'e', 'g', '11-4 11-6 11-2', 1, [3, 0], [33, 12]),
+    singles('f', 'Primera · Final', 'A-R2-1', 'a', 'c', '11-8 8-11 12-10 11-7', 1, [3, 1], [42, 36]),
+  ];
+  const r = racketTourneyReport({ lid: 'L1', league: TT, event: event([cat]), title: 'Abierto de Ping Pong', sport: 'table_tennis', leagueRules: {}, matches, names, now: NOW });
+
+  it('individual, la tabla de la ITTF, juegos y puntos, y la mesa en el Excel', () => {
+    expect(r.subtitle).toBe('Liga Norte · Ping pong');
+    expect(r.facts.find((f) => f.label === 'Formato')?.value).toBe('1 categoría · Individual · Tabla: ganar 2, perder 1 (W.O. o retiro 0)');
+    expect(podiumsBrief(r)).toEqual([
+      [
+        'Individual · Primera',
+        [
+          [1, [['Ana', null, null]]],
+          [2, [['Carla', null, null]]],
+          [3, [['Eva', null, null]]],
+        ],
+      ],
+    ]);
+    const [ind] = r.individual;
+    expect(view(ind, 'excel').head).toEqual(['#', 'Jugador', 'PJ', 'G', 'P', '% G', 'Juegos +', 'Juegos −', 'Dif. juegos', 'Puntos +', 'Puntos −', 'Dif. puntos', 'Pts']);
+    expect(view(r.general[0], 'excel').head[1]).toBe('Mesa');
+    expect(excelLines(r).lines('Partidos')[0]).toBe('Jornada o fase | Fecha | Hora | Mesa | Lado 1 | Lado 2 | Marcador | Ganador | Estado');
+  });
+});
+
 describe('reporte de la noche (americano) y del round robin social', () => {
   // Americano a 24 con 5: una ronda descansa Eva y la otra Ana.
   const cfg = parseNightConfig({ format: 'americano', players: ['a', 'b', 'c', 'd', 'e'], courts: ['Cancha 1'], rounds: 2, rest: 'none', rests: { 1: ['e'], 2: ['a'] } });

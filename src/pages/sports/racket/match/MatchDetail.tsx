@@ -17,7 +17,7 @@ import { parsePoints } from '../logic/night';
 import { isPointsMatch } from '../logic/results';
 import { rulesText } from '../logic/rulesText';
 import { useNames } from '../names';
-import { useRacket } from '../sport';
+import { courtWords, useRacket } from '../sport';
 import { historyLines } from './history';
 import { MatchAdmin } from './MatchAdmin';
 
@@ -61,6 +61,7 @@ export function useMySide() {
 export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: string; eventId?: string | null; title?: string; onBack: () => void }) {
   const { lid, isAdmin, member, league, base } = useLeagueCtx();
   const { sport, ext } = useRacket();
+  const w = courtWords(ext);
   const { user } = useAuth();
   const { toast } = useFeedback();
   const param = useMatchParam();
@@ -109,7 +110,7 @@ export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: stri
     if (out && !out.ok) throw new Error('Otro teléfono va más adelante con este partido.');
   };
   const memberName = (id: string) => members.data.find((x) => x.uid === id)?.name ?? null;
-  const history = historyLines(m.history, memberName, league.tz);
+  const history = historyLines(m.history, memberName, league.tz, w.one);
 
   const keepProposed = async () => {
     setBusy(true);
@@ -142,7 +143,7 @@ export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: stri
       {open && canScore && (
         <div className="grid gap-2 sm:grid-cols-2">
           <Button variant="primary" className="h-14 text-base" icon={<Play className="size-5" />} onClick={() => param.openCourt(m.id)}>
-            {m.status === 'live' ? 'Seguir anotando en la cancha' : m.status === 'suspended' ? 'Retomar en la cancha' : 'Anotar en la cancha'}
+            {m.status === 'live' ? `Seguir anotando en la ${w.one}` : m.status === 'suspended' ? `Retomar en la ${w.one}` : `Anotar en la ${w.one}`}
           </Button>
           <Button className="h-14 text-base" icon={<Keyboard className="size-5" />} onClick={() => setEntry('finish')}>
             {points ? 'Poner el marcador' : 'Solo el resultado'}

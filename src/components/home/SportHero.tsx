@@ -60,6 +60,7 @@ export function SportHero({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold tracking-wide text-accent uppercase">Estás en</p>
             <h1 className="text-3xl leading-tight font-extrabold tracking-tight break-words">{meta.label}</h1>
+            {meta.alias && <p className="text-sm text-muted">{meta.alias}</p>}
             <p className="mt-0.5 text-sm text-muted">{signedIn ? heroCountsLabel(mine, publicCount) : `Ligas y torneos de ${meta.lower}`}</p>
             {status && status !== 'open' && (
               <Badge tone={status === 'beta' ? 'warn' : 'neutral'} className="mt-1.5">

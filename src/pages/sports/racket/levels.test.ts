@@ -4,13 +4,14 @@ import { byModality, isDoublesMatch, modalityOf } from './logic/modality';
 import { mkMatch } from './logic/testMatch';
 import { pointsText, rankingNote, tiebreakText } from './logic/tiebreaks';
 
-const { padel, tennis, pickleball } = LEVEL_SCALES;
+const { padel, tennis, pickleball, table_tennis } = LEVEL_SCALES;
 
 describe('niveles por deporte', () => {
   it('cada deporte su clave en attrs: level, ntrp, dupr', () => {
     expect(levelScale('padel').key).toBe('level');
     expect(levelScale('tennis').key).toBe('ntrp');
     expect(levelScale('pickleball').key).toBe('dupr');
+    expect(levelScale('table_tennis').key).toBe('tt');
   });
 
   it('leer lo guardado (y recortar a la escala)', () => {
@@ -40,6 +41,15 @@ describe('niveles por deporte', () => {
     expect(levelText(4.5, tennis)).toBe('NTRP 4.5');
     expect(levelText(4, pickleball)).toBe('DUPR 4.0');
     expect(levelText(3, padel)).toBe('Nivel 3');
+    // Ping pong: nivel del club de 1 a 10 con un decimal.
+    expect(parseLevelInput('5,5', table_tennis)).toBe(5.5);
+    expect(parseLevelInput('10', table_tennis)).toBe(10);
+    expect(parseLevelInput('11', table_tennis)).toBe('invalido');
+    expect(parseLevelInput('0.5', table_tennis)).toBe('invalido');
+    expect(readLevel({ tt: 7.2 }, table_tennis)).toBe(7.2);
+    expect(readLevel({ ntrp: 4.5 }, table_tennis)).toBeNull();
+    expect(levelText(5.5, table_tennis)).toBe('Nivel 5.5');
+    expect(levelText(6, table_tennis)).toBe('Nivel 6');
   });
 });
 
@@ -66,5 +76,13 @@ describe('textos de la tabla', () => {
     expect(pointsText('padel', '2-0')).toBe('ganar 2, perder 0');
     expect(pointsText('pickleball')).toBe('cuenta los partidos ganados');
     expect(rankingNote('pickleball')).toContain('partidos ganados');
+    expect(tiebreakText('table_tennis')).toBe(
+      'Orden (grupos de la ITTF): puntos (ganar 2, perder 1; W.O. o retiro 0) → entre los empatados: puntos, dif. de juegos y dif. de puntos → dif. de juegos → dif. de puntos → sorteo.',
+    );
+    expect(pointsText('table_tennis')).toBe('ganar 2, perder 1 (W.O. o retiro 0)');
+    expect(pointsText('table_tennis', '2-0')).toBe('ganar 2, perder 1 (W.O. o retiro 0)');
+    expect(rankingNote('table_tennis')).toBe(
+      'Cada jugador suma lo de su lado en los partidos de liga, torneo, cajas y escalera: ganar 2, perder 1, W.O. o retiro 0; luego dif. de juegos y de puntos.',
+    );
   });
 });
