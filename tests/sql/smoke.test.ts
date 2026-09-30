@@ -48,7 +48,7 @@ async function footprint(db: PGlite): Promise<Record<string, number>> {
     'public.seasons', 'public.season_awards', 'public.playoffs', 'public.playoff_series', 'public.solo_sessions',
     'public.solo_likes', 'private.logo_uploads', 'private.op_log', 'private.rate_limits', 'public.badge_awards',
     'public.league_badges', 'public.league_badge_awards', 'private.badge_queue', 'private.badge_reports',
-    'public.tournament_prizes', 'public.tournament_prize_slots',
+    'public.tournament_prizes', 'public.tournament_prize_slots', 'public.bowling_balls', 'public.ball_games',
   ];
   const out: Record<string, number> = {};
   for (const t of tables) out[t] = (await db.query<{ n: number }>(`select count(*)::int as n from ${t}`)).rows[0].n;
@@ -145,6 +145,9 @@ describe('scripts/supabase/smoke.sql', () => {
       'OK premios: un miembro no entrega premios [falla como debe: no_permitido]',
       'OK insignias en el perfil: el dueño destaca su premio del torneo',
       'OK insignias en el perfil: un miembro no lee prize_accounts [falla como debe',
+      'OK mis bolas: Ana registra dos bolas',
+      'OK mis bolas: el dueño no lee las bolas de Ana',
+      'OK mis bolas: nadie marca la bola de un juego suelto de otra cuenta [falla como debe: no_permitido]',
     ]) {
       expect(oks.some((n) => n.startsWith(step)), step).toBe(true);
     }

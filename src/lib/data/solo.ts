@@ -7,6 +7,8 @@ import type { OutboxItem } from '../db/outbox';
 import { parseDate, toIsoDate } from '../format';
 import { isValidScore, playerStats } from '../stats';
 import { NO_PHOTO, type GameFrames } from '../types';
+import type { GameBall } from '../balls';
+import { queueGameBalls, requeueGameBalls } from './balls';
 import { currentOutbox, enqueue, getUserId, invalidate, onOutbox, queryClient, remember, rpc, sentOrQueued, updateCached, type Live } from './client';
 import { peopleKeys, peopleTags } from './follows';
 import { useTopic } from './topics';
@@ -60,6 +62,11 @@ export interface SoloDraft {
   scores: number[];
   frames?: Record<string, GameFrames> | null;
   shared: boolean;
+  /**
+   * Con qué bola tiró cada juego ({"<juego desde 0>": bola | null | número}, todos los juegos: src/lib/balls.ts
+   * compactBalls, o keepBalls sin señal). Sin esto no se cambia ninguna (lo que estaba en la cola se queda detrás).
+   */
+  balls?: Record<string, GameBall> | null;
 }
 
 // ---------- Límites (los mismos de la base) ----------
@@ -122,6 +129,12 @@ export const soloHigh = (s: Pick<SoloSession, 'scores'>) => (s.scores.length ? M
 export function sortSolo<T extends Pick<SoloSession, 'playedOn' | 'id'>>(list: readonly T[]): T[] {
   return [...list].sort((a, b) => b.playedOn.localeCompare(a.playedOn) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
+
+/**
+ * Del más viejo al más nuevo (el orden de la tendencia): por fecha y, el mismo día, en el orden en que se anotaron (el
+ * id del teléfono va creciendo).
+ */
+export const soloOldestFirst = <T extends Pick<SoloSession, 'playedOn' | 'id'>>(list: readonly T[]): T[] => sortSolo(list).reverse();
 
 export interface SoloMonth<T> {
   /** YYYY-MM. */
@@ -354,6 +367,10 @@ export async function saveSoloSession(draft: SoloDraft, today = toIsoDate(new Da
     },
     { group: SOLO_GROUP, collapseKey: soloCollapse(id), label: 'Juego suelto' },
   );
+  // Con qué bola tiró cada juego: detrás del juego, en la misma cola (llega después de él). Sin bolas nuevas, las que
+  // estaban en la cola pasan detrás de este guardado.
+  if (draft.balls) queueGameBalls('solo', id, draft.balls, SOLO_GROUP);
+  else requeueGameBalls('solo', id, draft.scores.length, SOLO_GROUP);
   await sentOrQueued(done);
   return id;
 }
