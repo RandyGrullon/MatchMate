@@ -14,6 +14,8 @@ export interface GameDraft {
   values: string[];
   /** Cuadros de los juegos anotados tiro por tiro (clave = índice del juego). */
   frames?: Record<string, GameFrames>;
+  /** Con qué bola tiró cada juego (clave = índice del juego; null = sin bola). Ver src/lib/data/balls.ts. */
+  balls?: Record<string, string | null>;
   /** Cuándo se guardó (para volver al último al abrir "Subir mis juegos"). */
   savedAt?: number;
 }
@@ -176,7 +178,7 @@ export function saveDraft(
   lid: string,
   playerId: string,
   eventId: string,
-  d: Pick<GameDraft, 'values' | 'frames' | 'date'> | null,
+  d: Pick<GameDraft, 'values' | 'frames' | 'date' | 'balls'> | null,
   { live = true }: { live?: boolean } = {},
 ) {
   try {
@@ -210,15 +212,21 @@ export function clearSent(lid: string, playerId: string, eventId: string, sent: 
     ...cur,
     values: cur.values.map((v, i) => (wasSent(i) ? '' : v)),
     frames: Object.fromEntries(Object.entries(cur.frames ?? {}).filter(([i]) => !wasSent(+i))),
+    balls: Object.fromEntries(Object.entries(cur.balls ?? {}).filter(([i]) => !wasSent(+i))),
   });
 }
 
 /** Vuelve a poner en el teléfono lo que no se pudo enviar (sin pisar lo anotado después). */
-export function restoreDraft(lid: string, playerId: string, eventId: string, sent: Pick<GameDraft, 'values' | 'frames' | 'date'>) {
+export function restoreDraft(lid: string, playerId: string, eventId: string, sent: Pick<GameDraft, 'values' | 'frames' | 'date' | 'balls'>) {
   const cur = loadDraft(lid, playerId, eventId);
   const length = Math.max(sent.values.length, cur?.values.length ?? 0);
   const values = Array.from({ length }, (_, i) => (cur?.values[i]?.trim() ? cur.values[i] : (sent.values[i] ?? '')));
-  saveDraft(lid, playerId, eventId, { date: sent.date, values, frames: { ...(sent.frames ?? {}), ...(cur?.frames ?? {}) } });
+  saveDraft(lid, playerId, eventId, {
+    date: sent.date,
+    values,
+    frames: { ...(sent.frames ?? {}), ...(cur?.frames ?? {}) },
+    balls: { ...(sent.balls ?? {}), ...(cur?.balls ?? {}) },
+  });
 }
 
 function subscribe(onChange: () => void) {

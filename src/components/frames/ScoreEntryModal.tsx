@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { Button, Modal } from '../ui';
-import { FrameEditor, type ScoreValue } from './FrameEditor';
+import { FrameEditor, type ScoreMode, type ScoreValue } from './FrameEditor';
 
-/** Hoja para anotar un juego (pines, teclado o total). `resetKey` reinicia el editor al cambiar de juego. */
+/**
+ * Hoja para anotar un juego (pines, teclado o total). `resetKey` reinicia el editor al cambiar de juego; `startMode`
+ * elige con qué forma se abre un juego sin cuadros.
+ */
 export function ScoreEntryModal({
   open,
   onClose,
@@ -14,6 +17,7 @@ export function ScoreEntryModal({
   top,
   note,
   saveText = 'Guardar',
+  startMode,
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,6 +29,7 @@ export function ScoreEntryModal({
   top?: ReactNode;
   note?: ReactNode;
   saveText?: string;
+  startMode?: ScoreMode;
 }) {
   const [value, setValue] = useState<ScoreValue & { ready: boolean }>({ ...initial, ready: false });
   const [busy, setBusy] = useState(false);
@@ -54,9 +59,10 @@ export function ScoreEntryModal({
       }
     >
       <div className="flex flex-col gap-4">
-        {top}
-        {open && <FrameEditor key={resetKey} initial={initial} onChange={setValue} />}
-        {note}
+        {/* `top` y `note` van en su propio Fragment: su `key` (p. ej. la bola del juego) no choca con la del editor. */}
+        <Fragment key="top">{top}</Fragment>
+        {open && <FrameEditor key={resetKey} initial={initial} onChange={setValue} startMode={startMode} />}
+        <Fragment key="note">{note}</Fragment>
       </div>
     </Modal>
   );

@@ -1,7 +1,7 @@
 import { cx } from '../ui';
 
 /** Filas de pines vistas desde el jugador: 7-8-9-10 al fondo, el 1 adelante. */
-const ROWS = [
+export const PIN_ROWS: readonly (readonly number[])[] = [
   [7, 8, 9, 10],
   [4, 5, 6],
   [2, 3],
@@ -25,7 +25,7 @@ export function PinDeck({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 py-2" role="group" aria-label="Pines">
-      {ROWS.map((row) => (
+      {PIN_ROWS.map((row) => (
         <div key={row[0]} className="flex gap-2.5">
           {row.map((pin) => {
             const bit = 1 << (pin - 1);
