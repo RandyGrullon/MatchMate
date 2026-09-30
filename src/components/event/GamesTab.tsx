@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CalendarCheck, Camera, CheckCircle2, Grid3x3, Plus, ScanLine, UserPlus, Users, X } from 'lucide-react';
+import { ballsByGame, eventBallUpdate, eventGameBall } from '../../lib/balls';
 import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame, updateEntry } from '../../lib/data';
+import { queueGameBalls, rememberBall, useMyBallGames } from '../../lib/data/balls';
 import { useLeagueCtx } from '../../lib/league';
 import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
 import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
+import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
 import { ScanModal } from '../ScanModal';
@@ -51,7 +54,7 @@ export function TeamTotal({ total }: { total: { main: number; hcp: number | null
  * El anotador del torneo solo anota: no agrega ni quita jugadores.
  */
 export function GamesTab({ event, entries, players }: { event: BowlingEvent; entries: Entry[]; players: Player[] }) {
-  const { lid, league, isAdmin } = useLeagueCtx();
+  const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
   const requirePhoto = league.requirePhoto !== false;
   const run = useAction();
   const { confirm } = useFeedback();
@@ -119,6 +122,17 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
   const framesEntry = framesFor ? entries.find((e) => e.id === framesFor.entryId) : undefined;
   const framesGame = framesFor?.game ?? 0;
   const framesVerified = framesEntry ? isRealPhoto(slots(framesEntry.photos, event.games, null)[framesGame]) : false;
+  // Sus propios juegos (el dueño, un admin o el anotador que también juega): con qué bola tiró cada uno.
+  const ownGames = !!framesEntry && !!myPlayerId && framesEntry.playerId === myPlayerId;
+  const choice = useBallChoice();
+  const eventBalls = useMyBallGames(event.id, ownGames && choice.balls.length > 0);
+  const hadBalls = ballsByGame(eventBalls.data, 'event', event.id);
+  // Las que ya tenía se leyeron (sin eso, guardar podría pisarlas): si no, la bola no sale ni se guarda.
+  const ballsReady = ownGames && !eventBalls.loading && !eventBalls.error;
+  const ballPick = useRef<string | null>(null);
+  // La bola al abrir el juego (un juego con puntaje y sin bola aquí sale sin bola: ver eventGameBall).
+  const framesScored = !!framesEntry && slots(framesEntry.scores, event.games, null)[framesGame] != null;
+  const initialBall = eventGameBall(hadBalls, framesGame, framesScored, choice.auto);
 
   const cols = `repeat(${event.games}, minmax(3.25rem, 1fr))`;
   let row = 0;
@@ -311,23 +325,33 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
           resetKey={`${framesEntry.id}-${framesGame}`}
           initial={{ score: slots(framesEntry.scores, event.games, null)[framesGame], frames: framesEntry.frames?.[framesGame] ?? null }}
           top={
-            event.games > 1 && (
-              <div className="flex gap-1.5">
-                {Array.from({ length: event.games }, (_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setFramesFor({ entryId: framesEntry.id, game: i })}
-                    className={cx(
-                      'h-9 flex-1 rounded-lg text-sm font-semibold transition',
-                      i === framesGame ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
-                    )}
-                  >
-                    J{i + 1}
-                  </button>
-                ))}
-              </div>
-            )
+            <>
+              {event.games > 1 && (
+                <div className="flex gap-1.5">
+                  {Array.from({ length: event.games }, (_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setFramesFor({ entryId: framesEntry.id, game: i })}
+                      className={cx(
+                        'h-11 flex-1 rounded-lg text-sm font-semibold transition',
+                        i === framesGame ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
+                      )}
+                    >
+                      J{i + 1}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {ballsReady && choice.has && (
+                <GameBallSelect
+                  key={`${framesEntry.id}-${framesGame}`}
+                  balls={choice.balls}
+                  initial={initialBall}
+                  choice={ballPick}
+                />
+              )}
+            </>
           }
           note={
             framesVerified && requirePhoto ? (
@@ -337,6 +361,13 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
           onSave={async (v) => {
             const ok = await run(async () => {
               await saveGame(lid, event, framesEntry, framesGame, v, requirePhoto);
+              // La bola va detrás del juego, en la misma cola de la liga (borrar el juego le quita la bola). Solo si cambió:
+              // la que eligió se pone sola la próxima vez.
+              const update = ballsReady ? eventBallUpdate(hadBalls, framesGame, v.score, choice.has ? ballPick.current : undefined) : null;
+              if (update) {
+                queueGameBalls('event', event.id, update, lid);
+                rememberBall(update[String(framesGame)]);
+              }
               return true;
             }, `Juego ${framesGame + 1} guardado`);
             if (ok) {

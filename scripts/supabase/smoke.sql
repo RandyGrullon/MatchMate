@@ -15,9 +15,9 @@ begin;
 -- de un lado, confirmación del rival, reclamo y resolución), fútbol (equipo de temporada y plantilla), golf y
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
 -- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
--- perfil: destacados y quién los ve), los anotadores del torneo, el ping pong (liga, nivel y un partido al mejor de
--- 7), la consola del superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga privada, un
--- miembro llamando admin_*, escrituras sin cuenta).
+-- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas, el ping pong (liga, nivel y un partido al
+-- mejor de 7), la consola del superadmin y los permisos que TIENEN que fallar (alguien de fuera leyendo una liga
+-- privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -114,7 +114,7 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000200'];
+    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000200'];
   v_missing text[];
   v_bowling text;
 begin
@@ -1960,6 +1960,96 @@ begin
   perform public.revoke_scorer_link(p_link => pg_temp.id('scorer_link'));
   assert public.scorer_link_preview(p_code => pg_temp.val('scorer_code')) ->> 'status' = 'revoked', 'FAIL anotadores: revoke_scorer_link';
   perform pg_temp.ok('anotadores: el dueño quita el link');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9j. Mis bolas (20260930000100): Ana registra sus bolas y marca con cuál tiró un juego suelto, uno de la práctica y
+-- uno de su envío; nadie más las ve ni las toca (todo se deshace con el ROLLBACK)
+-- =====================================================================================================================
+
+-- 9j.1 Ana registra dos bolas (idempotente con p_op_id), las marca en sus juegos, la pule y la retira.
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_op uuid := gen_random_uuid();
+  v_ball uuid;
+  v_spare uuid;
+  v_solo uuid;
+  r jsonb;
+  g jsonb;
+begin
+  v_ball := public.save_ball(p_id => gen_random_uuid(), p_name => ' Smoke Phaze ', p_weight => 15, p_color => '#1D4ED8',
+                             p_brand => 'Storm', p_cover => 'solida', p_op_id => v_op);
+  assert public.save_ball(p_id => gen_random_uuid(), p_name => 'Otra', p_weight => 14, p_color => '#000000', p_op_id => v_op) = v_ball,
+    'FAIL mis bolas: reintentar con el mismo p_op_id no devuelve la misma bola';
+  v_spare := public.save_ball(p_id => null, p_name => 'Smoke Spare', p_weight => 14, p_color => '#ffffff', p_cover => 'poliester');
+  v_solo := public.save_solo_session(p_id => gen_random_uuid(), p_played_on => (now() at time zone 'America/Santo_Domingo')::date,
+                                     p_scores => '[190, 150]'::jsonb);
+  assert public.set_game_balls(p_kind => 'solo', p_ref => v_solo, p_balls => jsonb_build_object('0', v_ball, '1', v_spare),
+                               p_op_id => gen_random_uuid()) = 2, 'FAIL mis bolas: set_game_balls (juego suelto)';
+  assert public.set_game_balls(p_kind => 'event', p_ref => pg_temp.id('bowl_prac'), p_balls => jsonb_build_object('0', v_ball)) = 1,
+    'FAIL mis bolas: set_game_balls (práctica de la liga)';
+  -- Su envío ya está aprobado (en la práctica, en los mismos juegos): la bola va al juego 2 de la práctica.
+  assert public.set_game_balls(p_kind => 'sub', p_ref => pg_temp.id('bowl_sub_ana'), p_balls => jsonb_build_object('1', v_ball)) = 2,
+    'FAIL mis bolas: set_game_balls (su envío aprobado)';
+  r := public.my_balls();
+  assert jsonb_array_length(r -> 'balls') = 2 and r ->> 'lastUsed' = v_ball::text
+     and exists (select 1 from jsonb_array_elements(r -> 'balls') x
+                  where x ->> 'id' = v_ball::text and x ->> 'name' = 'Smoke Phaze' and x ->> 'color' = '#1d4ed8'),
+    format('FAIL mis bolas: my_balls %s', r);
+  g := public.my_ball_games();
+  assert exists (select 1 from jsonb_array_elements(g) x
+                  where x ->> 'kind' = 'solo' and x ->> 'ref' = v_solo::text and (x ->> 'score')::integer = 190 and (x ->> 'counted')::boolean)
+     and exists (select 1 from jsonb_array_elements(g) x
+                  where x ->> 'kind' = 'event' and (x ->> 'game')::integer = 1 and (x ->> 'score')::integer = 190
+                    and (x ->> 'counted')::boolean)
+     and exists (select 1 from jsonb_array_elements(g) x where x ->> 'kind' = 'event' and x ->> 'ball' = v_ball::text),
+    format('FAIL mis bolas: my_ball_games %s', g);
+  perform public.resurface_ball(p_id => v_ball);
+  perform public.retire_ball(p_id => v_spare);
+  assert (select b.resurfaced_on is not null from public.bowling_balls b where b.id = v_ball)
+     and (select b.retired from public.bowling_balls b where b.id = v_spare), 'FAIL mis bolas: resurface_ball / retire_ball';
+  perform pg_temp.put('ball_ana', v_ball::text);
+  perform pg_temp.put('ball_solo_ana', v_solo::text);
+  perform pg_temp.ok('mis bolas: Ana registra dos bolas (idempotente con p_op_id), las marca en un juego suelto, la práctica y su envío (my_balls, my_ball_games), la pule y retira la otra');
+  perform pg_temp.must_fail('mis bolas: una bola de 20 libras no se guarda',
+    format('select public.save_ball(p_id => null, p_name => %L, p_weight => 20, p_color => %L)', 'Pesada', '#000000'), array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9j.2 El dueño no ve las bolas de Ana ni las toca, ni marca los juegos de ella.
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select count(*) from public.bowling_balls) = 0 and (select count(*) from public.ball_games) = 0,
+    'FAIL mis bolas: el dueño lee las bolas de Ana';
+  assert public.my_ball_games(p_ref => pg_temp.id('ball_solo_ana')) = '[]'::jsonb, 'FAIL mis bolas: el dueño ve los juegos con bola de Ana';
+  perform pg_temp.must_fail('mis bolas: nadie retira la bola de otra cuenta',
+    format('select public.retire_ball(p_id => %L)', pg_temp.val('ball_ana')), array['no_permitido']);
+  perform pg_temp.must_fail('mis bolas: nadie marca la bola de un juego suelto de otra cuenta',
+    format('select public.set_game_balls(p_kind => %L, p_ref => %L, p_balls => %L)', 'solo', pg_temp.val('ball_solo_ana'), '{}'),
+    array['no_permitido']);
+  perform pg_temp.ok('mis bolas: el dueño no lee las bolas de Ana (tablas ni my_ball_games)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- 9j.3 Ana borra su bola: se van también las marcas de sus juegos (los juegos quedan).
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  perform public.delete_ball(p_id => pg_temp.id('ball_ana'));
+  assert not exists (select 1 from public.ball_games g where g.ball_id = pg_temp.id('ball_ana')),
+    'FAIL mis bolas: quedaron juegos con la bola borrada';
+  assert exists (select 1 from public.solo_sessions s where s.id = pg_temp.id('ball_solo_ana')), 'FAIL mis bolas: borrar la bola borró el juego';
+  perform public.delete_solo_session(p_id => pg_temp.id('ball_solo_ana'));
+  perform pg_temp.ok('mis bolas: Ana borra su bola (delete_ball) y se van sus marcas; el juego queda');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);

@@ -257,7 +257,7 @@ function SubmissionCard({
                 Object.entries(sub.frames).map(([k, f]) => (
                   <div key={k} className="flex flex-col gap-1">
                     <span className="text-xs text-muted">J{+k + 1}</span>
-                    <FramesGrid rolls={f.rolls} compact />
+                    <FramesGrid rolls={f.rolls} masks={f.masks} compact />
                   </div>
                 ))}
             </div>

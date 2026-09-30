@@ -232,6 +232,9 @@ export function tagsForOp(item: OutboxItem): string[] {
     // Juegos sueltos: no son de ninguna liga (el grupo es 'solo'); solo.ts vuelve a leer lo suyo.
     case 'save_solo_session':
       return [];
+    // La bola de un juego: nada de la liga depende de ella (balls.ts vuelve a leer las bolas).
+    case 'set_game_balls':
+      return [];
     default:
       return [tags.league(lid)];
   }

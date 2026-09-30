@@ -107,7 +107,7 @@ export function GameDetailModal({
                   {isTorneo && s != null && line.hcp > 0 && <span className="text-xs text-muted tabular-nums">+{line.hcp}</span>}
                 </div>
                 {frames ? (
-                  <FramesGrid rolls={frames.rolls} compact />
+                  <FramesGrid rolls={frames.rolls} masks={frames.masks} compact />
                 ) : (
                   s != null && <p className="text-xs text-muted">Anotado solo el total (sin cuadros).</p>
                 )}

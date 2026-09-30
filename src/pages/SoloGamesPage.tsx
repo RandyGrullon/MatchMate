@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { ChevronRight, CloudUpload, Flame, Hash, Heart, Layers, Lock, LogIn, Plus, Target, UserPlus } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronRight, CloudUpload, Flame, Hash, Heart, Layers, Lock, LogIn, Plus, Target, UserPlus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { soloByMonth, soloHigh, soloSeries, soloSummary, soloVenues, useMySoloSessions, type SoloSession } from '../lib/data/solo';
+import { countedFrames, soloStatGames } from '../lib/bowlingStats';
+import { soloByMonth, soloHigh, soloOldestFirst, soloSeries, soloSummary, soloVenues, useMySoloSessions, type SoloSession } from '../lib/data/solo';
 import { formatDate, parseDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
 import { getSport } from '../sports/registry';
@@ -11,7 +12,9 @@ import { Stat } from '../components/event/StandingsTab';
 import { AppShell } from '../components/Shell';
 import { ScoreChips } from '../components/social/GameCard';
 import { SoloGameSheet } from '../components/solo/SoloGameSheet';
-import { Button, Card, Empty, ListSkeleton, Loading, LoadError, StatsSkeleton } from '../components/ui';
+import { FrameStatsPanel } from '../components/stats/FrameStatsPanel';
+import { TrendSection } from '../components/stats/TrendSection';
+import { Button, Card, Empty, ListSkeleton, Loading, LoadError, StatsSkeleton, cx } from '../components/ui';
 
 /** «sáb 27»: el día de la semana y el número, para la columna de la fecha. */
 function dayParts(date: string): { weekday: string; day: string } {
@@ -23,6 +26,8 @@ function dayParts(date: string): { weekday: string; day: string } {
  * Juegos sueltos (/juegos-sueltos): los juegos de boliche de la cuenta fuera de una liga o torneo. Arriba los números
  * (juegos, promedio, el más alto y la mejor serie de 3), «Anotar juego suelto» y la lista por mes (la fecha, la bolera,
  * los juegos, la serie y un candado si no sale en el perfil). Tocar uno lo abre para cambiarlo o borrarlo.
+ * «Estadísticas» (`?ver=estadisticas`) cambia la lista por la tendencia y lo que sale de los cuadros (porcentajes,
+ * pino por pino y spares según lo que quedó).
  * `?juego=<id>` abre ese (los avisos y el perfil llevan aquí); `?nuevo=1`, uno nuevo (el menú Crear y el Home del
  * boliche). Sin cuenta, invita a entrar y vuelve aquí.
  */
@@ -77,6 +82,14 @@ function SoloGames() {
   const summary = useMemo(() => soloSummary(sessions.data), [sessions.data]);
   const months = useMemo(() => soloByMonth(sessions.data), [sessions.data]);
   const venues = useMemo(() => soloVenues(sessions.data), [sessions.data]);
+  // Todos los juegos, del más viejo al más nuevo (la tendencia; el mismo día, en el orden en que se jugaron) y los
+  // cuadros que cuadran (el análisis).
+  const games = useMemo(
+    () => soloOldestFirst(sessions.data).flatMap((s) => soloStatGames(s, (i) => `${s.venue || 'Juego suelto'} · J${i + 1} · ${formatDate(s.playedOn)}`)),
+    [sessions.data],
+  );
+  const frames = useMemo(() => countedFrames(games), [games]);
+  const statsView = params.get('ver') === 'estadisticas';
 
   const openId = params.get('juego');
   const isNew = params.get('nuevo') === '1';
@@ -91,6 +104,20 @@ function SoloGames() {
           next.delete('nuevo');
           if (id === 'nuevo') next.set('nuevo', '1');
           else if (id) next.set('juego', id);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+
+  const setStatsView = useCallback(
+    (on: boolean) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          if (on) next.set('ver', 'estadisticas');
+          else next.delete('ver');
           return next;
         },
         { replace: true },
@@ -134,16 +161,47 @@ function SoloGames() {
         <Button variant="primary" className="h-11" icon={<Plus className="size-4" />} onClick={() => setOpen('nuevo')}>
           Anotar juego suelto
         </Button>
-        {months.map((m) => (
-          <section key={m.month} className="flex flex-col gap-2" aria-label={m.label}>
-            <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">{m.label}</h2>
-            <Card className="divide-y divide-line overflow-hidden">
-              {m.sessions.map((s) => (
-                <SoloRow key={s.id} session={s} onOpen={() => setOpen(s.id)} />
-              ))}
-            </Card>
-          </section>
-        ))}
+        <div role="tablist" aria-label="Qué ver" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1 text-sm">
+          {(
+            [
+              [false, 'Por día', CalendarDays],
+              [true, 'Estadísticas', BarChart3],
+            ] as const
+          ).map(([on, label, Icon]) => (
+            <button
+              key={label}
+              type="button"
+              role="tab"
+              aria-selected={statsView === on}
+              onClick={() => setStatsView(on)}
+              className={cx(
+                'flex min-h-11 items-center justify-center gap-1.5 rounded-lg font-medium transition',
+                statsView === on ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
+              )}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+        {statsView ? (
+          <>
+            <TrendSection games={games} average={summary.average} heading="h2" />
+            {games.length < 2 && <p className="text-sm text-muted">Con dos juegos o más aquí ves cómo vas.</p>}
+            <FrameStatsPanel frames={frames} games={summary.games} heading="h2" />
+          </>
+        ) : (
+          months.map((m) => (
+            <section key={m.month} className="flex flex-col gap-2" aria-label={m.label}>
+              <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">{m.label}</h2>
+              <Card className="divide-y divide-line overflow-hidden">
+                {m.sessions.map((s) => (
+                  <SoloRow key={s.id} session={s} onOpen={() => setOpen(s.id)} />
+                ))}
+              </Card>
+            </section>
+          ))
+        )}
       </>
     );
   }

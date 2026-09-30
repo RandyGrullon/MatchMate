@@ -30,6 +30,7 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const SportHomePage = lazy(() => import('./pages/SportHomePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SoloGamesPage = lazy(() => import('./pages/SoloGamesPage'));
+const BallsPage = lazy(() => import('./pages/BallsPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
 const PeopleSearchPage = lazy(() => import('./pages/PeopleSearchPage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
@@ -161,6 +162,8 @@ export default function App() {
                       <Route path="/avisos" element={<Screen area="avisos" framed><NotificationsPage /></Screen>} />
                       {/* Juegos de boliche fuera de una liga o torneo (?juego=<id> abre uno; ?nuevo=1, uno nuevo). */}
                       <Route path="/juegos-sueltos" element={<Screen area="juegos-sueltos" framed><SoloGamesPage /></Screen>} />
+                      {/* Mis bolas del boliche (?bola=<id> abre una; ?nueva=1, una nueva). */}
+                      <Route path="/bolas" element={<Screen area="bolas" framed><BallsPage /></Screen>} />
                       <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
                       <Route path="/buscar" element={<Screen area="buscar" framed><PeopleSearchPage /></Screen>} />
                       {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}

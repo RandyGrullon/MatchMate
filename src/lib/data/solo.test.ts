@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { BackendError } from '../backend/types';
+import { byDate, soloStatGames } from '../bowlingStats';
 import type { OutboxItem } from '../db/outbox';
 import {
   cleanSoloFrames,
@@ -13,6 +14,7 @@ import {
   soloErrorText,
   soloHigh,
   soloMinDate,
+  soloOldestFirst,
   soloSeries,
   soloSummary,
   soloVenues,
@@ -75,6 +77,17 @@ describe('lista', () => {
   it('del más nuevo al más viejo (fecha y después id, como la base)', () => {
     const list = sortSolo([session('a', '2026-09-01', [1]), session('c', '2026-09-20', [1]), session('b', '2026-09-20', [1])]);
     expect(list.map((s) => s.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('del más viejo al más nuevo (la tendencia): el mismo día, en el orden en que se anotaron', () => {
+    // Como llega de la base: del más nuevo al más viejo. La de la noche (id mayor) se anotó después de la de la mañana.
+    const list = [session('0192-noche', '2026-09-30', [220, 230]), session('0191-manana', '2026-09-30', [150, 160]), session('0100', '2026-09-29', [180])];
+    expect(soloOldestFirst(list).map((s) => s.id)).toEqual(['0100', '0191-manana', '0192-noche']);
+    // Los juegos de la gráfica: la mañana antes que la noche, y el último punto es el último juego que tiró.
+    const games = byDate(soloOldestFirst(list).flatMap((s) => soloStatGames(s)));
+    expect(games.map((g) => g.score)).toEqual([180, 150, 160, 220, 230]);
+    // No cambia la lista que recibe.
+    expect(list[0].id).toBe('0192-noche');
   });
 
   it('por mes, con su nombre', () => {

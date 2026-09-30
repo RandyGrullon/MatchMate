@@ -1,10 +1,15 @@
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { scoreGame } from '../../lib/bowling';
+import { splitRolls } from '../../lib/bowlingStats';
 import { cx } from '../ui';
 
-/** Hoja de 10 cuadros: marcas de cada tiro arriba y el acumulado abajo. */
+/**
+ * Hoja de 10 cuadros: marcas de cada tiro arriba y el acumulado abajo. Con los pines anotados (`masks`), la primera
+ * bola que dejó un split va en un círculo, como en la pantalla de la bolera.
+ */
 export function FramesGrid({
   rolls,
+  masks,
   cursor,
   compact,
   selected,
@@ -13,6 +18,8 @@ export function FramesGrid({
   onLongPress,
 }: {
   rolls: readonly number[];
+  /** Pines que cayeron en cada tiro (alineados con `rolls`): marcan los splits. */
+  masks?: readonly (number | null)[] | null;
   /** Cuadro que se está anotando (se resalta). */
   cursor?: number | null;
   compact?: boolean;
@@ -28,6 +35,7 @@ export function FramesGrid({
   const game = scoreGame(rolls);
   const known = blank != null ? scoreGame(rolls.slice(0, blank)) : game;
   const interactive = !!onSelect;
+  const splits = new Set(splitRolls(rolls, masks));
   return (
     <div className="grid grid-cols-[repeat(9,minmax(0,1fr))_minmax(0,1.45fr)] overflow-hidden rounded-xl border border-line bg-surface text-center tabular-nums">
       {Array.from({ length: 10 }, (_, f) => {
@@ -47,9 +55,20 @@ export function FramesGrid({
             <span className="flex justify-end">
               {cells.map(({ mark, roll }, k) => {
                 const isBlank = roll != null && roll === blank;
+                const split = roll != null && !isBlank && splits.has(roll);
+                // El split: la marca dentro de un círculo (y dicho para el lector de pantalla).
+                const shown: ReactNode = split ? (
+                  <>
+                    <SplitMark mark={mark} />
+                    <span className="sr-only"> (split)</span>
+                  </>
+                ) : (
+                  mark
+                );
+                // min-w-0: las dos casillas del cuadro quedan del mismo ancho aunque una tenga el círculo del split.
                 const cls = cx(
-                  'flex flex-1 items-center justify-center font-semibold',
-                  compact ? 'h-5 text-[11px]' : interactive ? 'h-9 text-sm' : 'h-6 text-xs',
+                  'flex min-w-0 flex-1 items-center justify-center font-semibold',
+                  compact ? 'h-5 text-[11px]' : interactive ? 'h-11 text-sm' : 'h-6 text-xs',
                   k > 0 && 'border-l border-line',
                   !isBlank && (mark === 'X' || mark === '/') && 'text-accent',
                   roll != null && roll === selected && 'bg-accent-soft',
@@ -57,8 +76,8 @@ export function FramesGrid({
                 );
                 if (!interactive) {
                   return (
-                    <span key={k} className={cls}>
-                      {mark}
+                    <span key={k} className={cls} title={split ? 'Split' : undefined}>
+                      {shown}
                     </span>
                   );
                 }
@@ -68,13 +87,13 @@ export function FramesGrid({
                     className={cls}
                     label={
                       roll != null
-                        ? `Cuadro ${f + 1}, tiro ${strikeRight ? 1 : k + 1}: ${strikeRight ? 'X' : mark}${strikeRight && k === 0 ? ' (casilla izquierda)' : ''}`
+                        ? `Cuadro ${f + 1}, tiro ${strikeRight ? 1 : k + 1}: ${strikeRight ? 'X' : mark}${split ? ' (split)' : ''}${strikeRight && k === 0 ? ' (casilla izquierda)' : ''}`
                         : `Cuadro ${f + 1}, tiro ${k + 1}: vacío`
                     }
                     onTap={() => onSelect(roll)}
                     onLong={roll != null && onLongPress ? () => onLongPress(roll) : undefined}
                   >
-                    {isBlank ? '' : mark}
+                    {isBlank ? '' : split ? <SplitMark mark={mark} /> : mark}
                   </RollCell>
                 );
               })}
@@ -86,6 +105,21 @@ export function FramesGrid({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * El círculo del split: un poco más grande que la letra y nunca más ancho que su casilla (en un teléfono se achica a lo
+ * que mide la casilla: la de al lado no pierde espacio).
+ */
+function SplitMark({ mark }: { mark: string }) {
+  return (
+    <span
+      className="inline-flex aspect-square min-h-0 w-[min(1.4em,100%)] shrink-0 items-center justify-center rounded-full border border-current leading-none"
+      data-split=""
+    >
+      {mark}
+    </span>
   );
 }
 
@@ -103,7 +137,7 @@ function RollCell({
   label: string;
   onTap: () => void;
   onLong?: () => void;
-  children: string;
+  children: ReactNode;
 }) {
   const timer = useRef<number | undefined>(undefined);
   const longPressed = useRef(false);

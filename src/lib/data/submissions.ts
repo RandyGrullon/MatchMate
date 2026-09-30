@@ -3,6 +3,8 @@ import { scoreGame } from '../bowling';
 import { uuidv7 } from '../db/ids';
 import type { CompressedImage } from '../image';
 import type { BowlingEvent, Entry, GameFrames, Submission } from '../types';
+import { lastBall } from '../balls';
+import { queueGameBalls, rememberBall } from './balls';
 import { backend, enqueue, getUserId, invalidate, rpc, select, useLive, type Live, type QueryDesc } from './client';
 import { keys, tags } from './keys';
 import { overlaySubs, pendingOps } from './pending';
@@ -82,6 +84,8 @@ export function submitGames(
     scanned: (number | null)[] | null;
     frames: Record<string, GameFrames> | null;
     photo: CompressedImage | null;
+    /** Con qué bola tiró cada juego del envío ({"<juego>": bola}); se manda detrás del envío, en la misma cola. */
+    balls?: Record<string, string> | null;
   },
 ): { id: string; sent: Promise<void> } {
   const id = uuidv7();
@@ -103,6 +107,11 @@ export function submitGames(
       },
       { group: lid, label: 'Envío de juegos' },
     );
+    if (input.balls) {
+      queueGameBalls('sub', id, input.balls, lid);
+      // Son juegos de ahora: la última bola se pone sola la próxima vez.
+      rememberBall(lastBall(Object.values(input.balls)));
+    }
     await done;
   })();
   inFlight.set(id, sent);
@@ -153,6 +162,8 @@ export async function approveSubmission(
     p_event: event.id || null,
     p_average: average,
     p_games: event.games,
+    // Dónde cae el J1 del envío: la bola de cada juego pasa a su juego del evento (20260930000100_bolas.sql).
+    p_start: start,
   });
   invalidate(tags.subs(lid), tags.entries(lid), tags.events(lid), tags.feeds, ...(r?.event_id ? [tags.eventEntries(r.event_id), tags.eventSubs(r.event_id)] : []));
   return { entryId: r?.entry_id ?? '', eventId: r?.event_id ?? event.id };

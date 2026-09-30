@@ -28,6 +28,12 @@ function savedMode(): Mode | null {
 
 /** La forma de anotar que eligió el jugador (la próxima vez se abre así). */
 export const preferredMode = (): ScoreMode => savedMode() ?? 'teclado';
+
+/**
+ * Cómo se abre el editor desde el botón de cuadros junto a una casilla del total (ahí el total ya se escribe a mano):
+ * pines si es la preferida y, si no, teclado.
+ */
+export const framesMode = (): Exclude<ScoreMode, 'total'> => (savedMode() === 'pines' ? 'pines' : 'teclado');
 export function setPreferredMode(m: ScoreMode) {
   try {
     localStorage.setItem(MODE_KEY, m);
@@ -37,18 +43,58 @@ export function setPreferredMode(m: ScoreMode) {
 }
 
 /**
+ * Lo que el editor devuelve en cada cambio. Por cuadros sin ningún tiro, un juego que ya tenía solo el total se queda con
+ * ese total (listo para guardar): así se abre «cuadros» para cambiar otra cosa (la bola) sin anotar los tiros ni pasar a
+ * Total.
+ */
+export function editorValue(
+  mode: ScoreMode,
+  st: { rolls: readonly number[]; masks: readonly (number | null)[]; total: string; hole: boolean },
+  initial: ScoreValue,
+): ScoreValue & { ready: boolean } {
+  if (mode === 'total') {
+    const n = st.total.trim() === '' ? null : Number(st.total);
+    return { score: n, frames: null, ready: n != null && isValidScore(n) };
+  }
+  if (!st.rolls.length && initial.score != null && !initial.frames?.rolls?.length) {
+    return { score: initial.score, frames: null, ready: isValidScore(initial.score) };
+  }
+  const game = scoreGame(st.rolls);
+  const withMasks = st.masks.some((m) => m != null);
+  return {
+    score: game.complete ? game.score : null,
+    frames: st.rolls.length ? { rolls: [...st.rolls], ...(withMasks ? { masks: [...st.masks] } : {}) } : null,
+    // Con un tiro borrado sin volver a escribir, el juego no está listo.
+    ready: game.complete && !st.hole,
+  };
+}
+
+/**
  * Anotar un juego de 3 formas:
  * - Pines: se tocan los pines que cayeron en cada tiro y la hoja se calcula sola.
  * - Teclado: se escribe cada tiro (X, /, números); se bloquea lo imposible (tras un 8 solo 0, 1 o spare).
  *   Se toca un tiro de la hoja para corregirlo y se deja presionado para borrarlo.
  * - Total: solo el puntaje final, con la barra o escribiéndolo.
  */
-export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChange: (v: ScoreValue & { ready: boolean }) => void }) {
+export function FrameEditor({
+  initial,
+  onChange,
+  startMode,
+}: {
+  initial: ScoreValue;
+  onChange: (v: ScoreValue & { ready: boolean }) => void;
+  /** Con qué forma abrir si el juego no tiene cuadros (p. ej. el botón «cuadros» abre por cuadros aunque haya total). */
+  startMode?: ScoreMode;
+}) {
   const [mode, setMode] = useState<Mode>(() =>
-    initial.frames?.rolls.length ? (initial.frames.masks?.some((m) => m != null) ? 'pines' : 'teclado') : initial.score != null ? 'total' : (savedMode() ?? 'teclado'),
+    initial.frames?.rolls?.length
+      ? initial.frames.masks?.some((m) => m != null)
+        ? 'pines'
+        : 'teclado'
+      : (startMode ?? (initial.score != null ? 'total' : (savedMode() ?? 'teclado'))),
   );
   const [rolls, setRolls] = useState<number[]>(initial.frames?.rolls ?? []);
-  const [masks, setMasks] = useState<(number | null)[]>(initial.frames?.masks ?? initial.frames?.rolls.map(() => null) ?? []);
+  const [masks, setMasks] = useState<(number | null)[]>(initial.frames?.masks ?? initial.frames?.rolls?.map(() => null) ?? []);
   const [total, setTotal] = useState(initial.score != null ? String(initial.score) : '');
   const [knocked, setKnocked] = useState(0);
   // Teclado: tiro elegido para corregir (null = se anota al final) y si está vacío esperando el valor:
@@ -60,18 +106,7 @@ export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChan
   const now = standingNow(rolls);
 
   useEffect(() => {
-    if (mode === 'total') {
-      const n = total.trim() === '' ? null : Number(total);
-      onChange({ score: n, frames: null, ready: n != null && isValidScore(n) });
-    } else {
-      const withMasks = masks.some((m) => m != null);
-      onChange({
-        score: game.complete ? game.score : null,
-        frames: rolls.length ? { rolls, ...(withMasks ? { masks } : {}) } : null,
-        // Con un tiro borrado sin volver a escribir, el juego no está listo.
-        ready: game.complete && !hole,
-      });
-    }
+    onChange(editorValue(mode, { rolls, masks, total, hole: !!hole }, initial));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, rolls, masks, total, hole]);
 
@@ -109,7 +144,9 @@ export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChan
   }
 
   function pickMode(m: Mode) {
-    setPreferredMode(m);
+    // Abierto desde el botón de cuadros (`startMode`), el total se escribe en la casilla: pasar a Total aquí es de esta
+    // vez y no cambia la forma preferida (pines o teclado).
+    if (!(startMode && m === 'total')) setPreferredMode(m);
     if (m === 'total' && game.complete && total.trim() === '') setTotal(String(game.score));
     setKnocked(0);
     endEdit();
@@ -161,7 +198,7 @@ export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChan
             aria-selected={mode === key}
             onClick={() => pickMode(key)}
             className={cx(
-              'flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition',
+              'flex min-h-11 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition',
               mode === key ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
             )}
           >
@@ -175,6 +212,7 @@ export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChan
         <>
           <FramesGrid
             rolls={rolls}
+            masks={masks}
             cursor={sel == null ? (now?.frame ?? null) : null}
             selected={keyboard ? sel : null}
             blank={keyboard && hole ? sel : null}
@@ -200,6 +238,12 @@ export function FrameEditor({ initial, onChange }: { initial: ScoreValue; onChan
             </span>
             <span className="text-2xl font-bold tabular-nums">{rolls.length ? shownScore : '—'}</span>
           </div>
+          {rolls.length === 0 && initial.score != null && !initial.frames?.rolls?.length && (
+            <p className="-mt-2 text-xs text-muted">
+              Este juego tiene <b className="text-fg">{initial.score}</b> anotado solo con el total. Anota los tiros para agregarle los cuadros, o
+              guárdalo así y se queda con el total.
+            </p>
+          )}
         </>
       )}
 

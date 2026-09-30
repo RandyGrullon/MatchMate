@@ -400,6 +400,66 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   (`GlobalStats`) los suman al total, a la gráfica y a cada año, con su fila «Juegos sueltos» en «Por liga»; el
   promedio y el ranking de cada liga siguen siendo solo de la liga.
 
+## Estadísticas del boliche por cuadros y pino por pino
+
+- Sin cambios en la base: todo sale de `scores` y de `frames` (`rolls` y, pino por pino, `masks`) de `entries` y
+  `solo_sessions`. Las cuentas son puras en `src/lib/bowlingStats.ts` y reusan `src/lib/bowling.ts` (`frameStats`,
+  `standingNow`, `isSplit`, `bitCount`) y las de las insignias (`framesMatch`, `rackLeaves`, `longestStrikeRun` en
+  `src/badges/rules/bowling.ts`), así se cuenta igual en todos lados. Solo valen los cuadros de un juego completo que
+  suma lo anotado (`countedFrames`): si el admin cambió el total después, esos cuadros no cuentan.
+- Anotar (`FrameEditor` en `ScoreEntryModal`): total, cuadro por cuadro (teclado) y pino por pino en los cuatro
+  lugares (la hoja del juego suelto, «Subir mis juegos», «Mis juegos» del evento y la hoja del admin o anotador en
+  `GamesTab`). La forma elegida se recuerda en el teléfono (`preferredMode`); el botón junto a la casilla del total
+  abre por pines o por teclado (`framesMode`, `startMode`); ahí, pasar a Total es de esa vez (no cambia la preferida) y
+  un juego que solo tenía el total se puede guardar sin anotar los tiros (p. ej. para cambiarle la bola). En la hoja
+  (`FramesGrid`, prop `masks`) la primera bola que dejó un split sale en un círculo (del alto de la letra, sin achicar
+  la otra casilla del cuadro).
+- Pantallas: `TrendSection` (los últimos 30 juegos con la media móvil de 5 y el promedio, o el promedio de cada mes con
+  el mes debajo, y «vas subiendo/bajando»; `ScoreChart` se dibuja al ancho de la tarjeta, así el texto se lee igual en
+  el teléfono, y su eje incluye la media móvil) y `FrameStatsPanel` (% de strikes sobre los tiros con los 10 parados, de
+  spares sobre los cuadros sin strike —el 10 solo si empezó sin strike—, de abiertos,
+  primera bola, racha de strikes y juegos limpios «con N juegos anotados por cuadros»; y, con pines, el mapa de calor
+  `PinHeatDeck` de cuánto se queda parado cada pino y cuánto spare se hace cuando queda, los spares según lo que quedó
+  —un pino, sin splits, splits— y los fuertes y débiles en palabras, solo para quien son los juegos). Salen en Mis
+  estadísticas (`GlobalStats`), la página del jugador en la liga (`PlayerPage`) y «Estadísticas» de /juegos-sueltos
+  (`?ver=estadisticas`).
+
+## Mis bolas (boliche)
+
+- `bowling_balls`: las bolas de una cuenta (nombre, marca, peso de 6 a 16 lb, color para reconocerla, cubierta,
+  perforada, última pulida y si está retirada; hasta 30). `ball_games`: con qué bola tiró cada juego, de un juego
+  suelto (`solo_id` + juego), de un evento de su liga que anota él mismo (`event_id` + juego: dueño, admin o anotador
+  que también juega) o de un envío suyo mientras espera la revisión (`sub_id` + el juego del envío). Al aprobarlo,
+  `approve_submission` (redefinida con `p_start`: dónde cae el J1 del envío) pasa cada bola al juego del evento donde
+  quedó y quita las de los juegos que no aprobó; así el puntaje, la foto y los cuadros salen de la participación (lo
+  que aprobó o cambió después el admin), como en la liga. `private.sub_games` guarda ese «juego del envío → juego del
+  evento» para la bola que llega después de aprobado. Solo las lee su dueño (tampoco el superadmin); se borran en
+  cascada con la bola, el lugar o la cuenta, y salen solas en «Descargar mis datos» (tablas con `user_id`). La bola es
+  otra fila, aparte de `entries.frames` (el admin la borraría al cambiar el juego y la liga entera la vería).
+  Migración `20260930000100_bolas.sql`.
+- Escrituras: `save_ball`, `retire_ball`, `resurface_ball` y `delete_ball` con señal (se hacen en «Mis bolas»);
+  `set_game_balls` por la cola sin conexión **detrás del juego y en su mismo grupo** (`saveSoloSession({balls})` en
+  `solo`, `submitGames({balls})` y el anotar de `GamesTab` en la liga): llega después del juego aunque no haya señal en
+  la bolera. Si el lugar ya no está, no hace nada. Una bola que no cambia no se toca (la «última que usó» sigue siendo
+  la de verdad). En un juego suelto va siempre con todos sus juegos y una sola clave de colapso por juego suelto
+  (`balls:solo:<id>`): guardarlo otra vez sin señal la deja detrás del último guardado (`requeueGameBalls` si no trae
+  bolas). Sin señal y sin poder leer las bolas que tenía, la hoja manda cómo se movieron los juegos (un número = «la
+  bola que tiene ahora ese otro juego», `keepBalls`; se junta con lo de la cola, `composeBalls`) y las de un juego que
+  todavía está en la cola salen de ahí (`queuedGameBalls` + `knownBalls`). La bola que se pone sola la recuerda quien
+  la eligió (un juego nuevo, o una que se cambió), no la cola. Lecturas: `my_balls` (las bolas y la última que usó) y
+  `my_ball_games` (cada juego con bola, resuelto en el servidor: fecha, puntaje, cuadros y si cuenta).
+- Cliente `src/lib/data/balls.ts` y las cuentas en `src/lib/balls.ts` (la bola que se pone sola: la última elegida en
+  el teléfono o la del servidor; promedio, el más alto, strikes y spares de los cuadros que cuadran con
+  `src/lib/bowlingStats.ts`, y juegos desde la última pulida, contando los de ese mismo día: a los 60 avisa; «La pulí
+  hoy» pregunta antes). Al anotar (`BallSelect` y
+  `GameBallSelect` en `src/components/balls/BallPicker.tsx`, opcional y solo si la cuenta tiene bolas): la hoja del
+  juego suelto y «Subir mis juegos» tienen «Bola» para todos los juegos y la de cada juego al abrirlo; «Mis juegos» del
+  evento la guarda en el borrador del teléfono (`GameDraft.balls`); el admin o anotador la elige solo en sus propios
+  juegos (un juego que ya tiene puntaje y no tiene bola en el evento, p. ej. lo anotó el admin, abre sin bola:
+  `eventGameBall`). Lo que se manda en cada lugar sale de funciones puras con pruebas (`eventBallUpdate`,
+  `draftBallsAfter`, `submissionBalls`). Las bolas no hacen volver a leer la liga (`tagsForOp`). Pantalla `/bolas` (`src/pages/BallsPage.tsx`: con cuál tiras mejor, cada bola con sus números, «La pulí
+  hoy», retirar y la hoja `BallSheet`), con link desde /perfil y «Por bola» en Mis estadísticas (`BallStatsSection`).
+
 ## Logo de ligas y torneos
 
 - `leagues.logo_path` ('<liga>/<uuid>.webp|jpg|png', con CHECK) en el bucket **público** `logos` (256 kB, WebP,

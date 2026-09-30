@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Grid3x3, Plus, Send, Sparkles, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Grid3x3, Plus, Send, Sparkles, Target, WifiOff } from 'lucide-react';
+import { ballForGame, sameBall, submissionBalls } from '../lib/balls';
 import { setSubmissionScan, submitGames } from '../lib/data';
 import { clearSent, draftCount, latestDraft, loadDraft, restoreDraft, saveDraft } from '../lib/draft';
 import { eventTitle, parseDate, toIsoDate } from '../lib/format';
@@ -9,7 +10,9 @@ import { rowFor } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
 import { isValidScore } from '../lib/stats';
 import type { BowlingEvent, Entry, GameFrames, Player } from '../lib/types';
+import { BallDot, BallSelect, GameBallSelect, useBallChoice } from './balls/BallPicker';
 import { useFeedback } from './feedback';
+import { framesMode } from './frames/FrameEditor';
 import { ScoreEntryModal } from './frames/ScoreEntryModal';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
@@ -56,6 +59,10 @@ export function SubmitGamesModal({
   const [date, setDate] = useState(today);
   const [values, setValues] = useState<string[]>([]);
   const [frames, setFrames] = useState<Record<string, GameFrames>>({});
+  // Con qué bola tiró cada juego (si la cuenta tiene bolas; null = sin bola). Va en el borrador y con el envío.
+  const [balls, setBalls] = useState<Record<string, string | null>>({});
+  const choice = useBallChoice();
+  const ballPick = useRef<string | null>(null);
   const [photo, setPhoto] = useState<CompressedImage | null>(null);
   // La foto se lee en segundo plano: se puede enviar sin esperar y lo leído se agrega al envío después.
   const [scanId, setScanId] = useState<string | null>(null);
@@ -98,6 +105,7 @@ export function SubmitGamesModal({
     setDate(id === BY_DATE ? (d?.date ?? today) : today);
     setValues(padded(d?.values, ev?.games));
     setFrames(d?.frames ?? {});
+    setBalls(d?.balls ?? {});
     loadedValues.current = `${id}:${padded(d?.values, ev?.games).join('|')}`;
     touched.current = false;
     setPhoto(null);
@@ -115,10 +123,10 @@ export function SubmitGamesModal({
       lid,
       player.id,
       eventId,
-      { date: eventId === BY_DATE ? date : undefined, values, frames },
+      { date: eventId === BY_DATE ? date : undefined, values, frames, balls },
       { live: (touched.current ||= `${eventId}:${values.join('|')}` !== loadedValues.current) },
     );
-  }, [open, loaded, eventId, date, values, frames, lid, player.id]);
+  }, [open, loaded, eventId, date, values, frames, balls, lid, player.id]);
 
   function changeEvent(id: string) {
     const ev = recent.find((e) => e.id === id);
@@ -127,6 +135,7 @@ export function SubmitGamesModal({
       // Ese evento ya tiene juegos en el teléfono: se muestran esos (los de aquí se quedan en su evento).
       setValues(padded(there!.values, ev?.games));
       setFrames(there!.frames ?? {});
+      setBalls(there!.balls ?? {});
       loadedValues.current = `${id}:${padded(there!.values, ev?.games).join('|')}`;
     } else {
       // Lo anotado se pasa al evento elegido (se había elegido mal el evento).
@@ -165,6 +174,11 @@ export function SubmitGamesModal({
   const differs =
     scanned != null && hasTyped && Array.from({ length: Math.max(typed.length, scanned.length) }, (_, i) => (typed[i] ?? null) !== (scanned[i] ?? null)).some(Boolean);
   const showGames = (gs: (number | null)[]) => gs.map((g) => g ?? '–').join(' · ');
+  const ballOf = (i: number) => ballForGame(balls, i, choice.auto);
+  const withScore = typed.flatMap((v, i) => (v != null ? [i] : []));
+  // La bola de «todos los juegos» (undefined: los juegos tienen bolas distintas).
+  const allBall = sameBall((withScore.length ? withScore : values.map((_, i) => i)).map(ballOf));
+  const colorOf = (id: string | null) => choice.balls.find((b) => b.id === id)?.color ?? null;
 
   function onPicked(img: CompressedImage) {
     // Otra foto: la anterior ya no se usa.
@@ -217,7 +231,7 @@ export function SubmitGamesModal({
     }
     setSending(true);
     const draftId = eventId;
-    const sent = { values: [...values], frames, date: byDate ? date : undefined };
+    const sent = { values: [...values], frames, balls, date: byDate ? date : undefined };
     try {
       const kept = Object.fromEntries(Object.entries(frames).filter(([i]) => typed[+i] != null));
       const { id: subId, sent: sending } = submitGames(lid, {
@@ -228,6 +242,7 @@ export function SubmitGamesModal({
         scanned,
         frames: Object.keys(kept).length ? kept : null,
         photo,
+        balls: submissionBalls(typed, balls, choice.auto, choice.has),
       });
       // La foto todavía se está leyendo: lo leído se agrega al envío cuando termine (aunque ya se cerró esto).
       if (photo && scanId && scanning) {
@@ -260,6 +275,8 @@ export function SubmitGamesModal({
   }
 
   const dateOk = !byDate || (/^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today);
+  // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
+  const byPins = framesMode() === 'pines';
   // No se espera a que se lea la foto: se comprueba sola en segundo plano.
   const canSend = (!!event || byDate) && dateOk && hasTyped && !invalid;
 
@@ -302,12 +319,24 @@ export function SubmitGamesModal({
             </Field>
           )}
 
+          {choice.has && (
+            <BallSelect
+              balls={choice.balls}
+              value={allBall}
+              onChange={(id) => setBalls(Object.fromEntries(values.map((_, i) => [String(i), id])))}
+              hint="Para todos los juegos. La de un juego se cambia al anotarlo por cuadros o pines."
+            />
+          )}
+
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted">Tus juegos</span>
             <div className="flex flex-wrap gap-2">
               {values.map((v, i) => (
                 <div key={i} className="flex w-16 flex-col items-center gap-1">
-                  <span className="text-[11px] text-muted">J{i + 1}</span>
+                  <span className="flex items-center gap-1 text-[11px] text-muted">
+                    J{i + 1}
+                    {allBall === undefined && ballOf(i) && <BallDot color={colorOf(ballOf(i))} className="size-2.5" />}
+                  </span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -324,9 +353,14 @@ export function SubmitGamesModal({
                   <button
                     type="button"
                     onClick={() => setFramesFor(i)}
-                    className={cx('flex items-center gap-0.5 text-[11px] font-medium', frames[i] ? 'text-accent' : 'text-muted hover:text-fg')}
+                    aria-label={`Anotar el juego ${i + 1} ${byPins ? 'pino por pino' : 'por cuadros'}`}
+                    className={cx(
+                      'flex min-h-11 w-full items-center justify-center gap-0.5 rounded-lg text-[11px] font-medium',
+                      frames[i] ? 'text-accent' : 'text-muted hover:text-fg',
+                    )}
                   >
-                    <Grid3x3 className="size-3" /> cuadros
+                    {byPins ? <Target className="size-3" aria-hidden="true" /> : <Grid3x3 className="size-3" aria-hidden="true" />}
+                    {byPins ? 'pines' : 'cuadros'}
                   </button>
                 </div>
               ))}
@@ -418,6 +452,8 @@ export function SubmitGamesModal({
         onClose={() => setFramesFor(null)}
         title={`Juego ${(framesFor ?? 0) + 1}`}
         resetKey={String(framesFor)}
+        startMode={framesMode()}
+        top={choice.has && framesFor != null ? <GameBallSelect key={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} /> : undefined}
         initial={{
           score: framesFor != null && values[framesFor]?.trim() ? Number(values[framesFor]) : null,
           frames: framesFor != null ? (frames[framesFor] ?? null) : null,
@@ -433,6 +469,7 @@ export function SubmitGamesModal({
             else delete next[i];
             return next;
           });
+          if (choice.has) setBalls((bs) => ({ ...bs, [String(i)]: ballPick.current }));
           setFramesFor(null);
         }}
       />

@@ -89,6 +89,8 @@ const RPC_AUTHENTICATED = [
   // Anotadores del torneo: invitar a anotar, lo que ve la hoja y el link para anotar (crear, cambiar, quitar, ver y entrar).
   'invite_scorers', 'scorer_access', 'create_scorer_link', 'rotate_scorer_link', 'revoke_scorer_link', 'scorer_link_preview',
   'join_as_scorer',
+  // Mis bolas del boliche: guardar, retirar, pulir y borrar una bola, con cuál tiró cada juego y leerlas.
+  'save_ball', 'retire_ball', 'resurface_ball', 'delete_ball', 'set_game_balls', 'my_balls', 'my_ball_games',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

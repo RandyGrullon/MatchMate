@@ -1,16 +1,18 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CalendarCheck, CalendarDays, ChevronRight, CircleHelp, Flame, Globe, Hash, Layers, Sigma, Target, Trophy } from 'lucide-react';
-import { frameStats } from '../lib/bowling';
+import { byDate, countedFrames, entryStatGames, soloStatGames } from '../lib/bowlingStats';
 import { usePlayerAcrossLeagues } from '../lib/data';
-import { soloAsEntry, useMySoloSessions, type SoloSession } from '../lib/data/solo';
+import { soloAsEntry, soloOldestFirst, useMySoloSessions, type SoloSession } from '../lib/data/solo';
 import { eventLabel, formatDate } from '../lib/format';
 import { playerStats, type PlayerStats } from '../lib/stats';
 import type { BowlingEvent, Entry, League, Member } from '../lib/types';
 import { leagueSport, sportMeta, sportsOf } from '../sports/registry';
+import { BallStatsSection } from './balls/BallStats';
 import { Stat } from './event/StandingsTab';
 import { LeagueIcon } from './home/LeagueCard';
-import { ScoreChart, type ChartPoint } from './ScoreChart';
+import { FrameStatsPanel } from './stats/FrameStatsPanel';
+import { TrendSection } from './stats/TrendSection';
 import { Badge, Card, LoadError, StatsSkeleton } from './ui';
 
 interface Played {
@@ -69,6 +71,7 @@ export function ProfileStats({ memberships, leagues }: { memberships: Member[]; 
             </p>
           </div>
           <GlobalStats memberships={bowling} leagues={leagues} solo={solo.data} soloLoading={solo.loading} />
+          <BallStatsSection />
         </section>
       )}
       {others.length > 0 && <SportLeagues leagues={others} alone={!showBowling} />}
@@ -131,8 +134,8 @@ export function GlobalStats({
   const across = usePlayerAcrossLeagues(links);
   const leagueOf = useMemo(() => new Map(leagues.map((l) => [l.id, l])), [leagues]);
   const nameOf = useMemo(() => new Map(leagues.map((l) => [l.id, l.name])), [leagues]);
-  // Del más viejo al más nuevo, como los de las ligas.
-  const soloOld = useMemo(() => [...solo].reverse(), [solo]);
+  // Del más viejo al más nuevo, como los de las ligas (el mismo día, en el orden en que se anotaron).
+  const soloOld = useMemo(() => soloOldestFirst(solo), [solo]);
 
   const played = useMemo<Played[]>(
     () =>
@@ -174,45 +177,20 @@ export function GlobalStats({
 
   const soloEntries = soloOld.map(soloAsEntry);
   const all = playerStats([...played.map((p) => p.entry), ...soloEntries]);
-  // Strikes y spares de los juegos anotados por cuadros que cuentan (los sueltos cuentan todos).
-  const frames = [
-    ...played.flatMap(({ entry }) =>
-      Object.entries(entry.frames ?? {})
-        .filter(([i]) => entry.scores?.[+i] != null && entry.photos?.[+i] != null)
-        .map(([, f]) => frameStats(f.rolls)),
+  // Todos los juegos que cuentan (de las ligas y los sueltos), del más viejo al más nuevo: la tendencia y, con los
+  // cuadros que cuadran con el puntaje, los porcentajes y el pino por pino.
+  const games = byDate([
+    ...played.flatMap(({ lid, entry, event }) =>
+      entryStatGames(entry, event.date, (i) => `${nameOf.get(lid) ?? 'Liga'} · ${eventLabel(event)} · J${i + 1} · ${formatDate(event.date)}`),
     ),
-    ...solo.flatMap((s) =>
-      Object.entries(s.frames ?? {})
-        .filter(([i]) => s.scores[+i] != null)
-        .map(([, f]) => frameStats(f.rolls)),
+    ...soloOld.flatMap((s) =>
+      soloStatGames(s, (i) => `${['Juego suelto', s.venue.trim()].filter(Boolean).join(' · ')} · J${i + 1} · ${formatDate(s.playedOn)}`),
     ),
-  ];
-  const strikes = frames.reduce((n, f) => n + f.strikes, 0);
-  const spares = frames.reduce((n, f) => n + f.spares, 0);
+  ]);
+  const frames = countedFrames(games);
   const counted = played.filter(({ entry }) => entry.scores?.some((s, i) => s != null && entry.photos?.[i] != null));
   const tournaments = counted.filter((p) => p.event.type === 'torneo').length;
   const practices = counted.length - tournaments;
-
-  // Últimos 30 juegos que cuentan, de todas las ligas y los sueltos, del más viejo al más nuevo.
-  const points: ChartPoint[] = [
-    ...played.flatMap(({ lid, entry, event }) =>
-      (entry.scores ?? []).flatMap((s, i) =>
-        s != null && entry.photos?.[i]
-          ? [{ date: event.date, score: s, label: `${nameOf.get(lid) ?? 'Liga'} · ${eventLabel(event)} · J${i + 1} · ${formatDate(event.date)}` }]
-          : [],
-      ),
-    ),
-    ...soloOld.flatMap((s) =>
-      s.scores.map((score, i) => ({
-        date: s.playedOn,
-        score,
-        label: `${['Juego suelto', s.venue.trim()].filter(Boolean).join(' · ')} · J${i + 1} · ${formatDate(s.playedOn)}`,
-      })),
-    ),
-  ]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-30)
-    .map(({ score, label }) => ({ score, label }));
 
   // Por liga con los mismos juegos que el total (así las ligas suman el global); también las que no tienen juegos.
   const perLeague = links
@@ -256,30 +234,12 @@ export function GlobalStats({
             <Target className="size-3" /> {soloStats.games} {soloStats.games === 1 ? 'juego suelto' : 'juegos sueltos'}
           </Badge>
         )}
-        {frames.length > 0 && (
-          <>
-            <Badge tone="accent">{strikes} strikes</Badge>
-            <Badge tone="accent">{spares} spares</Badge>
-          </>
-        )}
         {all.pending > 0 && <Badge tone="warn">{all.pending} por verificar</Badge>}
       </div>
 
-      {points.length >= 2 && (
-        <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-muted">Últimos {points.length} juegos</h3>
-            {all.autoAverage != null && (
-              <span className="flex items-center gap-1.5 text-xs text-muted">
-                <span className="inline-block h-px w-4 bg-muted" /> promedio {all.autoAverage}
-              </span>
-            )}
-          </div>
-          <Card className="px-2 pt-3 pb-1 sm:px-4">
-            <ScoreChart points={points} average={all.autoAverage} />
-          </Card>
-        </section>
-      )}
+      <TrendSection games={games} average={all.autoAverage} />
+
+      <FrameStatsPanel frames={frames} games={all.games} />
 
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-muted">Por liga</h3>

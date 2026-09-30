@@ -6,6 +6,7 @@ import { getSport } from '../sports/registry';
 import { AppShell } from '../components/Shell';
 import { ProfileStats } from '../components/GlobalStats';
 import { ProfileView } from '../components/social/ProfileView';
+import { BallIcon } from '../components/balls/BallPicker';
 import { Card, Empty, Loading, StatsSkeleton } from '../components/ui';
 
 const actionLink = 'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.97]';
@@ -31,11 +32,29 @@ function SoloGamesLink() {
   );
 }
 
+/** Debajo de los juegos sueltos: tus bolas (con cuál tiras mejor y cuándo pulirlas). */
+function BallsLink() {
+  return (
+    <Card className="overflow-hidden">
+      <Link to="/bolas" className="flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+          <BallIcon className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">Mis bolas</span>
+          <span className="block text-xs text-muted">Con cuál tiras mejor y cuándo toca pulirlas</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
+      </Link>
+    </Card>
+  );
+}
+
 /**
  * Tu perfil (/perfil): como te ven los demás (tu @usuario, seguidores, seguidos, me gusta, tus juegos con sus me
  * gusta y tus números por deporte), más editar tu cuenta, buscar personas (/buscar) y tus números del boliche
  * sumando todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil, con los números de su
- * deporte), con el link a tus juegos sueltos.
+ * deporte), con el link a tus juegos sueltos y a tus bolas.
  */
 export default function ProfilePage() {
   const auth = useAuth();
@@ -94,6 +113,7 @@ export default function ProfilePage() {
             <>
               <ProfileStats memberships={memberships.data} leagues={leagues.data} />
               <SoloGamesLink />
+              <BallsLink />
             </>
           )
         }

@@ -4,9 +4,11 @@ import { addEventGame } from '../../lib/data';
 import { saveDraft, useDraft } from '../../lib/draft';
 import { useLeagueCtx } from '../../lib/league';
 import type { LiveInfo } from '../../lib/live';
+import { ballForGame, draftBallsAfter } from '../../lib/balls';
 import { hasMark, type GameMark } from '../../lib/bowlingSeason';
 import { slots } from '../../lib/stats';
 import type { BowlingEvent, Entry, Submission } from '../../lib/types';
+import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
@@ -66,6 +68,11 @@ export function MyGamesPanel({
   const [editing, setEditing] = useState<number | null>(null);
   const [mode, setMode] = useState<ScoreMode>(preferredMode);
   const [adding, setAdding] = useState(false);
+  // La bola de cada juego (si la cuenta tiene bolas): la que ya eligió en el teléfono, la del juego anterior o la última
+  // que usó. Se envía con los juegos («Enviar a revisión»).
+  const choice = useBallChoice();
+  const ballPick = useRef<string | null>(null);
+  const ballOf = (i: number) => ballForGame(draft?.balls, i, choice.auto);
 
   const count = Math.max(event.games, draft?.values.length ?? 0);
   const scores = slots(entry?.scores, count, null);
@@ -146,7 +153,8 @@ export function MyGamesPanel({
     const frames = { ...(draft?.frames ?? {}) };
     if (v?.frames && v.score != null) frames[i] = v.frames;
     else delete frames[i];
-    saveDraft(lid, playerId, event.id, { values, frames });
+    const balls = draftBallsAfter(draft?.balls, i, v, choice.has ? ballPick.current : undefined);
+    saveDraft(lid, playerId, event.id, { values, frames, balls });
     setEditing(null);
     setMode(preferredMode());
     toast(v ? `Juego ${i + 1} guardado en tu teléfono` : `Juego ${i + 1} borrado`);
@@ -200,7 +208,7 @@ export function MyGamesPanel({
                     aria-checked={mode === key}
                     onClick={() => pickMode(key)}
                     className={cx(
-                      'flex items-center justify-center gap-1 rounded-md py-1.5 font-medium transition',
+                      'flex min-h-11 items-center justify-center gap-1 rounded-md py-1.5 font-medium transition',
                       mode === key ? 'bg-surface text-fg shadow-sm' : 'hover:text-fg',
                     )}
                   >
@@ -349,6 +357,7 @@ export function MyGamesPanel({
         title={editing != null ? `Juego ${editing + 1}` : ''}
         resetKey={String(editing)}
         initial={initial}
+        top={choice.has && editing != null ? <GameBallSelect key={editing} balls={choice.balls} initial={ballOf(editing)} choice={ballPick} /> : undefined}
         saveText="Guardar"
         onSave={(v) => save(editing!, v)}
         note={
