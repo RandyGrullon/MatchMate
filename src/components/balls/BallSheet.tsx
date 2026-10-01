@@ -19,7 +19,7 @@ import { ballErrorText, deleteBall, saveBall } from '../../lib/data/balls';
 import { useFeedback } from '../feedback';
 import { Button, Field, Input, Select, Sheet, cx } from '../ui';
 import { BallArt } from './BallArt';
-import { BallDot } from './BallPicker';
+import { BallDot } from './BallDot';
 
 /** Peso con el que arranca una nueva (el más común en adultos). */
 const NEW_WEIGHT = 15;
@@ -42,13 +42,59 @@ export function ballToDraft(ball: Ball | null): BallDraft {
 }
 
 /**
+ * «Guardar» de la hoja de una bola: la guarda (necesita señal), lo dice, le pasa su id a `onSaved` (al anotar, la que se
+ * agrega queda elegida para ese juego) y después cierra. Si no se pudo (sin señal, el cupo lleno…), lo dice y la hoja
+ * sigue abierta, sin elegir nada (lo escrito no se pierde). true si se guardó. `save` es saveBall (otra en las pruebas).
+ */
+export async function saveBallSheet(
+  draft: BallDraft,
+  today: string,
+  {
+    toast,
+    onSaved,
+    onClose,
+    save = saveBall,
+  }: {
+    toast: (message: string, tone?: 'error') => void;
+    onSaved?: (id: string) => void;
+    onClose: () => void;
+    save?: (draft: BallDraft, today: string) => Promise<string>;
+  },
+): Promise<boolean> {
+  let id: string;
+  try {
+    id = await save(draft, today);
+  } catch (e) {
+    toast(ballErrorText(e), 'error');
+    return false;
+  }
+  toast(draft.id ? 'Bola guardada' : 'Bola agregada');
+  onSaved?.(id);
+  onClose();
+  return true;
+}
+
+/**
  * Hoja para registrar o cambiar una bola: nombre, marca, peso, color (para reconocerla al anotar), cubierta y cuándo se
  * perforó y se pulió por última vez (todo opcional menos el nombre y el peso). Arriba, cómo se ve (con el color y la
  * cubierta que se eligen) y «Diseñar» (`onDesign`, en una que ya existe). Una bola con diseño no elige el color aquí:
  * sale de su diseño (set_ball_design lo copia; si se cambiara aquí, el dibujo seguiría con el de antes). «Borrar»
- * pregunta antes (mejor retirarla: sus números se quedan). Se monta abierta: la página la quita al cerrar.
+ * pregunta antes (mejor retirarla: sus números se quedan). Se monta abierta: la página la quita al cerrar. `onSaved`
+ * recibe el id de la que se guardó (antes de `onClose`): al anotar, la que se agrega queda elegida para ese juego.
  */
-export function BallSheet({ ball, today, onClose, onDesign }: { ball: Ball | null; today: string; onClose: () => void; onDesign?: () => void }) {
+export function BallSheet({
+  ball,
+  today,
+  onClose,
+  onDesign,
+  onSaved,
+}: {
+  ball: Ball | null;
+  today: string;
+  onClose: () => void;
+  onDesign?: () => void;
+  onSaved?: (id: string) => void;
+}) {
   const { toast, confirm } = useFeedback();
   const [draft, setDraft] = useState<BallDraft>(() => ballToDraft(ball));
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
@@ -61,11 +107,7 @@ export function BallSheet({ ball, today, onClose, onDesign }: { ball: Ball | nul
     if (problem || busy) return;
     setBusy('save');
     try {
-      await saveBall(draft, today);
-      toast(ball ? 'Bola guardada' : 'Bola agregada');
-      onClose();
-    } catch (e) {
-      toast(ballErrorText(e), 'error');
+      await saveBallSheet(draft, today, { toast, onSaved, onClose });
     } finally {
       setBusy(null);
     }

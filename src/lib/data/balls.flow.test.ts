@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackendError } from '../backend/types';
+import { defaultBallDesign } from '../ballDesign';
 import { ballStats, keepBalls } from '../balls';
 import type { OutboxItem } from '../db/outbox';
 import { toIsoDate } from '../format';
 import type { BowlingEvent, Submission } from '../types';
 import {
+  ballAddedHere,
   ballErrorText,
+  ballKeys,
   deleteBall,
   fetchMyBallGames,
   fetchMyBalls,
@@ -16,8 +19,9 @@ import {
   retireBall,
   saveBall,
   storedBall,
+  type MyBalls,
 } from './balls';
-import { currentOutbox, rpc } from './client';
+import { currentOutbox, queryClient, rpc } from './client';
 import { tags } from './keys';
 import { createLeague } from './leagues';
 import { tagsForOp } from './pending';
@@ -359,5 +363,47 @@ describe('juegos sueltos sin señal: las bolas siguen a su juego', () => {
       ['event', 2, x, 201, true],
       ['event', 3, y, 199, true],
     ]);
+  });
+});
+
+describe('agregar una bola mientras anota: sale enseguida en la lista para elegirla', () => {
+  const cached = () => queryClient.getQueryData<MyBalls>(ballKeys.list(ana));
+
+  it('sin la lista en la caché (no se ha leído) no pone nada: llega al leerla', async () => {
+    expect(cached()).toBeUndefined();
+    await saveBall(draft({ name: 'Otra' }), today);
+    expect(cached()).toBeUndefined();
+  });
+
+  it('una nueva está en la lista de la caché antes de volver a leerla (al final de las que usa)', async () => {
+    queryClient.setQueryData<MyBalls>(ballKeys.list(ana), await fetchMyBalls());
+    const before = cached()!.balls.map((b) => b.id);
+    const id = await saveBall(draft({ name: ' La nueva ', brand: ' Hammer ', color: '#DC2626', cover: 'perlada' }), today);
+    const now = cached()!;
+    expect(now.balls.map((b) => b.id)).toEqual([...before, id]);
+    expect(now.balls.at(-1)).toEqual(
+      expect.objectContaining({ id, name: 'La nueva', brand: 'Hammer', color: '#dc2626', cover: 'perlada', weight: 15, retired: false, design: null }),
+    );
+    // Y es la misma que trae my_balls.
+    expect((await fetchMyBalls()).balls.find((b) => b.id === id)).toEqual(expect.objectContaining({ name: 'La nueva', color: '#dc2626' }));
+    // Se agregó en este teléfono (una que llega del servidor sin haberla agregado aquí, no: ver useBallChoice).
+    expect(ballAddedHere(id)).toBe(true);
+    expect(ballAddedHere('de-otro-telefono')).toBe(false);
+  });
+
+  it('cambiar una no la toca en la caché (la hoja no trae su diseño: se vería lisa hasta volver a leer)', async () => {
+    const first = cached()!.balls[0];
+    const design = defaultBallDesign('#7c3aed');
+    queryClient.setQueryData<MyBalls>(ballKeys.list(ana), (old) => ({ ...old!, balls: old!.balls.map((b) => (b.id === first.id ? { ...b, design } : b)) }));
+    await saveBall({ ...draft({ name: first.name }), id: first.id, weight: 14 }, today);
+    expect(cached()!.balls[0]).toEqual({ ...first, design });
+  });
+
+  it('sin señal no se agrega (dice que no hay conexión) y la lista queda igual', async () => {
+    const before = cached();
+    net.offline = true;
+    const err = await saveBall(draft({ name: 'Sin señal' }), today).catch((e) => e);
+    expect(ballErrorText(err)).toBe('Sin conexión. Prueba otra vez cuando tengas señal.');
+    expect(cached()).toBe(before);
   });
 });

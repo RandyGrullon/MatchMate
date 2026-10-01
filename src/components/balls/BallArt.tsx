@@ -1,4 +1,4 @@
-import { useId, useMemo, type ReactNode } from 'react';
+import { memo, useId, useMemo, type ReactNode } from 'react';
 import type { Ball, BallCover } from '../../lib/balls';
 import {
   ballDesignColors,
@@ -508,8 +508,11 @@ export interface BallArtProps {
   className?: string;
 }
 
-/** Una bola del boliche dibujada con su diseño. */
-export function BallArt({ ball, design = ball?.design, color = ball?.color, cover = ball?.cover, size, label, className }: BallArtProps) {
+/**
+ * Una bola del boliche dibujada con su diseño. Con `memo`: la hoja de anotar se vuelve a dibujar con cada tecla, pero
+ * sus bolas (las de la caché, siempre el mismo objeto) no se vuelven a dibujar.
+ */
+export const BallArt = memo(function BallArt({ ball, design = ball?.design, color = ball?.color, cover = ball?.cover, size, label, className }: BallArtProps) {
   const d = useMemo(() => ballDesignOf({ design, color, cover }), [design, color, cover]);
   // useId es único en una página de React; la huella del diseño lo es también entre dos dibujos hechos aparte (p. ej.
   // renderToString de varias bolas juntadas en un solo SVG): así un degradado nunca toma el de otra bola.
@@ -633,4 +636,4 @@ export function BallArt({ ball, design = ball?.design, color = ball?.color, cove
       <circle cx={C} cy={C} r={f(R)} fill="none" stroke={c.outline} strokeWidth={f(ow)} />
     </svg>
   );
-}
+});

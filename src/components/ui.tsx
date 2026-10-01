@@ -323,6 +323,8 @@ export function Modal({
     <dialog
       ref={ref}
       onCancel={(e) => {
+        // Esc en una hoja abierta encima (dentro de esta en React): esa se cierra sola, esta no.
+        if (e.target !== e.currentTarget) return;
         e.preventDefault();
         onClose();
       }}
@@ -439,6 +441,8 @@ export function Sheet({
       ref={ref}
       aria-labelledby={titleId}
       onCancel={(e) => {
+        // Esc en una hoja abierta encima (dentro de esta en React): esa se cierra sola, esta no.
+        if (e.target !== e.currentTarget) return;
         e.preventDefault();
         onClose();
       }}

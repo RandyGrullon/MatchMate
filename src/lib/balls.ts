@@ -167,11 +167,48 @@ const PROBLEM_TEXT: Record<BallProblem, string> = {
 
 export const ballProblemText = (p: BallProblem) => PROBLEM_TEXT[p];
 
+/**
+ * La bola como queda al guardar la hoja (lo mismo que manda saveBall: recortada y el color en minúsculas), para verla
+ * enseguida en la lista. Sin diseño ni fechas de la base: llegan al volver a leer.
+ */
+export function ballFromDraft(id: string, d: BallDraft): Ball {
+  return {
+    id,
+    name: d.name.trim(),
+    brand: d.brand.trim(),
+    weight: d.weight,
+    color: d.color.trim().toLowerCase(),
+    cover: d.cover,
+    drilledOn: d.drilledOn || null,
+    resurfacedOn: d.resurfacedOn || null,
+    retired: d.retired,
+    createdAt: null,
+    updatedAt: null,
+    design: null,
+  };
+}
+
+/**
+ * La lista con esa bola: reemplaza la del mismo id o, si es nueva, va donde la pone my_balls (la más nueva al final de
+ * las que usa, antes de las retiradas; una retirada, al final).
+ */
+export function withBall(balls: readonly Ball[], b: Ball): Ball[] {
+  if (balls.some((x) => x.id === b.id)) return balls.map((x) => (x.id === b.id ? b : x));
+  const at = b.retired ? -1 : balls.findIndex((x) => x.retired);
+  return at < 0 ? [...balls, b] : [...balls.slice(0, at), b, ...balls.slice(at)];
+}
+
+/** «Bola del juego 3» (`game` desde 0) o «Bola de todos los juegos». */
+export const gameBallTitle = (game: number | 'all') => (game === 'all' ? 'Bola de todos los juegos' : `Bola del juego ${game + 1}`);
+
 // ---------- Qué bola se elige al anotar ----------
 
-/** Las que salen para elegir: las que no están retiradas (y la que ya tenía el juego, aunque se haya retirado). */
-export function pickableBalls(balls: readonly Ball[], keep?: string | null): Ball[] {
-  return balls.filter((b) => !b.retired || b.id === keep);
+/**
+ * Las que salen para elegir: las que no están retiradas (y las de `keep`, aunque se hayan retirado: la que ya tenía el
+ * juego y, mientras se elige, la que está elegida).
+ */
+export function pickableBalls(balls: readonly Ball[], ...keep: (string | null | undefined)[]): Ball[] {
+  return balls.filter((b) => !b.retired || keep.includes(b.id));
 }
 
 /**
@@ -333,6 +370,31 @@ export function eventBallUpdate(
   if (score == null) return before ? { [String(game)]: null } : null;
   if (picked === undefined || picked === before) return null;
   return { [String(game)]: picked };
+}
+
+/** La que eligió en un juego propio de la hoja del evento (GamesTab) y la que tenía el juego en ese momento. */
+export interface OwnPick {
+  ball: string | null;
+  was: string | null;
+}
+
+/**
+ * La que eligió en un juego propio, si se sigue viendo (undefined si no): mientras el juego siga con la que tenía
+ * (`was`: todavía no llega a la cola, o el juego no tiene puntaje) o ya tenga la elegida (`now`: la del servidor con
+ * la cola encima). Si después otra pantalla le pone otra (la foto, otro teléfono), manda esa.
+ */
+export function ownPickShown(pick: OwnPick | undefined, now: string | null): string | null | undefined {
+  return pick && (now === pick.was || now === pick.ball) ? pick.ball : undefined;
+}
+
+/**
+ * La elegida en ese juego ya va en la cola (o ya era la que tenía): desde ahora solo se ve mientras el juego siga con
+ * ella. Si otra pantalla le pone otra, manda esa aunque sea la de antes (si no, la elegida volvería y se mandaría otra
+ * vez al guardar el juego). Sin cambios si ahí ya se eligió otra.
+ */
+export function seenPick(picks: Readonly<Record<number, OwnPick>>, game: number, ball: string | null): Record<number, OwnPick> {
+  const p = picks[game];
+  return p && p.ball === ball && p.was !== ball ? { ...picks, [game]: { ball, was: ball } } : (picks as Record<number, OwnPick>);
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   ballDetail,
   ballDraftProblem,
   ballForGame,
+  ballFromDraft,
   ballLabel,
   ballProblemText,
   ballStats,
@@ -23,15 +24,19 @@ import {
   draftBallsAfter,
   eventBallUpdate,
   eventGameBall,
+  gameBallTitle,
   keepBalls,
   knownBalls,
   lastBall,
+  ownPickShown,
   pctText,
   pickableBalls,
   resurfaceQuestion,
   resurfaceText,
   sameBall,
+  seenPick,
   submissionBalls,
+  withBall,
   type Ball,
   type BallGame,
 } from './balls';
@@ -115,6 +120,48 @@ describe('la hoja de una bola', () => {
     expect(new Set(BALL_COLORS.map((c) => c.hex)).size).toBe(BALL_COLORS.length);
     for (const c of BALL_COLORS) expect(c.hex).toMatch(/^#[0-9a-f]{6}$/);
   });
+
+  it('la que queda al guardar (para verla enseguida en la lista): recortada, el color en minúsculas, sin diseño', () => {
+    const draft = { id: null, name: ' Phaze II ', brand: ' Storm ', weight: 15, color: ' #1D4ED8 ', cover: 'solida' as const, drilledOn: '', resurfacedOn: '2026-09-01', retired: false };
+    expect(ballFromDraft('n1', draft)).toEqual({
+      id: 'n1',
+      name: 'Phaze II',
+      brand: 'Storm',
+      weight: 15,
+      color: '#1d4ed8',
+      cover: 'solida',
+      drilledOn: null,
+      resurfacedOn: '2026-09-01',
+      retired: false,
+      createdAt: null,
+      updatedAt: null,
+      design: null,
+    });
+  });
+
+  it('la lista con esa bola: la cambia en su lugar o, nueva, va donde la pone my_balls', () => {
+    const list = [ball('a'), ball('b'), ball('r', { retired: true })];
+    // Una nueva: la última de las que usa (antes de las retiradas).
+    expect(withBall(list, ball('n')).map((b) => b.id)).toEqual(['a', 'b', 'n', 'r']);
+    expect(withBall([ball('a')], ball('n')).map((b) => b.id)).toEqual(['a', 'n']);
+    expect(withBall([], ball('n')).map((b) => b.id)).toEqual(['n']);
+    // Una nueva ya retirada: al final.
+    expect(withBall(list, ball('nr', { retired: true })).map((b) => b.id)).toEqual(['a', 'b', 'r', 'nr']);
+    // La misma: en su lugar, con lo nuevo (y no cambia la de antes).
+    const changed = withBall(list, ball('b', { name: 'Otra' }));
+    expect(changed.map((b) => [b.id, b.name])).toEqual([
+      ['a', 'A'],
+      ['b', 'Otra'],
+      ['r', 'R'],
+    ]);
+    expect(list[1].name).toBe('B');
+  });
+
+  it('el nombre de la bola de un juego (desde 0) o de todos', () => {
+    expect(gameBallTitle(0)).toBe('Bola del juego 1');
+    expect(gameBallTitle(2)).toBe('Bola del juego 3');
+    expect(gameBallTitle('all')).toBe('Bola de todos los juegos');
+  });
 });
 
 describe('qué bola se pone sola', () => {
@@ -132,6 +179,9 @@ describe('qué bola se pone sola', () => {
   it('para elegir: las que no están retiradas y la que ya tenía el juego', () => {
     expect(pickableBalls(balls).map((b) => b.id)).toEqual(['a', 'b']);
     expect(pickableBalls(balls, 'viejita').map((b) => b.id)).toEqual(['a', 'b', 'viejita']);
+    // La que tenía el juego y la elegida (mientras se elige): la retirada no se va al tocar otra.
+    expect(pickableBalls(balls, 'a', 'viejita').map((b) => b.id)).toEqual(['a', 'b', 'viejita']);
+    expect(pickableBalls(balls, null, undefined).map((b) => b.id)).toEqual(['a', 'b']);
   });
 
   it('en el borrador: la del juego, si no la del juego anterior, si no la última', () => {
@@ -185,6 +235,28 @@ describe('las bolas de cada juego al guardar', () => {
     // Se borró el juego: se le quita la bola (si tenía).
     expect(eventBallUpdate({ 2: 'a' }, 2, null, 'a')).toEqual({ 2: null });
     expect(eventBallUpdate({}, 2, null, 'a')).toBeNull();
+  });
+
+  it('la hoja del evento: la que eligió se ve hasta llegar; ya en la cola, otra pantalla manda aunque vuelva a la de antes', () => {
+    // Eligió la B en un juego con la X: se ve mientras sigue con la X (no llega a la cola) y cuando ya tiene la B.
+    const picks = { 1: { ball: 'b', was: 'x' } };
+    expect(ownPickShown(picks[1], 'x')).toBe('b');
+    expect(ownPickShown(picks[1], 'b')).toBe('b');
+    // Otra pantalla le puso otra: manda esa.
+    expect(ownPickShown(picks[1], 'z')).toBeUndefined();
+    expect(ownPickShown(undefined, 'x')).toBeUndefined();
+    // Ya en la cola: si la foto (u otro teléfono) le vuelve a poner la X, se ve la X (y al guardar el juego no se
+    // manda otra vez la B).
+    const seen = seenPick(picks, 1, 'b');
+    expect(seen).toEqual({ 1: { ball: 'b', was: 'b' } });
+    expect(ownPickShown(seen[1], 'b')).toBe('b');
+    expect(ownPickShown(seen[1], 'x')).toBeUndefined();
+    // La que se puso sola (antes sin bola) y después «Sin bola» en otra pantalla: sin bola.
+    const auto = seenPick({ 0: { ball: 'a', was: null } }, 0, 'a');
+    expect(ownPickShown(auto[0], null)).toBeUndefined();
+    // Si ahí ya eligió otra (mientras se guardaba), esa sigue esperando; otro juego, igual.
+    expect(seenPick(picks, 1, 'c')).toBe(picks);
+    expect(seenPick(picks, 2, 'b')).toBe(picks);
   });
 
   it('el borrador de «Mis juegos» al guardar o borrar un juego', () => {

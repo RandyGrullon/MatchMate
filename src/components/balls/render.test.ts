@@ -1,16 +1,18 @@
 /**
- * Mis bolas dibujadas sin navegador (renderToString): elegir la bola al anotar (todas, la de un juego, «Varias bolas»,
- * sin bolas para elegir no sale nada), la tarjeta de una bola con sus números y el aviso de pulirla, la hoja para
- * agregar o cambiar una y la página sin cuenta.
+ * Mis bolas dibujadas sin navegador (renderToString): la fila de bolas de un juego al anotar (el botón de cada juego y
+ * la hoja para elegirla, en picker.test.ts), el color y el ícono, la tarjeta de una bola con sus números y el aviso de
+ * pulirla, la hoja para agregar o cambiar una (al anotar, la que se agrega queda elegida) y la página sin cuenta.
  */
 import { createElement as h, createRef } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
-import { ballStats, RESURFACE_EVERY, type Ball, type BallGame } from '../../lib/balls';
+import { describe, expect, it, vi } from 'vitest';
+import { ballStats, RESURFACE_EVERY, type Ball, type BallDraft, type BallGame } from '../../lib/balls';
+import { BackendError } from '../../lib/backend/types';
 import { FeedbackProvider } from '../feedback';
-import { BallDot, BallIcon, BallSelect, GameBallSelect } from './BallPicker';
-import { BallSheet, ballToDraft } from './BallSheet';
+import { BallDot } from './BallDot';
+import { BallIcon, GameBallSelect } from './BallPicker';
+import { BallSheet, ballToDraft, saveBallSheet } from './BallSheet';
 import { BallCard, BallStatsSection, statsForSection } from './BallStats';
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
@@ -38,41 +40,15 @@ const noop = () => undefined;
 describe('elegir la bola al anotar', () => {
   const balls = [ball('a'), ball('b', { name: 'Spare', weight: 14, color: '#f8fafc' }), ball('c', { name: 'Vieja', retired: true })];
 
-  it('«Sin bola» y las que no están retiradas, con el color de la elegida', () => {
-    const out = renderToString(h(BallSelect, { balls, value: 'b', onChange: noop, hint: 'Para todos los juegos.' }));
-    const t = text(out);
-    expect(t).toContain('Bola');
-    expect(t).toContain('Sin bola');
-    expect(t).toContain('Phaze II (15 lb)');
-    expect(t).toContain('Spare (14 lb)');
-    expect(t).not.toContain('Vieja');
-    expect(t).toContain('Para todos los juegos.');
-    expect(out).toMatch(/<option value="b" selected="">/);
-    // La elegida, dibujada (<BallArt> a 24 px, con su color).
-    expect(out).toMatch(/<svg[^>]*width="24" height="24"/);
-    expect(out).toContain('fill="#f8fafc"');
-    // Alto de 44 px para el dedo.
-    expect(out).toContain('h-11');
-  });
-
-  it('una retirada sale solo si ya era la del juego; «Varias bolas» si los juegos tienen distintas', () => {
-    expect(text(renderToString(h(BallSelect, { balls, value: 'c', onChange: noop })))).toContain('Vieja (15 lb) · retirada');
-    const mixed = renderToString(h(BallSelect, { balls, value: undefined, onChange: noop }));
-    expect(mixed).toMatch(/<option value="__varias__" disabled="" selected="">Varias bolas<\/option>/);
-    // Sin bola elegida: el círculo punteado.
-    expect(renderToString(h(BallSelect, { balls, value: null, onChange: noop }))).toContain('border-dashed');
-  });
-
-  it('sin bolas para elegir (ninguna o todas retiradas) no sale nada', () => {
-    expect(renderToString(h(BallSelect, { balls: [], value: null, onChange: noop }))).toBe('');
-    expect(renderToString(h(BallSelect, { balls: [balls[2]], value: null, onChange: noop }))).toBe('');
-  });
-
-  it('la de un juego, dentro de la hoja de anotar', () => {
+  it('la de un juego, dentro de la hoja de anotar: la fila de bolas dibujadas, con la del juego marcada', () => {
     const choice = createRef<string | null>() as { current: string | null };
     const out = renderToString(h(GameBallSelect, { balls, initial: 'a', choice }));
     expect(text(out)).toContain('Bola de este juego');
-    expect(out).toMatch(/<option value="a" selected="">/);
+    expect(out).toContain('role="radiogroup"');
+    expect(out).toContain('role="radio" aria-checked="true" aria-label="Phaze II (15 lb)"');
+    expect(out).toContain('role="radio" aria-checked="false" aria-label="Sin bola"');
+    expect(out).toContain('aria-label="Agregar bola"');
+    expect(out).not.toContain('<option');
   });
 
   it('el color y el ícono', () => {
@@ -155,6 +131,53 @@ describe('la hoja de una bola', () => {
     expect(out).toMatch(/role="radio" aria-checked="true" aria-label="Negro"/);
     expect(out).toContain('value="2026-09-01"');
     expect(t).toContain('Borrar');
+  });
+
+  it('al anotar (con `onSaved`, que recibe la nueva para elegirla) se ve igual', () => {
+    const withSaved = renderToString(
+      h(MemoryRouter, null, h(FeedbackProvider, null, h(BallSheet, { ball: null, today: '2026-09-30', onClose: noop, onSaved: noop }))),
+    );
+    expect(withSaved).toBe(sheet(null));
+  });
+
+  describe('«Guardar» (al anotar, «Agregar bola»)', () => {
+    const draft: BallDraft = { ...ballToDraft(null), name: 'Nueva' };
+    /** Lo que pasa, en orden. */
+    const run = async (save: (d: BallDraft, today: string) => Promise<string>, d = draft) => {
+      const log: string[] = [];
+      const ok = await saveBallSheet(d, '2026-09-30', {
+        toast: (m, tone) => log.push(`toast:${tone ?? 'ok'}:${m}`),
+        onSaved: (id) => log.push(`elegida:${id}`),
+        onClose: () => log.push('cerrar'),
+        save,
+      });
+      return { ok, log };
+    };
+
+    it('la nueva queda elegida (su id, el que devuelve saveBall) y después se cierra la hoja', async () => {
+      const save = vi.fn(async () => 'bola-nueva');
+      const { ok, log } = await run(save);
+      expect(ok).toBe(true);
+      expect(save).toHaveBeenCalledWith(draft, '2026-09-30');
+      expect(log).toEqual(['toast:ok:Bola agregada', 'elegida:bola-nueva', 'cerrar']);
+    });
+
+    it('cambiar una que ya existe dice «Bola guardada»', async () => {
+      const { log } = await run(async () => 'a', { ...draft, id: 'a' });
+      expect(log).toEqual(['toast:ok:Bola guardada', 'elegida:a', 'cerrar']);
+    });
+
+    it('sin señal (o con el cupo lleno): lo dice, no elige nada y la hoja sigue abierta', async () => {
+      const offline = await run(async () => {
+        throw new BackendError('Failed to fetch', 'network', 'network');
+      });
+      expect(offline.ok).toBe(false);
+      expect(offline.log).toEqual(['toast:error:Sin conexión. Prueba otra vez cuando tengas señal.']);
+      const full = await run(async () => {
+        throw new Error('cupo_lleno');
+      });
+      expect(full.log).toEqual(['toast:error:Ya tienes 30 bolas: borra una que ya no uses para agregar otra.']);
+    });
   });
 
   it('lo que se edita sale de la bola (o una nueva)', () => {

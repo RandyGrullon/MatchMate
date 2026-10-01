@@ -4,8 +4,10 @@ import { BackendError } from '../backend/types';
 import {
   BALL_MAX,
   ballDraftProblem,
+  ballFromDraft,
   ballProblemText,
   composeBalls,
+  withBall,
   type Ball,
   type BallDraft,
   type BallGame,
@@ -129,9 +131,19 @@ function afterBalls() {
   invalidate(ballTags.all);
 }
 
-/** Guarda una bola (nueva sin `id`). Necesita señal. Devuelve su id. */
+/** Las bolas nuevas que se agregaron en este teléfono desde que se abrió la app (ver useBallChoice: noBallsAtStart). */
+const addedHere = new Set<string>();
+
+/** ¿Esa bola se agregó en este teléfono (desde que se abrió la app)? Las demás llegaron del servidor. */
+export const ballAddedHere = (id: string) => addedHere.has(id);
+
+/**
+ * Guarda una bola (nueva sin `id`). Necesita señal. Devuelve su id. Una nueva sale enseguida en la lista (si ya se leyó):
+ * al agregarla mientras anota, queda elegida para el juego antes de volver a leer la lista.
+ */
 export async function saveBall(draft: BallDraft, today = toIsoDate(new Date())): Promise<string> {
-  if (!getUserId()) throw noSession();
+  const uid = getUserId();
+  if (!uid) throw noSession();
   const problem = ballDraftProblem(draft, today);
   if (problem) throw new BackendError(ballProblemText(problem), 'validation', 'invalido');
   const id = draft.id || uuidv7();
@@ -146,6 +158,14 @@ export async function saveBall(draft: BallDraft, today = toIsoDate(new Date())):
     p_resurfaced_on: draft.resurfacedOn || null,
     p_retired: draft.retired,
   });
+  // Antes de volver a leer: así la lectura sale después del cambio y lo reemplaza (si salió antes, no lo pisa). Un
+  // cambio no se pone aquí: lo de la hoja no trae el diseño y la bola se vería lisa hasta volver a leer.
+  if (!draft.id) {
+    addedHere.add(id);
+    const key = ballKeys.list(uid);
+    const old = queryClient.getQueryData<MyBalls>(key);
+    if (old) queryClient.setQueryData<MyBalls>(key, { ...old, balls: withBall(old.balls, ballFromDraft(id, draft)) });
+  }
   afterBalls();
   return id;
 }
@@ -230,6 +250,16 @@ const replaceable = (kind: BallGameKind, ref: string) => queuedBallOps(kind, ref
 export function queuedGameBalls(kind: BallGameKind, ref: string): Record<string, GameBall> | null {
   const last = queuedBallOps(kind, ref).at(-1);
   return last ? { ...(last.args.p_balls as Record<string, GameBall>) } : null;
+}
+
+/**
+ * Las bolas de un evento o de un envío que están en la cola sin llegar ({"<juego>": bola | null}); null si no hay. Cada
+ * cambio trae solo sus juegos (una por juego: ver ballsCollapse), así que se juntan en orden y la última de cada juego
+ * gana (queuedGameBalls da solo la última, que en un juego suelto trae todos).
+ */
+export function queuedBallsByGame(kind: 'event' | 'sub', ref: string): Record<string, GameBall> | null {
+  const ops = queuedBallOps(kind, ref);
+  return ops.length ? Object.assign({}, ...ops.map((o) => o.args.p_balls as Record<string, GameBall>)) : null;
 }
 
 function enqueueBalls(kind: BallGameKind, ref: string, balls: Record<string, GameBall>, group: string): void {
