@@ -451,13 +451,25 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
 - Cliente `src/lib/data/balls.ts` y las cuentas en `src/lib/balls.ts` (la bola que se pone sola: la última elegida en
   el teléfono o la del servidor; promedio, el más alto, strikes y spares de los cuadros que cuadran con
   `src/lib/bowlingStats.ts`, y juegos desde la última pulida, contando los de ese mismo día: a los 60 avisa; «La pulí
-  hoy» pregunta antes). Al anotar (`BallSelect` y
-  `GameBallSelect` en `src/components/balls/BallPicker.tsx`, opcional y solo si la cuenta tiene bolas): la hoja del
-  juego suelto y «Subir mis juegos» tienen «Bola» para todos los juegos y la de cada juego al abrirlo; «Mis juegos» del
-  evento la guarda en el borrador del teléfono (`GameDraft.balls`); el admin o anotador la elige solo en sus propios
-  juegos (un juego que ya tiene puntaje y no tiene bola en el evento, p. ej. lo anotó el admin, abre sin bola:
-  `eventGameBall`). Lo que se manda en cada lugar sale de funciones puras con pruebas (`eventBallUpdate`,
-  `draftBallsAfter`, `submissionBalls`). Las bolas no hacen volver a leer la liga (`tagsForOp`). Pantalla `/bolas` (`src/pages/BallsPage.tsx`: con cuál tiras mejor, cada bola con sus números, «La pulí
+  hoy» pregunta antes). Al anotar sus propios juegos, cada juego tiene su bola (opcional) en las tres formas de anotar
+  (`src/components/balls/BallPicker.tsx`): `GameBallChip` debajo de la casilla del total (la bola dibujada con su
+  nombre; abre `BallPickSheet` con «Sin bola», las que no están retiradas y la que ya tenía el juego, cada una
+  dibujada) y `GameBallSelect` arriba del editor de cuadros o pines (la fila de bolas dibujadas). Sale aunque la
+  cuenta no tenga bolas (`useBallChoice().canPick`: con sesión y la lista leída): «Agregar bola» abre `BallSheet`
+  encima (lo anotado no se pierde; necesita señal) y, al guardarla (`onSaved`, `saveBallSheet`), queda elegida para
+  ese juego (`saveBall` la pone enseguida en la lista de la caché). Una cuenta que abrió sin bolas no espera a leer
+  las que tenían sus juegos (`noBallsAtStart`; deja de valer si llega una que no se agregó en este teléfono: la lista
+  era la copia vieja). La hoja del juego suelto y «Subir mis juegos» tienen además «Bola para todos los juegos»
+  (`AllGamesBall`); «Mis juegos» del evento la guarda en el borrador del teléfono (`GameDraft.balls`), dibuja la de
+  cada juego en su casilla y abre «Otro juego» con su bola. El dueño, un admin o el anotador que también juega la
+  elige solo en su propia fila (en `GamesTab` y al verificar con foto: `useOwnBalls` en `ScanModal` y
+  `src/lib/scanBalls.ts`), nunca en la de otro jugador (`set_game_balls` marca los juegos de la cuenta). Las que ya
+  tenía cada juego del evento son las del servidor con lo de la cola encima (`queuedBallsByGame` + `knownBalls`); si
+  no se saben, la bola no sale ni se manda. Un juego que ya tiene puntaje y no tiene bola en el evento (p. ej. lo
+  anotó el admin) sale sin bola (`eventGameBall`); la que se elige en `GamesTab` se ve hasta llegar a la cola y, ya
+  en ella, si otra pantalla le pone otra, manda esa (`ownPickShown`, `seenPick`). Lo que se manda en cada lugar sale
+  de funciones puras con pruebas (`eventBallUpdate`, `draftBallsAfter`, `submissionBalls`, `scanBallUpdate`). Las
+  bolas no hacen volver a leer la liga (`tagsForOp`). Pantalla `/bolas` (`src/pages/BallsPage.tsx`: con cuál tiras mejor, cada bola con sus números, «La pulí
   hoy», retirar y la hoja `BallSheet`), con link desde /perfil y «Por bola» en Mis estadísticas (`BallStatsSection`).
 - Diseño de la bola («Diseñar»): `bowling_balls.design` (jsonb, null = lisa de su color y su cubierta) con un CHECK
   (`private.ball_design_ok`) y `set_ball_design(p_ball, p_design)` (solo las propias, mismo límite de 100 cambios al
@@ -467,12 +479,12 @@ Contrato completo en `supabase/README.md` («Organizador»); pruebas en `tests/s
   el texto del número y de las iniciales, solo cifras o letras), así algo lo puede llenar solo más adelante.
   `ballDesignProblem` revisa lo mismo que la base. `<BallArt>` (`src/components/balls/BallArt.tsx`) la dibuja en SVG,
   sin nada al azar (semilla del dibujo y el color base) y se ve a 24, 40, 64 y 160 px en los dos temas: en la tarjeta
-  de «Mis bolas» (tocarla abre el creador), en «Por bola», en la hoja de la bola y en `BallSelect` al anotar (la lista
-  del teléfono solo muestra texto). El creador (`BallDesigner.tsx`, `?disenar=<id>` en /bolas; las cuentas en
-  `designer.ts`): la bola grande arriba y las pestañas «Colores», «Dibujo» y «Figuras» (moverlas con flechas o tocando
-  la bola); guardar igual a la lisa manda null. `setBallDesign` en `src/lib/data/balls.ts` necesita señal, cambia la
-  lista enseguida y la deja como estaba si la base dice que no. Una bola con diseño no elige el color en `BallSheet`
-  (el dibujo seguiría con el de antes): se cambia en «Diseñar».
+  de «Mis bolas» (tocarla abre el creador), en «Por bola», en la hoja de la bola y al anotar (`GameBallChip`,
+  `BallPickSheet`, `GameBallSelect` y la casilla de cada juego en «Mis juegos»). El creador (`BallDesigner.tsx`,
+  `?disenar=<id>` en /bolas; las cuentas en `designer.ts`): la bola grande arriba y las pestañas «Colores», «Dibujo» y
+  «Figuras» (moverlas con flechas o tocando la bola); guardar igual a la lisa manda null. `setBallDesign` en
+  `src/lib/data/balls.ts` necesita señal, cambia la lista enseguida y la deja como estaba si la base dice que no. Una
+  bola con diseño no elige el color en `BallSheet` (el dibujo seguiría con el de antes): se cambia en «Diseñar».
 
 ## Logo de ligas y torneos
 
