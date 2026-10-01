@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Clock, Grid3x3, PencilLine, Plus, Send, SlidersHorizontal, Smartphone, Target, Trash2, XCircle } from 'lucide-react';
 import { addEventGame } from '../../lib/data';
+import { ballKeys, ballTags, fetchMyBallGames, queuedBallsByGame, useMyBallGames } from '../../lib/data/balls';
+import { getUserId, queryClient, type Live } from '../../lib/data/client';
 import { saveDraft, useDraft } from '../../lib/draft';
 import { useLeagueCtx } from '../../lib/league';
 import type { LiveInfo } from '../../lib/live';
-import { ballForGame, draftBallsAfter } from '../../lib/balls';
+import { ballForGame, ballLabel, ballsByGame, draftBallsAfter, type BallGame } from '../../lib/balls';
 import { hasMark, type GameMark } from '../../lib/bowlingSeason';
 import { slots } from '../../lib/stats';
 import type { BowlingEvent, Entry, Submission } from '../../lib/types';
+import { BallArt } from '../balls/BallArt';
 import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
@@ -28,6 +31,22 @@ const MODES: { key: ScoreMode; label: string; icon: typeof Target }[] = [
   { key: 'teclado', label: 'Teclado', icon: Grid3x3 },
   { key: 'total', label: 'Total', icon: SlidersHorizontal },
 ];
+
+const NO_GAMES: BallGame[] = [];
+
+/**
+ * Mis juegos con bola de esos envíos, en una sola lectura (useMyBallGames lee un solo lugar y aquí puede haber más de
+ * un envío pendiente). `enabled = false` no pide nada.
+ */
+function useSubBallGames(subIds: readonly string[], enabled: boolean): Live<BallGame[]> {
+  const uid = getUserId();
+  const refs = [...subIds].sort().join('+');
+  return queryClient.useQuery<BallGame[]>(
+    uid && enabled && refs ? ballKeys.games(uid, refs) : null,
+    async () => (await Promise.all(refs.split('+').map((id) => fetchMyBallGames(id)))).flat(),
+    { initial: NO_GAMES, tags: uid ? [ballTags.all, ballTags.user(uid)] : [], staleMs: 30_000 },
+  );
+}
 
 /**
  * El jugador anota sus juegos del evento uno a uno mientras juega, de la forma que elija (pines, teclado o
@@ -65,11 +84,10 @@ export function MyGamesPanel({
   const { lid } = useLeagueCtx();
   const { toast, confirm } = useFeedback();
   const draft = useDraft(lid, playerId, event.id);
-  const [editing, setEditing] = useState<number | null>(null);
   const [mode, setMode] = useState<ScoreMode>(preferredMode);
   const [adding, setAdding] = useState(false);
-  // La bola de cada juego (si la cuenta tiene bolas): la que ya eligió en el teléfono, la del juego anterior o la última
-  // que usó. Se envía con los juegos («Enviar a revisión»).
+  // La bola de cada juego: la que ya eligió en el teléfono, la del juego anterior o la última que usó. Se elige arriba
+  // del editor (aunque la cuenta no tenga ninguna: «Agregar») y se envía con los juegos («Enviar a revisión»).
   const choice = useBallChoice();
   const ballPick = useRef<string | null>(null);
   const ballOf = (i: number) => ballForGame(draft?.balls, i, choice.auto);
@@ -96,8 +114,36 @@ export function MyGamesPanel({
   const series = known.reduce((a, b) => a + b, 0);
   const average = known.length ? Math.floor(series / known.length) : null;
   const nextEmpty = cells.findIndex((c) => c.kind === 'vacio');
+  const notYet = event.date > today;
+  // Desde "En juego ahora" (autoStart) el próximo juego por anotar ya sale abierto al dibujar la primera vez.
+  const [editing, setEditing] = useState<number | null>(() => (autoStart && !notYet && nextEmpty >= 0 ? nextEmpty : null));
+
+  // La bola de cada juego, en su casilla y al abrirlo. Los del teléfono: ballOf (la misma que se envía). Los que ya
+  // salieron del teléfono (en la tabla o enviados): lo de la cola encima de lo del servidor. Sin bolas en la cuenta no se
+  // lee nada: ningún juego tiene.
+  const hasBalls = choice.balls.length > 0;
+  /** El envío pendiente de un juego enviado (el más nuevo que lo trae). */
+  const subOf = (i: number) => pending.find((s) => s.scores[i] != null)!;
+  const tableBalls = useMyBallGames(event.id, hasBalls && cells.some((c) => c.kind === 'tabla'));
+  const subBalls = useSubBallGames([...new Set(cells.flatMap((c, i) => (c.kind === 'enviado' ? [subOf(i).id] : [])))], hasBalls);
+  /** null = sin bola; undefined = falta anotarlo o no se sabe (sin leer y sin señal). */
+  function ballAt(c: Cell, i: number): string | null | undefined {
+    if (c.kind === 'vacio') return undefined;
+    if (c.kind === 'telefono') return ballOf(i);
+    const [kind, ref, server] = c.kind === 'tabla' ? (['event', event.id, tableBalls] as const) : (['sub', subOf(i).id, subBalls] as const);
+    const queued = queuedBallsByGame(kind, ref)?.[String(i)];
+    if (queued !== undefined) return typeof queued === 'string' ? queued : null;
+    if (!hasBalls) return choice.canPick ? null : undefined;
+    return server.loading || server.error ? undefined : (ballsByGame(server.data, kind, ref)[i] ?? null);
+  }
+  const gameBalls = cells.map(ballAt);
+  // La que se dibuja en cada casilla (una que ya no existe, no).
+  const tileBalls = gameBalls.map((id) => (id ? choice.balls.find((b) => b.id === id) : undefined));
+
   // Solo en la práctica de hoy (no en una vieja ni en una que todavía no llega).
   const canAddGame = event.type === 'practica' && event.date === today && event.games < 10 && count === event.games;
+  // El que se acaba de agregar con «Otro juego» (desde 0), hasta que la sesión lo tiene.
+  const [openAdded, setOpenAdded] = useState<number | null>(null);
 
   async function addGame() {
     const n = event.games + 1;
@@ -108,9 +154,11 @@ export function MyGamesPanel({
     });
     if (!ok) return;
     setAdding(true);
+    setOpenAdded(event.games);
     const added = addEventGame(lid, event);
     added.catch((e) => {
       console.error(e);
+      setOpenAdded(null);
       toast('No se pudo agregar el juego. Intenta de nuevo.', 'error');
     });
     // Sin señal queda en cola y sale solo: no se espera al servidor.
@@ -124,7 +172,6 @@ export function MyGamesPanel({
     setMode(m);
   }
   const allInTable = cells.every((c) => c.kind === 'tabla');
-  const notYet = event.date > today;
 
   // Lo que ya llegó a la tabla (lo anotó el admin o el anotador) sale del teléfono: no se vuelve a enviar.
   const stale = draft?.values.some((v, i) => v.trim() !== '' && scores[i] != null) ?? false;
@@ -147,27 +194,37 @@ export function MyGamesPanel({
 
   const edit = (i: number) => setEditing(i);
 
+  // El juego que se agregó se abre para anotarlo (con su bola arriba) en cuanto la sesión lo tiene: sin señal también, el
+  // juego nuevo se ve enseguida. Si mientras tanto abrió otro, se queda en ese.
+  useEffect(() => {
+    if (openAdded == null || count <= openAdded) return;
+    setOpenAdded(null);
+    setEditing((e) => e ?? openAdded);
+  }, [openAdded, count]);
+
   function save(i: number, v: ScoreValue | null) {
     const values = Array.from({ length: count }, (_, j) => draft?.values[j] ?? '');
     values[i] = v?.score == null ? '' : String(v.score);
     const frames = { ...(draft?.frames ?? {}) };
     if (v?.frames && v.score != null) frames[i] = v.frames;
     else delete frames[i];
-    const balls = draftBallsAfter(draft?.balls, i, v, choice.has ? ballPick.current : undefined);
+    // La bola solo si salió arriba (con la lista de bolas leída): si no, la de ese juego no se toca.
+    const balls = draftBallsAfter(draft?.balls, i, v, choice.canPick ? ballPick.current : undefined);
     saveDraft(lid, playerId, event.id, { values, frames, balls });
     setEditing(null);
     setMode(preferredMode());
     toast(v ? `Juego ${i + 1} guardado en tu teléfono` : `Juego ${i + 1} borrado`);
   }
 
-  // Desde "En juego ahora": abre directo el próximo juego por anotar.
+  // Desde "En juego ahora": abre directo el próximo juego por anotar (al entrar ya salió abierto; si llega estando aquí,
+  // se abre ahora, salvo que esté anotando otro).
   const started = useRef(false);
   useEffect(() => {
     if (!autoStart || started.current) return;
     started.current = true;
     onAutoStarted();
     const first = cells.findIndex((c) => c.kind === 'vacio');
-    if (!notYet && first >= 0) edit(first);
+    if (editing == null && !notYet && first >= 0) edit(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
 
@@ -179,6 +236,9 @@ export function MyGamesPanel({
       : editingCell?.kind === 'enviado'
         ? { score: editingCell.score, frames: pending.find((s) => s.scores[editing!] != null)?.frames?.[editing!] ?? null }
         : { score: null, frames: null };
+  // Y con su bola: la que ya tiene un juego enviado (si se sabe); si no, la del teléfono (ballOf).
+  const sentBall = editingCell?.kind === 'enviado' ? gameBalls[editing!] : undefined;
+  const editBall = sentBall !== undefined ? sentBall : editing != null ? ballOf(editing) : null;
 
   return (
     <Card className={cx('flex flex-col gap-3 p-4', live.live && !notYet && 'border-ok/40')}>
@@ -225,7 +285,7 @@ export function MyGamesPanel({
                 key={i}
                 type="button"
                 onClick={() => (c.kind === 'tabla' ? onOpenEntry() : edit(i))}
-                aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? ': anotar' : `: ${c.score}`}`}
+                aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? ': anotar' : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`}
                 className={cx(
                   'flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 transition active:scale-95',
                   c.kind === 'tabla' &&
@@ -235,7 +295,11 @@ export function MyGamesPanel({
                   c.kind === 'vacio' && 'border-dashed border-line text-muted hover:border-accent hover:text-accent',
                 )}
               >
-                <span className="text-[11px] font-medium text-muted">J{i + 1}</span>
+                <span className="flex items-center gap-0.5 text-[11px] font-medium text-muted">
+                  J{i + 1}
+                  {/* Con qué bola lo tiró: solo se ve (se cambia al abrir el juego). */}
+                  {tileBalls[i] && <BallArt ball={tileBalls[i]} size={18} className="shrink-0" />}
+                </span>
                 {c.kind === 'vacio' ? (
                   <Plus className="size-5" />
                 ) : (
@@ -348,6 +412,9 @@ export function MyGamesPanel({
         </>
       )}
 
+      {/* La bola de este juego va arriba del editor (en las tres formas de anotar) en cuanto se sabe la lista de bolas,
+          aunque no tenga ninguna («Agregar»). Si el juego se abrió antes de leerla (desde "En juego ahora"), sale al leerla
+          y arranca con la última que usó. Se vuelve a montar con cada juego. */}
       <ScoreEntryModal
         open={editing != null}
         onClose={() => {
@@ -357,7 +424,11 @@ export function MyGamesPanel({
         title={editing != null ? `Juego ${editing + 1}` : ''}
         resetKey={String(editing)}
         initial={initial}
-        top={choice.has && editing != null ? <GameBallSelect key={editing} balls={choice.balls} initial={ballOf(editing)} choice={ballPick} /> : undefined}
+        top={
+          editing != null && choice.canPick ? (
+            <GameBallSelect key={editing} balls={choice.balls} initial={editBall} choice={ballPick} game={editing} today={today} />
+          ) : undefined
+        }
         saveText="Guardar"
         onSave={(v) => save(editing!, v)}
         note={

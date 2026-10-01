@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CalendarCheck, Camera, CheckCircle2, Grid3x3, Plus, ScanLine, UserPlus, Users, X } from 'lucide-react';
-import { ballsByGame, eventBallUpdate, eventGameBall } from '../../lib/balls';
+import { ballsByGame, defaultBall, eventBallUpdate, eventGameBall, knownBalls, ownPickShown, seenPick, type OwnPick } from '../../lib/balls';
 import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame, updateEntry } from '../../lib/data';
-import { queueGameBalls, rememberBall, useMyBallGames } from '../../lib/data/balls';
+import { queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../../lib/data/balls';
 import { useLeagueCtx } from '../../lib/league';
 import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
 import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
-import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
+import { BallIcon, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
 import { ScanModal } from '../ScanModal';
@@ -93,8 +93,100 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
       ].filter((g) => g.lines.length)
     : [{ key: '_all', title: null, lines }];
 
+  // Sus propios juegos (el dueño, un admin o el anotador que también juega): con qué bola tiró cada uno. Solo en su fila
+  // y en su hoja: set_game_balls marca los juegos de la cuenta, no los de la fila que se está anotando.
+  const mine = myPlayerId ? entries.find((e) => e.playerId === myPlayerId) : undefined;
+  const myScores = slots(mine?.scores, event.games, null);
+  const choice = useBallChoice();
+  const eventBalls = useMyBallGames(event.id, !!mine && choice.canPick);
+  // Las que ya tenía: las del servidor (una cuenta que abrió sin bolas no tenía ninguna: no espera a leerlas, y al
+  // agregar la primera aquí no se pierde la elegida) con lo que está en la cola encima. null = no se sabe (sin leer y
+  // sin señal): la bola no sale ni se guarda (guardar podría pisarlas).
+  const serverHad = !eventBalls.loading && !eventBalls.error ? ballsByGame(eventBalls.data, 'event', event.id) : choice.noBallsAtStart ? {} : null;
+  const known = mine && choice.canPick ? knownBalls(event.games, serverHad, queuedBallsByGame('event', event.id)) : null;
+  // La que eligió aquí en cada juego y la que tenía entonces: se ve enseguida (sin esperar la cola ni volver a leer) y,
+  // en uno sin jugar, queda para cuando lo anote. Ya en la cola, solo mientras el juego siga con ella: si después otra
+  // pantalla le pone otra (la foto), manda esa (ownPickShown, seenPick).
+  const [ownPicks, setOwnPicks] = useState<Record<number, OwnPick>>({});
+  const pickedHere = (game: number) => ownPickShown(ownPicks[game], known?.[game] ?? null);
+  // La última que eligió en cada juego, al momento: la que va con el juego cuando termine de guardarse (si la cambia
+  // mientras se guarda, va la nueva).
+  const lastPick = useRef<Record<number, string | null>>({});
+  function keepPick(game: number, ball: string | null) {
+    lastPick.current[game] = ball;
+    setOwnPicks((p) => ({ ...p, [game]: { ball, was: known?.[game] ?? null } }));
+  }
+
+  /**
+   * La bola de un juego suyo como se ve (y como se guarda al anotarlo): la que eligió aquí o la que ya tenía. Uno con
+   * puntaje y sin bola sale sin bola (eventGameBall); uno sin jugar, con la del juego anterior que tenga una o, si no,
+   * con la última que usó (una retirada o borrada no se pone sola).
+   */
+  function ownBall(game: number): string | null {
+    if (!known) return null;
+    const here = pickedHere(game);
+    if (here !== undefined) return here;
+    let before: string | null = null;
+    for (let j = game - 1; j >= 0 && !before; j--) {
+      const prev = pickedHere(j);
+      before = prev !== undefined ? prev : (known[j] ?? null);
+    }
+    return eventGameBall(known, game, myScores[game] != null, defaultBall(choice.balls, before, choice.auto));
+  }
+
+  /**
+   * Después de guardar (o borrar) un juego suyo: su bola va detrás del juego, en la misma cola de la liga (borrarlo le
+   * quita la suya y vuelve a la que se pone sola). Solo si cambió: la que eligió se pone sola la próxima vez.
+   */
+  function afterOwnScore(game: number, score: number | null) {
+    if (!known) return;
+    const picked = game in lastPick.current ? lastPick.current[game] : undefined;
+    const update = eventBallUpdate(known, game, score, picked);
+    if (update) {
+      queueGameBalls('event', event.id, update, lid);
+      rememberBall(update[String(game)]);
+    }
+    if (score == null) {
+      delete lastPick.current[game];
+      setOwnPicks((p) => {
+        const next = { ...p };
+        delete next[game];
+        return next;
+      });
+    } else if (picked !== undefined) setOwnPicks((p) => seenPick(p, game, picked));
+  }
+
+  /** Cambió la bola de un juego suyo (el botón debajo de la casilla): con puntaje va por la cola; sin puntaje, al anotarlo. */
+  function pickOwnBall(game: number, picked: string | null) {
+    if (!known) return;
+    keepPick(game, picked);
+    if (myScores[game] == null) return;
+    const update = eventBallUpdate(known, game, myScores[game], picked);
+    if (update) {
+      queueGameBalls('event', event.id, update, lid);
+      rememberBall(picked);
+    }
+    setOwnPicks((p) => seenPick(p, game, picked));
+  }
+
+  // El botón de la bola (con memo) recibe siempre la misma función: la de este momento queda en `pickRef`.
+  const pickRef = useRef(pickOwnBall);
+  useEffect(() => {
+    pickRef.current = pickOwnBall;
+  });
+  const onPickBall = useCallback((game: number | 'all', id: string | null) => {
+    if (game !== 'all') pickRef.current(game, id);
+  }, []);
+
   function setScore(entry: Entry, game: number, value: number | null) {
-    run(() => saveGame(lid, event, entry, game, { score: value, frames: null }, requirePhoto));
+    // En su fila, la bola que se ve debajo de la casilla va con el juego (se mira antes de guardar: es la que vio) y se
+    // sigue viendo mientras se guarda.
+    const own = !!known && entry.id === mine?.id;
+    if (own && value != null) keepPick(game, ownBall(game));
+    run(async () => {
+      await saveGame(lid, event, entry, game, { score: value, frames: null }, requirePhoto);
+      if (own) afterOwnScore(game, value);
+    });
   }
 
   async function unverify() {
@@ -122,17 +214,9 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
   const framesEntry = framesFor ? entries.find((e) => e.id === framesFor.entryId) : undefined;
   const framesGame = framesFor?.game ?? 0;
   const framesVerified = framesEntry ? isRealPhoto(slots(framesEntry.photos, event.games, null)[framesGame]) : false;
-  // Sus propios juegos (el dueño, un admin o el anotador que también juega): con qué bola tiró cada uno.
-  const ownGames = !!framesEntry && !!myPlayerId && framesEntry.playerId === myPlayerId;
-  const choice = useBallChoice();
-  const eventBalls = useMyBallGames(event.id, ownGames && choice.balls.length > 0);
-  const hadBalls = ballsByGame(eventBalls.data, 'event', event.id);
-  // Las que ya tenía se leyeron (sin eso, guardar podría pisarlas): si no, la bola no sale ni se guarda.
-  const ballsReady = ownGames && !eventBalls.loading && !eventBalls.error;
+  // Uno de sus juegos, con las que ya tenía leídas: arriba sale la bola del juego (también sin bolas: «Agregar»).
+  const ownGames = !!framesEntry && !!known && framesEntry.id === mine?.id;
   const ballPick = useRef<string | null>(null);
-  // La bola al abrir el juego (un juego con puntaje y sin bola aquí sale sin bola: ver eventGameBall).
-  const framesScored = !!framesEntry && slots(framesEntry.scores, event.games, null)[framesGame] != null;
-  const initialBall = eventGameBall(hadBalls, framesGame, framesScored, choice.auto);
 
   const cols = `repeat(${event.games}, minmax(3.25rem, 1fr))`;
   let row = 0;
@@ -217,6 +301,9 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
                   const name = nameOf(l.entry);
                   const photos = slots(l.entry.photos, event.games, null);
                   const firstOpen = Math.max(0, l.scores.findIndex((s) => s == null));
+                  // Su propia fila: debajo de cada juego, la bola con que lo tiró (en la de los demás, nunca). Las casillas
+                  // van en su caja desde el principio: si no, al leer sus bolas se volverían a montar y perdería lo escrito.
+                  const ownRow = !!mine && l.entry.id === mine.id;
                   return (
                     <div key={l.entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:flex-nowrap">
                       <div className="flex w-full min-w-0 items-center gap-2 sm:w-44 sm:shrink-0">
@@ -229,19 +316,28 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
                         )}
                       </div>
                       <div className="grid min-w-0 flex-1 gap-2" style={{ gridTemplateColumns: cols }}>
-                        {l.scores.map((s, i) => (
-                          <ScoreInput
-                            key={i}
-                            label={`${name} juego ${i + 1}`}
-                            value={s}
-                            verified={isRealPhoto(photos[i])}
-                            counted={photos[i] === NO_PHOTO}
-                            row={r}
-                            col={i}
-                            onCommit={(v) => setScore(l.entry, i, v)}
-                            onOpenPhoto={() => setPhoto({ entry: l.entry, game: i, photoId: photos[i]! })}
-                          />
-                        ))}
+                        {l.scores.map((s, i) => {
+                          const input = (
+                            <ScoreInput
+                              key={i}
+                              label={`${name} juego ${i + 1}`}
+                              value={s}
+                              verified={isRealPhoto(photos[i])}
+                              counted={photos[i] === NO_PHOTO}
+                              row={r}
+                              col={i}
+                              onCommit={(v) => setScore(l.entry, i, v)}
+                              onOpenPhoto={() => setPhoto({ entry: l.entry, game: i, photoId: photos[i]! })}
+                            />
+                          );
+                          if (!ownRow) return input;
+                          return (
+                            <div key={i} className="flex min-w-0 flex-col gap-1">
+                              {input}
+                              {known && <GameBallChip game={i} balls={choice.balls} value={ownBall(i)} onPick={onPickBall} />}
+                            </div>
+                          );
+                        })}
                       </div>
                       <span className="w-14 text-right font-semibold tabular-nums">
                         {l.total || '—'}
@@ -295,6 +391,11 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
         <span className="inline-flex items-center gap-1">
           <Grid3x3 className="size-3" /> Anotar con pines, teclado o total
         </span>
+        {known && (
+          <span className="inline-flex items-center gap-1">
+            <BallIcon className="size-3" /> Debajo de tus juegos, la bola con que tiraste: tócala para cambiarla
+          </span>
+        )}
         <span>Enter baja al siguiente jugador.</span>
       </p>
 
@@ -343,11 +444,12 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
                   ))}
                 </div>
               )}
-              {ballsReady && choice.has && (
+              {ownGames && (
                 <GameBallSelect
                   key={`${framesEntry.id}-${framesGame}`}
+                  game={framesGame}
                   balls={choice.balls}
-                  initial={initialBall}
+                  initial={ownBall(framesGame)}
                   choice={ballPick}
                 />
               )}
@@ -359,15 +461,11 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
             ) : null
           }
           onSave={async (v) => {
+            // La bola que se ve arriba (la elegida en la fila de bolas): en su fila se sigue viendo mientras se guarda.
+            if (ownGames && v.score != null) keepPick(framesGame, ballPick.current);
             const ok = await run(async () => {
               await saveGame(lid, event, framesEntry, framesGame, v, requirePhoto);
-              // La bola va detrás del juego, en la misma cola de la liga (borrar el juego le quita la bola). Solo si cambió:
-              // la que eligió se pone sola la próxima vez.
-              const update = ballsReady ? eventBallUpdate(hadBalls, framesGame, v.score, choice.has ? ballPick.current : undefined) : null;
-              if (update) {
-                queueGameBalls('event', event.id, update, lid);
-                rememberBall(update[String(framesGame)]);
-              }
+              if (ownGames) afterOwnScore(framesGame, v.score);
               return true;
             }, `Juego ${framesGame + 1} guardado`);
             if (ok) {

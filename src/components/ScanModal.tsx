@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Plus, ScanLine, Sparkles, Trash2 } from 'lucide-react';
+import { ballsByGame, knownBalls, lastBall, type Ball } from '../lib/balls';
 import { fetchEffectiveAverages, saveVerifiedGames, type VerifiedWrite } from '../lib/data';
+import { ballAddedHere, queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../lib/data/balls';
 import type { CompressedImage } from '../lib/image';
 import { useLeagueCtx } from '../lib/league';
+import { scanBallUpdate, scanGameBall } from '../lib/scanBalls';
 import { ScanError } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob } from '../lib/scanJobs';
 import { bestMatch, firstFreeSlot, isValidScore, slots } from '../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../lib/types';
+import { GameBallChip, useBallChoice } from './balls/BallPicker';
 import { useAction, useFeedback } from './feedback';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
@@ -48,7 +52,7 @@ export function ScanModal({
   players: Player[];
   focusPlayerId?: string | null;
 }) {
-  const { lid, isAdmin } = useLeagueCtx();
+  const { lid, isAdmin, myPlayerId } = useLeagueCtx();
   const run = useAction();
   const { toast } = useFeedback();
   const [photo, setPhoto] = useState<CompressedImage | null>(null);
@@ -61,6 +65,8 @@ export function ScanModal({
   const [saving, setSaving] = useState(false);
   // La lectura de la foto actual (si se elige otra o se cierra, lo que llegue de la anterior no se usa).
   const current = useRef<string | null>(null);
+  // Si quien verifica también juega aquí: la bola de cada uno de sus juegos (solo en su fila).
+  const ownBalls = useOwnBalls(open, event, entries, rows, myPlayerId);
 
   useEffect(() => {
     if (open) {
@@ -148,21 +154,38 @@ export function ScanModal({
     0,
   );
 
+  /** Los juegos de la fila que se guardan (juego del evento → pinos): los escritos que caben en el evento. */
+  function valuesOf(r: RowDraft): Record<number, number> {
+    const values: Record<number, number> = {};
+    r.values.forEach((v, k) => {
+      if (v.trim() !== '' && r.start + k < event.games) values[r.start + k] = Number(v);
+    });
+    return values;
+  }
+
   async function save() {
     if (!photo || problems.length || !gamesToSave) return;
+    // Las bolas de sus juegos como se ven ahora: al guardar cambian sus puntajes y, con ellos, la que se pone sola.
+    const mine = included.find((r) => r.key === ownBalls.row);
+    const balls = mine ? ownBalls.update(valuesOf(mine)) : null;
     setSaving(true);
     const newcomers = included.filter((r) => !entryOf(r.playerId)).map((r) => players.find((p) => p.id === r.playerId)!);
     const averages = newcomers.length ? await fetchEffectiveAverages(lid, newcomers, { date: event.date, eventId: event.id }) : new Map<string, number>();
-    const writes: VerifiedWrite[] = included.map((r) => {
-      const values: Record<number, number> = {};
-      r.values.forEach((v, k) => {
-        if (v.trim() !== '' && r.start + k < event.games) values[r.start + k] = Number(v);
-      });
-      return { entry: entryOf(r.playerId), playerId: r.playerId, average: averages.get(r.playerId) ?? 0, values };
-    });
+    const writes: VerifiedWrite[] = included.map((r) => ({
+      entry: entryOf(r.playerId),
+      playerId: r.playerId,
+      average: averages.get(r.playerId) ?? 0,
+      values: valuesOf(r),
+    }));
     const ok = await run(() => saveVerifiedGames(lid, event, photo, writes));
     setSaving(false);
     if (ok) {
+      // Sus juegos ya están guardados: la bola de cada uno va detrás, en la cola de la liga (solo las que cambian). La
+      // que eligió se pone sola la próxima vez.
+      if (balls) {
+        queueGameBalls('event', event.id, balls, lid);
+        rememberBall(lastBall(Object.values(balls)));
+      }
       toast(`${gamesToSave} ${gamesToSave === 1 ? 'juego verificado' : 'juegos verificados'}`);
       onClose();
     }
@@ -232,8 +255,6 @@ export function ScanModal({
             )}
             {rows.map((r) => {
               const entry = entryOf(r.playerId);
-              const draft = slots(entry?.scores, event.games, null);
-              const verified = slots(entry?.photos, event.games, null);
               return (
                 <Card key={r.key} className={cx('flex flex-col gap-3 p-3', !r.include && 'opacity-55')}>
                   <div className="flex items-center gap-2">
@@ -314,41 +335,7 @@ export function ScanModal({
                       ))}
                     </Select>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {r.values.map((v, k) => {
-                      const slot = r.start + k;
-                      const out = slot >= event.games;
-                      const typed = out ? null : draft[slot];
-                      const differs = typed != null && v.trim() !== '' && Number(v) !== typed;
-                      return (
-                        <div key={k} className="flex w-16 flex-col items-center gap-1">
-                          <span className="text-[11px] text-muted">{out ? 'fuera' : `J${slot + 1}`}</span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={v}
-                            disabled={out}
-                            aria-label={`Juego ${slot + 1}`}
-                            onChange={(e) => update(r.key, { values: r.values.map((x, j) => (j === k ? e.target.value : x)) })}
-                            className={cx(
-                              'h-10 w-full rounded-lg border bg-surface text-center font-semibold tabular-nums',
-                              out ? 'border-line opacity-40 line-through' : differs ? 'border-warn' : 'border-line',
-                            )}
-                          />
-                          {differs && <span className="text-[10px] text-warn">anotado {typed}</span>}
-                          {!out && verified[slot] && <span className="text-[10px] text-muted">reemplaza ✓</span>}
-                        </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => update(r.key, { values: [...r.values, ''] })}
-                      className="mt-5 flex size-10 items-center justify-center rounded-lg border border-dashed border-line text-muted hover:text-fg"
-                      aria-label="Agregar juego"
-                    >
-                      <Plus className="size-4" />
-                    </button>
-                  </div>
+                  <ScanGames row={r} games={event.games} entry={entry} own={ownBalls} onValues={(values) => update(r.key, { values })} />
                   {r.playerId && !entry && <Badge tone="accent">Se inscribe en el evento al guardar</Badge>}
                 </Card>
               );
@@ -369,5 +356,139 @@ export function ScanModal({
         </div>
       )}
     </Modal>
+  );
+}
+
+/** La bola de los juegos de quien verifica (useOwnBalls). */
+export interface OwnBalls {
+  /**
+   * La fila con sus juegos (su key), si se puede anotar la bola de cada uno; null si no: no juega aquí, no marcó su fila
+   * o no se saben las bolas que ya tenían esos juegos (guardar podría pisarlas).
+   */
+  row: string | null;
+  /** Todas las de la cuenta (también las retiradas). */
+  balls: readonly Ball[];
+  /** La bola que se ve en un juego del evento (desde 0). */
+  ballOf: (game: number) => string | null;
+  /** Eligió una para ese juego (siempre la misma función: el botón de la bola es `memo`). */
+  onPick: (game: number | 'all', id: string | null) => void;
+  /** Lo que va a la cola al guardar sus juegos (juego del evento → pinos); null si no cambia ninguna bola. */
+  update: (values: Readonly<Record<number, number>>) => Record<string, string | null> | null;
+}
+
+/**
+ * La bola de cada juego de la fila de quien verifica, si también juega aquí (`myPlayerId`): set_game_balls anota los de
+ * la cuenta, así que nunca sale en la fila de otro. Lo elegido va por juego del evento y se olvida si esa fila cambia de
+ * jugador. Solo si se saben las bolas que ya tenían esos juegos: las del servidor (o ninguna, si la cuenta no tenía bolas
+ * al abrir) con lo que está en la cola encima (lo mismo que ve la hoja del evento).
+ */
+export function useOwnBalls(
+  open: boolean,
+  event: BowlingEvent,
+  entries: readonly Entry[],
+  rows: readonly Pick<RowDraft, 'key' | 'playerId' | 'include'>[],
+  myPlayerId: string | null,
+): OwnBalls {
+  const choice = useBallChoice();
+  // Su fila (la marcada, si está en dos).
+  const mine = myPlayerId ? (rows.find((r) => r.include && r.playerId === myPlayerId) ?? rows.find((r) => r.playerId === myPlayerId)) : undefined;
+  const mineKey = mine?.key ?? null;
+  const [picked, setPicked] = useState<{ row: string; balls: Record<number, string | null> } | null>(null);
+  // Otro jugador en esa fila (o se quitó): lo elegido se olvida, aunque después vuelva a ser suya.
+  useEffect(() => {
+    setPicked((p) => (p && p.row !== mineKey ? null : p));
+  }, [mineKey]);
+  // La cuenta no tenía bolas (ni retiradas) al abrir: sus juegos de aquí no tenían ninguna. Se fija en cada apertura (la
+  // hoja vive con la pestaña): al agregar la primera aquí mismo no se vuelven a leer y lo elegido no se pierde.
+  const noneAtOpen = useRef<boolean | null>(null);
+  if (!open) noneAtOpen.current = null;
+  else if (noneAtOpen.current == null && choice.canPick) noneAtOpen.current = choice.balls.length === 0;
+  // Sin bolas al abrir (y las de ahora se agregaron aquí) no se piden: ninguno tenía bola. Si llega una de otro teléfono,
+  // la lista del teléfono estaba vieja: se piden.
+  const noneYet = noneAtOpen.current === true && choice.balls.every((b) => ballAddedHere(b.id));
+  const evBalls = useMyBallGames(event.id, open && !!mine && noneAtOpen.current != null && !noneYet);
+  const server = noneYet ? {} : !evBalls.loading && !evBalls.error ? ballsByGame(evBalls.data, 'event', event.id) : null;
+  // null = no se sabe (sin la lista de bolas, o sin leer sus juegos y sin señal): la bola no sale ni se guarda.
+  const had = noneAtOpen.current == null ? null : knownBalls(event.games, server, queuedBallsByGame('event', event.id));
+  const row = mine?.include && had ? mine.key : null;
+  const scored = slots(entries.find((e) => e.playerId === myPlayerId)?.scores, event.games, null);
+  const own = picked && picked.row === mineKey ? picked.balls : {};
+  const ballOf = (game: number) => scanGameBall(had ?? {}, own, game, scored[game] != null, choice.auto);
+  const onPick = useCallback(
+    (game: number | 'all', id: string | null) => {
+      if (game === 'all' || !mineKey) return;
+      setPicked((p) => ({ row: mineKey, balls: { ...(p?.row === mineKey ? p.balls : {}), [game]: id } }));
+    },
+    [mineKey],
+  );
+  return {
+    row,
+    balls: choice.balls,
+    ballOf,
+    onPick,
+    update: (values) => (row && had ? scanBallUpdate(had, values, event.games, ballOf) : null),
+  };
+}
+
+/**
+ * Los juegos de una fila: el puntaje de cada juego del evento (desde «Desde J»; los que no caben, tachados) y, en la de
+ * quien verifica (`own.row`), la bola de cada uno debajo.
+ */
+export function ScanGames({
+  row,
+  games,
+  entry,
+  own,
+  onValues,
+}: {
+  row: Pick<RowDraft, 'key' | 'start' | 'values'>;
+  games: number;
+  entry: Entry | null;
+  own?: OwnBalls | null;
+  onValues: (values: string[]) => void;
+}) {
+  const draft = slots(entry?.scores, games, null);
+  const verified = slots(entry?.photos, games, null);
+  const ball = own && own.row === row.key ? own : null;
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {row.values.map((v, k) => {
+          const slot = row.start + k;
+          const out = slot >= games;
+          const typed = out ? null : draft[slot];
+          const differs = typed != null && v.trim() !== '' && Number(v) !== typed;
+          return (
+            <div key={k} className="flex w-16 flex-col items-center gap-1">
+              <span className="text-[11px] text-muted">{out ? 'fuera' : `J${slot + 1}`}</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={v}
+                disabled={out}
+                aria-label={`Juego ${slot + 1}`}
+                onChange={(e) => onValues(row.values.map((x, j) => (j === k ? e.target.value : x)))}
+                className={cx(
+                  'h-10 w-full rounded-lg border bg-surface text-center font-semibold tabular-nums',
+                  out ? 'border-line opacity-40 line-through' : differs ? 'border-warn' : 'border-line',
+                )}
+              />
+              {ball && !out && <GameBallChip game={slot} balls={ball.balls} value={ball.ballOf(slot)} onPick={ball.onPick} />}
+              {differs && <span className="text-[10px] text-warn">anotado {typed}</span>}
+              {!out && verified[slot] && <span className="text-[10px] text-muted">reemplaza ✓</span>}
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => onValues([...row.values, ''])}
+          className="mt-5 flex size-10 items-center justify-center rounded-lg border border-dashed border-line text-muted hover:text-fg"
+          aria-label="Agregar juego"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
+      {ball && <p className="text-xs text-muted">Son tus juegos: debajo de cada uno, anota con qué bola lo tiraste.</p>}
+    </>
   );
 }
