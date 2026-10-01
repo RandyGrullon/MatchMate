@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { CloudUpload, Grid3x3, Loader2, Plus, Target, Trash2 } from 'lucide-react';
 import {
   SOLO_MAX_GAMES,
@@ -16,7 +16,7 @@ import { queuedGameBalls, rememberBall, useMyBallGames } from '../../lib/data/ba
 import { uuidv7 } from '../../lib/db/ids';
 import { isValidScore } from '../../lib/stats';
 import type { GameFrames } from '../../lib/types';
-import { BallDot, BallSelect, GameBallSelect, useBallChoice } from '../balls/BallPicker';
+import { AllGamesBall, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useFeedback } from '../feedback';
 import { framesMode } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
@@ -119,29 +119,43 @@ export function SoloGameSheet({
   const [slots, setSlots] = useState(start.slots);
   const [framesFor, setFramesFor] = useState<number | null>(null);
   const [busy, setBusy] = useState<'save' | 'delete' | null>(null);
-  // Con qué bola tiró cada juego (si la cuenta tiene bolas). `picked`: lo que eligió por juego; `bulk`: la de «todos los
-  // juegos» (también para los que agregue después); si no, la que ya tenía el juego y, en uno nuevo, la última que usó.
+  // Con qué bola tiró cada juego (son sus juegos: sale aunque la cuenta no tenga bolas, con «Agregar bola»). `picked`: lo
+  // que eligió por juego; `bulk`: la de «todos los juegos» (también para los que agregue después); si no, la que ya tenía
+  // el juego y, en uno nuevo, la última que usó.
   const choice = useBallChoice();
   const tagged = useMyBallGames(session?.id ?? null, !!session && choice.balls.length > 0);
   // Las que ya tenía: las del servidor (null si no se pudieron leer; ninguna si la cuenta no tiene bolas) con lo que está
   // en la cola encima (guardado sin señal). null = no se sabe: la bola no sale y al guardar solo se dice cómo se movieron
-  // los juegos (el servidor les pasa las que tenían).
+  // los juegos (el servidor les pasa las que tenían). Si la cuenta no tenía bolas al abrir, sus juegos no tenían ninguna:
+  // al agregar la primera aquí no pasa a «no se sabe» mientras se leen (se perdería la que eligió).
   const serverHad = !session
     ? {}
     : choice.balls.length
       ? !tagged.loading && !tagged.error
         ? ballsByGame(tagged.data, 'solo', session.id)
-        : null
+        : choice.noBallsAtStart
+          ? {}
+          : null
       : choice.loaded
         ? {}
         : null;
   const queued = session ? queuedGameBalls('solo', session.id) : null;
   const known = session ? knownBalls(session.scores.length, serverHad, queued) : {};
   const ballsReady = known != null;
-  const showBalls = choice.has && ballsReady;
+  const showBalls = choice.canPick && ballsReady;
+  // No se pudieron leer las bolas de estos juegos (sin señal): no se cambian y se dice por qué.
+  const ballsUnread = choice.canPick && !ballsReady && !!tagged.error;
   const [picked, setPicked] = useState<Record<number, string | null>>({});
   const [bulk, setBulk] = useState<string | null | undefined>(undefined);
   const ballPick = useRef<string | null>(null);
+  // Eligió la bola de un juego o la de todos (la de todos reemplaza la que eligió en cada uno). Siempre la misma
+  // función: los botones de las bolas no se vuelven a dibujar con cada tecla.
+  const pickBall = useCallback((game: number | 'all', id: string | null) => {
+    if (game === 'all') {
+      setBulk(id);
+      setPicked({});
+    } else setPicked((p) => ({ ...p, [game]: id }));
+  }, []);
 
   const { values, frames } = slots;
   const games = slotsToGames(values, frames);
@@ -149,7 +163,7 @@ export function SoloGameSheet({
   const dateOk = !!date && date >= minDate && date <= today;
   const canSave = games.scores.length > 0 && !games.invalid && dateOk && !busy;
   const series = games.scores.reduce((a, b) => a + b, 0);
-  const dirty = soloSheetChanged(start, { date, venue, note, shared, slots }) || Object.keys(picked).length > 0;
+  const dirty = soloSheetChanged(start, { date, venue, note, shared, slots }) || Object.keys(picked).length > 0 || bulk !== undefined;
   const had = known ?? {};
   const auto = session ? commonBall(Object.values(had)) : choice.auto;
   const ballOf = (i: number): string | null =>
@@ -157,7 +171,6 @@ export function SoloGameSheet({
   const scored = values.flatMap((v, i) => (v.trim() ? [i] : []));
   // La bola de «todos los juegos» (undefined: los juegos tienen bolas distintas).
   const allBall = sameBall((scored.length ? scored : values.map((_, i) => i)).map(ballOf));
-  const colorOf = (id: string | null) => choice.balls.find((b) => b.id === id)?.color ?? null;
   // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
   const byPins = framesMode() === 'pines';
 
@@ -216,7 +229,6 @@ export function SoloGameSheet({
    */
   function ballsToSave(): Record<string, GameBall> | undefined {
     if (!session) {
-      if (!choice.balls.length) return undefined;
       const out = compactBalls(values, Object.fromEntries(values.map((_, i) => [i, ballOf(i)])));
       return Object.values(out).some(Boolean) ? out : undefined;
     }
@@ -303,16 +315,12 @@ export function SoloGameSheet({
             )}
           </div>
 
-          {showBalls && (
-            <BallSelect
-              balls={choice.balls}
-              value={allBall}
-              onChange={(id) => {
-                setBulk(id);
-                setPicked(Object.fromEntries(values.map((_, i) => [i, id])));
-              }}
-              hint="Para todos los juegos. La de un juego se cambia al anotarlo por cuadros o pines."
-            />
+          {showBalls ? (
+            <AllGamesBall balls={choice.balls} value={allBall} onPick={pickBall} today={today} />
+          ) : (
+            ballsUnread && (
+              <p className="text-xs text-muted">Sin señal no se ven las bolas de estos juegos (se quedan como estaban). Ábrelo con señal para cambiarlas.</p>
+            )
           )}
 
           <div className="flex flex-col gap-1.5">
@@ -322,10 +330,7 @@ export function SoloGameSheet({
                 const bad = !!v.trim() && !isValidScore(Number(v));
                 return (
                   <div key={i} className="flex w-16 flex-col items-center gap-0.5">
-                    <span className="flex items-center gap-1 text-[11px] text-muted">
-                      J{i + 1}
-                      {allBall === undefined && ballOf(i) && <BallDot color={colorOf(ballOf(i))} className="size-2.5" />}
-                    </span>
+                    <span className="text-[11px] text-muted">J{i + 1}</span>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -340,6 +345,8 @@ export function SoloGameSheet({
                         bad ? 'border-danger text-danger' : frames[i] ? 'border-accent' : 'border-line',
                       )}
                     />
+                    {/* La bola de este juego (también al escribir solo el total). */}
+                    {showBalls && <GameBallChip game={i} balls={choice.balls} value={ballOf(i)} onPick={pickBall} today={today} className="mt-0.5" />}
                     <button
                       type="button"
                       onClick={() => setFramesFor(i)}
@@ -401,7 +408,11 @@ export function SoloGameSheet({
         title={`Juego ${(framesFor ?? 0) + 1}`}
         resetKey={String(framesFor)}
         startMode={framesMode()}
-        top={showBalls && framesFor != null ? <GameBallSelect key={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} /> : undefined}
+        top={
+          showBalls && framesFor != null ? (
+            <GameBallSelect key={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} game={framesFor} today={today} />
+          ) : undefined
+        }
         initial={{
           score: framesFor != null && values[framesFor]?.trim() && isValidScore(Number(values[framesFor])) ? Number(values[framesFor]) : null,
           frames: framesFor != null ? (frames[framesFor] ?? null) : null,

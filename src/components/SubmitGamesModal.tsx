@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Grid3x3, Plus, Send, Sparkles, Target, WifiOff } from 'lucide-react';
 import { ballForGame, sameBall, submissionBalls } from '../lib/balls';
 import { setSubmissionScan, submitGames } from '../lib/data';
@@ -10,7 +10,7 @@ import { rowFor } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
 import { isValidScore } from '../lib/stats';
 import type { BowlingEvent, Entry, GameFrames, Player } from '../lib/types';
-import { BallDot, BallSelect, GameBallSelect, useBallChoice } from './balls/BallPicker';
+import { AllGamesBall, GameBallChip, GameBallSelect, useBallChoice } from './balls/BallPicker';
 import { useFeedback } from './feedback';
 import { framesMode } from './frames/FrameEditor';
 import { ScoreEntryModal } from './frames/ScoreEntryModal';
@@ -23,9 +23,33 @@ const BY_DATE = '__fecha__';
 /** Cuánto se espera la respuesta del servidor antes de dar el envío por guardado (sin señal). */
 const OFFLINE_WAIT_MS = 6000;
 
+/** set_game_balls anota la bola hasta el juego 10 (claves 0 a 9): de ahí en adelante no se elige ni se manda. */
+const BALL_GAMES = 10;
+
 /** Juegos del borrador con al menos los del evento (J1…Jn). */
 function padded(values: string[] | undefined, games = 3): string[] {
   return Array.from({ length: Math.max(games, values?.length ?? 0) }, (_, i) => values?.[i] ?? '');
+}
+
+/**
+ * Las bolas al elegir la de un juego: ese juego queda con la elegida; los que siguen y ya tienen pinos se quedan con la
+ * bola que mostraban (la heredaban: no cambian solos). Los vacíos, y los que no mostraban ninguna, la heredan como siempre.
+ */
+export function pickGameBall(
+  balls: Readonly<Record<string, string | null>>,
+  game: number,
+  id: string | null,
+  values: readonly string[],
+  auto: string | null,
+): Record<string, string | null> {
+  const out = { ...balls };
+  values.forEach((v, j) => {
+    if (j <= game || v.trim() === '' || balls[String(j)] !== undefined) return;
+    const had = ballForGame(balls, j, auto);
+    if (had) out[String(j)] = had;
+  });
+  out[String(game)] = id;
+  return out;
 }
 
 /** Jugador: anota sus juegos (vista previa local, por total o por cuadros), adjunta la foto y lo envía al admin. */
@@ -45,7 +69,7 @@ export function SubmitGamesModal({
   /** Evento que se abre elegido (desde la pantalla del evento). */
   preferEventId?: string;
 }) {
-  const { lid, league } = useLeagueCtx();
+  const { lid, league, myPlayerId } = useLeagueCtx();
   const requirePhoto = league.requirePhoto !== false;
   const { toast, confirm } = useFeedback();
 
@@ -54,15 +78,38 @@ export function SubmitGamesModal({
     return events.filter((e) => parseDate(e.date).getTime() >= cutoff || myEntries.some((m) => m.eventId === e.id) || e.id === preferEventId);
   }, [events, myEntries, preferEventId]);
 
-  const [eventId, setEventId] = useState('');
   const today = toIsoDate(new Date());
-  const [date, setDate] = useState(today);
-  const [values, setValues] = useState<string[]>([]);
-  const [frames, setFrames] = useState<Record<string, GameFrames>>({});
-  // Con qué bola tiró cada juego (si la cuenta tiene bolas; null = sin bola). Va en el borrador y con el envío.
-  const [balls, setBalls] = useState<Record<string, string | null>>({});
+  /** Con qué se abre: el evento pedido; si no, donde se quedó el último borrador; si no, el más reciente que ya se jugó (o por fecha). */
+  function opening() {
+    const preferred = preferEventId ? recent.find((e) => e.id === preferEventId) : undefined;
+    const last = preferred ? null : latestDraft(lid, player.id);
+    const ev =
+      preferred ??
+      (last?.eventId === BY_DATE ? undefined : (recent.find((e) => e.id === last?.eventId) ?? recent.find((e) => e.date <= today)));
+    const id = ev?.id ?? BY_DATE;
+    const d = loadDraft(lid, player.id, id);
+    return { id, date: id === BY_DATE ? (d?.date ?? today) : today, values: padded(d?.values, ev?.games), frames: d?.frames ?? {}, balls: d?.balls ?? {} };
+  }
+  // Si ya se monta abierto, se dibuja de una vez con lo del borrador (no con los juegos vacíos hasta el efecto de abrir).
+  const [first] = useState(() => (open ? opening() : null));
+  const [eventId, setEventId] = useState(first?.id ?? '');
+  const [date, setDate] = useState(first?.date ?? today);
+  const [values, setValues] = useState<string[]>(first?.values ?? []);
+  const [frames, setFrames] = useState<Record<string, GameFrames>>(first?.frames ?? {});
+  // Con qué bola tiró cada juego (lo que eligió; null = sin bola). Va en el borrador y con el envío.
+  const [balls, setBalls] = useState<Record<string, string | null>>(first?.balls ?? {});
   const choice = useBallChoice();
+  // La bola sale solo en los juegos de la cuenta (set_game_balls anota los de quien entró) y con su lista de bolas leída,
+  // aunque no tenga ninguna (la agrega ahí mismo). Sin señal y sin la lista en el teléfono no se sabe: no sale.
+  const ballsOn = player.id === myPlayerId && choice.canPick;
   const ballPick = useRef<string | null>(null);
+  // Lo de ahora para elegir desde los botones de las bolas: su onPick es siempre el mismo (no se redibujan con cada tecla).
+  const now = useRef({ values, auto: choice.auto });
+  now.current = { values, auto: choice.auto };
+  const pickBall = useCallback((game: number | 'all', id: string | null) => {
+    const { values: vs, auto } = now.current;
+    setBalls((bs) => (game === 'all' ? Object.fromEntries(vs.map((_, i) => [String(i), id])) : pickGameBall(bs, game, id, vs, auto)));
+  }, []);
   const [photo, setPhoto] = useState<CompressedImage | null>(null);
   // La foto se lee en segundo plano: se puede enviar sin esperar y lo leído se agrega al envío después.
   const [scanId, setScanId] = useState<string | null>(null);
@@ -93,20 +140,13 @@ export function SubmitGamesModal({
       if (scanId !== handedOff.current) cancelScan(scanId);
       return;
     }
-    // El evento pedido; si no, donde se quedó el último borrador; si no, el más reciente que ya se jugó (o por fecha).
-    const preferred = preferEventId ? recent.find((e) => e.id === preferEventId) : undefined;
-    const last = preferred ? null : latestDraft(lid, player.id);
-    const ev =
-      preferred ??
-      (last?.eventId === BY_DATE ? undefined : (recent.find((e) => e.id === last?.eventId) ?? recent.find((e) => e.date <= today)));
-    const id = ev?.id ?? BY_DATE;
-    const d = loadDraft(lid, player.id, id);
-    setEventId(id);
-    setDate(id === BY_DATE ? (d?.date ?? today) : today);
-    setValues(padded(d?.values, ev?.games));
-    setFrames(d?.frames ?? {});
-    setBalls(d?.balls ?? {});
-    loadedValues.current = `${id}:${padded(d?.values, ev?.games).join('|')}`;
+    const o = opening();
+    setEventId(o.id);
+    setDate(o.date);
+    setValues(o.values);
+    setFrames(o.frames);
+    setBalls(o.balls);
+    loadedValues.current = `${o.id}:${o.values.join('|')}`;
     touched.current = false;
     setPhoto(null);
     setScanId(null);
@@ -156,6 +196,19 @@ export function SubmitGamesModal({
     });
   }
 
+  /** Otro juego (por fecha): con la bola del anterior, también si es «Sin bola» (eso no se hereda solo). */
+  function addGame() {
+    const n = values.length;
+    setValues((v) => [...v, '']);
+    setBalls((bs) => {
+      const next = { ...bs };
+      // Lo de un juego que ya no estaba (de otro evento con más juegos) no vale para este.
+      delete next[String(n)];
+      if (bs[String(n - 1)] === null) next[String(n)] = null;
+      return next;
+    });
+  }
+
   const scanning = job?.status === 'leyendo' || job?.status === 'esperando';
   const rows = job?.status === 'listo' ? job.rows : [];
   const scanError =
@@ -178,7 +231,6 @@ export function SubmitGamesModal({
   const withScore = typed.flatMap((v, i) => (v != null ? [i] : []));
   // La bola de «todos los juegos» (undefined: los juegos tienen bolas distintas).
   const allBall = sameBall((withScore.length ? withScore : values.map((_, i) => i)).map(ballOf));
-  const colorOf = (id: string | null) => choice.balls.find((b) => b.id === id)?.color ?? null;
 
   function onPicked(img: CompressedImage) {
     // Otra foto: la anterior ya no se usa.
@@ -242,7 +294,7 @@ export function SubmitGamesModal({
         scanned,
         frames: Object.keys(kept).length ? kept : null,
         photo,
-        balls: submissionBalls(typed, balls, choice.auto, choice.has),
+        balls: submissionBalls(typed.slice(0, BALL_GAMES), balls, choice.auto, ballsOn),
       });
       // La foto todavía se está leyendo: lo leído se agrega al envío cuando termine (aunque ya se cerró esto).
       if (photo && scanId && scanning) {
@@ -319,24 +371,14 @@ export function SubmitGamesModal({
             </Field>
           )}
 
-          {choice.has && (
-            <BallSelect
-              balls={choice.balls}
-              value={allBall}
-              onChange={(id) => setBalls(Object.fromEntries(values.map((_, i) => [String(i), id])))}
-              hint="Para todos los juegos. La de un juego se cambia al anotarlo por cuadros o pines."
-            />
-          )}
+          {ballsOn && <AllGamesBall balls={choice.balls} value={allBall} onPick={pickBall} today={today} />}
 
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-muted">Tus juegos</span>
             <div className="flex flex-wrap gap-2">
               {values.map((v, i) => (
                 <div key={i} className="flex w-16 flex-col items-center gap-1">
-                  <span className="flex items-center gap-1 text-[11px] text-muted">
-                    J{i + 1}
-                    {allBall === undefined && ballOf(i) && <BallDot color={colorOf(ballOf(i))} className="size-2.5" />}
-                  </span>
+                  <span className="text-[11px] text-muted">J{i + 1}</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -350,6 +392,7 @@ export function SubmitGamesModal({
                       v.trim() && !isValidScore(Number(v)) ? 'border-danger text-danger' : frames[i] ? 'border-accent' : 'border-line',
                     )}
                   />
+                  {ballsOn && i < BALL_GAMES && <GameBallChip game={i} balls={choice.balls} value={ballOf(i)} onPick={pickBall} today={today} />}
                   <button
                     type="button"
                     onClick={() => setFramesFor(i)}
@@ -367,7 +410,7 @@ export function SubmitGamesModal({
               {byDate && values.length < 10 && (
                 <button
                   type="button"
-                  onClick={() => setValues((v) => [...v, ''])}
+                  onClick={addGame}
                   className="mt-5 flex size-11 items-center justify-center rounded-lg border border-dashed border-line text-muted hover:text-fg"
                   aria-label="Agregar otro juego"
                 >
@@ -453,7 +496,11 @@ export function SubmitGamesModal({
         title={`Juego ${(framesFor ?? 0) + 1}`}
         resetKey={String(framesFor)}
         startMode={framesMode()}
-        top={choice.has && framesFor != null ? <GameBallSelect key={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} /> : undefined}
+        top={
+          ballsOn && framesFor != null && framesFor < BALL_GAMES ? (
+            <GameBallSelect key={framesFor} game={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} today={today} />
+          ) : undefined
+        }
         initial={{
           score: framesFor != null && values[framesFor]?.trim() ? Number(values[framesFor]) : null,
           frames: framesFor != null ? (frames[framesFor] ?? null) : null,
@@ -469,7 +516,7 @@ export function SubmitGamesModal({
             else delete next[i];
             return next;
           });
-          if (choice.has) setBalls((bs) => ({ ...bs, [String(i)]: ballPick.current }));
+          if (ballsOn && i < BALL_GAMES) setBalls((bs) => pickGameBall(bs, i, ballPick.current, values, choice.auto));
           setFramesFor(null);
         }}
       />
