@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowRightLeft, Trash2 } from 'lucide-react';
 import { Avatar } from '../../components/Avatar';
+import { useBusy } from '../../components/busy';
 import { Button, Field, Input, ListSkeleton, Modal, cx } from '../../components/ui';
 import { useLeagueMembers } from '../../lib/data';
 import { adminDeleteLeague, transferLeague, type AdminLeague } from '../../lib/data/admin';
@@ -89,7 +90,8 @@ export function TransferLeagueModal({ league, onClose }: { league: LeagueRef | n
 /** Borrar una liga de cualquiera: hay que escribir el nombre para confirmar. Queda en la auditoría. */
 export function DeleteLeagueModal({ league, onClose }: { league: Pick<AdminLeague, 'id' | 'name' | 'kind' | 'members' | 'events'> | null; onClose: () => void }) {
   const [typed, setTyped] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Con Enter en el campo también se manda: así no se borra dos veces.
+  const busy = useBusy();
   const run = useRun();
   const matches = !!league && typed.trim() === league.name.trim();
   const what = league?.kind === 'torneo' ? 'el torneo' : 'la liga';
@@ -99,9 +101,7 @@ export function DeleteLeagueModal({ league, onClose }: { league: Pick<AdminLeagu
   };
   async function submit() {
     if (!league || !matches) return;
-    setBusy(true);
-    const ok = await run(() => adminDeleteLeague(league.id), `Se borró «${league.name}»`);
-    setBusy(false);
+    const ok = await busy.run('delete', () => run(() => adminDeleteLeague(league.id), `Se borró «${league.name}»`));
     // La capa de datos ya vuelve a pedir la consola (ligas, cuentas, auditoría).
     if (ok) close();
   }
@@ -115,7 +115,7 @@ export function DeleteLeagueModal({ league, onClose }: { league: Pick<AdminLeagu
           <Button onClick={close} className="max-sm:min-h-11">
             Cancelar
           </Button>
-          <Button variant="danger" icon={<Trash2 className="size-4" />} disabled={!matches} loading={busy} onClick={submit} className="max-sm:min-h-11">
+          <Button variant="danger" icon={<Trash2 className="size-4" />} disabled={!matches} loading={busy.isBusy()} onClick={submit} className="max-sm:min-h-11">
             Borrar para siempre
           </Button>
         </>

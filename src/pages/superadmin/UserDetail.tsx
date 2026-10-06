@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Ban, ChevronRight, Copy, Crown, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Ban, ChevronRight, Copy, Crown, LockOpen, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Avatar } from '../../components/Avatar';
+import { useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
 import { Badge, Button, Empty, Field, Modal, Skeleton } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
@@ -36,10 +37,14 @@ export function UserBadges({ u, me }: { u: AdminUser; me?: string }) {
   );
 }
 
-/** Acciones sobre una cuenta (hacer o quitar superadmin, bloquear, desbloquear, copiar el correo). */
+/**
+ * Acciones sobre una cuenta (hacer o quitar superadmin, bloquear, desbloquear, copiar el correo). `busy` dice cuál
+ * espera (`super:<id>`, `unblock:<id>`, `copy`), para su ruedita.
+ */
 export function useUserActions() {
   const auth = useAuth();
   const run = useRun();
+  const busy = useBusy();
   const { confirm, toast } = useFeedback();
   const me = auth.user?.uid;
 
@@ -55,7 +60,7 @@ export function useUserActions() {
     });
     if (!ok) return;
     // setUserSuperadmin ya vuelve a pedir la consola (lista, resumen y auditoría) y el perfil de esa cuenta.
-    await run(() => setUserSuperadmin(u.id, value), value ? `${u.name} ahora es superadmin` : `${u.name} ya no es superadmin`);
+    await busy.run(`super:${u.id}`, () => run(() => setUserSuperadmin(u.id, value), value ? `${u.name} ahora es superadmin` : `${u.name} ya no es superadmin`));
   }
 
   async function unblock(u: Pick<AdminUser, 'id' | 'name'>) {
@@ -64,16 +69,17 @@ export function useUserActions() {
       message: 'Podrá volver a guardar cosas en sus ligas.',
       confirmText: 'Desbloquear',
     });
-    if (ok) await run(() => unblockUser(u.id), `${u.name} ya puede usar la app`);
+    if (ok) await busy.run(`unblock:${u.id}`, () => run(() => unblockUser(u.id), `${u.name} ya puede usar la app`));
   }
 
   async function copyEmail(email: string | null) {
     if (!email) return;
-    const ok = await copyText(email);
+    const ok = await busy.run('copy', () => copyText(email));
+    if (ok === undefined) return;
     toast(ok ? 'Correo copiado' : 'No se pudo copiar el correo', ok ? 'ok' : 'error');
   }
 
-  return { me, toggleSuper, unblock, copyEmail, run };
+  return { me, toggleSuper, unblock, copyEmail, run, busy };
 }
 
 /** Ventana para bloquear una cuenta: el motivo es obligatorio (queda en la auditoría). */
@@ -133,9 +139,11 @@ export function BlockModal({ user, onClose }: { user: Pick<AdminUser, 'id' | 'na
 export function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const detail = useAdminUser(id);
   const u = detail.data && detail.data.id === id ? detail.data : null;
-  const { me, toggleSuper, unblock, copyEmail } = useUserActions();
+  const { me, toggleSuper, unblock, copyEmail, busy } = useUserActions();
   const [blocking, setBlocking] = useState<AdminUser | null>(null);
   const flags = u ? userFlags(u) : null;
+  // Mientras una acción espera, las demás se apagan (son sobre la misma cuenta).
+  const waiting = busy.isBusy();
 
   return (
     <>
@@ -147,21 +155,22 @@ export function UserDrawer({ id, onClose }: { id: string | null; onClose: () => 
           u && (
             <>
               {u.email && (
-                <Button icon={<Copy className="size-4" />} onClick={() => copyEmail(u.email)} className="max-sm:min-h-11">
+                <Button icon={<Copy className="size-4" />} loading={busy.isBusy('copy')} disabled={waiting} onClick={() => copyEmail(u.email)} className="max-sm:min-h-11">
                   Copiar correo
                 </Button>
               )}
               <Button
                 icon={u.superadmin ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
                 onClick={() => toggleSuper(u)}
-                disabled={u.id === me}
+                loading={busy.isBusy(`super:${u.id}`)}
+                disabled={u.id === me || waiting}
                 title={u.id === me ? 'No te puedes quitar superadmin a ti mismo' : undefined}
                 className="max-sm:min-h-11"
               >
                 {u.superadmin ? 'Quitar superadmin' : 'Hacer superadmin'}
               </Button>
               {flags?.blocked ? (
-                <Button variant="primary" onClick={() => unblock(u)} className="max-sm:min-h-11">
+                <Button variant="primary" icon={<LockOpen className="size-4" />} loading={busy.isBusy(`unblock:${u.id}`)} disabled={waiting} onClick={() => unblock(u)} className="max-sm:min-h-11">
                   Desbloquear
                 </Button>
               ) : (
@@ -169,7 +178,7 @@ export function UserDrawer({ id, onClose }: { id: string | null; onClose: () => 
                   variant="danger"
                   icon={<Ban className="size-4" />}
                   onClick={() => setBlocking(u)}
-                  disabled={!canBlock(u, me)}
+                  disabled={!canBlock(u, me) || waiting}
                   title={!canBlock(u, me) ? 'No se puede bloquear a un superadmin ni a ti mismo' : undefined}
                   className="max-sm:min-h-11"
                 >

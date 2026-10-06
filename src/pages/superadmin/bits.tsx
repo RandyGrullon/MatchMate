@@ -6,7 +6,8 @@
 import { forwardRef, useEffect, useId, useRef, type KeyboardEvent, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { Link } from 'react-router';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronLeft, ChevronRight, CircleAlert, Minus, RefreshCw, Search, X } from 'lucide-react';
-import { Button, Card, Empty, Input, MODAL_OPENED, Select, Skeleton, cx } from '../../components/ui';
+import { BusyIcon, useBusy } from '../../components/busy';
+import { Button, Card, Empty, Input, MODAL_OPENED, Select, Skeleton, cx, iconSizeClass } from '../../components/ui';
 import { deltaDirection, fmtDelta, fmtNum } from './format';
 import { PAGE_SIZES, retryReads } from './hooks';
 
@@ -139,15 +140,25 @@ export function Fact({ label, children }: { label: string; children: ReactNode }
 // ---------- Estados ----------
 
 /** Error al leer, con botón para volver a intentar. */
-export function ErrorRetry({ error, onRetry = retryReads, compact }: { error: Error; onRetry?: () => void; compact?: boolean }) {
+export function ErrorRetry({ error, onRetry = retryReads, compact }: { error: Error; onRetry?: () => unknown; compact?: boolean }) {
   const denied = /permission|permiso|no_permitido|42501/i.test(error.message);
+  const retrying = useBusy();
+  // Un momento mínimo girando (como LoadError): si falla de nuevo enseguida, que se note que sí lo intentó.
+  const retry = () =>
+    void retrying.run('reintentar', async () => {
+      try {
+        await Promise.all([onRetry(), new Promise((r) => setTimeout(r, 700))]);
+      } catch (e) {
+        console.warn('[reintentar]', e);
+      }
+    });
   if (compact)
     return (
       <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
         <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
         <span className="flex-1">{denied ? 'No tienes permiso para ver esto.' : 'No se pudo cargar.'}</span>
         {!denied && (
-          <Button size="sm" variant="ghost" icon={<RefreshCw className="size-3.5" />} onClick={onRetry}>
+          <Button size="sm" variant="ghost" icon={<RefreshCw className="size-3.5" />} loading={retrying.isBusy()} onClick={retry}>
             Intentar de nuevo
           </Button>
         )}
@@ -159,7 +170,7 @@ export function ErrorRetry({ error, onRetry = retryReads, compact }: { error: Er
         <p>{denied ? 'No tienes permiso para ver esto.' : 'Revisa tu conexión e intenta de nuevo.'}</p>
         {!denied && (
           <div className="mt-3 flex justify-center">
-            <Button icon={<RefreshCw className="size-4" />} onClick={onRetry} className="max-sm:min-h-11">
+            <Button icon={<RefreshCw className="size-4" />} loading={retrying.isBusy()} onClick={retry} className="max-sm:min-h-11">
               Intentar de nuevo
             </Button>
           </div>
@@ -254,6 +265,7 @@ export function FilterChips<K extends string>({
 
 /**
  * Control segmentado (radio): uno de pocos valores. Flechas para moverse, como un grupo de radios.
+ * `busy`: lo elegido se está guardando (la ruedita en vez de su ícono, del mismo tamaño, y no se cambia mientras).
  */
 export function Segmented<K extends string>({
   options,
@@ -261,6 +273,7 @@ export function Segmented<K extends string>({
   onChange,
   label,
   disabled,
+  busy,
   size = 'md',
 }: {
   options: readonly { value: K; label: string; icon?: ReactNode }[];
@@ -268,6 +281,7 @@ export function Segmented<K extends string>({
   onChange: (v: K) => void;
   label: string;
   disabled?: boolean;
+  busy?: boolean;
   size?: 'sm' | 'md';
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -280,7 +294,7 @@ export function Segmented<K extends string>({
     onChange(options[next].value);
   };
   return (
-    <div role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} className={cx('inline-flex max-w-full gap-1 rounded-xl bg-surface-2 p-1', disabled && 'opacity-60')}>
+    <div role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} aria-busy={busy || undefined} className={cx('inline-flex max-w-full gap-1 rounded-xl bg-surface-2 p-1', disabled && 'opacity-60')}>
       {options.map((o, i) => {
         const on = o.value === value;
         return (
@@ -293,7 +307,7 @@ export function Segmented<K extends string>({
             role="radio"
             aria-checked={on}
             tabIndex={on ? 0 : -1}
-            disabled={disabled}
+            disabled={disabled || busy}
             onClick={() => !on && onChange(o.value)}
             onKeyDown={(e) => onKey(e, i)}
             className={cx(
@@ -303,7 +317,7 @@ export function Segmented<K extends string>({
               on ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
             )}
           >
-            {o.icon}
+            {on && busy ? <BusyIcon busy className={iconSizeClass(o.icon)} /> : o.icon}
             {o.label}
           </button>
         );

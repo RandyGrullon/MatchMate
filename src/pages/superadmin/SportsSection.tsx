@@ -132,7 +132,7 @@ export default function SportsSection() {
                       label={`Estado de ${meta.label}`}
                       options={STATUS_OPTIONS}
                       value={status}
-                      disabled={busy}
+                      busy={busy}
                       onChange={(v) => change(meta.id, meta.label, v)}
                     />
                   ) : (

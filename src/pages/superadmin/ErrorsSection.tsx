@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Link } from 'react-router';
 import { Bug, CheckCircle2, Copy, Smartphone, Trash2, Users } from 'lucide-react';
+import { useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
 import { Badge, Button, Card, Empty } from '../../components/ui';
 import {
@@ -39,6 +39,7 @@ export default function ErrorsSection() {
   const { rows, total, hits, users } = errors.data;
   const run = useRun();
   const { confirm } = useFeedback();
+  const clearing = useBusy();
 
   async function clearAll() {
     const ok = await confirm({
@@ -47,7 +48,7 @@ export default function ErrorsSection() {
       confirmText: 'Borrar todos',
       danger: true,
     });
-    if (ok) await run(() => clearClientErrors(null), 'Errores borrados');
+    if (ok) await clearing.run('all', () => run(() => clearClientErrors(null), 'Errores borrados'));
   }
 
   return (
@@ -57,7 +58,7 @@ export default function ErrorsSection() {
         hint={sectionMeta('errores').hint}
         actions={
           rows.length > 0 && (
-            <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={clearAll} className="text-danger max-sm:min-h-11">
+            <Button variant="ghost" icon={<Trash2 className="size-4" />} loading={clearing.isBusy()} onClick={clearAll} className="text-danger max-sm:min-h-11">
               Borrar todos
             </Button>
           )
@@ -128,7 +129,7 @@ export default function ErrorsSection() {
 function ErrorRow({ e }: { e: AdminClientError }) {
   const run = useRun();
   const { confirm, toast } = useFeedback();
-  const [busy, setBusy] = useState(false);
+  const busy = useBusy<'fixed' | 'copy'>();
 
   async function fixed() {
     const ok = await confirm({
@@ -137,16 +138,15 @@ function ErrorRow({ e }: { e: AdminClientError }) {
       confirmText: 'Borrar el error',
     });
     if (!ok) return;
-    setBusy(true);
-    await run(() => clearClientErrors(e.fingerprint), 'Error borrado');
-    setBusy(false);
+    await busy.run('fixed', () => run(() => clearClientErrors(e.fingerprint), 'Error borrado'));
   }
 
   async function copy() {
     const text = [e.message, e.component && `Pantalla: ${e.component}`, e.route && `Ruta: ${e.route}`, e.appVersion && `Versión: ${e.appVersion}`, e.ua, e.stack]
       .filter(Boolean)
       .join('\n');
-    const ok = await copyText(text);
+    const ok = await busy.run('copy', () => copyText(text));
+    if (ok === undefined) return;
     toast(ok ? 'Copiado para pegarlo donde lo vayas a arreglar' : 'No se pudo copiar', ok ? 'ok' : 'error');
   }
 
@@ -209,10 +209,10 @@ function ErrorRow({ e }: { e: AdminClientError }) {
         </div>
       </details>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" icon={<Copy className="size-3.5" />} onClick={copy} className="max-sm:h-11">
+        <Button size="sm" variant="ghost" icon={<Copy className="size-3.5" />} loading={busy.isBusy('copy')} disabled={busy.isBusy()} onClick={copy} className="max-sm:h-11">
           Copiar
         </Button>
-        <Button size="sm" variant="ghost" icon={<CheckCircle2 className="size-3.5" />} onClick={fixed} loading={busy} className="max-sm:h-11">
+        <Button size="sm" variant="ghost" icon={<CheckCircle2 className="size-3.5" />} onClick={fixed} loading={busy.isBusy('fixed')} disabled={busy.isBusy()} className="max-sm:h-11">
           Ya se arregló
         </Button>
       </div>

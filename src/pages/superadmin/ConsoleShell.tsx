@@ -1,6 +1,7 @@
 import { Suspense, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { ArrowLeft, Crown, RefreshCw } from 'lucide-react';
+import { useBusy } from '../../components/busy';
 import { Brand, OfflineBar, TopActions } from '../../components/Shell';
 import { Button, Select, TopLoader, cx } from '../../components/ui';
 import { displayName, useAuth } from '../../lib/auth';
@@ -17,6 +18,13 @@ export function ConsoleShell({ section, badges, children }: { section: SectionKe
   const navigate = useNavigate();
   const location = useLocation();
   const current = sectionMeta(section);
+  // Vuelve a pedir todo sin quitar lo que se ve: la ruedita un momento mínimo para que se note.
+  const refreshing = useBusy();
+  const refresh = () =>
+    void refreshing.run('actualizar', async () => {
+      refreshAll();
+      await new Promise((r) => setTimeout(r, 700));
+    });
   return (
     <div className="min-h-dvh pb-[calc(2rem+env(safe-area-inset-bottom))]">
       <div className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
@@ -38,7 +46,15 @@ export function ConsoleShell({ section, badges, children }: { section: SectionKe
             <span className="truncate">Consola</span>
           </Link>
           <div className="ml-auto flex items-center gap-1">
-            <Button variant="ghost" icon={<RefreshCw className="size-4" />} onClick={refreshAll} aria-label="Actualizar los datos" title="Actualizar los datos" className="max-md:size-11 max-md:px-0">
+            <Button
+              variant="ghost"
+              icon={<RefreshCw className="size-4" />}
+              loading={refreshing.isBusy()}
+              onClick={refresh}
+              aria-label="Actualizar los datos"
+              title="Actualizar los datos"
+              className="max-md:size-11 max-md:px-0"
+            >
               <span className="hidden md:inline">Actualizar</span>
             </Button>
             <TopActions />

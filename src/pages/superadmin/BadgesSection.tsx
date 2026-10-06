@@ -4,6 +4,7 @@ import { Ban, BadgeCheck, EyeOff, Eye, Flag, FlaskConical, Play, RefreshCw, Tras
 import { Insignia } from '../../badges/visual';
 import { ReviewList } from '../../components/badges/ReviewsPanel';
 import { Badge, Button, Input, Loading, Modal, Textarea, cx } from '../../components/ui';
+import { BusyIcon, useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
 import { useBadgeNotices, useBadgeStats } from '../../lib/data/badges';
 import {
@@ -198,10 +199,11 @@ function ReportRow({ report: r, onAct }: { report: BadgeReport; onAct: (kind: 'h
   const v = useMemo(() => reportedView(r), [r]);
   const { confirm } = useFeedback();
   const run = useRun();
+  const busy = useBusy();
   const unhide = async () => {
     if (!r.design) return;
     const yes = await confirm({ title: `¿Dejar de esconder «${r.design.name}»?`, message: 'Vuelve archivado: la liga decide si lo activa otra vez.', confirmText: 'Dejar de esconder' });
-    if (yes && (await run(() => hideLeagueBadge(r.design!, false), 'Ya no está escondido'))) refreshAll();
+    if (yes && (await busy.run('unhide', () => run(() => hideLeagueBadge(r.design!, false), 'Ya no está escondido')))) refreshAll();
   };
   return (
     <li className="flex items-start gap-3 py-3">
@@ -228,7 +230,7 @@ function ReportRow({ report: r, onAct }: { report: BadgeReport; onAct: (kind: 'h
                 </Button>
               )}
               {r.design?.status === 'oculta' && (
-                <Button className="h-11" icon={<Eye className="size-4" />} onClick={() => void unhide()}>
+                <Button className="h-11" icon={<Eye className="size-4" />} loading={busy.isBusy('unhide')} onClick={() => void unhide()}>
                   Dejar de esconder
                 </Button>
               )}
@@ -258,16 +260,15 @@ function TermsPanel() {
   const run = useRun();
   const [text, setText] = useState('');
   const [whole, setWhole] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Al quitar, la clave lleva la palabra: solo esa muestra la ruedita.
+  const busy = useBusy<'add' | `rm:${string}`>();
   const words = text
     .split(/[,\n]/)
     .map((w) => w.trim())
     .filter(Boolean);
   const add = async () => {
     if (!words.length) return;
-    setBusy(true);
-    if (await run(() => editBlockedTerms({ add: words, whole }), words.length === 1 ? 'Palabra bloqueada' : 'Palabras bloqueadas')) setText('');
-    setBusy(false);
+    if (await busy.run('add', () => run(() => editBlockedTerms({ add: words, whole }), words.length === 1 ? 'Palabra bloqueada' : 'Palabras bloqueadas'))) setText('');
   };
   return (
     <Panel title="Palabras bloqueadas" subtitle="El creador de insignias rechaza nombres y textos que las tengan. Se comparan sin acentos ni mayúsculas, y con 0→o, 1→i, 3→e, 4→a, 5→s y @→a">
@@ -283,7 +284,7 @@ function TermsPanel() {
           <input type="checkbox" className="size-5 accent-[var(--color-accent)]" checked={whole} onChange={(e) => setWhole(e.target.checked)} />
           Solo la palabra entera
         </label>
-        <Button type="submit" variant="primary" className="h-11" loading={busy} disabled={!words.length}>
+        <Button type="submit" variant="primary" className="h-11" loading={busy.isBusy('add')} disabled={!words.length || busy.isBusy()}>
           Bloquear
         </Button>
       </form>
@@ -293,20 +294,25 @@ function TermsPanel() {
         </div>
       ) : terms.data.length ? (
         <ul className="mt-3 flex flex-wrap gap-2" aria-label="Palabras bloqueadas">
-          {terms.data.map((t) => (
-            <li key={t.term} className="inline-flex items-center gap-1 rounded-full bg-surface-2 py-0.5 pr-0.5 pl-3 text-sm">
-              <span className="font-medium">{t.term}</span>
-              {t.whole && <span className="text-xs text-muted">(entera)</span>}
-              <button
-                type="button"
-                aria-label={`Quitar ${t.term}`}
-                className="flex size-11 items-center justify-center rounded-full text-muted hover:bg-surface hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
-                onClick={() => void run(() => editBlockedTerms({ remove: [t.term] }), 'Quitada')}
-              >
-                <X className="size-4" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
+          {terms.data.map((t) => {
+            const removing = busy.isBusy(`rm:${t.term}`);
+            return (
+              <li key={t.term} className="inline-flex items-center gap-1 rounded-full bg-surface-2 py-0.5 pr-0.5 pl-3 text-sm">
+                <span className="font-medium">{t.term}</span>
+                {t.whole && <span className="text-xs text-muted">(entera)</span>}
+                <button
+                  type="button"
+                  aria-label={`Quitar ${t.term}`}
+                  aria-busy={removing || undefined}
+                  disabled={busy.isBusy()}
+                  className="flex size-11 items-center justify-center rounded-full text-muted hover:bg-surface hover:text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-60"
+                  onClick={() => void busy.run(`rm:${t.term}`, () => run(() => editBlockedTerms({ remove: [t.term] }), 'Quitada'))}
+                >
+                  <BusyIcon busy={removing} icon={<X className="size-4" aria-hidden="true" />} className="size-4" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="mt-3 text-sm text-muted">{terms.loading ? 'Cargando…' : 'La lista está vacía: el filtro solo revisa enlaces, teléfonos y letras repetidas.'}</p>
@@ -376,15 +382,14 @@ function EngineView() {
 function DeadJobs({ jobs }: { jobs: readonly EngineJob[] }) {
   const run = useRun();
   const { confirm } = useFeedback();
-  const [busy, setBusy] = useState<string | null>(null);
+  // Una a la vez (tocan los mismos trabajos): la que espera muestra la ruedita y las demás se apagan.
+  const busy = useBusy();
   const act = async (ids: number[], action: 'retry' | 'drop', key: string) => {
     if (action === 'drop') {
       const yes = await confirm({ title: ids.length === 1 ? '¿Borrar este trabajo?' : `¿Borrar ${ids.length} trabajos?`, message: 'No se vuelve a evaluar lo que tocaban hasta que cambie otro resultado.', confirmText: 'Borrar', danger: true });
       if (!yes) return;
     }
-    setBusy(key);
-    await run(() => badgeJobs(ids, action), action === 'retry' ? 'De vuelta en la cola' : 'Borrado');
-    setBusy(null);
+    await busy.run(key, () => run(() => badgeJobs(ids, action), action === 'retry' ? 'De vuelta en la cola' : 'Borrado'));
   };
   return (
     <Panel
@@ -392,7 +397,7 @@ function DeadJobs({ jobs }: { jobs: readonly EngineJob[] }) {
       subtitle="Fallaron 5 veces (el motor, la foto de datos o la base). Sin error guardado: la función se quedó sin tiempo o sin CPU; un historial grande conviene partirlo por liga"
       actions={
         jobs.length > 1 ? (
-          <Button size="sm" className="max-sm:h-11" icon={<RefreshCw className="size-3.5" />} loading={busy === 'all'} onClick={() => void act(jobs.map((j) => j.id), 'retry', 'all')}>
+          <Button size="sm" className="max-sm:h-11" icon={<RefreshCw className="size-3.5" />} loading={busy.isBusy('all')} disabled={busy.isBusy()} onClick={() => void act(jobs.map((j) => j.id), 'retry', 'all')}>
             Reintentar todos
           </Button>
         ) : undefined
@@ -411,10 +416,10 @@ function DeadJobs({ jobs }: { jobs: readonly EngineJob[] }) {
               <p className="rounded-lg bg-danger-soft px-2 py-1 font-mono text-xs break-words text-danger">{shortError(j.lastError)}</p>
               <p className="text-xs text-muted">{`Entró ${fmtDateTime(j.createdAt)}`}</p>
               <div className="flex flex-wrap gap-2">
-                <Button className="h-11" icon={<RefreshCw className="size-4" />} loading={busy === `r${j.id}`} onClick={() => void act([j.id], 'retry', `r${j.id}`)}>
+                <Button className="h-11" icon={<RefreshCw className="size-4" />} loading={busy.isBusy(`r${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'retry', `r${j.id}`)}>
                   Reintentar
                 </Button>
-                <Button className="h-11" variant="ghost" icon={<Trash2 className="size-4" />} loading={busy === `d${j.id}`} onClick={() => void act([j.id], 'drop', `d${j.id}`)}>
+                <Button className="h-11" variant="ghost" icon={<Trash2 className="size-4" />} loading={busy.isBusy(`d${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'drop', `d${j.id}`)}>
                   Borrar
                 </Button>
               </div>
