@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { UserCheck, UserPlus } from 'lucide-react';
 import { getUserId } from '../../lib/data/client';
 import { setFollowing } from '../../lib/data/follows';
+import { BusyIcon } from '../busy';
 import { saveErrorMessage, useFeedback } from '../feedback';
 import { cx } from '../ui';
 
@@ -60,6 +61,7 @@ export function FollowButton({
     <button
       type="button"
       onClick={toggle}
+      disabled={busy}
       aria-pressed={on}
       aria-busy={busy}
       aria-label={name ? `${on ? 'Dejar de seguir a' : 'Seguir a'} ${name}` : undefined}
@@ -73,7 +75,7 @@ export function FollowButton({
         className,
       )}
     >
-      {on ? <UserCheck className="size-4" aria-hidden="true" /> : <UserPlus className="size-4" aria-hidden="true" />}
+      <BusyIcon busy={busy} icon={on ? <UserCheck className="size-4" aria-hidden="true" /> : <UserPlus className="size-4" aria-hidden="true" />} />
       {label}
     </button>
   );

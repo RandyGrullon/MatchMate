@@ -6,6 +6,7 @@ import { usePeople, type PersonHit } from '../../lib/data/people';
 import { useTopic } from '../../lib/data/topics';
 import type { League, LeagueKind } from '../../lib/types';
 import { Avatar } from '../Avatar';
+import { BusyIcon, useBusy } from '../busy';
 import { useFeedback } from '../feedback';
 import { whatsappShareUrl } from '../match/format';
 import { copyText } from '../share/actions';
@@ -351,10 +352,27 @@ const roundItem =
   'flex w-20 flex-col items-center gap-1.5 text-center text-xs leading-tight font-medium text-muted transition hover:text-fg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50';
 const roundIcon = 'flex size-12 items-center justify-center rounded-full';
 
-function RoundButton({ label, icon, tone, onClick, disabled }: { label: string; icon: ReactNode; tone: string; onClick: () => void; disabled?: boolean }) {
+/** `busy`: espera (el link, el portapapeles o el menú del teléfono): la ruedita en lugar del ícono. */
+function RoundButton({
+  label,
+  icon,
+  tone,
+  onClick,
+  disabled,
+  busy = false,
+}: {
+  label: string;
+  icon: ReactNode;
+  tone: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className={roundItem}>
-      <span className={cx(roundIcon, tone)}>{icon}</span>
+    <button type="button" onClick={onClick} disabled={disabled || busy} aria-busy={busy || undefined} className={roundItem}>
+      <span className={cx(roundIcon, tone)}>
+        <BusyIcon busy={busy} icon={icon} className="size-5" />
+      </span>
       {label}
     </button>
   );
@@ -390,6 +408,7 @@ export function ShareRow({
 }) {
   const { toast } = useFeedback();
   const [canShare] = useState(canNativeShare);
+  const act = useBusy<'copiar' | 'mas'>();
   const text = shareText ?? inviteShareText(leagueName);
   const url = link.kind === 'url' ? link.url : null;
   const waiting = link.kind === 'loading';
@@ -407,17 +426,21 @@ export function ShareRow({
 
   async function copy() {
     if (!url) return;
-    if (await copyText(url)) toast('Link copiado');
-    else toast('No se pudo copiar el link', 'error');
+    await act.run('copiar', async () => {
+      if (await copyText(url)) toast('Link copiado');
+      else toast('No se pudo copiar el link', 'error');
+    });
   }
 
   async function more() {
     if (!url) return;
-    try {
-      await navigator.share({ title: `${leagueName} · MatchMate`, text, url });
-    } catch {
-      // cancelado
-    }
+    await act.run('mas', async () => {
+      try {
+        await navigator.share({ title: `${leagueName} · MatchMate`, text, url });
+      } catch {
+        // cancelado
+      }
+    });
   }
 
   const waIcon = <MessageCircle className="size-5" />;
@@ -425,16 +448,32 @@ export function ShareRow({
     <div className="flex flex-col gap-2">
       {hint && <p className="text-center text-xs text-muted">{hint}</p>}
       <div className="flex justify-center gap-4">
-        <RoundButton label="Copiar enlace" icon={<Link2 className="size-5" />} tone="bg-surface-2 text-fg" onClick={() => void copy()} disabled={waiting} />
+        <RoundButton
+          label="Copiar enlace"
+          icon={<Link2 className="size-5" />}
+          tone="bg-surface-2 text-fg"
+          onClick={() => void copy()}
+          disabled={act.isBusy()}
+          busy={waiting || act.isBusy('copiar')}
+        />
         {url ? (
           <a href={whatsappShareUrl(`${text}: ${url}`)} target="_blank" rel="noreferrer" className={roundItem}>
             <span className={cx(roundIcon, 'bg-ok text-bg')}>{waIcon}</span>
             WhatsApp
           </a>
         ) : (
-          <RoundButton label="WhatsApp" icon={waIcon} tone="bg-ok text-bg" onClick={() => undefined} disabled />
+          <RoundButton label="WhatsApp" icon={waIcon} tone="bg-ok text-bg" onClick={() => undefined} disabled busy={waiting} />
         )}
-        {canShare && <RoundButton label="Más" icon={<Ellipsis className="size-5" />} tone="bg-surface-2 text-fg" onClick={() => void more()} disabled={waiting} />}
+        {canShare && (
+          <RoundButton
+            label="Más"
+            icon={<Ellipsis className="size-5" />}
+            tone="bg-surface-2 text-fg"
+            onClick={() => void more()}
+            disabled={act.isBusy()}
+            busy={waiting || act.isBusy('mas')}
+          />
+        )}
       </div>
     </div>
   );

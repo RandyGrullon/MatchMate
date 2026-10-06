@@ -240,6 +240,10 @@ describe('el link', () => {
     const html = row({ kind: 'loading' });
     expect(html).not.toContain('wa.me');
     expect(html.match(/<button type="button" disabled=""/g)).toHaveLength(2);
+    // Mientras, la ruedita en lugar del ícono (del mismo tamaño).
+    expect(html.match(/animate-spin size-5/g)).toHaveLength(2);
+    expect(html.match(/aria-busy="true"/g)).toHaveLength(2);
+    expect(row({ kind: 'url', url: 'https://x/l/l1' })).not.toContain('animate-spin');
     // En la hoja del admin, el código se pide al abrirla (sin el link de la liga mientras tanto).
     const open = inRouter(h(InviteSheet, { league: league({ visibility: 'private' }), lid: 'l1', isAdmin: true, member: true, open: true, onClose: () => undefined }));
     expect(open).not.toContain('wa.me');

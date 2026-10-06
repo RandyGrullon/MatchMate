@@ -4,6 +4,7 @@ import { ChevronDown, Copy, Mail, MessageCircle, Send } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { AppShell } from '../components/Shell';
 import { useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { copyText } from '../components/share/actions';
 import { Button, Card, Field, Input, Select, Textarea } from '../components/ui';
 import { LEGAL_CONTACT, PRIVACY_PATH } from './legal/legal';
@@ -76,6 +77,7 @@ export default function ContactPage() {
   const [reason, setReason] = useState<ContactReason>(CONTACT_REASONS[0]);
   const [message, setMessage] = useState('');
   const ready = name.trim() !== '' && message.trim() !== '';
+  const copying = useBusy();
 
   async function copy() {
     if (await copyText(CONTACT_EMAIL)) toast('Correo copiado');
@@ -112,7 +114,12 @@ export default function ContactPage() {
               <span className="block truncate font-semibold text-accent underline-offset-2 group-hover:underline">{CONTACT_EMAIL}</span>
             </span>
           </a>
-          <Button onClick={copy} icon={<Copy className="size-4" />} className="self-start max-sm:h-11">
+          <Button
+            onClick={() => void copying.run('copiar', copy)}
+            loading={copying.isBusy()}
+            icon={<Copy className="size-4" />}
+            className="self-start max-sm:h-11"
+          >
             Copiar correo
           </Button>
         </Card>

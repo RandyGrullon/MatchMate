@@ -18,9 +18,11 @@ import {
 import { LEGAL_PATHS, PRIVACY_PATH, TERMS_PATH } from '../pages/legal/legal';
 import { useFeedback } from './feedback';
 import { Logo } from './Logo';
+import { BusyIcon } from './busy';
 import { Button, Card, Loading } from './ui';
 
-const DeleteAccountDialog = lazy(() => import('../pages/legal/DeleteAccountDialog'));
+const loadDeleteDialog = () => import('../pages/legal/DeleteAccountDialog');
+const DeleteAccountDialog = lazy(loadDeleteDialog);
 
 /**
  * «Actualizamos los términos»: quien aceptó una versión vieja de los Términos de uso o de la Política de privacidad
@@ -74,7 +76,7 @@ function LegalQuestion({
 }) {
   const navigate = useNavigate();
   const { toast } = useFeedback();
-  const [busy, setBusy] = useState<'si' | 'salir' | 'auto' | null>(null);
+  const [busy, setBusy] = useState<'si' | 'salir' | 'auto' | 'borrar' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const auto = useRef(false);
@@ -132,6 +134,14 @@ function LegalQuestion({
     }
   }
 
+  // El cuadro de borrar se baja la primera vez: la ruedita mientras llega (si no llega, el aviso sale al abrirlo).
+  async function openDelete() {
+    setBusy('borrar');
+    await loadDeleteDialog().catch(() => undefined);
+    setBusy(null);
+    setDeleting(true);
+  }
+
   if (busy === 'auto') return <Loading label="Guardando…" />;
 
   return (
@@ -182,8 +192,14 @@ function LegalQuestion({
           </Button>
           <p className="text-center text-xs text-muted">
             Si no estás de acuerdo, puedes salir o{' '}
-            <button type="button" onClick={() => setDeleting(true)} disabled={!!busy} className="inline-flex min-h-11 items-center gap-1 font-medium text-danger">
-              <UserX className="size-3.5" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={openDelete}
+              disabled={!!busy}
+              aria-busy={busy === 'borrar' || undefined}
+              className="inline-flex min-h-11 items-center gap-1 font-medium text-danger"
+            >
+              <BusyIcon busy={busy === 'borrar'} icon={<UserX className="size-3.5" aria-hidden="true" />} className="size-3.5" />
               borrar tu cuenta
             </button>
             .

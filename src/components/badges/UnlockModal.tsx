@@ -4,6 +4,7 @@ import { Award, ChevronLeft, ChevronRight, Eye, Lock, Share2, X } from 'lucide-r
 import { Insignia, UnlockInsignia, tierDot } from '../../badges/visual';
 import { displayName, useAuth } from '../../lib/auth';
 import { markBadgesSeen, markLeagueBadgesSeen, setBadgeHidden, useBadgeStats, useProfileBadges, type BadgeAward, type LeagueBadgeAward } from '../../lib/data/badges';
+import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { ShareImageModal } from '../share/ShareImageModal';
 import { shareFrame } from '../share/ShareButton';
@@ -36,6 +37,7 @@ export function UnlockContent({
   shown,
   onShow,
   onKeepPrivate,
+  showing,
   recap,
 }: {
   plan: UnlockPlan;
@@ -47,6 +49,8 @@ export function UnlockContent({
   shown?: ReadonlySet<string>;
   onShow?: (it: UnlockItem) => void;
   onKeepPrivate?: (it: UnlockItem) => void;
+  /** Id de la que se está mostrando en el perfil (gira «Mostrar»). */
+  showing?: string | null;
 }) {
   const it = plan.items[Math.min(index, plan.items.length - 1)];
   if (!it) {
@@ -117,10 +121,17 @@ export function UnlockContent({
             <Lock className="size-4" aria-hidden="true" /> Solo tú la ves. ¿La muestras en tu perfil?
           </p>
           <div className="flex justify-center gap-2">
-            <Button className="h-11" onClick={() => onKeepPrivate?.(it)}>
+            <Button className="h-11" disabled={showing === it.id} onClick={() => onKeepPrivate?.(it)}>
               Dejarla privada
             </Button>
-            <Button className="h-11" variant="primary" icon={<Eye className="size-4" />} onClick={() => onShow?.(it)}>
+            <Button
+              className="h-11"
+              variant="primary"
+              icon={<Eye className="size-4" />}
+              loading={showing === it.id}
+              aria-busy={showing === it.id || undefined}
+              onClick={() => onShow?.(it)}
+            >
               Mostrar
             </Button>
           </div>
@@ -201,6 +212,7 @@ export default function UnlockModal({
   const auth = useAuth();
   const navigate = useNavigate();
   const run = useAction();
+  const showing = useBusy();
   const plan = useMemo(() => unlockPlan(awards, leagueAwards), [awards, leagueAwards]);
   // El 7 de enero, `year_recap` abre el resumen del año: hace falta la vitrina propia y la rareza.
   const recapAward = plan.items.find((x) => x.kind === 'app' && x.view.award.key === 'year_recap');
@@ -262,7 +274,7 @@ export default function UnlockModal({
 
   const show = async (it: UnlockItem) => {
     if (it.kind !== 'app') return;
-    const ok = await run(() => setBadgeHidden(it.view.award, false), 'Ya se ve en tu perfil');
+    const ok = await showing.run(it.id, () => run(() => setBadgeHidden(it.view.award, false), 'Ya se ve en tu perfil'));
     if (ok !== undefined) {
       setShown((s) => new Set([...s, it.id]));
       setRevealed((s) => new Set([...s, it.id]));
@@ -297,6 +309,7 @@ export default function UnlockModal({
               shown={shown}
               onShow={(it) => void show(it)}
               onKeepPrivate={(it) => setShown((s) => new Set([...s, it.id]))}
+              showing={showing.busy}
               recap={recap}
             />
           </div>

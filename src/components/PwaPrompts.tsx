@@ -4,6 +4,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { NEEDS_UPDATE_MESSAGE, reloadOnTakeover, startUpdateChecks, updateApp, updatePrompt, updateRequested } from '../lib/appUpdate';
 import { useOutboxSnapshot } from '../lib/data';
 import { currentOutbox } from '../lib/data/client';
+import { useBusy } from './busy';
 import { Button } from './ui';
 
 interface InstallEvent extends Event {
@@ -65,6 +66,7 @@ export function PwaPrompts() {
   const [updating, setUpdating] = useState(false);
   const [hideNeedsUpdate, setHideNeedsUpdate] = useState(false);
   const [installEvent, setInstallEvent] = useState<InstallEvent | null>(null);
+  const installing = useBusy();
   const [showIos, setShowIos] = useState(false);
 
   // Si se cerró el aviso y la cola vuelve a quedar esperando otra vez, se muestra de nuevo.
@@ -143,11 +145,14 @@ export function PwaPrompts() {
           size="sm"
           variant="primary"
           className="mt-1.5"
-          onClick={async () => {
-            await installEvent.prompt();
-            await installEvent.userChoice;
-            setInstallEvent(null);
-          }}
+          loading={installing.isBusy()}
+          onClick={() =>
+            installing.run('instalar', async () => {
+              await installEvent.prompt();
+              await installEvent.userChoice;
+              setInstallEvent(null);
+            })
+          }
         >
           Instalar
         </Button>

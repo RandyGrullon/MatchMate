@@ -4,6 +4,7 @@ import { deleteSuggestion, markSuggestions, useSuggestions } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
 import { formatDate, toIsoDate } from '../lib/format';
 import type { Suggestion } from '../lib/types';
+import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, cx } from './ui';
 
@@ -23,11 +24,13 @@ export function SuggestionsPanel() {
   const suggestions = useSuggestions(lid);
   const run = useAction();
   const { confirm } = useFeedback();
+  // La nota que se está borrando (su ruedita; las demás esperan).
+  const deleting = useBusy<string>();
   const unread = suggestions.data.filter((s) => !s.read);
 
   async function remove(s: Suggestion) {
     const ok = await confirm({ title: '¿Borrar la sugerencia?', message: `“${s.text.length > 140 ? `${s.text.slice(0, 140)}…` : s.text}”`, confirmText: 'Borrar', danger: true });
-    if (ok) await run(() => deleteSuggestion(lid, s.id), 'Sugerencia borrada');
+    if (ok) await deleting.run(s.id, () => run(() => deleteSuggestion(lid, s.id), 'Sugerencia borrada'));
   }
 
   return (
@@ -72,7 +75,16 @@ export function SuggestionsPanel() {
                     icon={s.read ? <Mail className="size-4" /> : <MailOpen className="size-4" />}
                     onClick={() => run(() => markSuggestions(lid, [s.id], !s.read))}
                   />
-                  <Button variant="ghost" size="sm" aria-label="Borrar" title="Borrar" icon={<Trash2 className="size-4 text-danger" />} onClick={() => remove(s)} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Borrar"
+                    title="Borrar"
+                    icon={<Trash2 className="size-4 text-danger" />}
+                    loading={deleting.isBusy(s.id)}
+                    disabled={deleting.isBusy()}
+                    onClick={() => remove(s)}
+                  />
                 </span>
               </div>
               <p className={cx('text-sm break-words whitespace-pre-line', s.read && 'text-muted')}>{s.text}</p>

@@ -17,7 +17,7 @@ import type { BowlingEvent, League } from '../lib/types';
 import { FeedbackProvider } from './feedback';
 import { LiveNow } from './LiveNow';
 import { NextMatchCard } from './LiveNowMatches';
-import { WeekCalendar } from './WeekCalendar';
+import { RsvpChip, WeekCalendar } from './WeekCalendar';
 
 const state = vi.hoisted(() => ({ feeds: [] as LeagueFeed[], leagues: [] as League[] }));
 vi.mock('./Notifications', () => ({ useNotifications: () => state }));
@@ -191,5 +191,37 @@ describe('Home con partidos (raqueta y equipos)', () => {
     expect(t).toContain('En 2 h');
     expect(t).toContain('Tienes 1 partido más en los próximos 7 días.');
     expect(html).toContain('href="/l/fut/juegos?partido=m1"');
+  });
+});
+
+describe('«Voy» y «Vas» mientras se guardan', () => {
+  const chip = (going: boolean, busy: boolean) => renderToString(h(RsvpChip, { going, busy, onClick: () => undefined }));
+
+  it('con la ruedita en su lugar, sin poder tocarse otra vez', () => {
+    for (const going of [true, false]) {
+      const html = chip(going, true);
+      expect(html).toContain('animate-spin');
+      expect(html).toContain('aria-busy="true"');
+      expect(html).toMatch(/<button[^>]* disabled=""/);
+      // El texto se queda (el «Voy» transparente): el botón no cambia de tamaño.
+      expect(html).toContain(going ? 'Vas' : 'Voy');
+      // Y sigue teniendo nombre para el lector de pantalla (oculto con `invisible` lo perdería).
+      expect(html).not.toContain('invisible');
+    }
+  });
+
+  it('con otro tamaño (las filas de Esta semana): el mismo botón, más alto', () => {
+    const html = renderToString(h(RsvpChip, { going: false, busy: true, onClick: () => undefined, className: 'min-h-9 px-3' }));
+    expect(html).toContain('min-h-9 px-3');
+    expect(html).not.toContain('py-1');
+  });
+
+  it('sin esperar, sin ruedita', () => {
+    for (const going of [true, false]) {
+      const html = chip(going, false);
+      expect(html).not.toContain('animate-spin');
+      expect(html).not.toContain('aria-busy');
+      expect(html).not.toContain('disabled');
+    }
   });
 });

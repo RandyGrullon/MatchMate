@@ -51,7 +51,8 @@ export default function LoginPage() {
   const [adult, setAdult] = useState(false);
   // «Acepto los Términos y la Política de privacidad»: obligatorio para crear la cuenta (queda guardado con la versión).
   const [terms, setTerms] = useState(false);
-  const [busy, setBusy] = useState<'correo' | 'google' | null>(null);
+  // Qué espera: entrar o crear la cuenta con el correo, con Google, o mandar el link para confirmar (cada uno su ruedita).
+  const [busy, setBusy] = useState<'correo' | 'google' | 'confirmar' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Qué correo se mandó: para confirmar la cuenta nueva o para poner otra contraseña.
   const [sent, setSent] = useState<'confirmar' | 'recuperar' | null>(null);
@@ -140,7 +141,7 @@ export default function LoginPage() {
       setError('Espera la casilla de Cloudflare que comprueba que no eres un robot.');
       return;
     }
-    setBusy('correo');
+    setBusy('confirmar');
     setError(null);
     try {
       await resendConfirmation(email, captcha ?? undefined, target);
@@ -264,7 +265,7 @@ export default function LoginPage() {
                 <Turnstile key="correo" onToken={setCaptcha} resetKey={captchaRound} />
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
                 {unconfirmed && (
-                  <Button onClick={sendConfirmation} loading={busy === 'correo'} disabled={!!busy || !email.trim()} icon={<MailCheck className="size-4" />} className="max-sm:h-11">
+                  <Button onClick={sendConfirmation} loading={busy === 'confirmar'} disabled={!!busy || !email.trim()} icon={<MailCheck className="size-4" />} className="max-sm:h-11">
                     Mandarme el link para confirmar
                   </Button>
                 )}

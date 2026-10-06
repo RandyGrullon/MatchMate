@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Copy, QrCode as QrIcon, RefreshCw, Share2, Ticket, UserPlus } from 'lucide-react';
 import { getInviteCode, renewInviteCode } from '../lib/data';
 import type { League } from '../lib/types';
+import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
 import { InviteSheet } from './invite/InviteSheet';
 import { codeInviteUrl } from './invite/logic';
@@ -19,7 +20,7 @@ export function InviteCard({ league }: { league: League }) {
   const run = useAction();
   const { confirm, toast } = useFeedback();
   const [code, setCode] = useState<string | null | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
+  const { isBusy, run: wait } = useBusy<'cambiar' | 'compartir' | 'codigo'>();
   const [showQr, setShowQr] = useState(false);
   const [inviting, setInviting] = useState(false);
 
@@ -42,10 +43,10 @@ export function InviteCard({ league }: { league: League }) {
       });
       if (!ok) return;
     }
-    setBusy(true);
-    const next = await run(() => renewInviteCode(league), code ? 'Código nuevo listo' : 'Invitación creada');
-    if (next) setCode(next);
-    setBusy(false);
+    await wait('cambiar', async () => {
+      const next = await run(() => renewInviteCode(league), code ? 'Código nuevo listo' : 'Invitación creada');
+      if (next) setCode(next);
+    });
   }
 
   return (
@@ -72,7 +73,7 @@ export function InviteCard({ league }: { league: League }) {
       {code === undefined ? (
         <Skeleton className="h-16 w-full rounded-xl" />
       ) : !code ? (
-        <Button variant="primary" loading={busy} onClick={renew} icon={<Ticket className="size-4" />}>
+        <Button variant="primary" loading={isBusy('cambiar')} onClick={renew} icon={<Ticket className="size-4" />}>
           Crear invitación
         </Button>
       ) : (
@@ -90,25 +91,33 @@ export function InviteCard({ league }: { league: League }) {
             <Button
               variant="primary"
               icon={<Share2 className="size-4" />}
-              onClick={async () => {
-                if (await shareLink(inviteUrl(code), `Únete a ${league.name} en MatchMate`)) toast('Link copiado');
-              }}
+              loading={isBusy('compartir')}
+              disabled={isBusy()}
+              onClick={() =>
+                wait('compartir', async () => {
+                  if (await shareLink(inviteUrl(code), `Únete a ${league.name} en MatchMate`)) toast('Link copiado');
+                })
+              }
             >
               Compartir
             </Button>
             <Button
               icon={<Copy className="size-4" />}
-              onClick={async () => {
-                await navigator.clipboard.writeText(code);
-                toast('Código copiado');
-              }}
+              loading={isBusy('codigo')}
+              disabled={isBusy()}
+              onClick={() =>
+                wait('codigo', async () => {
+                  await navigator.clipboard.writeText(code);
+                  toast('Código copiado');
+                })
+              }
             >
               Código
             </Button>
             <Button icon={<QrIcon className="size-4" />} onClick={() => setShowQr((s) => !s)}>
               {showQr ? 'Ocultar QR' : 'QR'}
             </Button>
-            <Button icon={<RefreshCw className="size-4" />} loading={busy} onClick={renew}>
+            <Button icon={<RefreshCw className="size-4" />} loading={isBusy('cambiar')} disabled={isBusy()} onClick={renew}>
               Cambiar
             </Button>
           </div>

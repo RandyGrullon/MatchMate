@@ -4,6 +4,7 @@ import { updateApp } from '../lib/appUpdate';
 import { useCurrentOutbox, useOutboxSnapshot } from '../lib/data';
 import { isOutdatedCode } from '../lib/db/errors';
 import type { OutboxItem } from '../lib/db/outbox';
+import { useBusy } from './busy';
 import { useFeedback } from './feedback';
 import { Button, Modal } from './ui';
 
@@ -46,6 +47,7 @@ export function OutboxIndicator() {
   const [open, setOpen] = useState(false);
   const [justSent, setJustSent] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const copying = useBusy<string>();
   const before = useRef(0);
 
   useEffect(() => {
@@ -62,12 +64,14 @@ export function OutboxIndicator() {
   if (!snap.pendingCount && !failed && !justSent) return null;
 
   async function copy(item: OutboxItem) {
-    try {
-      await navigator.clipboard.writeText(copyText(item));
-      toast('Copiado');
-    } catch {
-      toast('No se pudo copiar', 'error');
-    }
+    await copying.run(item.opId, async () => {
+      try {
+        await navigator.clipboard.writeText(copyText(item));
+        toast('Copiado');
+      } catch {
+        toast('No se pudo copiar', 'error');
+      }
+    });
   }
 
   return (
@@ -83,6 +87,7 @@ export function OutboxIndicator() {
           <button
             type="button"
             disabled={updating}
+            aria-busy={updating || undefined}
             onClick={() => {
               setUpdating(true);
               void updateApp();
@@ -116,7 +121,7 @@ export function OutboxIndicator() {
               <div className="text-sm font-medium">{copyText(item)}</div>
               <div className="text-xs text-danger">{reason(item)}</div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" icon={<Copy className="size-4" />} onClick={() => copy(item)}>
+                <Button size="sm" icon={<Copy className="size-4" />} loading={copying.isBusy(item.opId)} onClick={() => copy(item)}>
                   Copiar
                 </Button>
                 <Button size="sm" icon={<RotateCcw className="size-4" />} onClick={() => void outbox?.retry(item.opId)}>

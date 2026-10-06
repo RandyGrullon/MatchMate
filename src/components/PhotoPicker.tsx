@@ -43,6 +43,7 @@ export function PhotoPicker({
           type="button"
           onClick={() => input.current?.click()}
           disabled={busy}
+          aria-busy={busy || undefined}
           className={cx(
             'flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line px-6 py-10 text-center transition',
             'hover:border-accent hover:bg-accent-soft/40',

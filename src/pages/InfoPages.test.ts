@@ -17,6 +17,19 @@ vi.mock('../lib/auth', () => ({
   displayName: (a: { profile: { name: string } | null }) => a.profile?.name ?? 'Jugador',
 }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
+// La acción que espera (useBusy), para ver la ruedita sin tocar nada; null = la de verdad.
+const pending = vi.hoisted(() => ({ key: null as string | null }));
+vi.mock('../components/busy', async (orig) => {
+  const real = await orig<typeof import('../components/busy')>();
+  return {
+    ...real,
+    useBusy: () => {
+      const b = real.useBusy();
+      const key = pending.key;
+      return key == null ? b : { ...b, busy: key, isBusy: (k?: string) => (k === undefined ? true : k === key) };
+    },
+  };
+});
 
 const { default: AboutPage, ABOUT_FEATURES, ABOUT_STEPS, ABOUT_TAGLINE, sportGridCols } = await import('./AboutPage');
 const { default: ContactPage, CONTACT_EMAIL, CONTACT_MAX, CONTACT_REASONS, contactMailto } = await import('./ContactPage');
@@ -32,6 +45,7 @@ const text = (html: string) =>
 
 beforeEach(() => {
   state.auth = { user: null, profile: null, loading: false };
+  pending.key = null;
 });
 
 describe('Acerca de', () => {
@@ -97,6 +111,15 @@ describe('Contáctanos', () => {
     for (const q of ['¿Cuánto cuesta?', '¿Cómo creo una liga?', '¿Cómo me uno a una liga?', '¿Qué pasa con mis datos?']) expect(t).toContain(q);
     expect(t).toContain('gratis');
     expect(out).toContain('href="/privacidad"');
+  });
+
+  it('«Copiar correo» da vueltas mientras copia (y no se toca dos veces)', () => {
+    const copy = (html: string) => /<button[^>]*>(?:(?!<\/button>).)*Copiar correo<\/button>/.exec(html)?.[0] ?? '';
+    expect(copy(render(ContactPage, '/contacto'))).not.toContain('animate-spin');
+    pending.key = 'copiar';
+    const b = copy(render(ContactPage, '/contacto'));
+    expect(b).toContain('animate-spin');
+    expect(b).toContain('disabled=""');
   });
 
   it('con cuenta: el nombre y el correo ya puestos', () => {

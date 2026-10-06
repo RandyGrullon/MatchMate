@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Repeat, Trophy } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Repeat, Trophy } from 'lucide-react';
 import { upcomingCalendar, weekStart, type CalendarItem, type CalendarMatch } from '../../lib/calendar';
 import { setRsvp, type LeagueFeed } from '../../lib/data';
 import { parseDate, toIsoDate } from '../../lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '../../lib/schedule';
 import type { League } from '../../lib/types';
 import { SportBadge, SportIcon } from '../../pages/sports/SportBits';
+import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { Badge, Card, cx } from '../ui';
+import { RsvpChip } from '../WeekCalendar';
 import { SportTint } from './SportTint';
 
 /** Semanas hacia adelante que se pueden ver. */
@@ -147,11 +149,13 @@ export function WeekAgenda({
 }
 
 /** Un evento o un partido de la semana (también en Próximos eventos de Eventos). */
-export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; showSport?: boolean; onGoing?: (going: boolean) => void }) {
+export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; showSport?: boolean; onGoing?: (going: boolean) => Promise<unknown> }) {
   const match = item.kind === 'match';
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
   const canRsvp = !!onGoing && item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
   const sub = match ? [item.leagueName, item.detail].filter(Boolean).join(' · ') : item.leagueName;
+  // Cada fila espera lo suyo: las demás se pueden tocar mientras tanto.
+  const { isBusy, run } = useBusy();
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-2">
       <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">
@@ -196,24 +200,7 @@ export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; sh
       ) : item.status === 'suspended' ? (
         <Badge tone="warn">Suspendido</Badge>
       ) : null}
-      {canRsvp &&
-        (item.going ? (
-          <button
-            type="button"
-            onClick={() => onGoing!(false)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full bg-ok-soft px-3 text-xs font-semibold text-ok"
-          >
-            <Check className="size-3.5" /> Vas
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onGoing!(true)}
-            className="inline-flex min-h-9 items-center rounded-full border border-line px-3 text-xs font-semibold hover:bg-surface-2"
-          >
-            Voy
-          </button>
-        ))}
+      {canRsvp && <RsvpChip going={!!item.going} busy={isBusy()} className="min-h-9 px-3" onClick={() => void run('voy', () => onGoing!(!item.going))} />}
     </div>
   );
 }

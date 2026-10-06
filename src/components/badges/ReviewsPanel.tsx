@@ -4,6 +4,7 @@ import { BadgeCheck, CheckCircle2, ExternalLink, Hourglass, XCircle } from 'luci
 import { Insignia } from '../../badges/visual';
 import { reviewBadge, useBadgeNotices, type BadgeReview } from '../../lib/data/badges';
 import { useLeagueCtx } from '../../lib/league';
+import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Modal, Textarea } from '../ui';
 import { reviewModel, type ReviewModel } from './logic';
@@ -15,7 +16,21 @@ const NOTE_MAX = 140;
  * Una hazaña por confirmar: la insignia, quién y cuándo, la evidencia (valores, marcadores de la tarjeta y el link al
  * juego o la ronda para ver la foto o los cuadros) y «Confirmar» o «No se pudo confirmar».
  */
-export function ReviewRow({ model, busy, onConfirm, onReject }: { model: ReviewModel; busy?: boolean; onConfirm: () => void; onReject: () => void }) {
+export function ReviewRow({
+  model,
+  busy,
+  disabled,
+  onConfirm,
+  onReject,
+}: {
+  model: ReviewModel;
+  /** Se está confirmando esta: «Confirmar» gira. */
+  busy?: boolean;
+  /** Se está decidiendo otra: los botones esperan. */
+  disabled?: boolean;
+  onConfirm: () => void;
+  onReject: () => void;
+}) {
   const r = model.review;
   return (
     <div className="flex items-start gap-3 px-4 py-3.5">
@@ -43,10 +58,18 @@ export function ReviewRow({ model, busy, onConfirm, onReject }: { model: ReviewM
           )}
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button className="h-11" icon={<XCircle className="size-4" />} disabled={busy} onClick={onReject}>
+          <Button className="h-11" icon={<XCircle className="size-4" />} disabled={busy || disabled} onClick={onReject}>
             No se pudo confirmar
           </Button>
-          <Button className="h-11" variant="primary" icon={<CheckCircle2 className="size-4" />} loading={busy} onClick={onConfirm}>
+          <Button
+            className="h-11"
+            variant="primary"
+            icon={<CheckCircle2 className="size-4" />}
+            loading={busy}
+            disabled={disabled}
+            aria-busy={busy || undefined}
+            onClick={onConfirm}
+          >
             Confirmar
           </Button>
         </div>
@@ -62,17 +85,15 @@ export function ReviewRow({ model, busy, onConfirm, onReject }: { model: ReviewM
 export function ReviewList({ reviews, loading, error, empty }: { reviews: readonly BadgeReview[]; loading: boolean; error: Error | null; empty: ReactNode }) {
   const run = useAction();
   const { confirm } = useFeedback();
-  const [busy, setBusy] = useState<string | null>(null);
+  // Una a la vez: la que se está decidiendo gira y las demás esperan.
+  const { busy, isBusy, run: track } = useBusy();
   const [rejecting, setRejecting] = useState<ReviewModel | null>(null);
   const [note, setNote] = useState('');
 
   const models = useMemo(() => reviews.map(reviewModel).filter((m): m is ReviewModel => m !== null), [reviews]);
 
-  const decide = async (r: BadgeReview, ok: boolean, text?: string) => {
-    setBusy(r.id);
-    await run(() => reviewBadge(r, ok, text), ok ? 'Confirmada: ya es firme' : 'Listo: no cuenta');
-    setBusy(null);
-  };
+  const decide = (r: BadgeReview, ok: boolean, text?: string) =>
+    track(r.id, () => run(() => reviewBadge(r, ok, text), ok ? 'Confirmada: ya es firme' : 'Listo: no cuenta'));
 
   const approve = async (m: ReviewModel) => {
     const yes = await confirm({
@@ -95,6 +116,7 @@ export function ReviewList({ reviews, loading, error, empty }: { reviews: readon
             key={m.review.id}
             model={m}
             busy={busy === m.review.id}
+            disabled={isBusy() && busy !== m.review.id}
             onConfirm={() => void approve(m)}
             onReject={() => {
               setNote('');
@@ -121,6 +143,7 @@ export function ReviewList({ reviews, loading, error, empty }: { reviews: readon
               className="h-11"
               variant="danger"
               loading={!!rejecting && busy === rejecting.review.id}
+              disabled={!!rejecting && isBusy() && busy !== rejecting.review.id}
               onClick={async () => {
                 if (!rejecting) return;
                 await decide(rejecting.review, false, note);

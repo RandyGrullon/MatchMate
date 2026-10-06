@@ -7,7 +7,8 @@ import { useFeedback } from './feedback';
 import { Logo } from './Logo';
 import { Button, Card, Loading } from './ui';
 
-const DeleteAccountDialog = lazy(() => import('../pages/legal/DeleteAccountDialog'));
+const loadDeleteDialog = () => import('../pages/legal/DeleteAccountDialog');
+const DeleteAccountDialog = lazy(loadDeleteDialog);
 
 /**
  * «Tengo 18 años o más», una sola vez, para quien no lo dijo al registrarse: entró con Google (el registro de
@@ -28,7 +29,7 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
   const navigate = useNavigate();
   const { toast } = useFeedback();
   const [step, setStep] = useState<'ask' | 'minor'>('ask');
-  const [busy, setBusy] = useState<'si' | 'salir' | 'auto' | null>(null);
+  const [busy, setBusy] = useState<'si' | 'salir' | 'auto' | 'borrar' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const auto = useRef(false);
@@ -68,6 +69,14 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
     } finally {
       setBusy(null);
     }
+  }
+
+  // El cuadro de borrar se baja la primera vez: la ruedita mientras llega (si no llega, el aviso sale al abrirlo).
+  async function openDelete() {
+    setBusy('borrar');
+    await loadDeleteDialog().catch(() => undefined);
+    setBusy(null);
+    setDeleting(true);
   }
 
   if (busy === 'auto') return <Loading label="Guardando…" />;
@@ -119,7 +128,7 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
               <Button variant="primary" onClick={signOut} loading={busy === 'salir'} disabled={!!busy} icon={<LogOut className="size-4" />} className="h-11">
                 Salir de la cuenta
               </Button>
-              <Button variant="ghost" onClick={() => setDeleting(true)} disabled={!!busy} icon={<UserX className="size-4" />} className="h-11 text-danger">
+              <Button variant="ghost" onClick={openDelete} loading={busy === 'borrar'} disabled={!!busy} icon={<UserX className="size-4" />} className="h-11 text-danger">
                 Borrar esta cuenta
               </Button>
               <button type="button" onClick={() => setStep('ask')} className="min-h-11 text-sm font-medium text-accent">

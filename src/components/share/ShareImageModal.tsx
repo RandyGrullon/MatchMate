@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, Link2, Share2 } from 'lucide-react';
+import { useBusy } from '../busy';
 import { useFeedback } from '../feedback';
 import { Button, Modal, Spinner } from '../ui';
 import { canShareFiles, copyText, downloadFile, shareFile } from './actions';
@@ -30,7 +31,7 @@ export function ShareImageModal({
 }) {
   const { toast } = useFeedback();
   const [shot, setShot] = useState<Shot>(null);
-  const [busy, setBusy] = useState(false);
+  const busy = useBusy<'compartir' | 'copiar'>();
 
   useEffect(() => {
     if (!open || !card) return;
@@ -62,9 +63,8 @@ export function ShareImageModal({
 
   const share = async () => {
     if (!file) return;
-    setBusy(true);
-    const r = await shareFile(file, caption, card?.title);
-    setBusy(false);
+    const r = await busy.run('compartir', () => shareFile(file, caption, card?.title));
+    if (r === undefined) return;
     if (r === 'shared') onClose();
     else if (r !== 'cancelled') {
       // Sin menú para archivos (o falló): se descarga para mandarla a mano.
@@ -75,8 +75,10 @@ export function ShareImageModal({
 
   const copy = async () => {
     if (!url) return;
-    if (await copyText(url)) toast('Link copiado');
-    else toast('No se pudo copiar el link', 'error');
+    await busy.run('copiar', async () => {
+      if (await copyText(url)) toast('Link copiado');
+      else toast('No se pudo copiar el link', 'error');
+    });
   };
 
   return (
@@ -91,7 +93,13 @@ export function ShareImageModal({
       footer={
         <>
           {url && (
-            <Button icon={<Link2 className="size-4" />} onClick={() => void copy()}>
+            <Button
+              icon={<Link2 className="size-4" />}
+              loading={busy.isBusy('copiar')}
+              disabled={busy.isBusy('compartir')}
+              aria-busy={busy.isBusy('copiar') || undefined}
+              onClick={() => void copy()}
+            >
               Copiar link
             </Button>
           )}
@@ -103,7 +111,8 @@ export function ShareImageModal({
           <Button
             variant="primary"
             disabled={!file}
-            loading={busy}
+            loading={busy.isBusy('compartir')}
+            aria-busy={busy.isBusy('compartir') || undefined}
             icon={canShare ? <Share2 className="size-4" /> : <Download className="size-4" />}
             onClick={canShare ? () => void share() : download}
           >

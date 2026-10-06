@@ -52,6 +52,7 @@ export function LikeButton({ game, className }: { game: ProfileGame; className?:
         void toggle();
       }}
       aria-pressed={liked}
+      aria-busy={busy || undefined}
       aria-label={likeLabel(liked, shown.likes)}
       title={liked ? 'Quitar me gusta' : 'Me gusta'}
       className={cx(

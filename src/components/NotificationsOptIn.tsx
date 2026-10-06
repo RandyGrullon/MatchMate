@@ -6,6 +6,7 @@ import { notificationsText } from '../lib/notifications';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
 import { pushConfigured } from '../lib/pushKey';
 import { sportsOf } from '../sports/registry';
+import { BusyIcon } from './busy';
 import { useAction, useFeedback } from './feedback';
 import { useNotifications } from './Notifications';
 import { Button, Card, cx } from './ui';
@@ -130,13 +131,14 @@ function PushPrefsList() {
       <ul className="mt-1 divide-y divide-line">
         {PUSH_CATEGORIES.map((c) => {
           const on = prefs[c.key];
+          const saving = pending[c.key] !== undefined;
           return (
             <li key={c.key}>
               <button
                 type="button"
                 role="switch"
                 aria-checked={on}
-                aria-busy={pending[c.key] !== undefined || undefined}
+                aria-busy={saving || undefined}
                 onClick={() => void toggle(c.key)}
                 className="flex min-h-14 w-full items-center gap-3 py-2 text-left transition active:scale-[0.99]"
               >
@@ -148,7 +150,10 @@ function PushPrefsList() {
                   aria-hidden="true"
                   className={cx('flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition-colors', on ? 'bg-accent' : 'bg-surface-2 ring-1 ring-line ring-inset')}
                 >
-                  <span className={cx('size-5 rounded-full bg-white shadow-sm transition-transform', on && 'translate-x-5')} />
+                  {/* Mientras se guarda, la ruedita en la bolita (se ve ya cambiado; si falla, vuelve). */}
+                  <span className={cx('flex size-5 items-center justify-center rounded-full bg-white shadow-sm transition-transform', on && 'translate-x-5')}>
+                    <BusyIcon busy={saving} className="size-3.5 text-accent" />
+                  </span>
                 </span>
               </button>
             </li>

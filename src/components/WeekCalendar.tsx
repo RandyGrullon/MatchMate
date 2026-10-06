@@ -7,6 +7,7 @@ import { parseDate, toIsoDate } from '../lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
 import { useNow } from '../lib/useNow';
 import { SportIcon } from '../pages/sports/SportBits';
+import { BusyIcon, useBusy } from './busy';
 import { useAction } from './feedback';
 import { useNotifications } from './Notifications';
 import { Badge, Card, cx } from './ui';
@@ -135,9 +136,11 @@ export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatc
   );
 }
 
-function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) => void }) {
+function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) => Promise<unknown> }) {
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
   const canRsvp = item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
+  // Cada fila espera lo suyo: las demás se pueden tocar mientras tanto.
+  const { isBusy, run } = useBusy();
   return (
     <div className="flex items-center gap-3 px-4 py-2">
       <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">
@@ -160,17 +163,27 @@ function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) 
           </span>
         </span>
       </Link>
-      {canRsvp &&
-        (item.going ? (
-          <button type="button" onClick={() => onGoing(false)} className="flex items-center gap-1 rounded-full bg-ok-soft px-2.5 py-1 text-xs font-semibold text-ok">
-            <Check className="size-3.5" /> Vas
-          </button>
-        ) : (
-          <button type="button" onClick={() => onGoing(true)} className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold hover:bg-surface-2">
-            Voy
-          </button>
-        ))}
+      {canRsvp && <RsvpChip going={!!item.going} busy={isBusy()} onClick={() => void run('voy', () => onGoing(!item.going))} />}
     </div>
+  );
+}
+
+/**
+ * «Vas» o «Voy» (también en las filas de Esta semana y de Próximos); mientras se guarda, la ruedita en su lugar (el
+ * botón no cambia de tamaño). `className`: el tamaño (px-2.5 py-1 si no).
+ */
+export function RsvpChip({ going, busy, onClick, className = 'px-2.5 py-1' }: { going: boolean; busy: boolean; onClick: () => void; className?: string }) {
+  const chip = cx('relative inline-flex items-center justify-center gap-1 rounded-full text-xs font-semibold', className);
+  return going ? (
+    <button type="button" onClick={onClick} disabled={busy} aria-busy={busy || undefined} className={cx(chip, 'bg-ok-soft text-ok')}>
+      <BusyIcon busy={busy} icon={<Check className="size-3.5" />} className="size-3.5" /> Vas
+    </button>
+  ) : (
+    <button type="button" onClick={onClick} disabled={busy} aria-busy={busy || undefined} className={cx(chip, 'border border-line hover:bg-surface-2')}>
+      {/* Transparente y no oculto: el botón sigue llamándose «Voy» para el lector de pantalla. */}
+      <span className={cx(busy && 'text-transparent')}>Voy</span>
+      <BusyIcon busy={busy} className="absolute inset-0 m-auto size-3.5" />
+    </button>
   );
 }
 

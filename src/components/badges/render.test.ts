@@ -446,6 +446,17 @@ describe('aviso al ganar', () => {
     expect(text(answered)).not.toContain('Dejarla privada');
   });
 
+  it('mostrándola en el perfil: «Mostrar» gira y no se toca otra vez (ni «Dejarla privada»)', () => {
+    const plan = unlockPlan([aw({ key: 'bowling_breakthrough', level: 1, hidden: true })]);
+    const idle = render(h(UnlockContent, { plan, index: 0, onIndex: noop }));
+    expect(idle).not.toContain('animate-spin');
+    expect(idle).not.toContain('disabled=""');
+    const html = render(h(UnlockContent, { plan, index: 0, onIndex: noop, showing: plan.items[0].id }));
+    expect(html).toContain('animate-spin');
+    expect(html).toContain('aria-busy="true"');
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
+  });
+
   it('del historial: un solo aviso con la lista', () => {
     const plan = unlockPlan([aw({ key: 'bowling_games', level: 1, history: true }), aw({ key: 'debut', history: true })]);
     expect(text(render(h(UnlockContent, { plan, index: 0, onIndex: noop })))).toContain('Te dimos 2 insignias por tu historial');
@@ -505,6 +516,35 @@ describe('liga, por confirmar y ajustes', () => {
     expect(t).toContain('No se pudo confirmar');
     expect(t).toContain('Confirmar');
     expect(html).toContain(`href="/l/${LID}/e/E1"`);
+  });
+
+  it('por confirmar: la que se decide gira; mientras, las otras esperan', () => {
+    const r: BadgeReview = {
+      id: 'R2',
+      key: 'bowling_perfect_game',
+      sport: 'bowling',
+      level: 0,
+      periodKey: 'g:x:0',
+      leagueId: LID,
+      leagueName: 'Liga Los Pinos',
+      playerId: 'p1',
+      playerName: 'Ana P.',
+      refs: [],
+      context: league,
+      awardedAt: '2026-10-02T12:00:00Z',
+      overdue: false,
+    };
+    const model = reviewModel(r)!;
+    const idle = render(h(ReviewRow, { model, onConfirm: noop, onReject: noop }));
+    expect(idle).not.toContain('animate-spin');
+    expect(idle).not.toContain('disabled=""');
+    const busy = render(h(ReviewRow, { model, busy: true, onConfirm: noop, onReject: noop }));
+    expect(busy).toContain('animate-spin');
+    expect(busy).toContain('aria-busy="true"');
+    expect(busy.match(/disabled=""/g)).toHaveLength(2);
+    const other = render(h(ReviewRow, { model, disabled: true, onConfirm: noop, onReject: noop }));
+    expect(other).not.toContain('animate-spin');
+    expect(other.match(/disabled=""/g)).toHaveLength(2);
   });
 
   it('insignias automáticas: las tres opciones; sin dueño, de solo lectura', () => {
