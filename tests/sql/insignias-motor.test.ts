@@ -586,6 +586,8 @@ describe('la foto de un trabajo (badge_snapshot)', () => {
     const c = await player(db, lid, 'C');
     const t1 = await db.rpc<string>(w.u.org, 'create_season_team', { p_league: lid, p_name: 'Tigres', p_players: [{ player_id: a }, { player_id: b }] });
     const t2 = await db.rpc<string>(w.u.org, 'create_season_team', { p_league: lid, p_name: 'Leones', p_players: [{ player_id: c }] });
+    // La plantilla cuenta desde el día en que entró al equipo: se entra antes de los partidos (fechas fijas), no hoy.
+    await db.admin(`update public.team_players set created_at = '2026-09-01T00:00:00Z' where team_id = any ($1)`, [[t1, t2]]);
     const mk = async () =>
       (await db.rpc<string[]>(w.u.org, 'create_matches', { p_league: lid, p_matches: [{ sides: [{ side: 1, team_id: t1 }, { side: 2, team_id: t2 }] }] }))[0];
     const m1 = await mk();
@@ -1178,11 +1180,17 @@ describe('la tarea diaria (badges_daily)', () => {
 describe('RPC de la app', () => {
   it('badge_notices: las suyas sin ver; las hazañas que puede confirmar (el superadmin, las vencidas)', async () => {
     const { ev, id: e1 } = await counted(300);
-    await apply(await enqueue('resultado', w.priv, null, 'x'), [
-      give({ ...toPlayer(w.p.luis, w.priv), badge_key: 'bowling_club', level: 3, context: { name: 'Club 250' } }),
-      give({ ...toUser(w.u.luis), badge_key: 'mileage', sport: 'all', hidden: true }),
-      { ...give({ ...toPlayer(w.p.luis, w.priv), badge_key: 'bowling_perfect_game', level: 0, period_key: `g:${e1}:0`, refs: [`entry:${e1}:0`] }), kind: 'review', reviewers: [] },
-    ]);
+    // Se dan ahora (el reloj de la base): «vencida» es a los 14 días de hoy, no de una fecha fija.
+    const now = iso((await db.admin<{ n: string }>('select now() as n'))[0].n);
+    await apply(
+      await enqueue('resultado', w.priv, null, 'x'),
+      [
+        give({ ...toPlayer(w.p.luis, w.priv), badge_key: 'bowling_club', level: 3, context: { name: 'Club 250' } }),
+        give({ ...toUser(w.u.luis), badge_key: 'mileage', sport: 'all', hidden: true }),
+        { ...give({ ...toPlayer(w.p.luis, w.priv), badge_key: 'bowling_perfect_game', level: 0, period_key: `g:${e1}:0`, refs: [`entry:${e1}:0`] }), kind: 'review', reviewers: [] },
+      ],
+      now,
+    );
     const mine = await db.rpc<{ awards: Json[]; unseen: number; reviews: Json[] }>(w.u.luis, 'badge_notices', {});
     expect(mine.unseen).toBe(2);
     expect(mine.awards.map((a) => [a.key, a.scope, a.hidden, a.history])).toEqual(

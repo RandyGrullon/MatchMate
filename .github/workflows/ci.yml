@@ -2,9 +2,9 @@
 # y build, en un solo job para gastar pocos minutos (crítica 14: el repo privado tiene 2.000 min/mes gratis).
 # Un push que solo cambia documentos (docs/, *.md) no corre nada.
 #
-# pgTAP con `supabase start` (Docker: 3–6 min solo bajando imágenes) va aparte, de noche, y está APAGADO:
-# se enciende con la variable del repo PGTAP_NOCHE = true (Settings › Secrets and variables › Actions › Variables)
-# cuando existan pruebas en supabase/tests. También se puede correr a mano (Actions › CI › Run workflow).
+# pgTAP con `supabase start` (Docker: 3–6 min solo bajando imágenes) va aparte y solo a mano
+# (Actions › CI › Run workflow › «Correr también pgTAP»). Ya no corre de noche: sin pruebas en supabase/tests cada
+# noche quedaba una corrida «saltada» en la lista. Cuando existan, se vuelve a poner el `schedule`.
 name: CI
 
 on:
@@ -13,8 +13,6 @@ on:
     paths-ignore: ['docs/**', '**/*.md']
   pull_request:
     paths-ignore: ['docs/**', '**/*.md']
-  schedule:
-    - cron: '41 8 * * *' # 4:41 am en RD
   workflow_dispatch:
     inputs:
       pgtap:
@@ -33,15 +31,14 @@ permissions:
 jobs:
   checks:
     name: Tipos, pruebas y build
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -62,15 +59,13 @@ jobs:
         run: pnpm exec vite build
 
   pgtap:
-    name: pgTAP con Supabase local (de noche)
-    if: >-
-      (github.event_name == 'schedule' && vars.PGTAP_NOCHE == 'true') ||
-      (github.event_name == 'workflow_dispatch' && inputs.pgtap)
-    runs-on: ubuntu-latest
+    name: pgTAP con Supabase local
+    if: github.event_name == 'workflow_dispatch' && inputs.pgtap
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      - uses: actions/checkout@v6
+      - uses: supabase/setup-cli@v2
         with:
           version: latest
       # Base nueva con todas las migraciones (también las *_supabase.sql de Storage y Realtime) y el seed.
