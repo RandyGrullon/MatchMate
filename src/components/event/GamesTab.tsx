@@ -7,6 +7,7 @@ import { useLeagueCtx } from '../../lib/league';
 import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
 import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
 import { BallIcon, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
+import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
 import { ScanModal } from '../ScanModal';
@@ -58,6 +59,9 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
   const requirePhoto = league.requirePhoto !== false;
   const run = useAction();
   const { confirm } = useFeedback();
+  const busy = useBusy();
+  // Aparte: quitar la verificación no espera (ni detiene) a quitar un jugador o agregar un juego.
+  const unverifying = useBusy();
   const [scanFor, setScanFor] = useState<string | null | undefined>(undefined);
   const [adding, setAdding] = useState(false);
   const [photo, setPhoto] = useState<{ entry: Entry; game: number; photoId: string } | null>(null);
@@ -202,13 +206,21 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
     if (!ok) return;
     const photos = slots(photo.entry.photos, event.games, null);
     photos[photo.game] = requirePhoto ? null : NO_PHOTO;
+    // La foto sigue abierta (con la ruedita en «Quitar verificación») hasta que se guarda.
+    await unverifying.run('quitar', () => run(() => updateEntry(lid, photo.entry.id, { photos })));
     setPhoto(null);
-    await run(() => updateEntry(lid, photo.entry.id, { photos }));
   }
 
   async function remove(entry: Entry) {
     const ok = await confirm({ title: `¿Quitar a ${nameOf(entry)}?`, message: 'Se borran sus juegos de esta práctica.', confirmText: 'Quitar', danger: true });
-    if (ok) await run(() => removeEntry(lid, entry));
+    if (ok) await busy.run(`x:${entry.id}`, () => run(() => removeEntry(lid, entry)));
+  }
+
+  // En la práctica «Otro juego» va por la cola y se ve de una; en el torneo espera al servidor (con la ruedita).
+  const gameQueued = !event.type || event.type === 'practica';
+  function addGame() {
+    const add = () => run(() => addEventGame(lid, event), `Juego ${event.games + 1} agregado`);
+    void (gameQueued ? add() : busy.run('juego', add));
   }
 
   const framesEntry = framesFor ? entries.find((e) => e.id === framesFor.entryId) : undefined;
@@ -245,10 +257,7 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
           {requirePhoto ? 'Verificar con foto' : 'Leer foto'}
         </Button>
         {isAdmin && event.games < 10 && (
-          <Button
-            icon={<Plus className="size-4" />}
-            onClick={() => run(() => addEventGame(lid, event), `Juego ${event.games + 1} agregado`)}
-          >
+          <Button icon={<Plus className="size-4" />} loading={busy.isBusy('juego')} onClick={addGame}>
             Otro juego
           </Button>
         )}
@@ -304,14 +313,22 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
                   // Su propia fila: debajo de cada juego, la bola con que lo tiró (en la de los demás, nunca). Las casillas
                   // van en su caja desde el principio: si no, al leer sus bolas se volverían a montar y perdería lo escrito.
                   const ownRow = !!mine && l.entry.id === mine.id;
+                  const removing = busy.isBusy(`x:${l.entry.id}`);
                   return (
                     <div key={l.entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:flex-nowrap">
                       <div className="flex w-full min-w-0 items-center gap-2 sm:w-44 sm:shrink-0">
                         <span className="truncate font-medium">{name}</span>
                         {isTorneo && <span className="text-xs text-muted tabular-nums">hcp {l.hcp}</span>}
                         {!isTorneo && isAdmin && (
-                          <button type="button" onClick={() => remove(l.entry)} className="ml-auto rounded p-1 text-muted hover:text-danger sm:hidden" aria-label={`Quitar a ${name}`}>
-                            <X className="size-4" />
+                          <button
+                            type="button"
+                            onClick={() => remove(l.entry)}
+                            disabled={busy.isBusy()}
+                            aria-busy={removing || undefined}
+                            className="ml-auto rounded p-1 text-muted hover:text-danger disabled:pointer-events-none disabled:opacity-60 sm:hidden"
+                            aria-label={`Quitar a ${name}`}
+                          >
+                            <BusyIcon busy={removing} icon={<X className="size-4" />} className="size-4" />
                           </button>
                         )}
                       </div>
@@ -362,8 +379,15 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
                         />
                       </div>
                       {!isTorneo && isAdmin && (
-                        <button type="button" onClick={() => remove(l.entry)} className="hidden rounded p-1 text-muted hover:text-danger sm:block" aria-label={`Quitar a ${name}`}>
-                          <X className="size-4" />
+                        <button
+                          type="button"
+                          onClick={() => remove(l.entry)}
+                          disabled={busy.isBusy()}
+                          aria-busy={removing || undefined}
+                          className="hidden rounded p-1 text-muted hover:text-danger disabled:pointer-events-none disabled:opacity-60 sm:block"
+                          aria-label={`Quitar a ${name}`}
+                        >
+                          <BusyIcon busy={removing} icon={<X className="size-4" />} className="size-4" />
                         </button>
                       )}
                     </div>
@@ -413,7 +437,7 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
         onClose={() => setPhoto(null)}
         title={photo ? `${nameOf(photo.entry)} · Juego ${photo.game + 1}` : ''}
         actions={
-          <Button variant="ghost" className="mr-auto text-danger" onClick={unverify}>
+          <Button variant="ghost" className="mr-auto text-danger" loading={unverifying.isBusy()} onClick={unverify}>
             Quitar verificación
           </Button>
         }

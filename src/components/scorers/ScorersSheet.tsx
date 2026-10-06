@@ -170,7 +170,7 @@ function ScorersSheetOpen({ target, participants, onClose, initialTab = 'liga' }
       confirmText: 'Quitar link',
       danger: true,
     });
-    if (ok) await act('link', () => revokeScorerLink(lid, link), 'Link quitado');
+    if (ok) await act('link:quitar', () => revokeScorerLink(lid, link), 'Link quitado');
   }
 
   return (
@@ -588,7 +588,15 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
           <Button size="sm" className="h-11 flex-1" icon={<RefreshCw className="size-4" />} loading={busy === 'link'} disabled={!!busy} onClick={() => onRotateLink(link)}>
             Cambiar link
           </Button>
-          <Button size="sm" variant="ghost" className="h-11 flex-1 text-danger" icon={<Link2Off className="size-4" />} disabled={!!busy} onClick={() => onRevokeLink(link)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-11 flex-1 text-danger"
+            icon={<Link2Off className="size-4" />}
+            loading={busy === 'link:quitar'}
+            disabled={!!busy}
+            onClick={() => onRevokeLink(link)}
+          >
             Quitar link
           </Button>
         </div>

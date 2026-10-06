@@ -12,6 +12,7 @@ import { slots } from '../../lib/stats';
 import type { BowlingEvent, Entry, Submission } from '../../lib/types';
 import { BallArt } from '../balls/BallArt';
 import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
+import { BusyIcon } from '../busy';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
@@ -337,11 +338,12 @@ export function MyGamesPanel({
                 type="button"
                 onClick={addGame}
                 disabled={adding}
+                aria-busy={adding || undefined}
                 data-tour="otro-juego"
                 aria-label="Agregar otro juego a la sesión"
                 className="flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-line px-1 py-2 text-muted transition hover:border-accent hover:text-accent active:scale-95 disabled:opacity-50"
               >
-                <Plus className="size-5" />
+                <BusyIcon busy={adding} icon={<Plus className="size-5" />} className="size-5" />
                 <span className="text-[10px]">Otro juego</span>
               </button>
             )}

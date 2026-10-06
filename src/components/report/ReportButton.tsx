@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router';
 import { Flag } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { REPORT_KIND_THIS, type ReportKind } from '../../lib/data/reports';
+import { BusyIcon, useBusy } from '../busy';
 import { cx } from '../ui';
 
-const ReportModal = lazy(() => import('./ReportModal'));
+const loadReportModal = () => import('./ReportModal');
+const ReportModal = lazy(loadReportModal);
 
 /**
  * «Reportar» algo (comentario, juego, aviso, liga o cuenta): abre el modal con el motivo y una nota. Sin cuenta
@@ -33,14 +35,18 @@ export function ReportButton({
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const loading = useBusy();
   if (ownerId && user?.uid === ownerId) return null;
   const name = label ?? `Reportar ${REPORT_KIND_THIS[kind]}`;
+  const opening = loading.isBusy();
 
-  function start() {
+  async function start() {
     if (!user) {
       navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
       return;
     }
+    // El modal se baja al tocar: la bandera gira mientras llega.
+    await loading.run('abrir', () => loadReportModal().catch(() => undefined));
     setOpen(true);
   }
 
@@ -48,7 +54,9 @@ export function ReportButton({
     <>
       <button
         type="button"
-        onClick={start}
+        onClick={() => void start()}
+        disabled={opening}
+        aria-busy={opening || undefined}
         aria-label={variant === 'icon' ? name : undefined}
         title={variant === 'icon' ? name : undefined}
         className={cx(
@@ -58,7 +66,7 @@ export function ReportButton({
           className,
         )}
       >
-        <Flag className="size-4" aria-hidden="true" />
+        <BusyIcon busy={opening} icon={<Flag className="size-4" aria-hidden="true" />} className="size-4" />
         {variant === 'text' && <span>{name}</span>}
       </button>
       {open && (

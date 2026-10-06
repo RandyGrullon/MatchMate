@@ -24,6 +24,20 @@ vi.mock('../lib/data', async (orig) => {
   };
 });
 
+// La acción que espera (useBusy), para ver la ruedita sin tocar nada; null = la de verdad.
+const pending = vi.hoisted(() => ({ key: null as string | null }));
+vi.mock('../components/busy', async (orig) => {
+  const real = await orig<typeof import('../components/busy')>();
+  return {
+    ...real,
+    useBusy: () => {
+      const b = real.useBusy();
+      const key = pending.key;
+      return key == null ? b : { ...b, busy: key, isBusy: (k?: string) => (k === undefined ? true : k === key) };
+    },
+  };
+});
+
 const calls = vi.hoisted(() => [] as { name: string; steps: TourStep[]; when?: boolean }[]);
 vi.mock('../components/Tour', () => ({
   Tour: (props: { name: string; steps: TourStep[]; when?: boolean }) => {
@@ -74,6 +88,7 @@ function adminTourWhen(sport: string): boolean | undefined {
 beforeEach(() => {
   calls.length = 0;
   data.members = null;
+  pending.key = null;
 });
 
 describe('tour de Admin', () => {
@@ -180,5 +195,27 @@ describe('Admin › Miembros: los anotadores', () => {
     // Dani (miembro) y los dos admins.
     expect(t.match(/Hacer anotador/g)).toHaveLength(3);
     expect(t).toContain('Hacer admin');
+  });
+
+  it('mientras se guarda un permiso, solo ese botón da vueltas y los demás esperan', () => {
+    data.members = members;
+    const draw = () =>
+      renderToString(
+        h(MemoryRouter, { initialEntries: ['/l/l1/admin?tab=miembros'] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: ctx('bowling') }, h(AdminPage)))),
+      );
+    expect(draw()).not.toContain('animate-spin');
+    pending.key = 'l1_u-dani:scorer';
+    const html = draw();
+    const buttons = html.match(/<button[^>]*>(?:(?!<\/button>).)*<\/button>/g) ?? [];
+    const spinning = buttons.filter((b) => b.includes('animate-spin'));
+    expect(spinning).toHaveLength(1);
+    expect(spinning[0]).toContain('Hacer anotador');
+    expect(spinning[0]).toContain('disabled=""');
+    // Los de los otros miembros (y los demás de Dani) no se pueden tocar mientras tanto.
+    for (const label of ['Hacer admin', 'Quitar admin', 'Quitar anotador']) {
+      const b = buttons.filter((x) => x.includes(label));
+      expect(b.length, label).toBeGreaterThan(0);
+      for (const x of b) expect(x, label).toContain('disabled=""');
+    }
   });
 });

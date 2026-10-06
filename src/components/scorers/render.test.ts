@@ -32,7 +32,7 @@ vi.mock('../../lib/data/people', async (orig) => ({
   usePeople: () => state.people,
 }));
 
-const { default: ScorersSheet } = await import('./ScorersSheet');
+const { default: ScorersSheet, ScorersBody } = await import('./ScorersSheet');
 const { ScorersButton } = await import('./ScorersButton');
 
 const league = (extra: Partial<League> = {}) =>
@@ -274,6 +274,45 @@ describe('la hoja «Anotadores»', () => {
     expect(t).toContain('En una liga con menores no hay link para anotar: invita a cada anotador por su @usuario.');
     expect(t).toContain('Quien anota ve la liga completa, también a los menores.');
     expect(t).not.toContain('Crear link para anotar');
+  });
+
+  it('mientras quita el link, la ruedita va en «Quitar link» (no en «Cambiar link») y los dos quedan quietos', () => {
+    const noop = () => undefined;
+    const body = (busy: string | null) =>
+      render(
+        h(ScorersBody, {
+          league: league(),
+          lid: 'l1',
+          target,
+          rows: [],
+          admins: 1,
+          members: state.members,
+          access: { ...state.access, data: { ...state.access.data, links: [link()] } },
+          players: null,
+          tab: 'link',
+          onTab: noop,
+          query: '',
+          onQuery: noop,
+          busy,
+          reachText: '',
+          onMake: noop,
+          onRemove: noop,
+          onRetire: noop,
+          onInvite: noop,
+          onCreateLink: noop,
+          onRotateLink: noop,
+          onRevokeLink: noop,
+        }),
+      );
+    /** El <button>…</button> entero que dice `label`. */
+    const whole = (html: string, label: string) => [...html.matchAll(/<button[^>]*>[\s\S]*?<\/button>/g)].map((m) => m[0]).find((b) => text(b).trim() === label) ?? '';
+    const idle = body(null);
+    expect(whole(idle, 'Quitar link')).not.toContain('animate-spin');
+    const out = body('link:quitar');
+    expect(whole(out, 'Quitar link')).toContain('animate-spin');
+    expect(whole(out, 'Cambiar link')).not.toContain('animate-spin');
+    expect(buttonTag(out, 'Quitar link')).toContain('disabled');
+    expect(buttonTag(out, 'Cambiar link')).toContain('disabled');
   });
 });
 

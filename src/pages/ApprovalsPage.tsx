@@ -20,6 +20,7 @@ import { firstFreeSlot, isValidScore, slots } from '../lib/stats';
 import { useNow } from '../lib/useNow';
 import type { BowlingEvent, Entry, Player, Submission } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { PhotoView } from '../components/PhotoModal';
 import { Avatar } from '../components/Avatar';
 import { FramesGrid } from '../components/frames/FramesGrid';
@@ -98,7 +99,7 @@ function SubmissionCard({
   const [showFrames, setShowFrames] = useState(false);
   const [values, setValues] = useState<string[]>([]);
   const [start, setStart] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const busy = useBusy<'aprobar' | 'rechazar' | 'descartar'>();
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState('');
 
@@ -147,7 +148,11 @@ function SubmissionCard({
     return (
       <Card className="flex items-center justify-between px-4 py-3 text-sm text-muted">
         Envío de un jugador o evento que ya no existe.
-        <Button size="sm" onClick={() => run(() => rejectSubmission(lid, sub, 'Evento o jugador eliminado'))}>
+        <Button
+          size="sm"
+          loading={busy.isBusy('descartar')}
+          onClick={() => void busy.run('descartar', () => run(() => rejectSubmission(lid, sub, 'Evento o jugador eliminado')))}
+        >
           Descartar
         </Button>
       </Card>
@@ -160,26 +165,27 @@ function SubmissionCard({
 
   async function approve() {
     if (!player) return;
-    setBusy(true);
     const map: Record<number, number> = {};
     values.forEach((v, k) => {
       if (v.trim() !== '' && start + k < games) map[start + k] = Number(v);
     });
-    const ok = await run(async () => {
-      const target = event ?? (await practiceForDate(lid, events, sub.date!, count));
-      const average = entry
-        ? entry.average
-        : ((await fetchEffectiveAverages(lid, [player], { date: target.date, eventId: target.id || null })).get(player.id) ?? 0);
-      await approveSubmission(lid, sub, target, entry, average, map, start);
-      return true;
-    });
-    setBusy(false);
+    const ok = await busy.run('aprobar', () =>
+      run(async () => {
+        const target = event ?? (await practiceForDate(lid, events, sub.date!, count));
+        const average = entry
+          ? entry.average
+          : ((await fetchEffectiveAverages(lid, [player], { date: target.date, eventId: target.id || null })).get(player.id) ?? 0);
+        await approveSubmission(lid, sub, target, entry, average, map, start);
+        return true;
+      }),
+    );
     if (ok) toast(`Aprobado: ${toSave} ${toSave === 1 ? 'juego' : 'juegos'} de ${player.name}`);
   }
 
   async function reject() {
+    // El modal se cierra y la ruedita sale en «Rechazar» de la tarjeta.
     setRejecting(false);
-    await run(() => rejectSubmission(lid, sub, note.trim() || null), 'Envío rechazado');
+    await busy.run('rechazar', () => run(() => rejectSubmission(lid, sub, note.trim() || null), 'Envío rechazado'));
   }
 
   return (
@@ -312,10 +318,23 @@ function SubmissionCard({
           </Field>
           {!entry && <p className="text-xs text-muted">{player.name} no estaba en este evento: se inscribe al aprobar.</p>}
           <div className="mt-auto flex gap-2">
-            <Button className="flex-1" icon={<X className="size-4" />} onClick={() => setRejecting(true)}>
+            <Button
+              className="flex-1"
+              icon={<X className="size-4" />}
+              loading={busy.isBusy('rechazar')}
+              disabled={busy.isBusy()}
+              onClick={() => setRejecting(true)}
+            >
               Rechazar
             </Button>
-            <Button className="flex-1" variant="primary" icon={<Check className="size-4" />} loading={busy} disabled={invalid || !toSave} onClick={approve}>
+            <Button
+              className="flex-1"
+              variant="primary"
+              icon={<Check className="size-4" />}
+              loading={busy.isBusy('aprobar')}
+              disabled={invalid || !toSave || busy.isBusy()}
+              onClick={approve}
+            >
               Aprobar {toSave || ''}
             </Button>
           </div>
@@ -362,6 +381,8 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
   // Elegir la fila: si se pidió (cambiar fila) o si ninguna es la del jugador.
   const choices = found && (read?.pick || !match) ? found : null;
   const [picked, setPicked] = useState('');
+  // Guardando la fila leída en el envío.
+  const saving = useBusy();
   const busy = job?.status === 'leyendo' || job?.status === 'esperando';
   const hasRead = sub.scanned != null;
   const fresh = !!sub.createdAt && now.getTime() - sub.createdAt.toMillis() < FRESH_MS;
@@ -373,8 +394,10 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
   }
 
   function apply(row: ScanRow) {
-    onApply();
-    void run(() => setSubmissionScan(lid, sub.id, row.games, row.name));
+    return saving.run('fila', () => {
+      onApply();
+      return run(() => setSubmissionScan(lid, sub.id, row.games, row.name));
+    });
   }
 
   function start(pick: boolean) {
@@ -388,7 +411,7 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
         // Si se sabe cuál es su fila, se pone sola; si no (o se pidió cambiarla), el admin la elige.
         if (row && !pick) {
           adminReads.delete(sub.id);
-          apply(row);
+          void apply(row);
         } else if (row) {
           setPicked(String(rows.indexOf(row)));
         }
@@ -418,6 +441,10 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
         <span className="flex items-start gap-2 text-warn">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {job.message} Revísala tú.
         </span>
+      ) : saving.isBusy() && !choices ? (
+        <span className="flex items-center gap-2 text-accent">
+          <Spinner className="text-accent" /> Guardando lo leído…
+        </span>
       ) : choices ? (
         <span className="text-muted">
           {read?.pick && match ? `¿Cuál fila de la foto es la de ${player.name}?` : `No encontramos a ${player.name} en la foto. ¿Cuál fila es?`}
@@ -446,12 +473,13 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
           <Button
             size="sm"
             variant="primary"
+            loading={saving.isBusy()}
             disabled={picked === ''}
             onClick={() => {
               const row = choices[+picked];
               if (!row) return;
-              forget();
-              apply(row);
+              // Se queda la fila elegida (con la ruedita) hasta que se guarda.
+              void apply(row).then(forget);
             }}
           >
             Usar esta fila
@@ -461,7 +489,7 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
           </Button>
         </div>
       )}
-      {!busy && !choices && photoUrl && (!hasRead || job?.status === 'error') && (
+      {!busy && !saving.isBusy() && !choices && photoUrl && (!hasRead || job?.status === 'error') && (
         <Button size="sm" className="self-start" icon={<ScanLine className="size-4" />} onClick={() => start(hasRead)}>
           {job?.status === 'error' ? 'Intentar de nuevo' : 'Leer con IA'}
         </Button>

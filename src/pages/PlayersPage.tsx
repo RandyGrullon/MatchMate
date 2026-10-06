@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { BadgeCheck, ExternalLink, Link2, Merge, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
 import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useEvents, useLeagueMembers, usePlayers } from '../lib/data';
@@ -10,6 +10,7 @@ import { MIN_RANK_GAMES, playerStats, type PlayerStats } from '../lib/stats';
 import { todayIn } from './sports/racket/logic/time';
 import type { Entry, Member, Player } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { playerUrl, shareLink } from '../components/share';
 import { Avatar } from '../components/Avatar';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, cx } from '../components/ui';
@@ -96,12 +97,16 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const [mergingId, setMergingId] = useState<string | null>(null);
   const merging = mergingId ? (players.data.find((p) => p.id === mergingId) ?? null) : null;
   const names = useMemo(() => players.data.map((p) => p.name), [players.data]);
+  // El link de qué jugador se está compartiendo (solo esa fila da vueltas).
+  const sharing = useBusy();
 
   const filtered = players.data.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
 
-  async function share(p: Player) {
-    const copied = await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`);
-    if (copied) toast('Link copiado');
+  function share(p: Player) {
+    return sharing.run(p.id, async () => {
+      const copied = await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`);
+      if (copied) toast('Link copiado');
+    });
   }
 
   return (
@@ -202,7 +207,15 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
                   </>
                 )}
                 <div className="flex justify-end gap-1">
-                  <Button variant="ghost" size="sm" title="Compartir link" aria-label="Compartir link" onClick={() => share(p)} icon={<Link2 className="size-4" />} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Compartir link"
+                    aria-label="Compartir link"
+                    loading={sharing.isBusy(p.id)}
+                    onClick={() => void share(p)}
+                    icon={<Link2 className="size-4" />}
+                  />
                   <Link
                     to={`${base}/j/${p.id}`}
                     title="Ver su página"
@@ -290,7 +303,16 @@ function PlayerFormModal({
   const [name, setName] = useState('');
   const [draft, setDraft] = useState<StatDraft>(emptyDraft);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // `<jugador>:guardar` o `<jugador>:eliminar`: la ruedita es del jugador que se está guardando o borrando.
+  const busy = useBusy();
+  // Al terminar se cierra, si sigue abierta en ese jugador (mientras esperaba se pudo cerrar y abrir otro).
+  const shownId = useRef<string | null>(null);
+  useEffect(() => {
+    shownId.current = open ? (player?.id ?? null) : null;
+  });
+  const closeIf = (id: string) => {
+    if (shownId.current === id || shownId.current === null) onClose();
+  };
   // Liga con menores (menos natación, que lo hace en Nadadores): marcar o desmarcar a un jugador sin cuenta como menor,
   // con su tutor y el permiso (set_player_minor). Los datos del tutor solo los leen los admins y no se guardan.
   const minorsOk = !!league.hasMinors && !swimming && !!player && !player.uid;
@@ -339,14 +361,14 @@ function PlayerFormModal({
     }
     const before = parseStats(sport, draftFromAttrs(sport, attrs, player.averageOverride ?? null));
     setError(null);
-    setBusy(true);
-    await run(async () => {
-      await updatePlayer(lid, player.id, bowling ? { name: name.trim(), averageOverride: parsed.stats.averageOverride } : { name: name.trim() });
-      if (!bowling && !swimming) await saveSportStats(lid, sport, player.id, parsed.stats, before.ok ? before.stats : undefined);
-      if (minorChanged) await setPlayerMinor(lid, player.id, isMinor ? guardian : null);
-    }, 'Jugador actualizado');
-    setBusy(false);
-    onClose();
+    await busy.run(`${player.id}:guardar`, async () => {
+      await run(async () => {
+        await updatePlayer(lid, player.id, bowling ? { name: name.trim(), averageOverride: parsed.stats.averageOverride } : { name: name.trim() });
+        if (!bowling && !swimming) await saveSportStats(lid, sport, player.id, parsed.stats, before.ok ? before.stats : undefined);
+        if (minorChanged) await setPlayerMinor(lid, player.id, isMinor ? guardian : null);
+      }, 'Jugador actualizado');
+      closeIf(player.id);
+    });
   }
 
   async function remove() {
@@ -360,8 +382,11 @@ function PlayerFormModal({
       danger: true,
     });
     if (!ok) return;
-    onClose();
-    await run(() => deletePlayer(lid, player.id, player.uid), 'Jugador eliminado');
+    // Se cierra al terminar: mientras, «Eliminar» da vueltas.
+    await busy.run(`${player.id}:eliminar`, async () => {
+      await run(() => deletePlayer(lid, player.id, player.uid), 'Jugador eliminado');
+      closeIf(player.id);
+    });
   }
 
   return (
@@ -372,12 +397,19 @@ function PlayerFormModal({
       footer={
         <>
           {player && (
-            <Button variant="ghost" className="mr-auto text-danger" icon={<Trash2 className="size-4" />} onClick={remove}>
+            <Button
+              variant="ghost"
+              className="mr-auto text-danger"
+              icon={<Trash2 className="size-4" />}
+              loading={busy.isBusy(`${player.id}:eliminar`)}
+              disabled={busy.isBusy()}
+              onClick={remove}
+            >
               Eliminar
             </Button>
           )}
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" type="submit" form="player-form" loading={busy}>
+          <Button variant="primary" type="submit" form="player-form" loading={!!player && busy.isBusy(`${player.id}:guardar`)} disabled={busy.isBusy()}>
             Guardar
           </Button>
         </>
@@ -405,7 +437,7 @@ function PlayerFormModal({
           </p>
         )}
       </form>
-      {player && <AccountSection player={player} account={account} members={members} players={players} onDone={onClose} />}
+      {player && <AccountSection player={player} account={account} members={members} players={players} onDone={closeIf} />}
       {player && players.length > 1 && (
         <div className="mt-4 flex flex-col gap-2 rounded-xl border border-line p-3 sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-xs text-muted">
@@ -436,12 +468,15 @@ function AccountSection({
   account: Member | null;
   members: Member[];
   players: Player[];
-  onDone: () => void;
+  /** Terminó (con el id del jugador): se cierra la ficha. */
+  onDone: (playerId: string) => void;
 }) {
   const { lid } = useLeagueCtx();
   const run = useAction();
   const { confirm } = useFeedback();
   const [who, setWho] = useState('');
+  // `<jugador>:vincular` o `<jugador>:desvincular` (la ficha puede pasar a otro jugador mientras espera).
+  const busy = useBusy();
   const nameOf = (id: string | null) => players.find((p) => p.id === id)?.name ?? null;
 
   if (!player.uid) {
@@ -461,8 +496,10 @@ function AccountSection({
       if (!ok) return;
       // La cuenta como está ahora (pudo cambiar mientras se confirmaba); el resto se decide con el servidor.
       const m = members.find((c) => c.id === picked.id) ?? picked;
-      onDone();
-      await run(() => linkAccountToPlayer(lid, m, player.id), `${player.name} ahora es de ${m.name}`);
+      await busy.run(`${player.id}:vincular`, async () => {
+        await run(() => linkAccountToPlayer(lid, m, player.id), `${player.name} ahora es de ${m.name}`);
+        onDone(player.id);
+      });
     }
     return (
       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
@@ -480,7 +517,7 @@ function AccountSection({
                 </option>
               ))}
             </Select>
-            <Button size="sm" icon={<Link2 className="size-4" />} disabled={!who} onClick={link}>
+            <Button size="sm" icon={<Link2 className="size-4" />} loading={busy.isBusy(`${player.id}:vincular`)} disabled={!who || busy.isBusy()} onClick={link}>
               Vincular
             </Button>
           </div>
@@ -497,8 +534,10 @@ function AccountSection({
       danger: true,
     });
     if (!ok) return;
-    onDone();
-    await run(() => unlinkAccount(lid, player.id, { uid: player.uid!, name: account?.name ?? player.name }), 'Cuenta desvinculada');
+    await busy.run(`${player.id}:desvincular`, async () => {
+      await run(() => unlinkAccount(lid, player.id, { uid: player.uid!, name: account?.name ?? player.name }), 'Cuenta desvinculada');
+      onDone(player.id);
+    });
   }
 
   return (
@@ -508,7 +547,7 @@ function AccountSection({
         <span className="min-w-0 flex-1 truncate">{account?.name ?? 'Cuenta vinculada'}</span>
         {account && account.role !== 'member' && <Badge tone="accent">{roleLabel(account.role)}</Badge>}
       </div>
-      <Button size="sm" className="self-start" icon={<Unlink className="size-4" />} onClick={unlink}>
+      <Button size="sm" className="self-start" icon={<Unlink className="size-4" />} loading={busy.isBusy(`${player.id}:desvincular`)} disabled={busy.isBusy()} onClick={unlink}>
         Desvincular
       </Button>
     </div>

@@ -271,6 +271,7 @@ export function SoloGameSheet({
               <button
                 type="button"
                 disabled={!!busy}
+                aria-busy={busy === 'delete' || undefined}
                 onClick={() => void remove()}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-danger transition select-none hover:bg-danger-soft active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
               >

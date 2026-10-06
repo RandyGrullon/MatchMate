@@ -3,6 +3,7 @@ import { Plus, Search } from 'lucide-react';
 import { addEntries, createPlayer, fetchEffectiveAverages } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
+import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { useQuickMinor } from '../players/GuardianFields';
 import { Button, Input, Modal, cx } from '../ui';
@@ -26,6 +27,7 @@ export function AddPlayersModal({
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const newOne = useBusy();
   // Liga con menores: «Es menor de edad» y su tutor salen solo después de tocar «Crear…» (el mismo campo sirve para
   // buscar, y mientras se busca no deben empujar la lista).
   const [creating, setCreating] = useState(false);
@@ -63,7 +65,7 @@ export function AddPlayersModal({
     }
     const m = minor.take();
     if (m === undefined) return;
-    const id = await run(() => createPlayer(lid, q, null, m), 'Jugador creado');
+    const id = await newOne.run('crear', () => run(() => createPlayer(lid, q, null, m), 'Jugador creado'));
     if (id) {
       setPicked((s) => new Set(s).add(id));
       setQ('');
@@ -73,6 +75,7 @@ export function AddPlayersModal({
   }
 
   async function save() {
+    if (busy) return;
     setBusy(true);
     const chosen = players.filter((p) => picked.has(p.id));
     await run(async () => {
@@ -113,7 +116,7 @@ export function AddPlayersModal({
           />
         </div>
         {canCreate && (
-          <Button variant="secondary" icon={<Plus className="size-4" />} onClick={createAndPick} className="justify-start">
+          <Button variant="secondary" icon={<Plus className="size-4" />} loading={newOne.isBusy()} onClick={createAndPick} className="justify-start">
             Crear “{q.trim()}” y agregarlo
           </Button>
         )}

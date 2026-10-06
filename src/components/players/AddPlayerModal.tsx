@@ -89,6 +89,7 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
 
   async function submitOne(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
     const parsed = parseStats(sport, draft);
     if (!parsed.ok) {
       setError(parsed.error);
@@ -112,7 +113,7 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
 
   async function submitMany(e: FormEvent) {
     e.preventDefault();
-    if (!count || tooMany || minorsBlocked) return;
+    if (busy || !count || tooMany || minorsBlocked) return;
     setBusy(true);
     const r = await run(() => (minors ? addManyMinors(lid, minors.rows, manyConsent) : addManyPlayers(lid, many.names)));
     setBusy(false);

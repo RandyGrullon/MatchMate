@@ -35,6 +35,7 @@ import { BackLink } from '../components/BackLink';
 import { EventFormModal } from '../components/EventFormModal';
 import { SubmitGamesModal } from '../components/SubmitGamesModal';
 import { useAction, useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, PageSkeleton, Tabs } from '../components/ui';
 import { shareLink } from '../components/share';
 import { GameDetailModal } from '../components/event/GameDetailModal';
@@ -100,6 +101,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const sharing = useBusy();
   const [detail, setDetail] = useState<Entry | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const event = useEvent(lid, eventId);
@@ -227,9 +229,12 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         <div className="-mr-1 flex shrink-0 items-center">
           <Button
             variant="ghost"
-            onClick={async () => {
-              if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
-            }}
+            loading={sharing.isBusy()}
+            onClick={() =>
+              void sharing.run('compartir', async () => {
+                if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
+              })
+            }
             aria-label="Compartir"
             data-tour="compartir"
             title="Compartir"

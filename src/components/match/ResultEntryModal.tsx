@@ -59,7 +59,7 @@ export function ResultEntryModal({
   const winnerName = parsed?.ok && parsed.value.winner ? sideName(m.sides[parsed.value.winner - 1]) : null;
 
   const submit = async () => {
-    if (!parsed?.ok) return;
+    if (!parsed?.ok || busy) return;
     const r = parsed.value;
     setBusy(true);
     try {

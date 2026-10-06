@@ -73,7 +73,7 @@ export function MergePlayerModal({
   }, [open, lid, keep?.id, drop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function merge() {
-    if (!preview?.canMerge || !keep || !drop) return;
+    if (busy || !preview?.canMerge || !keep || !drop) return;
     const ok = await confirm({
       title: `¿Juntar a ${drop.name} con ${keep.name}?`,
       message: `${mergeSummary(preview)} No se puede deshacer.`,

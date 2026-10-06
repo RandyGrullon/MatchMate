@@ -119,13 +119,15 @@ export function ReportItem({ report: r, showReporter, actions, now = Date.now() 
  */
 export function ResolveButtons({ report }: { report: Report }) {
   const { confirm, toast } = useFeedback();
-  const [busy, setBusy] = useState(false);
+  // Cuál se está guardando: la ruedita va en ese botón.
+  const [busy, setBusy] = useState<'dismissed' | 'actioned' | null>(null);
   const [attending, setAttending] = useState(false);
   const [note, setNote] = useState('');
   const others = report.sameTarget > 1 ? ` y los otros ${report.sameTarget - 1} de lo mismo` : '';
 
   async function run(status: 'dismissed' | 'actioned', text: string | null) {
-    setBusy(true);
+    if (busy) return false;
+    setBusy(status);
     try {
       await resolveReport(report.id, status, text);
       toast(status === 'actioned' ? 'Reporte atendido' : 'Reporte descartado');
@@ -135,7 +137,7 @@ export function ResolveButtons({ report }: { report: Report }) {
       toast(reportErrorText(e), 'error');
       return false;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -157,10 +159,10 @@ export function ResolveButtons({ report }: { report: Report }) {
 
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={dismiss} disabled={busy} className="max-sm:h-11">
+      <Button size="sm" variant="ghost" onClick={dismiss} loading={busy === 'dismissed'} disabled={!!busy} className="max-sm:h-11">
         Descartar
       </Button>
-      <Button size="sm" icon={<CheckCircle2 className="size-3.5" />} onClick={() => setAttending(true)} disabled={busy} className="max-sm:h-11">
+      <Button size="sm" icon={<CheckCircle2 className="size-3.5" />} onClick={() => setAttending(true)} disabled={!!busy} className="max-sm:h-11">
         Marcar como atendido
       </Button>
       <Modal
@@ -172,7 +174,7 @@ export function ResolveButtons({ report }: { report: Report }) {
             <Button onClick={() => setAttending(false)} className="max-sm:h-11">
               Cancelar
             </Button>
-            <Button variant="primary" icon={<CheckCircle2 className="size-4" />} loading={busy} onClick={attend} className="max-sm:h-11">
+            <Button variant="primary" icon={<CheckCircle2 className="size-4" />} loading={busy === 'actioned'} onClick={attend} className="max-sm:h-11">
               Listo
             </Button>
           </>

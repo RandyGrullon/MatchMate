@@ -16,6 +16,7 @@ import { TrendSection } from '../components/stats/TrendSection';
 import { SubmitGamesModal } from '../components/SubmitGamesModal';
 import { NextPracticeCard } from '../components/NextPracticeCard';
 import { useAction, useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { playerUrl, shareLink } from '../components/share';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Skeleton, StatsSkeleton, cx } from '../components/ui';
 import { Stat } from '../components/event/StandingsTab';
@@ -39,6 +40,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   const events = useEvents(lid);
   const subs = usePlayerSubmissions(lid, playerId);
   const [submitting, setSubmitting] = useState(false);
+  const busy = useBusy<'compartir' | 'salir'>();
 
   const eventById = useMemo(() => new Map(events.data.map((e) => [e.id, e])), [events.data]);
   const mine = useMemo(
@@ -125,8 +127,10 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
     .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
     .slice(0, 6);
 
-  async function share() {
-    if (await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`)) toast('Link copiado');
+  function share() {
+    return busy.run('compartir', async () => {
+      if (await shareLink(playerUrl(lid, p.id), `${p.name} · MatchMate`)) toast('Link copiado');
+    });
   }
 
   async function leave() {
@@ -138,10 +142,12 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
       danger: true,
     });
     if (!ok) return;
-    const done = await run(async () => {
-      await removeMember(member);
-      return true;
-    }, 'Saliste de la liga');
+    const done = await busy.run('salir', () =>
+      run(async () => {
+        await removeMember(member);
+        return true;
+      }, 'Saliste de la liga'),
+    );
     if (done) {
       rememberLeague(null);
       navigate('/ligas');
@@ -174,7 +180,16 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
               Subir juegos
             </Button>
           )}
-          <Button variant="ghost" size="sm" className="absolute top-3 right-3" onClick={share} aria-label="Compartir perfil" title="Compartir perfil" icon={<Share2 className="size-4" />} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute top-3 right-3"
+            loading={busy.isBusy('compartir')}
+            onClick={() => void share()}
+            aria-label="Compartir perfil"
+            title="Compartir perfil"
+            icon={<Share2 className="size-4" />}
+          />
           {!user && unclaimed && (
             <Link
               to={`/login?modo=registro&next=${encodeURIComponent(`${base}/perfil?soy=${p.id}`)}`}
@@ -368,7 +383,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
         {isOwner && own && <SuggestionBox />}
         {isOwner && member && member.role !== 'owner' && (
           <div className="flex justify-center">
-            <Button variant="ghost" size="sm" className="text-muted" icon={<LogOut className="size-4" />} onClick={leave}>
+            <Button variant="ghost" size="sm" className="text-muted" icon={<LogOut className="size-4" />} loading={busy.isBusy('salir')} onClick={leave}>
               Salir de la liga
             </Button>
           </div>

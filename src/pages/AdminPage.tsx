@@ -62,6 +62,7 @@ import { leagueSport, sportMeta } from '../sports/registry';
 import { hasScreens, useSportScreens } from '../sports/screens';
 import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
+import { useBusy } from '../components/busy';
 import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, TopLoader, cx } from '../components/ui';
 import { AnnouncePanel } from '../components/league/Announce';
 import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
@@ -256,6 +257,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   const { user } = useAuth();
   const run = useAction();
   const { confirm } = useFeedback();
+  // Qué permiso de quién se está guardando (`${m.id}:admin`…): ese botón da vueltas y los demás esperan.
+  const busy = useBusy();
   const members = useLeagueMembers(lid);
   const players = usePlayers(lid);
   const playerName = useMemo(() => new Map(players.data.map((p) => [p.id, p.name])), [players.data]);
@@ -282,7 +285,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       confirmText: makeAdmin ? 'Hacer admin' : 'Quitar admin',
       danger: !makeAdmin,
     });
-    if (ok) await run(() => setMemberRole(m, makeAdmin ? 'admin' : 'member'), makeAdmin ? `${m.name} ahora es admin` : 'Listo');
+    if (ok) await busy.run(`${m.id}:admin`, () => run(() => setMemberRole(m, makeAdmin ? 'admin' : 'member'), makeAdmin ? `${m.name} ahora es admin` : 'Listo'));
   }
 
   async function toggleScorer(m: Member) {
@@ -302,7 +305,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       confirmText: make ? 'Hacer anotador' : 'Quitar anotador',
       danger: !make,
     });
-    if (ok) await run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : (out?.done ?? 'Listo'));
+    if (ok) await busy.run(`${m.id}:scorer`, () => run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : (out?.done ?? 'Listo')));
   }
 
   async function toggleMaker(m: Member) {
@@ -315,7 +318,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       confirmText: make ? 'Sí, que diseñe' : 'Quitar',
       danger: !make,
     });
-    if (ok) await run(() => setMemberBadgeMaker(m, make), make ? `${m.name} ahora diseña insignias` : 'Listo');
+    if (ok) await busy.run(`${m.id}:maker`, () => run(() => setMemberBadgeMaker(m, make), make ? `${m.name} ahora diseña insignias` : 'Listo'));
   }
 
   async function kick(m: Member) {
@@ -325,7 +328,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       confirmText: 'Sacar',
       danger: true,
     });
-    if (ok) await run(() => removeMember(m), `${m.name} ya no está en ${where}`);
+    if (ok) await busy.run(`${m.id}:kick`, () => run(() => removeMember(m), `${m.name} ya no está en ${where}`));
   }
 
   return (
@@ -382,7 +385,13 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                 {(canManage || canScorer || canKick || canStepDown) && (
                   <div className="flex flex-wrap justify-end gap-1">
                     {canStepDown && (
-                      <Button size="sm" icon={<ShieldOff className="size-4" />} onClick={() => toggleAdmin(m)}>
+                      <Button
+                        size="sm"
+                        icon={<ShieldOff className="size-4" />}
+                        loading={busy.isBusy(`${m.id}:admin`)}
+                        disabled={busy.isBusy()}
+                        onClick={() => toggleAdmin(m)}
+                      >
                         Dejar de ser admin
                       </Button>
                     )}
@@ -390,6 +399,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                       <Button
                         size="sm"
                         icon={m.role === 'admin' ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
+                        loading={busy.isBusy(`${m.id}:admin`)}
+                        disabled={busy.isBusy()}
                         onClick={() => toggleAdmin(m)}
                       >
                         {m.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}
@@ -399,13 +410,21 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                       <Button
                         size="sm"
                         icon={m.scorer ? <ClipboardX className="size-4" /> : <ClipboardList className="size-4" />}
+                        loading={busy.isBusy(`${m.id}:scorer`)}
+                        disabled={busy.isBusy()}
                         onClick={() => toggleScorer(m)}
                       >
                         {m.scorer ? 'Quitar anotador' : 'Hacer anotador'}
                       </Button>
                     )}
                     {canManage && chosen && (
-                      <Button size="sm" icon={<Palette className="size-4" />} onClick={() => toggleMaker(m)}>
+                      <Button
+                        size="sm"
+                        icon={<Palette className="size-4" />}
+                        loading={busy.isBusy(`${m.id}:maker`)}
+                        disabled={busy.isBusy()}
+                        onClick={() => toggleMaker(m)}
+                      >
                         {m.badgeMaker ? 'Ya no diseña' : 'Diseña insignias'}
                       </Button>
                     )}
@@ -417,6 +436,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         aria-label={`Sacar a ${m.name}`}
                         title={`Sacar de ${where}`}
                         icon={<UserMinus className="size-4" />}
+                        loading={busy.isBusy(`${m.id}:kick`)}
+                        disabled={busy.isBusy()}
                         onClick={() => kick(m)}
                       />
                     )}
@@ -770,7 +791,7 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
               : 'Descarga todos los datos (jugadores, eventos, partidos, resultados y miembros) en un archivo.'
           }
           action={
-            <Button size="sm" loading={busy === 'backup'} onClick={backup}>
+            <Button size="sm" loading={busy === 'backup'} disabled={!!busy} onClick={backup}>
               Descargar
             </Button>
           }
@@ -781,7 +802,7 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
             title="Fotos viejas"
             text="Borra las fotos de hace más de un año para no llenar el espacio gratis. Los juegos siguen contando."
             action={
-              <Button size="sm" loading={busy === 'photos'} onClick={freePhotos}>
+              <Button size="sm" loading={busy === 'photos'} disabled={!!busy} onClick={freePhotos}>
                 Borrar
               </Button>
             }
@@ -794,7 +815,7 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
             title={isTournament ? 'Borrar el torneo' : 'Borrar la liga'}
             text="Se borra todo y no se puede deshacer. Descarga el respaldo antes."
             action={
-              <Button size="sm" variant="danger" loading={busy === 'delete'} onClick={remove}>
+              <Button size="sm" variant="danger" loading={busy === 'delete'} disabled={!!busy} onClick={remove}>
                 Borrar
               </Button>
             }

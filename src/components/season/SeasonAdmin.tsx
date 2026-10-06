@@ -238,7 +238,7 @@ export function CloseSeasonModal({ season, useTable, onClose }: { season: Season
   const set = (key: string, patch: Partial<AwardDraft>) => setAwards((list) => list?.map((a) => (a.key === key ? { ...a, ...patch } : a)) ?? list);
 
   const save = async () => {
-    if (!awards || problem) return;
+    if (!awards || problem || busy) return;
     if (
       running &&
       !(await confirm({
@@ -367,7 +367,7 @@ export function StartSeasonModal({ seasons, teamSport, onClose }: { seasons: rea
   const problem = newSeasonProblem(form, [...seasons]);
 
   const save = async () => {
-    if (problem) return;
+    if (problem || busy) return;
     setBusy(true);
     try {
       await startSeason(lid, { name: form.name, startsOn: form.startsOn, endsOn: form.endsOn || null, copyTeams: teamSport && form.copyTeams });

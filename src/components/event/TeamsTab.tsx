@@ -4,9 +4,11 @@ import { addTeam, deleteTeam, renameTeam, updateEntry } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
 import { category, entryHandicap } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
+import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
-import { Button, Card, Empty, Field, Input, Modal, Select } from '../ui';
+import { Button, Card, Empty, Field, Input, Modal } from '../ui';
 import { AutoTeamsModal } from './AutoTeamsModal';
+import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
 
 export function TeamsTab({ event, entries, players }: { event: BowlingEvent; entries: Entry[]; players: Player[] }) {
@@ -16,6 +18,8 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const [auto, setAuto] = useState(false);
+  // Crear, renombrar, borrar un equipo o sacar a alguien: una a la vez, con la ruedita en el que la hizo.
+  const busy = useBusy();
   const byId = new Map(players.map((p) => [p.id, p]));
   const nameOf = (e: Entry) => byId.get(e.playerId)?.name ?? '(jugador borrado)';
   const teams = Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order);
@@ -23,9 +27,10 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
 
   async function create(ev: FormEvent) {
     ev.preventDefault();
+    if (busy.isBusy()) return;
     const n = name.trim() || `Equipo ${teams.length + 1}`;
     setName('');
-    await run(() => addTeam(lid, event.id, n), `${n} creado`);
+    await busy.run('crear', () => run(() => addTeam(lid, event.id, n), `${n} creado`));
   }
 
   async function remove(teamId: string, teamName: string, members: Entry[]) {
@@ -35,7 +40,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
       confirmText: 'Eliminar',
       danger: true,
     });
-    if (ok) await run(() => deleteTeam(lid, event.id, teamId, members.map((m) => m.id)), 'Equipo eliminado');
+    if (ok) await busy.run(`del:${teamId}`, () => run(() => deleteTeam(lid, event.id, teamId, members.map((m) => m.id)), 'Equipo eliminado'));
   }
 
   return (
@@ -43,7 +48,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
       <div className="flex flex-col gap-2 sm:flex-row">
         <form onSubmit={create} className="flex flex-1 gap-2">
           <Input placeholder={`Equipo ${teams.length + 1}`} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />
-          <Button type="submit" icon={<Plus className="size-4" />} className="shrink-0">
+          <Button type="submit" icon={<Plus className="size-4" />} loading={busy.isBusy('crear')} disabled={busy.isBusy()} className="shrink-0">
             Crear
           </Button>
         </form>
@@ -82,7 +87,15 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
                       {members.length}/{event.teamSize}
                     </span>
                   )}
-                  <Button variant="ghost" size="sm" aria-label="Eliminar equipo" icon={<Trash2 className="size-4" />} onClick={() => remove(teamId, team.name, members)} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Eliminar equipo"
+                    icon={<Trash2 className="size-4" />}
+                    loading={busy.isBusy(`del:${teamId}`)}
+                    disabled={busy.isBusy()}
+                    onClick={() => remove(teamId, team.name, members)}
+                  />
                 </div>
                 <div className="flex gap-4 px-4 pt-2 text-xs text-muted">
                   <span>
@@ -102,11 +115,13 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
                       </span>
                       <button
                         type="button"
-                        className="rounded p-1 text-muted hover:text-danger"
+                        className="rounded p-1 text-muted hover:text-danger disabled:pointer-events-none disabled:opacity-60"
                         aria-label={`Quitar a ${nameOf(m)} del equipo`}
-                        onClick={() => run(() => updateEntry(lid, m.id, { teamId: null }))}
+                        aria-busy={busy.isBusy(`out:${m.id}`) || undefined}
+                        disabled={busy.isBusy()}
+                        onClick={() => void busy.run(`out:${m.id}`, () => run(() => updateEntry(lid, m.id, { teamId: null })))}
                       >
-                        <X className="size-3.5" />
+                        <BusyIcon busy={busy.isBusy(`out:${m.id}`)} icon={<X className="size-3.5" />} className="size-3.5" />
                       </button>
                     </li>
                   ))}
@@ -114,9 +129,9 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
                 </ul>
                 {unassigned.length > 0 && !full && (
                   <div className="mt-auto px-4 pb-3">
-                    <Select
+                    <BusySelect
                       value=""
-                      onChange={(e) => e.target.value && run(() => updateEntry(lid, e.target.value, { teamId }))}
+                      onPick={(id) => (id ? run(() => updateEntry(lid, id, { teamId })) : undefined)}
                       aria-label={`Agregar jugador a ${team.name}`}
                       className="h-9"
                     >
@@ -126,7 +141,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
                           {nameOf(u)} ({u.average})
                         </option>
                       ))}
-                    </Select>
+                    </BusySelect>
                   </div>
                 )}
               </Card>
@@ -160,7 +175,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
         footer={
           <>
             <Button onClick={() => setRenaming(null)}>Cancelar</Button>
-            <Button variant="primary" type="submit" form="rename-team">
+            <Button variant="primary" type="submit" form="rename-team" loading={busy.isBusy('nombre')}>
               Guardar
             </Button>
           </>
@@ -168,9 +183,11 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
       >
         <form
           id="rename-team"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (renaming?.name.trim()) run(() => renameTeam(lid, event.id, renaming.id, renaming.name.trim()));
+            if (busy.isBusy()) return;
+            // Se cierra cuando termina de guardar (la ruedita va en «Guardar»).
+            if (renaming?.name.trim()) await busy.run('nombre', () => run(() => renameTeam(lid, event.id, renaming.id, renaming.name.trim())));
             setRenaming(null);
           }}
         >

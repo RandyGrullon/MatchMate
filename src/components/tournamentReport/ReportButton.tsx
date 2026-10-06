@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from 'react';
 import { FileDown } from 'lucide-react';
 import type { TournamentReport } from '../../lib/report/model';
 import type { PrizeComp } from '../../prizes/catalog';
+import { useBusy } from '../busy';
 import { Button, Card, cx } from '../ui';
 
 /**
@@ -10,7 +11,8 @@ import { Button, Card, cx } from '../ui';
  * opciones y todo lo que hace el archivo se cargan al tocar.
  */
 
-const ReportSheet = lazy(() => import('./ReportSheet'));
+const loadSheet = () => import('./ReportSheet');
+const ReportSheet = lazy(loadSheet);
 
 export interface ReportButtonProps {
   /**
@@ -32,6 +34,12 @@ export interface ReportButtonProps {
 
 export function ReportButton({ report, comp, look = 'icon', disabled, className }: ReportButtonProps) {
   const [open, setOpen] = useState(false);
+  const loading = useBusy();
+  // La hoja se baja al tocar: el botón gira mientras llega.
+  const start = async () => {
+    await loading.run('abrir', () => loadSheet().catch(() => undefined));
+    setOpen(true);
+  };
   const sheet = open && (
     <Suspense fallback={null}>
       <ReportSheet open onClose={() => setOpen(false)} report={report} comp={comp ?? null} />
@@ -48,7 +56,7 @@ export function ReportButton({ report, comp, look = 'icon', disabled, className 
             <p className="text-sm font-semibold">Reporte del torneo</p>
             <p className="text-xs text-muted">PDF para WhatsApp o imprimir, o Excel.</p>
           </div>
-          <Button variant="primary" size="sm" disabled={disabled} onClick={() => setOpen(true)}>
+          <Button variant="primary" size="sm" disabled={disabled} loading={loading.isBusy()} onClick={() => void start()}>
             Descargar
           </Button>
         </Card>
@@ -62,7 +70,8 @@ export function ReportButton({ report, comp, look = 'icon', disabled, className 
         variant="ghost"
         className={className}
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        loading={loading.isBusy()}
+        onClick={() => void start()}
         aria-label="Reporte del torneo"
         title="Reporte del torneo"
         icon={<FileDown className="size-5" />}

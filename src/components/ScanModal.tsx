@@ -11,6 +11,7 @@ import { cancelScan, scanDone, startScan, useScanJob } from '../lib/scanJobs';
 import { bestMatch, firstFreeSlot, isValidScore, slots } from '../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../lib/types';
 import { GameBallChip, useBallChoice } from './balls/BallPicker';
+import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
@@ -62,7 +63,7 @@ export function ScanModal({
   const scanning = job?.status === 'leyendo';
   const [scanError, setScanError] = useState<string | null>(null);
   const [rows, setRows] = useState<RowDraft[]>([]);
-  const [saving, setSaving] = useState(false);
+  const saving = useBusy();
   // La lectura de la foto actual (si se elige otra o se cierra, lo que llegue de la anterior no se usa).
   const current = useRef<string | null>(null);
   // Si quien verifica también juega aquí: la bola de cada uno de sus juegos (solo en su fila).
@@ -168,17 +169,18 @@ export function ScanModal({
     // Las bolas de sus juegos como se ven ahora: al guardar cambian sus puntajes y, con ellos, la que se pone sola.
     const mine = included.find((r) => r.key === ownBalls.row);
     const balls = mine ? ownBalls.update(valuesOf(mine)) : null;
-    setSaving(true);
-    const newcomers = included.filter((r) => !entryOf(r.playerId)).map((r) => players.find((p) => p.id === r.playerId)!);
-    const averages = newcomers.length ? await fetchEffectiveAverages(lid, newcomers, { date: event.date, eventId: event.id }) : new Map<string, number>();
-    const writes: VerifiedWrite[] = included.map((r) => ({
-      entry: entryOf(r.playerId),
-      playerId: r.playerId,
-      average: averages.get(r.playerId) ?? 0,
-      values: valuesOf(r),
-    }));
-    const ok = await run(() => saveVerifiedGames(lid, event, photo, writes));
-    setSaving(false);
+    // Los promedios de los nuevos también se esperan: la ruedita sale desde el toque y se quita aunque fallen.
+    const ok = await saving.run('guardar', async () => {
+      const newcomers = included.filter((r) => !entryOf(r.playerId)).map((r) => players.find((p) => p.id === r.playerId)!);
+      const averages = newcomers.length ? await fetchEffectiveAverages(lid, newcomers, { date: event.date, eventId: event.id }) : new Map<string, number>();
+      const writes: VerifiedWrite[] = included.map((r) => ({
+        entry: entryOf(r.playerId),
+        playerId: r.playerId,
+        average: averages.get(r.playerId) ?? 0,
+        values: valuesOf(r),
+      }));
+      return run(() => saveVerifiedGames(lid, event, photo, writes));
+    });
     if (ok) {
       // Sus juegos ya están guardados: la bola de cada uno va detrás, en la cola de la liga (solo las que cambian). La
       // que eligió se pone sola la próxima vez.
@@ -206,7 +208,7 @@ export function ScanModal({
           <>
             <PhotoPicker compact label="Otra foto" onPicked={onPicked} />
             <Button onClick={onClose}>Cancelar</Button>
-            <Button variant="primary" onClick={save} loading={saving} disabled={scanning || !!problems.length || !gamesToSave}>
+            <Button variant="primary" onClick={save} loading={saving.isBusy()} disabled={scanning || !!problems.length || !gamesToSave}>
               Guardar {gamesToSave ? `${gamesToSave} ${gamesToSave === 1 ? 'juego' : 'juegos'}` : ''}
             </Button>
           </>

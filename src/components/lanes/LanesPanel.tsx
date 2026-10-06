@@ -22,6 +22,8 @@ import {
 import { useLeagueCtx } from '../../lib/league';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { copyText } from '../share/actions';
+import { useBusy } from '../busy';
+import { BusySelect } from '../event/BusySelect';
 import { saveErrorMessage, useAction, useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Select, cx } from '../ui';
 
@@ -83,6 +85,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
   const [perLane, setPerLane] = useState(prefs.perLane);
   const [mode, setMode] = useState<LaneMode>('promedio');
   const [busy, setBusy] = useState<'armar' | 'publicar' | 'borrar' | null>(null);
+  const copying = useBusy();
 
   const typed = parseLanes(input);
   const need = lanesNeeded(candidates.length, perLane);
@@ -131,7 +134,8 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
   }
 
   async function copy() {
-    const ok = await copyText(lanesText(groups, `Pistas · ${eventLabel(event)}`));
+    const ok = await copying.run('copiar', () => copyText(lanesText(groups, `Pistas · ${eventLabel(event)}`)));
+    if (ok === undefined) return;
     toast(ok ? 'Copiado: pégalo en el grupo de WhatsApp' : 'No se pudo copiar', ok ? 'ok' : 'error');
   }
 
@@ -169,27 +173,27 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
     setBusy(null);
   }
 
+  // Cada fila con su ruedita: las demás se pueden mover mientras tanto.
   const moveSelect = (playerId: string, current: number | null) => (
-    <div className="w-36 shrink-0">
-      <Select
-        aria-label={`Mover a ${nameOf(playerId)}`}
-        className="h-11"
-        value={current == null ? '' : String(current)}
-        onChange={(e) => void move(playerId, e.target.value)}
-      >
-        {current == null && (
-          <option value="" disabled>
-            Poner en…
-          </option>
-        )}
-        {choices.map((n) => (
-          <option key={n} value={String(n)}>
-            Pista {n}
-          </option>
-        ))}
-        {current != null && <option value="quitar">Quitar de la pista</option>}
-      </Select>
-    </div>
+    <BusySelect
+      wrapClassName="w-36 shrink-0"
+      aria-label={`Mover a ${nameOf(playerId)}`}
+      className="h-11"
+      value={current == null ? '' : String(current)}
+      onPick={(value) => move(playerId, value)}
+    >
+      {current == null && (
+        <option value="" disabled>
+          Poner en…
+        </option>
+      )}
+      {choices.map((n) => (
+        <option key={n} value={String(n)}>
+          Pista {n}
+        </option>
+      ))}
+      {current != null && <option value="quitar">Quitar de la pista</option>}
+    </BusySelect>
   );
 
   return (
@@ -332,7 +336,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
           )}
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button className="h-11" icon={<Copy className="size-4" />} onClick={() => void copy()}>
+            <Button className="h-11" icon={<Copy className="size-4" />} loading={copying.isBusy()} onClick={() => void copy()}>
               Copiar para WhatsApp
             </Button>
             <Button className="h-11" variant="primary" icon={<Send className="size-4" />} loading={busy === 'publicar'} disabled={!!busy} onClick={() => void publish()}>

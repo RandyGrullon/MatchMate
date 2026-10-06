@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertTriangle, Archive, ChevronRight, Palette, Pencil, RotateCcw, Sparkles } from 'lucide-react';
 import { ballDetail, ballStats, bestBallText, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
@@ -39,6 +39,8 @@ export function BallCard({
   onRetire: () => void;
 }) {
   const b = s.ball;
+  // `busy` dice que la bola espera; la ruedita va en el botón que se tocó.
+  const [pressed, setPressed] = useState<'resurface' | 'retire' | null>(null);
   return (
     <Card className={cx('flex flex-col gap-3 p-4', b.retired && 'opacity-80')}>
       <div className="flex items-center gap-3">
@@ -99,7 +101,16 @@ export function BallCard({
       )}
       <div className="flex gap-2">
         {!b.retired && (
-          <Button className="h-11 flex-1" icon={<Sparkles className="size-4" />} disabled={busy} onClick={onResurface}>
+          <Button
+            className="h-11 flex-1"
+            icon={<Sparkles className="size-4" />}
+            disabled={busy}
+            loading={busy && pressed === 'resurface'}
+            onClick={() => {
+              setPressed('resurface');
+              onResurface();
+            }}
+          >
             La pulí hoy
           </Button>
         )}
@@ -108,7 +119,11 @@ export function BallCard({
           className="h-11 flex-1"
           icon={b.retired ? <RotateCcw className="size-4" /> : <Archive className="size-4" />}
           disabled={busy}
-          onClick={onRetire}
+          loading={busy && pressed === 'retire'}
+          onClick={() => {
+            setPressed('retire');
+            onRetire();
+          }}
         >
           {b.retired ? 'Volver a usarla' : 'Retirar'}
         </Button>

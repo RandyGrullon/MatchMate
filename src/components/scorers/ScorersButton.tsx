@@ -2,10 +2,12 @@ import { lazy, Suspense, useState } from 'react';
 import { ClipboardPen } from 'lucide-react';
 import type { ScorerTarget } from '../../lib/data/scorers';
 import { useLeagueCtx } from '../../lib/league';
+import { useBusy } from '../busy';
 import { Button } from '../ui';
 
-// La hoja se baja al tocar el botón: quien no abre «Anotadores» no la carga.
-const ScorersSheet = lazy(() => import('./ScorersSheet'));
+// La hoja se baja al tocar el botón: quien no abre «Anotadores» no la carga (el botón gira mientras llega).
+const loadSheet = () => import('./ScorersSheet');
+const ScorersSheet = lazy(loadSheet);
 
 export interface ScorersButtonProps {
   /** El torneo de la pantalla: el texto de los avisos («anotar en Copa Aniversario») y a dónde llevan. */
@@ -24,15 +26,28 @@ export interface ScorersButtonProps {
 export function ScorersButton({ target, participants, labeled = false, className }: ScorersButtonProps) {
   const { isAdmin } = useLeagueCtx();
   const [open, setOpen] = useState(false);
+  const loading = useBusy();
   if (!isAdmin) return null;
+  const start = async () => {
+    await loading.run('abrir', () => loadSheet().catch(() => undefined));
+    setOpen(true);
+  };
   return (
     <>
       {labeled ? (
-        <Button size="sm" className={className} icon={<ClipboardPen className="size-4" />} onClick={() => setOpen(true)}>
+        <Button size="sm" className={className} icon={<ClipboardPen className="size-4" />} loading={loading.isBusy()} onClick={() => void start()}>
           Anotadores
         </Button>
       ) : (
-        <Button variant="ghost" className={className} onClick={() => setOpen(true)} aria-label="Anotadores" title="Anotadores" icon={<ClipboardPen className="size-5" />} />
+        <Button
+          variant="ghost"
+          className={className}
+          loading={loading.isBusy()}
+          onClick={() => void start()}
+          aria-label="Anotadores"
+          title="Anotadores"
+          icon={<ClipboardPen className="size-5" />}
+        />
       )}
       {open && (
         <Suspense fallback={null}>

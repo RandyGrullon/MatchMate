@@ -4,10 +4,12 @@ import { fetchEffectiveAverages, removeEntry, updateEntries, updateEntry } from 
 import { useLeagueCtx } from '../../lib/league';
 import { calcHandicap, category, MIN_RANK_GAMES } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
+import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { NumberCell } from '../NumberCell';
 import { Avatar } from '../Avatar';
-import { Badge, Button, Card, Empty, Select } from '../ui';
+import { Badge, Button, Card, Empty } from '../ui';
+import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
 import { AddPlayersModal } from './AddPlayersModal';
 
@@ -18,6 +20,7 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
   const { confirm } = useFeedback();
   const [adding, setAdding] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const removing = useBusy();
   const byId = new Map(players.map((p) => [p.id, p]));
   const teams = Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order);
   const sorted = [...entries].sort((a, b) => (byId.get(a.playerId)?.name ?? '').localeCompare(byId.get(b.playerId)?.name ?? ''));
@@ -31,8 +34,11 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
       confirmText: 'Sacar',
       danger: true,
     });
-    if (ok) await run(() => removeEntry(lid, entry), `${name} fuera del torneo`);
+    if (ok) await removing.run(entry.id, () => run(() => removeEntry(lid, entry), `${name} fuera del torneo`));
   }
+
+  // true si se guardó: la casilla deja lo escrito hasta que llega el número nuevo.
+  const saveEntry = (id: string, patch: Parameters<typeof updateEntry>[2]) => run(() => updateEntry(lid, id, patch).then(() => true));
 
   async function syncAverages() {
     const ok = await confirm({
@@ -96,15 +102,17 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
                   size="sm"
                   className="md:order-last"
                   aria-label={`Sacar a ${name}`}
+                  loading={removing.isBusy(e.id)}
+                  disabled={removing.isBusy()}
                   onClick={() => remove(e)}
                   icon={<X className="size-4" />}
                 />
                 <div className="col-span-2 flex flex-wrap items-end gap-3 md:contents">
                   <label className="flex flex-1 flex-col gap-1 md:contents">
                     <span className="text-[11px] text-muted md:hidden">Equipo</span>
-                    <Select
+                    <BusySelect
                       value={e.teamId ?? ''}
-                      onChange={(ev) => run(() => updateEntry(lid, e.id, { teamId: ev.target.value || null }))}
+                      onPick={(v) => run(() => updateEntry(lid, e.id, { teamId: v || null }))}
                       className="h-9 min-w-32"
                       aria-label="Equipo"
                     >
@@ -120,15 +128,15 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
                           </option>
                         );
                       })}
-                    </Select>
+                    </BusySelect>
                   </label>
                   <label className="flex flex-col items-center gap-1 md:contents">
                     <span className="text-[11px] text-muted md:hidden">Promedio</span>
                     <NumberCell
                       label={`Promedio de ${name}`}
                       value={e.average}
-                      onCommit={(v) => run(() => updateEntry(lid, e.id, { average: v ?? 0 }))}
-                      className="md:justify-self-center"
+                      onCommit={(v) => saveEntry(e.id, { average: v ?? 0 })}
+                      wrapClassName="md:justify-self-center"
                     />
                   </label>
                   <label className="flex flex-col items-center gap-1 md:flex-row md:justify-center">
@@ -138,7 +146,7 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
                       value={e.handicapOverride}
                       placeholder={String(auto)}
                       allowEmpty
-                      onCommit={(v) => run(() => updateEntry(lid, e.id, { handicapOverride: v }))}
+                      onCommit={(v) => saveEntry(e.id, { handicapOverride: v })}
                     />
                     {e.handicapOverride != null && <Badge className="hidden md:inline-flex">fijo</Badge>}
                   </label>
