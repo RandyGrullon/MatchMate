@@ -72,6 +72,8 @@ describe('ligas públicas que invitan a entrar', () => {
   /** Ligas públicas con distinta actividad, miembros y fechas. */
   async function publicWorld() {
     const today = await day();
+    // Las ligas del mundo traen la temporada fija de 2026: que sigan vivas cualquier día, para que solo cuente si son públicas.
+    await db.admin(`update public.leagues set season_end = $3::date + 60 where id in ($1, $2)`, [w.pub, w.priv, today]);
     const mk = async (name: string, kind: 'liga' | 'torneo' = 'liga', sport = 'bowling') => {
       const id = await league(db, w.u.otro, { name, visibility: 'public', kind, requirePhoto: false, sport });
       await db.admin(`update public.leagues set season_start = $2::date - 60, season_end = $2::date + 60 where id = $1`, [id, today]);

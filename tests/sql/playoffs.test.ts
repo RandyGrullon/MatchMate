@@ -102,6 +102,9 @@ const games = (seriesId: string) =>
     [seriesId],
   );
 const open = async (seriesId: string) => (await games(seriesId)).filter((g) => g.status === 'scheduled');
+/** El día después de que terminó esa temporada (cerrada hoy): la siguiente puede empezar ahí, sea cual sea la fecha. */
+const dayAfter = async (on: TestDb, season: string) =>
+  (await on.admin<{ d: string }>(`select to_char(ends_on + 1, 'YYYY-MM-DD') as d from public.seasons where id = $1`, [season]))[0].d;
 const playoff = async (po: string) => (await db.admin<{ status: string; winner: string | null }>('select status, winner from public.playoffs where id = $1', [po]))[0];
 /** El admin anota el resultado (queda confirmado): gana ese equipo. */
 async function win(game: Game, team: string, who = w.u.org) {
@@ -378,7 +381,8 @@ describe('quién puede qué', () => {
     }
     // Un equipo de otra temporada no entra.
     await db.rpc(w.u.org, 'close_season', { p_season: h.season, p_standings: {} });
-    const s2 = await db.rpc<string>(w.u.org, 'start_season', { p_league: h.lid, p_name: 'Temporada 2027', p_starts_on: '2027-01-10', p_copy_teams: true });
+    const next = await dayAfter(db, h.season);
+    const s2 = await db.rpc<string>(w.u.org, 'start_season', { p_league: h.lid, p_name: `Temporada ${next.slice(0, 4)}`, p_starts_on: next, p_copy_teams: true });
     await fails(create(h, four, [3, 3]), 'cerrado');
     await fails(db.rpc(w.u.org, 'create_playoffs', { p_league: h.lid, p_season: s2, p_teams: [h.t.a, h.t.b], p_best_of: [1] }), 'invalido');
     const copies = (await db.admin<{ id: string }>('select id from public.teams where season_id = $1 order by sort_order', [s2])).map((r) => r.id);
@@ -460,7 +464,7 @@ describe('tiempo real', () => {
     expect(closed.filter((m) => m.event === 'seasons').map((m) => m.payload)).toContainEqual({ op: 'update', ids: [season] });
     expect(closed.filter((m) => m.event === 'announcements' && m.topic === `league:${lid}`)).toHaveLength(1);
     msgs = [];
-    const s2 = await rt.rpc<string>(world.u.org, 'start_season', { p_league: lid, p_name: 'Otra', p_starts_on: '2027-01-01' });
+    const s2 = await rt.rpc<string>(world.u.org, 'start_season', { p_league: lid, p_name: 'Otra', p_starts_on: await dayAfter(rt, season) });
     expect((await settle()).filter((m) => m.event === 'seasons').map((m) => m.payload)).toContainEqual({ op: 'insert', ids: [s2] });
   });
 });

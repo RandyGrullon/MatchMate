@@ -183,6 +183,8 @@ describe('Edge Function insignias con la base y el motor empaquetado', () => {
 
   it('el historial (§3.5): en seco no escribe insignias y deja el resumen; de verdad, todas juntas con un solo aviso por cuenta', async () => {
     await realLeagueNight();
+    // La base son las cuentas activas el último año según el reloj de la base: la práctica fue hace dos semanas.
+    await db.admin(`update public.events set date = (now() at time zone private.badge_tz())::date - 14 where id = $1`, [w.e.e1]);
     await db.admin('delete from private.badge_queue');
     const f = call();
 

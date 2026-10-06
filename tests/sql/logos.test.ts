@@ -320,6 +320,8 @@ describe('quién ve el logo', () => {
   });
 
   it('las ligas públicas y «¿Dónde juego esta semana?», también sin cuenta (public_leagues_feed, public_agenda)', async () => {
+    // El feed no trae las ligas con la temporada terminada: la del fixture acaba el 2026-12-31, que siga abierta hoy.
+    await db.admin(`update public.leagues set season_end = (now() at time zone tz)::date + 30 where id = $1`, [w.pub]);
     const path = logo(w.pub);
     await putLogo(w.u.otro, w.pub, path);
     const feed = await db.rpc<Json[]>(ANON, 'public_leagues_feed', {});

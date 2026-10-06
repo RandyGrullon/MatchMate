@@ -51,6 +51,8 @@ const seasons = (lid: string) =>
 const active = async (lid: string) => (await seasons(lid)).find((s) => s.status === 'active')!;
 /** Hoy en la zona de la liga (RD). */
 const today = async () => (await db.admin<{ d: string }>(`select to_char((now() at time zone 'America/Santo_Domingo')::date, 'YYYY-MM-DD') as d`))[0].d;
+/** El año que viene: close_season termina la temporada hoy y la siguiente tiene que empezar después. */
+const nextYear = async () => Number((await today()).slice(0, 4)) + 1;
 const phone = (uid: string) =>
   db.admin(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth) values ($1, $2, 'k', 'a')`, [uid, `https://fcm.googleapis.com/fcm/send/t-${uid}`]);
 const close = (who: string, season: string, awards: unknown[] = [], standings: unknown = { rows: [] }) =>
@@ -154,11 +156,13 @@ describe('la temporada de cada liga', () => {
   it('un juego entre dos temporadas: del año de la que sigue entra en ella; del año de la que se cerró, sin temporada', async () => {
     const s1 = await active(w.priv);
     await close(w.u.sofi, s1.id);
+    // close_season la termina hoy: el cierre queda fijo en 2026 para que el 15 de diciembre caiga entre las dos.
+    await db.admin(`update public.seasons set ends_on = '2026-10-06' where id = $1`, [s1.id]);
     const s2 = await start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-10' });
     await event(db, w.priv, 'practica', '2026-12-15');
     await event(db, w.priv, 'practica', '2027-01-05');
     expect((await seasons(w.priv)).map((s) => [s.id, s.starts_on, s.ends_on])).toEqual([
-      [s1.id, '2026-01-01', await today()],
+      [s1.id, '2026-01-01', '2026-10-06'],
       [s2, '2027-01-05', null],
     ]);
   });
@@ -283,35 +287,36 @@ describe('cerrar la temporada', () => {
 describe('empezar otra temporada', () => {
   it('primero se cierra la activa; la nueva empieza después de que terminó la anterior (sin tocarla); las fechas van a la liga', async () => {
     const s1 = await active(w.priv);
-    await fails(start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-05' }), 'invalido');
+    const y = await nextYear();
+    await fails(start(w.u.sofi, w.priv, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-05` }), 'invalido');
     await close(w.u.sofi, s1.id);
     const closedOn = await today();
-    await fails(start(w.u.luis, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-05' }), DENIED);
-    await fails(start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2026-01-01' }), 'invalido');
-    await fails(start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-05', p_ends_on: '2027-01-01' }), 'invalido');
-    await fails(start(w.u.sofi, w.priv, { p_name: '  ', p_starts_on: '2027-01-05' }), INVALID);
+    await fails(start(w.u.luis, w.priv, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-05` }), DENIED);
+    await fails(start(w.u.sofi, w.priv, { p_name: `Temporada ${y}`, p_starts_on: '2026-01-01' }), 'invalido');
+    await fails(start(w.u.sofi, w.priv, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-05`, p_ends_on: `${y}-01-01` }), 'invalido');
+    await fails(start(w.u.sofi, w.priv, { p_name: '  ', p_starts_on: `${y}-01-05` }), INVALID);
     await fails(start(w.u.sofi, w.priv, { p_name: 'X', p_starts_on: null }), 'invalido');
     // Antes de que termine la cerrada (o el mismo día): no, sus juegos siguen siendo de ella.
     await fails(start(w.u.sofi, w.priv, { p_name: 'Apertura 2026', p_starts_on: '2026-09-01' }), 'invalido');
     await fails(start(w.u.sofi, w.priv, { p_name: 'Apertura 2026', p_starts_on: closedOn }), 'invalido');
-    const s2 = await start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-05', p_ends_on: '2027-12-20' });
+    const s2 = await start(w.u.sofi, w.priv, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-05`, p_ends_on: `${y}-12-20` });
     expect(await seasons(w.priv)).toMatchObject([
       { id: s1.id, status: 'closed', starts_on: '2026-01-01', ends_on: closedOn },
-      { id: s2, name: 'Temporada 2027', status: 'active', starts_on: '2027-01-05', ends_on: '2027-12-20' },
+      { id: s2, name: `Temporada ${y}`, status: 'active', starts_on: `${y}-01-05`, ends_on: `${y}-12-20` },
     ]);
     expect(await db.admin(`select to_char(season_start, 'YYYY-MM-DD') as s, to_char(season_end, 'YYYY-MM-DD') as e from public.leagues where id = $1`, [w.priv])).toEqual([
-      { s: '2027-01-05', e: '2027-12-20' },
+      { s: `${y}-01-05`, e: `${y}-12-20` },
     ]);
     // La activa no puede empezar antes de que termine la anterior (update_league).
     await fails(db.rpc(w.u.sofi, 'update_league', { p_league: w.priv, p_patch: { season_start: closedOn } }), 'invalido: temporada');
-    await db.rpc(w.u.sofi, 'update_league', { p_league: w.priv, p_patch: { season_start: '2027-01-06' } });
-    expect(await active(w.priv)).toMatchObject({ id: s2, starts_on: '2027-01-06' });
+    await db.rpc(w.u.sofi, 'update_league', { p_league: w.priv, p_patch: { season_start: `${y}-01-06` } });
+    expect(await active(w.priv)).toMatchObject({ id: s2, starts_on: `${y}-01-06` });
     // Lo jugado antes de la primera, de otro año, queda en una cerrada de ese año; no toca ni la cerrada ni la activa.
     await event(db, w.priv, 'practica', '2025-12-01');
     expect(await seasons(w.priv)).toMatchObject([
       { name: 'Temporada 2025', status: 'closed', starts_on: '2025-01-01', ends_on: '2025-12-31' },
       { id: s1.id, starts_on: '2026-01-01', ends_on: closedOn },
-      { id: s2, starts_on: '2027-01-06' },
+      { id: s2, starts_on: `${y}-01-06` },
     ]);
   });
 
@@ -323,7 +328,8 @@ describe('empezar otra temporada', () => {
       { name: 'Leones', season_id: s1.id },
     ]);
     await close(w.u.org, s1.id);
-    const s2 = await start(w.u.org, h.lid, { p_name: 'Temporada 2027', p_starts_on: '2027-01-10', p_copy_teams: true });
+    const y = await nextYear();
+    const s2 = await start(w.u.org, h.lid, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-10`, p_copy_teams: true });
     const copies = await db.admin<{ id: string; name: string; color: string | null; sort_order: number }>(
       'select id, name, color, sort_order from public.teams where league_id = $1 and season_id = $2 order by sort_order',
       [h.lid, s2],
@@ -350,7 +356,7 @@ describe('empezar otra temporada', () => {
     await fails(db.rpc(w.u.luis, 'set_team_player', { p_team: copies[0].id, p_player: h.p.pedro }), 'invalido');
     // Sin p_copy_teams (o en una liga que no es de equipos) no se copia nada.
     await close(w.u.org, s2);
-    await start(w.u.org, h.lid, { p_name: 'Temporada 2028', p_starts_on: '2028-01-10' });
+    await start(w.u.org, h.lid, { p_name: `Temporada ${y + 1}`, p_starts_on: `${y + 1}-01-10` });
     expect(await db.count('public.teams', 'league_id = $1 and season_id = $2', [h.lid, (await active(h.lid)).id])).toBe(0);
   });
 
@@ -368,7 +374,8 @@ describe('leer temporadas y campeones', () => {
   it('league_seasons y league_champions: quien ve la liga (también sin cuenta en una pública)', async () => {
     const s = await active(w.pub);
     await close(w.u.otro, s.id, [{ kind: 'campeon', player_id: w.p.p1 }, { kind: 'mvp', player_id: w.p.p1, note: 'Serie de 700' }], { rows: [1] });
-    const s2 = await start(w.u.otro, w.pub, { p_name: 'Temporada 2027', p_starts_on: '2027-01-01' });
+    const y = await nextYear();
+    const s2 = await start(w.u.otro, w.pub, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-01` });
     const list = await db.rpc<Record<string, unknown>[]>(ANON, 'league_seasons', { p_league: w.pub });
     expect(list.map((x) => [x.id, x.status])).toEqual([
       [s2, 'active'],
@@ -422,7 +429,8 @@ describe('reclamos y juntar jugadores con temporadas', () => {
     const s1 = await active(h.lid);
     const mine = h.p.ana;
     await close(w.u.org, s1.id, [{ kind: 'mvp', player_id: mine }], { rows: [{ player: mine, points: 30 }] });
-    const s2 = await start(w.u.org, h.lid, { p_name: 'Temporada 2027', p_starts_on: '2027-01-10', p_copy_teams: true });
+    const y = await nextYear();
+    const s2 = await start(w.u.org, h.lid, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-10`, p_copy_teams: true });
     // En la temporada nueva, Ana G. ya no está en ningún equipo: Ana (Tigres) y Ana G. (Leones de la pasada) no chocan.
     await db.admin('delete from public.team_players tp using public.teams t where t.id = tp.team_id and t.season_id = $1 and tp.player_id = $2', [s2, guest]);
     const id = await db.rpc<string>(w.u.ana, 'request_player_claim', { p_player: guest });
@@ -458,7 +466,8 @@ describe('reclamos y juntar jugadores con temporadas', () => {
     const guest = await player(db, h.lid, 'Ana G.');
     await db.rpc(w.u.org, 'set_team_player', { p_team: h.leones, p_player: guest });
     await close(w.u.org, (await active(h.lid)).id);
-    await start(w.u.org, h.lid, { p_name: 'Temporada 2027', p_starts_on: '2027-01-10' });
+    const y = await nextYear();
+    await start(w.u.org, h.lid, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-10` });
     // Ana está en Tigres (temporada pasada); Ana G. en Leones (temporada pasada): chocan. Se saca a Ana G. de Leones
     // y se la pone en un equipo nuevo de esta temporada: ya no chocan.
     await db.rpc(w.u.org, 'remove_team_player', { p_team: h.leones, p_player: guest });
@@ -480,9 +489,10 @@ describe('boliche: lo que hace falta para las marcas de un juego', () => {
     await entry(db, w.priv, e2, w.p.pedro, [210], ['importado']);
     const s1 = await active(w.priv);
     await close(w.u.sofi, s1.id);
-    await start(w.u.sofi, w.priv, { p_name: 'Temporada 2027', p_starts_on: '2027-01-01' });
-    const e3 = await event(db, w.priv, 'practica', '2027-01-12');
-    const e4 = await event(db, w.priv, 'torneo', '2027-01-19');
+    const y = await nextYear();
+    await start(w.u.sofi, w.priv, { p_name: `Temporada ${y}`, p_starts_on: `${y}-01-01` });
+    const e3 = await event(db, w.priv, 'practica', `${y}-01-12`);
+    const e4 = await event(db, w.priv, 'torneo', `${y}-01-19`);
     await entry(db, w.priv, e3, w.p.pedro, [180, 190], ['importado', 'importado']);
     const x4 = await entry(db, w.priv, e4, w.p.pedro, [230, 100], ['importado', null]);
     // El promedio congelado al inscribirse (el que usa la pantalla del evento para «+15 sobre tu promedio»).
