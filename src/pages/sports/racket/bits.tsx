@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowUpDown, Boxes, Check, ChevronsUp, ListOrdered, Minus, Moon, Plus, Search, Shuffle, Trophy, type LucideIcon } from 'lucide-react';
 import type { StandingsColumn } from '../../../components/match';
-import { Card, Input, cx } from '../../../components/ui';
+import { Button, Card, Input, cx } from '../../../components/ui';
 import { isGameSport } from '../../../sports/racket/rules';
 
 /** Piezas chicas de las pantallas de raqueta. */
@@ -187,6 +187,41 @@ export function PickList({
           );
         })}
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Las plantillas de reglas para elegir (la puesta, resaltada). `pending`: la que se está guardando (con la ruedita;
+ * las demás esperan).
+ */
+export function PresetButtons<P extends { id: string; label: string }>({
+  presets,
+  current,
+  pending,
+  onPick,
+  className,
+}: {
+  presets: readonly P[];
+  current?: string | null;
+  pending: string | null;
+  onPick: (p: P) => void;
+  className?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {presets.map((p) => (
+        <Button
+          key={p.id}
+          variant={current === p.id ? 'primary' : 'secondary'}
+          className={cx('h-auto justify-start py-2 text-left', className)}
+          loading={pending === p.id}
+          disabled={pending !== null}
+          onClick={() => onPick(p)}
+        >
+          {p.label}
+        </Button>
+      ))}
     </div>
   );
 }

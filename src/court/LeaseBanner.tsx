@@ -40,7 +40,7 @@ export function LeaseBanner({
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const claim = async (force: boolean) => {
-    if (!onClaim) return;
+    if (!onClaim || busy) return;
     setBusy(true);
     try {
       await onClaim(force);

@@ -3,6 +3,7 @@ import { Pencil, Plus, Shield, Timer, Trash2, Waves } from 'lucide-react';
 import { setMemberScorer, useLeagueMembers } from '../../../lib/data';
 import { deleteClub, saveClub, saveSwimRules, useSwimmers, useSwimRules, type AgeScheme, type SwimClub } from '../../../lib/data/swimming';
 import type { Member } from '../../../lib/types';
+import { BusyIcon, useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { leavesOnRemove, removeConfirm } from '../../../components/scorers/logic';
 import { Button, Card, Empty, Field, Input, Modal, Select, cx } from '../../../components/ui';
@@ -20,6 +21,8 @@ export function ClubsAdmin() {
   const { confirm } = useFeedback();
   const members = useLeagueMembers(lid);
   const swimmers = useSwimmers(lid);
+  // El club que se está borrando: la ruedita en su botón.
+  const removing = useBusy();
   const [editing, setEditing] = useState<SwimClub | 'new' | null>(null);
   const memberName = useMemo(() => new Map(members.data.map((m) => [m.uid, m.name] as const)), [members.data]);
   const count = (id: string) => swimmers.data.filter((s) => s.clubId === id).length;
@@ -28,7 +31,7 @@ export function ClubsAdmin() {
 
   const remove = async (c: SwimClub) => {
     if (!(await confirm({ title: `¿Borrar ${c.name}?`, message: 'Sus nadadores quedan sin club (sus resultados no se borran).', confirmText: 'Borrar', danger: true }))) return;
-    await run(() => deleteClub(lid, c.id), 'Club borrado');
+    await removing.run(c.id, () => run(() => deleteClub(lid, c.id), 'Club borrado'));
   };
 
   return (
@@ -61,7 +64,16 @@ export function ClubsAdmin() {
                   </p>
                 </div>
                 <Button size="sm" variant="ghost" aria-label="Cambiar" icon={<Pencil className="size-4" />} onClick={() => setEditing(c)} />
-                <Button size="sm" variant="ghost" aria-label="Borrar" className="text-danger" icon={<Trash2 className="size-4" />} onClick={() => remove(c)} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Borrar"
+                  className="text-danger"
+                  icon={<Trash2 className="size-4" />}
+                  loading={removing.isBusy(c.id)}
+                  disabled={removing.isBusy()}
+                  onClick={() => remove(c)}
+                />
               </div>
             ))}
           </Card>
@@ -161,13 +173,15 @@ function TimersSection() {
   const run = useAction();
   const { confirm } = useFeedback();
   const members = useLeagueMembers(lid);
+  // Quién se está guardando: la ruedita encima de su casilla (la casilla sigue ahí y no pierde el foco).
+  const saving = useBusy();
   const list = members.data.filter((m) => m.role === 'member');
 
   // Quitárselo a quien entró solo para anotar (sin nadador) lo saca de la liga: se pregunta antes (docs/anotadores.md D5).
   async function toggle(m: Member, on: boolean) {
     const ask = !on && leavesOnRemove(m) ? removeConfirm(m, league.kind) : null;
     if (ask && !(await confirm(ask))) return;
-    await run(() => setMemberScorer(m, on), on ? 'Ahora cronometra' : (ask?.done ?? 'Ya no cronometra'));
+    await saving.run(m.uid, () => run(() => setMemberScorer(m, on), on ? 'Ahora cronometra' : (ask?.done ?? 'Ya no cronometra')));
   }
   return (
     <section className="flex flex-col gap-3">
@@ -182,19 +196,26 @@ function TimersSection() {
         <p className="text-sm text-muted">Todavía no hay miembros sin permisos en la liga.</p>
       ) : (
         <Card className="divide-y divide-line overflow-hidden">
-          {list.map((m) => (
-            <label key={m.uid} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', isAdmin && 'cursor-pointer')}>
-              <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
-              <input
-                type="checkbox"
-                className="size-5 accent-[var(--accent)]"
-                checked={!!m.scorer}
-                disabled={!isAdmin}
-                onChange={(e) => void toggle(m, e.target.checked)}
-                aria-label={`${m.name} cronometra`}
-              />
-            </label>
-          ))}
+          {list.map((m) => {
+            const busy = saving.isBusy(m.uid);
+            return (
+              <label key={m.uid} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', isAdmin && 'cursor-pointer')}>
+                <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+                <span className="relative inline-flex size-5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className={cx('size-5 accent-[var(--accent)]', busy && 'opacity-0')}
+                    checked={!!m.scorer}
+                    disabled={!isAdmin || saving.isBusy()}
+                    aria-busy={busy || undefined}
+                    onChange={(e) => void toggle(m, e.target.checked)}
+                    aria-label={`${m.name} cronometra`}
+                  />
+                  {busy && <BusyIcon busy className="pointer-events-none absolute inset-0 size-5 text-muted" />}
+                </span>
+              </label>
+            );
+          })}
         </Card>
       )}
     </section>

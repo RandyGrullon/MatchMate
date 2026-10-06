@@ -6,6 +6,7 @@ import { SPORTS } from '../../../sports/registry';
 import type { FootballConfig, FootballVariant } from '../../../sports/team/football';
 import type { DisciplineConfig } from '../../../sports/team/discipline';
 import type { FootballTableConfig, FootballTieBreak } from '../../../sports/team/standings';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Field, Input, Select, Tabs, cx } from '../../../components/ui';
 import { rosterOf } from '../team/logic';
@@ -130,6 +131,8 @@ const num = (v: string, min: number, max: number, dflt: number) => {
 export function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const run = useAction();
   const { confirm } = useFeedback();
+  // La plantilla que se está usando o «guardar»: la ruedita en ese botón.
+  const busy = useBusy<FootballTemplateId | 'guardar'>();
   const variant: FootballVariant = variantOf(tl.league.sport);
   const current = tl.rules.data;
   const tpl = templateOf(current, variant);
@@ -155,8 +158,10 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
       confirmText: 'Usar',
     });
     if (!yes) return;
-    await run(() => saveLeagueRules(tl.lid, templateRules(id, variant, current)), 'Reglas guardadas');
-    setDraft(null);
+    await busy.run(id, async () => {
+      await run(() => saveLeagueRules(tl.lid, templateRules(id, variant, current)), 'Reglas guardadas');
+      setDraft(null);
+    });
   };
 
   const oldTeams = typeof current.teams === 'object' && current.teams ? (current.teams as Record<string, unknown>) : {};
@@ -169,10 +174,12 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
   // Las mismas validaciones que el registro del deporte (las que usa el formulario de la liga).
   const errors = draft ? SPORTS[variant].validateRules({ ...current, ...patch }) : [];
   const save = () =>
-    run(async () => {
-      await saveLeagueRules(tl.lid, patch);
-      setDraft(null);
-    }, 'Reglas guardadas');
+    busy.run('guardar', () =>
+      run(async () => {
+        await saveLeagueRules(tl.lid, patch);
+        setDraft(null);
+      }, 'Reglas guardadas'),
+    );
 
   const tb = d.table.tiebreak;
   const moveTb = (i: number, dir: -1 | 1) => {
@@ -202,7 +209,13 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
                   )}
                 </div>
                 <p className="flex-1 text-xs text-muted">{t.description}</p>
-                <Button size="sm" variant={active ? 'secondary' : 'primary'} disabled={active} onClick={() => void applyTemplate(t.id)}>
+                <Button
+                  size="sm"
+                  variant={active ? 'secondary' : 'primary'}
+                  loading={busy.isBusy(t.id)}
+                  disabled={active || busy.isBusy()}
+                  onClick={() => void applyTemplate(t.id)}
+                >
                   {active ? 'En uso' : 'Usar esta'}
                 </Button>
               </Card>
@@ -398,7 +411,7 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
         </ul>
       )}
       <div className="flex gap-2">
-        <Button variant="primary" disabled={!draft || errors.length > 0} onClick={() => void save()}>
+        <Button variant="primary" loading={busy.isBusy('guardar')} disabled={!draft || errors.length > 0 || busy.isBusy()} onClick={() => void save()}>
           Guardar reglas
         </Button>
         {draft && <Button onClick={() => setDraft(null)}>Deshacer cambios</Button>}
@@ -420,6 +433,8 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   const [count, setCount] = useState('1');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // La sanción que se está quitando: la ruedita en su botón.
+  const removing = useBusy();
   const match: Match | undefined = played.find((m) => m.id === matchId);
   const side = match?.sides.find((s) => s.teamId === teamId);
   const candidates = side ? [...new Set([...rosterOf(tl.allTeams.data, teamId).map((r) => r.playerId), ...side.players.map((p) => p.playerId)])] : [];
@@ -447,7 +462,7 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   };
   const remove = async (id: string) => {
     const yes = await confirm({ title: 'Quitar la sanción', message: 'Los partidos que ya cumplió no cambian; los que le faltaban se borran.', confirmText: 'Quitar', danger: true });
-    if (yes) await run(() => deleteFootballSanction(tl.lid, id), 'Sanción quitada');
+    if (yes) await removing.run(id, () => run(() => deleteFootballSanction(tl.lid, id), 'Sanción quitada'));
   };
 
   return (
@@ -537,7 +552,16 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
                     {s.note ? ` · ${s.note}` : ''}
                   </span>
                 </span>
-                <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} aria-label={`Quitar la sanción de ${tl.nameOf(s.playerId)}`} onClick={() => void remove(s.id)} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-danger"
+                  icon={<Trash2 className="size-4" />}
+                  aria-label={`Quitar la sanción de ${tl.nameOf(s.playerId)}`}
+                  loading={removing.isBusy(s.id)}
+                  disabled={removing.isBusy()}
+                  onClick={() => void remove(s.id)}
+                />
               </div>
             ))}
           </Card>

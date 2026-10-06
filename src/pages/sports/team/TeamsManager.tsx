@@ -13,11 +13,12 @@ import {
   type SeasonTeam,
   type TeamRole,
 } from '../../../lib/data/seasonTeams';
+import { BusyIcon, useBusy } from '../../../components/busy';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { useQuickMinor } from '../../../components/players/GuardianFields';
-import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, Select, cx } from '../../../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, Modal, cx } from '../../../components/ui';
 import { TEAM_PALETTE, teamColor } from './logic';
-import { TeamDot } from './TeamBits';
+import { BusySelect, TeamDot } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -89,7 +90,7 @@ function TeamForm({ tl, team, open, onClose }: { tl: TeamLeague; team: SeasonTea
   const { confirm } = useFeedback();
   const [name, setName] = useState('');
   const [color, setColor] = useState(TEAM_PALETTE[0]);
-  const [busy, setBusy] = useState(false);
+  const busy = useBusy<'guardar' | 'borrar'>();
   const [seen, setSeen] = useState<string | null>(null);
   const key = open ? (team?.id ?? 'nuevo') : null;
   if (key !== seen) {
@@ -101,13 +102,13 @@ function TeamForm({ tl, team, open, onClose }: { tl: TeamLeague; team: SeasonTea
   }
   const valid = name.trim().length > 0 && name.trim().length <= 60;
   const save = async () => {
-    setBusy(true);
-    const ok = await run(async () => {
-      if (team) await updateSeasonTeam(tl.lid, team.id, { name: name.trim(), color });
-      else await createSeasonTeam(tl.lid, { name: name.trim(), color });
-      return true;
-    }, team ? 'Equipo guardado' : 'Equipo creado');
-    setBusy(false);
+    const ok = await busy.run('guardar', () =>
+      run(async () => {
+        if (team) await updateSeasonTeam(tl.lid, team.id, { name: name.trim(), color });
+        else await createSeasonTeam(tl.lid, { name: name.trim(), color });
+        return true;
+      }, team ? 'Equipo guardado' : 'Equipo creado'),
+    );
     if (ok) onClose();
   };
   const remove = async () => {
@@ -119,10 +120,12 @@ function TeamForm({ tl, team, open, onClose }: { tl: TeamLeague; team: SeasonTea
       danger: true,
     });
     if (!yes) return;
-    const ok = await run(async () => {
-      await deleteSeasonTeam(tl.lid, team.id);
-      return true;
-    }, 'Equipo borrado');
+    const ok = await busy.run('borrar', () =>
+      run(async () => {
+        await deleteSeasonTeam(tl.lid, team.id);
+        return true;
+      }, 'Equipo borrado'),
+    );
     if (ok) onClose();
   };
   return (
@@ -133,12 +136,19 @@ function TeamForm({ tl, team, open, onClose }: { tl: TeamLeague; team: SeasonTea
       footer={
         <>
           {team && (
-            <Button variant="ghost" className="mr-auto text-danger" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
+            <Button
+              variant="ghost"
+              className="mr-auto text-danger"
+              icon={<Trash2 className="size-4" />}
+              loading={busy.isBusy('borrar')}
+              disabled={busy.isBusy()}
+              onClick={() => void remove()}
+            >
               Borrar
             </Button>
           )}
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>
+          <Button variant="primary" loading={busy.isBusy('guardar')} disabled={!valid || busy.isBusy()} onClick={() => void save()}>
             Guardar
           </Button>
         </>
@@ -188,9 +198,9 @@ export function RosterEditor({ tl, team, canRoles, positions }: { tl: TeamLeague
       toast(rosterError(e), 'error');
     }
   };
+  const askRemove = (entry: RosterEntry) =>
+    confirm({ title: `¿Sacar a ${tl.nameOf(entry.playerId)} de ${team.name}?`, message: 'Sus partidos jugados se quedan.', confirmText: 'Sacar', danger: true });
   const remove = async (entry: RosterEntry) => {
-    const yes = await confirm({ title: `¿Sacar a ${tl.nameOf(entry.playerId)} de ${team.name}?`, message: 'Sus partidos jugados se quedan.', confirmText: 'Sacar', danger: true });
-    if (!yes) return;
     try {
       await removeTeamPlayer(tl.lid, team.id, entry.playerId);
       toast('Jugador fuera de la plantilla');
@@ -210,8 +220,9 @@ export function RosterEditor({ tl, team, canRoles, positions }: { tl: TeamLeague
             canRoles={canRoles}
             canRemove={canRoles || r.role === 'player'}
             positions={positions}
-            onSave={(patch) => void save(r, patch)}
-            onRemove={() => void remove(r)}
+            onSave={(patch) => save(r, patch)}
+            onAskRemove={() => askRemove(r)}
+            onRemove={() => remove(r)}
           />
         ))}
       </ul>
@@ -230,6 +241,7 @@ function RosterRow({
   canRemove,
   positions,
   onSave,
+  onAskRemove,
   onRemove,
 }: {
   entry: RosterEntry;
@@ -237,9 +249,16 @@ function RosterRow({
   canRoles: boolean;
   canRemove: boolean;
   positions: readonly string[];
-  onSave: (patch: Partial<Pick<RosterEntry, 'jersey' | 'position' | 'role'>>) => void;
-  onRemove: () => void;
+  onSave: (patch: Partial<Pick<RosterEntry, 'jersey' | 'position' | 'role'>>) => Promise<void>;
+  onAskRemove: () => Promise<boolean>;
+  onRemove: () => Promise<void>;
 }) {
+  // Cada fila espera lo suyo (dorsal, posición, rol o sacarlo): la ruedita sale en ese campo y la fila no se toca.
+  const busy = useBusy<'jersey' | 'position' | 'role' | 'remove'>();
+  const save = (field: 'jersey' | 'position' | 'role', patch: Partial<Pick<RosterEntry, 'jersey' | 'position' | 'role'>>) => void busy.run(field, () => onSave(patch));
+  const remove = async () => {
+    if (await onAskRemove()) await busy.run('remove', onRemove);
+  };
   const [jersey, setJersey] = useState(entry.jersey == null ? '' : String(entry.jersey));
   const [seen, setSeen] = useState(entry.jersey);
   if (seen !== entry.jersey) {
@@ -252,22 +271,26 @@ function RosterRow({
       setJersey(entry.jersey == null ? '' : String(entry.jersey));
       return;
     }
-    if (n !== entry.jersey) onSave({ jersey: n });
+    if (n !== entry.jersey) save('jersey', { jersey: n });
   };
   const posOptions = entry.position && !positions.includes(entry.position) ? [...positions, entry.position] : positions;
   return (
-    <li className="flex flex-wrap items-center gap-2 py-2">
-      <Input
-        className="h-10 w-16 text-center font-bold tabular-nums"
-        inputMode="numeric"
-        aria-label={`Dorsal de ${name}`}
-        placeholder="#"
-        value={jersey}
-        maxLength={2}
-        onChange={(e) => setJersey(e.target.value.replace(/\D/g, ''))}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
+    <li className="flex flex-wrap items-center gap-2 py-2" aria-busy={busy.isBusy() || undefined}>
+      <span className="relative shrink-0">
+        <Input
+          className="h-10 w-16 text-center font-bold tabular-nums"
+          inputMode="numeric"
+          aria-label={`Dorsal de ${name}`}
+          placeholder="#"
+          value={jersey}
+          maxLength={2}
+          disabled={busy.isBusy()}
+          onChange={(e) => setJersey(e.target.value.replace(/\D/g, ''))}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+        {busy.isBusy('jersey') && <BusyIcon busy className="pointer-events-none absolute top-1/2 right-1.5 size-3.5 -translate-y-1/2 text-muted" />}
+      </span>
       <span className="min-w-0 flex-1 truncate font-medium">
         {name}
         {entry.role !== 'player' && (
@@ -277,24 +300,50 @@ function RosterRow({
         )}
       </span>
       <div className="flex w-full items-center gap-2 sm:w-auto">
-        <Select className="h-10 flex-1 sm:w-32" aria-label={`Posición de ${name}`} value={entry.position ?? ''} onChange={(e) => onSave({ position: e.target.value || null })}>
+        <BusySelect
+          busy={busy.isBusy('position')}
+          disabled={busy.isBusy()}
+          className="flex-1 sm:w-32"
+          selectClassName="h-10"
+          aria-label={`Posición de ${name}`}
+          value={entry.position ?? ''}
+          onChange={(e) => save('position', { position: e.target.value || null })}
+        >
           <option value="">Posición</option>
           {posOptions.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
-        </Select>
+        </BusySelect>
         {canRoles && (
-          <Select className="h-10 flex-1 sm:w-32" aria-label={`Rol de ${name}`} value={entry.role} onChange={(e) => onSave({ role: e.target.value as TeamRole })}>
+          <BusySelect
+            busy={busy.isBusy('role')}
+            disabled={busy.isBusy()}
+            className="flex-1 sm:w-32"
+            selectClassName="h-10"
+            aria-label={`Rol de ${name}`}
+            value={entry.role}
+            onChange={(e) => save('role', { role: e.target.value as TeamRole })}
+          >
             {(Object.keys(ROLE_LABEL) as TeamRole[]).map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABEL[r]}
               </option>
             ))}
-          </Select>
+          </BusySelect>
         )}
-        {canRemove && <Button size="md" variant="ghost" icon={<Trash2 className="size-4" />} aria-label={`Sacar a ${name}`} onClick={onRemove} />}
+        {canRemove && (
+          <Button
+            size="md"
+            variant="ghost"
+            icon={<Trash2 className="size-4" />}
+            aria-label={`Sacar a ${name}`}
+            loading={busy.isBusy('remove')}
+            disabled={busy.isBusy()}
+            onClick={() => void remove()}
+          />
+        )}
       </div>
     </li>
   );
@@ -305,7 +354,8 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
   const { toast } = useFeedback();
   const [q, setQ] = useState('');
   const [newName, setNewName] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Qué se está agregando (el id del jugador o «crear»): solo ese muestra la ruedita.
+  const busy = useBusy();
   // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
   const minor = useQuickMinor(canCreate && !!newName.trim());
   const inTeam = new Set(team.roster.map((r) => r.playerId));
@@ -319,34 +369,31 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
     .filter((p) => !inTeam.has(p.id) && (!q.trim() || norm(p.name).includes(norm(q.trim()))))
     .sort((a, b) => Number(teamOfPlayer.has(a.id)) - Number(teamOfPlayer.has(b.id)) || a.name.localeCompare(b.name, 'es'));
 
-  const add = async (playerId: string) => {
-    setBusy(true);
-    try {
-      await setTeamPlayer(tl.lid, team.id, { playerId, jersey: nextFreeJersey(team.roster, 4) });
-      toast(`${tl.nameOf(playerId)} está en ${team.name}`);
-    } catch (e) {
-      toast(rosterError(e), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const add = (playerId: string) =>
+    busy.run(playerId, async () => {
+      try {
+        await setTeamPlayer(tl.lid, team.id, { playerId, jersey: nextFreeJersey(team.roster, 4) });
+        toast(`${tl.nameOf(playerId)} está en ${team.name}`);
+      } catch (e) {
+        toast(rosterError(e), 'error');
+      }
+    });
   const create = async () => {
     const name = newName.trim();
     if (!name) return;
     const m = minor.take();
     if (m === undefined) return;
-    setBusy(true);
-    try {
-      const id = await createPlayer(tl.lid, name, null, m);
-      await setTeamPlayer(tl.lid, team.id, { playerId: id, jersey: nextFreeJersey(team.roster, 4) });
-      setNewName('');
-      minor.reset();
-      toast(`${name} está en ${team.name}`);
-    } catch (e) {
-      toast(rosterError(e), 'error');
-    } finally {
-      setBusy(false);
-    }
+    await busy.run('crear', async () => {
+      try {
+        const id = await createPlayer(tl.lid, name, null, m);
+        await setTeamPlayer(tl.lid, team.id, { playerId: id, jersey: nextFreeJersey(team.roster, 4) });
+        setNewName('');
+        minor.reset();
+        toast(`${name} está en ${team.name}`);
+      } catch (e) {
+        toast(rosterError(e), 'error');
+      }
+    });
   };
   return (
     <Modal open={open} onClose={onClose} title={`Agregar a ${team.name}`} footer={<Button onClick={onClose}>Listo</Button>}>
@@ -365,7 +412,7 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
                 {teamOfPlayer.has(p.id) && <span className="ml-1 text-xs text-muted">(en {teamOfPlayer.get(p.id)})</span>}
                 {!p.uid && <span className="ml-1 text-xs text-muted">· sin cuenta</span>}
               </span>
-              <Button size="sm" disabled={busy} icon={<Plus className="size-4" />} onClick={() => void add(p.id)}>
+              <Button size="sm" loading={busy.isBusy(p.id)} disabled={busy.isBusy()} icon={<Plus className="size-4" />} onClick={() => void add(p.id)}>
                 Agregar
               </Button>
             </li>
@@ -378,7 +425,7 @@ function AddPlayerModal({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
             <p className="text-xs text-muted">Cuando entre a la app, lo vinculas con su cuenta en Admin › Jugadores.</p>
             <div className="flex gap-2">
               <Input value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre y apellido" />
-              <Button variant="primary" disabled={busy || !newName.trim()} onClick={() => void create()}>
+              <Button variant="primary" loading={busy.isBusy('crear')} disabled={busy.isBusy() || !newName.trim()} onClick={() => void create()}>
                 Crear
               </Button>
             </div>

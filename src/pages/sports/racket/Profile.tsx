@@ -7,6 +7,7 @@ import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import { isGameSport } from '../../../sports/racket/rules';
 import { playerUrl, shareLink } from '../../../components/share';
+import { useBusy } from '../../../components/busy';
 import { useFeedback } from '../../../components/feedback';
 import { BackLink } from '../../../components/BackLink';
 import { MatchCard } from '../../../components/match';
@@ -62,6 +63,7 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
   const all = useWithPendingPoints(lid, q.data);
   const { levels, scale } = useLevels();
   const [filter, setFilter] = useState<Filter>('todo');
+  const sharing = useBusy();
   const player = names.players.find((p) => p.id === playerId);
   const nightsWord = ext.words?.nights ?? 'Noches';
 
@@ -126,9 +128,12 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
           variant="ghost"
           aria-label="Compartir"
           icon={<Share2 className="size-5" />}
-          onClick={async () => {
-            if (await shareLink(playerUrl(lid, playerId), `${player?.name ?? 'Jugador'} · ${league.name}`)) toast('Link copiado');
-          }}
+          loading={sharing.isBusy()}
+          onClick={() =>
+            void sharing.run('compartir', async () => {
+              if (await shareLink(playerUrl(lid, playerId), `${player?.name ?? 'Jugador'} · ${league.name}`)) toast('Link copiado');
+            })
+          }
         />
       </div>
 

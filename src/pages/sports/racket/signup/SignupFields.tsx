@@ -109,13 +109,17 @@ export function SignupSettingsModal({
   onClose,
   onSave,
   busy,
+  disabled,
   ...fields
 }: {
   open: boolean;
   value: SignupSettings | null;
   onClose: () => void;
   onSave: (s: SignupSettings | null) => void;
+  /** Se está guardando esto (la ruedita en Guardar). */
   busy?: boolean;
+  /** Hay otra cosa guardándose: Guardar espera (sin ruedita). */
+  disabled?: boolean;
   unit: readonly [string, string];
   perCategory?: boolean;
   defaultCap: number;
@@ -137,7 +141,7 @@ export function SignupSettingsModal({
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={unchanged || (!value && !draft?.open)} onClick={() => onSave(draft)}>
+          <Button variant="primary" loading={busy} disabled={disabled || unchanged || (!value && !draft?.open)} onClick={() => onSave(draft)}>
             Guardar
           </Button>
         </>

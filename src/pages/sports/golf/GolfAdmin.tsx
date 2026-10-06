@@ -4,6 +4,7 @@ import { validateCourse, type GolfCourse, type GolfTee } from '../../../sports/g
 import type { GolfCompetition } from '../../../sports/golf/scoring';
 import { deleteGolfCourse, saveGolfCourse, saveGolfRules, useGolfCourses, useGolfRules, type GolfCourseDoc } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Button, Card, Empty, Field, Input, ListSkeleton, Modal, Select, cx } from '../../../components/ui';
 import { CompetitionPicker } from './RoundForm';
@@ -18,6 +19,8 @@ export default function GolfAdmin() {
   const courses = useGolfCourses(lid);
   const run = useAction();
   const { confirm } = useFeedback();
+  // El campo que se está borrando: la ruedita en su botón.
+  const removing = useBusy();
   const [editing, setEditing] = useState<GolfCourseDoc | 'nuevo' | null>(null);
 
   return (
@@ -51,6 +54,8 @@ export default function GolfAdmin() {
                   variant="ghost"
                   icon={<Trash2 className="size-4" />}
                   aria-label={`Borrar ${c.name}`}
+                  loading={removing.isBusy(c.id)}
+                  disabled={removing.isBusy()}
                   onClick={async () => {
                     const ok = await confirm({
                       title: `¿Borrar ${c.name}?`,
@@ -58,7 +63,7 @@ export default function GolfAdmin() {
                       confirmText: 'Borrar',
                       danger: true,
                     });
-                    if (ok) await run(() => deleteGolfCourse(lid, c.id), 'Campo borrado');
+                    if (ok) await removing.run(c.id, () => run(() => deleteGolfCourse(lid, c.id), 'Campo borrado'));
                   }}
                 />
               </div>

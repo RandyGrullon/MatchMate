@@ -3,9 +3,11 @@ import { Link } from 'react-router';
 import { compareMatches, isOpen, type Match } from '../../../lib/data/matches';
 import { setMatchOfficial } from '../../../lib/data/teamSports';
 import { whenText } from '../../../components/match/format';
+import { useBusy } from '../../../components/busy';
 import { useAction } from '../../../components/feedback';
-import { Card, Empty, Select } from '../../../components/ui';
+import { Card, Empty } from '../../../components/ui';
 import { scorerCandidates } from './logic';
+import { BusySelect } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -27,6 +29,7 @@ export function OfficialsList({ tl, linkOf }: { tl: TeamLeague; linkOf: (m: Matc
 
 function OfficialRow({ tl, match: m, to }: { tl: TeamLeague; match: Match; to: string }) {
   const run = useAction();
+  const saving = useBusy();
   const official = tl.officialOf(m.id);
   const candidates = scorerCandidates(m, tl.allTeams.data, tl.members.data, tl.players.data);
   const name = (i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;
@@ -41,11 +44,16 @@ function OfficialRow({ tl, match: m, to }: { tl: TeamLeague; match: Match; to: s
           {m.status === 'postponed' && ' · Aplazado'}
         </div>
       </Link>
-      <Select
-        className="h-11 sm:w-64"
+      <BusySelect
+        busy={saving.isBusy()}
+        className="sm:w-64"
+        selectClassName="h-11"
         aria-label={`Anotador de mesa de ${name(0)} vs. ${name(1)}`}
         value={official?.userId ?? ''}
-        onChange={(e) => void run(() => setMatchOfficial(tl.lid, m.id, e.target.value || null), e.target.value ? 'Anotador designado' : 'Sin anotador designado')}
+        onChange={(e) => {
+          const uid = e.target.value;
+          void saving.run('anotador', () => run(() => setMatchOfficial(tl.lid, m.id, uid || null), uid ? 'Anotador designado' : 'Sin anotador designado'));
+        }}
       >
         <option value="">Anotador: sin designar</option>
         {official && !candidates.some((c) => c.uid === official.userId) && <option value={official.userId}>{official.name || 'Designado'}</option>}
@@ -54,7 +62,7 @@ function OfficialRow({ tl, match: m, to }: { tl: TeamLeague; match: Match; to: s
             {c.name} · {c.why}
           </option>
         ))}
-      </Select>
+      </BusySelect>
     </div>
   );
 }

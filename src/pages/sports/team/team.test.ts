@@ -5,7 +5,7 @@ import { courtVars } from '../../../court/device';
 import type { Match, MatchSide } from '../../../lib/data/matches';
 import type { SeasonTeam } from '../../../lib/data/seasonTeams';
 import { ON_OK, canOpenTable, currentRound, myTeams, rosterSide, rsvpTargets, scorerCandidates, shortName, speakerSide, teamColor, textOn, upcomingFor } from './logic';
-import { RsvpButtons } from './TeamBits';
+import { RsvpButtons, RsvpButtonsView } from './TeamBits';
 import { addDays, localTime, matchClashes, parseCourts, parseTimes, planClashes, planDrafts, planSchedule, roundDates, zonedIso } from './schedule';
 
 const SD = 'America/Santo_Domingo';
@@ -263,5 +263,18 @@ describe('letra sobre los colores de estado', () => {
     expect(html('maybe')).toContain('bg-warn text-[color:var(--on-warn,var(--bg))]');
     expect(html('no')).toContain('bg-danger text-on-danger');
     for (const v of ['yes', 'maybe', 'no'] as const) expect(html(v)).not.toContain('text-white');
+  });
+
+  it('mientras se guarda: la ruedita en el que se tocó (del mismo tamaño) y los tres esperan', () => {
+    const html = renderToString(h(RsvpButtonsView, { value: 'yes', busy: 'maybe', onPick: () => {} }));
+    expect(html).toContain('aria-busy="true"');
+    expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(3);
+    expect(html.match(/animate-spin/g)).toHaveLength(1);
+    const maybe = html.split('</button>').find((b) => b.includes('Tal vez')) ?? '';
+    expect(maybe).toContain('animate-spin size-4');
+    const free = renderToString(h(RsvpButtonsView, { value: 'yes', busy: null, onPick: () => {} }));
+    expect(free).not.toContain('animate-spin');
+    expect(free).not.toContain('aria-busy');
+    expect(free).not.toContain('disabled=""');
   });
 });

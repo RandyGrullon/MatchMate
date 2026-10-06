@@ -5,10 +5,12 @@ import { compareMatches, isOpen, type Match } from '../../../lib/data/matches';
 import { saveLeagueRules, setMatchOfficial } from '../../../lib/data/teamSports';
 import { basketballConfig, type BasketballConfig } from '../../../sports/team/basketball';
 import { whenText } from '../../../components/match/format';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, Field, Input, Select, Tabs, cx } from '../../../components/ui';
 import { scorerCandidates } from '../team/logic';
 import { ScheduleBuilder, SingleMatchModal } from '../team/ScheduleBuilder';
+import { BusySelect } from '../team/TeamBits';
 import { TeamsManager } from '../team/TeamsManager';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { matchLink } from './BasketballGames';
@@ -78,6 +80,7 @@ function CalendarAdmin({ tl }: { tl: TeamLeague }) {
 
 function OfficialRow({ tl, match: m }: { tl: TeamLeague; match: Match }) {
   const run = useAction();
+  const saving = useBusy();
   const official = tl.officialOf(m.id);
   const candidates = scorerCandidates(m, tl.allTeams.data, tl.members.data, tl.players.data);
   const name = (i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;
@@ -92,11 +95,15 @@ function OfficialRow({ tl, match: m }: { tl: TeamLeague; match: Match }) {
           {m.status === 'postponed' && ' · Aplazado'}
         </div>
       </Link>
-      <Select
+      <BusySelect
+        busy={saving.isBusy()}
         className="sm:w-64"
         aria-label={`Anotador de mesa de ${name(0)} vs. ${name(1)}`}
         value={official?.userId ?? ''}
-        onChange={(e) => void run(() => setMatchOfficial(tl.lid, m.id, e.target.value || null), e.target.value ? 'Anotador designado' : 'Sin anotador designado')}
+        onChange={(e) => {
+          const uid = e.target.value;
+          void saving.run('anotador', () => run(() => setMatchOfficial(tl.lid, m.id, uid || null), uid ? 'Anotador designado' : 'Sin anotador designado'));
+        }}
       >
         <option value="">Anotador: sin designar</option>
         {official && !candidates.some((c) => c.uid === official.userId) && <option value={official.userId}>{official.name || 'Designado'}</option>}
@@ -105,7 +112,7 @@ function OfficialRow({ tl, match: m }: { tl: TeamLeague; match: Match }) {
             {c.name} · {c.why}
           </option>
         ))}
-      </Select>
+      </BusySelect>
     </div>
   );
 }
@@ -114,6 +121,8 @@ function OfficialRow({ tl, match: m }: { tl: TeamLeague; match: Match }) {
 function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const run = useAction();
   const { confirm } = useFeedback();
+  // La plantilla que se está usando o «guardar»: la ruedita en ese botón.
+  const busy = useBusy<BasketballTemplateId | 'guardar'>();
   const current = tl.rules.data;
   const cfg = basketballConfigFrom(current);
   const teams = basketballTeamRules(current);
@@ -134,18 +143,22 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
       confirmText: 'Usar',
     });
     if (!yes) return;
-    await run(() => saveLeagueRules(tl.lid, templateRules(id, current)), 'Reglas guardadas');
-    setDraft(null);
+    await busy.run(id, async () => {
+      await run(() => saveLeagueRules(tl.lid, templateRules(id, current)), 'Reglas guardadas');
+      setDraft(null);
+    });
   };
 
   const save = () =>
-    run(async () => {
-      await saveLeagueRules(tl.lid, {
-        match: d.cfg,
-        teams: { reinforcements: d.reinforcements, minPlayers: d.minPlayers, runningClock: d.runningClock, template: null },
-      });
-      setDraft(null);
-    }, 'Reglas guardadas');
+    busy.run('guardar', () =>
+      run(async () => {
+        await saveLeagueRules(tl.lid, {
+          match: d.cfg,
+          teams: { reinforcements: d.reinforcements, minPlayers: d.minPlayers, runningClock: d.runningClock, template: null },
+        });
+        setDraft(null);
+      }, 'Reglas guardadas'),
+    );
 
   return (
     <div className="flex flex-col gap-4">
@@ -165,7 +178,13 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
                   )}
                 </div>
                 <p className="flex-1 text-xs text-muted">{t.description}</p>
-                <Button size="sm" variant={active ? 'secondary' : 'primary'} disabled={active} onClick={() => void applyTemplate(t.id)}>
+                <Button
+                  size="sm"
+                  variant={active ? 'secondary' : 'primary'}
+                  loading={busy.isBusy(t.id)}
+                  disabled={active || busy.isBusy()}
+                  onClick={() => void applyTemplate(t.id)}
+                >
                   {active ? 'En uso' : 'Usar esta'}
                 </Button>
               </Card>
@@ -216,7 +235,7 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
           </p>
         )}
         <div className="flex gap-2">
-          <Button variant="primary" disabled={!draft} onClick={() => void save()}>
+          <Button variant="primary" loading={busy.isBusy('guardar')} disabled={!draft || busy.isBusy()} onClick={() => void save()}>
             Guardar reglas
           </Button>
           {draft && <Button onClick={() => setDraft(null)}>Deshacer cambios</Button>}

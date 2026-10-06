@@ -9,6 +9,7 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { racketTourneyComp, racketTourneyFinished } from '../../../../prizes/sports';
 import { podium, type Bracket } from '../../../../sports/formats';
+import { useBusy } from '../../../../components/busy';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { BackLink } from '../../../../components/BackLink';
 import { ReportButton } from '../../../../components/tournamentReport/ReportButton';
@@ -47,6 +48,8 @@ import { useRacket } from '../sport';
 import { CategoryPrize, TourneyPrizes } from './TourneyPrizes';
 
 type View = 'grupos' | 'cuadro' | 'partidos';
+/** Lo que se está guardando: la ruedita va en ese botón y los demás esperan. */
+type Pending = 'categoria' | 'grupos' | 'faltan' | 'deshacer' | 'cuadro' | 'avanzar' | 'guardar-cat' | 'borrar-cat' | 'inscripcion';
 
 /**
  * Torneo por categorías: cada categoría con sus parejas sembradas por nivel, grupos en zigzag (todos contra
@@ -66,7 +69,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
   const q = useMatches({ lid, eventId: event.id });
   const matches = useWithPendingPoints(lid, q.data);
   const cfg = useMemo(() => parseTourneyConfig(event.config), [event.config]);
-  const [busy, setBusy] = useState(false);
+  const pending = useBusy<Pending>();
   const [editing, setEditing] = useState<string | null>(null);
   const title = event.name || 'Torneo';
 
@@ -82,21 +85,20 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
     const signup = next.signup && rev != null ? { ...next.signup, rev } : next.signup;
     await updateRacketEvent(lid, event.id, { config: tourneyConfigJson({ ...next, signup }) });
   };
-  const withBusy = async (fn: () => Promise<void>, ok: string) => {
-    setBusy(true);
-    try {
-      await fn();
-      toast(ok);
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
+  const withBusy = async (key: Pending, fn: () => Promise<void>, ok: string) => {
+    await pending.run(key, async () => {
+      try {
+        await fn();
+        toast(ok);
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
   };
   const putCategory = (c: TourneyCategory) => ({ ...cfg, categories: cfg.categories.map((x) => (x.id === c.id ? c : x)) });
 
   const addCategory = () =>
-    withBusy(async () => {
+    withBusy('categoria', async () => {
       const id = CATEGORY_IDS.find((x) => !cfg.categories.some((c) => c.id === x));
       if (!id) throw new Error('Máximo de categorías');
       await saveConfig({ ...cfg, categories: [...cfg.categories, newCategory(id)] });
@@ -145,7 +147,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
       {isAdmin && (
         <div className="flex flex-wrap gap-2">
           {cfg.categories.length < CATEGORY_IDS.length && (
-            <Button size="sm" icon={<Plus className="size-4" />} loading={busy} onClick={() => void addCategory()}>
+            <Button size="sm" icon={<Plus className="size-4" />} loading={pending.isBusy('categoria')} disabled={pending.isBusy()} onClick={() => void addCategory()}>
               Categoría
             </Button>
           )}
@@ -197,7 +199,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
           matches={matches}
           names={names}
           now={now}
-          busy={busy}
+          busy={pending.isBusy}
           view={(search.get('ver') as View | null) ?? (cat.seeds?.length ? 'cuadro' : 'grupos')}
           onView={(v) => set({ ver: v })}
           onEdit={() => setEditing(cat.id)}
@@ -211,19 +213,19 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
         <CategoryEditor
           cfg={cfg}
           cat={cat}
-          busy={busy}
+          busy={pending.isBusy}
           onClose={() => setEditing(null)}
           onRemove={
             matches.some((m) => m.stage.startsWith(`${cat.name} ·`))
               ? undefined
               : () =>
-                  void withBusy(async () => {
+                  void withBusy('borrar-cat', async () => {
                     await saveConfig({ ...cfg, categories: cfg.categories.filter((c) => c.id !== cat.id) });
                     setEditing(null);
                   }, 'Categoría borrada')
           }
           onSave={(c, rev) =>
-            void withBusy(async () => {
+            void withBusy('guardar-cat', async () => {
               await saveConfig(putCategory(c), rev);
               setEditing(null);
             }, 'Categoría guardada')
@@ -235,7 +237,8 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
         <SignupSettingsModal
           open={editing === 'inscripcion'}
           value={cfg.signup ?? null}
-          busy={busy}
+          busy={pending.isBusy('inscripcion')}
+          disabled={pending.isBusy()}
           unit={side}
           perCategory
           defaultCap={8}
@@ -243,6 +246,7 @@ export function TourneyPage({ event }: { event: RacketEvent }) {
           onClose={() => setEditing(null)}
           onSave={(s) =>
             void withBusy(
+              'inscripcion',
               async () => {
                 if (s) await saveConfig({ ...cfg, signup: s });
                 setEditing(null);
@@ -277,13 +281,14 @@ function CategoryView({
   matches: Match[];
   names: Names;
   now: number;
-  busy: boolean;
+  /** Sin clave: si hay algo guardándose; con clave: si es eso. */
+  busy: (key?: Pending) => boolean;
   view: View;
   onView: (v: View) => void;
   onEdit: () => void;
   /** Guarda la categoría (lanza el error: lo muestra `onRun`). */
   saveCat: (c: TourneyCategory) => Promise<void>;
-  onRun: (fn: () => Promise<void>, ok: string) => Promise<void>;
+  onRun: (key: Pending, fn: () => Promise<void>, ok: string) => Promise<void>;
   leagueRules: Record<string, unknown>;
 }) {
   const { lid, isAdmin, league, myPlayerId } = useLeagueCtx();
@@ -301,7 +306,7 @@ function CategoryView({
   const rules = leagueRules;
 
   const createGroups = () =>
-    onRun(async () => {
+    onRun('grupos', async () => {
       const groups = makeGroups(cat);
       const next = { ...cat, groupsOf: groups };
       await saveCat(next);
@@ -309,7 +314,7 @@ function CategoryView({
     }, 'Partidos de los grupos listos');
 
   const missingGroupMatches = () =>
-    onRun(async () => {
+    onRun('faltan', async () => {
       const all = groupDrafts(cat, cat.groupsOf ?? [], entrants, { eventId: event.id, rules });
       const exists = (a: string, b: string, stage: string) =>
         matches.some((m) => m.stage === stage && ((entrantKey(m.sides[0]) === a && entrantKey(m.sides[1]) === b) || (entrantKey(m.sides[0]) === b && entrantKey(m.sides[1]) === a)));
@@ -321,14 +326,14 @@ function CategoryView({
     const list = catMatches;
     if (list.some((m) => m.status !== 'scheduled' || m.seq > 0)) return;
     if (!(await confirm({ title: '¿Deshacer los grupos?', message: 'Se borran los partidos de los grupos (ninguno ha empezado).', confirmText: 'Deshacer', danger: true }))) return;
-    await onRun(async () => {
+    await onRun('deshacer', async () => {
       for (const m of list) await deleteMatch(lid, m.id);
       await saveCat({ ...cat, groupsOf: undefined, seeds: undefined });
     }, 'Grupos deshechos');
   };
 
   const buildBracket = (seeds: string[]) =>
-    onRun(async () => {
+    onRun('cuadro', async () => {
       const next = { ...cat, seeds };
       await saveCat(next);
       const b = categoryBracket(next, matches, now);
@@ -340,7 +345,7 @@ function CategoryView({
     }, 'Partidos del cuadro listos');
 
   const advance = (b: Bracket) =>
-    onRun(async () => {
+    onRun('avanzar', async () => {
       const todo = bracketTodo(cat, b, matches);
       const all = names.entrants(cat.seeds ?? []);
       if (todo.create.length) await createMatches(lid, bracketDrafts(cat, b, todo.create, all, { eventId: event.id, rules }));
@@ -385,11 +390,11 @@ function CategoryView({
           cat.pairs.length < 2 ? (
             <p className="text-sm text-warn">Elige al menos 2 {side[1]} en «Editar».</p>
           ) : cat.groups > 0 ? (
-            <Button variant="primary" className="h-12" loading={busy} icon={<Rows3 className="size-5" />} onClick={() => void createGroups()}>
+            <Button variant="primary" className="h-12" loading={busy('grupos')} disabled={busy()} icon={<Rows3 className="size-5" />} onClick={() => void createGroups()}>
               Armar los grupos
             </Button>
           ) : (
-            <Button variant="primary" className="h-12" loading={busy} icon={<GitFork className="size-5" />} onClick={() => void buildBracket(cat.pairs)}>
+            <Button variant="primary" className="h-12" loading={busy('cuadro')} disabled={busy()} icon={<GitFork className="size-5" />} onClick={() => void buildBracket(cat.pairs)}>
               Armar el cuadro
             </Button>
           )
@@ -420,7 +425,7 @@ function CategoryView({
       {view === 'grupos' && hasGroups && (
         <div className="flex flex-col gap-4">
           {isAdmin && done.missing > 0 && (
-            <Button className="h-11" loading={busy} onClick={() => void missingGroupMatches()}>
+            <Button className="h-11" loading={busy('faltan')} disabled={busy()} onClick={() => void missingGroupMatches()}>
               Crear los {done.missing} partidos que faltan
             </Button>
           )}
@@ -441,7 +446,7 @@ function CategoryView({
                   <p className="text-sm text-muted">
                     Pasan {q.length}: {q.map((x) => `${x.label} ${names.entrantName(x.id)}`).join(' · ')}
                   </p>
-                  <Button variant="primary" className="h-12" loading={busy} icon={<GitFork className="size-5" />} onClick={() => void buildBracket(q.map((x) => x.id))}>
+                  <Button variant="primary" className="h-12" loading={busy('cuadro')} disabled={busy()} icon={<GitFork className="size-5" />} onClick={() => void buildBracket(q.map((x) => x.id))}>
                     Armar el cuadro con los clasificados
                   </Button>
                 </>
@@ -452,7 +457,7 @@ function CategoryView({
                 </p>
               )}
               {catMatches.every((m) => m.status === 'scheduled' && m.seq === 0) && (
-                <Button size="sm" variant="ghost" className="self-start" onClick={() => void undoGroups()}>
+                <Button size="sm" variant="ghost" className="self-start" loading={busy('deshacer')} disabled={busy()} onClick={() => void undoGroups()}>
                   Deshacer los grupos
                 </Button>
               )}
@@ -480,7 +485,7 @@ function CategoryView({
               <CategoryPrize eventId={event.id} catId={cat.id} className="px-1" />
             )}
             {isAdmin && pending > 0 && (
-              <Button variant="primary" className="h-12" loading={busy} icon={<Wand2 className="size-5" />} onClick={() => void advance(bracket)}>
+              <Button variant="primary" className="h-12" loading={busy('avanzar')} disabled={busy()} icon={<Wand2 className="size-5" />} onClick={() => void advance(bracket)}>
                 Pasar ganadores al cuadro ({pending})
               </Button>
             )}
@@ -517,7 +522,7 @@ function CategoryEditor({
 }: {
   cfg: TourneyConfig;
   cat: TourneyCategory;
-  busy: boolean;
+  busy: (key?: Pending) => boolean;
   onClose: () => void;
   /** `rev` = la versión de la lista cuando se abrió (para no perder a quien se apunte mientras tanto). */
   onSave: (c: TourneyCategory, rev: number | undefined) => void;
@@ -557,12 +562,12 @@ function CategoryEditor({
       footer={
         <>
           {onRemove && (
-            <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={onRemove}>
+            <Button variant="ghost" icon={<Trash2 className="size-4" />} loading={busy('borrar-cat')} disabled={busy()} onClick={onRemove}>
               Borrar categoría
             </Button>
           )}
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSave({ ...draft, name: draft.name.trim() || cat.name }, rev)}>
+          <Button variant="primary" loading={busy('guardar-cat')} disabled={busy()} onClick={() => onSave({ ...draft, name: draft.name.trim() || cat.name }, rev)}>
             Guardar
           </Button>
         </>

@@ -8,6 +8,7 @@ import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { racketNightComp } from '../../../../prizes/sports';
+import { useBusy } from '../../../../components/busy';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { MatchCard, ResultEntryModal, StandingsTable, whatsappShareUrl, type StandingsColumn } from '../../../../components/match';
 import { ScorersButton } from '../../../../components/scorers/ScorersButton';
@@ -41,6 +42,8 @@ import {
 } from './logic';
 
 type Tab = 'canchas' | 'tabla' | 'rondas' | 'jugadores';
+/** Lo que se está guardando: la ruedita va en ese botón y los demás esperan. */
+type Pending = 'ronda' | 'rehacer' | 'cerrar' | 'cerrar-fin' | 'abrir' | 'ajustes' | 'jugadores' | 'inscripcion';
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
@@ -77,7 +80,8 @@ export function SocialPage({ event }: { event: RacketEvent }) {
     return [...out];
   }, [cfg.players, rounds]);
   const table = useMemo(() => socialTable(people, rounds), [people, rounds]);
-  const [busy, setBusy] = useState(false);
+  const pending = useBusy<Pending>();
+  const busy = pending.isBusy();
   const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores' | 'inscripcion'>(null);
   const title = event.name || 'Round robin';
 
@@ -91,41 +95,38 @@ export function SocialPage({ event }: { event: RacketEvent }) {
   const tab: Tab = requested ?? (current ? 'canchas' : isAdmin ? 'canchas' : 'jugadores');
   const setTab = (t: Tab) => setSearch({ ver: t }, { replace: true });
 
-  const saveConfig = async (next: SocialConfig, ok?: string) => {
-    setBusy(true);
-    try {
-      await updateRacketEvent(lid, event.id, { config: socialConfigJson(next) });
-      if (ok) toast(ok);
-      return true;
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
+  const saveConfig = (next: SocialConfig, ok: string, key: Pending) =>
+    pending.run(key, async () => {
+      try {
+        await updateRacketEvent(lid, event.id, { config: socialConfigJson(next) });
+        toast(ok);
+        return true;
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+        return false;
+      }
+    });
 
-  const publish = async (next: NextRound, ok: string) => {
+  const publish = async (next: NextRound, ok: string, key: Pending) => {
     if (!next.ok) {
       toast(next.reason, 'error');
       return;
     }
-    setBusy(true);
-    try {
-      let c = cfg;
-      if (next.config) {
-        c = { ...cfg, ...next.config };
-        await updateRacketEvent(lid, event.id, { config: socialConfigJson(c) });
+    await pending.run(key, async () => {
+      try {
+        let c = cfg;
+        if (next.config) {
+          c = { ...cfg, ...next.config };
+          await updateRacketEvent(lid, event.id, { config: socialConfigJson(c) });
+        }
+        const { drafts, rests } = socialDrafts(c, next.social, leagueRules);
+        await saveNightRound(lid, event.id, next.round, drafts, rests);
+        toast(ok);
+        setTab('canchas');
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
       }
-      const { drafts, rests } = socialDrafts(c, next.social, leagueRules);
-      await saveNightRound(lid, event.id, next.round, drafts, rests);
-      toast(ok);
-      setTab('canchas');
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const nextRound = async () => {
@@ -138,17 +139,17 @@ export function SocialPage({ event }: { event: RacketEvent }) {
       });
       if (!go) return;
     }
-    await publish(next, next.ok ? `Ronda ${next.round} lista: a cada quien le llegó su cancha` : '');
+    await publish(next, next.ok ? `Ronda ${next.round} lista: a cada quien le llegó su cancha` : '', 'ronda');
   };
 
   const redo = async () => {
     const go = await confirm({ title: `¿Rehacer la ronda ${current?.round}?`, message: 'Se vuelve a sortear con los jugadores de ahora. Nadie ha empezado a jugar.', confirmText: 'Rehacer' });
-    if (go) await publish(redoSocialRound(cfg, rounds, Date.now().toString(36)), 'Ronda rehecha');
+    if (go) await publish(redoSocialRound(cfg, rounds, Date.now().toString(36)), 'Ronda rehecha', 'rehacer');
   };
 
-  const close = async (closed: boolean) => {
+  const close = async (closed: boolean, key: Pending) => {
     if (closed && !(await confirm({ title: '¿Terminar el round robin?', message: 'Queda la tabla final. Se puede volver a abrir.', confirmText: 'Terminar' }))) return;
-    await saveConfig({ ...cfg, closed }, closed ? 'Round robin terminado' : 'Abierto otra vez');
+    await saveConfig({ ...cfg, closed }, closed ? 'Round robin terminado' : 'Abierto otra vez', key);
   };
 
   const remove = async () => {
@@ -217,12 +218,12 @@ export function SocialPage({ event }: { event: RacketEvent }) {
             </Button>
           )}
           {cfg.closed ? (
-            <Button size="sm" icon={<LockOpen className="size-4" />} onClick={() => void close(false)} loading={busy}>
+            <Button size="sm" icon={<LockOpen className="size-4" />} onClick={() => void close(false, 'abrir')} loading={pending.isBusy('abrir')} disabled={busy}>
               Volver a abrir
             </Button>
           ) : (
             current && (
-              <Button size="sm" icon={<Lock className="size-4" />} onClick={() => void close(true)} loading={busy}>
+              <Button size="sm" icon={<Lock className="size-4" />} onClick={() => void close(true, 'cerrar')} loading={pending.isBusy('cerrar')} disabled={busy}>
                 Terminar
               </Button>
             )
@@ -279,7 +280,7 @@ export function SocialPage({ event }: { event: RacketEvent }) {
           (q.loading && !matches.length ? (
             <ListSkeleton rows={2} />
           ) : !current ? (
-            <FirstRound cfg={cfg} busy={busy} onStart={() => void nextRound()} onPlayers={() => setEditing('jugadores')} />
+            <FirstRound cfg={cfg} busy={pending.isBusy('ronda')} onStart={() => void nextRound()} onPlayers={() => setEditing('jugadores')} />
           ) : (
             <>
               {finished && <Podium table={table} nameOf={names.nameOf} share={share} />}
@@ -287,17 +288,17 @@ export function SocialPage({ event }: { event: RacketEvent }) {
               {isAdmin && !cfg.closed && (
                 <div className="flex flex-col gap-2 sm:flex-row">
                   {current.round < cfg.rounds && (
-                    <Button variant="primary" className="h-12 flex-1 text-base" loading={busy} icon={<SkipForward className="size-5" />} onClick={() => void nextRound()}>
+                    <Button variant="primary" className="h-12 flex-1 text-base" loading={pending.isBusy('ronda')} disabled={busy} icon={<SkipForward className="size-5" />} onClick={() => void nextRound()}>
                       Siguiente ronda ({current.round + 1} de {cfg.rounds})
                     </Button>
                   )}
                   {current.round >= cfg.rounds && current.done && (
-                    <Button variant="primary" className="h-12 flex-1 text-base" loading={busy} icon={<Flag className="size-5" />} onClick={() => void close(true)}>
+                    <Button variant="primary" className="h-12 flex-1 text-base" loading={pending.isBusy('cerrar-fin')} disabled={busy} icon={<Flag className="size-5" />} onClick={() => void close(true, 'cerrar-fin')}>
                       Terminar el round robin
                     </Button>
                   )}
                   {!current.started && (
-                    <Button className="h-12" loading={busy} icon={<RefreshCw className="size-4" />} onClick={() => void redo()}>
+                    <Button className="h-12" loading={pending.isBusy('rehacer')} disabled={busy} icon={<RefreshCw className="size-4" />} onClick={() => void redo()}>
                       Rehacer la ronda
                     </Button>
                   )}
@@ -327,20 +328,21 @@ export function SocialPage({ event }: { event: RacketEvent }) {
         {tab === 'jugadores' && <PlayersTab cfg={cfg} onEdit={isAdmin ? () => setEditing('jugadores') : undefined} />}
       </div>
 
-      <SettingsModal open={editing === 'ajustes'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Guardado')) && setEditing(null)} />
-      <PlayersModal open={editing === 'jugadores'} cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Jugadores guardados')) && setEditing(null)} />
+      <SettingsModal open={editing === 'ajustes'} cfg={cfg} busy={pending.isBusy('ajustes')} disabled={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Guardado', 'ajustes')) && setEditing(null)} />
+      <PlayersModal open={editing === 'jugadores'} cfg={cfg} busy={pending.isBusy('jugadores')} disabled={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Jugadores guardados', 'jugadores')) && setEditing(null)} />
       {isAdmin && (
         <SignupSettingsModal
           open={editing === 'inscripcion'}
           value={cfg.signup ?? null}
-          busy={busy}
+          busy={pending.isBusy('inscripcion')}
+          disabled={busy}
           unit={['jugador', 'jugadores']}
           defaultCap={Math.max(4, cfg.courts.length * 4)}
           maxCap={NIGHT_MAX_PLAYERS}
           tz={league.tz}
           onClose={() => setEditing(null)}
           onSave={async (s: SignupSettings | null) =>
-            (await saveConfig(s ? { ...cfg, signup: s } : cfg, s?.open ? 'Inscripción abierta' : 'Inscripción cerrada')) && setEditing(null)
+            (await saveConfig(s ? { ...cfg, signup: s } : cfg, s?.open ? 'Inscripción abierta' : 'Inscripción cerrada', 'inscripcion')) && setEditing(null)
           }
         />
       )}
@@ -537,6 +539,7 @@ function Podium({ table, nameOf, share }: { table: ReturnType<typeof socialTable
 
 function ShareBox({ text }: { text: string }) {
   const { toast } = useFeedback();
+  const copying = useBusy();
   return (
     <div className="flex flex-wrap gap-2">
       <a
@@ -549,11 +552,14 @@ function ShareBox({ text }: { text: string }) {
       </a>
       <Button
         className="h-11 flex-1"
+        loading={copying.isBusy()}
         onClick={() =>
-          navigator.clipboard
-            .writeText(text)
-            .then(() => toast('Tabla copiada'))
-            .catch(() => toast('No se pudo copiar', 'error'))
+          void copying.run('copiar', () =>
+            navigator.clipboard
+              .writeText(text)
+              .then(() => toast('Tabla copiada'))
+              .catch(() => toast('No se pudo copiar', 'error')),
+          )
         }
       >
         Copiar la tabla
@@ -589,7 +595,22 @@ function PlayersTab({ cfg, onEdit }: { cfg: SocialConfig; onEdit?: () => void })
   );
 }
 
-function SettingsModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg: SocialConfig; busy: boolean; onClose: () => void; onSave: (c: SocialConfig) => void }) {
+/** `busy`: se está guardando esto (la ruedita); `disabled`: hay otra cosa guardándose (Guardar espera sin ruedita). */
+function SettingsModal({
+  open,
+  cfg,
+  busy,
+  disabled,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  cfg: SocialConfig;
+  busy: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onSave: (c: SocialConfig) => void;
+}) {
   const [draft, setDraft] = useState(cfg);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
@@ -608,6 +629,7 @@ function SettingsModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cf
           <Button
             variant="primary"
             loading={busy}
+            disabled={disabled}
             onClick={() =>
               onSave(
                 changedPlan
@@ -631,7 +653,21 @@ function SettingsModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cf
   );
 }
 
-function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg: SocialConfig; busy: boolean; onClose: () => void; onSave: (c: SocialConfig) => void }) {
+function PlayersModal({
+  open,
+  cfg,
+  busy,
+  disabled,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  cfg: SocialConfig;
+  busy: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onSave: (c: SocialConfig) => void;
+}) {
   const { levels } = useLevels();
   const [players, setPlayers] = useState(cfg.players);
   const [mixed, setMixed] = useState(cfg.mixed);
@@ -656,7 +692,7 @@ function PlayersModal({ open, cfg, busy, onClose, onSave }: { open: boolean; cfg
           <Button
             variant="primary"
             loading={busy}
-            disabled={players.length < 4}
+            disabled={disabled || players.length < 4}
             onClick={() => {
               const lv = { ...cfg.levels };
               for (const p of players) if (levels[p] != null) lv[p] = levels[p];

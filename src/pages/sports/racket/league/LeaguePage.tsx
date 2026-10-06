@@ -7,6 +7,7 @@ import { useWithPendingPoints, type RacketEvent } from '../../../../lib/data/rac
 import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
+import { useBusy } from '../../../../components/busy';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { BackLink } from '../../../../components/BackLink';
 import { MatchCard, ScheduleList, StandingsTable } from '../../../../components/match';
@@ -42,6 +43,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
   const cfg = useMemo(() => parseLeagueConfig(event.config, event.date), [event.config, event.date]);
   const table = useMemo(() => pairStandings(sport, cfg.pairs, matches, { scheme: cfg.points, lotSeed: event.id, now }), [sport, cfg, matches, event.id, now]);
   const [busy, setBusy] = useState(false);
+  const exporting = useBusy();
   const title = event.name || eventTypeInfo('liga', doubles).label;
 
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={title} onBack={param.close} />;
@@ -78,22 +80,24 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
   };
 
   const excel = () =>
-    exportCompetitionExcel({
-      title,
-      date: event.date,
-      matches,
-      tables: [{ name: 'Tabla', rows: table }],
-      players: seasonPlayerTable(matches, { sport, rosterOf: names.rosterOf, now }),
-      entrantName: names.entrantName,
-      nameOf: names.nameOf,
-      tz: league.tz,
-      forLabel: forLabel(sport),
-      setsLabel: setsLabel(sport),
-      courtLabel: courtWords(ext).One,
-    }).catch((e) => {
-      console.error(e);
-      toast('No se pudo hacer el Excel', 'error');
-    });
+    exporting.run('excel', () =>
+      exportCompetitionExcel({
+        title,
+        date: event.date,
+        matches,
+        tables: [{ name: 'Tabla', rows: table }],
+        players: seasonPlayerTable(matches, { sport, rosterOf: names.rosterOf, now }),
+        entrantName: names.entrantName,
+        nameOf: names.nameOf,
+        tz: league.tz,
+        forLabel: forLabel(sport),
+        setsLabel: setsLabel(sport),
+        courtLabel: courtWords(ext).One,
+      }).catch((e) => {
+        console.error(e);
+        toast('No se pudo hacer el Excel', 'error');
+      }),
+    );
 
   return (
     <div className="flex flex-col gap-5">
@@ -113,7 +117,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
 
       {isAdmin && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel()} disabled={!matches.length}>
+          <Button size="sm" icon={<Download className="size-4" />} loading={exporting.isBusy()} onClick={() => void excel()} disabled={!matches.length}>
             Excel
           </Button>
           {matches.length > 0 && !started && (

@@ -5,8 +5,10 @@ import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import { isGameSport, toLive, type MatchSetup, type Pair, type Player, type RacketEvent, type RacketSport, type RacketState } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
+import { useBusy } from '../../../../components/busy';
 import { useAction } from '../../../../components/feedback';
 import { Badge, Button, Modal, cx } from '../../../../components/ui';
+import { PresetButtons } from '../bits';
 import { presetOf, presetsOf, rulesText } from '../logic/rulesText';
 import { useNames } from '../names';
 import { engineRules, racketAdapter } from './adapters';
@@ -230,6 +232,7 @@ function SetupForm({
 }) {
   const { lid } = useLeagueCtx();
   const run = useAction();
+  const saving = useBusy();
   const [first, setFirst] = useState<Side>(1);
   const [fp, setFp] = useState<Pair<Player>>([0, 0]);
   const [left, setLeft] = useState<Side>(1);
@@ -288,21 +291,18 @@ function SetupForm({
         Empezar el partido
       </Button>
       <Modal open={changing} onClose={() => setChanging(false)} title="Reglas de este partido">
-        <div className="flex flex-col gap-2">
-          {presetsOf(sport).map((p) => (
-            <Button
-              key={p.id}
-              variant={current?.id === p.id ? 'primary' : 'secondary'}
-              className="h-auto min-h-12 justify-start py-2 text-left"
-              onClick={async () => {
-                await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
-                setChanging(false);
-              }}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
+        <PresetButtons
+          presets={presetsOf(sport)}
+          current={current?.id}
+          pending={saving.busy}
+          className="min-h-12"
+          onPick={(p) =>
+            void saving.run(p.id, async () => {
+              await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
+              setChanging(false);
+            })
+          }
+        />
       </Modal>
     </div>
   );

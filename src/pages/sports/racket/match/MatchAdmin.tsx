@@ -11,6 +11,7 @@ import {
 } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import type { Side } from '../../../../sports/types';
+import { useBusy } from '../../../../components/busy';
 import { saveErrorMessage, useFeedback } from '../../../../components/feedback';
 import { Button, Field, Input, Modal, Select } from '../../../../components/ui';
 import { walkoverScore } from '../court/adapters';
@@ -20,6 +21,8 @@ import { useNames } from '../names';
 import { courtWords, useRacket } from '../sport';
 
 type Dialog = null | 'walkover' | 'postpone' | 'reschedule' | 'players';
+/** Qué se está guardando: lo del diálogo abierto, anular o borrar (la ruedita va en ese botón). */
+type Pending = 'dialog' | 'void' | 'delete';
 
 /**
  * Lo que el admin hace con un partido: W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), anular, quién jugó
@@ -31,60 +34,61 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
   const w = courtWords(ext);
   const { toast, confirm } = useFeedback();
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [busy, setBusy] = useState(false);
+  const pending = useBusy<Pending>();
+  const busy = pending.isBusy('dialog');
+  // Mientras se anula o se borra no se abre un diálogo (su Guardar no haría nada).
+  const waiting = pending.isBusy();
   const points = isPointsMatch(m);
   const open = m.status === 'scheduled' || m.status === 'live' || m.status === 'suspended' || m.status === 'postponed';
 
-  const act = async (fn: () => Promise<unknown>, ok: string) => {
-    setBusy(true);
-    try {
-      await fn();
-      toast(ok);
-      setDialog(null);
-      return true;
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
+  const act = (fn: () => Promise<unknown>, ok: string, key: Pending = 'dialog') =>
+    pending.run(key, async () => {
+      try {
+        await fn();
+        toast(ok);
+        setDialog(null);
+        return true;
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+        return false;
+      }
+    });
 
   const doVoid = async () => {
     if (!(await confirm({ title: '¿Anular el partido?', message: 'No cuenta para la tabla ni las estadísticas. Se puede deshacer corrigiendo el resultado.', confirmText: 'Anular', danger: true }))) return;
-    await act(() => voidMatch(lid, m.id), 'Partido anulado');
+    await act(() => voidMatch(lid, m.id), 'Partido anulado', 'void');
   };
   const doDelete = async () => {
     if (!(await confirm({ title: '¿Borrar el partido?', message: 'Se borra con su resultado e historial. No se puede deshacer.', confirmText: 'Borrar', danger: true }))) return;
-    if (await act(() => deleteMatch(lid, m.id), 'Partido borrado')) onDeleted();
+    if (await act(() => deleteMatch(lid, m.id), 'Partido borrado', 'delete')) onDeleted();
   };
 
   return (
     <div className="flex flex-wrap gap-2">
       {open && !points && (
-        <Button size="sm" icon={<CircleSlash className="size-4" />} onClick={() => setDialog('walkover')}>
+        <Button size="sm" icon={<CircleSlash className="size-4" />} disabled={waiting} onClick={() => setDialog('walkover')}>
           W.O.
         </Button>
       )}
       {(m.status === 'scheduled' || m.status === 'suspended') && (
-        <Button size="sm" icon={<Pause className="size-4" />} onClick={() => setDialog('postpone')}>
+        <Button size="sm" icon={<Pause className="size-4" />} disabled={waiting} onClick={() => setDialog('postpone')}>
           Aplazar
         </Button>
       )}
       {(m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended') && (
-        <Button size="sm" icon={<CalendarClock className="size-4" />} onClick={() => setDialog('reschedule')}>
+        <Button size="sm" icon={<CalendarClock className="size-4" />} disabled={waiting} onClick={() => setDialog('reschedule')}>
           {m.scheduledAt ? 'Reprogramar' : `Poner fecha y ${w.one}`}
         </Button>
       )}
-      <Button size="sm" icon={<UserRoundCog className="size-4" />} onClick={() => setDialog('players')}>
+      <Button size="sm" icon={<UserRoundCog className="size-4" />} disabled={waiting} onClick={() => setDialog('players')}>
         Quién juega
       </Button>
       {m.status !== 'void' && (
-        <Button size="sm" variant="ghost" icon={<Ban className="size-4" />} onClick={() => void doVoid()} disabled={busy}>
+        <Button size="sm" variant="ghost" icon={<Ban className="size-4" />} onClick={() => void doVoid()} loading={pending.isBusy('void')} disabled={waiting}>
           Anular
         </Button>
       )}
-      <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void doDelete()} disabled={busy}>
+      <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void doDelete()} loading={pending.isBusy('delete')} disabled={waiting}>
         Borrar
       </Button>
 

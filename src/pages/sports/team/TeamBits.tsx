@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, SelectHTMLAttributes } from 'react';
 import { Check, CircleHelp, X } from 'lucide-react';
 import type { SeasonTeam } from '../../../lib/data/seasonTeams';
 import { RSVP_LABEL, type RsvpStatus } from '../../../lib/data/teamSports';
-import { Badge, cx } from '../../../components/ui';
+import { BusyIcon, useBusy } from '../../../components/busy';
+import { Badge, Select, cx } from '../../../components/ui';
 import { teamColor, textOn } from './logic';
 
 /** Punto con el color del equipo. */
@@ -51,21 +52,29 @@ export function RsvpBadge({ status, pending }: { status: RsvpStatus | null | und
   );
 }
 
-/** Voy / Tal vez / No voy: tocar el que ya está marcado lo quita. */
-export function RsvpButtons({
-  value,
-  onChange,
-  disabled,
-  size = 'md',
-  label,
-}: {
+/**
+ * Voy / Tal vez / No voy: tocar el que ya está marcado lo quita. Mientras se guarda, la ruedita en el que se tocó y no
+ * se puede tocar otro; cada lista espera lo suya (las de los otros jugadores se siguen usando).
+ */
+export function RsvpButtons({ onChange, ...rest }: Omit<RsvpButtonsViewProps, 'busy' | 'onPick'> & { onChange: (next: RsvpStatus | null) => Promise<unknown> | void }) {
+  const saving = useBusy<RsvpStatus>();
+  return <RsvpButtonsView {...rest} busy={saving.busy} onPick={(tapped, next) => void saving.run(tapped, async () => onChange(next))} />;
+}
+
+interface RsvpButtonsViewProps {
   value: RsvpStatus | null | undefined;
-  onChange: (next: RsvpStatus | null) => void;
+  /** `tapped`: el botón que se tocó; `next`: lo que queda marcado (null si se quitó). */
+  onPick: (tapped: RsvpStatus, next: RsvpStatus | null) => void;
   disabled?: boolean;
+  /** El que se está guardando (su ícono cambia por la ruedita), o null. */
+  busy?: RsvpStatus | null;
   size?: 'sm' | 'md';
   /** Para lectores de pantalla: «Convocatoria de Ana». */
   label?: string;
-}) {
+}
+
+/** Lo que se ve (sin estado: se prueba con renderToString). */
+export function RsvpButtonsView({ value, onPick, disabled, busy, size = 'md', label }: RsvpButtonsViewProps) {
   const order: RsvpStatus[] = ['yes', 'maybe', 'no'];
   // Nunca letra blanca fija: en oscuro el verde y el ámbar se aclaran (ver ON_OK / ON_WARN en ./logic).
   const on: Record<RsvpStatus, string> = {
@@ -74,23 +83,23 @@ export function RsvpButtons({
     no: 'bg-danger text-on-danger border-danger',
   };
   return (
-    <div role="group" aria-label={label ?? 'Convocatoria'} className="flex gap-1.5">
+    <div role="group" aria-label={label ?? 'Convocatoria'} aria-busy={busy ? true : undefined} className="flex gap-1.5">
       {order.map((s) => {
         const active = value === s;
         return (
           <button
             key={s}
             type="button"
-            disabled={disabled}
+            disabled={disabled || !!busy}
             aria-pressed={active}
-            onClick={() => onChange(active ? null : s)}
+            onClick={() => onPick(s, active ? null : s)}
             className={cx(
               'inline-flex flex-1 items-center justify-center gap-1 rounded-xl border font-semibold transition active:scale-[0.97] disabled:opacity-50',
               size === 'sm' ? 'h-9 px-2 text-xs' : 'h-12 px-3 text-sm',
               active ? on[s] : 'border-line bg-surface text-fg hover:bg-surface-2',
             )}
           >
-            {RSVP_ICON[s]}
+            <BusyIcon busy={busy === s} icon={RSVP_ICON[s]} className="size-4" />
             {RSVP_LABEL[s]}
           </button>
         );
@@ -106,5 +115,24 @@ export function SectionHead({ title, action, className }: { title: ReactNode; ac
       <h2 className="text-sm font-semibold text-muted">{title}</h2>
       {action}
     </div>
+  );
+}
+
+/**
+ * Lista que guarda al cambiar (anotador, posición, rol): mientras espera, la ruedita queda donde va la flecha y no
+ * se puede tocar. `className` es del contenedor (ancho, flex); `selectClassName`, del Select (alto).
+ */
+export function BusySelect({
+  busy,
+  className,
+  selectClassName,
+  disabled,
+  ...rest
+}: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'className'> & { busy: boolean; className?: string; selectClassName?: string }) {
+  return (
+    <span className={cx('relative block', className)}>
+      <Select {...rest} className={cx(busy && 'appearance-none', selectClassName)} disabled={disabled || busy} aria-busy={busy || undefined} />
+      {busy && <BusyIcon busy className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted" />}
+    </span>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
 import type { Player } from '../../../lib/types';
+import { BusyIcon, useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, Field, Input, Modal, Select, cx } from '../../../components/ui';
 import { MAX_INDEX, MIN_INDEX, isValidIndex } from '../../../sports/golf/course';
@@ -136,15 +137,19 @@ export function GolfPlayers({
   );
 }
 
-function TeeSelect({ round, value, onChange, disabled }: { round: GolfRoundFull; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+/** `busy`: mientras guarda, la ruedita queda donde va la flecha y no se puede tocar. */
+function TeeSelect({ round, value, onChange, disabled, busy = false }: { round: GolfRoundFull; value: string; onChange: (v: string) => void; disabled?: boolean; busy?: boolean }) {
   return (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-      {round.course.tees.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name} · {t.rating} / {t.slope} · par {t.par}
-        </option>
-      ))}
-    </Select>
+    <span className="relative block">
+      <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled || busy} aria-busy={busy || undefined} className={busy ? 'appearance-none' : undefined}>
+        {round.course.tees.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name} · {t.rating} / {t.slope} · par {t.par}
+          </option>
+        ))}
+      </Select>
+      {busy && <BusyIcon busy className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted" />}
+    </span>
   );
 }
 
@@ -201,6 +206,7 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
   const { lid } = useLeagueCtx();
   const run = useAction();
   const { confirm } = useFeedback();
+  const busy = useBusy<'salida' | 'salir'>();
   // Anotó algo alguna vez (aunque después vació la tarjeta): el servidor ya no deja cambiar salida ni Index.
   const started = holesDone(card) > 0 || !!card.scoredAt;
   const signing = !card.signed && pendingGolfSign(lid, card.id);
@@ -220,7 +226,13 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
         )}
       </div>
       <Field label="Salida (tees)" hint={locked ? 'Ya empezaste a anotar: la salida no cambia (pídeselo al admin).' : undefined}>
-        <TeeSelect round={round} value={card.teeId} disabled={locked} onChange={(teeId) => run(() => registerGolf(lid, round.eventId, { teeId }), 'Salida cambiada')} />
+        <TeeSelect
+          round={round}
+          value={card.teeId}
+          disabled={locked || busy.isBusy()}
+          busy={busy.isBusy('salida')}
+          onChange={(teeId) => void busy.run('salida', () => run(() => registerGolf(lid, round.eventId, { teeId }), 'Salida cambiada'))}
+        />
       </Field>
       <HcpExplain round={round} teeId={card.teeId} index={card.hcpIndex} />
       <div className="flex flex-wrap gap-2">
@@ -232,8 +244,11 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
         {!locked && (
           <Button
             variant="ghost"
+            loading={busy.isBusy('salir')}
+            disabled={busy.isBusy()}
             onClick={async () => {
-              if (await confirm({ title: '¿Salirte de la ronda?', confirmText: 'Salirme', danger: true })) await run(() => unregisterGolf(lid, round.eventId, card.id), 'Saliste de la ronda');
+              if (await confirm({ title: '¿Salirte de la ronda?', confirmText: 'Salirme', danger: true }))
+                await busy.run('salir', () => run(() => unregisterGolf(lid, round.eventId, card.id), 'Saliste de la ronda'));
             }}
           >
             Salirme
@@ -453,6 +468,8 @@ export function AdminCardModal({ card, onClose, round, name }: { card: GolfCardD
   const { lid } = useLeagueCtx();
   const run = useAction();
   const { confirm } = useFeedback();
+  // Una acción a la vez (todas cierran la ventana): la ruedita en la que se tocó.
+  const busy = useBusy<'guardar' | 'firma' | 'dq' | 'sacar'>();
   const [tee, setTee] = useState('');
   const [text, setText] = useState('');
   useEffect(() => {
@@ -477,26 +494,39 @@ export function AdminCardModal({ card, onClose, round, name }: { card: GolfCardD
         {!bad && <HcpExplain round={round} teeId={tee} index={index} />}
         <Button
           variant="primary"
-          disabled={closed || bad}
-          onClick={() => run(() => registerGolf(lid, round.eventId, { playerId: card.playerId, teeId: tee, index }), 'Tarjeta cambiada').then(onClose)}
+          loading={busy.isBusy('guardar')}
+          disabled={closed || bad || busy.isBusy()}
+          onClick={() => busy.run('guardar', () => run(() => registerGolf(lid, round.eventId, { playerId: card.playerId, teeId: tee, index }), 'Tarjeta cambiada').then(onClose))}
         >
           Guardar salida e Index
         </Button>
         <div className="flex flex-wrap gap-2 border-t border-line pt-3">
           {card.signed && !closed && (
-            <Button onClick={() => run(() => signGolfCard(lid, round.eventId, card.id, false), 'Tarjeta abierta').then(onClose)}>Quitar la firma</Button>
+            <Button
+              loading={busy.isBusy('firma')}
+              disabled={busy.isBusy()}
+              onClick={() => busy.run('firma', () => run(() => signGolfCard(lid, round.eventId, card.id, false), 'Tarjeta abierta').then(onClose))}
+            >
+              Quitar la firma
+            </Button>
           )}
           {!closed && (
-            <Button onClick={() => run(() => setGolfDq(lid, round.eventId, card.id, !card.dq), card.dq ? 'Ya no está descalificado' : 'Descalificado').then(onClose)}>
+            <Button
+              loading={busy.isBusy('dq')}
+              disabled={busy.isBusy()}
+              onClick={() => busy.run('dq', () => run(() => setGolfDq(lid, round.eventId, card.id, !card.dq), card.dq ? 'Ya no está descalificado' : 'Descalificado').then(onClose))}
+            >
               {card.dq ? 'Quitar descalificación' : 'Descalificar'}
             </Button>
           )}
           {!closed && (
             <Button
               variant="danger"
+              loading={busy.isBusy('sacar')}
+              disabled={busy.isBusy()}
               onClick={async () => {
                 if (await confirm({ title: `¿Sacar a ${name} de la ronda?`, message: 'Se borra su tarjeta con lo anotado.', confirmText: 'Sacar', danger: true }))
-                  await run(() => unregisterGolf(lid, round.eventId, card.id), 'Jugador sacado').then(onClose);
+                  await busy.run('sacar', () => run(() => unregisterGolf(lid, round.eventId, card.id), 'Jugador sacado').then(onClose));
               }}
             >
               Sacar de la ronda

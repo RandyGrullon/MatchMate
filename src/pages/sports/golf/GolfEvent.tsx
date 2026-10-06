@@ -7,6 +7,7 @@ import { sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
 import { eventLabel, formatDateLong, toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { BackLink } from '../../../components/BackLink';
+import { useBusy } from '../../../components/busy';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { shareLink } from '../../../components/share';
 import { ReportButton } from '../../../components/tournamentReport/ReportButton';
@@ -36,6 +37,9 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const navigate = useNavigate();
   const run = useAction();
   const { confirm, toast } = useFeedback();
+  // La ruedita en lo que espera: compartir (el menú del teléfono), cerrar o abrir la ronda y firmar.
+  const sharing = useBusy();
+  const busy = useBusy<'cerrar' | 'firmar'>();
   const [search, setSearch] = useSearchParams();
   const [editing, setEditing] = useState(false);
   const [signing, setSigning] = useState<GolfCardDoc | null>(null);
@@ -121,21 +125,22 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
         : 'jugadores';
   const tab: TabKey = requested && tabs.some((t) => t.key === requested) ? requested : tabs.some((t) => t.key === fallback) ? fallback : 'leaderboard';
 
-  async function sign(card: GolfCardDoc) {
-    try {
-      // Primero sale lo anotado que falte (una operación por tarjeta). La firma lleva además la tarjeta tal
-      // como se revisó: el servidor la guarda y firma a la vez, sin depender del orden de la cola.
-      sendPending(lid, eventId!, golf.data.cards, { isAdmin, staff, myCard })?.catch((e) => toast(saveErrorMessage(e), 'error'));
-      const reviewed = { cardId: card.id, holes: cardWire(cards.find((c) => c.id === card.id) ?? card) };
-      const { done } = queueGolfSign(lid, eventId!, card.id, { holes: reviewed.holes });
-      void done.then(() => updateLog((l) => markSent(l, [reviewed], Date.now()))).catch(() => undefined);
-      await sentOrQueued(done);
-      toast('Tarjeta firmada');
-      setSigning(null);
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    }
-  }
+  const sign = (card: GolfCardDoc) =>
+    busy.run('firmar', async () => {
+      try {
+        // Primero sale lo anotado que falte (una operación por tarjeta). La firma lleva además la tarjeta tal
+        // como se revisó: el servidor la guarda y firma a la vez, sin depender del orden de la cola.
+        sendPending(lid, eventId!, golf.data.cards, { isAdmin, staff, myCard })?.catch((e) => toast(saveErrorMessage(e), 'error'));
+        const reviewed = { cardId: card.id, holes: cardWire(cards.find((c) => c.id === card.id) ?? card) };
+        const { done } = queueGolfSign(lid, eventId!, card.id, { holes: reviewed.holes });
+        void done.then(() => updateLog((l) => markSent(l, [reviewed], Date.now()))).catch(() => undefined);
+        await sentOrQueued(done);
+        toast('Tarjeta firmada');
+        setSigning(null);
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
 
   async function remove() {
     const ok = await confirm({
@@ -167,7 +172,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
       });
       if (!ok) return;
     }
-    await run(() => closeGolfRound(lid, eventId!, !round.closed), round.closed ? 'Ronda abierta' : 'Ronda cerrada');
+    await busy.run('cerrar', () => run(() => closeGolfRound(lid, eventId!, !round.closed), round.closed ? 'Ronda abierta' : 'Ronda cerrada'));
   }
 
   return (
@@ -205,9 +210,12 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
           aria-label="Compartir"
           title="Compartir"
           icon={<Share2 className="size-5" />}
-          onClick={async () => {
-            if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
-          }}
+          loading={sharing.isBusy()}
+          onClick={() =>
+            sharing.run('compartir', async () => {
+              if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
+            })
+          }
         />
         {report && <ReportButton {...report} />}
       </div>
@@ -218,7 +226,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
             {round ? 'Campo y formato' : 'Elegir campo'}
           </Button>
           {round && (
-            <Button size="sm" icon={round.closed ? <LockOpen className="size-4" /> : <Lock className="size-4" />} onClick={toggleClosed}>
+            <Button size="sm" icon={round.closed ? <LockOpen className="size-4" /> : <Lock className="size-4" />} loading={busy.isBusy('cerrar')} onClick={toggleClosed}>
               {round.closed ? 'Volver a abrir' : 'Cerrar ronda'}
             </Button>
           )}
@@ -265,8 +273,10 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
             card={signing ? (cards.find((c) => c.id === signing.id) ?? signing) : null}
             footer={
               <>
-                <Button onClick={() => setSigning(null)}>Todavía no</Button>
-                <Button variant="primary" icon={<Signature className="size-4" />} onClick={() => signing && sign(signing)}>
+                <Button onClick={() => setSigning(null)} disabled={busy.isBusy('firmar')}>
+                  Todavía no
+                </Button>
+                <Button variant="primary" icon={<Signature className="size-4" />} loading={busy.isBusy('firmar')} onClick={() => signing && void sign(signing)}>
                   Firmo: está correcta
                 </Button>
               </>

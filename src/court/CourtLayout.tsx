@@ -64,6 +64,7 @@ export function CourtLayout({
   const [busy, setBusy] = useState(false);
 
   const doFinish = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       const how = await court.finish();
@@ -82,6 +83,7 @@ export function CourtLayout({
   };
 
   const doSuspend = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       await court.suspend(note.trim() || undefined);

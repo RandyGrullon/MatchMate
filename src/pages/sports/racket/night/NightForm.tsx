@@ -3,6 +3,7 @@ import { UserPlus } from 'lucide-react';
 import { createPlayer } from '../../../../lib/data';
 import { useLeagueCtx } from '../../../../lib/league';
 import type { RestPolicy } from '../../../../sports/formats';
+import { useBusy } from '../../../../components/busy';
 import { useAction } from '../../../../components/feedback';
 import { useQuickMinor } from '../../../../components/players/GuardianFields';
 import { Button, Field, Input, Select, cx } from '../../../../components/ui';
@@ -137,6 +138,7 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
   const scale = levelScale(useRacket().sport);
   const names = useNames();
   const run = useAction();
+  const adding = useBusy();
   const [name, setName] = useState('');
   // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
   const minor = useQuickMinor(!!name.trim());
@@ -150,7 +152,7 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
     if (!n) return;
     const m = minor.take();
     if (m === undefined) return;
-    const id = await run(() => createPlayer(lid, n, null, m), `${n} agregado`);
+    const id = await adding.run('agregar', () => run(() => createPlayer(lid, n, null, m), `${n} agregado`));
     if (id) {
       onChange([...value, id]);
       setName('');
@@ -178,7 +180,7 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
         }}
       >
         <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Agregar a alguien nuevo" aria-label="Nombre del jugador nuevo" />
-        <Button type="submit" icon={<UserPlus className="size-4" />} disabled={!name.trim()} aria-label="Agregar jugador" />
+        <Button type="submit" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!name.trim()} aria-label="Agregar jugador" />
       </form>
       {minor.fields}
       <PickList

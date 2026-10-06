@@ -12,6 +12,7 @@ import {
   type SwimmerPrivate,
 } from '../../../lib/data/swimming';
 import { usePlayers } from '../../../lib/data';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, Empty, Input, Modal, cx } from '../../../components/ui';
 import { ClubTag, SeedField, TimeText, useSwim } from './bits';
@@ -34,6 +35,8 @@ export function EntriesPanel({ data }: { data: MeetData }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set(events.length <= 3 ? events.map((e) => e.id) : []));
   const [entering, setEntering] = useState<SwimEventItem | null>(null);
   const [seedOf, setSeedOf] = useState<SwimEntry | null>(null);
+  // La inscripción que se está sacando: la ruedita en su botón.
+  const removing = useBusy();
   const closed = !!meet.finalizedAt;
   const canEnterAny = !closed && (isAdmin || coachOf.size > 0 || !!myPlayerId);
   const mayManage = (e: SwimEntry) => isAdmin || e.playerId === myPlayerId || (!!e.clubId && coachOf.has(e.clubId));
@@ -49,7 +52,7 @@ export function EntriesPanel({ data }: { data: MeetData }) {
     });
   const remove = async (e: SwimEntry) => {
     if (!(await confirm({ title: `¿Sacar a ${name(e.playerId)} de la prueba?`, confirmText: 'Sacar', danger: true }))) return;
-    await run(() => unenterSwimmer(lid, meet.id, e.id), 'Listo');
+    await removing.run(e.id, () => run(() => unenterSwimmer(lid, meet.id, e.id), 'Listo'));
   };
 
   return (
@@ -110,7 +113,15 @@ export function EntriesPanel({ data }: { data: MeetData }) {
                         <TimeText cs={e.seed} className="px-2 text-sm text-muted" />
                       )}
                       {manage && (
-                        <Button size="sm" variant="ghost" aria-label="Sacar de la prueba" icon={<X className="size-4" />} onClick={() => remove(e)} />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label="Sacar de la prueba"
+                          icon={<X className="size-4" />}
+                          loading={removing.isBusy(e.id)}
+                          disabled={removing.isBusy()}
+                          onClick={() => remove(e)}
+                        />
                       )}
                     </div>
                   );

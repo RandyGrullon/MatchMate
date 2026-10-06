@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react';
 import { deleteSwimEvent, saveSwimEvents, type SwimEventInput, type SwimEventItem } from '../../../lib/data/swimming';
 import { SWIM_DISTANCES, SWIM_STROKES, STROKE_LABEL, GENDER_LABEL, validateSwimEvent, type SwimGender, type SwimStroke } from '../../../sports/swimming';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Button, Card, Empty, Field, Modal, Select, cx } from '../../../components/ui';
 import { Segmented, useSwim } from './bits';
@@ -17,7 +18,9 @@ export function ProgramPanel({ data }: { data: MeetData }) {
   const { confirm } = useFeedback();
   const { lid, meet, events, entries } = data;
   const [editing, setEditing] = useState<SwimEventItem | 'new' | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Lo que espera: una plantilla ('club', 'control') o una prueba (`id:up`, `id:down`, `id:del`). Una a la vez: subir
+  // y bajar cambian números de las pruebas de al lado.
+  const busy = useBusy();
   const canEdit = isAdmin && !meet.finalizedAt;
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -29,7 +32,7 @@ export function ProgramPanel({ data }: { data: MeetData }) {
     const a = events[k];
     const b = events[k + dir];
     if (!a || !b) return;
-    void run(() => saveSwimEvents(lid, meet.id, [{ ...toInput(a), num: b.num }, { ...toInput(b), num: a.num }]));
+    void busy.run(`${a.id}:${dir < 0 ? 'up' : 'down'}`, () => run(() => saveSwimEvents(lid, meet.id, [{ ...toInput(a), num: b.num }, { ...toInput(b), num: a.num }])));
   };
   const remove = async (ev: SwimEventItem) => {
     const n = counts.get(ev.id) ?? 0;
@@ -42,23 +45,19 @@ export function ProgramPanel({ data }: { data: MeetData }) {
       }))
     )
       return;
-    await run(() => deleteSwimEvent(lid, meet.id, ev.id), 'Prueba quitada');
+    await busy.run(`${ev.id}:del`, () => run(() => deleteSwimEvent(lid, meet.id, ev.id), 'Prueba quitada'));
   };
-  const applyTemplate = async (list: SwimEventInput[]) => {
-    setBusy(true);
-    await run(() => saveSwimEvents(lid, meet.id, list), 'Pruebas agregadas');
-    setBusy(false);
-  };
+  const applyTemplate = (key: 'club' | 'control', list: SwimEventInput[]) => busy.run(key, () => run(() => saveSwimEvents(lid, meet.id, list), 'Pruebas agregadas'));
 
   if (!events.length) {
     return (
       <Empty icon={<ListChecks className="size-8" />} title="Todavía no hay pruebas">
         {canEdit ? (
           <div className="mt-3 flex flex-col items-center gap-2">
-            <Button variant="primary" loading={busy} onClick={() => applyTemplate(clubMeetTemplate(meet.pool, meet.ageGroups))}>
+            <Button variant="primary" loading={busy.isBusy('club')} disabled={busy.isBusy()} onClick={() => applyTemplate('club', clubMeetTemplate(meet.pool, meet.ageGroups))}>
               Usar las de un encuentro de club
             </Button>
-            <Button loading={busy} onClick={() => applyTemplate(timeTrialTemplate())}>
+            <Button loading={busy.isBusy('control')} disabled={busy.isBusy()} onClick={() => applyTemplate('control', timeTrialTemplate())}>
               Usar las de control de marcas
             </Button>
             <Button variant="ghost" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
@@ -97,12 +96,21 @@ export function ProgramPanel({ data }: { data: MeetData }) {
               </div>
               {canEdit && (
                 <div className="flex shrink-0 items-center">
-                  <Button size="sm" variant="ghost" aria-label="Subir" disabled={k === 0} icon={<ArrowUp className="size-4" />} onClick={() => move(k, -1)} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label="Subir"
+                    disabled={k === 0 || busy.isBusy()}
+                    loading={busy.isBusy(`${ev.id}:up`)}
+                    icon={<ArrowUp className="size-4" />}
+                    onClick={() => move(k, -1)}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"
                     aria-label="Bajar"
-                    disabled={k === events.length - 1}
+                    disabled={k === events.length - 1 || busy.isBusy()}
+                    loading={busy.isBusy(`${ev.id}:down`)}
                     icon={<ArrowDown className="size-4" />}
                     onClick={() => move(k, 1)}
                   />
@@ -111,7 +119,8 @@ export function ProgramPanel({ data }: { data: MeetData }) {
                     size="sm"
                     variant="ghost"
                     aria-label="Quitar"
-                    disabled={locked}
+                    disabled={locked || busy.isBusy()}
+                    loading={busy.isBusy(`${ev.id}:del`)}
                     className="text-danger"
                     icon={<Trash2 className="size-4" />}
                     onClick={() => remove(ev)}

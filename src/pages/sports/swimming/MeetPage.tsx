@@ -17,6 +17,7 @@ import { formatDateLong } from '../../../lib/format';
 import { BackLink } from '../../../components/BackLink';
 import { ReportButton } from '../../../components/tournamentReport/ReportButton';
 import { swimComp } from '../../../prizes/sports';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Empty, LoadError, PageSkeleton, Tabs } from '../../../components/ui';
 import { ScorersButton } from '../../../components/scorers/ScorersButton';
@@ -54,6 +55,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
   const navigate = useNavigate();
   const run = useAction();
   const { confirm } = useFeedback();
+  const busy = useBusy<'final' | 'borrar'>();
   const [search, setSearch] = useSearchParams();
   const meets = useSwimMeets(lid);
   const events = useSwimEvents(lid, meetId);
@@ -108,7 +110,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
 
   const remove = async () => {
     if (!(await confirm({ title: '¿Borrar el encuentro?', message: 'Se borran sus pruebas, inscritos, series y resultados. No se puede deshacer.', confirmText: 'Borrar', danger: true }))) return;
-    const ok = await run(() => deleteMeet(lid, meet.id).then(() => true), 'Encuentro borrado');
+    const ok = await busy.run('borrar', () => run(() => deleteMeet(lid, meet.id).then(() => true), 'Encuentro borrado'));
     if (ok) navigate(base, { replace: true });
   };
   const toggleFinal = async () => {
@@ -122,7 +124,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
       }))
     )
       return;
-    await run(() => finalizeMeet(lid, meet.id, closing), closing ? 'Encuentro finalizado' : 'Encuentro abierto otra vez');
+    await busy.run('final', () => run(() => finalizeMeet(lid, meet.id, closing), closing ? 'Encuentro finalizado' : 'Encuentro abierto otra vez'));
   };
   // Reporte del encuentro (PDF o Excel), para todos: se arma al tocar, con los resultados y los puntos de la app.
   const report = {
@@ -167,7 +169,13 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
               Cambiar
             </Button>
           )}
-          <Button size="sm" icon={meet.finalizedAt ? <LockOpen className="size-4" /> : <Trophy className="size-4" />} onClick={toggleFinal}>
+          <Button
+            size="sm"
+            icon={meet.finalizedAt ? <LockOpen className="size-4" /> : <Trophy className="size-4" />}
+            loading={busy.isBusy('final')}
+            disabled={busy.isBusy()}
+            onClick={toggleFinal}
+          >
             {meet.finalizedAt ? 'Volver a abrir' : 'Finalizar'}
           </Button>
           {/* Cronometristas: los anotadores de la liga toman los tiempos y publican las series. */}
@@ -177,7 +185,15 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
             participants={entries.data.map((e) => e.playerId)}
           />
           {!standalone && (
-            <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={remove}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-danger"
+              icon={<Trash2 className="size-4" />}
+              loading={busy.isBusy('borrar')}
+              disabled={busy.isBusy()}
+              onClick={remove}
+            >
               Borrar
             </Button>
           )}

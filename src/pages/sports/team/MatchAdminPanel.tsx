@@ -4,10 +4,12 @@ import { deleteMatch, hasResult, isOpen, postponeMatch, rescheduleMatch, setWalk
 import { setMatchOfficial } from '../../../lib/data/teamSports';
 import { dayKey } from '../../../components/match/format';
 import { ResultEntryModal, type ResultParser } from '../../../components/match';
+import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Field, Input, Modal, Select } from '../../../components/ui';
+import { Badge, Button, Card, Field, Input, Modal } from '../../../components/ui';
 import { scorerCandidates } from './logic';
 import { isIsoDate, localTime, matchClashes, zonedIso } from './schedule';
+import { BusySelect } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -35,28 +37,33 @@ export function MatchAdminPanel({
 }) {
   const run = useAction();
   const { confirm } = useFeedback();
+  // La ruedita en lo que espera; lo demás no se toca mientras tanto.
+  const busy = useBusy<'anotador' | 'aplazar' | 'anular' | 'borrar'>();
   const [modal, setModal] = useState<'reprogramar' | 'wo' | 'corregir' | 'resolver' | null>(null);
   const official = tl.officialOf(m.id);
   const candidates = scorerCandidates(m, tl.allTeams.data, tl.members.data, tl.players.data);
   const open = isOpen(m) || m.status === 'postponed';
   const name = (side: 1 | 2) => tl.teamOf(m.sides[side - 1].teamId)?.name ?? m.sides[side - 1].label;
 
-  const setOfficial = (uid: string) => run(() => setMatchOfficial(tl.lid, m.id, uid || null), uid ? 'Anotador de mesa designado' : 'Sin anotador designado');
+  const setOfficial = (uid: string) =>
+    busy.run('anotador', () => run(() => setMatchOfficial(tl.lid, m.id, uid || null), uid ? 'Anotador de mesa designado' : 'Sin anotador designado'));
   const postpone = async () => {
     const yes = await confirm({ title: 'Aplazar el partido', message: 'Queda sin fecha hasta que lo reprogrames. Se avisa a los equipos al abrir la app.', confirmText: 'Aplazar' });
-    if (yes) await run(() => postponeMatch(tl.lid, m.id), 'Partido aplazado');
+    if (yes) await busy.run('aplazar', () => run(() => postponeMatch(tl.lid, m.id), 'Partido aplazado'));
   };
   const voidIt = async () => {
     const yes = await confirm({ title: 'Anular el partido', message: 'No cuenta para la tabla ni para las estadísticas. Se puede deshacer corrigiendo el resultado.', confirmText: 'Anular', danger: true });
-    if (yes) await run(() => voidMatch(tl.lid, m.id), 'Partido anulado');
+    if (yes) await busy.run('anular', () => run(() => voidMatch(tl.lid, m.id), 'Partido anulado'));
   };
   const remove = async () => {
     const yes = await confirm({ title: 'Borrar el partido', message: 'Se borra con su convocatoria y su marcador. Esto no se puede deshacer.', confirmText: 'Borrar', danger: true });
     if (!yes) return;
-    const ok = await run(async () => {
-      await deleteMatch(tl.lid, m.id);
-      return true;
-    }, 'Partido borrado');
+    const ok = await busy.run('borrar', () =>
+      run(async () => {
+        await deleteMatch(tl.lid, m.id);
+        return true;
+      }, 'Partido borrado'),
+    );
     if (ok) onDeleted?.();
   };
 
@@ -76,7 +83,7 @@ export function MatchAdminPanel({
               : 'Admins, anotadores de la liga o capitanes y delegados de estos dos equipos. Para otra persona, hazla anotadora de la liga en Miembros.'
           }
         >
-          <Select value={official?.userId ?? ''} onChange={(e) => void setOfficial(e.target.value)}>
+          <BusySelect busy={busy.isBusy('anotador')} disabled={busy.isBusy()} value={official?.userId ?? ''} onChange={(e) => void setOfficial(e.target.value)}>
             <option value="">Sin designar</option>
             {official && !candidates.some((c) => c.uid === official.userId) && <option value={official.userId}>{official.name || 'Designado'}</option>}
             {candidates.map((c) => (
@@ -84,7 +91,7 @@ export function MatchAdminPanel({
                 {c.name} · {c.why}
               </option>
             ))}
-          </Select>
+          </BusySelect>
         </Field>
       )}
 
@@ -95,7 +102,7 @@ export function MatchAdminPanel({
           </Button>
         )}
         {(m.status === 'scheduled' || m.status === 'suspended') && (
-          <Button size="sm" icon={<PauseCircle className="size-4" />} onClick={() => void postpone()}>
+          <Button size="sm" icon={<PauseCircle className="size-4" />} loading={busy.isBusy('aplazar')} disabled={busy.isBusy()} onClick={() => void postpone()}>
             Aplazar
           </Button>
         )}
@@ -113,11 +120,19 @@ export function MatchAdminPanel({
           {hasResult(m) ? 'Corregir resultado' : 'Poner resultado'}
         </Button>
         {m.status !== 'void' && (
-          <Button size="sm" variant="ghost" icon={<Ban className="size-4" />} onClick={() => void voidIt()}>
+          <Button size="sm" variant="ghost" icon={<Ban className="size-4" />} loading={busy.isBusy('anular')} disabled={busy.isBusy()} onClick={() => void voidIt()}>
             Anular
           </Button>
         )}
-        <Button size="sm" variant="ghost" className="text-danger" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-danger"
+          icon={<Trash2 className="size-4" />}
+          loading={busy.isBusy('borrar')}
+          disabled={busy.isBusy()}
+          onClick={() => void remove()}
+        >
           Borrar
         </Button>
       </div>
@@ -205,24 +220,24 @@ function RescheduleModal({ tl, match: m, minutes, open, onClose }: { tl: TeamLea
 }
 
 function WalkoverModal({ open, onClose, names, onPick }: { open: boolean; onClose: () => void; names: [string, string]; onPick: (absent: 0 | 1 | 2) => Promise<unknown> }) {
-  const [busy, setBusy] = useState(false);
-  const pick = async (absent: 0 | 1 | 2) => {
-    setBusy(true);
-    await onPick(absent);
-    setBusy(false);
-    onClose();
-  };
+  // La ruedita en el que se tocó (antes solo se apagaban los tres).
+  const busy = useBusy<0 | 1 | 2>();
+  const pick = (absent: 0 | 1 | 2) =>
+    busy.run(absent, async () => {
+      await onPick(absent);
+      onClose();
+    });
   return (
     <Modal open={open} onClose={onClose} title="W.O.: ¿quién no se presentó?" footer={<Button onClick={onClose}>Cancelar</Button>}>
       <div className="flex flex-col gap-2">
         <p className="text-sm text-muted">El que no vino pierde por forfeit (0 puntos en la tabla).</p>
-        <Button className="h-12 justify-start" disabled={busy} onClick={() => void pick(1)}>
+        <Button className="h-12 justify-start" loading={busy.isBusy(1)} disabled={busy.isBusy()} onClick={() => void pick(1)}>
           No vino {names[0]}
         </Button>
-        <Button className="h-12 justify-start" disabled={busy} onClick={() => void pick(2)}>
+        <Button className="h-12 justify-start" loading={busy.isBusy(2)} disabled={busy.isBusy()} onClick={() => void pick(2)}>
           No vino {names[1]}
         </Button>
-        <Button className="h-12 justify-start" variant="ghost" disabled={busy} onClick={() => void pick(0)}>
+        <Button className="h-12 justify-start" variant="ghost" loading={busy.isBusy(0)} disabled={busy.isBusy()} onClick={() => void pick(0)}>
           No vino ninguno
         </Button>
       </div>

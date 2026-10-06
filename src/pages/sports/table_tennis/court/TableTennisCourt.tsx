@@ -5,10 +5,12 @@ import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import type { MatchSetup, Player, TableTennisEvent, TableTennisRules, TableTennisState } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
+import { useBusy } from '../../../../components/busy';
 import { useAction } from '../../../../components/feedback';
 import { Badge, Button, Modal, cx } from '../../../../components/ui';
 import { engineRules } from '../../racket/court/adapters';
 import { useAdapterCourt } from '../../racket/court/useAdapterCourt';
+import { PresetButtons } from '../../racket/bits';
 import { presetOf, presetsOf, rulesText } from '../../racket/logic/rulesText';
 import { useNames } from '../../racket/names';
 import type { RacketCourtProps } from '../../racket/sport';
@@ -275,6 +277,7 @@ export function TTSetup({
 }) {
   const { lid } = useLeagueCtx();
   const run = useAction();
+  const saving = useBusy();
   const [first, setFirst] = useState<Side>(1);
   const [serverPick, setServerPick] = useState<Player>(0);
   const [receiverPick, setReceiverPick] = useState<Player>(0);
@@ -308,21 +311,18 @@ export function TTSetup({
         )}
       </div>
       <Modal open={changing} onClose={() => setChanging(false)} title="Reglas de este partido">
-        <div className="flex flex-col gap-2">
-          {presetsOf('table_tennis').map((p) => (
-            <Button
-              key={p.id}
-              variant={current?.id === p.id ? 'primary' : 'secondary'}
-              className="h-auto min-h-12 justify-start py-2 text-left"
-              onClick={async () => {
-                await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
-                setChanging(false);
-              }}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
+        <PresetButtons
+          presets={presetsOf('table_tennis')}
+          current={current?.id}
+          pending={saving.busy}
+          className="min-h-12"
+          onPick={(p) =>
+            void saving.run(p.id, async () => {
+              await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
+              setChanging(false);
+            })
+          }
+        />
       </Modal>
       <Choice
         label="¿Quién saca primero?"

@@ -4,10 +4,11 @@ import { createPlayer } from '../../../../lib/data';
 import { saveLeagueMatchRules } from '../../../../lib/data/racket';
 import { createSeasonTeam, deleteSeasonTeam, pairName, setRoster, updateSeasonTeam, type SeasonTeam } from '../../../../lib/data/seasonTeams';
 import { useLeagueCtx } from '../../../../lib/league';
+import { BusyIcon, useBusy } from '../../../../components/busy';
 import { useAction, useFeedback } from '../../../../components/feedback';
 import { useQuickMinor } from '../../../../components/players/GuardianFields';
 import { Badge, Button, Card, Empty, Field, Input, Modal, Select } from '../../../../components/ui';
-import { Section } from '../bits';
+import { PresetButtons, Section } from '../bits';
 import { presetOf, presetsOf, rulesText } from '../logic/rulesText';
 import { formatLevel, parseLevelInput, setLevel, useLevels } from '../levels';
 import { useNames } from '../names';
@@ -23,6 +24,7 @@ export default function PairsAdmin() {
   const { sport, rules, doubles } = useRacket();
   const { lid } = useLeagueCtx();
   const run = useAction();
+  const saving = useBusy();
   const current = presetOf(sport, rules);
   return (
     <div className="flex flex-col gap-6">
@@ -31,18 +33,13 @@ export default function PairsAdmin() {
           <p className="text-sm">
             Ahora: <b>{rulesText(rules)}</b>
           </p>
-          <div className="flex flex-col gap-2">
-            {presetsOf(sport).map((p) => (
-              <Button
-                key={p.id}
-                variant={current?.id === p.id ? 'primary' : 'secondary'}
-                className="h-auto min-h-11 justify-start py-2 text-left"
-                onClick={() => void run(() => saveLeagueMatchRules(lid, p.rules as unknown as Record<string, unknown>), 'Reglas guardadas')}
-              >
-                {p.label}
-              </Button>
-            ))}
-          </div>
+          <PresetButtons
+            presets={presetsOf(sport)}
+            current={current?.id}
+            pending={saving.busy}
+            className="min-h-11"
+            onPick={(p) => void saving.run(p.id, () => run(() => saveLeagueMatchRules(lid, p.rules as unknown as Record<string, unknown>), 'Reglas guardadas'))}
+          />
           <p className="text-xs text-muted">Valen para los partidos nuevos. Los que ya están creados se quedan con sus reglas (el admin las cambia antes de empezar cada uno).</p>
         </Card>
       </Section>
@@ -59,6 +56,7 @@ function PairsSection() {
   const names = useNames();
   const run = useAction();
   const { confirm } = useFeedback();
+  const deleting = useBusy();
   const [editing, setEditing] = useState<SeasonTeam | 'new' | null>(null);
   const paired = new Set(names.teams.flatMap((t) => t.roster.map((r) => r.playerId)));
   const free = names.players.filter((p) => !paired.has(p.id)).length;
@@ -87,9 +85,11 @@ function PairsSection() {
                 variant="ghost"
                 icon={<Trash2 className="size-4" />}
                 aria-label={`Borrar ${t.name}`}
+                loading={deleting.isBusy(t.id)}
+                disabled={deleting.isBusy()}
                 onClick={async () => {
                   if (await confirm({ title: `¿Borrar ${t.name}?`, message: 'Sus partidos se quedan con el nombre de la pareja.', confirmText: 'Borrar', danger: true }))
-                    await run(() => deleteSeasonTeam(lid, t.id), 'Pareja borrada');
+                    await deleting.run(t.id, () => run(() => deleteSeasonTeam(lid, t.id), 'Pareja borrada'));
                 }}
               />
             </div>
@@ -179,6 +179,7 @@ function LevelsSection() {
   const names = useNames();
   const { levels, scale } = useLevels();
   const run = useAction();
+  const adding = useBusy();
   const [newName, setNewName] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
@@ -201,38 +202,36 @@ function LevelsSection() {
     <Section title={`Jugadores y ${scale.label === 'Nivel' ? 'nivel' : scale.label} (${names.players.length})`}>
       <form
         className="flex gap-2"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
           const n = newName.trim();
           if (!n) return;
           const m = minor.take();
           if (m === undefined) return;
-          if (await run(() => createPlayer(lid, n, null, m), `${n} agregado`)) {
-            setNewName('');
-            minor.reset();
-          }
+          void adding.run('agregar', async () => {
+            if (await run(() => createPlayer(lid, n, null, m), `${n} agregado`)) {
+              setNewName('');
+              minor.reset();
+            }
+          });
         }}
       >
         <Input value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} placeholder="Agregar jugador" aria-label="Nombre del jugador nuevo" />
-        <Button type="submit" icon={<UserPlus className="size-4" />} disabled={!newName.trim()} aria-label="Agregar jugador" />
+        <Button type="submit" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!newName.trim()} aria-label="Agregar jugador" />
       </form>
       {minor.fields}
       {names.players.length ? (
         <Card className="divide-y divide-line overflow-hidden">
           {names.players.map((p) => (
-            <div key={p.id} className="flex items-center gap-3 px-4 py-2">
-              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-              <Input
-                className="w-20 text-center"
-                inputMode="decimal"
-                aria-label={`${scale.label} de ${p.name}`}
-                placeholder={scale.placeholder}
-                value={drafts[p.id] ?? (levels[p.id] != null ? formatLevel(levels[p.id], scale) : '')}
-                onChange={(e) => setDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
-                onBlur={() => void save(p.id)}
-                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-              />
-            </div>
+            <LevelRow
+              key={p.id}
+              name={p.name}
+              label={`${scale.label} de ${p.name}`}
+              placeholder={scale.placeholder}
+              value={drafts[p.id] ?? (levels[p.id] != null ? formatLevel(levels[p.id], scale) : '')}
+              onChange={(v) => setDrafts((d) => ({ ...d, [p.id]: v }))}
+              onSave={() => save(p.id)}
+            />
           ))}
         </Card>
       ) : (
@@ -240,5 +239,43 @@ function LevelsSection() {
       )}
       <p className="px-1 text-xs text-muted">{scale.hint}</p>
     </Section>
+  );
+}
+
+/** El nivel de un jugador: se guarda al salir del campo, con la ruedita al lado mientras guarda (cada fila la suya). */
+function LevelRow({
+  name,
+  label,
+  placeholder,
+  value,
+  onChange,
+  onSave,
+}: {
+  name: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => Promise<void>;
+}) {
+  const saving = useBusy();
+  const busy = saving.isBusy();
+  return (
+    <div className="flex items-center gap-3 px-4 py-2">
+      <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+      <BusyIcon busy={busy} className="size-4 shrink-0 text-muted" />
+      <Input
+        className="w-20 text-center"
+        inputMode="decimal"
+        aria-label={label}
+        aria-busy={busy || undefined}
+        disabled={busy}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => void saving.run('nivel', onSave)}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import { useMatches, type Match } from '../../../lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
+import { useBusy } from '../../../components/busy';
 import { useFeedback, saveErrorMessage, useAction } from '../../../components/feedback';
 import { MatchCard } from '../../../components/match';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Position, cx } from '../../../components/ui';
@@ -49,6 +50,8 @@ export function LadderPage({ event }: { event: RacketEvent }) {
   const navigate = useNavigate();
   const { toast, confirm } = useFeedback();
   const run = useAction();
+  // Retar, cancelar un reto, entrar o salir: la ruedita en el botón que se tocó.
+  const pending = useBusy();
   const now = useNow(60_000).getTime();
   const cfg = useMemo(() => parseLadderConfig(event.config), [event.config]);
   const rungs = useLadderRungs(lid, event.id);
@@ -81,19 +84,19 @@ export function LadderPage({ event }: { event: RacketEvent }) {
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={`${title} · Reto`} onBack={param.close} />;
   if (rungs.error) return <LoadError error={rungs.error} />;
 
-  const challenge = async (target: string) => {
+  const challenge = async (target: string, key: string) => {
     const err = me ? whyNot(order, me, target, all, cfg.maxUp) : 'No estás en la escalera.';
     if (err) {
       toast(err, 'error');
       return;
     }
     if (!(await confirm({ title: `¿Retar a ${names.entrantName(target)}?`, message: `Tiene ${cfg.acceptDays} días para aceptar y juegan antes de ${cfg.playDays} días. Si no, ganas por W.O.`, confirmText: 'Retar' }))) return;
-    await run(() => createChallenge(lid, event.id, target), 'Reto enviado: le llegó el aviso');
+    await pending.run(key, () => run(() => createChallenge(lid, event.id, target), 'Reto enviado: le llegó el aviso'));
   };
 
   const cancel = async (c: LadderChallenge) => {
     if (!(await confirm({ title: '¿Cancelar el reto?', message: 'Su partido se anula. La escalera no cambia.', confirmText: 'Cancelar el reto', danger: true }))) return;
-    await run(() => cancelChallenge(lid, event.id, c.id), 'Reto cancelado');
+    await pending.run(`cancelar:${c.id}`, () => run(() => cancelChallenge(lid, event.id, c.id), 'Reto cancelado'));
   };
 
   const saveConfig = async (next: LadderConfig) => {
@@ -162,13 +165,21 @@ export function LadderPage({ event }: { event: RacketEvent }) {
             </div>
           </div>
           {myOpen ? (
-            <ChallengeCard c={myOpen} me={me} match={myOpen.matchId ? matchById.get(myOpen.matchId) : undefined} now={now} onOpen={param.open} onAccept={setAccepting} onCancel={cancel} />
+            <ChallengeCard c={myOpen} me={me} match={myOpen.matchId ? matchById.get(myOpen.matchId) : undefined} now={now} onOpen={param.open} onAccept={setAccepting} onCancel={cancel} busy={pending.isBusy} />
           ) : targets.length ? (
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium">Puedes retar a:</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 {targets.map((t) => (
-                  <Button key={t} variant="primary" className="h-12 justify-start" icon={<Swords className="size-5" />} onClick={() => void challenge(t)}>
+                  <Button
+                    key={t}
+                    variant="primary"
+                    className="h-12 justify-start"
+                    icon={<Swords className="size-5" />}
+                    loading={pending.isBusy(`retar:${t}`)}
+                    disabled={pending.isBusy()}
+                    onClick={() => void challenge(t, `retar:${t}`)}
+                  >
                     <span className="truncate">
                       {order.indexOf(t) + 1}.º {names.entrantName(t)}
                     </span>
@@ -183,7 +194,14 @@ export function LadderPage({ event }: { event: RacketEvent }) {
       ) : canJoin ? (
         <Card className="flex flex-col gap-3 p-4">
           <p className="text-sm">No estás en la escalera. Entras abajo del todo y de ahí retas hacia arriba.</p>
-          <Button variant="primary" className="h-12 text-base" icon={<LogIn className="size-5" />} onClick={() => void run(() => joinLadder(lid, event.id), 'Ya estás en la escalera')}>
+          <Button
+            variant="primary"
+            className="h-12 text-base"
+            icon={<LogIn className="size-5" />}
+            loading={pending.isBusy('entrar')}
+            disabled={pending.isBusy()}
+            onClick={() => void pending.run('entrar', () => run(() => joinLadder(lid, event.id), 'Ya estás en la escalera'))}
+          >
             Entrar a la escalera
           </Button>
         </Card>
@@ -212,7 +230,7 @@ export function LadderPage({ event }: { event: RacketEvent }) {
                     </Badge>
                   )}
                   {canHit && (
-                    <Button size="sm" variant="primary" className="h-9" onClick={() => void challenge(id)}>
+                    <Button size="sm" variant="primary" className="h-9" loading={pending.isBusy(`fila:${id}`)} disabled={pending.isBusy()} onClick={() => void challenge(id, `fila:${id}`)}>
                       Retar
                     </Button>
                   )}
@@ -231,7 +249,7 @@ export function LadderPage({ event }: { event: RacketEvent }) {
         <Section title={`Retos abiertos (${open.length})`}>
           <div className="flex flex-col gap-2">
             {open.map((c) => (
-              <ChallengeCard key={c.id} c={c} me={me} match={c.matchId ? matchById.get(c.matchId) : undefined} now={now} onOpen={param.open} onAccept={setAccepting} onCancel={cancel} />
+              <ChallengeCard key={c.id} c={c} me={me} match={c.matchId ? matchById.get(c.matchId) : undefined} now={now} onOpen={param.open} onAccept={setAccepting} onCancel={cancel} busy={pending.isBusy} />
             ))}
           </div>
         </Section>
@@ -265,9 +283,11 @@ export function LadderPage({ event }: { event: RacketEvent }) {
         <Button
           variant="ghost"
           className="self-start text-muted"
+          loading={pending.isBusy('salir')}
+          disabled={pending.isBusy()}
           onClick={async () => {
             if (await confirm({ title: '¿Salir de la escalera?', message: 'Pierdes tu puesto. Tus retos abiertos se cancelan.', confirmText: 'Salir', danger: true }))
-              await run(() => leaveLadder(lid, event.id, me), 'Saliste de la escalera');
+              await pending.run('salir', () => run(() => leaveLadder(lid, event.id, me), 'Saliste de la escalera'));
           }}
         >
           Salir de la escalera
@@ -290,6 +310,7 @@ function ChallengeCard({
   onOpen,
   onAccept,
   onCancel,
+  busy,
 }: {
   c: LadderChallenge;
   me: string | null;
@@ -298,6 +319,8 @@ function ChallengeCard({
   onOpen: (id: string) => void;
   onAccept: (c: LadderChallenge) => void;
   onCancel: (c: LadderChallenge) => void;
+  /** Sin clave: si hay algo guardándose; con clave: si es eso (cancelar este reto). */
+  busy: (key?: string) => boolean;
 }) {
   const { isAdmin, league } = useLeagueCtx();
   const names = useNames();
@@ -332,7 +355,7 @@ function ChallengeCard({
           </Button>
         )}
         {((c.status === 'pending' && iChallenged) || isAdmin) && (
-          <Button variant="ghost" className="h-11" icon={<X className="size-4" />} onClick={() => onCancel(c)}>
+          <Button variant="ghost" className="h-11" icon={<X className="size-4" />} loading={busy(`cancelar:${c.id}`)} disabled={busy()} onClick={() => onCancel(c)}>
             Cancelar
           </Button>
         )}

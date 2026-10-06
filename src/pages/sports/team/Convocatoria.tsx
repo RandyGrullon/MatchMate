@@ -57,7 +57,7 @@ export function Convocatoria({
       {mySide && tl.myPlayerId && editable && (
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-medium">¿Vas a este partido?</p>
-          <RsvpButtons value={statusOf(tl.myPlayerId)?.status} onChange={(s) => void set(tl.myPlayerId!, mySide, s)} label="Mi convocatoria" />
+          <RsvpButtons value={statusOf(tl.myPlayerId)?.status} onChange={(s) => set(tl.myPlayerId!, mySide, s)} label="Mi convocatoria" />
         </div>
       )}
 
@@ -123,7 +123,7 @@ export function Convocatoria({
                         {flags?.has(pid) && <Badge tone="danger">{flags.get(pid)}</Badge>}
                         {canSet && pid !== tl.myPlayerId ? (
                           <div className="w-full sm:w-auto sm:min-w-56">
-                            <RsvpButtons size="sm" value={r?.status} onChange={(st) => void set(pid, s.side, st)} label={`Convocatoria de ${tl.nameOf(pid)}`} />
+                            <RsvpButtons size="sm" value={r?.status} onChange={(st) => set(pid, s.side, st)} label={`Convocatoria de ${tl.nameOf(pid)}`} />
                           </div>
                         ) : (
                           <RsvpBadge status={r?.status} pending={r?.pending} />

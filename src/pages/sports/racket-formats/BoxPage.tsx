@@ -8,6 +8,7 @@ import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import { isGameSport } from '../../../sports/racket/rules';
 import type { StandingRow } from '../../../sports/types';
+import { useBusy } from '../../../components/busy';
 import { useFeedback, saveErrorMessage } from '../../../components/feedback';
 import { MatchCard, StandingsTable, type StandingsColumn } from '../../../components/match';
 import { Badge, Button, Card, Empty, ListSkeleton, Modal, Tabs, cx } from '../../../components/ui';
@@ -43,6 +44,8 @@ import {
 } from './logic/box';
 
 type Tab = 'cajas' | 'historial' | 'participantes';
+/** Lo que se está guardando: la ruedita va en ese botón y los demás esperan. */
+type Pending = 'primero' | 'rehacer' | 'cerrar' | 'config';
 
 /**
  * Liga por cajas: el mes abierto con la tabla y los partidos de cada caja (mi caja primero), quién sube y quién
@@ -65,7 +68,10 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   const month = openMonth(cfg) ?? cfg.months.at(-1) ?? null;
   const tables = useMemo(() => (month ? boxTables(sport, month, matches, { scheme: cfg.points, now, lotSeed: event.id }) : []), [sport, month, matches, cfg.points, now, event.id]);
   const preview = useMemo(() => (month && !month.closed ? closeMonth(cfg, month, tables) : null), [cfg, month, tables]);
-  const [busy, setBusy] = useState(false);
+  const pending = useBusy<Pending>();
+  const busy = pending.isBusy();
+  // El Excel va aparte: mientras se arma no detiene lo demás.
+  const exporting = useBusy();
   const [editing, setEditing] = useState<null | 'cerrar' | 'participantes' | 'reglas'>(null);
   const { levels } = useLevels();
   const title = event.name || 'Liga por cajas';
@@ -78,70 +84,64 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   const matchRules = { ...leagueRules, match: { ...((leagueRules.match as Record<string, unknown> | undefined) ?? {}), doubles: cfg.doubles } };
   const started = month ? monthMatches(matches, month.n).some((m) => m.status !== 'scheduled' || m.seq > 0) : false;
 
-  const openFirst = async () => {
-    setBusy(true);
-    try {
-      const boxes = firstBoxes(cfg.entrants.map((id) => names.entrant(id)), levels, cfg.rules);
-      const r = nextMonthRange(null, todayIn(league.tz));
-      await saveBoxMonth(lid, event.id, { month: 1, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: r.label, start: r.start, end: r.end });
-      toast('Mes armado: a cada quien le tocan sus partidos');
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const openFirst = () =>
+    pending.run('primero', async () => {
+      try {
+        const boxes = firstBoxes(cfg.entrants.map((id) => names.entrant(id)), levels, cfg.rules);
+        const r = nextMonthRange(null, todayIn(league.tz));
+        await saveBoxMonth(lid, event.id, { month: 1, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: r.label, start: r.start, end: r.end });
+        toast('Mes armado: a cada quien le tocan sus partidos');
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
 
   const redoMonth = async () => {
     if (!month) return;
     if (!(await confirm({ title: `¿Rehacer ${month.label || `el mes ${month.n}`}?`, message: 'Se arman las cajas otra vez con los participantes de ahora (nadie ha jugado).', confirmText: 'Rehacer' }))) return;
-    setBusy(true);
-    try {
-      const boxes = month.n === 1 ? firstBoxes(cfg.entrants.map((id) => names.entrant(id)), levels, cfg.rules) : month.boxes;
-      await saveBoxMonth(lid, event.id, { month: month.n, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: month.label, start: month.start, end: month.end });
-      toast('Mes rehecho');
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
+    await pending.run('rehacer', async () => {
+      try {
+        const boxes = month.n === 1 ? firstBoxes(cfg.entrants.map((id) => names.entrant(id)), levels, cfg.rules) : month.boxes;
+        await saveBoxMonth(lid, event.id, { month: month.n, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: month.label, start: month.start, end: month.end });
+        toast('Mes rehecho');
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
   };
 
   const closeAndOpen = async (result: CloseResult) => {
     if (!month) return;
-    setBusy(true);
-    try {
-      const r = nextMonthRange(month.end, todayIn(league.tz));
-      await saveBoxMonth(lid, event.id, {
-        month: month.n + 1,
-        boxes: result.boxes,
-        drafts: monthDrafts(result.boxes, names.entrant, { rules: matchRules }),
-        moves: result.moves,
-        label: r.label,
-        start: r.start,
-        end: r.end,
-      });
-      toast(`${r.label}: cajas y partidos listos`);
-      setEditing(null);
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
+    await pending.run('cerrar', async () => {
+      try {
+        const r = nextMonthRange(month.end, todayIn(league.tz));
+        await saveBoxMonth(lid, event.id, {
+          month: month.n + 1,
+          boxes: result.boxes,
+          drafts: monthDrafts(result.boxes, names.entrant, { rules: matchRules }),
+          moves: result.moves,
+          label: r.label,
+          start: r.start,
+          end: r.end,
+        });
+        toast(`${r.label}: cajas y partidos listos`);
+        setEditing(null);
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
   };
 
-  const saveConfig = async (next: BoxConfig, ok: string) => {
-    setBusy(true);
-    try {
-      await updateRacketEvent(lid, event.id, { config: boxConfigJson(next) });
-      toast(ok);
-      setEditing(null);
-    } catch (e) {
-      toast(saveErrorMessage(e), 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const saveConfig = (next: BoxConfig, ok: string) =>
+    pending.run('config', async () => {
+      try {
+        await updateRacketEvent(lid, event.id, { config: boxConfigJson(next) });
+        toast(ok);
+        setEditing(null);
+      } catch (e) {
+        toast(saveErrorMessage(e), 'error');
+      }
+    });
 
   const remove = async () => {
     if (!(await confirm({ title: `¿Borrar ${title}?`, message: 'Se borran sus meses, partidos y resultados. No se puede deshacer.', confirmText: 'Borrar', danger: true }))) return;
@@ -155,22 +155,24 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   };
 
   const excel = (m: BoxMonth) =>
-    exportCompetitionExcel({
-      title: `${title} · ${m.label || `Mes ${m.n}`}`,
-      date: m.start ?? event.date,
-      matches: monthMatches(matches, m.n),
-      tables: m.boxes.map((_, b) => ({ name: boxName(b), rows: tables[b] ?? [] })),
-      players: seasonPlayerTable(monthMatches(matches, m.n), { sport, rosterOf: names.rosterOf, now }),
-      entrantName: names.entrantName,
-      nameOf: names.nameOf,
-      tz: league.tz,
-      forLabel: forLabel(sport),
-      setsLabel: setsLabel(sport),
-      courtLabel: courtWords(ext).One,
-    }).catch((e) => {
-      console.error(e);
-      toast('No se pudo hacer el Excel', 'error');
-    });
+    exporting.run('excel', () =>
+      exportCompetitionExcel({
+        title: `${title} · ${m.label || `Mes ${m.n}`}`,
+        date: m.start ?? event.date,
+        matches: monthMatches(matches, m.n),
+        tables: m.boxes.map((_, b) => ({ name: boxName(b), rows: tables[b] ?? [] })),
+        players: seasonPlayerTable(monthMatches(matches, m.n), { sport, rosterOf: names.rosterOf, now }),
+        entrantName: names.entrantName,
+        nameOf: names.nameOf,
+        tz: league.tz,
+        forLabel: forLabel(sport),
+        setsLabel: setsLabel(sport),
+        courtLabel: courtWords(ext).One,
+      }).catch((e) => {
+        console.error(e);
+        toast('No se pudo hacer el Excel', 'error');
+      }),
+    );
 
   const progress = month ? monthProgress(month, matches, tables, cfg.rules, now) : null;
   const myBox = month ? month.boxes.findIndex((b) => b.some((id) => mine.includes(id))) : -1;
@@ -201,7 +203,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
             </Button>
           )}
           {month && !month.closed && !started && (
-            <Button size="sm" icon={<RefreshCw className="size-4" />} loading={busy} onClick={() => void redoMonth()}>
+            <Button size="sm" icon={<RefreshCw className="size-4" />} loading={pending.isBusy('rehacer')} disabled={busy} onClick={() => void redoMonth()}>
               Rehacer el mes
             </Button>
           )}
@@ -212,7 +214,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
             Reglas
           </Button>
           {month && (
-            <Button size="sm" icon={<Download className="size-4" />} onClick={() => void excel(month)}>
+            <Button size="sm" icon={<Download className="size-4" />} loading={exporting.isBusy()} onClick={() => void excel(month)}>
               Excel
             </Button>
           )}
@@ -229,7 +231,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
             <p className="text-sm text-muted">
               {cfg.entrants.length} {cfg.doubles ? 'parejas' : 'jugadores'}. Las cajas salen por nivel y cada caja juega todos contra todos.
             </p>
-            <Button variant="primary" className="h-12 text-base" loading={busy} disabled={cfg.entrants.length < 2} onClick={() => void openFirst()}>
+            <Button variant="primary" className="h-12 text-base" loading={pending.isBusy('primero')} disabled={cfg.entrants.length < 2 || busy} onClick={() => void openFirst()}>
               Armar el mes
             </Button>
           </Card>
@@ -279,10 +281,10 @@ export function BoxPage({ event }: { event: RacketEvent }) {
       )}
 
       {editing === 'cerrar' && month && preview && (
-        <CloseModal month={month} preview={preview} pending={(progress?.total ?? 0) - (progress?.done ?? 0)} busy={busy} onClose={() => setEditing(null)} onConfirm={() => void closeAndOpen(preview)} />
+        <CloseModal month={month} preview={preview} pending={(progress?.total ?? 0) - (progress?.done ?? 0)} busy={pending.isBusy('cerrar')} disabled={busy} onClose={() => setEditing(null)} onConfirm={() => void closeAndOpen(preview)} />
       )}
-      {editing === 'participantes' && <ParticipantsModal cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Participantes guardados')} />}
-      {editing === 'reglas' && <RulesModal cfg={cfg} busy={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Reglas guardadas')} />}
+      {editing === 'participantes' && <ParticipantsModal cfg={cfg} busy={pending.isBusy('config')} disabled={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Participantes guardados')} />}
+      {editing === 'reglas' && <RulesModal cfg={cfg} busy={pending.isBusy('config')} disabled={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Reglas guardadas')} />}
     </div>
   );
 }
@@ -408,7 +410,24 @@ function Participants({ cfg, month }: { cfg: BoxConfig; month: BoxMonth }) {
   );
 }
 
-function CloseModal({ month, preview, pending, busy, onClose, onConfirm }: { month: BoxMonth; preview: CloseResult; pending: number; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+/** `busy`: se está guardando esto (la ruedita); `disabled`: hay otra cosa guardándose (espera sin ruedita). */
+function CloseModal({
+  month,
+  preview,
+  pending,
+  busy,
+  disabled,
+  onClose,
+  onConfirm,
+}: {
+  month: BoxMonth;
+  preview: CloseResult;
+  pending: number;
+  busy: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
   const names = useNames();
   const byId = new Map(preview.moves.map((m) => [m.id, m] as const));
   return (
@@ -420,7 +439,7 @@ function CloseModal({ month, preview, pending, busy, onClose, onConfirm }: { mon
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={onConfirm}>
+          <Button variant="primary" loading={busy} disabled={disabled} onClick={onConfirm}>
             Cerrar y abrir el mes que sigue
           </Button>
         </>
@@ -456,7 +475,7 @@ function CloseModal({ month, preview, pending, busy, onClose, onConfirm }: { mon
   );
 }
 
-function ParticipantsModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; busy: boolean; onClose: () => void; onSave: (c: BoxConfig) => void }) {
+function ParticipantsModal({ cfg, busy, disabled, onClose, onSave }: { cfg: BoxConfig; busy: boolean; disabled: boolean; onClose: () => void; onSave: (c: BoxConfig) => void }) {
   const names = useNames();
   const [picked, setPicked] = useState(cfg.entrants);
   const items = cfg.doubles
@@ -470,7 +489,7 @@ function ParticipantsModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; bus
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={picked.length < 2} onClick={() => onSave({ ...cfg, entrants: picked })}>
+          <Button variant="primary" loading={busy} disabled={picked.length < 2 || disabled} onClick={() => onSave({ ...cfg, entrants: picked })}>
             Guardar
           </Button>
         </>
@@ -484,7 +503,7 @@ function ParticipantsModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; bus
   );
 }
 
-function RulesModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; busy: boolean; onClose: () => void; onSave: (c: BoxConfig) => void }) {
+function RulesModal({ cfg, busy, disabled, onClose, onSave }: { cfg: BoxConfig; busy: boolean; disabled: boolean; onClose: () => void; onSave: (c: BoxConfig) => void }) {
   const { sport } = useRacket();
   const [rules, setRules] = useState(cfg.rules);
   const [points, setPoints] = useState(cfg.points);
@@ -496,7 +515,7 @@ function RulesModal({ cfg, busy, onClose, onSave }: { cfg: BoxConfig; busy: bool
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSave({ ...cfg, rules, points })}>
+          <Button variant="primary" loading={busy} disabled={disabled} onClick={() => onSave({ ...cfg, rules, points })}>
             Guardar
           </Button>
         </>
