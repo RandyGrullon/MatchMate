@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  isValidElement,
   useEffect,
   useId,
   useLayoutEffect,
@@ -51,10 +52,17 @@ export function Button({ variant = 'secondary', size = 'md', loading, icon, clas
       )}
       {...rest}
     >
-      {loading ? <Loader2 className="size-4 animate-spin" /> : icon}
+      {loading ? <Loader2 className={cx(iconSizeClass(icon), 'animate-spin')} /> : icon}
       {children}
     </button>
   );
+}
+
+/** El tamaño de un ícono (size-5, h-4 w-4…) para que la ruedita ocupe lo mismo y nada se mueva; size-4 si no tiene. */
+export function iconSizeClass(icon: ReactNode): string {
+  const cls = isValidElement<{ className?: unknown }>(icon) && typeof icon.props.className === 'string' ? icon.props.className : '';
+  const sizes = cls.split(/\s+/).filter((c) => /(?:^|:)(?:size|h|w)-/.test(c));
+  return sizes.length ? sizes.join(' ') : 'size-4';
 }
 
 const control =
