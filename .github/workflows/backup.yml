@@ -11,6 +11,8 @@
 #
 # Secretos: SUPABASE_DB_URL (Connect › Session pooler, con la contraseña de la base) y AGE_PUBLIC_KEY (age1…).
 # Si falla: job en rojo (GitHub manda un correo) y se abre o se comenta el issue «Respaldo falló».
+# Mientras falten los dos secretos no corre: el job sale en verde con un aviso amarillo «Respaldo sin configurar»
+# (antes quedaba en rojo cada día). Con los secretos puestos, un repo público sí es error: nunca se suben ahí.
 name: Respaldo
 
 on:
@@ -35,15 +37,21 @@ env:
 
 jobs:
   respaldo:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Revisar secretos y que el repo sea privado
+        id: config
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "$DB_URL" ] && [ -z "$AGE_PUBLIC_KEY" ]; then
+            echo "::warning title=Respaldo sin configurar::No hay respaldo diario hasta poner los secretos SUPABASE_DB_URL y AGE_PUBLIC_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11) y hacer privado el repo."
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [ -n "$DB_URL" ] || { echo "::error::Falta el secreto SUPABASE_DB_URL (docs/CONFIGURAR-SUPABASE.md, paso 11)."; exit 1; }
           [ -n "$AGE_PUBLIC_KEY" ] || { echo "::error::Falta el secreto AGE_PUBLIC_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11)."; exit 1; }
           case "$DB_URL" in
@@ -56,14 +64,18 @@ jobs:
             echo "::error::Este repo no es privado: los respaldos nunca van a un repo público."
             exit 1
           fi
+          echo "listo=true" >> "$GITHUB_OUTPUT"
 
       # El checkout da supabase/config.toml (versión de Postgres para pg_dump) y las migraciones que van en el respaldo.
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
+      - uses: actions/checkout@v6
+        if: steps.config.outputs.listo == 'true'
+      - uses: supabase/setup-cli@v2
+        if: steps.config.outputs.listo == 'true'
         with:
           version: latest
 
       - name: Dump (roles, esquema y datos)
+        if: steps.config.outputs.listo == 'true'
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -97,9 +109,11 @@ jobs:
           ls -lh respaldo
 
       - name: Instalar age
+        if: steps.config.outputs.listo == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq age
 
       - name: Cifrar
+        if: steps.config.outputs.listo == 'true'
         env:
           AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
         run: |
@@ -112,6 +126,7 @@ jobs:
           echo "ARCHIVO=$archivo" >> "$GITHUB_ENV"
 
       - name: Subir a la release «respaldos»
+        if: steps.config.outputs.listo == 'true'
         run: |
           set -euo pipefail
           if ! gh release view "$TAG" >/dev/null 2>&1; then
@@ -122,6 +137,7 @@ jobs:
 
       # Solo después de subir el de hoy: nunca se queda sin respaldos por un día que falló.
       - name: Borrar los de más de 14 días
+        if: steps.config.outputs.listo == 'true'
         run: |
           set -euo pipefail
           corte=$(date -u -d "-$DIAS days" +%Y-%m-%dT%H:%M:%SZ)
@@ -149,9 +165,18 @@ jobs:
           fi
 
       - name: Cerrar el aviso si ya funciona
-        if: success()
+        if: success() && steps.config.outputs.listo == 'true'
         run: |
           num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
           if [ -n "$num" ]; then
             gh issue close "$num" --comment "Respaldo bien otra vez: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+
+      # Sin configurar no es una falla: el aviso viejo se cierra explicando qué falta (cada corrida deja el aviso amarillo).
+      - name: Cerrar el aviso (respaldo sin configurar)
+        if: success() && steps.config.outputs.listo == 'false'
+        run: |
+          num=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue close "$num" --reason "not planned" --comment "El respaldo no falla: está apagado hasta poner los secretos SUPABASE_DB_URL y AGE_PUBLIC_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11) y hacer privado el repo. Cada corrida deja el aviso «Respaldo sin configurar»."
           fi
