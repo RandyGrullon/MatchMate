@@ -3,8 +3,11 @@
 # private.heartbeat), con la clave secreta en la cabecera `apikey` (las claves sb_secret_ no van como Bearer).
 #
 # Secretos (Settings › Secrets and variables › Actions › Repository secrets):
-#   SUPABASE_URL, SUPABASE_SECRET_KEY                   producción (obligatorios)
+#   SUPABASE_URL, SUPABASE_SECRET_KEY                   producción (recomendados)
 #   SUPABASE_URL_STAGING, SUPABASE_SECRET_KEY_STAGING   staging (opcionales: sin ellos, staging no se llama)
+# Sin los de producción no falla: lee de la app publicada (APP_URL) la URL de Supabase y la clave publicable (las dos
+# son públicas, van en el JavaScript que baja cualquiera) y hace una consulta real a la base con ellas. Eso también
+# cuenta como actividad; queda un aviso amarillo para poner los secretos y volver a la escritura con ping.
 # Si falla: el job queda en rojo (GitHub manda un correo) y se abre o se comenta el issue «Mantener despierto falló»,
 # con cuántos días seguidos lleva. Cuando vuelve a funcionar, el issue se cierra solo.
 name: Mantener despierto
@@ -27,10 +30,11 @@ env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
   TITULO: Mantener despierto falló
+  APP_URL: ${{ vars.APP_URL || 'https://matchmate-oficial.vercel.app' }}
 
 jobs:
   ping:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Llamar a ping
@@ -59,9 +63,35 @@ jobs:
             fi
           }
 
+          # publico: sin los secretos, una lectura real con la URL y la clave publicable que trae la app publicada.
+          publico() {
+            local html js cuerpo url="" clave="" codigo
+            html=$(curl -sS --max-time 30 --retry 3 --retry-delay 10 "${APP_URL%/}/") || html=""
+            for js in $(printf '%s' "$html" | grep -oE '/assets/[A-Za-z0-9._-]+\.js' | sort -u); do
+              cuerpo=$(curl -sS --max-time 30 "${APP_URL%/}$js") || continue
+              [ -n "$clave" ] || clave=$(printf '%s' "$cuerpo" | grep -oE 'sb_publishable_[A-Za-z0-9_-]+' | head -1 || true)
+              [ -n "$url" ] || url=$(printf '%s' "$cuerpo" | grep -oE 'https://[a-z0-9]{20}\.supabase\.co' | head -1 || true)
+              [ -n "$clave" ] && [ -n "$url" ] && break
+            done
+            if [ -z "$clave" ] || [ -z "$url" ]; then
+              echo "::error::Faltan los secretos SUPABASE_URL y SUPABASE_SECRET_KEY y no se encontró la clave publicable en $APP_URL."
+              fallos=$((fallos + 1))
+              return
+            fi
+            cuerpo=$(mktemp)
+            codigo=$(curl -sS -o "$cuerpo" -w '%{http_code}' --max-time 30 --retry 4 --retry-delay 20 --retry-connrefused \
+              "$url/rest/v1/leagues?select=id&limit=1" -H "apikey: $clave") || codigo="sin respuesta ($codigo)"
+            if [ "$codigo" = "200" ]; then
+              echo "OK produccion (lectura pública en $url)"
+              echo "::warning::Sin los secretos SUPABASE_URL y SUPABASE_SECRET_KEY: se mantuvo despierto con una lectura pública. Ponlos para volver a la escritura con ping (docs/CONFIGURAR-SUPABASE.md, paso 11)."
+            else
+              echo "::error title=Mantener despierto (produccion)::HTTP $codigo: $(head -c 300 "$cuerpo")"
+              fallos=$((fallos + 1))
+            fi
+          }
+
           if [ -z "$PROD_URL" ] || [ -z "$PROD_KEY" ]; then
-            echo "::error::Faltan los secretos SUPABASE_URL y SUPABASE_SECRET_KEY (docs/CONFIGURAR-SUPABASE.md, paso 11)."
-            fallos=$((fallos + 1))
+            publico
           else
             ping produccion "$PROD_URL" "$PROD_KEY"
           fi
