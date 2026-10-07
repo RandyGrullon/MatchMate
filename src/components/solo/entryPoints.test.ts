@@ -1,6 +1,7 @@
 /**
  * Por dónde se llega a los juegos sueltos y cómo se ven afuera, dibujado sin navegador (renderToString): la tarjeta
- * del perfil y del inicio (kind 'solo'), «Juego suelto» en la portada del boliche y la opción del menú Crear.
+ * del perfil y del inicio (kind 'solo'), «Juego suelto» en la portada del boliche y la opción de la hoja «Crear o
+ * unirme».
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -85,9 +86,9 @@ describe('entradas', () => {
     expect(text(hero('bowling'))).toContain('Crear liga de boliche');
   });
 
-  it('el menú Crear: «Anotar un juego suelto»', () => {
+  it('la hoja «Crear o unirme»: «Un juego suelto»', () => {
     const t = text(render(h(SoloOption, { onClick: () => undefined })));
-    expect(t).toContain('Anotar un juego suelto');
-    expect(t).toContain('Boliche sin liga ni torneo: tus juegos y tu promedio');
+    expect(t).toContain('Un juego suelto');
+    expect(t).toContain('Solo para ti, sin liga');
   });
 });

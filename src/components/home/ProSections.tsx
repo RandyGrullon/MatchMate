@@ -3,10 +3,11 @@ import { ClipboardCheck, Inbox, Trophy } from 'lucide-react';
 import { upcomingCalendar, weekStart, type CalendarMatch } from '../../lib/calendar';
 import { usePlayers, type LeagueFeed } from '../../lib/data';
 import { parseDate, toIsoDate } from '../../lib/format';
-import type { LiveGame, LiveRow } from '../../lib/live';
+import type { LiveGame } from '../../lib/live';
 import type { League, Submission } from '../../lib/types';
 import { useNextGame } from '../../lib/useNextGame';
 import { initials } from '../Avatar';
+import type { BoardRow } from '../event/board';
 import { Card, ListRow, RowIcon, SectionHeader, cx, sectionLinkClass } from '../ui';
 import { namesLine } from './logic';
 import { useLiveTable } from './TodayCard';
@@ -155,7 +156,8 @@ function ApproveRow({ lid, pending, league }: { lid: string; pending: readonly S
 
 /**
  * Pro · «En vivo»: cómo van todos en la práctica de hoy (los 3 primeros y tú, con tus juegos «187 · 210 · 74…»). «Ver
- * toda» abre la práctica con la tabla entera.
+ * toda» abre la práctica con la tabla entera. Es la misma tabla que la Planilla: el total y el puesto son solo de lo
+ * aprobado; lo que espera aprobación sale en ámbar y no suma.
  */
 export function LiveSectionPro({ game, today, className }: { game: LiveGame; today: string; className?: string }) {
   const { rows, nameOf } = useLiveTable(game);
@@ -165,11 +167,24 @@ export function LiveSectionPro({ game, today, className }: { game: LiveGame; tod
   const top = rows.slice(0, 3);
   const myAt = me ? rows.findIndex((r) => r.playerId === me) : -1;
   const shown = myAt >= 3 ? [...top, rows[myAt]] : top;
-  const posOf = (r: LiveRow) => rows.findIndex((x) => x.total === r.total) + 1;
-  const gamesLine = (r: LiveRow) => {
-    const known = r.games.filter((g) => g.score != null).map((g) => String(g.score));
-    if (r.playerId === me && mine?.partial?.score != null) known.push(`${mine.partial.score}…`);
-    return known.join(' · ');
+  const gamesLine = (r: BoardRow) => {
+    const known: { text: string; pend: boolean }[] = r.cells
+      .filter((c) => c.score != null && !c.partial)
+      .map((c) => ({ text: String(c.score), pend: c.kind === 'pend' }));
+    if (r.playerId === me && mine?.partial?.score != null) known.push({ text: `${mine.partial.score}…`, pend: false });
+    return known.map((g, i) => (
+      <span key={i}>
+        {i > 0 && ' · '}
+        {g.pend ? (
+          <span className="text-warn">
+            {g.text}
+            <span className="sr-only"> (por aprobar)</span>
+          </span>
+        ) : (
+          g.text
+        )}
+      </span>
+    ));
   };
   return (
     <section aria-labelledby="en-vivo" className={className}>
@@ -193,7 +208,7 @@ export function LiveSectionPro({ game, today, className }: { game: LiveGame; tod
               me={isMe}
               leading={
                 <>
-                  <span className="w-[18px] shrink-0 text-center text-meta font-semibold text-muted tabular-nums">{posOf(r)}</span>
+                  <span className="w-[18px] shrink-0 text-center text-meta font-semibold text-muted tabular-nums">{r.pos}</span>
                   <span
                     aria-hidden="true"
                     className={cx(

@@ -1,6 +1,7 @@
 /**
- * Por dónde se abre la hoja de invitar, dibujado sin navegador (renderToString): «Invitar» en la portada de la liga
- * (solo si la cuenta puede invitar) e «Invitar personas» en Admin › Liga. La hoja misma: InviteSheet.test.ts.
+ * Por dónde se abre la hoja de invitar, dibujado sin navegador (renderToString): «Invitar» arriba del inicio de la liga
+ * (la barra «‹ Ligas» de LeagueShell, de cualquier deporte: solo si la cuenta puede invitar) e «Invitar personas» en
+ * Admin › Liga. La hoja misma: InviteSheet.test.ts.
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -18,7 +19,8 @@ vi.mock('../feedback', () => ({
   useAction: () => async () => undefined,
 }));
 
-const { LeagueCover } = await import('../league/LeagueCover');
+const { InvitePill, LeagueTopBar } = await import('../league/home/LeagueTopBar');
+const { canInviteTo } = await import('./logic');
 const { InviteCard } = await import('../InviteCard');
 
 const league = (extra: Partial<League> = {}) =>
@@ -40,18 +42,29 @@ const ctx = (extra: Partial<LeagueCtx> = {}): LeagueCtx => ({
 const inLeague = (value: LeagueCtx, el: ReactElement) => renderToString(h(MemoryRouter, null, h(LeagueContext.Provider, { value }, el)));
 const INVITE_BUTTON = /<button type="button"[^>]*aria-haspopup="dialog"[^>]*>(?:(?!<\/button>).)*Invitar<\/button>/;
 
-describe('«Invitar» en la portada', () => {
+/** La barra de arriba del inicio, como la arma LeagueShell (homeBar) para cualquier deporte. */
+const HomeBar = ({ value }: { value: LeagueCtx }) =>
+  h(LeagueTopBar, {
+    to: '/ligas',
+    label: 'Ligas',
+    actions: canInviteTo(value.league, value.isAdmin, !!value.member) && h(InvitePill, { onClick: () => undefined }),
+  });
+
+describe('«Invitar» arriba del inicio de la liga', () => {
   it('un miembro de una liga pública y el admin: el botón abre la hoja (cerrada al entrar)', () => {
     for (const value of [ctx(), ctx({ league: league({ visibility: 'private' }), isAdmin: true })]) {
-      const html = inLeague(value, h(LeagueCover));
+      const html = inLeague(value, h(HomeBar, { value }));
+      expect(html).toContain('Ligas');
       expect(html).toMatch(INVITE_BUTTON);
       expect(html).not.toContain('<dialog');
     }
   });
 
   it('un miembro de una liga privada o quien solo mira: sin botón', () => {
-    expect(inLeague(ctx({ league: league({ visibility: 'private' }) }), h(LeagueCover))).not.toMatch(INVITE_BUTTON);
-    expect(inLeague(ctx({ member: null }), h(LeagueCover))).not.toMatch(INVITE_BUTTON);
+    const priv = ctx({ league: league({ visibility: 'private' }) });
+    expect(inLeague(priv, h(HomeBar, { value: priv }))).not.toMatch(INVITE_BUTTON);
+    const observer = ctx({ member: null });
+    expect(inLeague(observer, h(HomeBar, { value: observer }))).not.toMatch(INVITE_BUTTON);
   });
 });
 

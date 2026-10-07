@@ -94,7 +94,7 @@ export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) 
           }
           title="Buscar ligas abiertas"
           subtitle="Públicas, para unirte"
-          to="/ligas"
+          to="/ligas?ver=abiertas"
         />
       </Card>
       <QrHelpSheet open={qr} onClose={() => setQr(false)} />

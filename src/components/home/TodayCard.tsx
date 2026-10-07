@@ -6,10 +6,11 @@ import { useEventEntries, useEventLive, useEventSubmissions, usePlayers } from '
 import { useEventLanes } from '../../lib/data/lanes';
 import { laneOf, lanesPublished } from '../../lib/lanes';
 import { formatTime } from '../../lib/schedule';
-import { liveRows, type LiveGame, type LiveRow } from '../../lib/live';
+import type { LiveGame } from '../../lib/live';
 import { nextGameLabel, sheetPath, useNextGame, type GameCell, type NextGame, type TodayGames } from '../../lib/useNextGame';
 import { initials } from '../Avatar';
 import { BusyIcon, useBusy } from '../busy';
+import { boardRows, type BoardRow } from '../event/board';
 import { Card, DateBlock, GameTile, Skeleton, cx } from '../ui';
 import { socialLine, todayTitle, weekdayLabel } from './logic';
 import { SportTint } from './SportTint';
@@ -114,9 +115,13 @@ function TilesSkeleton({ n, dense }: { n: number; dense?: boolean }) {
 
 // ---------- Datos del evento en juego ----------
 
-/** Cómo van todos en el evento (lo de la tabla, lo enviado y lo que anotan en su teléfono) y el nombre de cada uno. */
+/**
+ * Cómo van todos en el evento y el nombre de cada uno: la misma tabla que «Cómo van todos» y la Planilla (event/board.ts).
+ * Salen todos los que tienen algo (en la tabla, enviado o anotando en su teléfono), pero el total y el puesto son solo
+ * de lo aprobado: lo que espera aprobación no suma.
+ */
 export interface LiveTable {
-  rows: LiveRow[];
+  rows: BoardRow[];
   nameOf: (id: string) => string;
   loading: boolean;
 }
@@ -129,7 +134,7 @@ export function useLiveTable(game: Pick<LiveGame, 'feed' | 'event'> | null): Liv
   const subs = useEventSubmissions(lid, event?.id);
   const live = useEventLive(lid, event?.id);
   const players = usePlayers(lid);
-  const rows = event ? liveRows(event, entries.data, subs.data, live.data) : [];
+  const rows = event ? boardRows(event, entries.data, subs.data, live.data) : [];
   const nameOf = (id: string) => players.data.find((p) => p.id === id)?.name ?? 'Jugador';
   return { rows, nameOf, loading: entries.loading || players.loading || live.loading };
 }
@@ -228,7 +233,9 @@ function TodayActions({ mine, pro, staff, sheetTo }: { mine: TodayGames; pro: bo
 
 /** «PG LM SR  6 jugando · Pedro va primero ›»: lleva a la práctica (cómo van todos). */
 function SocialLine({ to, table, me }: { to: string; table: LiveTable; me: string | null }) {
-  const leader = table.rows[0] ? { name: table.nameOf(table.rows[0].playerId), me: table.rows[0].playerId === me } : null;
+  // Primero va quien más suma con lo aprobado; si todavía nadie tiene juegos aprobados, nadie «va primero».
+  const first = table.rows[0];
+  const leader = first && first.total > 0 ? { name: table.nameOf(first.playerId), me: first.playerId === me } : null;
   const line = socialLine(table.rows.length, leader);
   const faces = table.rows.slice(0, 3).map((r) => table.nameOf(r.playerId));
   return (

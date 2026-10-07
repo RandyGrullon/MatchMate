@@ -130,25 +130,26 @@ function useOrganizedLabel(): string | null {
 }
 
 /**
- * «Elige cómo ver la app» (desde «PRO ▾» de Hoy): Lite (lo esencial) o Pro (todo el detalle), en dos tarjetas; a quien
- * organiza una liga y está en Lite, Pro sale marcado «Para ti» con la línea «Organizas …: en Pro tienes la pestaña
- * Organizar». «Usar Pro» cambia al momento (se guarda en la cuenta, con «Deshacer» abajo); «Seguir en Lite» la cierra.
+ * «Elige cómo ver la app» (desde «PRO ▾» de Hoy, y la primera vez que se toca «Pro» en Yo o «Probar Pro»: ModeSheetHost):
+ * Lite (lo esencial) o Pro (todo el detalle), en dos tarjetas; a quien organiza una liga y está en Lite, Pro sale marcado
+ * «Para ti» con la línea «Organizas …: en Pro tienes la pestaña Organizar». «Usar Pro» cambia al momento (se guarda en
+ * la cuenta, con «Deshacer» abajo); «Seguir en Lite» la cierra. `initial`: el modo que sale marcado al abrir.
  */
-export function ModeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ModeSheet({ open, onClose, initial }: { open: boolean; onClose: () => void; initial?: UiMode }) {
   return (
     <Sheet open={open} onClose={onClose} title={<span className="block text-[23px] leading-tight font-bold tracking-[-0.025em]">Elige cómo ver la app</span>}>
-      <ModeChoice onDone={onClose} />
+      <ModeChoice onDone={onClose} initial={initial} />
     </Sheet>
   );
 }
 
-/** Lo de adentro de la hoja (se arma cada vez que se abre: arranca en el modo de ahora, o en Pro «Para ti»). */
-function ModeChoice({ onDone }: { onDone: () => void }) {
+/** Lo de adentro de la hoja (se arma cada vez que se abre: arranca en `initial`, en Pro «Para ti» o en el de ahora). */
+function ModeChoice({ onDone, initial }: { onDone: () => void; initial?: UiMode }) {
   const { mode, suggestedPro } = useMode();
   const switchMode = useSwitchMode();
   const organized = useOrganizedLabel();
   const forYou = suggestedPro && mode === 'lite';
-  const [pick, setPick] = useState<UiMode>(forYou ? 'pro' : mode);
+  const [pick, setPick] = useState<UiMode>(initial ?? (forYou ? 'pro' : mode));
   const changes = pick !== mode;
   const PickIcon = MODE_CARDS[pick].icon;
   return (

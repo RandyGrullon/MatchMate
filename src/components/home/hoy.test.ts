@@ -328,7 +328,7 @@ describe('cuenta nueva', () => {
     expect(out).toContain('Anotar un juego suelto');
     expect(html).toContain('href="/juegos-sueltos?nuevo=1"');
     expect(out).toContain('Buscar ligas abiertas');
-    expect(html).toContain('href="/ligas"');
+    expect(html).toContain('href="/ligas?ver=abiertas"');
   });
 
   it('sin poder crear ligas no ofrece «Crear mi liga»', () => {
@@ -550,6 +550,29 @@ describe('Pro: Por hacer, En vivo y Esta semana', () => {
     expect(out).toContain('1 PG Pedro Gómez 212 · 245 · 201 658');
     expect(out).toContain('Ana Pérez Tú 187 · 210 · 48… 397');
     expect(out).not.toContain('José');
+  });
+
+  it('«En vivo» suma como la Planilla: lo que espera aprobación sale en ámbar y no suma ni cuenta para el puesto', () => {
+    world.players = [...world.players, { id: 'p-carmen', name: 'Carmen Díaz', averageOverride: null }];
+    // Carmen: 143 y 171 aprobados (314) y el 199 por aprobar. Con el 199 sumaría 513 e iría 3.ª.
+    world.entries = [...world.entries, entry('p-carmen', [143, 171, null])];
+    world.subs = [{ id: 's1', eventId: 'E1', playerId: 'p-carmen', status: 'pendiente', scores: [null, null, 199], createdAt: at(5) } as unknown as Submission];
+    const g = game({ playerId: 'p-carmen' });
+    const html = render(h(LiveSectionPro, { game: g, today: TODAY }));
+    const out = text(html);
+    expect(out).toContain('Carmen Díaz Tú 143 · 171 · 199 (por aprobar) 314');
+    expect(out).not.toContain('513');
+    // Pedro 658, Luis 605, Sofía 502, Ana 397: Carmen va 5.ª.
+    expect(out).toMatch(/5 CD Carmen Díaz/);
+    expect(html).toMatch(/<span class="text-warn">199/);
+  });
+
+  it('la línea social: nadie «va primero» mientras ningún juego está aprobado', () => {
+    world.entries = [];
+    world.subs = [{ id: 's1', eventId: 'E1', playerId: 'p-pedro', status: 'pendiente', scores: [212, null, null], createdAt: at(5) } as unknown as Submission];
+    const out = text(render(h(TodayCard, { game: game(), today: TODAY, pro: false })));
+    expect(out).toContain('1 jugando');
+    expect(out).not.toContain('va primero');
   });
 
   it('«Esta semana · octubre»: lunes a domingo, hoy marcado, y abre el calendario', () => {

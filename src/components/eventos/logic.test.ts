@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { CalendarItem } from '../../lib/calendar';
-import { eventosSubtitle, filterSports, groupByDay, joinable, noLeaguesTitle, otherSportsText, publicEmptyText, splitMine } from './logic';
+import {
+  ALL_SPORTS,
+  eventosSubtitle,
+  filterSports,
+  groupByDay,
+  joinable,
+  leagueLine,
+  ligasSport,
+  noLeaguesTitle,
+  openLeaguesSubtitle,
+  otherSportsText,
+  publicEmptyText,
+  rowLineText,
+  splitMine,
+  tourneyLine,
+  tourneysOf,
+} from './logic';
 
 const item = (p: Partial<CalendarItem>): CalendarItem => ({
   key: p.key ?? `${p.lid}:${p.date}:${p.minutes}`,
@@ -91,7 +107,7 @@ describe('groupByDay', () => {
 describe('textos', () => {
   it('públicas sin ninguna', () => {
     expect(publicEmptyText({ sport: 'padel', inSportTotal: 2 })).toBe('Ya estás en todas las públicas de pádel.');
-    expect(publicEmptyText({ sport: null, inSportTotal: 0 })).toMatch(/^Todavía no hay ligas ni torneos públicos\. Crea/);
+    expect(publicEmptyText({ sport: null, inSportTotal: 0 })).toBe('Todavía no hay ligas ni torneos públicos. Crea el primero con «Crear o unirme».');
   });
 
   it('vacío de mis ligas y de otros deportes', () => {
@@ -105,5 +121,70 @@ describe('textos', () => {
   it('subtítulo', () => {
     expect(eventosSubtitle('padel')).toBe('Solo lo de pádel: tus ligas, tus torneos y lo que viene.');
     expect(eventosSubtitle(null)).toMatch(/todos los deportes/);
+  });
+});
+
+describe('Ligas: la línea de cada fila', () => {
+  const TODAY = '2026-10-07';
+
+  it('una liga en juego: «En juego hoy» en el color del deporte y cuántos jugadores', () => {
+    const l = leagueLine({ live: true, next: { date: TODAY, time: '7:30 pm' }, today: TODAY, people: 6, sport: 'bowling' });
+    expect(l).toEqual({ lead: 'En juego hoy', rest: '6 jugadores' });
+    expect(rowLineText(l)).toBe('En juego hoy · 6 jugadores');
+  });
+
+  it('juega hoy más tarde, mañana, otro día o sin nada en el calendario', () => {
+    expect(leagueLine({ live: false, next: { date: TODAY, time: '7:30 pm' }, today: TODAY, people: 1 })).toEqual({ lead: 'Hoy, 7:30 pm', rest: '1 jugador' });
+    expect(leagueLine({ live: false, next: { date: '2026-10-08', time: '8:00 pm' }, today: TODAY, people: 0 })).toEqual({ lead: null, rest: 'Mañana, 8:00 pm' });
+    expect(leagueLine({ live: false, next: { date: '2026-10-20', time: null }, today: TODAY }).rest).toBe('Martes 20 oct');
+    expect(leagueLine({ live: false, next: null, today: TODAY, schedule: 'Martes · 7:30 pm', people: 12, sport: 'swimming' }).rest).toBe('Martes · 7:30 pm · 12 nadadores');
+    expect(leagueLine({ live: false, today: TODAY, people: 3, extra: ['Dueño'] }).rest).toBe('3 jugadores · Dueño');
+  });
+
+  it('«Tus torneos»: los sin liga y los torneos que vienen en mis ligas, lo más pronto primero', () => {
+    const leagues = [
+      { id: 'liga', name: 'Liga de los martes' },
+      { id: 'suelto', name: 'Copa Naco', kind: 'torneo' },
+      { id: 'viejo', name: 'Abierto 2025', kind: 'torneo' },
+    ];
+    const upcoming = [
+      item({ lid: 'liga', leagueName: 'Liga de los martes', type: 'practica', date: TODAY, eventId: 'p1' }),
+      item({ lid: 'liga', leagueName: 'Liga de los martes', type: 'torneo', name: 'Copa de octubre', date: '2026-10-24', eventId: 'c1', href: '/l/liga/e/c1', going: true }),
+      item({ lid: 'suelto', leagueName: 'Copa Naco', type: 'torneo', name: 'Copa Naco', date: '2026-10-10', eventId: 'n1', href: '/l/suelto/e/n1' }),
+      item({ lid: 'otra', leagueName: 'No es mía', type: 'torneo', date: '2026-10-11', eventId: 'x1' }),
+    ];
+    const t = tourneysOf(leagues, upcoming, TODAY);
+    expect(t.map((x) => [x.name, x.standalone, x.date, x.href])).toEqual([
+      ['Copa Naco', true, '2026-10-10', '/l/suelto/e/n1'],
+      ['Copa de octubre', false, '2026-10-24', '/l/liga/e/c1'],
+      ['Abierto 2025', true, null, '/l/viejo'],
+    ]);
+    expect(t[1].going).toBe(true);
+  });
+
+  it('la línea de un torneo: su día y cuántos inscritos (y de qué liga si tienes varias)', () => {
+    const copa = { date: '2026-10-24', time: null, going: true, leagueName: 'Liga de los martes', standalone: false };
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6 }))).toBe('Sábado 24 oct · 6 inscritos');
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 1, showLeague: true }))).toBe('Sábado 24 oct · 1 inscrito · Liga de los martes');
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6, pro: true }))).toBe('Sábado 24 oct · 6 inscritos · ya te inscribiste');
+    expect(tourneyLine({ ...copa, date: TODAY }, { today: TODAY, live: true })).toEqual({ lead: 'En juego hoy', rest: '' });
+    expect(tourneyLine({ ...copa, date: TODAY, time: '9:00 am' }, { today: TODAY, live: false }).lead).toBe('Hoy, 9:00 am');
+    expect(tourneyLine({ ...copa, date: '2026-10-01' }, { today: TODAY, live: false }).rest).toBe('Ya se jugó');
+    expect(tourneyLine({ ...copa, date: null }, { today: TODAY, live: false }).rest).toBe('');
+  });
+
+  it('el filtro de deporte: solo si juegas más de uno, y solo lo elegido en los chips (sin elegir, Todos)', () => {
+    expect(ligasSport(['bowling'], 'padel')).toBeNull();
+    expect(ligasSport(['bowling', 'padel'], 'padel')).toBe('padel');
+    // Sin elegir: Todos, aunque la app haya quedado en pádel al ver esa liga.
+    expect(ligasSport(['bowling', 'padel'], null)).toBeNull();
+    expect(ligasSport(['bowling', 'padel'], ALL_SPORTS)).toBeNull();
+    expect(ligasSport(['bowling', 'padel'], 'tennis')).toBeNull();
+  });
+
+  it('«Buscar ligas abiertas»: tu deporte y los otros', () => {
+    expect(openLeaguesSubtitle(['bowling'])).toBe('Boliche y otros deportes');
+    expect(openLeaguesSubtitle(['bowling', 'padel'])).toBe('De todos los deportes');
+    expect(openLeaguesSubtitle([])).toBe('De todos los deportes');
   });
 });
