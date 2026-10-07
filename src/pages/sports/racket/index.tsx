@@ -39,7 +39,8 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     Player: wrap(RacketPlayerPage),
     // Admin › Temporada: la tabla para cerrarla (fuera de RacketProvider: recibe el deporte).
     useSeasonTable: (season) => useRacketSeasonTable(season, sport, extras),
-    adminTabs: [{ key: 'parejas', label: doubles ? 'Parejas y niveles' : 'Jugadores y niveles', icon: Users, Component: wrap(PairsAdmin) }],
+    // También como fila del inicio para quien organiza (antes era un link al lado de «Nuevo»).
+    adminTabs: [{ key: 'parejas', label: doubles ? 'Parejas y niveles' : 'Jugadores y niveles', icon: Users, Component: wrap(PairsAdmin), homeRow: true }],
     tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mis partidos' },
   };
 }

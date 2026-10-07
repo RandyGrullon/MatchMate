@@ -2,8 +2,31 @@ import { Link } from 'react-router';
 import { ChevronRight, Megaphone, MessageCircle } from 'lucide-react';
 import { eventLabel, formatDateLong, parseDate, toIsoDate } from '../lib/format';
 import { useLeagueCtx, whatsappUrl } from '../lib/league';
-import type { BowlingEvent } from '../lib/types';
-import { Card } from './ui';
+import type { BowlingEvent, League } from '../lib/types';
+import { Card, cx } from './ui';
+
+/**
+ * «Escribir a Ana» por WhatsApp para entrar a un torneo (con el saludo ya escrito), si la liga tiene el teléfono de su
+ * contacto; si no, nada. Lo usan el anuncio de un torneo sin liga y la pantalla de un torneo de la liga.
+ */
+export function TourneyContact({ league, eventName, className }: { league: Pick<League, 'name' | 'contactName' | 'contactPhone'>; eventName: string; className?: string }) {
+  if (!league.contactPhone) return null;
+  const contact = league.contactName?.trim();
+  return (
+    <a
+      href={whatsappUrl(league.contactPhone, `Hola${contact ? ` ${contact}` : ''}, quiero participar en ${eventName} (${league.name}).`)}
+      target="_blank"
+      rel="noreferrer"
+      className={cx(
+        'inline-flex h-11 items-center gap-2 rounded-xl bg-[#25D366] px-4 text-sm font-semibold text-white shadow-sm transition active:scale-[0.97]',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        className,
+      )}
+    >
+      <MessageCircle aria-hidden="true" className="size-4" /> Escribir a {contact || 'quien organiza'}
+    </a>
+  );
+}
 
 function countdown(date: string) {
   const days = Math.round((parseDate(date).getTime() - parseDate(toIsoDate(new Date())).getTime()) / 86400_000);
@@ -45,19 +68,12 @@ export function Announcements({ events, hideLink }: { events: BowlingEvent[]; hi
               {e.announcement?.trim() && <p className="mt-3 text-sm whitespace-pre-line">{e.announcement.trim()}</p>}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {league.contactPhone ? (
-                  <a
-                    href={whatsappUrl(league.contactPhone, `Hola${contact ? ` ${contact}` : ''}, quiero participar en ${name} (${league.name}).`)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#25D366] px-4 text-sm font-semibold text-white shadow-sm transition active:scale-[0.97]"
-                  >
-                    <MessageCircle className="size-4" /> Escribir a {contact || 'el admin'}
-                  </a>
+                  <TourneyContact league={league} eventName={name} />
                 ) : (
                   contact && <span className="text-sm text-muted">Pregúntale a {contact} para participar.</span>
                 )}
                 {!hideLink && (
-                  <Link to={`${base}/e/${e.id}`} className="inline-flex h-10 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent hover:bg-accent-soft">
+                  <Link to={`${base}/e/${e.id}`} className="inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent hover:bg-accent-soft">
                     Ver torneo <ChevronRight className="size-4" />
                   </Link>
                 )}

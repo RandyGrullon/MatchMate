@@ -182,12 +182,19 @@ describe('pantallas del pádel', () => {
   it('el contrato: pantallas, pestaña del admin y nombres', () => {
     expect(Object.keys(screens).sort()).toEqual(['Event', 'Feed', 'Home', 'MyProfile', 'Player', 'Standings', 'adminTabs', 'tabs', 'useSeasonTable']);
     expect(screens.adminTabs?.map((t) => [t.key, t.label])).toEqual([['parejas', 'Parejas y niveles']]);
+    // «Parejas y niveles» también es una fila del inicio para quien organiza (LeagueShell).
+    expect(screens.adminTabs?.[0].homeRow).toBe(true);
     expect(screens.tabs).toEqual({ home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mis partidos' });
   });
 
   it('inicio: en vivo, noches, ligas y torneos; el admin crea con «Nuevo»', () => {
-    const t = text(render(h(screens.Home)));
-    expect(t).toContain('Nuevo');
+    const html = render(h(screens.Home));
+    const t = text(html);
+    // Como la liga del boliche: secciones con su título, «Nuevo» a la derecha de «Próximas fechas» y filas con fecha.
+    expect(t).toContain('Próximas fechas Nuevo');
+    expect(t).not.toContain('Hoy y próximos');
+    expect(t).not.toContain('Parejas y niveles');
+    expect(html).toMatch(/<time dateTime="\d{4}-\d{2}-\d{2}"/);
     expect(t).toContain('En vivo');
     expect(t).toContain('Americano del jueves');
     expect(t).toContain('9 jugadores · ronda 1 de 7');

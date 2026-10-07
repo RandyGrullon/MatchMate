@@ -5,7 +5,7 @@ import { MAX_SUGGESTION, SUGGESTION_PACE_S, sendSuggestion } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
 import { paceCheck, paceStart } from '../lib/pace';
 import { useFeedback } from './feedback';
-import { Button, Card, Modal, cx } from './ui';
+import { Button, Card, ListRow, Modal, RowIcon, cx } from './ui';
 
 /** Sin señal la nota queda en cola y sale sola; no se espera al servidor. */
 const QUEUED_MS = 1500;
@@ -16,8 +16,9 @@ const drafts = new Map<string, string>();
  * Buzón de sugerencias de la liga: cualquier jugador deja una nota para los organizadores.
  * Es anónima: la nota solo lleva el mensaje y la fecha; nadie en la app ve quién la escribió.
  * A los organizadores no se les muestra (las notas son para ellos).
+ * `row`: como una fila más de la lista de la liga (ListRow, va dentro de la tarjeta de filas); si no, su tarjeta.
  */
-export function SuggestionBox() {
+export function SuggestionBox({ row }: { row?: boolean } = {}) {
   const { lid, member, league, isAdmin } = useLeagueCtx();
   const { user } = useAuth();
   const { toast } = useFeedback();
@@ -86,18 +87,32 @@ export function SuggestionBox() {
 
   return (
     <>
-      <Card className="flex items-center gap-3 p-4" tour="buzon">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-warn-soft text-warn">
-          <Lightbulb className="size-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium">Buzón de sugerencias</p>
-          <p className="text-sm text-muted">Una idea, una queja, algo que mejorar. Es anónimo.</p>
-        </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          Escribir
-        </Button>
-      </Card>
+      {row ? (
+        <ListRow
+          leading={
+            <RowIcon>
+              <Lightbulb className="size-5" />
+            </RowIcon>
+          }
+          title="Buzón de sugerencias"
+          subtitle="Una idea o una queja, sin tu nombre"
+          onClick={() => setOpen(true)}
+          chevron
+        />
+      ) : (
+        <Card className="flex items-center gap-3 p-4" tour="buzon">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-warn-soft text-warn">
+            <Lightbulb className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Buzón de sugerencias</p>
+            <p className="text-sm text-muted">Una idea, una queja, algo que mejorar. Es anónimo.</p>
+          </div>
+          <Button size="sm" onClick={() => setOpen(true)}>
+            Escribir
+          </Button>
+        </Card>
+      )}
 
       <Modal
         open={open}

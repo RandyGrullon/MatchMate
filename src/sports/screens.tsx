@@ -40,7 +40,14 @@ export interface SportScreens {
    * Pestañas del Admin propias del deporte. Van después de las generales (Jugadores, Miembros, Buzón, Liga);
    * una con la misma `key` que una general la reemplaza (p. ej. 'jugadores').
    */
-  adminTabs?: { key: string; label: string; icon?: LucideIcon; Component: ComponentType }[];
+  adminTabs?: {
+    key: string;
+    label: string;
+    icon?: LucideIcon;
+    Component: ComponentType;
+    /** También va como fila en el inicio de la liga, para quien la organiza (las parejas y niveles de raqueta). */
+    homeRow?: boolean;
+  }[];
   /** Nombres de las pestañas de la liga. `null` = no se muestra. Por defecto: Calendario, Partidos, Tabla, Mis partidos. */
   tabs?: { home?: string; feed?: string | null; standings?: string | null; profile?: string };
 }

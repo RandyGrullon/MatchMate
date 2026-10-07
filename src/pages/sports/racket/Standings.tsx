@@ -6,7 +6,8 @@ import { StandingsTable, type StandingsColumn } from '../../../components/match'
 import { ShareButton, standingsShare, type ShareTableSpec } from '../../../components/share';
 import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import { SEASON_PARAM } from '../../../components/season/SeasonSelect';
-import { Card, Empty, ListSkeleton, LoadError, Position, Tabs, cx } from '../../../components/ui';
+import { Card, Empty, ListSkeleton, LoadError, Position, Segmented, cx } from '../../../components/ui';
+import { useIsPro } from '../../../components/mode';
 import { Chips, racketColumns } from './bits';
 import { fmtPoints } from './logic/night';
 import { MODALITY_LABEL, type Modality } from './logic/modality';
@@ -19,12 +20,15 @@ type Tab = 'parejas' | 'ranking' | 'noches';
 
 /**
  * Tabla de la temporada: las tablas de las ligas de parejas (y de los grupos de los torneos), el ranking
- * individual con los partidos a sets y las noches de americano y mexicano. Arriba, la temporada (?temporada=): la
- * activa con los partidos de sus fechas; una cerrada muestra sus premios y la tabla que se guardó al cerrarla.
+ * individual con los partidos a sets y las noches de americano y mexicano. Arriba, el título «Tabla» (como la del
+ * boliche) y qué tabla se ve en un segmentado (Parejas | Ranking | Noches, `?ver=`); debajo, la temporada
+ * (?temporada=): la activa con los partidos de sus fechas; una cerrada muestra sus premios y la tabla que se guardó al
+ * cerrarla.
  */
 export default function RacketStandings() {
   const { lid, base, league, myPlayerId } = useLeagueCtx();
   const { sport, doubles, ext } = useRacket();
+  const pro = useIsPro();
   const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
   const picked = useStandingsSeason();
@@ -95,9 +99,13 @@ export default function RacketStandings() {
 
   if (q.error) return <LoadError error={q.error} />;
 
+  // Con el mismo margen que la Tabla del boliche (24 px); las tablas, de lado a lado.
+  const title = <h1 className={cx('px-2', pro ? 'text-title-pro' : 'text-title')}>Tabla</h1>;
+
   if (picked.closed) {
     return (
       <div className="flex flex-col gap-4">
+        {title}
         <SeasonBar seasons={picked.seasons} selected={picked.selected} onChange={picked.setSelected} />
         <ClosedSeasonView season={picked.closed} highlight={highlight} />
       </div>
@@ -106,15 +114,20 @@ export default function RacketStandings() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Tabs
-        items={[
-          { key: 'parejas' as Tab, label: doubles ? 'Parejas' : 'Ligas', icon: <Users className="size-4" /> },
-          { key: 'ranking' as Tab, label: 'Ranking', icon: <Medal className="size-4" /> },
-          ...(hasNights(sport) ? [{ key: 'noches' as Tab, label: nightsWord, icon: <Moon className="size-4" /> }] : []),
-        ]}
-        active={tab}
-        onChange={(k) => go({ ver: k })}
-      />
+      {title}
+      <div className="px-2">
+        <Segmented
+          full
+          label="Qué tabla ver"
+          options={[
+            { key: 'parejas' as Tab, label: doubles ? 'Parejas' : 'Ligas', icon: <Users aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+            { key: 'ranking' as Tab, label: 'Ranking', icon: <Medal aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+            ...(hasNights(sport) ? [{ key: 'noches' as Tab, label: nightsWord, icon: <Moon aria-hidden="true" className="size-4 max-[359px]:hidden" /> }] : []),
+          ]}
+          value={tab}
+          onChange={(k) => go({ ver: k })}
+        />
+      </div>
       <SeasonBar
         seasons={picked.seasons}
         selected={picked.selected}

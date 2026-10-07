@@ -4,7 +4,6 @@ import { Award, ChevronDown, History, ListOrdered, Settings2, Trophy } from 'luc
 import { useLeagueSeasons } from '../../lib/data/seasons';
 import { useLeagueCtx } from '../../lib/league';
 import type { Season } from '../../lib/seasons';
-import { BackLink } from '../BackLink';
 import { Badge, Card, Empty, ListSkeleton, LoadError, cx } from '../ui';
 import { AWARD_LABEL, parseSnapshot, seasonDates } from './logic';
 import { SEASON_PARAM } from './SeasonSelect';
@@ -22,8 +21,8 @@ export default function SeasonsPage() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* «‹ Liga de los martes» va arriba (LeagueShell). */}
       <div className="flex items-start gap-2">
-        <BackLink fallback={base} label="Inicio" />
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
             <History className="size-5 text-accent" /> Temporadas
