@@ -14,6 +14,7 @@ import { Logo } from './Logo';
 import { NoticeSlot } from './NoticeSlot';
 import { NotificationsBell } from './Notifications';
 import { useOrganize } from './OrganizeNav';
+import { ModeSheetHost } from './mode/ModeSheetHost';
 import { ModeToast } from './mode/ModeToast';
 import { OutboxIndicator } from './OutboxIndicator';
 import { SportChip } from './SportSwitcher';
@@ -151,22 +152,29 @@ export function currentSection(sections: readonly SectionDef[], pathname: string
 }
 
 /**
- * ¿Va el selector de deporte arriba? Solo si la cuenta juega más de un deporte, o si la app quedó en un deporte que no es
- * el suyo (para poder salir). Quien juega uno solo no lo ve: los otros deportes siguen en Ligas (las públicas).
+ * ¿Va el selector de deporte arriba (en la computadora)? Solo si la cuenta juega más de un deporte, o si la app quedó en
+ * un deporte que no es el suyo (para poder salir). Quien juega uno solo no lo ve: los otros deportes siguen en Ligas
+ * (las públicas). En el teléfono no sale nunca: si juega varios, elige con los chips de Ligas.
  */
 export function showSportSwitcher(mine: readonly string[], active: SportId | null): boolean {
   return mine.length > 1 || (!!active && !mine.includes(active));
 }
 
 /**
- * El color de Hoy cuando la app quedó en un deporte que no juegas (llegaste por `/d/padel`): el de tu deporte (el
- * boliche si lo juegas), así Hoy tiene un solo acento; arriba, «Pádel ▾» sigue en su color para volver. null = el de la
- * app (juegas ese deporte, no hay deporte elegido o no juegas ninguno).
+ * El color de las pantallas de fuera de una liga (Hoy, Ligas, Yo, Organizar…): siempre el de tu deporte (el boliche si
+ * lo juegas; si no, el primero de los tuyos), aunque la app haya quedado en otro al entrar a una liga de pádel o al
+ * elegirlo arriba. Así Hoy no se pinta del último deporte que se vio y tiene un solo acento (su tarjeta del boliche y la
+ * barra, del mismo color). null = el de la app ya es ese (o no juegas ninguno).
  */
 export function ownSportTint(mine: readonly string[], active: SportId | null): string | null {
-  if (!active || !mine.length || mine.includes(active)) return null;
-  return mine.includes('bowling') ? 'bowling' : mine[0];
+  if (!mine.length) return null;
+  const own = mine.includes('bowling') ? 'bowling' : mine[0];
+  // Sin deporte elegido la app va en el color de siempre, que es el del boliche.
+  return active === own || (!active && own === 'bowling') ? null : own;
 }
+
+/** ¿Va la pantalla en el color de tu deporte? Las de fuera de una liga (adentro, el de la liga; en `/d/:sport`, ese). */
+export const usesOwnTint = (pathname: string) => !pathname.startsWith('/l/') && !pathname.startsWith('/d/');
 
 /** ¿Va el selector de deporte arriba? y, para Hoy, el color de tu deporte (ownSportTint). */
 function useSportBar(): { switcher: boolean; own: string | null } {
@@ -313,11 +321,13 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
   const location = useLocation();
   const active = useActiveSport();
   const { switcher: sportSwitcher, own } = useSportBar();
-  // Hoy en el color de tu deporte si la app quedó en uno que no juegas (un solo acento en la pantalla; «Pádel ▾» arriba
-  // sigue en el suyo, para volver).
-  const tint = sportTint(location.pathname === '/' ? own : null);
+  // Fuera de una liga, el color de tu deporte aunque la app haya quedado en otro (un solo acento en la pantalla; en la
+  // computadora, «Pádel ▾» arriba sigue en el suyo, para volver).
+  const tint = sportTint(usesOwnTint(location.pathname) ? own : null);
   const width = wide ? 'max-w-5xl' : 'max-w-3xl';
-  const mobileHeader = !!middle || !!subnav || sportSwitcher;
+  // En el teléfono la barra de arriba sale solo con algo de la pantalla (`middle`, `subnav`): el selector de deporte no
+  // va (quien juega varios elige con los chips de Ligas).
+  const mobileHeader = !!middle || !!subnav;
   // El logo: con el selector, solo estando en un deporte (sin deporte el logo va dentro del selector); sin él, siempre
   // en la computadora. En el teléfono, dentro de una liga, no cabe: ahí manda el nombre de la liga.
   const logo = sportSwitcher ? !!active : true;
@@ -336,24 +346,24 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
             <Link
               to="/"
               onClick={() => setActiveSport(null)}
-              className={cx(
-                '-ml-1.5 size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2',
-                middle || !sportSwitcher ? 'hidden sm:flex' : 'flex',
-              )}
+              className="-ml-1.5 hidden size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2 sm:flex"
               aria-label="MatchMate: Hoy"
               title="Hoy"
             >
               <Logo />
             </Link>
           )}
-          {sportSwitcher &&
-            (tint.className ? (
-              <SportTint sport={active} className="contents">
+          {sportSwitcher && (
+            <div className="contents max-sm:hidden">
+              {tint.className ? (
+                <SportTint sport={active} className="contents">
+                  <SportChip compact={!!middle} />
+                </SportTint>
+              ) : (
                 <SportChip compact={!!middle} />
-              </SportTint>
-            ) : (
-              <SportChip compact={!!middle} />
-            ))}
+              )}
+            </div>
+          )}
           {/* En el teléfono la marca de la copia local va sobre la barra de abajo. */}
           {local && (
             <span className="max-sm:hidden">
@@ -385,6 +395,8 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
       <BottomNav />
       {/* «Modo Pro activado · Deshacer» al cambiar de modo (sigue a la vista aunque cambie la pantalla). */}
       <ModeToast />
+      {/* «Elige cómo ver la app» la primera vez que se toca «Pro» (Yo, «Probar Pro»). */}
+      <ModeSheetHost />
     </div>
   );
 }

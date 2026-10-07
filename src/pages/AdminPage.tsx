@@ -1,24 +1,18 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import {
-  Award,
   Baby,
-  BadgeCheck,
   CalendarRange,
   Camera,
   ChevronDown,
-  ClipboardCheck,
   ClipboardList,
   ClipboardX,
   Clock,
   DatabaseBackup,
   Earth,
-  Flag,
   Globe,
-  Lightbulb,
   ImageMinus,
   ImageUp,
-  Inbox,
   Lock,
   MapPin,
   MessageCircle,
@@ -26,28 +20,13 @@ import {
   Pencil,
   Save,
   Settings,
-  Settings2,
-  Shield,
   ShieldCheck,
   ShieldOff,
   Trash2,
-  UserCheck,
   UserMinus,
-  Users,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import {
-  deleteLeague,
-  deleteOldPhotos,
-  removeMember,
-  setMemberRole,
-  setMemberScorer,
-  updateLeague,
-  useLeagueMembers,
-  usePlayers,
-  useSubmissions,
-} from '../lib/data';
-import { useNotifications } from '../components/Notifications';
+import { deleteLeague, deleteOldPhotos, removeMember, setMemberRole, setMemberScorer, updateLeague, useLeagueMembers, usePlayers } from '../lib/data';
 import { formatDate, venueLabel } from '../lib/format';
 import { rememberLeague, roleLabel, useLeagueCtx, whatsappUrl } from '../lib/league';
 import { logoErrorText, removeLeagueLogo, uploadLeagueLogo } from '../lib/logos';
@@ -56,23 +35,19 @@ import { Avatar } from '../components/Avatar';
 import { LeagueIcon } from '../components/home/LeagueCard';
 import { InviteCard } from '../components/InviteCard';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
-import { Tour } from '../components/Tour';
-import { ADMIN_TOUR } from '../lib/tours';
 import { leagueSport, sportMeta } from '../sports/registry';
-import { hasScreens, useSportScreens } from '../sports/screens';
 import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
 import { useBusy } from '../components/busy';
-import { Badge, Button, Card, ListSkeleton, LoadError, Modal, Skeleton, Tabs, TopLoader, cx } from '../components/ui';
+import { Badge, Button, Card, ListRow, ListSkeleton, LoadError, Modal, RowIcon, Segmented, Skeleton, TopLoader, cx } from '../components/ui';
 import { AnnouncePanel } from '../components/league/Announce';
-import { PEOPLE_TABS, arrangeAdminTabs, tzLabel, tzOffset } from '../components/league/logic';
+import { tzLabel, tzOffset } from '../components/league/logic';
 import { usePendingClaimCount } from '../components/claims/data';
-import { PendingPanel } from '../components/organizer/Pending';
-import { pendingTotal, useLeaguePending } from '../lib/data/organizer';
-import { useReportCounts } from '../lib/data/reports';
+import { ScreenHeader, useOwnTabs } from '../components/organizer/Hub';
+import { adminScreenTitle, organizeUrl } from '../components/organizer/hubLogic';
+import { SuspendDayRow } from '../components/organizer/SuspendDay';
 import { BadgesSettingsCard } from '../components/badges/BadgesSettings';
 import { BadgeMakersCard } from '../components/badges/maker/MakerSettings';
-import { useBadgeNotices } from '../lib/data/badges';
 import { badgeMakersOf, canMakeBadges, setMemberBadgeMaker } from '../lib/data/leagueBadges';
 import { leavesOnRemove, removeConfirm } from '../components/scorers/logic';
 
@@ -84,163 +59,150 @@ const MakerAdmin = lazy(() => import('../components/badges/maker/MakerAdmin'));
 const ApprovalsPage = lazy(() => import('./ApprovalsPage'));
 const SeasonAdmin = lazy(() => import('../components/season/SeasonAdmin'));
 
-type Tab = string;
-
-interface AdminTab {
-  key: Tab;
-  label: string;
-  icon: ReactNode;
-  count?: number;
-  Component?: ComponentType;
-}
+/** Las pantallas de Organizar que son de la gente de la liga (un segmentado arriba las cambia). */
+type PeopleTab = 'jugadores' | 'miembros' | 'reclamos';
+const PEOPLE: readonly string[] = ['jugadores', 'miembros', 'reclamos'];
 
 /**
- * Administración de la liga (dueño, admins y superadmin). Abre en «Pendientes» (todos los deportes: lo que espera
- * por el admin, los primeros pasos y «Suspender un día»). Después, en el boliche, las pestañas de siempre. En los
- * otros deportes van primero las suyas (Equipos, Campos, Nadadores, Parejas y niveles: lo que hace falta para
- * arrancar); si el deporte maneja a su gente en su pestaña, la general «Jugadores» no sale y lo de vincular cuentas
- * queda en Miembros.
+ * Las pantallas de Organizar (`/l/:lid/admin?tab=…`), cada una con «‹ Organizar» y su título: Jugadores y miembros
+ * (Jugadores · Miembros · Reclamos), Aprobar juegos, Buzón, Temporada y fechas (con «Suspender un día»), Avisar a toda
+ * la liga, Insignias, Ajustes de la liga, Reportes, Insignias por confirmar y las propias del deporte (Equipos, Campos,
+ * Nadadores, Parejas y niveles). Sin pantalla (o con la vieja «Pendientes») va a Organizar, con «Por hacer» y «La liga»
+ * (src/pages/OrganizePage.tsx). Dueño, admins y superadmin.
  */
 export default function AdminPage() {
   const ctx = useLeagueCtx();
   const { lid, isAdmin, league } = ctx;
   const [params, setParams] = useSearchParams();
-  const sport = leagueSport(league);
-  const bowling = sport === 'bowling';
-  // Pestañas propias del deporte (una con la misma clave que una general la reemplaza).
-  const screens = useSportScreens(bowling ? null : sport);
-  const pending = useSubmissions(isAdmin && bowling ? lid : undefined, 'pendiente').data.length;
-  const newSuggestions = useNotifications().feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0;
+  // Las del deporte; una con la misma clave que una general la reemplaza (p. ej. 'jugadores').
+  const own = useOwnTabs(league);
   // Reclamos de jugadores sin cuenta («ese soy yo»): todos los deportes.
   const uid = useAuth().user?.uid;
   const claims = usePendingClaimCount(isAdmin ? lid : null, uid);
-  // Reportes de comentarios, avisos y juegos de la liga: la pestaña sale solo si alguna vez hubo alguno.
-  const reports = useReportCounts(isAdmin, lid).data;
-  // Todo lo que espera por el admin (envíos y reclamos en vivo; partidos reclamados o atrasados y listas de espera).
-  const toDo = pendingTotal(useLeaguePending(isAdmin ? lid : null).data, { submissions: bowling ? pending : undefined, claims });
-  // Hazañas por confirmar (aval de insignias): la pestaña sale cuando hay alguna (o si el link la pide).
-  const reviews = useBadgeNotices().data.reviews.filter((r) => r.leagueId === lid).length;
   // Insignias de la liga (el creador): solo para quien las diseña y las da.
   const makers = canMakeBadges(ctx);
-  const generic: AdminTab[] = [
-    // Primero en todos los deportes (arrangeAdminTabs) y abre ahí.
-    { key: 'pendientes', label: 'Pendientes', icon: <ClipboardCheck className="size-4" />, count: toDo },
-    { key: 'jugadores', label: 'Jugadores', icon: <Users className="size-4" /> },
-    // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
-    ...(bowling ? [{ key: 'aprobar', label: 'Aprobar', icon: <Inbox className="size-4" />, count: pending }] : []),
-    { key: 'miembros', label: 'Miembros', icon: <Shield className="size-4" /> },
-    { key: 'reclamos', label: 'Reclamos', icon: <UserCheck className="size-4" />, count: claims },
-    ...(reports.all > 0 ? [{ key: 'reportes', label: 'Reportes', icon: <Flag className="size-4" />, count: reports.open }] : []),
-    ...(reviews > 0 || params.get('tab') === 'confirmar'
-      ? [{ key: 'confirmar', label: 'Por confirmar', icon: <BadgeCheck className="size-4" />, count: reviews }]
-      : []),
-    ...(makers ? [{ key: 'insignias', label: 'Insignias', icon: <Award className="size-4" /> }] : []),
-    { key: 'buzon', label: 'Buzón', icon: <Lightbulb className="size-4" />, count: newSuggestions },
-    // Cerrar la temporada con sus campeones y empezar la siguiente (un torneo suelto no tiene temporadas).
-    ...(league.kind === 'torneo' ? [] : [{ key: 'temporada', label: 'Temporada', icon: <CalendarRange className="size-4" /> }]),
-    { key: 'liga', label: league.kind === 'torneo' ? 'Datos' : 'Liga', icon: <Settings2 className="size-4" /> },
-  ];
-  // Las del deporte; una que reemplaza a una general conserva su icono y su número.
-  const own: AdminTab[] = (screens?.adminTabs ?? []).map((x) => {
-    const g = generic.find((t) => t.key === x.key);
-    return g
-      ? { ...g, label: x.label, Component: x.Component }
-      : { key: x.key, label: x.label, icon: x.icon ? <x.icon className="size-4" /> : <Settings2 className="size-4" />, Component: x.Component };
-  });
-  const { tabs, defaultKey, playersMerged } = arrangeAdminTabs(generic, own, bowling);
-  const peopleTab = own.find((t) => PEOPLE_TABS.has(t.key));
-  // Las pantallas del deporte llegan aparte: mientras tanto no se abre una pestaña que después cambia.
-  const waiting = !bowling && hasScreens(sport) && !screens;
-  const raw = params.get('tab');
-  // Un link viejo a «Jugadores» donde ya no sale: lo de las cuentas está en Miembros.
-  const requested = raw === 'jugadores' && playersMerged ? 'miembros' : raw;
-  const tab: Tab = requested && tabs.some((t) => t.key === requested) ? requested : defaultKey;
-  const Own = tabs.find((t) => t.key === tab)?.Component;
 
   if (!isAdmin) {
     return <LoadError error={new Error('permission-denied')} />;
   }
+  // Las pantallas del deporte llegan aparte: mientras tanto no se abre una que después cambia.
+  if (!own.ready) return <AdminSkeleton />;
+
+  const raw = params.get('tab');
+  // Un link viejo a «Jugadores» donde la gente va en la pantalla del deporte: lo de las cuentas está en Miembros.
+  const tab = raw === 'jugadores' && own.playersMerged ? 'miembros' : raw;
+  const ownTab = tab ? own.all.find((t) => t.key === tab) : undefined;
+  // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
+  const general = !!tab && adminScreenTitle(tab, league.kind) !== null && (tab !== 'aprobar' || own.bowling);
+  if (!tab || (!ownTab && !general)) return <Navigate to={organizeUrl(lid)} replace />;
+
+  const people = PEOPLE.includes(tab);
+  const title = (!people && ownTab?.label) || adminScreenTitle(tab, league.kind) || '';
+  const peopleOptions = [
+    ...(own.playersMerged ? [] : [{ key: 'jugadores' as const, label: own.all.find((t) => t.key === 'jugadores')?.label ?? 'Jugadores' }]),
+    { key: 'miembros' as const, label: 'Miembros' },
+    {
+      key: 'reclamos' as const,
+      ariaLabel: claims ? `Reclamos: ${claims} por revisar` : 'Reclamos',
+      label: (
+        <>
+          Reclamos
+          {claims > 0 && <span className="num grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold tracking-normal text-accent-fg">{claims}</span>}
+        </>
+      ),
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* El tour de Admin habla de las pestañas del boliche (Aprobar, promedios): los otros deportes no lo ven. */}
-      <Tour name="admin" steps={ADMIN_TOUR} when={isAdmin && bowling} />
-      {waiting ? (
-        <AdminSkeleton />
-      ) : (
-        <AdminTabs
-          tabs={tabs}
-          tab={tab}
-          onChange={(k) => setParams({ tab: k }, { replace: true })}
-          Own={Own}
-          accountsOf={playersMerged ? (peopleTab?.label ?? null) : null}
-          playersTab={playersMerged ? (peopleTab?.key ?? null) : null}
-        />
-      )}
+    // 24 px a los lados en el teléfono, como Hoy y Organizar.
+    <div className="flex flex-col gap-5 px-2">
+      <ScreenHeader lid={lid} title={title}>
+        {people && (
+          <Segmented<PeopleTab>
+            label="Gente de la liga"
+            full
+            className="mt-4"
+            options={peopleOptions}
+            value={tab as PeopleTab}
+            onChange={(k) => setParams({ tab: k }, { replace: true })}
+          />
+        )}
+      </ScreenHeader>
+      <Suspense fallback={<TopLoader />}>
+        <div key={tab} className="animate-fade-up">
+          {ownTab ? (
+            <ownTab.Component />
+          ) : tab === 'jugadores' ? (
+            <PlayersPage />
+          ) : tab === 'miembros' ? (
+            <MembersPanel accountsOf={own.playersMerged ? (own.peopleTab?.label ?? null) : null} />
+          ) : tab === 'reclamos' ? (
+            <ClaimsPanel />
+          ) : tab === 'aprobar' ? (
+            <ApprovalsPage />
+          ) : tab === 'buzon' ? (
+            <SuggestionsPanel />
+          ) : tab === 'temporada' ? (
+            <SeasonScreen />
+          ) : tab === 'avisar' ? (
+            <AnnouncePanel />
+          ) : tab === 'insignias' ? (
+            <BadgesScreen makers={makers} />
+          ) : tab === 'confirmar' ? (
+            <ReviewsPanel />
+          ) : tab === 'reportes' ? (
+            <LeagueReportsPanel />
+          ) : (
+            <SettingsPanel />
+          )}
+        </div>
+      </Suspense>
     </div>
   );
 }
 
 function AdminSkeleton() {
   return (
-    <div className="flex flex-col gap-5" aria-busy="true">
-      <Skeleton className="h-10 w-full rounded-xl sm:w-96" />
+    <div className="flex flex-col gap-5 px-2" aria-busy="true">
+      <Skeleton className="h-11 w-32 rounded-xl" />
+      <Skeleton className="h-9 w-2/3 rounded-xl" />
       <ListSkeleton rows={5} />
     </div>
   );
 }
 
-function AdminTabs({
-  tabs,
-  tab,
-  onChange,
-  Own,
-  accountsOf,
-  playersTab,
-}: {
-  tabs: AdminTab[];
-  tab: Tab;
-  onChange: (k: Tab) => void;
-  Own: ComponentType | undefined;
-  accountsOf: string | null;
-  /** Donde se agregan jugadores en este deporte, si no es «Jugadores» (los primeros pasos llevan ahí). */
-  playersTab: string | null;
-}) {
+/** Temporada y fechas: «Suspender un día» (lluvia, la bolera cerrada) y, en una liga, cerrar la temporada y empezar otra. */
+function SeasonScreen() {
+  const { league } = useLeagueCtx();
   return (
-    <>
-      <div data-tour="admin-secciones">
-        <Tabs items={tabs} active={tab} onChange={onChange} />
-      </div>
-      <Suspense fallback={<TopLoader />}>
-        <div key={tab} className="animate-fade-up">
-          {Own ? (
-            <Own />
-          ) : tab === 'pendientes' ? (
-            <PendingPanel playersTab={playersTab} />
-          ) : tab === 'jugadores' ? (
-            <PlayersPage />
-          ) : tab === 'aprobar' ? (
-            <ApprovalsPage />
-          ) : tab === 'miembros' ? (
-            <MembersPanel accountsOf={accountsOf} />
-          ) : tab === 'reclamos' ? (
-            <ClaimsPanel />
-          ) : tab === 'reportes' ? (
-            <LeagueReportsPanel />
-          ) : tab === 'confirmar' ? (
-            <ReviewsPanel />
-          ) : tab === 'insignias' ? (
-            <MakerAdmin />
-          ) : tab === 'buzon' ? (
-            <SuggestionsPanel />
-          ) : tab === 'temporada' ? (
-            <SeasonAdmin />
-          ) : (
-            <SettingsPanel />
-          )}
-        </div>
-      </Suspense>
-    </>
+    <div className="flex flex-col gap-6">
+      <SuspendDayRow />
+      {/* Un torneo suelto no tiene temporadas. La temporada llega aparte: «Suspender un día» sale de una vez. */}
+      {league.kind !== 'torneo' && (
+        <Suspense fallback={<ListSkeleton rows={2} />}>
+          <SeasonAdmin />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Insignias: las automáticas (cuáles da la app), quién diseña y da las de la liga y, para quien las diseña, el creador
+ * (antes en Admin › Liga y Admin › Insignias).
+ */
+function BadgesScreen({ makers }: { makers: boolean }) {
+  return (
+    <div className="flex flex-col gap-5">
+      <BadgesSettingsCard />
+      <BadgeMakersCard />
+      {/* El creador llega aparte: lo de arriba sale de una vez. */}
+      {makers && (
+        <Suspense fallback={<ListSkeleton rows={2} />}>
+          <MakerAdmin />
+        </Suspense>
+      )}
+    </div>
   );
 }
 
@@ -333,8 +295,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-lg font-bold tracking-tight">Miembros y permisos</h2>
+      <div className="px-1">
         <p className="text-sm text-muted">
           Todos son jugadores, menos quien entró solo para anotar. <b className="text-fg">Admin</b> maneja {where}; <b className="text-fg">Anotador</b> solo anota los juegos
           {bowlingLeague && ' de los torneos'}
@@ -351,7 +312,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
       ) : members.loading ? (
         <ListSkeleton rows={4} />
       ) : (
-        <Card className="stagger divide-y divide-line overflow-hidden">
+        <Card className="stagger overflow-hidden">
           {sorted.map((m, i) => {
             const me = m.uid === user?.uid;
             // El dueño saca a cualquiera; un admin solo a los que no tienen permisos (ni admin, ni anotador, ni diseña insignias).
@@ -362,7 +323,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
             // Un admin puede dejar de serlo por su cuenta.
             const canStepDown = me && m.role === 'admin' && !isOwner;
             return (
-              <div key={m.id} style={{ '--i': i } as CSSProperties} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div key={m.id} style={{ '--i': i } as CSSProperties} className="mm-row relative flex flex-wrap items-center gap-3 py-3 pr-[18px] pl-5">
                 <Avatar name={m.name} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -387,6 +348,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                     {canStepDown && (
                       <Button
                         size="sm"
+                        className="h-11"
                         icon={<ShieldOff className="size-4" />}
                         loading={busy.isBusy(`${m.id}:admin`)}
                         disabled={busy.isBusy()}
@@ -398,6 +360,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                     {canManage && (
                       <Button
                         size="sm"
+                        className="h-11"
                         icon={m.role === 'admin' ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
                         loading={busy.isBusy(`${m.id}:admin`)}
                         disabled={busy.isBusy()}
@@ -409,6 +372,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                     {canScorer && (
                       <Button
                         size="sm"
+                        className="h-11"
                         icon={m.scorer ? <ClipboardX className="size-4" /> : <ClipboardList className="size-4" />}
                         loading={busy.isBusy(`${m.id}:scorer`)}
                         disabled={busy.isBusy()}
@@ -420,6 +384,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                     {canManage && chosen && (
                       <Button
                         size="sm"
+                        className="h-11"
                         icon={<Palette className="size-4" />}
                         loading={busy.isBusy(`${m.id}:maker`)}
                         disabled={busy.isBusy()}
@@ -432,7 +397,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-danger"
+                        className="size-11 text-danger"
                         aria-label={`Sacar a ${m.name}`}
                         title={`Sacar de ${where}`}
                         icon={<UserMinus className="size-4" />}
@@ -459,9 +424,13 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   );
 }
 
-/** Datos de la liga (se editan en un modal), el aviso a toda la liga, la invitación y la configuración (respaldo, fotos, borrar). */
+/**
+ * Ajustes de la liga: los datos (se editan en un modal; ahí va la foto del marcador), el logo, la invitación y, al final,
+ * el respaldo, las fotos viejas y borrar la liga (en su hoja). Avisar e Insignias tienen su propia fila en Organizar.
+ */
 function SettingsPanel() {
-  const { league } = useLeagueCtx();
+  const { league, isOwner } = useLeagueCtx();
+  const { isSuper } = useAuth();
   const [editing, setEditing] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [open, setOpen] = useState(false);
@@ -497,14 +466,6 @@ function SettingsPanel() {
             </div>
             <ChevronDown className={cx('size-5 shrink-0 text-muted transition-transform duration-200', open && 'rotate-180')} />
           </button>
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Settings className="size-4" />}
-            onClick={() => setConfiguring(true)}
-            aria-label={isTournament ? 'Configuración del torneo' : 'Configuración de la liga'}
-            title="Configuración"
-          />
         </div>
         <div
           id="datos-liga"
@@ -552,13 +513,29 @@ function SettingsPanel() {
 
       <LogoCard />
 
-      <AnnouncePanel />
-
-      <BadgesSettingsCard />
-
-      <BadgeMakersCard />
-
       <InviteCard league={league} />
+
+      <Card className="overflow-hidden">
+        <ListRow
+          dense
+          leading={
+            <RowIcon>
+              <Settings className="size-[19px]" />
+            </RowIcon>
+          }
+          title={
+            isOwner || isSuper ? (isTournament ? 'Respaldo y borrar el torneo' : 'Respaldo y borrar la liga') : isTournament ? 'Respaldo del torneo' : 'Respaldo de la liga'
+          }
+          subtitle={[
+            'Descargar los datos',
+            photos ? 'fotos viejas' : '',
+            isOwner || isSuper ? (isTournament ? 'borrar el torneo' : 'borrar la liga') : '',
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          onClick={() => setConfiguring(true)}
+        />
+      </Card>
 
       <EditLeagueModal open={editing} onClose={() => setEditing(false)} />
       <LeagueConfigModal open={configuring} onClose={() => setConfiguring(false)} />

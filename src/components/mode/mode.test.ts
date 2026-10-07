@@ -17,12 +17,16 @@ vi.mock('../../lib/useMode', () => ({
   useMode: () => ({ mode: state.mode, isPro: state.mode === 'pro', setMode: state.setMode, suggestedPro: state.suggestedPro }),
 }));
 
-const { LiteOnly, ModeSwitch, ModeTag, PRO_SUGGESTION_ID, ProOnly, proSuggestion } = await import('./index');
+const { LiteOnly, ModeSwitch, ModeTag, PRO_SUGGESTION_ID, ProOnly, closeModeSheet, markModeSheetSeen, modeSheetSeen, openModeSheet, pickAction, proSuggestion } =
+  await import('./index');
+const { ModeSheetHost } = await import('./ModeSheetHost');
+const { modeSheetKey, modeSheetSnapshot, resetModeSheetForTests } = await import('./modeSheet');
 
 beforeEach(() => {
   state.mode = 'lite';
   state.suggestedPro = false;
   state.setMode.mockClear();
+  resetModeSheetForTests();
 });
 
 describe('mostrar según el modo', () => {
@@ -50,6 +54,46 @@ describe('selector Lite | Pro', () => {
     expect(html).toMatch(/aria-checked="false"[^>]*>.*?<\/svg>Pro<\/button>/);
     state.mode = 'pro';
     expect(renderToString(h(ModeSwitch))).toMatch(/aria-checked="true"[^>]*>.*?<\/svg>Pro<\/button>/);
+  });
+});
+
+describe('la hoja «Elige cómo ver la app» la primera vez que se toca Pro', () => {
+  const memory = () => {
+    const m = new Map<string, string>();
+    return { map: m, getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
+  };
+
+  it('el primer toque en Pro abre la hoja; ya vista, cambia al momento; Lite siempre cambia', () => {
+    expect(pickAction('pro', false)).toBe('sheet');
+    expect(pickAction('pro', true)).toBe('switch');
+    expect(pickAction('lite', false)).toBe('switch');
+  });
+
+  it('se recuerda por cuenta en el teléfono (y sin almacenamiento, mientras la app esté abierta)', () => {
+    const s = memory();
+    expect(modeSheetSeen('u1', s)).toBe(false);
+    markModeSheetSeen('u1', s);
+    expect(s.map.get(modeSheetKey('u1'))).toBe('1');
+    expect(modeSheetSeen('u1', s)).toBe(true);
+    expect(modeSheetSeen('u2', s)).toBe(false);
+    markModeSheetSeen('u3', null);
+    expect(modeSheetSeen('u3', null)).toBe(true);
+    // Sin cuenta no hay hoja que mostrar.
+    expect(modeSheetSeen(null, s)).toBe(true);
+  });
+
+  it('abrirla la marca vista, con el modo elegido marcado («Usar Pro»); cerrada no deja nada en la página', () => {
+    expect(renderToString(h(ModeSheetHost))).toBe('');
+    openModeSheet('pro', 'u9');
+    expect(modeSheetSnapshot()).toEqual({ initial: 'pro' });
+    expect(modeSheetSeen('u9')).toBe(true);
+    const html = renderToString(h(ModeSheetHost));
+    expect(html).toContain('Elige cómo ver la app');
+    expect(html).toContain('Usar Pro');
+    expect(html).toMatch(/Seguir en (<!-- -->)?Lite/);
+    closeModeSheet();
+    expect(modeSheetSnapshot()).toBeNull();
+    expect(renderToString(h(ModeSheetHost))).toBe('');
   });
 });
 

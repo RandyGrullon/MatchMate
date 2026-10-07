@@ -7,7 +7,7 @@ import { useLeagueCtx } from '../../lib/league';
 import { localNow } from '../../lib/reminders';
 import { useNow } from '../../lib/useNow';
 import { saveErrorMessage, useFeedback } from '../feedback';
-import { Button, Card, Field, Input, Modal, Skeleton, cx } from '../ui';
+import { Button, Card, Field, Input, ListRow, Modal, RowIcon, Skeleton, cx } from '../ui';
 import { dayWords, suspendCounts, suspendDoneText, suspendLines, suspendNotice, suspendReasons } from './logic';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -197,6 +197,28 @@ export function SuspendDayButton({ className }: { className?: string }) {
       </Button>
       <SuspendDayModal open={open} onClose={() => setOpen(false)} />
     </>
+  );
+}
+
+/** Organizar › Temporada y fechas: la fila «Suspender un día» (abre el mismo modal). */
+export function SuspendDayRow() {
+  const { league } = useLeagueCtx();
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="overflow-hidden">
+      <ListRow
+        dense
+        leading={
+          <RowIcon>
+            <CloudRain className="size-5" />
+          </RowIcon>
+        }
+        title="Suspender un día"
+        subtitle={`Lluvia, sin luz… mueve o aplaza lo de ese día y avisa a ${league.kind === 'torneo' ? 'todo el torneo' : 'toda la liga'}`}
+        onClick={() => setOpen(true)}
+      />
+      <SuspendDayModal open={open} onClose={() => setOpen(false)} />
+    </Card>
   );
 }
 

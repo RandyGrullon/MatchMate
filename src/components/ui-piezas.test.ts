@@ -245,7 +245,8 @@ describe('Segmented', () => {
     expect(html).toMatch(/^<div role="radiogroup" aria-label="Tabla" class="inline-flex [^"]*bg-surface-2/);
     expect(html).toMatch(/aria-checked="false" class="mm-seg-opt [^"]*text-muted[^"]*">Scratch/);
     expect(html).toMatch(/aria-checked="true" class="mm-seg-opt [^"]*bg-seg-on text-fg[^"]*">Con hcp/);
-    expect(indexCss).toMatch(/\.mm-seg-opt::after \{[^}]*inset: -4px 0;/);
+    // Se tocan en 44 px como mínimo aunque se vean más bajas (36 px, o 28 en «Por juego | Por mes»).
+    expect(indexCss).toMatch(/\.mm-seg-opt::after \{[^}]*height: max\(100% \+ 8px, 44px\);/);
     noFixedColors(html);
   });
 

@@ -1,16 +1,14 @@
 /**
- * El tour de Admin (tours.ts › ADMIN_TOUR) explica las pestañas del boliche: «Aprobar» y los promedios de los
- * jugadores. En los otros deportes esa pestaña no existe, así que el tour no arranca. Se dibuja Admin (sin
- * navegador, renderToString) con un Tour de mentira que guarda con qué se llamó.
+ * Las pantallas de Organizar (`/l/:lid/admin?tab=…`) dibujadas sin navegador (renderToString): «‹ Organizar» y su
+ * título, Jugadores · Miembros · Reclamos, Temporada y fechas con «Suspender un día», Ajustes de la liga (el logo y el
+ * respaldo) y los permisos de Miembros con su ruedita. Sin pantalla (o con la vieja «Pendientes») van a Organizar.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TourStep } from '../components/Tour';
 import { FeedbackProvider } from '../components/feedback';
 import { LeagueContext, type LeagueCtx } from '../lib/league';
-import { ADMIN_TOUR } from '../lib/tours';
 import type { League, Member } from '../lib/types';
 import AdminPage from './AdminPage';
 
@@ -38,12 +36,16 @@ vi.mock('../components/busy', async (orig) => {
   };
 });
 
-const calls = vi.hoisted(() => [] as { name: string; steps: TourStep[]; when?: boolean }[]);
-vi.mock('../components/Tour', () => ({
-  Tour: (props: { name: string; steps: TourStep[]; when?: boolean }) => {
-    calls.push(props);
-    return null;
-  },
+// Ir a otra pantalla, a la vista: «[ir a …]» (sin navegador, <Navigate> no corre).
+vi.mock('react-router', async (orig) => ({
+  ...(await orig<typeof import('react-router')>()),
+  Navigate: ({ to }: { to: string }) => `[ir a ${to}]`,
+}));
+
+// Las pantallas de los otros deportes, ya cargadas (sin pantallas propias de Admin).
+vi.mock('../sports/screens', async (orig) => ({
+  ...(await orig<typeof import('../sports/screens')>()),
+  useSportScreens: (sport: string | null | undefined) => (sport && sport !== 'bowling' ? { adminTabs: [] } : null),
 }));
 
 const league = (sport: string): League => ({
@@ -74,54 +76,55 @@ const ctx = (sport: string): LeagueCtx => ({
   base: '/l/l1',
 });
 
-/** Con qué `when` se pidió el tour de Admin al dibujar la pantalla de esa liga. */
-function adminTourWhen(sport: string): boolean | undefined {
-  calls.length = 0;
-  renderToString(
-    h(MemoryRouter, { initialEntries: ['/l/l1/admin?tab=miembros'] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: ctx(sport) }, h(AdminPage)))),
-  );
-  const tour = calls.find((c) => c.name === 'admin');
-  expect(tour?.steps).toBe(ADMIN_TOUR);
-  return tour?.when;
-}
+const draw = (sport: string, url: string, value: LeagueCtx = ctx(sport)) =>
+  renderToString(h(MemoryRouter, { initialEntries: [url] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value }, h(AdminPage)))));
+const words = (html: string) => html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
 beforeEach(() => {
-  calls.length = 0;
   data.members = null;
   pending.key = null;
 });
 
-describe('tour de Admin', () => {
-  it('sale en las ligas del boliche', () => {
-    expect(adminTourWhen('bowling')).toBe(true);
-  });
-
-  it('no sale en los otros deportes (no tienen «Aprobar» ni promedios)', () => {
-    for (const sport of ['padel', 'tennis', 'pickleball', 'table_tennis', 'golf', 'swimming', 'basketball', 'football', 'futsal']) {
-      expect(adminTourWhen(sport), sport).toBe(false);
+describe('Organizar › pantallas', () => {
+  it('sin pantalla, con la vieja «Pendientes» o con una que no existe, va a Organizar de esa liga', () => {
+    for (const url of ['/l/l1/admin', '/l/l1/admin?tab=pendientes', '/l/l1/admin?tab=nada']) {
+      const out = draw('bowling', url);
+      expect(out, url).toMatch(/^\[ir a \/organizar\?liga=l1\]/);
+      expect(out, url).not.toContain('<h1');
     }
   });
-});
 
-describe('pestaña «Pendientes»', () => {
-  const html = (sport: string, url = '/l/l1/admin') =>
-    renderToString(h(MemoryRouter, { initialEntries: [url] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: ctx(sport) }, h(AdminPage)))));
-
-  it('va primera y el Admin abre ahí (el orden en los otros deportes: arrangeAdminTabs en league/logic.test.ts)', () => {
-    const out = html('bowling');
-    expect(out).toMatch(/role="tab" aria-selected="true"[^>]*>(?:(?!<\/button>).)*Pendientes/);
-    expect(out.indexOf('Pendientes')).toBeLessThan(out.indexOf('Jugadores'));
-    expect(out).toContain('Suspender un día');
+  it('cada una con «‹ Organizar» (a esta liga) y su título; la gente, con Jugadores · Miembros · Reclamos', () => {
+    const out = draw('bowling', '/l/l1/admin?tab=miembros');
+    expect(out).toContain('href="/organizar?liga=l1"');
+    expect(out).toMatch(/<h1 class="[^"]*text-title-pro[^"]*">Jugadores y miembros<\/h1>/);
+    expect(out).toMatch(/role="radiogroup" aria-label="Gente de la liga"/);
+    expect(out).toMatch(/role="radio" aria-checked="true"[^>]*>Miembros/);
+    expect(words(out)).toMatch(/Jugadores Miembros Reclamos/);
+    // Ya no hay pestañas ni tour.
+    expect(out).not.toContain('role="tablist"');
   });
 
-  it('con otra pestaña pedida, sigue primera pero abre la pedida', () => {
-    const out = html('bowling', '/l/l1/admin?tab=miembros');
-    expect(out.indexOf('Pendientes')).toBeLessThan(out.indexOf('Miembros'));
-    expect(out).not.toContain('Suspender un día');
+  it('Temporada y fechas trae «Suspender un día»; Aprobar juegos es solo del boliche', () => {
+    const out = draw('bowling', '/l/l1/admin?tab=temporada');
+    expect(out).toMatch(/<h1[^>]*>Temporada y fechas<\/h1>/);
+    expect(words(out)).toContain('Suspender un día');
+    expect(draw('bowling', '/l/l1/admin?tab=aprobar')).toMatch(/<h1[^>]*>Aprobar juegos<\/h1>/);
+    expect(draw('golf', '/l/l1/admin?tab=aprobar')).toMatch(/^\[ir a \/organizar\?liga=l1\]/);
+    expect(draw('golf', '/l/l1/admin?tab=temporada')).toMatch(/<h1[^>]*>Temporada y fechas<\/h1>/);
+  });
+
+  it('Avisar e Insignias tienen su pantalla (antes iban dentro de Liga)', () => {
+    expect(draw('bowling', '/l/l1/admin?tab=avisar')).toMatch(/<h1[^>]*>Avisar a toda la liga<\/h1>/);
+    expect(draw('bowling', '/l/l1/admin?tab=insignias')).toMatch(/<h1[^>]*>Insignias<\/h1>/);
+    const ajustes = words(draw('bowling', '/l/l1/admin?tab=liga'));
+    expect(ajustes).toContain('Ajustes de la liga');
+    expect(ajustes).not.toContain('Avisar a toda la liga');
+    expect(ajustes).toContain('Respaldo y borrar la liga');
   });
 });
 
-describe('Admin › Liga: el logo', () => {
+describe('Ajustes de la liga: el logo', () => {
   const draw = (extra: Partial<League>) =>
     renderToString(
       h(
@@ -150,7 +153,7 @@ describe('Admin › Liga: el logo', () => {
   });
 });
 
-describe('Admin › Miembros: los anotadores', () => {
+describe('Jugadores y miembros › Miembros: los anotadores', () => {
   const member = (uid: string, name: string, extra: Partial<Member> = {}): Member => ({
     id: `l1_${uid}`,
     leagueId: 'l1',

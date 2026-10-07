@@ -2,12 +2,14 @@ import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { useAuth } from '../lib/auth';
 import { useMyMemberships } from '../lib/data/members';
-import { pendingTotal, useLeaguePending } from '../lib/data/organizer';
+import { pendingTotal, useLeaguePending, type LeaguePending } from '../lib/data/organizer';
 import { organizeHref, organizedLeagueIds } from '../lib/organize';
+import { useNotifications } from './Notifications';
 
 /**
  * El número de la pestaña «Organizar» (solo en Pro): todo lo que espera por ti en las ligas que organizas (juegos por
- * aprobar, reclamos, resultados vencidos, listas de espera; lo mismo que Admin › Pendientes, de league_pending).
+ * aprobar, reclamos, resultados vencidos, listas de espera, de league_pending, más las notas nuevas del buzón). Es el
+ * mismo número que la fila «Organizas esta liga» de la Liga (useLeagueToDo) y lo que lista «Por hacer» en Hoy.
  *
  * Cada liga se cuenta con su propio componente (los hooks no van en un ciclo) y lo cuenta en una copia compartida: así
  * la barra, que se vuelve a montar en cada pantalla, sale con el número de una vez, sin parpadear.
@@ -44,9 +46,15 @@ export function setPendingCountForTests(lid: string, n: number): void {
   setCount(lid, n);
 }
 
+/** Lo que suma una liga: lo pendiente (league_pending) más sus notas nuevas del buzón (las de la campana). */
+export function leagueCount(p: LeaguePending | null | undefined, feeds: readonly { lid: string; suggestions: readonly unknown[] }[], lid: string): number {
+  return pendingTotal(p) + (feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0);
+}
+
 /** Cuenta lo pendiente de una liga (no dibuja nada). */
 function PendingProbe({ lid }: { lid: string }) {
-  const n = pendingTotal(useLeaguePending(lid).data);
+  const { feeds } = useNotifications();
+  const n = leagueCount(useLeaguePending(lid).data, feeds, lid);
   useEffect(() => setCount(lid, n), [lid, n]);
   return null;
 }

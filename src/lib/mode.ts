@@ -161,8 +161,9 @@ export async function chooseMode(uid: string, mode: UiMode, now = Date.now()): P
 
 /**
  * Pone de acuerdo el teléfono y la cuenta cuando el perfil ya se leyó (`server` no es undefined):
- * - lo elegido aquí que la cuenta no tiene se vuelve a mandar (una vez por sesión);
- * - si la cuenta ya lo tiene igual, solo se marca;
+ * - lo elegido aquí que la cuenta no tiene se vuelve a mandar (una vez por sesión) y solo queda marcado cuando la
+ *   cuenta contesta que lo guardó. Aunque el perfil diga lo mismo no se marca: puede ser la copia guardada en el
+ *   teléfono (vieja) y, si se marcara, el perfil nuevo de la base pisaría lo elegido aquí;
  * - si la cuenta tiene otro (elegido en otro teléfono), el teléfono se pone al día.
  * Con la base sin la columna (`undefined`) no hace nada: no tiene sentido llamar a una RPC que no existe.
  */
@@ -170,7 +171,6 @@ export function reconcileMode(uid: string, server: UiMode | null | undefined): v
   if (server === undefined) return;
   const local = localModeOf(uid);
   if (local && !local.synced) {
-    if (server === local.mode) return setLocalMode(uid, { ...local, synced: true });
     const attempt = `${uid}:${local.at}`;
     if (attempted.has(attempt)) return;
     attempted.add(attempt);

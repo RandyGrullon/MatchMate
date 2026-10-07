@@ -4,6 +4,7 @@
  */
 export { LiteOnly, ProOnly } from './ModeGate';
 export { MODE_OPTIONS, ModeSwitch } from './ModeSwitch';
+export { closeModeSheet, markModeSheetSeen, modeSheetSeen, openModeSheet, pickAction, useModeSheetState } from './modeSheet';
 export { ModeTag } from './ModeTag';
 export { MODE_TOAST_COPY, ModeToast, announceMode, hideModeToast, modeToastSnapshot, useSwitchMode } from './ModeToast';
 export { PRO_SUGGESTION_ID, proSuggestion, useProSuggestion } from './useProSuggestion';

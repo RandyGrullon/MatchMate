@@ -1,6 +1,7 @@
 /**
- * Las piezas del organizador dibujadas sin navegador (renderToString), con los datos de mentira: la pestaña
- * «Pendientes» (secciones, «Todo al día», primeros pasos), el aviso del inicio (al NoticeSlot) y «Hoy · Suspender».
+ * Las piezas del organizador dibujadas sin navegador (renderToString), con los datos de mentira: el aviso del inicio de
+ * la liga (al NoticeSlot, con «Ver» a Organizar), «Hoy · Suspender» y la fila «Suspender un día» de Temporada y fechas.
+ * «Por hacer» y «La liga» están en hub.test.ts.
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -9,8 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toLeaguePending, toSuspendPreview, type LeaguePending, type SuspendPreview } from '../../lib/data/organizer';
 import { LeagueContext, type LeagueCtx } from '../../lib/league';
 import { FeedbackProvider } from '../feedback';
-import { PendingHomeCard, PendingPanel, pendingNotice } from './Pending';
-import { SuspendTodayCard } from './SuspendDay';
+import { PendingHomeCard, pendingNotice } from './Pending';
+import { SuspendDayRow, SuspendTodayCard } from './SuspendDay';
 
 const data = vi.hoisted(() => ({ pending: null as LeaguePending | null, preview: null as SuspendPreview | null, asked: [] as unknown[] }));
 vi.mock('../../lib/data/organizer', async (orig) => ({
@@ -81,67 +82,14 @@ beforeEach(() => {
   notices.pro.length = 0;
 });
 
-describe('Admin › Pendientes', () => {
-  it('cada sección con sus enlaces, «Ver los N» y «Suspender un día»', () => {
-    data.pending = toLeaguePending(
-      {
-        ...base,
-        disputes: {
-          count: 6,
-          url: '/l/L1/juegos',
-          items: [{ id: 'm1', label: 'Ana / Luis vs Beto / Carla', note: 'Fue 6-4', url: '/l/L1/juegos?partido=m1' }],
-        },
-        claims: { count: 1, url: '/l/L1/admin?tab=reclamos', items: [{ id: 'c1', playerName: 'Pedro', claimantName: 'pedrito' }] },
-      },
-      'L1',
-    );
-    const out = render(h(PendingPanel));
-    expect(out).toContain('Resultados reclamados');
-    expect(out).toContain('href="/l/L1/juegos?partido=m1"');
-    expect(out).toContain('Ver los 6');
-    expect(out).toContain('pedrito dice que es Pedro');
-    expect(out).toContain('href="/l/L1/admin?tab=reclamos"');
-    expect(out).toContain('Suspender un día');
-    expect(out).not.toContain('Todo al día');
-  });
-
-  it('sin nada: «Todo al día»; liga nueva: los primeros pasos con los enlaces de esta app', () => {
-    data.pending = toLeaguePending(
-      {
-        ...base,
-        checklist: {
-          steps: [
-            { key: 'invite', label: 'Invita a alguien a la liga', done: true, url: '/l/L1/admin?tab=miembros' },
-            { key: 'players', label: 'Agrega a los jugadores', done: false, url: '/l/L1/admin?tab=jugadores' },
-          ],
-        },
-      },
-      'L1',
-    );
-    const out = render(h(PendingPanel, { playersTab: 'parejas' }));
-    expect(out).toContain('Todo al día');
-    expect(out).toContain('Primeros pasos');
-    expect(out).toContain('1<!-- --> de <!-- -->2<!-- --> listos');
-    expect(out).toContain('href="/l/L1/admin?tab=parejas"');
-    // Lo hecho no es enlace.
-    expect(out).not.toContain('href="/l/L1/admin?tab=liga"');
-  });
-
-  it('mientras carga, el esqueleto (no «Todo al día»)', () => {
-    const out = render(h(PendingPanel));
-    expect(out).toContain('skeleton');
-    expect(out).not.toContain('Todo al día');
-  });
-});
-
 describe('inicio de la liga', () => {
-  it('lo pendiente es el aviso más importante (admin), con «Ver» a Pendientes; vuelve si llega algo más', () => {
+  it('lo pendiente es el aviso más importante (admin), con «Ver» a Organizar de esa liga; vuelve si llega algo más', () => {
     const p = toLeaguePending({ ...base, submissions: { count: 2, url: '/l/L1/admin?tab=aprobar', items: [] } }, 'L1');
     expect(pendingNotice(p, 'L1', '/l/L1', 'liga')).toEqual({
       id: 'pendientes:L1:2',
       kind: 'admin',
       title: '2 juegos por aprobar',
-      action: { label: 'Ver', to: '/l/L1/admin?tab=pendientes' },
+      action: { label: 'Ver', to: '/organizar?liga=L1' },
     });
     const more = toLeaguePending({ ...base, submissions: { count: 3, url: '/l/L1/admin?tab=aprobar', items: [] } }, 'L1');
     expect(pendingNotice(more, 'L1', '/l/L1', 'liga')?.id).toBe('pendientes:L1:3');
@@ -165,7 +113,7 @@ describe('inicio de la liga', () => {
       kind: 'tip',
       title: 'Tu liga nueva',
       text: 'Primeros pasos: 1 de 2',
-      action: { label: 'Seguir', to: '/l/L1/admin?tab=pendientes' },
+      action: { label: 'Seguir', to: '/organizar?liga=L1' },
     });
     expect(pendingNotice(young, 'T1', '/l/T1', 'torneo')?.title).toBe('Tu torneo nuevo');
     expect(pendingNotice(toLeaguePending(base, 'L1'), 'L1', '/l/L1', 'liga')).toBeNull();
@@ -196,5 +144,12 @@ describe('inicio de la liga', () => {
     expect(out).toContain('Suspender');
     data.preview = toSuspendPreview({ counts: { matches: 0, locked: 2 } }, '2026-09-28');
     expect(render(h(SuspendTodayCard))).not.toContain('Suspender');
+  });
+
+  it('Temporada y fechas: la fila «Suspender un día» (se toca entera) dice a quién avisa', () => {
+    const out = render(h(SuspendDayRow));
+    expect(out).toContain('Suspender un día');
+    expect(out).toContain('avisa a toda la liga');
+    expect(out).toMatch(/<button[^>]*class="mm-row-main/);
   });
 });

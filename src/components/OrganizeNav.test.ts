@@ -20,10 +20,11 @@ vi.mock('../lib/data/members', () => ({
 }));
 vi.mock('../lib/data/organizer', () => ({
   useLeaguePending: () => ({ data: null, loading: false, error: null }),
-  pendingTotal: () => 0,
+  pendingTotal: (p: { total: number } | null | undefined) => p?.total ?? 0,
 }));
+vi.mock('./Notifications', () => ({ useNotifications: () => ({ feeds: [] }) }));
 
-const { MAX_COUNTED, pendingSum, setPendingCountForTests, useOrganize } = await import('./OrganizeNav');
+const { MAX_COUNTED, leagueCount, pendingSum, setPendingCountForTests, useOrganize } = await import('./OrganizeNav');
 
 function Probe({ on, out }: { on: boolean; out: { value?: ReturnType<typeof useOrganize> } }) {
   out.value = useOrganize(on);
@@ -65,6 +66,19 @@ describe('el número de Organizar', () => {
     const o = run(false);
     expect(o.total).toBe(0);
     expect(state.askedMembers).toEqual([undefined]);
+  });
+
+  it('cada liga cuenta lo pendiente y sus notas nuevas del buzón (como «Organizas esta liga» y «Por hacer»)', () => {
+    const p = { total: 2 } as Parameters<typeof leagueCount>[0];
+    const feeds = [
+      { lid: 'L1', suggestions: [{}] },
+      { lid: 'L3', suggestions: [{}, {}] },
+    ];
+    // 2 juegos por aprobar y 1 nota nueva: 3.
+    expect(leagueCount(p, feeds, 'L1')).toBe(3);
+    expect(leagueCount(null, feeds, 'L3')).toBe(2);
+    expect(leagueCount(p, [], 'L1')).toBe(2);
+    expect(leagueCount(undefined, [], 'L9')).toBe(0);
   });
 
   it('cuenta hasta un tope de ligas', () => {

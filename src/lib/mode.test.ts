@@ -209,10 +209,52 @@ describe('teléfono y cuenta de acuerdo (al leer el perfil)', () => {
     expect(localModeOf('u1')).toEqual({ mode: 'pro', at: 7, synced: true });
   });
 
-  it('si la cuenta ya lo tiene, solo se marca; si eligió otro en otro teléfono, este se pone al día', async () => {
+  it('aunque el perfil diga lo mismo, se manda y solo se marca cuando la cuenta lo guardó', async () => {
     setLocalMode('u1', { mode: 'pro', at: 3, synced: false });
+    let answer!: (v: unknown) => void;
+    data.rpc.mockReturnValueOnce(new Promise((r) => (answer = r)));
     reconcileMode('u1', 'pro');
+    expect(data.rpc).toHaveBeenCalledWith('set_ui_mode', { p_mode: 'pro' });
+    expect(localModeOf('u1')).toEqual({ mode: 'pro', at: 3, synced: false });
+    answer('pro');
+    await flush();
     expect(localModeOf('u1')).toEqual({ mode: 'pro', at: 3, synced: true });
+  });
+
+  it('copia vieja del perfil igual a lo elegido y luego el perfil nuevo con otro: manda lo elegido aquí', async () => {
+    // Pro en la cuenta; en este teléfono se eligió Lite y la cuenta no lo tiene. La copia guardada del perfil (vieja)
+    // dice Lite y el perfil recién leído, Pro.
+    data.cache.set('profile:u1', { id: 'u1', uiMode: 'lite' });
+    setLocalMode('u1', { mode: 'lite', at: 50, synced: false });
+    let answer!: (v: unknown) => void;
+    data.rpc.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    reconcileMode('u1', 'lite');
+    reconcileMode('u1', 'pro');
+    expect(resolveMode(localModeOf('u1'), 'pro')).toBe('lite');
+    expect(data.rpc).toHaveBeenCalledTimes(1);
+    expect(data.rpc).toHaveBeenCalledWith('set_ui_mode', { p_mode: 'lite' });
+    answer('lite');
+    await flush();
+    expect(localModeOf('u1')).toEqual({ mode: 'lite', at: 50, synced: true });
+    expect(data.cache.get('profile:u1')).toEqual({ id: 'u1', uiMode: 'lite' });
+    // El perfil queda en Lite: nada vuelve a Pro.
+    reconcileMode('u1', 'lite');
+    expect(resolveMode(localModeOf('u1'), 'lite')).toBe('lite');
+    expect(data.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('si la cuenta no lo pudo guardar, lo de aquí sigue mandando aunque el perfil diga otro', async () => {
+    setLocalMode('u1', { mode: 'lite', at: 9, synced: false });
+    data.rpc.mockRejectedValueOnce(new BackendError('Failed to fetch', 'network'));
+    reconcileMode('u1', 'lite');
+    await flush();
+    reconcileMode('u1', 'pro');
+    expect(localModeOf('u1')).toEqual({ mode: 'lite', at: 9, synced: false });
+    expect(resolveMode(localModeOf('u1'), 'pro')).toBe('lite');
+  });
+
+  it('si eligió otro en otro teléfono (lo de aquí ya estaba guardado), este se pone al día', async () => {
+    setLocalMode('u1', { mode: 'pro', at: 3, synced: true });
     reconcileMode('u1', 'lite');
     expect(localModeOf('u1')).toEqual({ mode: 'lite', at: 3, synced: true });
     // Sin nada en el teléfono, se copia el de la cuenta.

@@ -580,7 +580,8 @@ export function Tabs<K extends string>({
             aria-selected={active === it.key}
             onClick={() => onChange(it.key)}
             className={cx(
-              'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:flex-none',
+              // Se ve de 36 px y se toca en 44 (su ::after llega al borde de la barra).
+              "relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] sm:flex-none",
               active === it.key ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
             )}
           >

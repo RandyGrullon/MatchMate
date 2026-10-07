@@ -348,11 +348,18 @@ dialog[data-kb] .mm-kb-hide { display: none; }
 .mm-row.mm-row-me::before,
 .mm-row-me + .mm-row::before { display: none; }
 
-/* Opciones de un segmentado (Segmented en ui.tsx): se ven de 36 px, pero se tocan en 44 (con el borde de la barra). */
+/*
+ * Opciones de un segmentado (Segmented en ui.tsx): se ven de 36 px (o menos, como «Por juego | Por mes»), pero se tocan
+ * en 44 como mínimo (con el borde de la barra), centrado en la opción.
+ */
 .mm-seg-opt::after {
   content: '';
   position: absolute;
-  inset: -4px 0;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: max(100% + 8px, 44px);
+  transform: translateY(-50%);
 }
 
 /* Pestañas que se deslizan con el dedo sin mostrar la barra de scroll. */

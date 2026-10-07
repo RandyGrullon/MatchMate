@@ -35,7 +35,7 @@ vi.mock('./OutboxIndicator', () => ({ OutboxIndicator: () => null }));
 // La barra «Sin conexión» lee navigator.onLine (en Node no hay navegador).
 vi.stubGlobal('navigator', { onLine: true });
 
-const { AppFrame, BottomNav, DesktopNav, currentSection, navSections, ownSportTint, showSportSwitcher } = await import('./Shell');
+const { AppFrame, BottomNav, DesktopNav, currentSection, navSections, ownSportTint, showSportSwitcher, usesOwnTint } = await import('./Shell');
 const { announceMode, hideModeToast } = await import('./mode/ModeToast');
 
 const render = (el: ReturnType<typeof h>, url = '/') => renderToString(h(MemoryRouter, { initialEntries: [url] }, el));
@@ -196,14 +196,14 @@ describe('la barra de arriba y el selector de deporte', () => {
     expect(out.indexOf('data-slot')).toBeLessThan(out.indexOf('CONTENIDO'));
   });
 
-  it('con varios deportes, el selector arriba (también en el teléfono)', () => {
+  it('con varios deportes, el selector arriba solo en la computadora: en el teléfono no hay barra (chips en Ligas)', () => {
     state.leagues = [
       { id: 'L1', sport: 'bowling' },
       { id: 'L2', sport: 'padel' },
     ];
     const out = render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/');
-    expect(out).toContain('SELECTOR');
-    expect(out).not.toMatch(/class="[^"]*sticky top-0[^"]*max-sm:hidden/);
+    expect(out).toMatch(/<div class="contents max-sm:hidden">(?:(?!<\/header>).)*SELECTOR/);
+    expect(out).toMatch(/class="[^"]*sticky top-0[^"]*max-sm:hidden/);
   });
 
   it('dentro de una liga la barra de arriba sigue (su nombre y sus pestañas), sin selector si juega uno', () => {
@@ -215,24 +215,34 @@ describe('la barra de arriba y el selector de deporte', () => {
   });
 });
 
-describe('un solo acento en Hoy aunque la app quedó en otro deporte', () => {
-  it('el color de tu deporte (el boliche si lo juegas) cuando el elegido no es tuyo; si no, el de la app', () => {
+describe('un solo acento fuera de las ligas aunque la app quedó en otro deporte', () => {
+  it('el color de tu deporte (el boliche si lo juegas), también si juegas el otro (entraste a tu liga de pádel)', () => {
     expect(ownSportTint(['bowling'], 'padel')).toBe('bowling');
     expect(ownSportTint(['padel', 'bowling'], 'tennis')).toBe('bowling');
+    expect(ownSportTint(['bowling', 'padel'], 'padel')).toBe('bowling');
     expect(ownSportTint(['padel'], 'tennis')).toBe('padel');
+    // Juegas solo pádel y la app no tiene deporte (el morado de siempre): el del pádel.
+    expect(ownSportTint(['padel'], null)).toBe('padel');
     expect(ownSportTint(['bowling'], 'bowling')).toBeNull();
     expect(ownSportTint(['bowling'], null)).toBeNull();
+    expect(ownSportTint(['padel'], 'padel')).toBeNull();
     expect(ownSportTint([], 'padel')).toBeNull();
   });
 
-  it('Hoy (y su barra) van en el color del boliche; «Pádel ▾» arriba sigue en el suyo. En Ligas, el del pádel', () => {
+  it('fuera de una liga (Hoy, Ligas, Yo, Organizar); adentro, el de la liga; en /d/:sport, ese deporte', () => {
+    for (const p of ['/', '/ligas', '/perfil', '/organizar', '/avisos']) expect(usesOwnTint(p)).toBe(true);
+    for (const p of ['/l/L1', '/l/L1/e/E1', '/d/padel']) expect(usesOwnTint(p)).toBe(false);
+  });
+
+  it('Hoy y Ligas (y su barra) van en el color del boliche aunque la app quedó en pádel; «Pádel ▾» arriba sigue en el suyo', () => {
     state.active = 'padel';
     const hoy = render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/');
     expect(hoy).toMatch(/<div class="mm-tint-bowling [^"]*min-h-dvh/);
     expect(hoy).toMatch(/class="mm-tint-padel contents"[^>]*>(<style[^>]*>[^<]*<\/style>)?<span>SELECTOR/);
     const ligas = render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/ligas');
-    expect(ligas).not.toContain('mm-tint-bowling');
-    expect(ligas).toContain('SELECTOR');
+    expect(ligas).toMatch(/<div class="mm-tint-bowling [^"]*min-h-dvh/);
+    // Dentro de una liga (la de pádel), el color de la app (el de la liga).
+    expect(render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/l/L2')).not.toContain('mm-tint-bowling');
   });
 });
 

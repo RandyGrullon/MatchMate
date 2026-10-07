@@ -1,6 +1,8 @@
+import { useAuth } from '../../lib/auth';
 import { useMode } from '../../lib/useMode';
 import type { Notice } from '../../lib/notices';
 import { useNotice } from '../NoticeSlot';
+import { modeSheetSeen, openModeSheet } from './modeSheet';
 import { announceMode } from './ModeToast';
 
 /** id fijo: se sugiere Pro una sola vez (cerrado en una pantalla, no vuelve en ninguna). */
@@ -24,16 +26,18 @@ export function proSuggestion(
 
 /**
  * Propone (al NoticeSlot de la pantalla) sugerir Pro a quien organiza una liga y está en Lite: la Liga lo llama con
- * `{ title: 'Organizas esta liga' }`. «Probar Pro» cambia el modo (con «Modo Pro activado · Deshacer»); la X lo cierra
- * para siempre (en ese teléfono).
+ * `{ title: 'Organizas esta liga' }`. «Probar Pro» abre la hoja «Elige cómo ver la app» con Pro «Para ti» si nunca la
+ * vio (se cambia desde ahí); si ya la vio, cambia el modo (con «Modo Pro activado · Deshacer»). La X lo cierra para
+ * siempre (en ese teléfono).
  * Es el de menos prioridad: si hay algo pendiente, instalar o permitir avisos, sale eso.
  */
 export function useProSuggestion(copy: { title?: string; text?: string; enabled?: boolean } = {}): void {
   const { mode, suggestedPro, setMode } = useMode();
-  // «Probar Pro» cambia al momento y lo dice abajo, con «Deshacer».
+  const { user } = useAuth();
   useNotice(
     copy.enabled !== false &&
       proSuggestion({ mode, suggestedPro }, copy, () => {
+        if (!modeSheetSeen(user?.uid)) return openModeSheet('pro', user?.uid);
         announceMode(mode, 'pro');
         return setMode('pro');
       }),
