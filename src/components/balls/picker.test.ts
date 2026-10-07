@@ -200,10 +200,28 @@ describe('la fila de bolas en la hoja de anotar', () => {
     return renderToString(h(GameBallSelect, { balls, initial: 'a', choice, game: 2, ...p }));
   };
 
+  it('un chip «Bola: Phaze II 15 lb ▾» (38 px a la vista, 44 para el dedo) que abre la fila debajo', () => {
+    const out = row();
+    // El chip: la bola dibujada (28 px), «Bola:» y su nombre con el peso.
+    const chip = out.match(/<button[^>]*aria-expanded="false"[^>]*aria-controls="([^"]+)"[^>]*>(.*?)<\/button>/);
+    expect(chip).not.toBeNull();
+    expect(text(chip![2]).trim()).toBe('Bola: Phaze II 15 lb');
+    expect(chip![0]).toContain('min-h-11');
+    expect(chip![0]).toContain('h-[38px]');
+    expect(chip![2]).toMatch(/<svg[^>]*width="28"/);
+    // El nombre del chip no se confunde con el botón de la bola de un juego en las listas («Bola del juego 3: …»).
+    expect(chip![0]).not.toContain('aria-label');
+    // La fila está cerrada hasta tocar el chip (y es la que el chip abre).
+    expect(out).toContain(`<div id="${chip![1]}" hidden=""`);
+    // Sin bola, el círculo punteado; sin ninguna para elegir, con un +.
+    expect(text(row({ initial: null }))).toContain('Bola: Sin bola');
+    expect(row({ balls: [], initial: null })).toMatch(/aria-expanded="false"[^>]*>(?:(?!<\/button>).)*border-dashed(?:(?!<\/button>).)*lucide-plus/);
+  });
+
   it('«Sin bola» y las bolas dibujadas con su nombre, la del juego marcada, y «Agregar»', () => {
     const out = row();
     const t = text(out);
-    expect(t).toContain('Bola de este juego');
+    expect(t).toContain('Bola:');
     expect(out).toContain('role="radiogroup" aria-label="Bola del juego 3"');
     expect(count(out, /role="radio"/)).toBe(3);
     expect(out).toContain('role="radio" aria-checked="true" aria-label="Phaze II (15 lb)"');

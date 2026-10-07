@@ -15,8 +15,11 @@ import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { BusyIcon } from '../busy';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
-import { clearGameDraft, gameKey, myGamesPlace } from '../frames/draftMemory';
+import { clearGameDraft, gameKey, myGamesPlace, readGameDraft } from '../frames/draftMemory';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
+import { eventLabel } from '../../lib/format';
+import { nextGameLabel, partialGame, useMemoryTick, type PartialGame } from '../../lib/useNextGame';
+import { todayTitle } from '../home/logic';
 import { Badge, Button, Card, cx } from '../ui';
 import { MarkIcon, MarksLine } from './GameMarks';
 
@@ -67,6 +70,7 @@ export function MyGamesPanel({
   onOpenEntry,
   onSend,
   marks,
+  onAutoDone,
 }: {
   event: BowlingEvent;
   playerId: string;
@@ -82,6 +86,11 @@ export function MyGamesPanel({
   onSend: () => void;
   /** «Récord personal» y «+15 sobre tu promedio» de los juegos que ya están en la tabla. */
   marks?: (GameMark | null)[] | null;
+  /**
+   * Se cerró la hoja que se abrió sola (autoStart): quien abrió Anotar desde otra pantalla (Hoy, la Liga) vuelve allá
+   * al cerrarla, al guardar el juego o con «Guardar y salir».
+   */
+  onAutoDone?: () => void;
 }) {
   const { lid } = useLeagueCtx();
   const { toast, confirm } = useFeedback();
@@ -119,6 +128,21 @@ export function MyGamesPanel({
   const notYet = event.date > today;
   // Desde "En juego ahora" (autoStart) el próximo juego por anotar ya sale abierto al dibujar la primera vez.
   const [editing, setEditing] = useState<number | null>(() => (autoStart && !notYet && nextEmpty >= 0 ? nextEmpty : null));
+  // La hoja que se abrió sola (autoStart): al cerrarla se avisa (onAutoDone) para volver a la pantalla de donde vino.
+  const autoOpened = useRef(editing != null);
+  // Lo que quedó a medias en la hoja de anotar (draftMemory) en cada juego sin número: «A medias» y «Seguir mi juego 3»,
+  // igual que en Hoy (useNextGame). Se vuelve a leer al volver a la app o cuando el teléfono guarda algo.
+  useMemoryTick();
+  const place = myGamesPlace(getUserId(), lid, playerId, event.id);
+  const halfway: (PartialGame | null)[] = cells.map((c, i) => (c.kind === 'vacio' ? partialGame(readGameDraft(gameKey(place, i))) : null));
+  const nextHalf = nextEmpty >= 0 ? halfway[nextEmpty] : null;
+  /** «Seguir mi juego 3» si quedó a medias; si no, «Anotar juego 3» (los textos de Hoy). `short`: «Seguir juego 3» o «Juego 3». */
+  const nextLabel = (short = false) =>
+    nextHalf
+      ? nextGameLabel({ kind: 'medias', game: nextEmpty + 1, progress: nextHalf.progress, to: '' }, { pro: short })
+      : short
+        ? `Juego ${nextEmpty + 1}`
+        : nextGameLabel({ kind: 'anotar', game: nextEmpty + 1, to: '' });
 
   // La bola de cada juego, en su casilla y al abrirlo. Los del teléfono: ballOf (la misma que se envía). Los que ya
   // salieron del teléfono (en la tabla o enviados): lo de la cola encima de lo del servidor. Sin bolas en la cuenta no se
@@ -204,6 +228,16 @@ export function MyGamesPanel({
     setEditing((e) => e ?? openAdded);
   }, [openAdded, count]);
 
+  /** Se cierra la hoja (la X, «Guardar y salir», guardar o borrar el juego). */
+  function closeSheet() {
+    setEditing(null);
+    setMode(preferredMode());
+    if (autoOpened.current) {
+      autoOpened.current = false;
+      onAutoDone?.();
+    }
+  }
+
   function save(i: number, v: ScoreValue | null) {
     const values = Array.from({ length: count }, (_, j) => draft?.values[j] ?? '');
     values[i] = v?.score == null ? '' : String(v.score);
@@ -213,9 +247,8 @@ export function MyGamesPanel({
     // La bola solo si salió arriba (con la lista de bolas leída): si no, la de ese juego no se toca.
     const balls = draftBallsAfter(draft?.balls, i, v, choice.canPick ? ballPick.current : undefined);
     saveDraft(lid, playerId, event.id, { values, frames, balls });
-    setEditing(null);
-    setMode(preferredMode());
     toast(v ? `Juego ${i + 1} guardado en tu teléfono` : `Juego ${i + 1} borrado`);
+    closeSheet();
   }
 
   // Desde "En juego ahora": abre directo el próximo juego por anotar (al entrar ya salió abierto; si llega estando aquí,
@@ -226,7 +259,10 @@ export function MyGamesPanel({
     started.current = true;
     onAutoStarted();
     const first = cells.findIndex((c) => c.kind === 'vacio');
-    if (editing == null && !notYet && first >= 0) edit(first);
+    if (editing == null && !notYet && first >= 0) {
+      autoOpened.current = true;
+      edit(first);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
 
@@ -243,7 +279,7 @@ export function MyGamesPanel({
   const editBall = sentBall !== undefined ? sentBall : editing != null ? ballOf(editing) : null;
   // Lo que va anotando en la hoja queda en el teléfono aunque la cierre sin guardar: por cuenta, jugador, evento y juego
   // (la misma que «Subir mis juegos» de ese evento: es el mismo juego en el teléfono).
-  const memoryKey = editing != null ? gameKey(myGamesPlace(getUserId(), lid, playerId, event.id), editing) : undefined;
+  const memoryKey = editing != null ? gameKey(place, editing) : undefined;
 
   return (
     <Card className={cx('flex flex-col gap-3 p-4', live.live && !notYet && 'border-ok/40')}>
@@ -290,14 +326,17 @@ export function MyGamesPanel({
                 key={i}
                 type="button"
                 onClick={() => (c.kind === 'tabla' ? onOpenEntry() : edit(i))}
-                aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? ': anotar' : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`}
+                aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? (halfway[i] ? ': a medias' : ': anotar') : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`}
                 className={cx(
                   'flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 transition active:scale-95',
                   c.kind === 'tabla' &&
                     (c.counted ? (hasMark(marks?.[i]) ? 'border-accent/50 bg-accent-soft/60' : 'border-ok/40 bg-ok-soft/50') : 'border-line bg-surface-2'),
                   c.kind === 'telefono' && 'border-accent/50 bg-accent-soft/50',
                   c.kind === 'enviado' && 'border-warn/40 bg-warn-soft/40',
-                  c.kind === 'vacio' && 'border-dashed border-line text-muted hover:border-accent hover:text-accent',
+                  c.kind === 'vacio' &&
+                    (halfway[i]
+                      ? 'border-dashed border-accent bg-accent-soft text-accent'
+                      : 'border-dashed border-line text-muted hover:border-accent hover:text-accent'),
                 )}
               >
                 <span className="flex items-center gap-0.5 text-[11px] font-medium text-muted">
@@ -306,7 +345,14 @@ export function MyGamesPanel({
                   {tileBalls[i] && <BallArt ball={tileBalls[i]} size={18} className="shrink-0" />}
                 </span>
                 {c.kind === 'vacio' ? (
-                  <Plus className="size-5" />
+                  // A medias: lo que lleva («74…»), o el lápiz si todavía no suma nada.
+                  halfway[i]?.score ? (
+                    <span className="text-lg leading-none font-bold tabular-nums">{halfway[i]!.score}…</span>
+                  ) : halfway[i] ? (
+                    <PencilLine className="size-5" />
+                  ) : (
+                    <Plus className="size-5" />
+                  )
                 ) : (
                   <span className="text-lg leading-none font-bold tabular-nums">{c.score}</span>
                 )}
@@ -331,6 +377,8 @@ export function MyGamesPanel({
                     <>
                       <Clock className="size-3 text-warn" /> Enviado
                     </>
+                  ) : halfway[i] ? (
+                    <span className="font-semibold text-accent">A medias</span>
                   ) : (
                     'Anotar'
                   )}
@@ -389,7 +437,7 @@ export function MyGamesPanel({
               <div className="flex gap-2">
                 {nextEmpty >= 0 && (
                   <Button icon={<PencilLine className="size-4" />} onClick={() => edit(nextEmpty)}>
-                    Juego {nextEmpty + 1}
+                    {nextLabel(true)}
                   </Button>
                 )}
                 <Button variant="primary" className="flex-1" icon={<Send className="size-4" />} onClick={onSend} data-tour="enviar">
@@ -403,7 +451,7 @@ export function MyGamesPanel({
           ) : nextEmpty >= 0 ? (
             <>
               <Button variant="primary" icon={<PencilLine className="size-4" />} onClick={() => edit(nextEmpty)} data-tour="anotar">
-                Anotar juego {nextEmpty + 1}
+                {nextLabel()}
               </Button>
               <button type="button" onClick={onSend} className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted hover:text-fg">
                 <Camera className="size-3.5" /> O sube la foto del marcador y se leen solos
@@ -423,11 +471,9 @@ export function MyGamesPanel({
           y arranca con la última que usó. Se vuelve a montar con cada juego. */}
       <ScoreEntryModal
         open={editing != null}
-        onClose={() => {
-          setEditing(null);
-          setMode(preferredMode());
-        }}
+        onClose={closeSheet}
         title={editing != null ? `Juego ${editing + 1}` : ''}
+        subtitle={event.date === today ? todayTitle(event, today) : eventLabel(event)}
         resetKey={String(editing)}
         memoryKey={memoryKey}
         initial={initial}
@@ -438,11 +484,10 @@ export function MyGamesPanel({
         }
         saveText="Guardar"
         onSave={(v) => save(editing!, v)}
+        // «Guardado en tu teléfono» ya sale arriba: abajo solo «Borrar» el juego que está en el teléfono.
         note={
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <Smartphone className="size-4 shrink-0" />
-            <span className="flex-1">Se guarda en tu teléfono. Al terminar, envíalo a revisión.</span>
-            {editingCell?.kind === 'telefono' && (
+          editingCell?.kind === 'telefono' && (
+            <div className="flex justify-center">
               <Button
                 variant="ghost"
                 size="sm"
@@ -454,10 +499,10 @@ export function MyGamesPanel({
                   save(editing!, null);
                 }}
               >
-                Borrar
+                Borrar este juego
               </Button>
-            )}
-          </div>
+            </div>
+          )
         }
       />
     </Card>

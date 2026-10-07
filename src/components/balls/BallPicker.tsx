@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Plus } from 'lucide-react';
 import { BALL_MAX, ballDetail, ballLabel, defaultBall, gameBallTitle, pickableBalls, type Ball } from '../../lib/balls';
@@ -328,10 +328,11 @@ export function BallIcon({ className }: { className?: string }) {
 }
 
 /**
- * La bola de un juego dentro de la hoja de anotar (arriba del editor): una fila de bolas dibujadas («Sin bola», las que
- * no están retiradas y la que ya tenía) que se desliza de lado sola (no la hoja) y, al final, «Agregar» (la hoja de una
- * bola nueva encima; al guardarla queda elegida). Se monta con la del juego (`key` = el juego) y deja lo elegido en
- * `choice`: quien abre la hoja lo aplica al guardar el juego (cancelar no cambia nada).
+ * La bola de un juego dentro de la hoja de anotar (arriba del editor): un chip «Bola: Phaze II 15 lb ▾» que abre debajo la
+ * fila de bolas dibujadas («Sin bola», las que no están retiradas y la que ya tenía), que se desliza de lado sola (no la
+ * hoja) y, al final, «Agregar» (la hoja de una bola nueva encima; al guardarla queda elegida). Elegir una cierra la fila.
+ * Se monta con la del juego (`key` = el juego) y deja lo elegido en `choice`: quien abre la hoja lo aplica al guardar el
+ * juego (cancelar no cambia nada).
  */
 export function GameBallSelect({
   balls,
@@ -349,8 +350,11 @@ export function GameBallSelect({
   today?: string;
 }) {
   const [value, setValue] = useState(initial);
+  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const row = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  const rowId = useId();
   useEffect(() => {
     choice.current = initial;
     // Solo al abrir este juego (la hoja la vuelve a montar con otro `key`).
@@ -360,13 +364,23 @@ export function GameBallSelect({
     setValue(id);
     choice.current = id;
   };
+  /** Eligió una: se cierra la fila y el foco vuelve al chip (la casilla tocada ya no se ve). */
+  const pick = (id: string | null) => {
+    set(id);
+    setOpen(false);
+    chip.current?.focus();
+  };
   // La retirada que tenía el juego sigue en la fila aunque toque otra (hasta guardar todavía es la suya: se puede volver).
   const options = pickableBalls(balls, value, initial);
+  const current = value ? (balls.find((b) => b.id === value) ?? null) : null;
   // «Sin bola» también si la que tenía ya no existe (se borró).
-  const noBall = value === null || !balls.some((b) => b.id === value);
-  // La elegida a la vista (con muchas bolas no caben todas). Solo se desliza la fila: scrollIntoView movería también la
-  // hoja. En el siguiente cuadro: al abrir, la hoja todavía no se ve (se abre después que esto).
+  const noBall = !current;
+  // La cuenta no tiene ninguna para elegir: el círculo punteado lleva un + («Agregar» está en la fila).
+  const none = noBall && !pickableBalls(balls).length;
+  // La elegida a la vista al abrir la fila (con muchas bolas no caben todas). Solo se desliza la fila: scrollIntoView
+  // movería también la hoja. En el siguiente cuadro: la fila recién se muestra.
   useEffect(() => {
+    if (!open) return;
     const frame = requestAnimationFrame(() => {
       const box = row.current;
       const el = box?.querySelector<HTMLElement>('[aria-checked="true"]');
@@ -376,23 +390,41 @@ export function GameBallSelect({
       if (left < box.scrollLeft || left + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollTo({ left: left - 20 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [value, options.length]);
+  }, [open, value, options.length]);
   return (
-    <div className="flex flex-col gap-1.5">
-      <span aria-hidden="true" className="text-xs font-medium text-muted">
-        Bola de este juego
-      </span>
+    <div className="flex flex-col items-center">
+      {/* 38 px a la vista, 44 para el dedo. El nombre que se lee es el del chip («Bola: Phaze II 15 lb»). */}
+      <button
+        ref={chip}
+        type="button"
+        aria-expanded={open}
+        aria-controls={rowId}
+        onClick={() => setOpen((o) => !o)}
+        className="group -my-[3px] flex min-h-11 max-w-full items-center focus-visible:outline-none"
+      >
+        <span className="inline-flex h-[38px] max-w-full min-w-0 items-center gap-2 rounded-full bg-surface-2 pr-3 pl-1.5 text-[15px] font-semibold text-fg transition group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent group-active:scale-[0.97]">
+          {current ? <BallArt ball={current} size={28} className="shrink-0" /> : <NoBallMark size={24} add={none} />}
+          <span className="shrink-0 font-medium text-muted">Bola:</span>
+          <span className="min-w-0 truncate">{current ? `${current.name} ${current.weight} lb` : 'Sin bola'}</span>
+          <ChevronDown className={cx('size-4 shrink-0 text-muted transition', open && 'rotate-180')} aria-hidden="true" />
+        </span>
+      </button>
       {/* -mx-5 px-5: lo mismo que el margen de la hoja (si no, la hoja también se deslizaría de lado). */}
-      <div ref={row} className="no-scrollbar relative -mx-5 flex gap-1 overflow-x-auto overscroll-x-contain px-5 py-1">
+      <div
+        id={rowId}
+        ref={row}
+        hidden={!open}
+        className="no-scrollbar relative -mx-5 flex w-[calc(100%+2.5rem)] gap-1 overflow-x-auto overscroll-x-contain px-5 py-1"
+      >
         <div role="radiogroup" aria-label={game != null ? gameBallTitle(game) : 'Bola de este juego'} className="flex shrink-0 gap-1">
-          <BallTile ball={null} checked={noBall} onSelect={() => set(null)} />
+          <BallTile ball={null} checked={noBall} onSelect={() => pick(null)} />
           {options.map((b) => (
-            <BallTile key={b.id} ball={b} checked={value === b.id} onSelect={() => set(b.id)} />
+            <BallTile key={b.id} ball={b} checked={value === b.id} onSelect={() => pick(b.id)} />
           ))}
         </div>
         {balls.length < BALL_MAX && <AddTile onClick={() => setAdding(true)} />}
       </div>
-      {adding && inBody(<BallSheet ball={null} today={today ?? toIsoDate(new Date())} onSaved={set} onClose={() => setAdding(false)} />)}
+      {adding && inBody(<BallSheet ball={null} today={today ?? toIsoDate(new Date())} onSaved={pick} onClose={() => setAdding(false)} />)}
     </div>
   );
 }

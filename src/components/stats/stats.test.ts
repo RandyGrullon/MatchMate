@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { ALL_PINS } from '../../lib/bowling';
 import type { GameFrames } from '../../lib/types';
 import { FrameEditor, editorValue } from '../frames/FrameEditor';
-import { FramesGrid } from '../frames/FramesGrid';
+import { FramesGrid, FramesSheet } from '../frames/FramesGrid';
 import { heatStyle } from '../frames/PinHeatDeck';
 import { FrameStatsPanel, heatPins } from './FrameStatsPanel';
 import { monthLabels, TrendSection } from './TrendSection';
@@ -173,26 +173,30 @@ describe('la hoja y el editor', () => {
     expect(renderToString(h(FramesGrid, { rolls: GAME.rolls, compact: true }))).not.toContain('data-split');
   });
 
-  it('en la hoja que se toca, el split también se dice en la casilla', () => {
-    const out = renderToString(h(FramesGrid, { rolls: GAME.rolls, masks: GAME.masks, onSelect: () => undefined }));
+  it('en la hoja que se toca (la de anotar, 2 × 5), el split también se dice en el tiro', () => {
+    const out = renderToString(h(FramesSheet, { rolls: GAME.rolls, masks: GAME.masks, onSelect: () => undefined }));
     expect(out).toContain('aria-label="Cuadro 3, tiro 1: 8 (split)"');
-    // El tiro de al lado (el que se toca para corregir) tiene el mismo ancho que los demás: su botón también se achica.
-    expect(out.match(/<button[^>]*aria-label="Cuadro 3, tiro 2: -"[^>]*>/)?.[0]).toContain('class="flex min-w-0 flex-1');
+    expect(out.match(/data-split/g)).toHaveLength(1);
+    // El tiro de al lado también se toca (de arriba abajo del cuadro) para corregirlo.
+    expect(out.match(/<button[^>]*aria-label="Cuadro 3, tiro 2: -"[^>]*>/)?.[0]).toContain('h-full');
+    // El círculo no pasa del ancho de su casilla.
+    expect(out).toContain('w-[min(1.4em,100%)]');
   });
 
   it('el botón de cuadros abre por cuadros aunque el juego tenga total (y avisa que tiene solo el total)', () => {
     const onChange = () => undefined;
+    // La forma de anotar está en «Teclado ▾» (data-mode dice cuál).
     const withTotal = renderToString(h(FrameEditor, { initial: { score: 180, frames: null }, onChange }));
-    expect(withTotal).toMatch(/aria-selected="true"[^>]*>(?:(?!<\/button>).)*Total/);
+    expect(withTotal).toContain('data-mode="total"');
     const byFrames = renderToString(h(FrameEditor, { initial: { score: 180, frames: null }, onChange, startMode: 'teclado' }));
-    expect(byFrames).toMatch(/aria-selected="true"[^>]*>(?:(?!<\/button>).)*Teclado/);
+    expect(byFrames).toContain('data-mode="teclado"');
     expect(text(byFrames)).toContain('Este juego tiene 180 anotado solo con el total.');
     // Con cuadros manda lo que tiene (pines si se anotó con pines).
     const withPins = renderToString(h(FrameEditor, { initial: { score: 0, frames: GAME }, onChange, startMode: 'teclado' }));
-    expect(withPins).toMatch(/aria-selected="true"[^>]*>(?:(?!<\/button>).)*Pines/);
+    expect(withPins).toContain('data-mode="pines"');
     expect(text(withPins)).not.toContain('solo con el total');
-    // Las pestañas se tocan fácil (44 px).
-    expect(byFrames.match(/role="tab"[^>]*min-h-11/g)).toHaveLength(3);
+    // El botón de la forma de anotar se toca fácil (44 px).
+    expect(byFrames).toMatch(/data-mode-trigger=""[^>]*class="[^"]*\bh-11\b/);
     expect(text(byFrames)).toContain('o guárdalo así y se queda con el total');
   });
 

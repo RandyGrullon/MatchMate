@@ -282,7 +282,9 @@ describe('Mis juegos: la bola arriba del juego que se anota', () => {
       if (!uid) world.uid = null;
       const out = render({ autoStart: true });
       expect(out).toContain('<dialog');
-      expect(out).toContain('Se guarda en tu teléfono');
+      // «Juego 1» con el evento debajo (la línea vieja de abajo ya no está: «Guardado en tu teléfono» va arriba).
+      expect(out).toMatch(/Juego 1<\/h2><p[^>]*>Práctica<\/p>/);
+      expect(out).not.toContain('Al terminar, envíalo a revisión');
       expect(out).not.toContain('Bola de este juego');
       expect(out).not.toContain('Agregar bola');
     }

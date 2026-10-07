@@ -40,11 +40,11 @@ const noop = () => undefined;
 describe('elegir la bola al anotar', () => {
   const balls = [ball('a'), ball('b', { name: 'Spare', weight: 14, color: '#f8fafc' }), ball('c', { name: 'Vieja', retired: true })];
 
-  it('la de un juego, dentro de la hoja de anotar: la fila de bolas dibujadas, con la del juego marcada', () => {
+  it('la de un juego, dentro de la hoja de anotar: el chip «Bola: …» y la fila de bolas dibujadas, con la del juego marcada', () => {
     const choice = createRef<string | null>() as { current: string | null };
     const out = renderToString(h(GameBallSelect, { balls, initial: 'a', choice }));
-    expect(text(out)).toContain('Bola de este juego');
-    expect(out).toContain('role="radiogroup"');
+    expect(text(out)).toContain('Bola: Phaze II 15 lb');
+    expect(out).toContain('role="radiogroup" aria-label="Bola de este juego"');
     expect(out).toContain('role="radio" aria-checked="true" aria-label="Phaze II (15 lb)"');
     expect(out).toContain('role="radio" aria-checked="false" aria-label="Sin bola"');
     expect(out).toContain('aria-label="Agregar bola"');

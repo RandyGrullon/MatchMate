@@ -54,7 +54,7 @@ const league: League = {
 const ctx: LeagueCtx = { lid: 'L1', league, member: null, isAdmin: false, isOwner: false, isScorer: false, canScore: false, myPlayerId: 'p1', base: '/l/L1' };
 const practice: BowlingEvent = { id: 'E1', type: 'practica', name: 'Práctica', date: TODAY, games: 3, hcpBase: 0, hcpPercent: 0, teams: {}, playerCount: 1 };
 
-const render = () =>
+const render = ({ event = practice, autoStart = true }: { event?: BowlingEvent; autoStart?: boolean } = {}) =>
   renderToString(
     h(
       MemoryRouter,
@@ -66,13 +66,13 @@ const render = () =>
           LeagueContext.Provider,
           { value: ctx },
           h(MyGamesPanel, {
-            event: practice,
+            event,
             playerId: 'p1',
             entry: null,
             subs: [],
             live: { live: true, startLabel: null, startsSoon: false },
             today: TODAY,
-            autoStart: true,
+            autoStart,
             onAutoStarted: () => undefined,
             onOpenEntry: () => undefined,
             onSend: () => undefined,
@@ -107,7 +107,7 @@ describe('Mis juegos: el juego a medias no se pierde al cerrar la hoja', () => {
     expect(t).toContain(NOTICE);
     expect(t).toContain('Descartar');
     expect(out).toContain('data-max="280"');
-    expect(t).toContain('Máximo posible Máx. 280');
+    expect(t).toContain('Máximo posible Máx. posible 280');
   });
 
   it('la de otro juego, otro evento, otro jugador u otra cuenta no sale', () => {
@@ -119,5 +119,44 @@ describe('Mis juegos: el juego a medias no se pierde al cerrar la hoja', () => {
     const t = text(render());
     expect(t).toContain('Juego 2');
     expect(t).not.toContain(NOTICE);
+  });
+});
+
+describe('Mis juegos dice lo mismo que Hoy (useNextGame)', () => {
+  it('el juego que quedó a medias: la ficha «A medias» (con lo que lleva) y «Seguir mi juego 2»', () => {
+    world.draft = { eventId: 'E1', values: ['200'] };
+    remember(gameKey(myGamesPlace('u-memoria', 'L1', 'p1', 'E1'), 1), [10, 9, 0]);
+    const out = render({ autoStart: false });
+    const t = text(out);
+    expect(t).toContain('J2 28… A medias');
+    expect(out).toContain('aria-label="Juego 2: a medias"');
+    expect(t).toContain('Seguir juego 2');
+    expect(t).not.toContain('Anotar juego 2');
+  });
+
+  it('sin nada en el teléfono: «Anotar juego 2» y la ficha vacía', () => {
+    world.draft = { eventId: 'E1', values: [] };
+    const t = text(render({ event: { ...practice, name: '' }, autoStart: false }));
+    expect(t).toContain('Anotar juego 1');
+    expect(t).not.toContain('A medias');
+  });
+
+  it('a medias y sin nada guardado todavía: «Seguir mi juego 1» como botón principal', () => {
+    world.draft = { eventId: 'E1', values: [] };
+    remember(gameKey(myGamesPlace('u-memoria', 'L1', 'p1', 'E1'), 0), [10]);
+    const out = render({ autoStart: false });
+    const t = text(out);
+    expect(t).toContain('Seguir mi juego 1');
+    // Todavía no suma nada (el strike espera sus dos tiros): el lápiz, no «0…».
+    expect(t).toContain('J1 A medias');
+    expect(t).not.toContain('0…');
+  });
+
+  it('la hoja: «Juego 1» con «Práctica de hoy» debajo, sin la línea de abajo; «Borrar este juego» solo si está en el teléfono', () => {
+    world.draft = { eventId: 'E1', values: [] };
+    const out = render({ event: { ...practice, name: '' } });
+    expect(out).toMatch(/Juego 1<\/h2><p[^>]*>Práctica de hoy<\/p>/);
+    expect(text(out)).not.toContain('Al terminar, envíalo a revisión');
+    expect(text(out)).not.toContain('Borrar este juego');
   });
 });

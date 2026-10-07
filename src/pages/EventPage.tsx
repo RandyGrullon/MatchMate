@@ -99,6 +99,11 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const run = useAction();
   const { confirm, toast } = useFeedback();
   const [params, setParams] = useSearchParams();
+  // Anotar abierto desde otra pantalla de la app (Hoy, la Liga: `?anotar=1`): al cerrar esa hoja se vuelve allá. Si se
+  // entró directo (un link, la app recién abierta), no hay a dónde volver y se queda aquí.
+  const [backAfterScore] = useState(
+    () => params.get('anotar') === '1' && typeof window !== 'undefined' && ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0,
+  );
   const [editing, setEditing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const sharing = useBusy();
@@ -312,6 +317,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           onOpenEntry={() => mine && setDetail(mine)}
           onSend={() => setSubmitting(true)}
           marks={mine ? entryMarks(mine, context.data[mine.id]) : null}
+          onAutoDone={backAfterScore ? () => navigate(-1) : undefined}
         />
       )}
 

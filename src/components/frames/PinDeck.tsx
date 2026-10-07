@@ -24,9 +24,9 @@ export function PinDeck({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 py-2" role="group" aria-label="Pines">
+    <div className="flex flex-col items-center gap-2 py-1" role="group" aria-label="Pines">
       {PIN_ROWS.map((row) => (
-        <div key={row[0]} className="flex gap-2.5">
+        <div key={row[0]} className="flex gap-3">
           {row.map((pin) => {
             const bit = 1 << (pin - 1);
             const up = (standing & bit) !== 0;
@@ -40,12 +40,10 @@ export function PinDeck({
                 aria-pressed={down}
                 aria-label={`Pin ${pin}${!up ? ' (ya había caído)' : down ? ' caído' : ' parado'}`}
                 className={cx(
-                  'flex size-12 items-center justify-center rounded-full border-2 text-sm font-bold transition select-none active:scale-90 sm:size-11',
-                  !up
-                    ? 'border-dashed border-line text-muted/50'
-                    : down
-                      ? 'border-accent bg-accent text-accent-fg shadow-inner'
-                      : 'border-line bg-surface text-fg shadow-sm',
+                  'flex size-[46px] items-center justify-center rounded-full text-[15px] font-semibold tabular-nums transition select-none active:scale-90',
+                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                  // Como las teclas: el que ya cayó, solo el contorno tenue; el que se marca, del color del deporte.
+                  !up ? 'border-[1.5px] border-dashed border-line text-faint' : down ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-fg',
                 )}
               >
                 {pin}

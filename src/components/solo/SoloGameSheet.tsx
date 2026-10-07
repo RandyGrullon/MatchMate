@@ -424,6 +424,7 @@ export function SoloGameSheet({
         open={framesFor != null}
         onClose={() => setFramesFor(null)}
         title={`Juego ${(framesFor ?? 0) + 1}`}
+        subtitle="Juego suelto"
         resetKey={String(framesFor)}
         memoryKey={framesFor != null ? gameKey(memoryBase, framesFor) : undefined}
         stored={slotGame(start.slots, framesFor)}
