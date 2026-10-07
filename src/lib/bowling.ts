@@ -100,6 +100,26 @@ export function maxNextRoll(rolls: readonly number[]): number {
   return s == null ? -1 : s.standing;
 }
 
+/**
+ * El puntaje más alto que todavía se puede hacer: de aquí en adelante cada tiro tumba todos los pinos que quedan
+ * (strike o spare). Juego vacío = 300; juego terminado = su puntaje.
+ */
+export function maxPossibleScore(rolls: readonly number[]): number {
+  const best = [...rolls];
+  // Un juego tiene a lo sumo 21 tiros: el tope solo cuida de una lista rara.
+  for (let max = maxNextRoll(best); max >= 0 && best.length < 24; max = maxNextRoll(best)) best.push(max);
+  return scoreGame(best).score;
+}
+
+/**
+ * El máximo posible con el tiro `i` vacío (se borró o falta escribirlo al corregir): ese tiro tumba todo lo que se puede
+ * ahí y los cuadros que ya están después se quedan como están.
+ */
+export function maxPossibleWithHole(rolls: readonly number[], i: number): number {
+  const most = standingNow(rolls.slice(0, i))?.standing ?? 0;
+  return maxPossibleScore(replaceRoll(rolls, [], i, most, null).rolls);
+}
+
 /** Si el próximo tiro es con los 10 pinos parados (se puede marcar X) y cuántos quedan. null = juego terminado. */
 export function standingNow(rolls: readonly number[]): { standing: number; fresh: boolean; frame: number; roll: number } | null {
   const parts = split(rolls);

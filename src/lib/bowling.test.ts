@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameStats, maxNextRoll, replaceRoll, scoreGame, standingMask, standingNow, validRolls, ALL_PINS } from './bowling';
+import { frameStats, maxNextRoll, maxPossibleScore, maxPossibleWithHole, replaceRoll, scoreGame, standingMask, standingNow, validRolls, ALL_PINS } from './bowling';
 
 const rep = (n: number, ...rolls: number[]) => Array.from({ length: n }, () => rolls).flat();
 
@@ -74,6 +74,50 @@ describe('tiros posibles', () => {
     expect(validRolls([8, 2, 10, 3])).toBe(true);
     expect(validRolls([8, 3])).toBe(false);
     expect(validRolls(rep(13, 10))).toBe(false);
+  });
+});
+
+describe('máximo posible', () => {
+  it('sin tiros: 300', () => {
+    expect(maxPossibleScore([])).toBe(300);
+  });
+  it('después de un strike sigue en 300; dos X y un 7: el 7 se completa con spare', () => {
+    expect(maxPossibleScore([10])).toBe(300);
+    // X(27) X(20) 7/(20) y siete cuadros de 30.
+    expect(maxPossibleScore([10, 10, 7])).toBe(277);
+  });
+  it('después de un cuadro abierto: ese cuadro queda como está', () => {
+    expect(maxPossibleScore([7, 2])).toBe(279);
+    expect(maxPossibleScore([0, 0])).toBe(270);
+  });
+  it('a mitad de un cuadro: el que falta es spare', () => {
+    expect(maxPossibleScore([7])).toBe(290);
+    expect(maxPossibleScore([3, 5, 8])).toBe(268);
+  });
+  it('en el cuadro 10: lo que queda parado, y el tiro extra solo con strike o spare', () => {
+    expect(maxPossibleScore([...rep(9, 10), 10, 7])).toBe(287);
+    expect(maxPossibleScore([...rep(9, 10), 9])).toBe(279);
+    expect(maxPossibleScore([...rep(9, 10), 10, 10])).toBe(300);
+    expect(maxPossibleScore([...rep(9, 0, 0), 4])).toBe(20);
+  });
+  it('juego terminado: su puntaje', () => {
+    expect(maxPossibleScore([...rep(9, 0, 0), 4, 4])).toBe(8);
+    expect(maxPossibleScore(rep(21, 5))).toBe(150);
+    expect(maxPossibleScore(rep(10, 9, 0))).toBe(90);
+  });
+  it('juego perfecto: 300', () => {
+    expect(maxPossibleScore(rep(12, 10))).toBe(300);
+  });
+  it('con un tiro vacío al corregir: ese tiro con todo lo que cabe y los cuadros de después como están', () => {
+    // Cuatro cuadros 0,0 y se borra el primero del cuadro 2: aunque sea X, los cuadros 3 y 4 ya son 0,0.
+    expect(maxPossibleWithHole(rep(4, 0, 0), 2)).toBe(190);
+    expect(maxPossibleWithHole(rep(4, 0, 0), 2)).toBeLessThan(maxPossibleScore([0, 0]));
+    // Un 300 donde la X del cuadro 3 pasó a 7 y falta el segundo tiro (quedó en 0): lo más es 7/.
+    const fixing = replaceRoll(rep(12, 10), [], 2, 7, null);
+    expect(fixing.rolls.slice(0, 4)).toEqual([10, 10, 7, 0]);
+    expect(maxPossibleWithHole(fixing.rolls, fixing.next!)).toBe(277);
+    // El segundo tiro de un cuadro abierto: spare.
+    expect(maxPossibleWithHole([7, 2, 3, 4], 1)).toBe(maxPossibleScore([7, 3, 3, 4]));
   });
 });
 
