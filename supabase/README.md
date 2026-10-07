@@ -54,14 +54,16 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260930000100_bolas.sql` | Mis bolas del boliche (ver «Mis bolas» en RPC): `bowling_balls` (las bolas de cada cuenta: nombre, marca, peso, color, cubierta, perforada, última pulida, retirada; hasta 30) y `ball_games` (con qué bola tiró cada juego: de un juego suelto, de un evento de su liga o de un envío suyo; se borra en cascada con la bola, el juego suelto, el evento o el envío), `save_ball`, `retire_ball`, `resurface_ball`, `delete_ball`, `set_game_balls`, `my_balls` y `my_ball_games`. Solo las ve su dueño (tampoco el superadmin). El teléfono manda `set_game_balls` detrás del juego en la misma cola. Redefine `approve_submission` (con `p_start`): las bolas de un envío pasan al juego del evento donde quedó cada uno (`private.sub_games` lo guarda para las que llegan después). Salen solas en `export_my_data` |
 | `migrations/20260930000200_ping_pong.sql` | Ping pong (`table_tennis`, ver `docs/ping-pong.md`): la fila de `sport_status` (`racket`, `open`, orden 10); eventos liga, torneo, cajas y escalera (sin noches de puntos); partidos `''` o `sets` con el marcador de los deportes a juegos hasta el mejor de 7 (`private.tt_score_ok`, nueva: `sides` y `totals.sets`/`games` 0–4, `points` 0–9999; y con ganador `private.tt_result_ok`, nueva: un final posible del mejor de 3, 5 o 7 que cuadra con el ganador y con los totales); nivel `players.attrs.tt` de 1 a 10; `table_tennis` en los check de deporte de `badge_awards`, `badge_progress` y `badge_stats` (se borran y se crean con el mismo nombre) y el ícono curado `ping-pong` (53). Redefine `private.raq_sport` (abre cajas, escalera, inscripciones al torneo y la agenda), `private.raq_check_event`, `private.raq_check_match` y `private.raq_check_player` (las de `000700`), `private.prize_comp` (la de `001200`: `racket_tourney`), `private.badge_activity` y `private.badge_apply_decisions` (las de `001110`) y `private.badge_icon_ok` (la de `001120`) |
 | `migrations/20260930000300_diseno_bolas.sql` | El diseño de las bolas («Diseñar» en Mis bolas): `bowling_balls.design` (jsonb con versión o null; CHECK con `private.ball_design_ok`, la misma revisión que `ballDesignProblem` de `src/lib/ballDesign.ts`), `set_ball_design` (solo las bolas propias; copia el color base a `color`) y `my_balls` con `design`. Lo dibuja el teléfono (`<BallArt>`). Sale solo en `export_my_data` |
+| `migrations/20261007000100_modo_app.sql` | El modo de la app del rediseño (Lite o Pro): `profiles.ui_mode` (`'lite'` \| `'pro'` \| null = automático; CHECK), `set_ui_mode` (solo el propio; null vuelve a automático) y `export_my_data` con `uiMode` (redefine la de `001100`). La app lo lee con su perfil (`select …, push_prefs, ui_mode`); nadie más lo ve (salvo el superadmin, como todo el perfil) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
 **Cargar en PGlite** (backend local y pruebas): `shim.sql`, luego cada archivo de `migrations/` en orden de nombre
 **saltando los que terminan en `_supabase.sql`**, y opcionalmente `seed.sql`. Ver `tests/sql/harness.ts`.
 
-**Pruebas**: `pnpm test:sql` (Vitest + PGlite, `tests/sql/*.test.ts`, 119 casos: las 72 de `tests/reglas.test.ts`
-una por una, más seguridad, menores, deporte, `op_id`, `league_id`, tiempo real y el seed).
+**Pruebas**: `pnpm test:sql` (Vitest + PGlite, `tests/sql/*.test.ts`, 1038 casos en 53 archivos: las 72 de
+`tests/reglas.test.ts` una por una, más seguridad, menores, deporte, `op_id`, `league_id`, tiempo real, el seed y una
+por cada migración).
 
 ## Cómo actuar como alguien (backend local)
 
@@ -138,6 +140,10 @@ Avisos: `push_prefs` jsonb (`{}` por defecto) con `resultados`, `social`, `recor
 falta está activa. Se cambia con `set_push_prefs` (la app la lee con el perfil: `select …, username, push_prefs`).
 Insignias: `featured_badges` uuid[] (hasta 3 ids de `badge_awards` o de `league_badge_awards` (…1300), en orden; se
 cambia con `set_featured_badges`; los demás las ven por `profile_badges`).
+Modo de la app (`20261007000100_modo_app.sql`, el rediseño): `ui_mode` text `'lite'` | `'pro'` | null (null =
+automático: no lo ha elegido y la app decide; CHECK). Se cambia con `set_ui_mode` (la app lo lee con el perfil:
+`select …, push_prefs, ui_mode`). Solo lo ve la propia cuenta (y el superadmin, como el resto del perfil); ninguna RPC
+que muestra otras cuentas lo trae. Sale en `export_my_data` (`account.uiMode`). No da ni quita permisos.
 
 ### `leagues` — liga visible
 `id`, `sport` (fijo), `kind` (`liga`|`torneo`), `visibility` (`public`|`private`), `name` (1–60), `owner_id`,
@@ -416,6 +422,7 @@ mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 | `ensure_profile() → void` | la cuenta | Crea su perfil si el trigger no pudo (idempotente). |
 | `rename_profile(p_name text) → void` | la cuenta | Nombre 1–60 (recortado). `invalido`. |
 | `set_username(p_username text) → text` | la cuenta | Su `@usuario` (sin espacios alrededor, en minúsculas y sin una `@` al principio); devuelve cómo quedó. El mismo que ya tiene: nada. `invalido` (formato), `reservado`, `duplicado` (lo tiene otra cuenta), `rate_limited` (5 cambios por día). |
+| `set_ui_mode(p_mode text) → text` | la cuenta | Su modo de la app (el rediseño): `'lite'` o `'pro'` (tal cual, en minúsculas) o null = automático (la app decide). Devuelve cómo quedó. `invalido` (otro valor, también `''` o `'Pro'`), `no_existe` (sin perfil). El mismo que ya tiene no escribe nada; sin límite de cambios (como `set_push_prefs`). Solo cambia el de quien llama. |
 | `username_status(p_username text) → text` | la cuenta | Mientras se escribe: `mine` (el suyo), `ok`, `taken`, `invalid` o `reserved`, normalizado igual. 600 por hora (`rate_limited`). |
 | `set_superadmin(p_user uuid, p_value boolean) → void` | superadmin | `no_existe`. El primero se siembra por SQL. |
 | `set_sport_status(p_sport text, p_status text) → void` | superadmin | `open`\|`beta`\|`closed`. `no_existe`. |
@@ -932,6 +939,7 @@ que llama el cron revisan `x-cron-secret`.
 | `sendSuggestion` / `markSuggestions` / `deleteSuggestion` | `send_suggestion` / `mark_suggestions_read` / `delete_suggestion` |
 | `createProfile` / `renameProfile` / `ensureProfile` (auth.tsx) | trigger en `auth.users` (pasar `name` en la metadata del registro) / `rename_profile` / `ensure_profile` |
 | `subscribePush` / `unsubscribePush` (push.ts) | `upsert_push_subscription` / `delete_push_subscription` |
+| Modo de la app (`useMode`, el rediseño): leerlo / cambiarlo | `select profiles.ui_mode` con el perfil (`fetchProfile` en auth.tsx) / `set_ui_mode` |
 | Insignias (`src/lib/data/badges.ts`): `useProfileBadges` / `useBadgeNotices` / `useBadgeProgress` / `useBadgeStats` / `useLeagueAwards` / `usePlayerAwards` | `profile_badges` / `badge_notices` / `select badge_progress` / `select badge_stats` / `select badge_awards` (liga o jugador) |
 | `setFeaturedBadges` / `setBadgeHidden` / `markBadgesSeen` / `setBadgesAuto` / `reviewBadge` / `reportBadge` | `set_featured_badges` / `set_badge_hidden` / `mark_badges_seen` (de 50 en 50) / `set_badges_auto` / `review_badge` / `report_badge` |
 | `markLeagueBadgesSeen` / `setLeagueBadgeHidden` (las del creador) | `mark_league_badges_seen` / `set_league_badge_hidden` |

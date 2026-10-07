@@ -93,6 +93,8 @@ const RPC_AUTHENTICATED = [
   'save_ball', 'retire_ball', 'resurface_ball', 'delete_ball', 'set_game_balls', 'my_balls', 'my_ball_games',
   // El diseño de las bolas (colores, dibujo y figuras).
   'set_ball_design',
+  // El modo de la app del rediseño (Lite o Pro, guardado en la cuenta).
+  'set_ui_mode',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

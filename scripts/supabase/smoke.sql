@@ -16,8 +16,8 @@ begin;
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
 -- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
 -- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas (y su diseño), el ping pong (liga,
--- nivel y un partido al mejor de 7), la consola del superadmin y los permisos que TIENEN que fallar (alguien de
--- fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
+-- nivel y un partido al mejor de 7), el modo de la app (Lite o Pro), la consola del superadmin y los permisos que
+-- TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
 -- realtime.messages (también se deshace). Lo único que no vuelve atrás son las secuencias (ids de push_outbox,
@@ -114,7 +114,8 @@ declare
     '20260927001300', '20260927001400', '20260927001500', '20260928000100', '20260928000200', '20260929000100',
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
-    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000200', '20260930000300'];
+    '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000200', '20260930000300',
+    '20261007000100'];
   v_missing text[];
   v_bowling text;
 begin
@@ -2143,6 +2144,48 @@ begin
   perform pg_temp.must_fail('ping pong: un marcador que no termina el partido (4-4 en juegos) no pasa',
     format('select public.finish_match(p_match => %L, p_score => %L, p_winner => 1::smallint)', v_ids[2], '{"text": "4-4", "sides": [4, 4]}'),
     array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9l. Modo de la app (20261007000100): Ana elige Pro y lo lee con su perfil (como la app) y en sus datos; otro valor no
+-- pasa; el dueño elige el suyo sin tocar ni leer el de Ana; Ana vuelve a automático (null)
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select p.ui_mode from public.profiles p where p.id = pg_temp.id('u_ana')) is null,
+    'FAIL modo: una cuenta nueva no empieza en automático (null)';
+  assert public.set_ui_mode(p_mode => 'pro') = 'pro', 'FAIL modo: set_ui_mode pro';
+  assert (select p.ui_mode from public.profiles p where p.id = pg_temp.id('u_ana')) = 'pro', 'FAIL modo: el perfil no trae ui_mode pro';
+  assert public.export_my_data() -> 'account' ->> 'uiMode' = 'pro', 'FAIL modo: export_my_data sin uiMode';
+  perform pg_temp.ok('modo: Ana elige Pro (set_ui_mode) y lo lee con su perfil (profiles.ui_mode) y en export_my_data');
+  perform pg_temp.must_fail('modo: solo lite, pro o null', 'select public.set_ui_mode(p_mode => ''Pro'')', array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+begin
+  assert not exists (select 1 from public.profiles p where p.id = pg_temp.id('u_ana')), 'FAIL modo: el dueño lee el perfil (y el modo) de Ana';
+  assert public.set_ui_mode(p_mode => 'lite') = 'lite', 'FAIL modo: el dueño no elige el suyo';
+  perform pg_temp.ok('modo: el dueño elige el suyo y no lee el de Ana');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+begin
+  assert (select p.ui_mode from public.profiles p where p.id = pg_temp.id('u_ana')) = 'pro', 'FAIL modo: el del dueño cambió el de Ana';
+  assert public.set_ui_mode(p_mode => null) is null, 'FAIL modo: set_ui_mode null';
+  assert (select p.ui_mode from public.profiles p where p.id = pg_temp.id('u_ana')) is null, 'FAIL modo: null no vuelve a automático';
+  perform pg_temp.ok('modo: Ana vuelve a automático (set_ui_mode null)');
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
