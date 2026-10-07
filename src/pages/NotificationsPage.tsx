@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { Bell, CheckCheck, Inbox, LogIn } from 'lucide-react';
+import { Bell, CheckCheck, ChevronLeft, Inbox, LogIn } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { filterNotices, groupNotices, isNoticeFilter, NOTICE_FILTERS, type Notice, type NoticeFilter } from '../lib/notifications';
 import { useNow } from '../lib/useNow';
 import { isSportId, sportMeta, sportsOf } from '../sports/registry';
 import { SportIcon } from './sports/SportBits';
 import { useNotifications } from '../components/Notifications';
-import { PushOptInCard } from '../components/NotificationsOptIn';
+import { NoticeSlot } from '../components/NoticeSlot';
+import { PushOptInNotice } from '../components/NotificationsOptIn';
 import { useCurrentSport } from '../components/notifications/bridge';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
 import { InvitesCard } from '../components/notifications/InvitesCard';
 import { NoticeList, NoticeListSkeleton } from '../components/notifications/NoticeList';
 import { AppShell } from '../components/Shell';
-import { Button, Empty, Loading, LoadError } from '../components/ui';
+import { Button, Empty, Loading, LoadError, cx } from '../components/ui';
 
 /** `?deporte=todos`: todos los deportes aunque la app esté en uno. */
 const ALL_SPORTS = 'todos';
@@ -26,13 +27,36 @@ const FILTER_EMPTY: Record<NoticeFilter, string> = {
   admin: 'avisos de admin',
 };
 
+/** «‹ Hoy»: a Avisos se llega con la campana de Hoy, y atrás dice a dónde vuelve. */
+function BackToHoy() {
+  return (
+    <Link
+      to="/"
+      className="-ml-1.5 inline-flex h-11 items-center gap-0.5 rounded-xl pr-2 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <ChevronLeft aria-hidden="true" className="size-6" />
+      Hoy
+    </Link>
+  );
+}
+
+/** Arriba de Avisos: «‹ Hoy» y, a la derecha, lo que se hace con toda la lista. */
+function TopBar({ children }: { children?: ReactNode }) {
+  return (
+    <div className="-mt-2 mb-1 flex min-h-13 items-center justify-between gap-3">
+      <BackToHoy />
+      {children}
+    </div>
+  );
+}
+
 /**
- * Avisos: todo lo que pasa en las ligas de la cuenta (partidos y resultados, torneos y prácticas, me gusta,
- * comentarios y seguidores, lo que falta por aprobar), del más nuevo al más viejo, por Hoy, Esta semana y Antes.
- * Se filtra por tipo (`?ver=`) y, con ligas de varios deportes, por deporte (`?deporte=`; si la app está en un
+ * Avisos (la campana de Hoy): todo lo que pasa en las ligas de la cuenta (partidos y resultados, torneos y prácticas,
+ * me gusta, comentarios y seguidores, lo que falta por aprobar), del más nuevo al más viejo, por Hoy, Esta semana y
+ * Antes. Se filtra por tipo (`?ver=`) y, con ligas de varios deportes, por deporte (`?deporte=`; si la app está en un
  * deporte, arranca en ese). Tocar un aviso lleva a lo suyo y lo marca leído. Sale de la copia del teléfono: sin
- * señal se ve lo último que llegó. Arriba de todo, las invitaciones a ligas que faltan por responder (con
- * Aceptar y Rechazar ahí mismo).
+ * señal se ve lo último que llegó. Arriba, «‹ Hoy», el único aviso de la pantalla (instalar la app o activar las
+ * notificaciones) y las invitaciones a ligas que faltan por responder (con Aceptar y Rechazar ahí mismo).
  */
 export default function NotificationsPage() {
   const auth = useAuth();
@@ -122,7 +146,10 @@ export default function NotificationsPage() {
     return (
       <AppShell>
         <div className="flex flex-col gap-5">
-          <h1 className="text-2xl font-bold tracking-tight">Avisos</h1>
+          <div>
+            <TopBar />
+            <h1 className="text-title">Avisos</h1>
+          </div>
           <Empty icon={<Bell className="size-8" />} title="Entra para ver tus avisos">
             Tus partidos, resultados, torneos y quién le dio me gusta a tus juegos, todo en un solo sitio.
             <div className="mt-4 flex justify-center">
@@ -188,28 +215,34 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       <div className="flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight">Avisos</h1>
-            {subtitle && (
-              <p className="flex items-center gap-1.5 text-sm text-muted">
-                {sport && <SportIcon sport={sport} className="size-4 shrink-0" />}
-                <span className="min-w-0">{subtitle}</span>
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => markAllRead(filtered ? shownUnread : undefined)}
-            disabled={!shownUnread.length}
-            className="-mr-2 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium whitespace-nowrap text-accent transition hover:bg-accent-soft active:scale-[0.97] disabled:pointer-events-none disabled:text-muted disabled:opacity-60"
-          >
-            <CheckCheck className="size-4" />
-            Marcar todo como leído
-          </button>
+        <div className="min-w-0">
+          <TopBar>
+            <button
+              type="button"
+              onClick={() => markAllRead(filtered ? shownUnread : undefined)}
+              disabled={!shownUnread.length}
+              className={cx(
+                // Se ve de 36 px (como las píldoras del diseño) y se toca en 44.
+                "relative inline-flex h-9 min-w-0 shrink items-center gap-1.5 rounded-full bg-surface-2 px-[13px] text-sm font-semibold whitespace-nowrap text-fg transition after:absolute after:-inset-y-1 after:inset-x-0 after:content-[''] active:scale-[0.97]",
+                'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:pointer-events-none disabled:text-muted disabled:opacity-60',
+              )}
+            >
+              <CheckCheck aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">Marcar todo como leído</span>
+            </button>
+          </TopBar>
+          <h1 className="text-title">Avisos</h1>
+          {subtitle && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-meta text-muted">
+              {sport && <SportIcon sport={sport} className="size-4 shrink-0" />}
+              <span className="min-w-0">{subtitle}</span>
+            </p>
+          )}
         </div>
 
-        <PushOptInCard />
+        {/* El único aviso de la pantalla: instalar la app o cómo activar las notificaciones del teléfono. */}
+        <PushOptInNotice />
+        <NoticeSlot />
 
         <InvitesCard uid={auth.user.uid} now={now} />
 

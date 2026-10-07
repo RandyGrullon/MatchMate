@@ -8,7 +8,7 @@ import { getSport } from '../sports/registry';
 import { useSportStatus } from '../sports/status';
 import type { SportId } from '../sports/types';
 import { LeagueFormModal } from './LeagueFormModal';
-import { Button, Input, Modal, cx } from './ui';
+import { Button, Input, Sheet } from './ui';
 
 interface CreateMenuApi {
   /** Abre el menú «Crear» (crear liga, torneo sin liga o unirse con código). */
@@ -22,13 +22,13 @@ interface CreateMenuApi {
 
 const Ctx = createContext<CreateMenuApi>({ openMenu: () => undefined, startCreate: () => undefined });
 
-/** Abre el menú "Crear" (el círculo del centro, el botón de arriba en la computadora, "Crear o unirme"…). */
+/** Abre la hoja «Crear o unirme» (Ligas › «Crear o unirme», el menú de cambiar de liga, «Crear una liga»…). */
 export const useCreateMenu = () => useContext(Ctx);
 
 /**
- * El menú "Crear": crear una liga, un torneo sin liga, anotar un juego suelto de boliche (sin deporte o en el
- * boliche) o unirse con un código. Va una sola vez en la raíz
- * de la app (no dentro de la barra, que se esconde según el tamaño de la pantalla: un modal ahí se trababa
+ * La hoja «Crear o unirme» (ya no es el botón del centro de la barra: se abre desde Ligas): primero unirse con un
+ * código, que es lo más común, y debajo crear una liga, un torneo sin liga o anotar un juego suelto de boliche (sin
+ * deporte o en el boliche). Va una sola vez en la raíz de la app (no dentro de una pantalla: un modal ahí se trababa
  * al girar el teléfono). El deporte se elige en el primer paso de LeagueFormModal; si estás en un deporte (y lo
  * puedes crear), sale marcado y se va de una a los datos.
  */
@@ -85,15 +85,15 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <Modal open={open} onClose={() => setOpen(false)} title="Crear">
-        <div className="flex flex-col gap-2">
-          <LeagueOption sport={active} onClick={() => pick('liga')} />
-          <TournamentOption sport={active} onClick={() => pick('torneo')} />
-          {(!active || active === 'bowling') && <SoloOption onClick={solo} />}
-          <form onSubmit={join} className="flex flex-col gap-2 rounded-2xl border border-line p-3">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <Ticket className="size-5 text-accent" /> ¿Te invitaron? Pon el código
-            </span>
+      <Sheet open={open} onClose={() => setOpen(false)} title="¿Qué quieres hacer?">
+        <div className="flex flex-col">
+          <form onSubmit={join} className="flex flex-col gap-3 rounded-3xl bg-accent-soft p-4">
+            <div>
+              <p className="flex items-center gap-2 text-body font-semibold">
+                <Ticket aria-hidden="true" className="size-5 shrink-0 text-accent" /> Unirme con un código
+              </p>
+              <p className="mt-0.5 pl-7 text-sm text-fg-2">Te lo da quien organiza la liga</p>
+            </div>
             <div className="flex gap-2">
               <Input
                 value={code}
@@ -101,16 +101,23 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
                 placeholder="ABCD2345"
                 maxLength={12}
                 autoCapitalize="characters"
-                className="font-mono tracking-widest uppercase"
+                className="h-12 min-w-0 rounded-[15px] border-transparent font-mono tracking-widest uppercase"
                 aria-label="Código de invitación"
               />
-              <Button type="submit" disabled={!code.trim()}>
+              <Button type="submit" variant="primary" size="lg" className="shrink-0" disabled={!code.trim()}>
                 Unirme
               </Button>
             </div>
           </form>
+          <p className="mt-5 mb-1 px-1 text-xs font-semibold tracking-[0.08em] text-muted uppercase">Crear</p>
+          {/* La línea entre opciones va encima del texto (empieza después del ícono). */}
+          <div className="flex flex-col [&>button+button_.mm-option-text]:border-t">
+            <LeagueOption sport={active} onClick={() => pick('liga')} />
+            <TournamentOption sport={active} onClick={() => pick('torneo')} />
+            {(!active || active === 'bowling') && <SoloOption onClick={solo} />}
+          </div>
         </div>
-      </Modal>
+      </Sheet>
       {/* Se monta al abrirlo: así el estado de los deportes se consulta solo cuando hace falta. */}
       {creating && (
         <LeagueFormModal open onClose={() => setCreating(null)} kind={creating.kind} sport={creating.sport} onSaved={(to) => navigate(to)} />
@@ -141,7 +148,7 @@ function LeagueOption({ sport, onClick }: { sport: SportId | null; onClick: () =
       : only && only !== 'bowling'
         ? `Liga de ${getSport(only).lower}. Pública o privada; invitas con link o QR.`
         : 'Con prácticas, torneos y ranking. Pública o privada; invitas con link o QR.';
-  return <Option icon={<Plus className="size-5" />} title={title} text={text} onClick={onClick} primary />;
+  return <Option icon={<Plus className="size-5" />} title={title} text={text} onClick={onClick} />;
 }
 
 function TournamentOption({ sport, onClick }: { sport: SportId | null; onClick: () => void }) {
@@ -169,22 +176,24 @@ export function SoloOption({ onClick }: { onClick: () => void }) {
   );
 }
 
-function Option({ icon, title, text, onClick, primary }: { icon: ReactNode; title: string; text: string; onClick: () => void; primary?: boolean }) {
+/** Una opción de «Crear»: ícono en caja, qué es y una línea; la línea entre opciones empieza después del ícono. */
+function Option({ icon, title, text, onClick }: { icon: ReactNode; title: string; text: string; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cx(
-        'flex items-center gap-3 rounded-2xl p-3 text-left transition active:scale-[0.98]',
-        primary ? 'bg-accent text-accent-fg' : 'border border-line hover:bg-surface-2',
-      )}
+      className="-mx-1 flex min-h-row items-stretch gap-3.5 rounded-2xl px-1 text-left transition active:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
     >
-      <span className={cx('flex size-10 shrink-0 items-center justify-center rounded-xl', primary ? 'bg-white/15' : 'bg-accent-soft text-accent')}>{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold">{title}</span>
-        <span className={cx('block text-sm', primary ? 'opacity-85' : 'text-muted')}>{text}</span>
+      <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center self-center rounded-xl bg-surface-2 text-fg-2">
+        {icon}
       </span>
-      <ChevronRight className="size-4 shrink-0 opacity-60" />
+      <span className="mm-option-text flex min-w-0 flex-1 items-center gap-3 border-line py-2.5">
+        <span className="min-w-0 flex-1">
+          <span className="block text-body font-semibold">{title}</span>
+          <span className="block text-sm text-muted">{text}</span>
+        </span>
+        <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-faint" />
+      </span>
     </button>
   );
 }

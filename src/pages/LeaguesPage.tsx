@@ -1,17 +1,17 @@
 import { useMemo, type ReactNode } from 'react';
-import { CalendarClock, Globe, Layers, Shield, Trophy } from 'lucide-react';
+import { CalendarClock, Globe, Layers, Plus, Shield, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { PUBLIC_FEED_MAX, usePublicLeagues } from '../lib/data/leagues';
 import { inSport, setActiveSport, useActiveSport } from '../lib/sportContext';
 import { SPORTS } from '../sports/registry';
 import { SportChips, useSportFilter } from './sports/SportBits';
+import { useCreateMenu } from '../components/CreateMenu';
 import { AppShell } from '../components/Shell';
 import { NoLeaguesYet, NoneOfKind, SignedOutCard } from '../components/eventos/EventosEmpty';
 import { UpcomingList } from '../components/eventos/UpcomingList';
-import { eventosSubtitle, filterSports, joinable, publicEmptyText, splitMine } from '../components/eventos/logic';
+import { filterSports, joinable, publicEmptyText, splitMine } from '../components/eventos/logic';
 import { JoinCodeCard } from '../components/home/JoinCodeCard';
 import { LeagueList, LeagueRow } from '../components/home/LeagueCard';
-import { LiveSection } from '../components/home/LiveSection';
 import { PublicLeagues } from '../components/home/PublicLeagues';
 import { Section } from '../components/home/Section';
 import { SportTint } from '../components/home/SportTint';
@@ -20,9 +20,11 @@ import { ListSkeleton, LoadError } from '../components/ui';
 import type { League, Member } from '../lib/types';
 
 /**
- * Eventos (`/ligas`). En un deporte, solo lo de ese deporte; en «Todos los deportes», todo, con chips para filtrar.
- * Arriba lo que está en juego; después mis ligas, mis torneos (lo más pronto primero), lo que viene en los próximos
- * 30 días (eventos y mis partidos, con día, hora, liga y deporte), las públicas para unirme (con buscador) y el código.
+ * Ligas (`/ligas`, la pestaña Ligas; antes «Eventos»). Arriba «Crear o unirme» (la hoja que antes era el botón del
+ * centro de la barra). En un deporte, solo lo de ese deporte; en «Todos los deportes», todo, con chips para filtrar.
+ * Lo que está en juego hoy va en Hoy (una sola vez). Aquí: mis ligas, mis torneos (lo más pronto primero), lo que
+ * viene en los próximos 30 días (eventos y mis partidos, con día, hora, liga y deporte), las públicas para unirme (con
+ * buscador) y el código.
  */
 export default function LeaguesPage() {
   const auth = useAuth();
@@ -53,31 +55,41 @@ export default function LeaguesPage() {
 
   const showAll = () => (active ? setActiveSport(null) : setChip(null));
   const signedIn = !!auth.user;
+  const create = useCreateMenu();
 
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
-        <header className="flex items-start gap-3">
+        <header className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-title">Ligas</h1>
+            {/* Se ve de 40 px (como el diseño) y se toca en 44. */}
+            <button
+              type="button"
+              onClick={create.openMenu}
+              className="relative inline-flex h-10 shrink-0 items-center gap-[7px] rounded-full bg-accent-soft px-4 text-meta font-semibold whitespace-nowrap text-accent transition after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Plus aria-hidden="true" className="size-[18px]" strokeWidth={2.4} />
+              Crear o unirme
+            </button>
+          </div>
+          {/* En un deporte: una línea con cuál es, y cómo ver lo de todos (las públicas de los otros deportes). */}
           {meta && Icon && (
-            <SportTint sport={active} className="shrink-0">
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg" aria-hidden="true">
-                <Icon className="size-6" />
-              </span>
-            </SportTint>
-          )}
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">{meta ? `Eventos de ${meta.lower}` : 'Eventos'}</h1>
-            <p className="text-sm text-muted">{eventosSubtitle(sport)}</p>
-            {active && (
+            <div className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+              <SportTint sport={active} className="inline-flex shrink-0">
+                <Icon aria-hidden="true" className="size-4 text-accent" />
+              </SportTint>
+              <span>{`Solo ${meta.lower}`}</span>
+              <span aria-hidden="true">·</span>
               <button
                 type="button"
                 onClick={() => setActiveSport(null)}
-                className="-ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-accent hover:underline"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 font-medium text-accent hover:underline"
               >
-                <Layers className="size-4" aria-hidden="true" /> Ver de todos los deportes
+                <Layers className="size-4" aria-hidden="true" /> Ver todos los deportes
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </header>
 
         {!active && multi && <SportChips sports={sports} value={chip} onChange={setChip} />}
@@ -86,8 +98,7 @@ export default function LeaguesPage() {
 
         {signedIn && (
           <>
-            <LiveSection games={act.games} matches={act.liveItems} />
-
+            {/* Lo que se juega hoy (tus juegos, la planilla, los partidos en vivo) está en Hoy: aquí, tus ligas. */}
             {mine.error ? (
               <LoadError error={mine.error} />
             ) : mine.loading ? (

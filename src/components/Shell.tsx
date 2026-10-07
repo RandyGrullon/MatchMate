@@ -1,15 +1,23 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarDays, House, Info, LogIn, MessageCircle, Plus, Settings, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
+import { ClipboardList, House, Info, LogIn, MessageCircle, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { backendMode } from '../lib/backend';
-import { homeTarget, setActiveSport, useActiveSport } from '../lib/sportContext';
-import { SPORTS } from '../sports/registry';
+import { useLeaguesByIds } from '../lib/data/leagues';
+import { useMyMemberships } from '../lib/data/members';
+import { countLabel } from '../lib/organize';
+import { setActiveSport, useActiveSport } from '../lib/sportContext';
+import { useIsPro } from '../lib/useMode';
+import { sportsOf } from '../sports/registry';
+import type { SportId } from '../sports/types';
 import { Logo } from './Logo';
-import { OutboxIndicator } from './OutboxIndicator';
-import { useCreateMenu } from './CreateMenu';
+import { NoticeSlot } from './NoticeSlot';
 import { NotificationsBell } from './Notifications';
+import { useOrganize } from './OrganizeNav';
+import { ModeToast } from './mode/ModeToast';
+import { OutboxIndicator } from './OutboxIndicator';
 import { SportChip } from './SportSwitcher';
+import { SportTint, sportTint } from './home/SportTint';
 import { TopLoader, cx } from './ui';
 
 function useOnline() {
@@ -52,7 +60,10 @@ export function Brand({ to = '/', compact, className }: { to?: string; compact?:
   );
 }
 
-/** Arriba a la derecha: campana de avisos y configuración de la cuenta (o "Entrar"). */
+/**
+ * Arriba a la derecha en la consola del superadmin (ConsoleShell): la campana de avisos (en la computadora) y la
+ * configuración de la cuenta, o «Entrar». En la app, la campana va en Hoy y el engranaje en Yo.
+ */
 export function TopActions() {
   const { user } = useAuth();
   const login = useLoginLink();
@@ -65,13 +76,11 @@ export function TopActions() {
   }
   return (
     <div className="flex items-center gap-1">
-      {/* En el teléfono los avisos van en la barra de abajo. */}
       <span className="hidden sm:inline-flex">
         <NotificationsBell />
       </span>
       <NavLink
         to="/cuenta"
-        data-tour="config"
         aria-label="Configuración de la cuenta"
         title="Configuración de la cuenta"
         className={({ isActive }) =>
@@ -89,45 +98,94 @@ export function TopActions() {
 
 /** Secciones de la app (abajo en el celular, arriba en la computadora). */
 export interface SectionDef {
-  key: 'home' | 'events' | 'profile' | 'contact' | 'about';
+  key: 'home' | 'leagues' | 'organize' | 'me' | 'contact' | 'about' | 'login';
   to: string;
   label: string;
   icon: LucideIcon;
   match: (p: string) => boolean;
 }
 
-// Home: el general (/) y el de cada deporte (/d/:sport).
-const HOME: SectionDef = { key: 'home', to: '/', label: 'Home', icon: House, match: (p) => p === '/' || p.startsWith('/d/') };
-// Eventos = tus ligas y las públicas; dentro de una liga se sigue en Eventos.
-const EVENTS: SectionDef = {
-  key: 'events',
+const under = (p: string, ...roots: string[]) => roots.some((r) => p === r || p.startsWith(`${r}/`));
+
+// Hoy: el único inicio (y el de cada deporte, /d/:sport, mientras exista); la campana de Hoy lleva a /avisos.
+const HOY: SectionDef = { key: 'home', to: '/', label: 'Hoy', icon: House, match: (p) => p === '/' || under(p, '/d', '/avisos') };
+// Ligas: tus ligas y torneos, las públicas, y todo lo de adentro de una liga (en Pro, menos su Organizar).
+const LIGAS: SectionDef = {
+  key: 'leagues',
   to: '/ligas',
-  label: 'Eventos',
-  icon: CalendarDays,
-  match: (p) => p.startsWith('/ligas') || p.startsWith('/l/') || p.startsWith('/unirse') || p.startsWith('/anotar'),
+  label: 'Ligas',
+  icon: Trophy,
+  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion'),
 };
-const PROFILE: SectionDef = { key: 'profile', to: '/perfil', label: 'Perfil', icon: UserRound, match: (p) => p.startsWith('/perfil') };
-// Sin cuenta, Eventos y Perfil no dicen mucho: en su lugar, cómo escribirnos y qué es MatchMate.
-const CONTACT: SectionDef = { key: 'contact', to: '/contacto', label: 'Contáctanos', icon: MessageCircle, match: (p) => p.startsWith('/contacto') };
-const ABOUT: SectionDef = { key: 'about', to: '/acerca', label: 'Acerca de', icon: Info, match: (p) => p.startsWith('/acerca') };
+// Organizar (solo Pro): lo del admin de cada liga y la consola del dueño de la app.
+const ORGANIZAR: SectionDef = {
+  key: 'organize',
+  to: '/organizar',
+  label: 'Organizar',
+  icon: ClipboardList,
+  match: (p) => under(p, '/organizar', '/superadmin') || /^\/l\/[^/]+\/admin(\/|$)/.test(p),
+};
+// Yo: tu perfil, tus bolas y juegos sueltos, buscar personas y la configuración (el engranaje de Yo).
+const YO: SectionDef = { key: 'me', to: '/perfil', label: 'Yo', icon: UserRound, match: (p) => under(p, '/perfil', '/cuenta', '/bolas', '/juegos-sueltos', '/buscar') };
+// Sin cuenta: la portada, cómo escribirnos, qué es MatchMate y entrar.
+const INICIO: SectionDef = { key: 'home', to: '/', label: 'Inicio', icon: House, match: (p) => p === '/' || under(p, '/d') };
+const CONTACT: SectionDef = { key: 'contact', to: '/contacto', label: 'Contáctanos', icon: MessageCircle, match: (p) => under(p, '/contacto') };
+const ABOUT: SectionDef = { key: 'about', to: '/acerca', label: 'Acerca de', icon: Info, match: (p) => under(p, '/acerca') };
+const ENTRAR: SectionDef = { key: 'login', to: '/login', label: 'Entrar', icon: LogIn, match: (p) => under(p, '/login') };
 
 /**
- * Las tres secciones, en orden: con cuenta Home · Eventos · Perfil; sin cuenta Home · Contáctanos · Acerca de. Las
- * ligas públicas se siguen viendo sin cuenta desde el Home.
+ * Las secciones, en orden. Con cuenta: Hoy · Ligas · Yo (Lite) o Hoy · Ligas · Organizar · Yo (Pro). Sin cuenta:
+ * Inicio · Contáctanos · Acerca de · Entrar (las ligas públicas se ven desde la portada). Ya no hay botón de crear en
+ * la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la campana de Hoy).
  */
-export function navSections(signedIn: boolean): readonly [SectionDef, SectionDef, SectionDef] {
-  return signedIn ? [HOME, EVENTS, PROFILE] : [HOME, CONTACT, ABOUT];
+export function navSections(signedIn: boolean, pro = false): SectionDef[] {
+  if (!signedIn) return [INICIO, CONTACT, ABOUT, ENTRAR];
+  return pro ? [HOY, LIGAS, ORGANIZAR, YO] : [HOY, LIGAS, YO];
 }
 
-/** Secciones de quien usa la app. Mientras se lee la sesión guardada se quedan las de con cuenta (no parpadean). */
+/** La sección marcada en esa ruta. Organizar gana a Ligas en el admin de una liga (si está en la barra). */
+export function currentSection(sections: readonly SectionDef[], pathname: string): SectionDef['key'] | null {
+  const org = sections.find((s) => s.key === 'organize');
+  if (org?.match(pathname)) return org.key;
+  return sections.find((s) => s.match(pathname))?.key ?? null;
+}
+
+/**
+ * ¿Va el selector de deporte arriba? Solo si la cuenta juega más de un deporte, o si la app quedó en un deporte que no es
+ * el suyo (para poder salir). Quien juega uno solo no lo ve: los otros deportes siguen en Ligas (las públicas).
+ */
+export function showSportSwitcher(mine: readonly string[], active: SportId | null): boolean {
+  return mine.length > 1 || (!!active && !mine.includes(active));
+}
+
+/**
+ * El color de Hoy cuando la app quedó en un deporte que no juegas (llegaste por `/d/padel`): el de tu deporte (el
+ * boliche si lo juegas), así Hoy tiene un solo acento; arriba, «Pádel ▾» sigue en su color para volver. null = el de la
+ * app (juegas ese deporte, no hay deporte elegido o no juegas ninguno).
+ */
+export function ownSportTint(mine: readonly string[], active: SportId | null): string | null {
+  if (!active || !mine.length || mine.includes(active)) return null;
+  return mine.includes('bowling') ? 'bowling' : mine[0];
+}
+
+/** ¿Va el selector de deporte arriba? y, para Hoy, el color de tu deporte (ownSportTint). */
+function useSportBar(): { switcher: boolean; own: string | null } {
+  const { user, loading } = useAuth();
+  const active = useActiveSport();
+  const members = useMyMemberships(user?.uid);
+  const leagues = useLeaguesByIds(members.data.map((m) => m.leagueId));
+  // Mientras se leen la sesión y las ligas no sale (si después hacía falta, aparece; nunca sale y se va).
+  if (loading || (user && (members.loading || leagues.loading))) return { switcher: false, own: null };
+  const mine = sportsOf(leagues.data);
+  return { switcher: showSportSwitcher(mine, active), own: ownSportTint(mine, active) };
+}
+
+/** Las secciones de quien usa la app. Mientras se lee la sesión guardada se quedan las de con cuenta (no parpadean). */
 function useSections() {
   const { user, loading } = useAuth();
-  return navSections(!!user || loading);
-}
-
-function useSection(sections: readonly SectionDef[]) {
-  const { pathname } = useLocation();
-  return sections.find((s) => s.match(pathname))?.key ?? null;
+  const signedIn = !!user || loading;
+  const pro = useIsPro();
+  return navSections(signedIn, signedIn && pro);
 }
 
 /** «Entrar» con la pantalla actual como `next`: al entrar (o crear la cuenta) vuelve aquí. */
@@ -136,166 +194,186 @@ function useLoginLink() {
   return `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 }
 
-/**
- * A dónde va cada sección. Home: en un deporte, a su Home; si ya estás en su Home, al de todos los deportes (y la app
- * deja de estar en ese deporte). Ver homeTarget en src/lib/sportContext.ts.
- */
-function useSectionLink(section: SectionDef): { to: string; onClick?: () => void; label: string } {
+/** A dónde lleva cada sección y su número (solo Organizar tiene uno). */
+function useNavItems() {
+  const sections = useSections();
   const { pathname } = useLocation();
-  const active = useActiveSport();
-  if (section.key !== 'home') return { to: section.to, label: section.label };
-  const target = homeTarget(pathname, active);
-  return {
-    to: target.to,
-    onClick: target.clear ? () => setActiveSport(null) : undefined,
-    label: target.clear ? 'Home de todos los deportes' : active ? `Home de ${SPORTS[active].lower}` : 'Home',
-  };
+  const login = useLoginLink();
+  const organize = useOrganize(sections.some((s) => s.key === 'organize'));
+  const current = currentSection(sections, pathname);
+  const items = sections.map((s) => ({
+    section: s,
+    to: s.key === 'organize' ? organize.href : s.key === 'login' ? login : s.to,
+    count: s.key === 'organize' ? organize.total : 0,
+    current: current === s.key,
+  }));
+  return { items, probes: organize.probes };
 }
 
-function DesktopLink({ section, current }: { section: SectionDef; current: boolean }) {
-  const { to, onClick, label } = useSectionLink(section);
+const countAria = (label: string, count: number) => (count > 0 ? `${label}: ${count} ${count === 1 ? 'pendiente' : 'pendientes'}` : undefined);
+
+/** Arriba en la computadora: las mismas secciones de la barra de abajo. */
+export function DesktopNav() {
+  const { items } = useNavItems();
+  return (
+    <nav className="hidden gap-1 sm:flex" aria-label="Secciones">
+      {items.map(({ section: s, to, count, current }) => {
+        const Icon = s.icon;
+        return (
+          <Link
+            key={s.key}
+            to={to}
+            aria-current={current ? 'page' : undefined}
+            aria-label={countAria(s.label, count)}
+            className={cx(
+              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+              'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+              current ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg',
+            )}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            {s.label}
+            {count > 0 && (
+              <span aria-hidden="true" className="rounded-full bg-accent px-1.5 text-[11px] leading-4 font-bold text-accent-fg">
+                {countLabel(count)}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * Un destino de la barra de abajo: ícono y nombre, siempre. El elegido lleva una pastilla en acento suave detrás del
+ * ícono (60 × 32) y el nombre en el color del texto; el número (Organizar) va en un globo del color del deporte.
+ */
+function BottomLink({ section, to, count, current }: { section: SectionDef; to: string; count: number; current: boolean }) {
   const Icon = section.icon;
-  const hint = label !== section.label ? label : undefined;
   return (
     <Link
       to={to}
-      onClick={onClick}
       aria-current={current ? 'page' : undefined}
-      aria-label={hint}
-      title={hint}
+      aria-label={countAria(section.label, count)}
       className={cx(
-        'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
-        current ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-surface-2 hover:text-fg',
+        'flex min-h-15 min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl text-xs font-semibold transition-colors active:opacity-70',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+        current ? 'text-fg' : 'text-muted',
       )}
     >
-      <Icon className="size-4" />
-      {section.label}
-    </Link>
-  );
-}
-
-/** Arriba en la computadora: Crear · Home · Eventos · Perfil (sin cuenta: Crear · Home · Contáctanos · Acerca de). */
-export function DesktopNav() {
-  const sections = useSections();
-  const active = useSection(sections);
-  const create = useCreateMenu();
-  return (
-    <nav className="hidden gap-1 sm:flex" aria-label="Secciones" data-tour="nav">
-      <button
-        type="button"
-        onClick={() => create.openMenu()}
-        data-tour="crear"
-        className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:brightness-110"
-      >
-        <Plus className="size-4" /> Crear
-      </button>
-      {sections.map((s) => (
-        <DesktopLink key={s.key} section={s} current={active === s.key} />
-      ))}
-    </nav>
-  );
-}
-
-function BottomLink({ section, current }: { section: SectionDef; current: boolean }) {
-  const { to, onClick, label } = useSectionLink(section);
-  const Icon = section.icon;
-  return (
-    <Link
-      to={to}
-      onClick={onClick}
-      aria-current={current ? 'page' : undefined}
-      aria-label={label !== section.label ? label : undefined}
-      className={cx('flex min-h-14 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition', current ? 'text-accent' : 'text-muted')}
-    >
-      <Icon className="size-5" />
-      {section.label}
+      <span className={cx('relative grid h-8 w-15 shrink-0 place-items-center rounded-2xl transition-colors', current && 'bg-accent-soft text-accent')}>
+        <Icon aria-hidden="true" className="size-[22px]" strokeWidth={current ? 2.2 : 2} />
+        {count > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -top-[3px] right-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-surface bg-accent px-[5px] text-[11px] leading-none font-bold text-accent-fg"
+          >
+            {countLabel(count)}
+          </span>
+        )}
+      </span>
+      <span className="max-w-full truncate leading-4">{section.label}</span>
     </Link>
   );
 }
 
 /**
- * Barra de abajo en el teléfono: Home · Eventos · (Crear) · Notificaciones · Perfil. Sin cuenta:
- * Home · Contáctanos · (Crear) · Entrar · Acerca de.
+ * Barra de abajo en el teléfono: Hoy · Ligas · Yo (Lite) o Hoy · Ligas · Organizar · Yo (Pro, con el número de lo
+ * pendiente). Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar. Sin botón del centro: crear está en Ligas.
  */
 export function BottomNav() {
-  const sections = useSections();
-  const active = useSection(sections);
-  const { user } = useAuth();
-  const login = useLoginLink();
-  const create = useCreateMenu();
-  const [home, second, last] = sections;
+  const { items, probes } = useNavItems();
   return (
-    <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur sm:hidden" aria-label="Secciones" data-tour="nav">
-      <div className="grid grid-cols-5 items-end">
-        <BottomLink section={home} current={active === home.key} />
-        <BottomLink section={second} current={active === second.key} />
-        {/* Crear: el círculo del centro, un poco más grande y levantado. */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => create.openMenu()}
-            data-tour="crear"
-            aria-label="Crear una liga o un torneo, o unirme con un código"
-            className="-mt-6 mb-1.5 flex size-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg ring-4 ring-bg transition active:scale-95"
-          >
-            <Plus className="size-7" strokeWidth={2.5} />
-          </button>
-        </div>
-        {user ? (
-          <NotificationsBell variant="nav" />
-        ) : (
-          <Link to={login} className="flex min-h-14 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-muted">
-            <LogIn className="size-5" />
-            Entrar
-          </Link>
-        )}
-        <BottomLink section={last} current={active === last.key} />
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/[0.93] backdrop-blur-lg sm:hidden" aria-label="Secciones">
+      {/* En el teléfono no siempre hay barra arriba: la marca de la copia local (solo desarrollo) va sobre esta. */}
+      {local && (
+        <span aria-hidden="true" className="pointer-events-none absolute -top-2.5 left-2">
+          <LocalBadge />
+        </span>
+      )}
+      {/* Con la barrita del iPhone abajo, los nombres quedan justo encima de ella (como en el diseño: 86 px en total). */}
+      <div className="mx-auto flex max-w-lg px-3 pt-2 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)-1rem))]">
+        {items.map(({ section, to, count, current }) => (
+          <BottomLink key={section.key} section={section} to={to} count={count} current={current} />
+        ))}
       </div>
+      {probes}
     </nav>
   );
 }
 
 /**
- * Marco de toda la app: arriba la marca (en la computadora), el deporte en que estás (siempre: toca para cambiar),
- * lo del medio (p. ej. la liga), la campana y la configuración; debajo, opcionalmente, las pestañas de la liga; abajo
- * en el celular: Home · Eventos · Crear · Notificaciones · Perfil (sin cuenta: Home · Contáctanos · Crear · Entrar ·
- * Acerca de).
+ * Marco de toda la app. En el teléfono no hay barra de arriba: cada pantalla trae su título (Hoy con la campana, Yo con
+ * el engranaje). Solo sale si hay algo que poner: dentro de una liga (`middle`: su nombre; `subnav`: sus pestañas) o
+ * el selector de deporte de quien juega más de uno. En la computadora, arriba la marca y las secciones. Debajo, el
+ * lugar del aviso (NoticeSlot) para las pantallas que no ponen el suyo; abajo en el teléfono, la barra de secciones.
  */
 export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNode; subnav?: ReactNode; children: ReactNode; wide?: boolean }) {
   const location = useLocation();
   const active = useActiveSport();
+  const { switcher: sportSwitcher, own } = useSportBar();
+  // Hoy en el color de tu deporte si la app quedó en uno que no juegas (un solo acento en la pantalla; «Pádel ▾» arriba
+  // sigue en el suyo, para volver).
+  const tint = sportTint(location.pathname === '/' ? own : null);
   const width = wide ? 'max-w-5xl' : 'max-w-3xl';
+  const mobileHeader = !!middle || !!subnav || sportSwitcher;
+  // El logo: con el selector, solo estando en un deporte (sin deporte el logo va dentro del selector); sin él, siempre
+  // en la computadora. En el teléfono, dentro de una liga, no cabe: ahí manda el nombre de la liga.
+  const logo = sportSwitcher ? !!active : true;
   return (
-    <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8">
-      <div className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur">
+    <div
+      className={cx(tint.className, 'min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8', !mobileHeader && 'max-sm:pt-[env(safe-area-inset-top)]')}
+    >
+      {tint.css && (
+        <style href={tint.className} precedence="default">
+          {tint.css}
+        </style>
+      )}
+      <div className={cx('pt-safe sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur', !mobileHeader && 'max-sm:hidden')}>
         <header className={cx('mx-auto flex h-14 items-center gap-2 px-4', width)}>
-          {/*
-            El logo sale una sola vez: en «Todos los deportes» va dentro del botón del deporte; en un deporte, a su
-            lado (dentro de una liga, en el teléfono, no cabe: ahí manda el nombre de la liga).
-          */}
-          {active && (
+          {logo && (
             <Link
               to="/"
               onClick={() => setActiveSport(null)}
-              className={cx('-ml-1.5 size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2', middle ? 'hidden sm:flex' : 'flex')}
-              aria-label="MatchMate: todos los deportes"
-              title="Todos los deportes"
+              className={cx(
+                '-ml-1.5 size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2',
+                middle || !sportSwitcher ? 'hidden sm:flex' : 'flex',
+              )}
+              aria-label="MatchMate: Hoy"
+              title="Hoy"
             >
               <Logo />
             </Link>
           )}
-          <SportChip compact={!!middle} />
-          {local && <LocalBadge />}
+          {sportSwitcher &&
+            (tint.className ? (
+              <SportTint sport={active} className="contents">
+                <SportChip compact={!!middle} />
+              </SportTint>
+            ) : (
+              <SportChip compact={!!middle} />
+            ))}
+          {/* En el teléfono la marca de la copia local va sobre la barra de abajo. */}
+          {local && (
+            <span className="max-sm:hidden">
+              <LocalBadge />
+            </span>
+          )}
           {middle}
           <div className="ml-auto flex items-center gap-2">
             <DesktopNav />
-            <TopActions />
           </div>
         </header>
         {subnav && <div className={cx('mx-auto px-4 pb-2', width)}>{subnav}</div>}
       </div>
       <OfflineBar />
       <OutboxIndicator />
+      {/*
+        El aviso de la pantalla (instalar, permitir avisos, sugerir Pro…), si ella no pone su propio NoticeSlot: este se
+        monta antes que el de la pantalla, así que si ella tiene uno, gana el de ella y aquí no sale nada.
+      */}
+      <NoticeSlot className={cx('mx-4 mt-4 sm:mx-auto sm:w-[calc(100%-2rem)]', wide ? 'sm:max-w-[62rem]' : 'sm:max-w-[46rem]')} />
       <main className={cx('mx-auto px-4 py-5', width)}>
         <Suspense fallback={<TopLoader />}>
           {/* key = ruta: cada pantalla entra con una transición suave */}
@@ -305,11 +383,13 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
         </Suspense>
       </main>
       <BottomNav />
+      {/* «Modo Pro activado · Deshacer» al cambiar de modo (sigue a la vista aunque cambie la pantalla). */}
+      <ModeToast />
     </div>
   );
 }
 
-/** Pantallas fuera de una liga (Home, Eventos, Perfil, cuenta, unirse, superadmin). */
+/** Pantallas fuera de una liga (Hoy, Ligas, Yo, cuenta, unirse, superadmin). */
 export function AppShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return <AppFrame wide={wide}>{children}</AppFrame>;
 }

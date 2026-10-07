@@ -3,7 +3,7 @@ import { lazy, Suspense, useLayoutEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { useLeagueCtx } from './lib/league';
 import { installErrorReporting } from './lib/errorReport';
-import { getActiveSport, installSportAccent, parseActiveSport, setActiveSport, sportHomePath, useActiveSport } from './lib/sportContext';
+import { getActiveSport, installSportAccent, parseActiveSport, setActiveSport } from './lib/sportContext';
 import { SportRoute } from './sports/screens';
 import { FeedbackProvider } from './components/feedback';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -14,6 +14,7 @@ import { unlockGateOpen } from './components/badges/hold';
 import { AppRouter } from './components/GestureGuards';
 import { NotificationsProvider } from './components/Notifications';
 import { CreateMenuProvider } from './components/CreateMenu';
+import { PushNotice } from './components/NotificationsOptIn';
 import { PwaPrompts } from './components/PwaPrompts';
 import { ResumeAfterLogin } from './components/ResumeAfterLogin';
 import { AppShell } from './components/Shell';
@@ -36,6 +37,7 @@ const PeopleSearchPage = lazy(() => import('./pages/PeopleSearchPage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
+const OrganizePage = lazy(() => import('./pages/OrganizePage'));
 const AgendaPage = lazy(() => import('./pages/AgendaPage'));
 const JoinPage = lazy(() => import('./pages/JoinPage'));
 const ScorerJoinPage = lazy(() => import('./pages/ScorerJoinPage'));
@@ -70,19 +72,17 @@ function SuperOnly({ children }: { children: ReactNode }) {
 }
 
 /**
- * `/`: el Home de todos los deportes. Si la app está en un deporte (al abrirla, o un enlace a `/`), va al Home de ese
- * deporte: al de todos se llega quitando el deporte (Home dos veces, el logo o «Todos los deportes» del selector).
- * Volver atrás hasta aquí sí es salir del deporte (p. ej. entraste a una liga desde el Home de todos).
+ * `/`: Hoy, el único inicio (la pestaña Hoy de la barra lleva siempre aquí, aunque la app esté en un deporte: entrar a
+ * una liga la pone en el suyo). El Home de cada deporte (`/d/:sport`) sigue para quien elige uno en el selector.
+ * Volver atrás hasta aquí sí es salir del deporte (p. ej. entraste a una liga desde Hoy).
  */
 function GlobalHomeRoute() {
-  const active = useActiveSport();
   const { key } = useLocation();
   const back = useNavigationType() === NavigationType.Pop && key !== 'default';
   useLayoutEffect(() => {
     // Solo al llegar atrás a esta entrada: no cuando después se elige un deporte aquí mismo (ese navega solo).
     if (back && getActiveSport()) setActiveSport(null);
   }, [back, key]);
-  if (active && !back) return <Navigate to={sportHomePath(active)} replace />;
   return <HomePage />;
 }
 
@@ -170,6 +170,8 @@ export default function App() {
                       <Route path="/invitacion/:inviteId" element={<Screen area="invitacion" framed><InvitePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
                       <Route path="/ligas" element={<Screen area="ligas" framed><LeaguesPage /></Screen>} />
+                      {/* Organizar (la pestaña de Pro): tu única liga directo a su Organizar; con varias, eliges. */}
+                      <Route path="/organizar" element={<Screen area="organizar" framed><OrganizePage /></Screen>} />
                       {/* «¿Dónde juego esta semana?»: lo abierto en las ligas públicas (con y sin cuenta). */}
                       <Route path="/agenda" element={<Screen area="agenda" framed><AgendaPage /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />
@@ -219,7 +221,9 @@ export default function App() {
             </NotificationsProvider>
             {/* Después de entrar o crear la cuenta, sigue a donde iba (una invitación, una liga). */}
             <ResumeAfterLogin />
+            {/* Instalar la app y permitir los avisos: el aviso de la pantalla (NoticeSlot), nunca carteles apilados. */}
             <PwaPrompts />
+            <PushNotice />
           </AppRouter>
         </FeedbackProvider>
       </AuthProvider>

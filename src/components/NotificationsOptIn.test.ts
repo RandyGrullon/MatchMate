@@ -23,7 +23,7 @@ vi.mock('../lib/auth', () => ({
 }));
 vi.mock('./Notifications', () => ({ useNotifications: () => ({ leagues: [] }) }));
 
-const { NotificationsCard } = await import('./NotificationsOptIn');
+const { NotificationsCard, NotificationsPrompt, pushPageState } = await import('./NotificationsOptIn');
 const { FeedbackProvider } = await import('./feedback');
 
 const render = () => renderToString(h(FeedbackProvider, null, h(NotificationsCard)));
@@ -54,5 +54,19 @@ describe('qué te avisamos', () => {
     state.pushPrefs = { resultados: true, social: true, recordatorios: true, liga: true };
     html = render();
     expect(html).not.toContain('Qué te avisamos');
+  });
+});
+
+describe('pedir los avisos (ahora en el NoticeSlot, no como tarjeta)', () => {
+  it('la página de avisos: activar si se puede, bloqueadas, o falta instalar; nada si ya están activas', () => {
+    expect(pushPageState('default', true, true)).toBe('ask');
+    expect(pushPageState('default', true, false)).toBe('install');
+    expect(pushPageState('default', false, true)).toBe('install');
+    expect(pushPageState('denied', true, true)).toBe('denied');
+    expect(pushPageState('granted', true, true)).toBeNull();
+  });
+
+  it('la tarjeta del Home ya no se dibuja (el aviso lo propone PushNotice para toda la app)', () => {
+    expect(renderToString(h(NotificationsPrompt))).toBe('');
   });
 });

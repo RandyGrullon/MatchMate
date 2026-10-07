@@ -23,7 +23,8 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../lib/auth', () => ({ useAuth: () => state.auth }));
 vi.mock('../components/Notifications', () => ({ useNotifications: () => state.notices }));
-vi.mock('../components/NotificationsOptIn', () => ({ PushOptInCard: () => null }));
+vi.mock('../components/NotificationsOptIn', () => ({ PushOptInNotice: () => null }));
+vi.mock('../components/NoticeSlot', () => ({ NoticeSlot: () => h('div', { 'data-slot': '' }) }));
 vi.mock('../components/notifications/bridge', () => ({ useCurrentSport: () => state.current }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 vi.mock('../lib/data/invites', () => ({
@@ -113,6 +114,18 @@ describe('página de avisos', () => {
     const out = render();
     expect(text(out)).toContain('Entra para ver tus avisos');
     expect(out).toContain('href="/login?next=%2Favisos"');
+  });
+
+  it('arriba: «‹ Hoy» (se llega con la campana de Hoy), el título grande y el único aviso de la pantalla', () => {
+    const out = render();
+    expect(out).toMatch(/<a [^>]*href="\/"[^>]*>.*?Hoy<\/a>/);
+    expect(out).toContain('<h1 class="text-title">Avisos</h1>');
+    // El aviso (instalar o activar las notificaciones) va en su lugar, antes de las invitaciones y la lista.
+    expect(out).toContain('data-slot');
+    expect(out.indexOf('data-slot')).toBeLessThan(out.indexOf('Aviso partido'));
+    // Sin cuenta también se puede volver a Hoy.
+    state.auth = { user: null, loading: false };
+    expect(render()).toMatch(/<a [^>]*href="\/"[^>]*>.*?Hoy<\/a>/);
   });
 
   it('todos los avisos, por grupo, con lo sin leer y «Marcar todo como leído»', () => {

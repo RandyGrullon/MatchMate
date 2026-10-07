@@ -7,6 +7,7 @@ import { AppShell } from '../components/Shell';
 import { ProfileStats } from '../components/GlobalStats';
 import { ProfileView } from '../components/social/ProfileView';
 import { BallIcon } from '../components/balls/BallPicker';
+import { ModeSwitch } from '../components/mode';
 import { Card, Empty, Loading, StatsSkeleton } from '../components/ui';
 
 const actionLink = 'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition active:scale-[0.97]';
@@ -85,6 +86,8 @@ export default function ProfilePage() {
 
   return (
     <AppShell>
+      {/* Arriba de Yo, cómo ver la app: Lite (lo esencial) o Pro (todo). Cambia al momento, con «Deshacer» abajo. */}
+      <ModeSwitch className="mb-5" />
       <ProfileView
         userId={auth.user.uid}
         fallbackName={displayName(auth)}

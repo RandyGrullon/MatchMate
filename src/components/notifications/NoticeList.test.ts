@@ -90,5 +90,9 @@ describe('lista de avisos', () => {
     expect(out).toContain('aria-pressed="false"');
     expect(out).toContain('99+');
     expect(out).toContain('h-11');
+    // Lo posicionado adentro («, sin leer:» para el lector de pantalla) queda dentro de la fila que se desliza: la fila y
+    // cada botón son `relative` (si no, en 360 px la página se iba de lado).
+    expect(out).toMatch(/<div class="no-scrollbar relative [^"]*overflow-x-auto/);
+    expect(out.match(/<button[^>]*class="group relative /g)).toHaveLength(2);
   });
 });

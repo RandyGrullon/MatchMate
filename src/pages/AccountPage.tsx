@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, Check, ChevronRight, Compass, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Settings } from 'lucide-react';
+import { AtSign, Check, ChevronRight, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Settings } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
@@ -9,7 +9,6 @@ import { AppShell } from '../components/Shell';
 import { AppearanceCard } from '../components/AppearanceCard';
 import { NotificationsCard } from '../components/NotificationsOptIn';
 import { unsubscribePush } from '../lib/push';
-import { resetTours } from '../components/Tour';
 import { useCreateMenu } from '../components/CreateMenu';
 import { Avatar } from '../components/Avatar';
 import { useAction, useFeedback } from '../components/feedback';
@@ -142,16 +141,6 @@ export default function AccountPage() {
         <PasswordCard />
         <AppearanceCard />
         <NotificationsCard />
-        <Button
-          className="self-start max-sm:h-11"
-          icon={<Compass className="size-4" />}
-          onClick={() => {
-            resetTours();
-            navigate('/');
-          }}
-        >
-          Ver el tour de la app otra vez
-        </Button>
 
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold text-muted">Mis ligas</h2>

@@ -35,7 +35,9 @@ export function FilterChips<K extends string>({
   }, [value]);
 
   return (
-    <div ref={bar} className="no-scrollbar -mx-4 overflow-x-auto overscroll-x-contain px-4" role="group" aria-label={label}>
+    // `relative` en la fila y en cada botón: lo que va posicionado adentro (el «, sin leer:» del lector de pantalla) queda
+    // dentro de la fila que se desliza y no ensancha la página.
+    <div ref={bar} className="no-scrollbar relative -mx-4 overflow-x-auto overscroll-x-contain px-4" role="group" aria-label={label}>
       <div className="flex w-max gap-1.5 pr-4">
         {items.map((it) => {
           const active = it.key === value;
@@ -46,7 +48,7 @@ export function FilterChips<K extends string>({
               type="button"
               aria-pressed={active}
               onClick={() => onChange(it.key)}
-              className="group flex h-11 shrink-0 items-center rounded-full outline-none"
+              className="group relative flex h-11 shrink-0 items-center rounded-full outline-none"
             >
               <span
                 className={cx(

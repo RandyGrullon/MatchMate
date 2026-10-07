@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Download, RefreshCw, Share, X } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { NEEDS_UPDATE_MESSAGE, reloadOnTakeover, startUpdateChecks, updateApp, updatePrompt, updateRequested } from '../lib/appUpdate';
 import { useOutboxSnapshot } from '../lib/data';
 import { currentOutbox } from '../lib/data/client';
-import { useBusy } from './busy';
+import { installNotice } from '../lib/prompts';
+import { useNotice } from './NoticeSlot';
 import { Button } from './ui';
 
 interface InstallEvent extends Event {
@@ -42,8 +43,10 @@ function Banner({ icon, children, onClose }: { icon: React.ReactNode; children: 
  * - algo de la cola espera la versión nueva (el servidor ya no tiene esa función) → actualizar para enviarlo;
  * - hay una versión nueva → botón para actualizar (sin perder lo que se está haciendo hasta que el usuario toque).
  *   Se pregunta por ella al volver a la app, al volver la señal y cada 30 minutos (src/lib/appUpdate.ts). Si otra
- *   pestaña la activó y aquí hay algo por enviar, no se recarga sola: se muestra el aviso;
- * - en Android, botón "Instalar"; en iPhone, cómo agregarla a la pantalla de inicio.
+ *   pestaña la activó y aquí hay algo por enviar, no se recarga sola: se muestra el aviso. Estos dos siguen flotando
+ *   sobre la barra (cuidan lo que falta por enviar);
+ * - en Android, «Instalar»; en iPhone, cómo agregarla a la pantalla de inicio. Este ya no flota: es el aviso de
+ *   instalar del NoticeSlot de la pantalla (uno solo por pantalla, se cierra con la X y vuelve en 14 días).
  */
 export function PwaPrompts() {
   const outbox = useOutboxSnapshot();
@@ -66,7 +69,6 @@ export function PwaPrompts() {
   const [updating, setUpdating] = useState(false);
   const [hideNeedsUpdate, setHideNeedsUpdate] = useState(false);
   const [installEvent, setInstallEvent] = useState<InstallEvent | null>(null);
-  const installing = useBusy();
   const [showIos, setShowIos] = useState(false);
 
   // Si se cerró el aviso y la cola vuelve a quedar esperando otra vez, se muestra de nuevo.
@@ -104,6 +106,20 @@ export function PwaPrompts() {
     void updateApp();
   }
 
+  // Instalar: el aviso de la pantalla (NoticeSlot). La ruedita del botón la pone el aviso mientras se responde.
+  useNotice(
+    installEvent
+      ? installNotice('prompt', {
+          install: async () => {
+            await installEvent.prompt();
+            await installEvent.userChoice;
+            setInstallEvent(null);
+          },
+          onDismiss: dismiss,
+        })
+      : showIos && installNotice('ios', { onDismiss: dismiss }),
+  );
+
   const prompt = updatePrompt({ needsUpdate: outbox.needsUpdate && !hideNeedsUpdate, newVersion: needRefresh || takenOver || waitingFound });
 
   if (prompt === 'needs_update') {
@@ -136,39 +152,5 @@ export function PwaPrompts() {
     );
   }
 
-  if (installEvent) {
-    return (
-      <Banner icon={<Download className="size-5" />} onClose={dismiss}>
-        <p className="font-medium">Instala MatchMate en tu celular</p>
-        <p className="text-xs text-muted">Se abre como una app, más rápido y sin conexión.</p>
-        <Button
-          size="sm"
-          variant="primary"
-          className="mt-1.5"
-          loading={installing.isBusy()}
-          onClick={() =>
-            installing.run('instalar', async () => {
-              await installEvent.prompt();
-              await installEvent.userChoice;
-              setInstallEvent(null);
-            })
-          }
-        >
-          Instalar
-        </Button>
-      </Banner>
-    );
-  }
-
-  if (showIos) {
-    return (
-      <Banner icon={<Share className="size-5" />} onClose={dismiss}>
-        <p className="font-medium">Instala MatchMate</p>
-        <p className="text-xs text-muted">
-          Toca <Share className="inline size-3.5 align-[-2px]" /> <b>Compartir</b> y luego <b>Agregar a inicio</b>.
-        </p>
-      </Banner>
-    );
-  }
   return null;
 }

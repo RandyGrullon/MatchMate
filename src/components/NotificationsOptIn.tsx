@@ -1,21 +1,24 @@
 import { useMemo, useState } from 'react';
-import { Bell, BellOff, BellRing, CheckCircle2, Smartphone, X } from 'lucide-react';
+import { Bell, BellOff, CheckCircle2, Smartphone } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { PUSH_CATEGORIES, setPushPref, type PushCategory, type PushPrefs } from '../lib/data/pushPrefs';
 import { notificationsText } from '../lib/notifications';
+import { PROMPT_SNOOZE_DAYS, pushNotice, pushPageNotice, type PushPageState } from '../lib/prompts';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
 import { pushConfigured } from '../lib/pushKey';
 import { sportsOf } from '../sports/registry';
 import { BusyIcon } from './busy';
 import { useAction, useFeedback } from './feedback';
+import { useNotice } from './NoticeSlot';
 import { useNotifications } from './Notifications';
 import { Button, Card, cx } from './ui';
 
+/** «Ahora no» de antes (y la X del aviso ahora): mientras esté reciente no se vuelve a ofrecer. */
 const LATER_KEY = 'mm:avisos-despues';
-/** La tarjeta de la página de avisos (aparte: cerrarla ahí no esconde la del Home, y al revés). */
+/** El aviso de la página de avisos (aparte: cerrarlo ahí no esconde el de las otras pantallas, y al revés). */
 const PAGE_LATER_KEY = 'mm:avisos-pagina-despues';
 /** Si dijo "ahora no", se vuelve a ofrecer después de estos días. */
-const LATER_DAYS = 14;
+const LATER_DAYS = PROMPT_SNOOZE_DAYS;
 
 function askedRecently(key = LATER_KEY): boolean {
   try {
@@ -63,40 +66,35 @@ function useEnable() {
   return { state, busy, enable };
 }
 
-/** Home: con la app instalada, ofrece activar las notificaciones (una vez; "ahora no" lo pospone). */
-export function NotificationsPrompt() {
+/**
+ * Con la app instalada y sin haber respondido, propone «¿Te avisamos? · Activar» al aviso de la pantalla (NoticeSlot):
+ * sale en Hoy, en Avisos o donde haya uno, nunca apilado con otro. Va una sola vez en la raíz de la app (App.tsx); la X
+ * lo pospone 14 días, igual que el «Ahora no» de antes. No dibuja nada.
+ */
+export function PushNotice() {
   const { user } = useAuth();
-  const { state, busy, enable } = useEnable();
-  const what = useWhat();
+  const { state, enable } = useEnable();
   const [hidden, setHidden] = useState(askedRecently);
-  if (!user || hidden || !isStandalone() || state !== 'default') return null;
-
-  function later() {
-    saveLater(LATER_KEY);
-    setHidden(true);
-  }
-
-  return (
-    <Card className="animate-fade-up flex flex-col gap-3 border-accent/40 p-4">
-      <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-          <BellRing className="size-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">¿Te avisamos?</p>
-          <p className="text-sm text-muted">{what}</p>
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <Button className="flex-1" onClick={later}>
-          Ahora no
-        </Button>
-        <Button variant="primary" className="flex-1" icon={<Bell className="size-4" />} loading={busy} onClick={enable}>
-          Activar
-        </Button>
-      </div>
-    </Card>
+  const show = !!user && !hidden && isStandalone() && state === 'default';
+  useNotice(
+    show &&
+      pushNotice({
+        enable,
+        onDismiss: () => {
+          saveLater(LATER_KEY);
+          setHidden(true);
+        },
+      }),
   );
+  return null;
+}
+
+/**
+ * Antes, la tarjeta «¿Te avisamos?» del Home. Ahora ese aviso lo propone PushNotice (una vez, para toda la app) y sale
+ * en el NoticeSlot de la pantalla: esto ya no dibuja nada (queda para las pantallas que todavía lo montan).
+ */
+export function NotificationsPrompt(): null {
+  return null;
 }
 
 /**
@@ -200,73 +198,32 @@ export function NotificationsCard() {
   );
 }
 
+/** Cómo están las notificaciones de este teléfono para la página de avisos (null = activas, nada que decir). */
+export function pushPageState(state: NotifyState, supported: boolean, installed: boolean): PushPageState | null {
+  if (state === 'granted') return null;
+  if (state === 'denied') return 'denied';
+  return supported && installed ? 'ask' : 'install';
+}
+
 /**
- * Página de avisos, arriba: si las notificaciones del teléfono no están activas, cómo activarlas (o por qué no se
- * puede: bloqueadas, o falta instalar la app). Con «Ahora no» o la X se esconde unos días.
+ * Página de avisos: si las notificaciones del teléfono no están activas, propone al aviso de la página cómo activarlas
+ * (o por qué no se puede: bloqueadas, o falta instalar la app). La X lo esconde unos días. No dibuja nada: sale en el
+ * NoticeSlot de la página (si hay algo más importante, como instalar, sale eso).
  */
-export function PushOptInCard() {
+export function PushOptInNotice() {
   const { user } = useAuth();
-  const { state, busy, enable } = useEnable();
+  const { state, enable } = useEnable();
   const [hidden, setHidden] = useState(() => askedRecently(PAGE_LATER_KEY));
-  if (!user || hidden || state === 'granted') return null;
-
-  function later() {
-    saveLater(PAGE_LATER_KEY);
-    setHidden(true);
-  }
-
-  const canAsk = state === 'default' && notificationsSupported() && isStandalone();
-  const look =
-    state === 'denied'
-      ? {
-          icon: <BellOff className="size-5" />,
-          tone: 'bg-warn-soft text-warn',
-          title: 'Las notificaciones están bloqueadas',
-          text: 'Para enterarte con la app cerrada, actívalas en los ajustes del teléfono (Notificaciones › MatchMate).',
-        }
-      : canAsk
-        ? {
-            icon: <BellRing className="size-5" />,
-            tone: 'bg-accent-soft text-accent',
-            title: 'Activa las notificaciones',
-            text: 'Te avisamos en el teléfono de tus partidos, resultados por confirmar y torneos, aunque la app esté cerrada.',
-          }
-        : {
-            icon: <Smartphone className="size-5" />,
-            tone: 'bg-accent-soft text-accent',
-            title: 'Recibe los avisos en tu teléfono',
-            text: 'Instala la app (Agregar a la pantalla de inicio) y ábrela desde el ícono para activar las notificaciones.',
-          };
-
-  return (
-    <Card className={cx('animate-fade-up flex flex-col gap-3 p-4', canAsk && 'border-accent/40')}>
-      <div className="flex items-start gap-3">
-        <div className={cx('flex size-10 shrink-0 items-center justify-center rounded-xl', look.tone)}>{look.icon}</div>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">{look.title}</p>
-          <p className="text-sm text-muted">{look.text}</p>
-        </div>
-        {!canAsk && (
-          <button
-            type="button"
-            onClick={later}
-            aria-label="Cerrar"
-            className="-mt-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-fg active:scale-95"
-          >
-            <X className="size-4" />
-          </button>
-        )}
-      </div>
-      {canAsk && (
-        <div className="flex gap-2">
-          <Button className="h-11 flex-1" onClick={later}>
-            Ahora no
-          </Button>
-          <Button variant="primary" className="h-11 flex-1" icon={<Bell className="size-4" />} loading={busy} onClick={enable}>
-            Activar
-          </Button>
-        </div>
-      )}
-    </Card>
+  const look = user && !hidden ? pushPageState(state, notificationsSupported(), isStandalone()) : null;
+  useNotice(
+    look &&
+      pushPageNotice(look, {
+        enable,
+        onDismiss: () => {
+          saveLater(PAGE_LATER_KEY);
+          setHidden(true);
+        },
+      }),
   );
+  return null;
 }
