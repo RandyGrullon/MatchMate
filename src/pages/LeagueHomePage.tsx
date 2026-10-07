@@ -89,7 +89,7 @@ function LeagueEvents() {
       {!member && league.visibility === 'public' && <JoinBanner />}
       {/* Lo que se está jugando ahora: lo ve toda la liga (y quien mira una liga pública). */}
       {liveEvents.map(({ event: ev, info }) => (
-        <LiveBoard key={ev.id} event={ev} info={info} actions={feed && <LiveActions feed={feed} event={ev} />} />
+        <LiveBoard key={ev.id} event={ev} info={info} actions={feed && <LiveActions feed={feed} event={ev} today={today} />} />
       ))}
 
       {!events.loading && <Announcements events={events.data} />}

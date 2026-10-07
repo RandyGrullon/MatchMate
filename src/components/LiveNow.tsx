@@ -1,11 +1,13 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { CalendarDays, CheckCircle2, ClipboardList, Clock, PencilLine, Smartphone, Trophy, UserRound, type LucideIcon } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ClipboardList, Clock, PencilLine, Send, Smartphone, Trophy, UserRound, type LucideIcon } from 'lucide-react';
 import type { LeagueFeed } from '../lib/data';
 import type { Match } from '../lib/data/matches';
-import { draftCount, useDraft } from '../lib/draft';
-import { eventLabel } from '../lib/format';
+import { eventLabel, toIsoDate } from '../lib/format';
 import { liveGames, liveMatches, type LiveGame } from '../lib/live';
 import type { BowlingEvent } from '../lib/types';
+import { useIsPro } from '../lib/useMode';
+import { nextGameLabel, sheetPath, useNextGame, type NextGame, type TodayGames } from '../lib/useNextGame';
 import { useNow } from '../lib/useNow';
 import { LiveMatchesCard } from './LiveNowMatches';
 import { useNotifications } from './Notifications';
@@ -67,33 +69,45 @@ function LiveCard({ game }: { game: LiveGame }) {
   );
 }
 
-/**
- * Lo que puede hacer la cuenta en el evento en juego: el jugador anota sus juegos (en su teléfono) y
- * ve si ya los envió; el admin o el anotador anota los de todos.
- */
-export function LiveActions({ feed, event }: { feed: LeagueFeed; event: BowlingEvent }) {
-  const draft = useDraft(feed.lid, feed.playerId, event.id);
-  const typed = draftCount(draft);
-  const subs = feed.mySubs.filter((s) => s.eventId === event.id);
-  const pending = subs.some((s) => s.status === 'pendiente');
-  const approved = subs.some((s) => s.status === 'aprobado');
-  const staff = feed.isAdmin || feed.isScorer;
-  // Cada cuenta anota sus juegos en su teléfono y los envía a revisión (el dueño y los admins también
-  // juegan); el admin o el anotador, además, anota los de todos en la tabla. En un torneo, quien lo
-  // organiza juega solo si ya empezó sus juegos (si no, lo suyo es anotar los de todos).
-  const staffTorneo = staff && event.type === 'torneo';
-  const player = !!feed.playerId && (!staffTorneo || typed > 0 || subs.length > 0);
-  const eventUrl = `/l/${feed.lid}/e/${event.id}`;
+/** Ícono del botón del jugador según lo que hace (como en Hoy). */
+const NEXT_ICON: Record<NextGame['kind'], LucideIcon> = {
+  medias: PencilLine,
+  anotar: PencilLine,
+  enviar: Send,
+  ver: UserRound,
+  preparar: UserRound,
+  planilla: ClipboardList,
+};
 
-  const status: { icon: LucideIcon; text: string; tone: string } | null = !player
-    ? null
-    : typed > 0
-      ? { icon: Smartphone, text: `${typed} de ${event.games} anotados en tu teléfono · falta enviarlos`, tone: 'text-accent' }
-      : pending
-        ? { icon: Clock, text: 'Enviado · el admin lo está revisando', tone: 'text-warn' }
-        : approved
-          ? { icon: CheckCircle2, text: 'El admin aprobó tus juegos', tone: 'text-ok' }
-          : null;
+/** La línea de cómo van sus juegos: en el teléfono sin enviar, enviados o ya en la tabla (null: nada que decir). */
+export function liveStatus(mine: Pick<TodayGames, 'cells' | 'next'>, games: number): { icon: LucideIcon; text: string; tone: string } | null {
+  const inPhone = mine.cells.filter((c) => c.kind === 'telefono').length;
+  if (inPhone > 0) return { icon: Smartphone, text: `${inPhone} de ${games} anotados en tu teléfono · falta enviarlos`, tone: 'text-accent' };
+  if (mine.cells.some((c) => c.kind === 'enviado')) return { icon: Clock, text: 'Enviado · el admin lo está revisando', tone: 'text-warn' };
+  // «Ya en la tabla» solo cuando no queda ningún juego por anotar (ni uno a medias).
+  if (mine.next.kind === 'ver' && mine.cells.length > 0 && mine.cells.every((c) => c.kind === 'tabla'))
+    return { icon: CheckCircle2, text: 'Tus juegos ya están en la tabla', tone: 'text-ok' };
+  return null;
+}
+
+/**
+ * Lo que puede hacer la cuenta en el evento en juego, con los mismos textos que Hoy (useNextGame): el jugador sigue el
+ * juego que dejó a medias («Seguir mi juego 3»), anota el que sigue («Anotar juego 3»), envía los del teléfono o ve los
+ * suyos; quien no tiene jugador lo prepara. El admin o el anotador, además, anota los de todos (la planilla): en Pro, al
+ * lado; en Lite, solo si no juega (si juega, lo suyo es su botón; la planilla sigue en la práctica y en Pro).
+ */
+export function LiveActions({ feed, event, today: day }: { feed: LeagueFeed; event: BowlingEvent; today?: string }) {
+  const now = useNow();
+  const today = day ?? toIsoDate(now);
+  const game = useMemo(() => ({ feed, event }), [feed, event]);
+  const mine = useNextGame(game, today);
+  const pro = useIsPro();
+  if (!mine) return null;
+  const { next } = mine;
+  const staff = feed.isAdmin || feed.isScorer;
+  const status = next.kind === 'planilla' || next.kind === 'preparar' ? null : liveStatus(mine, event.games);
+  const NextIcon = NEXT_ICON[next.kind];
+  const sheet = staff && next.kind !== 'planilla' && pro;
 
   return (
     <>
@@ -103,23 +117,11 @@ export function LiveActions({ feed, event }: { feed: LeagueFeed; event: BowlingE
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        {player &&
-          (pending && typed === 0 ? (
-            <Link to={eventUrl} className={secondary}>
-              <UserRound className="size-4" /> Ver mis juegos
-            </Link>
-          ) : (
-            <Link to={`${eventUrl}?anotar=1`} className={primary}>
-              <PencilLine className="size-4" /> {typed > 0 ? 'Seguir anotando' : 'Anotar mis juegos'}
-            </Link>
-          ))}
-        {!feed.playerId && !staff && (
-          <Link to={`/l/${feed.lid}/perfil`} className={primary}>
-            <UserRound className="size-4" /> Preparar mi jugador
-          </Link>
-        )}
-        {staff && (
-          <Link to={`${eventUrl}?tab=juegos`} className={player ? secondary : primary}>
+        <Link to={next.to} className={next.kind === 'ver' ? secondary : primary}>
+          <NextIcon className="size-4" /> {nextGameLabel(next)}
+        </Link>
+        {sheet && (
+          <Link to={sheetPath(feed.lid, event.id)} className={secondary}>
             <ClipboardList className="size-4" /> {feed.isAdmin ? 'Anotar juegos' : 'Anotar juegos del torneo'}
           </Link>
         )}

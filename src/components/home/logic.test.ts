@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CalendarItem, NextMatchInfo } from '../../lib/calendar';
+import type { RankingRow } from '../../lib/bowlingSeason';
 import {
   greeting,
   groupBySport,
   leaguesCountLabel,
+  myStanding,
+  namesLine,
   nextByLeague,
   nextEventItem,
   normalize,
@@ -11,7 +14,12 @@ import {
   playsWhen,
   publicLeagueLine,
   searchLeagues,
+  socialLine,
+  standingLabel,
   todayLabel,
+  todayTitle,
+  upNextSubtitle,
+  weekdayLabel,
   whenLabel,
 } from './logic';
 import { mergeFound } from './PublicLeagues';
@@ -156,5 +164,72 @@ describe('Ligas públicas: la línea que invita a entrar', () => {
     const c = { id: 'c' };
     expect(mergeFound([a, b], [b, c]).map((l) => l.id)).toEqual(['a', 'b', 'c']);
     expect(mergeFound([], [c]).map((l) => l.id)).toEqual(['c']);
+  });
+});
+
+describe('Hoy: textos', () => {
+  const TODAY = '2026-10-07';
+
+  it('el nombre del evento de la tarjeta: el suyo, «Práctica de hoy», «Práctica» o «Torneo»', () => {
+    expect(todayTitle({ type: 'practica', name: '', date: TODAY }, TODAY)).toBe('Práctica de hoy');
+    expect(todayTitle({ type: 'practica', name: null, date: '2026-10-13' }, TODAY)).toBe('Práctica');
+    expect(todayTitle({ type: 'torneo', name: '  ', date: TODAY }, TODAY)).toBe('Torneo');
+    expect(todayTitle({ type: 'torneo', name: 'Copa de octubre', date: TODAY }, TODAY)).toBe('Copa de octubre');
+  });
+
+  it('el día de una fecha: «Hoy», «Mañana» o el día de la semana (nunca «MAR 13»)', () => {
+    expect(weekdayLabel(TODAY, TODAY)).toBe('Hoy');
+    expect(weekdayLabel('2026-10-08', TODAY)).toBe('Mañana');
+    expect(weekdayLabel('2026-10-13', TODAY)).toBe('Martes');
+    expect(weekdayLabel('2026-10-24', TODAY)).toBe('Sábado');
+  });
+
+  it('la línea de «Lo que viene»: día y hora (y la liga si juegas en más de una; el lugar de un partido)', () => {
+    const it0 = item({ date: '2026-10-13', time: '7:30 pm', leagueName: 'Liga de los martes' });
+    expect(upNextSubtitle(it0, TODAY)).toBe('Martes · 7:30 pm');
+    expect(upNextSubtitle(it0, TODAY, true)).toBe('Martes · 7:30 pm · Liga de los martes');
+    expect(upNextSubtitle(item({ date: '2026-10-24', time: null }), TODAY)).toBe('Sábado');
+    expect(upNextSubtitle(item({ kind: 'match', date: '2026-10-08', time: '8:00 pm', detail: 'Cancha 2' }), TODAY)).toBe('Mañana · 8:00 pm · Cancha 2');
+    // Un torneo al que ya dijo «Voy» (en una práctica, «Vas ✓» ya sale en el botón).
+    expect(upNextSubtitle(item({ date: '2026-10-24', time: null, type: 'torneo', going: true }), TODAY)).toBe('Sábado · ya te inscribiste');
+    expect(upNextSubtitle(item({ date: '2026-10-24', time: null, type: 'practica', going: true }), TODAY)).toBe('Sábado');
+  });
+
+  it('«6 jugando · Pedro va primero» (o «Vas primero»); sin nadie todavía, lo dice', () => {
+    expect(socialLine(6, { name: 'Pedro Gómez', me: false })).toEqual({ count: '6 jugando', leader: 'Pedro va primero' });
+    expect(socialLine(3, { name: 'Ana Pérez', me: true })).toEqual({ count: '3 jugando', leader: 'Vas primero' });
+    expect(socialLine(0, null)).toEqual({ count: 'Todavía nadie anota', leader: null });
+  });
+
+  it('los nombres de pila de quienes esperan aprobación', () => {
+    expect(namesLine(['Sofía Rodríguez', 'Carmen Díaz'])).toBe('Sofía y Carmen');
+    expect(namesLine(['Sofía Rodríguez'])).toBe('Sofía');
+    expect(namesLine(['Sofía R', 'Carmen D', 'Luis M'])).toBe('Sofía, Carmen y Luis');
+    expect(namesLine(['Sofía', 'Carmen', 'Luis', 'José'])).toBe('Sofía, Carmen y 2 más');
+    expect(namesLine(['Sofía', 'Sofía García', ''])).toBe('Sofía');
+    expect(namesLine([])).toBe('');
+  });
+});
+
+describe('Hoy: tu promedio y tu lugar', () => {
+  const row = (playerId: string, average: number, games: number): RankingRow => ({ playerId, name: playerId, average, games, pins: average * games, high: 0, series: 0, events: 0 });
+  const rows = [row('pedro', 219, 9), row('ana', 195, 9), row('luis', 201, 9), row('sofia', 167, 9), row('carmen', 150, 3)];
+
+  it('tu puesto por promedio entre los que tienen el mínimo de juegos, como la Tabla', () => {
+    const s = myStanding(rows, 'ana')!;
+    expect(s).toEqual({ average: 195, pos: 3, of: 4, missing: 0 });
+    expect(standingLabel(s)).toBe('en la tabla, de 4');
+  });
+
+  it('si todavía no entras, cuántos juegos te faltan (y tu promedio igual)', () => {
+    const s = myStanding(rows, 'carmen')!;
+    expect(s).toEqual({ average: 150, pos: null, of: 4, missing: 3 });
+    expect(standingLabel(s)).toBe('te faltan 3 juegos');
+    expect(standingLabel({ average: null, pos: null, of: 4, missing: 1 })).toBe('te falta 1 juego');
+  });
+
+  it('sin juegos: sin promedio; sin jugador: nada', () => {
+    expect(myStanding(rows, 'jose')).toEqual({ average: null, pos: null, of: 4, missing: 6 });
+    expect(myStanding(rows, null)).toBeNull();
   });
 });

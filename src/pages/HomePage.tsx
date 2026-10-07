@@ -1,178 +1,275 @@
-import { useMemo } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ArrowRight, CalendarDays, Compass, Crown, LayoutGrid, Trophy } from 'lucide-react';
+import { Compass, Crown, LayoutGrid, PencilLine } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { usePublicLeagues } from '../lib/data';
-import { lastLeague } from '../lib/league';
+import { toIsoDate } from '../lib/format';
 import { countBySport, mySportsFirst, offeredSports } from '../lib/sportContext';
-import { HOME_TOUR } from '../lib/tours';
+import type { League } from '../lib/types';
+import { useNow } from '../lib/useNow';
+import { recentEvents, resumeElsewhere, scorePath, startedGames, useMemoryTick, type RecentEvent } from '../lib/useNextGame';
 import { leagueSport, sportsOf } from '../sports/registry';
 import { openSports, useSportStatus } from '../sports/status';
-import { SportBadge, SportIcon } from './sports/SportBits';
 import { useCreateMenu } from '../components/CreateMenu';
 import { AgendaLinkCard } from '../components/home/AgendaLinkCard';
 import { FollowingSlot } from '../components/home/FollowingSlot';
-import { JoinCodeCard } from '../components/home/JoinCodeCard';
-import { LeagueLogo } from '../components/home/LeagueCard';
-import { LiveSection, NextUpCard } from '../components/home/LiveSection';
-import { greeting, todayLabel } from '../components/home/logic';
-import { MyLeaguesBody, MyLeaguesBySport, MyLeagueList, NoLeaguesYet } from '../components/home/MyLeagues';
+import { HomeHeader } from '../components/home/HomeHeader';
+import { CalendarSheet, ModeSheet, WhereSheet } from '../components/home/HomeSheets';
+import { HomeStats } from '../components/home/HomeStats';
+import { JoinLeagueCard } from '../components/home/JoinLeagueCard';
+import { LiveSectionPro, ToDoSection, WeekStrip, toDoOf } from '../components/home/ProSections';
 import { PublicLeagues } from '../components/home/PublicLeagues';
+import { useRsvp } from '../components/home/RsvpButton';
 import { Section, SectionLink } from '../components/home/Section';
 import { SportPickerRow } from '../components/home/SportPickerRow';
-import { useActivity, useMyLeagues } from '../components/home/useHomeData';
-import { WeekAgenda } from '../components/home/WeekAgenda';
+import { SportTint } from '../components/home/SportTint';
+import { IdleCard, NextUpCard, QuietLink, TodayCard } from '../components/home/TodayCard';
+import { UpNext, canRsvp } from '../components/home/UpNext';
+import { useActivity, useMyLeagues, type Activity } from '../components/home/useHomeData';
+import { useHomeNotices } from '../components/home/useHomeNotices';
 import { Welcome } from '../components/home/Welcome';
-import { NotificationsPrompt } from '../components/NotificationsOptIn';
+import { LiveMatchesCard, NextMatchCard } from '../components/LiveNowMatches';
+import { useMode } from '../components/mode';
+import { NoticeSlot } from '../components/NoticeSlot';
+import { useNotifications } from '../components/Notifications';
 import { AppShell } from '../components/Shell';
-import { Tour } from '../components/Tour';
-import { ListSkeleton, LoadError, Loading } from '../components/ui';
+import { ListSkeleton, LoadError, Loading, Skeleton } from '../components/ui';
+import type { LeagueFeed } from '../lib/data';
 
 /** Ligas públicas que se muestran en la portada sin cuenta. */
 const WELCOME_PUBLIC = 5;
 
 /**
- * Home de todos los deportes (`/`): el saludo, los deportes (los míos primero) para entrar a uno, lo que está en juego
- * ahora en todas mis ligas, lo próximo (partido o evento), la semana, mis ligas agrupadas por deporte, la gente que
- * sigo y el código de invitación. Sin cuenta: la portada con los deportes y las ligas públicas.
+ * Hoy (`/`), el único inicio (rediseño «Calma y foco»; `/d/:sport` lleva aquí). Sin cuenta: la portada con los deportes
+ * y las ligas públicas. Con cuenta, de todos tus deportes:
+ * - Lite: la fecha, «Hola, Ana» y la campana; lo de hoy UNA vez (TodayCard: tus juegos y un botón, o tu próxima fecha
+ *   con «Voy»); tu promedio y tu lugar (abre la Tabla); «Lo que viene» con «Voy» en línea y el Calendario en una hoja.
+ * - Pro: lo mismo más denso, con «Planilla», «Por hacer», «En vivo» y «Esta semana» (y la etiqueta «PRO ▾»).
+ * - Cuenta nueva: «Únete a tu liga» con el código (y el QR), crear tu liga, un juego suelto o buscar ligas abiertas.
+ * Un solo aviso por pantalla (NoticeSlot). Tus ligas están en Ligas; los deportes, en Ligas › Buscar ligas abiertas.
  */
 export default function HomePage() {
   const auth = useAuth();
-  const { status, creatable } = useSportStatus(auth.isSuper);
-  const mine = useMyLeagues(null);
-  const act = useActivity(mine.leagues, mine.uid);
-  const publics = usePublicLeagues();
-  const create = useCreateMenu();
-
-  // Los deportes de arriba: los abiertos (y los de beta para el superadmin), los que tengo y los que tienen públicas.
-  const counts = useMemo(() => countBySport(mine.all), [mine.all]);
-  const sports = useMemo(() => {
-    const offered = offeredSports({
-      status,
-      isSuper: auth.isSuper,
-      mine: sportsOf(mine.all),
-      visible: sportsOf(publics.data),
-    });
-    return mySportsFirst(offered, counts);
-  }, [status, auth.isSuper, mine.all, publics.data, counts]);
-
   if (auth.loading) return <Loading />;
+  return auth.user ? <Hoy /> : <SignedOutHome />;
+}
 
-  if (!auth.user) {
-    return (
-      <AppShell>
-        <div className="flex flex-col gap-6">
-          <Welcome open={openSports(status)} />
-          <Section title="Elige tu deporte" icon={<LayoutGrid className="size-4" aria-hidden="true" />}>
-            <SportPickerRow sports={sports} counts={counts} status={status} />
-          </Section>
-          <AgendaLinkCard />
-          <Section title="Ligas públicas" icon={<Compass className="size-4" aria-hidden="true" />} action={<SectionLink to="/ligas">Ver todas</SectionLink>}>
-            {publics.loading && !publics.data.length ? (
-              <ListSkeleton rows={3} />
-            ) : publics.error && !publics.data.length ? (
-              // Sin señal o muchas visitas seguidas sin cuenta: no es que no haya ligas.
-              <LoadError error={publics.error} />
-            ) : (
-              <PublicLeagues
-                leagues={publics.data}
-                today={act.today}
-                showSport={sportsOf(publics.data).length > 1}
-                limit={WELCOME_PUBLIC}
-                emptyText="Todavía no hay ligas públicas. Crea tu cuenta y arma la primera."
-              />
-            )}
-          </Section>
-        </div>
-      </AppShell>
-    );
-  }
-
-  const first = displayName(auth).split(' ')[0];
-  const manySports = sportsOf(mine.all).length > 1;
-  // La última liga que abriste en este teléfono (si sigues en ella), para volver de un toque.
-  const last = lastLeague();
-  const resume = mine.all.length > 1 ? mine.all.find((l) => l.id === last) : undefined;
-
+/** Sin cuenta: qué es MatchMate, los deportes, «¿Dónde juego esta semana?» y las ligas públicas. */
+function SignedOutHome() {
+  const auth = useAuth();
+  const { status } = useSportStatus(auth.isSuper);
+  const publics = usePublicLeagues();
+  const today = toIsoDate(useNow());
+  const counts = useMemo(() => countBySport([]), []);
+  const sports = useMemo(
+    () => mySportsFirst(offeredSports({ status, isSuper: auth.isSuper, mine: [], visible: sportsOf(publics.data) }), counts),
+    [status, auth.isSuper, publics.data, counts],
+  );
   return (
     <AppShell>
       <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-0.5">
-          <p className="text-sm text-muted first-letter:uppercase">{todayLabel(act.now)}</p>
-          <h1 className="truncate text-2xl font-bold tracking-tight">{first ? `${greeting(act.now)}, ${first}` : greeting(act.now)}</h1>
-        </header>
-
-        <Tour name="inicio" steps={HOME_TOUR} when={!mine.loading} />
-
-        <Section title="Tus deportes" icon={<LayoutGrid className="size-4" aria-hidden="true" />} tour="deportes">
+        <Welcome open={openSports(status)} />
+        <Section title="Elige tu deporte" icon={<LayoutGrid className="size-4" aria-hidden="true" />}>
           <SportPickerRow sports={sports} counts={counts} status={status} />
         </Section>
+        <AgendaLinkCard />
+        <Section title="Ligas públicas" icon={<Compass className="size-4" aria-hidden="true" />} action={<SectionLink to="/ligas">Ver todas</SectionLink>}>
+          {publics.loading && !publics.data.length ? (
+            <ListSkeleton rows={3} />
+          ) : publics.error && !publics.data.length ? (
+            // Sin señal o muchas visitas seguidas sin cuenta: no es que no haya ligas.
+            <LoadError error={publics.error} />
+          ) : (
+            <PublicLeagues
+              leagues={publics.data}
+              today={today}
+              showSport={sportsOf(publics.data).length > 1}
+              limit={WELCOME_PUBLIC}
+              emptyText="Todavía no hay ligas públicas. Crea tu cuenta y arma la primera."
+            />
+          )}
+        </Section>
+      </div>
+    </AppShell>
+  );
+}
 
-        <LiveSection games={act.games} matches={act.liveItems} />
-        <NextUpCard next={act.next} today={act.today} now={act.now.getTime()} />
-        <NotificationsPrompt />
+type HomeSheet = 'calendario' | 'donde' | 'modo';
 
-        {resume && (
-          <Link
-            to={`/l/${resume.id}`}
-            className="flex min-h-14 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 transition hover:bg-surface-2"
-          >
-            <LeagueLogo path={resume.logoPath} className="size-10 rounded-xl">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
-                {manySports ? (
-                  <SportIcon sport={leagueSport(resume)} className="size-5" />
-                ) : resume.kind === 'torneo' ? (
-                  <Trophy className="size-5" />
-                ) : (
-                  <CalendarDays className="size-5" />
-                )}
-              </span>
-            </LeagueLogo>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-muted">Seguir en</span>
-              <span className="block truncate font-semibold">{resume.name}</span>
-            </span>
-            {manySports && <SportBadge sport={leagueSport(resume)} className="hidden min-[400px]:inline-flex" />}
-            <ArrowRight className="size-5 shrink-0 text-accent" aria-hidden="true" />
-          </Link>
+/** La liga de tu promedio y tu lugar: la del juego de hoy, la de lo próximo o tu primera liga de boliche. */
+function standingLeague(act: Activity, leagues: readonly League[]): { lid: string; playerId: string; name: string } | null {
+  const live = act.games.find((g) => g.feed.playerId);
+  if (live) return { lid: live.feed.lid, playerId: live.feed.playerId!, name: live.league.name };
+  const next = act.next?.kind === 'event' ? act.next.event : null;
+  if (next && next.sport === 'bowling' && next.playerId) return { lid: next.lid, playerId: next.playerId, name: next.leagueName };
+  const bowling = (f: LeagueFeed) => {
+    const l = leagues.find((x) => x.id === f.lid);
+    return !!l && leagueSport(l) === 'bowling' && !!f.playerId;
+  };
+  const kindOf = (f: LeagueFeed) => leagues.find((x) => x.id === f.lid)?.kind;
+  const feed = act.feeds.find((f) => bowling(f) && kindOf(f) !== 'torneo') ?? act.feeds.find(bowling);
+  if (!feed) return null;
+  return { lid: feed.lid, playerId: feed.playerId!, name: leagues.find((l) => l.id === feed.lid)?.name ?? 'tu liga' };
+}
+
+function Hoy() {
+  const auth = useAuth();
+  const { isPro } = useMode();
+  const { creatable } = useSportStatus(auth.isSuper);
+  const mine = useMyLeagues(null);
+  const act = useActivity(mine.leagues, mine.uid);
+  const create = useCreateMenu();
+  const rsvp = useRsvp();
+  const tick = useMemoryTick();
+  // Todavía no se sabe nada de las ligas (primera carga sin copia en el teléfono): ni «Nada programado» ni cuenta nueva.
+  const notices = useNotifications();
+  const [sheet, setSheet] = useState<HomeSheet | null>(null);
+  useHomeNotices({ feeds: act.feeds, leagues: act.leagues, pro: isPro });
+
+  const first = displayName(auth).split(' ')[0];
+  const featured = act.games[0] ?? null;
+  const manySports = sportsOf(mine.all).length > 1;
+  const playsBowling = !mine.all.length || sportsOf(mine.all).includes('bowling');
+
+  // Anotar sin un juego de hoy: seguir el que quedó a medias (ayer u hoy), «¿Dónde jugaste?» o un juego suelto.
+  const recent = useMemo(() => recentEvents(act.feeds, act.leagues, act.today), [act.feeds, act.leagues, act.today]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- tick: volver a leer la memoria de la hoja de anotar
+  const started = useMemo(() => startedGames(mine.uid), [mine.uid, tick]);
+  const resume = resumeElsewhere(started, recent, featured?.event.id);
+  const anotar = anotarLink({ resume, recent, today: act.today, bowling: playsBowling, onWhere: () => setSheet('donde') });
+
+  // Lo de hoy, una sola vez: el evento de boliche en juego (o los partidos en vivo), si no lo próximo, y si no hay nada,
+  // la cuenta nueva o el día sin nada programado.
+  const nextEvent = act.next?.kind === 'event' ? act.next.event : null;
+  const nextMatch = act.next?.kind === 'match' ? act.next.match : null;
+  const live = act.games.length > 0 || act.liveItems.length > 0;
+  let today: ReactNode;
+  if (live) {
+    today = (
+      <div className="flex flex-col gap-3.5">
+        {act.games.map((g) => (
+          <TodayCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} pro={isPro} />
+        ))}
+        <LiveMatchesCard items={act.liveItems} />
+      </div>
+    );
+  } else if (nextMatch) {
+    today = (
+      <SportTint sport={nextMatch.sport}>
+        <NextMatchCard next={nextMatch} />
+      </SportTint>
+    );
+  } else if (nextEvent) {
+    today = (
+      <NextUpCard
+        item={nextEvent}
+        today={act.today}
+        rsvp={canRsvp(nextEvent) ? (going) => rsvp(nextEvent.lid, nextEvent.eventId!, nextEvent.playerId!, going) : null}
+        anotar={anotar}
+      />
+    );
+  } else if (mine.loading || notices.loading) {
+    today = <Skeleton className="h-[300px] rounded-3xl" />;
+  } else if (mine.error && !mine.all.length) {
+    today = <LoadError error={mine.error} />;
+  } else if (!mine.all.length) {
+    today = <JoinLeagueCard onCreate={creatable.length ? () => create.startCreate('liga', null) : null} />;
+  } else {
+    today = <IdleCard anotar={anotar} />;
+  }
+
+  // «Lo que viene» sin lo que ya sale arriba.
+  const shownKeys = new Set([...act.games.map((g) => `${g.feed.lid}:${g.event.id}`), ...(nextEvent && !live ? [nextEvent.key] : [])]);
+  const upcoming = act.upcoming.filter((it) => !shownKeys.has(it.key) && !(nextMatch && !live && it.matchId === nextMatch.match.id));
+  const standing = standingLeague(act, act.leagues);
+  const todo = isPro ? toDoOf(act.feeds, act.today) : [];
+  const hasLeagues = mine.all.length > 0;
+
+  return (
+    <AppShell>
+      <div className="flex flex-col px-2">
+        <HomeHeader now={act.now} name={first} onModeTag={() => setSheet('modo')} />
+
+        <div className="mt-[18px]">{today}</div>
+
+        {/* El único aviso de la pantalla, a la vista: justo debajo de lo de hoy. */}
+        <NoticeSlot className="mt-3.5" />
+
+        {isPro ? (
+          <>
+            <ToDoSection todo={todo} leagues={act.leagues} className="mt-[26px]" />
+            {featured && <LiveSectionPro game={featured} today={act.today} className="mt-[26px]" />}
+            {hasLeagues && (
+              <WeekStrip
+                feeds={act.feeds}
+                leagues={act.leagues}
+                matches={act.mine}
+                today={act.today}
+                onOpen={() => setSheet('calendario')}
+                className="mt-[26px]"
+              />
+            )}
+          </>
+        ) : (
+          <>
+            {standing && <HomeStats lid={standing.lid} playerId={standing.playerId} leagueName={standing.name} className="mt-3.5" />}
+            {hasLeagues && (
+              <UpNext items={upcoming} today={act.today} showLeague={mine.all.length > 1} onCalendar={() => setSheet('calendario')} className="mt-7" />
+            )}
+          </>
         )}
 
-        <WeekAgenda feeds={act.feeds} leagues={act.leagues} matches={act.mine} today={act.today} showSport={manySports} />
-
-        <AgendaLinkCard />
-
-        <Section
-          title="Tus ligas y torneos"
-          icon={<Trophy className="size-4" aria-hidden="true" />}
-          action={mine.all.length > 0 && <SectionLink to="/ligas">Eventos</SectionLink>}
-        >
-          <MyLeaguesBody
-            count={mine.all.length}
-            loading={mine.loading}
-            error={mine.error}
-            empty={<NoLeaguesYet canCreate={creatable.length > 0} onCreate={() => create.startCreate('liga', null)} exploreTo="/ligas" />}
-          >
-            {manySports ? (
-              <MyLeaguesBySport leagues={mine.all} roleOf={mine.roleOf} nextOf={act.nextOf} today={act.today} />
-            ) : (
-              <MyLeagueList leagues={mine.all} roleOf={mine.roleOf} nextOf={act.nextOf} today={act.today} />
-            )}
-          </MyLeaguesBody>
-        </Section>
-
-        <FollowingSlot sport={null} />
-
-        <JoinCodeCard />
+        <FollowingSlot sport={null} className="mt-7" />
 
         {auth.isSuper && (
           <Link
             to="/superadmin"
-            className="inline-flex min-h-11 items-center justify-center gap-2 self-center rounded-xl px-3 text-sm font-medium text-accent hover:bg-surface-2"
+            className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 self-center rounded-xl px-3 text-sm font-medium text-accent hover:bg-surface-2"
           >
             <Crown className="size-4" aria-hidden="true" /> Panel del superadmin
           </Link>
         )}
       </div>
+
+      <CalendarSheet
+        open={sheet === 'calendario'}
+        onClose={() => setSheet(null)}
+        feeds={act.feeds}
+        leagues={act.leagues}
+        matches={act.mine}
+        today={act.today}
+        showSport={manySports}
+      />
+      <WhereSheet open={sheet === 'donde'} onClose={() => setSheet(null)} recent={recent} today={act.today} />
+      <ModeSheet open={sheet === 'modo'} onClose={() => setSheet(null)} />
     </AppShell>
   );
+}
+
+/**
+ * El link discreto para anotar sin un juego de hoy: «Seguir mi juego 2» (si quedó uno a medias ayer u hoy), «Anotar un
+ * juego» (abre «¿Dónde jugaste?» si jugaste ayer u hoy en una liga) o «Anotar un juego suelto». Nada si no juegas boliche.
+ */
+function anotarLink({
+  resume,
+  recent,
+  today,
+  bowling,
+  onWhere,
+}: {
+  resume: ReturnType<typeof resumeElsewhere>;
+  recent: readonly RecentEvent[];
+  today: string;
+  bowling: boolean;
+  onWhere: () => void;
+}): ReactNode {
+  if (resume)
+    return (
+      <QuietLink to={scorePath(resume.lid, resume.eventId)} icon={PencilLine} accent>
+        {`Seguir mi juego ${resume.game}${resume.recent.event.date === today ? '' : ' de ayer'}`}
+      </QuietLink>
+    );
+  if (recent.length) return <QuietLink onClick={onWhere}>Anotar un juego</QuietLink>;
+  if (!bowling) return null;
+  return <QuietLink to="/juegos-sueltos?nuevo=1">Anotar un juego suelto</QuietLink>;
 }

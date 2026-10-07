@@ -1,19 +1,32 @@
-import { Users } from 'lucide-react';
+import { Link } from 'react-router';
+import { useFollowingGames } from '../../lib/data/profileGames';
 import type { SportId } from '../../sports/types';
-import { FollowingFeed } from '../social/FollowingFeed';
-import { Section } from './Section';
+import { GameList } from '../social/GameList';
+import { SectionHeader, sectionLinkClass } from '../ui';
+
+/** Juegos de quienes sigues que se ven en Hoy (los demás, con «Ver más»). */
+const FOLLOWING_SHOWN = 3;
 
 /**
- * «Siguiendo»: lo último de la gente que sigues (sus juegos, para darles like), en el Home general (todos los
- * deportes) y en el Home de cada deporte (solo ese). Solo con cuenta (sin cuenta el feed no dibuja nada).
- *
- * El feed (con su carga, error y vacío que explica cómo seguir a alguien) es src/components/social/FollowingFeed.tsx;
- * el título de la sección va aquí, así que el feed va sin el suyo.
+ * «Siguiendo»: lo último de la gente que sigues (sus juegos, para darles me gusta). Solo si sigues a alguien que ya
+ * jugó: vacía no sale (antes ocupaba media pantalla explicando cómo seguir; se sigue desde el perfil de cada jugador).
+ * Sin cuenta no sale nada. `sport` = solo los de ese deporte (null: todos).
  */
-export function FollowingSlot({ sport }: { sport: SportId | null }) {
+export function FollowingSlot({ sport, className }: { sport: SportId | null; className?: string }) {
+  const games = useFollowingGames(sport);
+  if (!games.data.length) return null;
   return (
-    <Section title="Siguiendo" icon={<Users className="size-4" aria-hidden="true" />} tour="siguiendo">
-      <FollowingFeed sport={sport} title={null} />
-    </Section>
+    <section aria-labelledby="siguiendo" className={className} data-tour="siguiendo">
+      <SectionHeader
+        id="siguiendo"
+        title="Siguiendo"
+        action={
+          <Link to="/buscar" className={sectionLinkClass}>
+            Buscar personas
+          </Link>
+        }
+      />
+      <GameList key={sport ?? '*'} games={games} showUser limit={FOLLOWING_SHOWN} empty={null} />
+    </section>
   );
 }

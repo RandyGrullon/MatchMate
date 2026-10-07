@@ -7,10 +7,9 @@ import { parseDate, toIsoDate } from '../../lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '../../lib/schedule';
 import type { League } from '../../lib/types';
 import { SportBadge, SportIcon } from '../../pages/sports/SportBits';
-import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { Badge, Card, cx } from '../ui';
-import { RsvpChip } from '../WeekCalendar';
+import { RsvpButton } from './RsvpButton';
 import { SportTint } from './SportTint';
 
 /** Semanas hacia adelante que se pueden ver. */
@@ -154,8 +153,6 @@ export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; sh
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
   const canRsvp = !!onGoing && item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
   const sub = match ? [item.leagueName, item.detail].filter(Boolean).join(' · ') : item.leagueName;
-  // Cada fila espera lo suyo: las demás se pueden tocar mientras tanto.
-  const { isBusy, run } = useBusy();
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-2">
       <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">
@@ -200,7 +197,8 @@ export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; sh
       ) : item.status === 'suspended' ? (
         <Badge tone="warn">Suspendido</Badge>
       ) : null}
-      {canRsvp && <RsvpChip going={!!item.going} busy={isBusy()} className="min-h-9 px-3" onClick={() => void run('voy', () => onGoing!(!item.going))} />}
+      {/* «Voy» en el acento suave del deporte y «Vas ✓» en gris, como en «Lo que viene» (cada fila espera lo suyo). */}
+      {canRsvp && <RsvpButton going={!!item.going} onToggle={onGoing!} />}
     </div>
   );
 }

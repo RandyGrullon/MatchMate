@@ -72,10 +72,10 @@ describe('Home: piezas', () => {
     expect(body({ count: 0, loading: false, error: null })).toContain('VACIO');
   });
 
-  it('«Siguiendo» tiene su sección, con el feed adentro sin un segundo título', () => {
+  it('«Siguiendo» vacío no sale en Hoy (antes ocupaba media pantalla explicando cómo seguir)', () => {
     for (const sport of [null, 'basketball'] as const) {
       const out = text(render(h(FollowingSlot, { sport })));
-      expect(out).toContain('Siguiendo');
+      expect(out).not.toContain('Siguiendo');
       expect(out).not.toContain('De quienes sigues');
     }
   });

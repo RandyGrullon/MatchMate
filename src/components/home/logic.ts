@@ -3,9 +3,11 @@
  * cada liga, qué va primero (el próximo partido o el próximo evento), buscar ligas y agruparlas por deporte, y la
  * línea de cada liga pública («24 jugadores · juega el martes»).
  */
+import { rankGap, type RankingRow } from '../../lib/bowlingSeason';
 import { dayLabel, type CalendarItem, type NextMatchInfo, type CalendarMatch } from '../../lib/calendar';
-import { parseDate } from '../../lib/format';
+import { parseDate, toIsoDate } from '../../lib/format';
 import { WEEKDAYS } from '../../lib/schedule';
+import { MIN_RANK_GAMES, rank } from '../../lib/stats';
 import { leagueSport, sportsOf } from '../../sports/registry';
 import { countLabel, peopleWord } from '../league/logic';
 
@@ -150,4 +152,84 @@ export function publicLeagueLine(l: PublicLineInput, today: string, now: number)
     if (Number.isFinite(at) && at >= now - ACTIVE_DAYS * 86_400_000) when = l.kind === 'torneo' ? 'activo esta semana' : 'activa esta semana';
   }
   return [who, when].filter(Boolean).join(' · ');
+}
+
+// ---------- Hoy (rediseño «Calma y foco») ----------
+
+/** El nombre del evento en la tarjeta de hoy: el suyo; si no tiene, «Práctica de hoy», «Práctica» o «Torneo». */
+export function todayTitle(e: { type: string; name?: string | null; date: string }, today: string): string {
+  const name = e.name?.trim();
+  if (name) return name;
+  if (e.type === 'torneo') return 'Torneo';
+  return e.date === today ? 'Práctica de hoy' : 'Práctica';
+}
+
+/** «Hoy», «Mañana» o el día de la semana («Martes»): va debajo del bloque de fecha (OCT / 13). */
+export function weekdayLabel(date: string, today: string): string {
+  if (date === today) return 'Hoy';
+  const d = parseDate(date);
+  const t = parseDate(today);
+  t.setDate(t.getDate() + 1);
+  if (toIsoDate(t) === date) return 'Mañana';
+  return WEEKDAYS[(d.getDay() + 6) % 7];
+}
+
+/**
+ * La línea de una fecha de «Lo que viene»: «Martes · 7:30 pm» (y la liga, si juegas en más de una). Un torneo al que
+ * ya dijiste «Voy»: «Sábado · ya te inscribiste».
+ */
+export function upNextSubtitle(
+  it: Pick<CalendarItem, 'date' | 'time' | 'leagueName' | 'kind' | 'detail'> & Partial<Pick<CalendarItem, 'type' | 'going'>>,
+  today: string,
+  showLeague = false,
+): string {
+  const signedUp = it.kind === 'event' && it.type === 'torneo' && it.going ? 'ya te inscribiste' : null;
+  return [weekdayLabel(it.date, today), it.time, it.kind === 'match' ? it.detail : null, showLeague ? it.leagueName : null, signedUp]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Dónde está la cuenta en la tabla de su liga (Hoy: «195 Tu promedio | 2.º en la tabla, de 6»). */
+export interface Standing {
+  /** Su promedio (null sin juegos aprobados). */
+  average: number | null;
+  /** Su puesto por promedio (null si todavía no entra). */
+  pos: number | null;
+  /** Cuántos entran en la tabla (los que tienen el mínimo de juegos). */
+  of: number;
+  /** Juegos que le faltan para entrar (0 si ya entra). */
+  missing: number;
+}
+
+/** Su lugar por promedio entre los que tienen el mínimo de juegos (como la Tabla); null si no es jugador. */
+export function myStanding(rows: readonly RankingRow[], me: string | null | undefined, minGames = MIN_RANK_GAMES): Standing | null {
+  if (!me) return null;
+  const eligible = rows.filter((r) => r.games >= minGames);
+  const mine = rows.find((r) => r.playerId === me);
+  const average = mine && mine.games > 0 ? mine.average : null;
+  const at = rank(eligible, (r) => r.average).find((x) => x.row.playerId === me);
+  if (at) return { average, pos: at.pos, of: eligible.length, missing: 0 };
+  return { average, pos: null, of: eligible.length, missing: rankGap(rows, me, minGames)?.missing ?? minGames };
+}
+
+/** «en la tabla, de 6»; si todavía no entra, «te faltan 2 juegos». */
+export function standingLabel(s: Standing): string {
+  if (s.pos != null) return `en la tabla, de ${s.of}`;
+  return s.missing === 1 ? 'te falta 1 juego' : `te faltan ${s.missing} juegos`;
+}
+
+/** «Sofía y Carmen», «Sofía, Carmen y Luis», «Sofía, Carmen y 2 más» (los nombres de pila, sin repetir). */
+export function namesLine(names: readonly string[], max = 3): string {
+  const firsts = [...new Set(names.map((n) => n.trim().split(/\s+/)[0]).filter(Boolean))];
+  if (firsts.length <= 1) return firsts[0] ?? '';
+  if (firsts.length <= max) return `${firsts.slice(0, -1).join(', ')} y ${firsts.at(-1)}`;
+  const shown = firsts.slice(0, max - 1);
+  return `${shown.join(', ')} y ${firsts.length - shown.length} más`;
+}
+
+/** La línea social de la tarjeta de hoy: «6 jugando · Pedro va primero» (o «Vas primero»). */
+export function socialLine(rows: number, leader: { name: string; me: boolean } | null): { count: string; leader: string | null } {
+  if (!rows) return { count: 'Todavía nadie anota', leader: null };
+  const first = leader?.name.trim().split(/\s+/)[0] ?? '';
+  return { count: `${rows} jugando`, leader: !leader ? null : leader.me ? 'Vas primero' : `${first} va primero` };
 }
