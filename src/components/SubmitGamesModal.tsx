@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Grid3x3, Plus, Send, Sparkles, Target, WifiOff } from 'lucide-react';
 import { ballForGame, sameBall, submissionBalls } from '../lib/balls';
 import { setSubmissionScan, submitGames } from '../lib/data';
+import { getUserId } from '../lib/data/client';
 import { clearSent, draftCount, latestDraft, loadDraft, restoreDraft, saveDraft } from '../lib/draft';
 import { eventTitle, parseDate, toIsoDate } from '../lib/format';
 import type { CompressedImage } from '../lib/image';
@@ -12,6 +13,7 @@ import { isValidScore } from '../lib/stats';
 import type { BowlingEvent, Entry, GameFrames, Player } from '../lib/types';
 import { AllGamesBall, GameBallChip, GameBallSelect, useBallChoice } from './balls/BallPicker';
 import { useFeedback } from './feedback';
+import { clearGameDraft, gameKey, moveGameDrafts, myGamesPlace } from './frames/draftMemory';
 import { framesMode } from './frames/FrameEditor';
 import { ScoreEntryModal } from './frames/ScoreEntryModal';
 import { PhotoPicker } from './PhotoPicker';
@@ -168,6 +170,12 @@ export function SubmitGamesModal({
     );
   }, [open, loaded, eventId, date, values, frames, balls, lid, player.id]);
 
+  // Lo que va anotando por cuadros queda en el teléfono aunque cierre esa hoja sin «Listo»: por cuenta, jugador, evento
+  // (o «Otro día», sea cual sea la fecha: como el borrador) y juego. La misma que «Mis juegos» del evento (es el mismo
+  // juego en el teléfono).
+  const memoryPlace = (id: string) => myGamesPlace(getUserId(), lid, player.id, id);
+  const memoryKey = (i: number) => gameKey(memoryPlace(eventId), i);
+
   function changeEvent(id: string) {
     const ev = recent.find((e) => e.id === id);
     const there = loadDraft(lid, player.id, id);
@@ -178,8 +186,9 @@ export function SubmitGamesModal({
       setBalls(there!.balls ?? {});
       loadedValues.current = `${id}:${padded(there!.values, ev?.games).join('|')}`;
     } else {
-      // Lo anotado se pasa al evento elegido (se había elegido mal el evento).
+      // Lo anotado se pasa al evento elegido (se había elegido mal el evento), también lo que quedó a medias en cuadros.
       saveDraft(lid, player.id, eventId, null);
+      moveGameDrafts(memoryPlace(eventId), memoryPlace(id));
       setValues((v) => Array.from({ length: ev?.games ?? Math.max(3, v.length) }, (_, i) => v[i] ?? ''));
     }
     setEventId(id);
@@ -187,7 +196,8 @@ export function SubmitGamesModal({
 
   function setValue(i: number, v: string) {
     setValues((vs) => vs.map((x, j) => (j === i ? v : x)));
-    // Si cambia el total a mano, los cuadros de ese juego ya no valen.
+    // Si cambia el total a mano, los cuadros de ese juego ya no valen (tampoco lo que quedó a medias en la hoja).
+    clearGameDraft(memoryKey(i));
     setFrames((fs) => {
       if (!fs[i]) return fs;
       const next = { ...fs };
@@ -307,6 +317,8 @@ export function SubmitGamesModal({
         new Promise<'sin-senal'>((r) => setTimeout(() => r('sin-senal'), OFFLINE_WAIT_MS)),
       ]);
       clearSent(lid, player.id, draftId, sent.values);
+      // Lo enviado ya no está a medias.
+      typed.forEach((v, i) => v != null && clearGameDraft(memoryKey(i)));
       if (result === 'ok') {
         toast('Enviado. Un admin lo revisará.');
       } else {
@@ -495,6 +507,7 @@ export function SubmitGamesModal({
         onClose={() => setFramesFor(null)}
         title={`Juego ${(framesFor ?? 0) + 1}`}
         resetKey={String(framesFor)}
+        memoryKey={framesFor != null ? memoryKey(framesFor) : undefined}
         startMode={framesMode()}
         top={
           ballsOn && framesFor != null && framesFor < BALL_GAMES ? (

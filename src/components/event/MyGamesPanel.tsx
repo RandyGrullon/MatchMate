@@ -15,6 +15,7 @@ import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { BusyIcon } from '../busy';
 import { useFeedback } from '../feedback';
 import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
+import { clearGameDraft, gameKey, myGamesPlace } from '../frames/draftMemory';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Badge, Button, Card, cx } from '../ui';
 import { MarkIcon, MarksLine } from './GameMarks';
@@ -240,6 +241,9 @@ export function MyGamesPanel({
   // Y con su bola: la que ya tiene un juego enviado (si se sabe); si no, la del teléfono (ballOf).
   const sentBall = editingCell?.kind === 'enviado' ? gameBalls[editing!] : undefined;
   const editBall = sentBall !== undefined ? sentBall : editing != null ? ballOf(editing) : null;
+  // Lo que va anotando en la hoja queda en el teléfono aunque la cierre sin guardar: por cuenta, jugador, evento y juego
+  // (la misma que «Subir mis juegos» de ese evento: es el mismo juego en el teléfono).
+  const memoryKey = editing != null ? gameKey(myGamesPlace(getUserId(), lid, playerId, event.id), editing) : undefined;
 
   return (
     <Card className={cx('flex flex-col gap-3 p-4', live.live && !notYet && 'border-ok/40')}>
@@ -425,6 +429,7 @@ export function MyGamesPanel({
         }}
         title={editing != null ? `Juego ${editing + 1}` : ''}
         resetKey={String(editing)}
+        memoryKey={memoryKey}
         initial={initial}
         top={
           editing != null && choice.canPick ? (
@@ -438,7 +443,17 @@ export function MyGamesPanel({
             <Smartphone className="size-4 shrink-0" />
             <span className="flex-1">Se guarda en tu teléfono. Al terminar, envíalo a revisión.</span>
             {editingCell?.kind === 'telefono' && (
-              <Button variant="ghost" size="sm" className="text-danger" icon={<Trash2 className="size-4" />} onClick={() => save(editing!, null)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-danger"
+                icon={<Trash2 className="size-4" />}
+                onClick={() => {
+                  // Borrado: lo que tenía a medias en la hoja tampoco se queda.
+                  if (memoryKey) clearGameDraft(memoryKey);
+                  save(editing!, null);
+                }}
+              >
                 Borrar
               </Button>
             )}

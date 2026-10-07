@@ -3,6 +3,7 @@ import { CalendarCheck, Camera, CheckCircle2, Grid3x3, Plus, ScanLine, UserPlus,
 import { ballsByGame, defaultBall, eventBallUpdate, eventGameBall, knownBalls, ownPickShown, seenPick, type OwnPick } from '../../lib/balls';
 import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame, updateEntry } from '../../lib/data';
 import { queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../../lib/data/balls';
+import { getUserId } from '../../lib/data/client';
 import { useLeagueCtx } from '../../lib/league';
 import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
 import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
@@ -12,6 +13,7 @@ import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
 import { ScanModal } from '../ScanModal';
 import { ScoreInput } from '../ScoreInput';
+import { clearGameDraft, tableGameKey } from '../frames/draftMemory';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Badge, Button, Card, Empty, cx } from '../ui';
 import { AddPlayersModal } from './AddPlayersModal';
@@ -189,6 +191,8 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
     if (own && value != null) keepPick(game, ownBall(game));
     run(async () => {
       await saveGame(lid, event, entry, game, { score: value, frames: null }, requirePhoto);
+      // Lo que quedó a medias en la hoja de ese juego ya no vale: manda lo que se escribió en la casilla.
+      clearGameDraft(tableGameKey(getUserId(), lid, event.id, entry.id, game));
       if (own) afterOwnScore(game, value);
     });
   }
@@ -448,6 +452,8 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
           onClose={() => setFramesFor(null)}
           title={`${nameOf(framesEntry)} · Juego ${framesGame + 1}`}
           resetKey={`${framesEntry.id}-${framesGame}`}
+          // Lo anotado sin guardar queda en el teléfono por fila y juego (al cambiar de J1…Jn, cada uno el suyo).
+          memoryKey={tableGameKey(getUserId(), lid, event.id, framesEntry.id, framesGame)}
           initial={{ score: slots(framesEntry.scores, event.games, null)[framesGame], frames: framesEntry.frames?.[framesGame] ?? null }}
           top={
             <>
@@ -492,11 +498,11 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
               if (ownGames) afterOwnScore(framesGame, v.score);
               return true;
             }, `Juego ${framesGame + 1} guardado`);
-            if (ok) {
-              // Sigue con el próximo juego sin anotar, o cierra.
-              const next = slots(framesEntry.scores, event.games, null).findIndex((s, i) => i !== framesGame && s == null);
-              setFramesFor(next >= 0 ? { entryId: framesEntry.id, game: next } : null);
-            }
+            // No se guardó: lo anotado sigue en la memoria del teléfono.
+            if (!ok) return false;
+            // Sigue con el próximo juego sin anotar, o cierra.
+            const next = slots(framesEntry.scores, event.games, null).findIndex((s, i) => i !== framesGame && s == null);
+            setFramesFor(next >= 0 ? { entryId: framesEntry.id, game: next } : null);
           }}
         />
       )}

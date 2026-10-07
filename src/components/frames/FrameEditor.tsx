@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Delete, Eraser, Grid3x3, Hash, Minus, Plus, SlidersHorizontal, Target, X } from 'lucide-react';
-import { bitCount, replaceRoll, scoreGame, standingMask, standingNow } from '../../lib/bowling';
+import { bitCount, maxPossibleScore, maxPossibleWithHole, replaceRoll, scoreGame, standingMask, standingNow } from '../../lib/bowling';
 import { isValidScore } from '../../lib/stats';
 import type { GameFrames } from '../../lib/types';
 import { Button, Input, cx } from '../ui';
@@ -15,6 +15,20 @@ export interface ScoreValue {
 
 export type ScoreMode = 'pines' | 'teclado' | 'total';
 type Mode = ScoreMode;
+
+/**
+ * Lo que hay en el editor, para seguir después donde se dejó (ver draftMemory): la forma de anotar, los tiros (aunque esté
+ * mirando «Total»), el total escrito (aunque haya vuelto a los tiros) y el tiro vacío que falta escribir al corregir.
+ */
+export interface EditorWork {
+  mode: ScoreMode;
+  rolls: number[];
+  masks: (number | null)[];
+  total: string;
+  /** Teclado: el tiro que quedó vacío esperando el valor ('borrado' o 'falta', como `hole` del editor). */
+  hole: { roll: number; kind: 'borrado' | 'falta' } | null;
+}
+
 const MODE_KEY = 'mm:modo-anotar';
 
 function savedMode(): Mode | null {
@@ -80,35 +94,51 @@ export function FrameEditor({
   initial,
   onChange,
   startMode,
+  resume,
 }: {
   initial: ScoreValue;
-  onChange: (v: ScoreValue & { ready: boolean }) => void;
+  /** Cada cambio: lo que se guardaría y lo que hay en el editor (para recordarlo). */
+  onChange: (v: ScoreValue & { ready: boolean }, work: EditorWork) => void;
   /** Con qué forma abrir si el juego no tiene cuadros (p. ej. el botón «cuadros» abre por cuadros aunque haya total). */
   startMode?: ScoreMode;
+  /** Seguir donde se dejó (lo que quedó sin guardar) en lugar de arrancar de `initial`. */
+  resume?: EditorWork | null;
 }) {
   const [mode, setMode] = useState<Mode>(() =>
-    initial.frames?.rolls?.length
-      ? initial.frames.masks?.some((m) => m != null)
-        ? 'pines'
-        : 'teclado'
-      : (startMode ?? (initial.score != null ? 'total' : (savedMode() ?? 'teclado'))),
+    resume
+      ? resume.mode
+      : initial.frames?.rolls?.length
+        ? initial.frames.masks?.some((m) => m != null)
+          ? 'pines'
+          : 'teclado'
+        : (startMode ?? (initial.score != null ? 'total' : (savedMode() ?? 'teclado'))),
   );
-  const [rolls, setRolls] = useState<number[]>(initial.frames?.rolls ?? []);
-  const [masks, setMasks] = useState<(number | null)[]>(initial.frames?.masks ?? initial.frames?.rolls?.map(() => null) ?? []);
-  const [total, setTotal] = useState(initial.score != null ? String(initial.score) : '');
+  const [rolls, setRolls] = useState<number[]>(() => resume?.rolls ?? initial.frames?.rolls ?? []);
+  const [masks, setMasks] = useState<(number | null)[]>(
+    () => resume?.masks ?? initial.frames?.masks ?? initial.frames?.rolls?.map(() => null) ?? [],
+  );
+  const [total, setTotal] = useState(() => resume?.total ?? (initial.score != null ? String(initial.score) : ''));
   const [knocked, setKnocked] = useState(0);
   // Teclado: tiro elegido para corregir (null = se anota al final) y si está vacío esperando el valor:
   // 'borrado' = lo borró dejándolo presionado; 'falta' = la corrección pide ese tiro (quedó en 0 por ahora).
-  const [sel, setSel] = useState<number | null>(null);
-  const [hole, setHole] = useState<'borrado' | 'falta' | null>(null);
+  // Al seguir donde se dejó, el tiro que faltaba sigue faltando (no se guarda el 0 de mientras como si fuera el tiro).
+  const resumeHole = resume?.mode === 'teclado' ? resume.hole : null;
+  const [sel, setSel] = useState<number | null>(resumeHole?.roll ?? null);
+  const [hole, setHole] = useState<'borrado' | 'falta' | null>(resumeHole?.kind ?? null);
 
   const game = scoreGame(rolls);
   const now = standingNow(rolls);
 
   useEffect(() => {
-    onChange(editorValue(mode, { rolls, masks, total, hole: !!hole }, initial));
+    onChange(editorValue(mode, { rolls, masks, total, hole: !!hole }, initial), {
+      mode,
+      rolls,
+      masks,
+      total,
+      hole: hole && sel != null ? { roll: sel, kind: hole } : null,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, rolls, masks, total, hole]);
+  }, [mode, rolls, masks, total, hole, sel]);
 
   function endEdit() {
     setSel(null);
@@ -180,6 +210,9 @@ export function FrameEditor({
   const keyboard = mode === 'teclado';
   // Con un tiro vacío, el puntaje grande es el que se sabe sin él (igual que los acumulados de la hoja).
   const shownScore = hole && sel != null ? scoreGame(rolls.slice(0, sel)).score : game.score;
+  // Lo más que se puede hacer todavía (strike o spare en todo lo que falta). Con un tiro vacío, ese tiro con todo lo que
+  // cabe ahí y los cuadros de después como están.
+  const best = !rolls.length ? null : hole && sel != null ? maxPossibleWithHole(rolls, sel) : game.complete ? null : maxPossibleScore(rolls);
 
   return (
     <div className="flex flex-col gap-4">
@@ -236,7 +269,22 @@ export function FrameEditor({
                 </>
               ) : null}
             </span>
-            <span className="text-2xl font-bold tabular-nums">{rolls.length ? shownScore : '—'}</span>
+            {/* El máximo posible va debajo y su lugar queda siempre (sin tiros o con el juego completo, vacío): la columna no
+                cambia de alto ni de ancho y la hoja, el teclado y los pines no se mueven al anotar. */}
+            <span className="flex min-w-14 shrink-0 flex-col items-end">
+              <span className="text-2xl leading-tight font-bold tabular-nums">{rolls.length ? shownScore : '—'}</span>
+              <span className="text-xs leading-4 whitespace-nowrap text-muted tabular-nums" data-max={best ?? undefined}>
+                {best != null ? (
+                  <>
+                    <span className="sr-only">Máximo posible </span>
+                    <span aria-hidden="true">Máx. </span>
+                    <b className="font-semibold">{best}</b>
+                  </>
+                ) : (
+                  '\u00a0'
+                )}
+              </span>
+            </span>
           </div>
           {rolls.length === 0 && initial.score != null && !initial.frames?.rolls?.length && (
             <p className="-mt-2 text-xs text-muted">

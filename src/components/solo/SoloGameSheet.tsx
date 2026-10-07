@@ -13,12 +13,14 @@ import {
 } from '../../lib/data/solo';
 import { ballsByGame, ballsChanged, commonBall, compactBalls, keepBalls, knownBalls, lastBall, sameBall, type GameBall } from '../../lib/balls';
 import { queuedGameBalls, rememberBall, useMyBallGames } from '../../lib/data/balls';
+import { getUserId } from '../../lib/data/client';
 import { uuidv7 } from '../../lib/db/ids';
 import { isValidScore } from '../../lib/stats';
 import type { GameFrames } from '../../lib/types';
 import { AllGamesBall, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useFeedback } from '../feedback';
-import { framesMode } from '../frames/FrameEditor';
+import { clearGameDraft, clearGameDrafts, gameKey, soloPlace } from '../frames/draftMemory';
+import { framesMode, type ScoreValue } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Button, Field, Input, Sheet, Textarea, cx } from '../ui';
 
@@ -51,6 +53,12 @@ function initialSlots(session: SoloSession | null): { values: string[]; frames: 
   const frames: Record<number, GameFrames> = {};
   for (const [k, f] of Object.entries(session.frames ?? {})) frames[Number(k)] = f;
   return { values, frames };
+}
+
+/** Una casilla como juego para la hoja de cuadros: el total (si es válido) y sus cuadros. */
+function slotGame(slots: { values: readonly string[]; frames: Readonly<Record<number, GameFrames>> }, i: number | null): ScoreValue {
+  const v = i != null ? (slots.values[i]?.trim() ?? '') : '';
+  return { score: v && isValidScore(Number(v)) ? Number(v) : null, frames: i != null ? (slots.frames[i] ?? null) : null };
 }
 
 /** Lo que dice la fecha cuando no sirve (vacía, del futuro o de hace más de 10 años). */
@@ -173,8 +181,13 @@ export function SoloGameSheet({
   const allBall = sameBall((scored.length ? scored : values.map((_, i) => i)).map(ballOf));
   // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
   const byPins = framesMode() === 'pines';
+  // Lo que va anotando por cuadros queda en el teléfono (por cuenta, juego suelto y casilla) aunque cierre esa hoja sin
+  // «Listo» y también después de «Listo», que solo lo pasa a la casilla: hasta «Guardar», «Borrar» o «Salir». Uno nuevo
+  // usa «nuevo»: así lo encuentra también después de cerrar la app.
+  const memoryBase = soloPlace(getUserId(), session?.id);
+  const forgetGames = () => clearGameDrafts(memoryBase);
 
-  /** Cerrar sin guardar: si cambió algo, pregunta antes (se perderían los juegos anotados). */
+  /** Cerrar sin guardar: si cambió algo, pregunta antes (se perderían los juegos anotados, también lo de la memoria). */
   async function close() {
     if (dirty && !busy) {
       const ok = await confirm({
@@ -184,13 +197,15 @@ export function SoloGameSheet({
         danger: true,
       });
       if (!ok) return;
+      forgetGames();
     }
     onClose();
   }
 
   function setValue(i: number, v: string) {
+    // Si cambia el total a mano, los cuadros de ese juego ya no valen (tampoco lo que quedó a medias en la hoja).
+    clearGameDraft(gameKey(memoryBase, i));
     setSlots((s) => {
-      // Si cambia el total a mano, los cuadros de ese juego ya no valen.
       const nextFrames = { ...s.frames };
       delete nextFrames[i];
       return { values: s.values.map((x, j) => (j === i ? v : x)), frames: nextFrames };
@@ -213,6 +228,7 @@ export function SoloGameSheet({
         .sort((a, b) => a - b)
         .flatMap((i) => (picked[i] !== (had[i] ?? null) ? [picked[i]] : []));
       rememberBall(lastBall(!session ? Object.values(balls ?? {}) : bulk !== undefined ? [bulk] : changed));
+      forgetGames();
       toast(session ? 'Juego guardado' : 'Juego anotado');
       onClose();
     } catch (e) {
@@ -249,6 +265,7 @@ export function SoloGameSheet({
     setBusy('delete');
     try {
       await deleteSoloSession(session);
+      forgetGames();
       toast('Juego borrado');
       onClose();
     } catch (e) {
@@ -408,16 +425,15 @@ export function SoloGameSheet({
         onClose={() => setFramesFor(null)}
         title={`Juego ${(framesFor ?? 0) + 1}`}
         resetKey={String(framesFor)}
+        memoryKey={framesFor != null ? gameKey(memoryBase, framesFor) : undefined}
+        stored={slotGame(start.slots, framesFor)}
         startMode={framesMode()}
         top={
           showBalls && framesFor != null ? (
             <GameBallSelect key={framesFor} balls={choice.balls} initial={ballOf(framesFor)} choice={ballPick} game={framesFor} today={today} />
           ) : undefined
         }
-        initial={{
-          score: framesFor != null && values[framesFor]?.trim() && isValidScore(Number(values[framesFor])) ? Number(values[framesFor]) : null,
-          frames: framesFor != null ? (frames[framesFor] ?? null) : null,
-        }}
+        initial={slotGame(slots, framesFor)}
         saveText="Listo"
         onSave={(v) => {
           if (framesFor == null) return;
