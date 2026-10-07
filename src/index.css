@@ -5,8 +5,11 @@
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
   --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --color-line: var(--line);
+  --color-seg-on: var(--seg-on);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
@@ -23,14 +26,98 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Medidas del rediseño «Calma y foco»: Lite es lo de siempre; Pro, la misma familia más densa (los «-pro»). Se usan como
+   utilidades: text-hero, text-title-pro, rounded-btn, h-btn, min-h-row… Los números grandes, además, con `num`. */
+@theme {
+  /* Tipografía: promedio, «Llevas», números de StatDuo, ficha de juego (GameTile), títulos, secciones y filas. */
+  --text-hero: 4rem;
+  --text-hero--line-height: 0.95;
+  --text-hero--letter-spacing: -0.03em;
+  --text-hero--font-weight: 650;
+  --text-hero-sm: 3.25rem;
+  --text-hero-sm--line-height: 1;
+  --text-hero-sm--letter-spacing: -0.03em;
+  --text-hero-sm--font-weight: 650;
+  --text-stat: 2.5rem;
+  --text-stat--line-height: 1;
+  --text-stat--letter-spacing: -0.03em;
+  --text-stat--font-weight: 650;
+  --text-tile: 2.125rem;
+  --text-tile--line-height: 1;
+  --text-tile--letter-spacing: -0.03em;
+  --text-tile--font-weight: 650;
+  --text-tile-pro: 1.5rem;
+  --text-tile-pro--line-height: 1;
+  --text-tile-pro--letter-spacing: -0.03em;
+  --text-tile-pro--font-weight: 650;
+  --text-title: 2rem;
+  --text-title--line-height: 2.375rem;
+  --text-title--letter-spacing: -0.03em;
+  --text-title--font-weight: 700;
+  --text-title-pro: 1.75rem;
+  --text-title-pro--line-height: 2.125rem;
+  --text-title-pro--letter-spacing: -0.03em;
+  --text-title-pro--font-weight: 700;
+  --text-card-title: 1.5rem;
+  --text-card-title--line-height: 1.2;
+  --text-card-title--letter-spacing: -0.025em;
+  --text-card-title--font-weight: 700;
+  --text-card-title-pro: 1.3125rem;
+  --text-card-title-pro--line-height: 1.2;
+  --text-card-title-pro--letter-spacing: -0.02em;
+  --text-card-title-pro--font-weight: 700;
+  --text-section: 1.1875rem;
+  --text-section--line-height: 1.3;
+  --text-section--letter-spacing: -0.015em;
+  --text-section--font-weight: 650;
+  --text-row-num: 1.375rem;
+  --text-row-num--line-height: 1.1;
+  --text-row-num--letter-spacing: -0.02em;
+  --text-row-num--font-weight: 650;
+  --text-row-num-pro: 1.1875rem;
+  --text-row-num-pro--line-height: 1.1;
+  --text-row-num-pro--letter-spacing: -0.02em;
+  --text-row-num-pro--font-weight: 650;
+  --text-body: 1rem;
+  --text-body--line-height: 1.4;
+  --text-meta: 0.9375rem;
+  --text-meta--line-height: 1.4;
+
+  /* Radios: la tarjeta es rounded-3xl (24 px); la hoja 28 px; botón principal y ficha de juego 18 px; tecla 16 px. */
+  --radius-sheet: 1.75rem;
+  --radius-btn: 1.125rem;
+  --radius-tile: 1.125rem;
+  --radius-key: 1rem;
+
+  /* Alturas: botón principal 56 px (48 en Pro), fila de lista 64 px (56 en Pro), tecla 58 px y área táctil de 44 px. */
+  --spacing-btn: 3.5rem;
+  --spacing-btn-pro: 3rem;
+  --spacing-row: 4rem;
+  --spacing-row-pro: 3.5rem;
+  --spacing-key: 3.625rem;
+  --spacing-touch: 2.75rem;
+}
+
+/* Números grandes: cifras del mismo ancho (no bailan al cambiar) y un poco más juntas. */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
 :root {
   color-scheme: light;
   --bg: #f4f5f8;
   --surface: #ffffff;
   --surface-2: #eef0f4;
   --fg: #151822;
+  /* Texto secundario fuerte (subtítulos de tarjeta, links discretos). */
+  --fg-2: #3d4352;
   --muted: #646b7a;
+  /* Lo más tenue: chevrones, teclas que no valen, números «por aprobar» en Lite. */
+  --faint: #a3a9b6;
   --line: #e2e5eb;
+  /* La opción elegida de un segmentado (Segmented en ui.tsx), sobre surface-2. */
+  --seg-on: #ffffff;
   --accent: #4338ca;
   --accent-fg: #ffffff;
   --accent-soft: #e8e7fb;
@@ -59,8 +146,11 @@
     --surface: #161922;
     --surface-2: #1e222d;
     --fg: #eceef3;
+    --fg-2: #c9cdd6;
     --muted: #9aa1b0;
+    --faint: #646b7b;
     --line: #2a2f3b;
+    --seg-on: #303545;
     --accent: #8b8cf6;
     --accent-fg: #0d0f15;
     --accent-soft: #25264a;
@@ -83,8 +173,11 @@
   --surface: #161922;
   --surface-2: #1e222d;
   --fg: #eceef3;
+  --fg-2: #c9cdd6;
   --muted: #9aa1b0;
+  --faint: #646b7b;
   --line: #2a2f3b;
+  --seg-on: #303545;
   --accent: #8b8cf6;
   --accent-fg: #0d0f15;
   --accent-soft: #25264a;
@@ -153,17 +246,18 @@ dialog::backdrop {
 :root {
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --shimmer: rgb(255 255 255 / 0.55);
-  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  /* Tarjetas sin borde: una sombra suave en claro; en oscuro ninguna (el contraste lo da la superficie). */
+  --shadow-card: 0 1px 2px rgb(21 24 34 / 0.04), 0 8px 24px rgb(21 24 34 / 0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --shimmer: rgb(255 255 255 / 0.06);
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-card: none;
   }
 }
 :root[data-theme="dark"] {
   --shimmer: rgb(255 255 255 / 0.06);
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-card: none;
 }
 
 @keyframes fade-up {
@@ -238,6 +332,28 @@ dialog[open]::backdrop { animation: fade-in 0.2s ease-out; }
 dialog[data-kb] .mm-kb-hide { display: none; }
 
 .card-shadow { box-shadow: var(--shadow-card); }
+
+/* Filas de lista (ListRow en ui.tsx): la línea entre una fila y la de arriba empieza a 20 px del borde. La fila «Tú»
+   (fondo de acento) no lleva línea ni arriba ni abajo. */
+.mm-row + .mm-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 0;
+  height: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+.mm-row.mm-row-me::before,
+.mm-row-me + .mm-row::before { display: none; }
+
+/* Opciones de un segmentado (Segmented en ui.tsx): se ven de 36 px, pero se tocan en 44 (con el borde de la barra). */
+.mm-seg-opt::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
 
 /* Pestañas que se deslizan con el dedo sin mostrar la barra de scroll. */
 .no-scrollbar { scrollbar-width: none; }

@@ -76,7 +76,9 @@ describe('hoja (Sheet)', () => {
 
   it('en el teléfono sube desde abajo de lado a lado; en la computadora, un cuadro en el centro', () => {
     const cls = dialogClass(sheet());
-    for (const c of ['mm-sheet', 'm-0', 'mt-auto', 'max-h-[88dvh]', 'w-full', 'max-w-none', 'rounded-t-3xl', 'border-b-0']) expect(cls).toContain(c);
+    for (const c of ['mm-sheet', 'm-0', 'mt-auto', 'max-h-[88dvh]', 'w-full', 'max-w-none', 'rounded-t-sheet', 'border-b-0']) expect(cls).toContain(c);
+    // Esquinas de hoja del rediseño: 28 px (token de index.css).
+    expect(indexCss).toContain('--radius-sheet: 1.75rem;');
     for (const c of ['sm:m-auto', 'sm:max-w-lg', 'sm:rounded-2xl', 'sm:border-b']) expect(cls).toContain(c);
     // Colores del tema (sirve en claro y en oscuro).
     expect(cls).toContain('bg-surface');

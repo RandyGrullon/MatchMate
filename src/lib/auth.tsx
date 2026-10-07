@@ -9,6 +9,7 @@ import { toPushPrefs, type PushPrefs } from './data/pushPrefs';
 import { createdAfterMark, CURRENT_LEGAL, forgetLegalForGoogle, needsLegal, type LegalAccepted } from './legal';
 import { toProfile, type ProfileRow } from './data/rows';
 import { asBackendError } from './db/errors';
+import { toUiMode, type UiMode } from './mode';
 import { safeAppPath } from './notifications';
 import { hideSplash } from './splash';
 import type { UserProfile } from './types';
@@ -39,6 +40,11 @@ export interface AccountProfile extends UserProfile {
   legal?: LegalAccepted;
   /** Cuándo se creó la cuenta (profiles.created_at, ISO): las de antes de guardar la aceptación ven lo nuevo. */
   createdAt?: string | null;
+  /**
+   * Cómo quiere ver la app (profiles.ui_mode, src/lib/mode.ts): 'lite' o 'pro'; null = no lo ha elegido (la app
+   * decide). undefined = no se sabe: copia vieja guardada en el teléfono o base que todavía no tiene la columna.
+   */
+  uiMode?: UiMode | null;
 }
 
 interface AuthState {
@@ -63,16 +69,19 @@ const toAppUser = (s: Session): AppUser => ({ uid: s.userId, email: s.email, dis
 const sameUser = (u: AppUser | null, s: Session | null) =>
   (!u && !s) || (!!u && !!s && u.uid === s.userId && u.email === s.email && u.displayName === s.name);
 
-type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; created_at?: string | null; push_prefs?: unknown };
+type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; created_at?: string | null; push_prefs?: unknown; ui_mode?: unknown };
 
 const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at,created_at';
-/** Columnas que llegaron después, en el orden de sus migraciones: username (20260929000200) y push_prefs (20260929000500). */
-const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs'];
+/**
+ * Columnas que llegaron después, en el orden de sus migraciones: username (20260929000200), push_prefs
+ * (20260929000500) y ui_mode (20261007000100).
+ */
+const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs', 'ui_mode'];
 
 /**
  * Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. Si la base todavía no
- * tiene username o push_prefs (42703: la app salió antes que la migración), se lee sin esa columna (la que nombra el
- * error, o la más nueva) en vez de quedarse sin perfil.
+ * tiene username, push_prefs o ui_mode (42703: la app salió antes que la migración), se lee sin esa columna (la que
+ * nombra el error, o la más nueva) en vez de quedarse sin perfil.
  */
 export async function fetchProfile(uid: string): Promise<AccountProfile | null> {
   const query = (columns: string) => select<AccountProfileRow>({ table: 'profiles', columns, filters: [{ col: 'id', op: 'eq', value: uid }] });
@@ -111,6 +120,7 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
   if (!row) return null;
   const profile: AccountProfile = { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null, legal, createdAt: row.created_at ?? null };
   if (row.push_prefs !== undefined) profile.pushPrefs = toPushPrefs(row.push_prefs);
+  if (row.ui_mode !== undefined) profile.uiMode = toUiMode(row.ui_mode);
   return profile;
 }
 
