@@ -5,23 +5,11 @@ import { useLeagueCtx } from '../../lib/league';
 import { entryLine, individualRule, rank, teamLines, teamRule, type Line } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player, RankBy } from '../../lib/types';
 import { bowlingTitle } from '../../prizes/catalog';
-import { AnimatedNumber, Card, Empty, Position, cx } from '../ui';
+import { AnimatedNumber, Card, Empty, Position, Segmented, cx } from '../ui';
 
+/** Con handicap | Scratch (el segmentado del rediseño). */
 function Toggle<K extends string>({ value, options, onChange }: { value: K; options: { key: K; label: string }[]; onChange: (k: K) => void }) {
-  return (
-    <div className="inline-flex rounded-lg bg-surface-2 p-0.5 text-sm">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          type="button"
-          onClick={() => onChange(o.key)}
-          className={cx('rounded-md px-3 py-1 font-medium', value === o.key ? 'bg-surface shadow-sm' : 'text-muted')}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
+  return <Segmented options={options} value={value} onChange={onChange} label="Ordenar por" />;
 }
 
 export function StandingsTab({
@@ -235,10 +223,10 @@ export function StandingsTab({
 
 function SectionHeader({ title, toggle, unofficial }: { title: string; toggle?: ReactNode; unofficial?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="text-sm font-semibold text-muted">
+    <div className="mx-1 flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-section">
         {title}
-        {unofficial && <span className="ml-2 font-normal text-warn">(no es el criterio oficial del torneo)</span>}
+        {unofficial && <span className="ml-2 text-sm font-normal text-warn">(no es el criterio oficial del torneo)</span>}
       </h3>
       {toggle}
     </div>

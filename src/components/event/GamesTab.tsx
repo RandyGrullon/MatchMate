@@ -1,28 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarCheck, Camera, CheckCircle2, Grid3x3, Plus, ScanLine, UserPlus, Users, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { CalendarCheck, Camera, CheckCircle2, ChevronLeft, Grid3x3, Keyboard, Plus, ScanLine, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
 import { ballsByGame, defaultBall, eventBallUpdate, eventGameBall, knownBalls, ownPickShown, seenPick, type OwnPick } from '../../lib/balls';
 import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame, updateEntry } from '../../lib/data';
 import { queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../../lib/data/balls';
 import { getUserId } from '../../lib/data/client';
 import { useLeagueCtx } from '../../lib/league';
 import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
-import { NO_PHOTO, type BowlingEvent, type Entry, type Player } from '../../lib/types';
+import { partialGame, useMemoryTick } from '../../lib/useNextGame';
+import { NO_PHOTO, type BowlingEvent, type Entry, type LiveScore, type Player, type Submission } from '../../lib/types';
+import { BallDot } from '../balls/BallDot';
 import { BallIcon, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { PhotoModal } from '../PhotoModal';
 import { ScanModal } from '../ScanModal';
 import { ScoreInput } from '../ScoreInput';
-import { clearGameDraft, tableGameKey } from '../frames/draftMemory';
+import { clearGameDraft, gameKey, myGamesPlace, readGameDraft, tableGameKey } from '../frames/draftMemory';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Badge, Button, Card, Empty, cx } from '../ui';
 import { AddPlayersModal } from './AddPlayersModal';
+import { boardRows, shortName, type BoardCell, type BoardRow, type PartialOf } from './board';
 
 interface Group {
   key: string;
   title: string | null;
   lines: Line[];
 }
+
+const NO_SUBS: Submission[] = [];
+const NO_LIVE: LiveScore[] = [];
 
 /**
  * El total del encabezado de un equipo con su regla (docs/premios-torneo.md §5.1): con equipos por scratch (la del
@@ -53,11 +59,44 @@ export function TeamTotal({ total }: { total: { main: number; hcp: number | null
 }
 
 /**
- * Anotar pinos por juego (a mano, por cuadros o con la foto). Sin foto = borrador si la liga la exige.
+ * La Planilla (Pro; quien organiza o anota el evento): la tabla en vivo, ordenada por lo que suma cada uno, que es a la
+ * vez donde se anotan los juegos de todos. Cada casilla: lo que cuenta (gris), «Por aprobar» (ámbar: enviado o sin la
+ * foto que la liga exige; no suma), «Jugando» (contorno del deporte: en el teléfono del jugador, o «74…» a medias) o
+ * vacía; en tu fila, un punto con el color de la bola. Tocar una casilla abre la hoja de anotar de ese juego (pines,
+ * teclado o total; tu juego a medias sigue en tu hoja, `onOpenMine`); tocar el nombre, el juego (`onOpen`). Debajo,
+ * Jugador · Juego 4 · Leer foto (verificar con la foto) y «Escribir a mano»: la planilla de siempre, con una casilla por
+ * juego para escribir de corrido (Enter baja al siguiente), la bola de tus juegos, verificar y quitar jugadores.
  * El anotador del torneo solo anota: no agrega ni quita jugadores.
  */
-export function GamesTab({ event, entries, players }: { event: BowlingEvent; entries: Entry[]; players: Player[] }) {
+export function GamesTab({
+  event,
+  entries,
+  players,
+  subs = NO_SUBS,
+  live = NO_LIVE,
+  onOpen,
+  onOpenMine,
+  quick: startQuick = false,
+  readOnly = false,
+}: {
+  event: BowlingEvent;
+  entries: Entry[];
+  players: Player[];
+  /** Los envíos del evento (lo pendiente sale en ámbar). */
+  subs?: readonly Submission[];
+  /** Lo que los jugadores llevan en su teléfono (sale como «Jugando»). */
+  live?: readonly LiveScore[];
+  /** Tocar el nombre: el juego de esa persona (felicitar, comentar, la foto). */
+  onOpen?: (entry: Entry) => void;
+  /** Tu propio juego a medias en «Tus juegos»: se sigue en esa hoja (la misma memoria del teléfono). */
+  onOpenMine?: (game: number) => void;
+  /** Abrir directo en «Escribir a mano». */
+  quick?: boolean;
+  /** Solo mirar (Pro, quien no organiza ni anota): la tabla en vivo, sin herramientas; su juego a medias sí se abre. */
+  readOnly?: boolean;
+}) {
   const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
+  const [quick, setQuick] = useState(startQuick);
   const requirePhoto = league.requirePhoto !== false;
   const run = useAction();
   const { confirm } = useFeedback();
@@ -237,24 +276,215 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
   const cols = `repeat(${event.games}, minmax(3.25rem, 1fr))`;
   let row = 0;
 
-  return (
-    <div className="flex flex-col gap-4">
-      {!isTorneo && isAdmin && confirmed.length > 0 && (
-        <Card className="animate-fade-up flex flex-col gap-3 border-ok/40 bg-ok-soft/40 p-3 sm:flex-row sm:items-center">
-          <CalendarCheck className="size-5 shrink-0 text-ok" />
-          <div className="min-w-0 flex-1 text-sm">
-            <p className="font-medium">
-              {confirmed.length} {confirmed.length === 1 ? 'confirmó' : 'confirmaron'} que van
-            </p>
-            <p className="truncate text-xs text-muted">{confirmed.map((id) => byId.get(id)!.name).join(', ')}</p>
-          </div>
-          {missing.length > 0 && (
-            <Button size="sm" icon={<UserPlus className="size-4" />} loading={addingConfirmed} onClick={addConfirmed}>
-              Agregar {missing.length} a la práctica
-            </Button>
-          )}
-        </Card>
+  // ---------- La Planilla ----------
+  // Lo que quedó a medias en la hoja de anotar de este teléfono: el tuyo en «Tus juegos» y el de cada fila aquí.
+  useMemoryTick();
+  const uid = getUserId();
+  const myPlace = myPlayerId ? myGamesPlace(uid, lid, myPlayerId, event.id) : null;
+  const myHalf = (game: number) => (myPlace ? partialGame(readGameDraft(gameKey(myPlace, game))) : null);
+  const partialOf: PartialOf = (playerId, entry, game) =>
+    (playerId === myPlayerId ? myHalf(game) : null) ?? (entry ? partialGame(readGameDraft(tableGameKey(uid, lid, event.id, entry.id, game))) : null);
+  const board = boardRows(event, entries, subs, live, { partial: partialOf, all: true });
+  const boardGroups: { key: string; title: string | null; rows: BoardRow[]; lines: Line[] }[] = isTorneo
+    ? groups.map((g) => ({ ...g, rows: board.filter((r) => g.lines.some((l) => l.entry.id === r.entry?.id)) }))
+    : [{ key: '_all', title: null, rows: board, lines }];
+  const shown = Math.max(event.games, ...board.map((r) => r.cells.length));
+  // Hasta 4 juegos caben en un teléfono; con más, la tabla se desliza de lado (el nombre se queda).
+  const wide = shown > 4;
+  const grid: CSSProperties = {
+    gridTemplateColumns: wide
+      ? `5.25rem repeat(${shown}, 2.875rem) 3rem`
+      : `minmax(4.5rem, 1.7fr) repeat(${shown}, minmax(2.5rem, 1fr)) minmax(2.75rem, 0.9fr)`,
+  };
+  const ballOfGame = (game: number) => {
+    const id = known ? ownBall(game) : null;
+    return id ? choice.balls.find((b) => b.id === id) : undefined;
+  };
+  // El punto de la bola va en tus juegos anotados en la tabla (la leyenda «Bola», solo si se ve alguno).
+  const myRow = board.find((r) => r.playerId === myPlayerId);
+  const dotOf = (r: BoardRow, game: number) => (r === myRow && r.entry?.scores?.[game] != null ? ballOfGame(game) : undefined);
+  const anyDot = !!myRow && myRow.cells.some((_, k) => !!dotOf(myRow, k));
+
+  /** Tocar una casilla: tu juego a medias sigue en tu hoja; lo demás, la hoja de anotar de esa fila y ese juego. */
+  function openCell(r: BoardRow, game: number) {
+    if (r.playerId === myPlayerId && onOpenMine && myPlace && readGameDraft(gameKey(myPlace, game))) return onOpenMine(game);
+    if (!r.entry || readOnly) return;
+    setFramesFor({ entryId: r.entry.id, game: Math.min(game, event.games - 1) });
+  }
+
+  const tools: { key: string; icon: LucideIcon; label: string; onClick: () => void; busy?: boolean; disabled?: boolean; aria?: string }[] = [
+    ...(!isTorneo && isAdmin ? [{ key: 'jugador', icon: UserPlus, label: 'Jugador', aria: 'Agregar asistentes', onClick: () => setAdding(true) }] : []),
+    ...(isAdmin && event.games < 10
+      ? [{ key: 'juego', icon: Plus, label: `Juego ${event.games + 1}`, aria: `Agregar el juego ${event.games + 1}`, onClick: addGame, busy: busy.isBusy('juego') }]
+      : []),
+    {
+      key: 'foto',
+      icon: ScanLine,
+      label: 'Leer foto',
+      aria: requirePhoto ? 'Leer y verificar con la foto del marcador' : 'Leer la foto del marcador',
+      onClick: () => setScanFor(null),
+      disabled: !players.length,
+    },
+  ];
+
+  // Confirmaron «Voy» y todavía no están en la planilla: una fila para agregarlos (solo si falta alguno).
+  const confirmedNotice = !readOnly && !isTorneo && isAdmin && missing.length > 0 && (
+    <div className="animate-fade-up flex items-center gap-3 rounded-[20px] py-2.5 pr-2 pl-4 shadow-[inset_0_0_0_1px_var(--line)]">
+      <CalendarCheck aria-hidden="true" className="size-5 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold">
+          {missing.length} {missing.length === 1 ? 'confirmó que va' : 'confirmaron que van'}
+        </p>
+        <p className="truncate text-[13px] text-muted">{missing.map((id) => byId.get(id)!.name).join(', ')}</p>
+      </div>
+      <Button variant="soft" size="sm" className="h-11" icon={<UserPlus className="size-4" />} loading={addingConfirmed} onClick={addConfirmed}>
+        Agregar
+      </Button>
+    </div>
+  );
+
+  const sheetView = (
+    <div className="flex flex-col">
+      {board.length === 0 ? (
+        <Empty icon={<Users className="size-8" />} title={isTorneo ? 'Nadie inscrito' : 'Sin asistentes'}>
+          {!isAdmin
+            ? 'El admin todavía no ha inscrito jugadores.'
+            : isTorneo
+              ? 'Inscribe jugadores en la pestaña Inscritos.'
+              : 'Agrega quién vino a practicar, o lee una foto y se agregan solos.'}
+        </Empty>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {boardGroups.map((g) => (
+            <Card key={g.key} className="overflow-hidden pt-1 pb-1.5">
+              {g.title && (
+                <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
+                  <h3 className="truncate text-sm font-semibold">{g.title}</h3>
+                  <TeamTotal total={groupTotal(event, g.lines)} />
+                </div>
+              )}
+              <div className={cx(wide && 'no-scrollbar overflow-x-auto')}>
+                <div className={cx(wide && 'w-max min-w-full')}>
+                  <div
+                   
+                    className="grid items-center gap-1.5 pt-2.5 pr-3.5 pb-1 pl-4 text-xs font-[650] tracking-[0.05em] text-muted uppercase"
+                    style={grid}
+                  >
+                    <span className={cx(wide && 'sticky left-0 z-[1] -ml-4 bg-surface pl-4')}>Jugador</span>
+                    {Array.from({ length: shown }, (_, i) => (
+                      <span key={i} className="text-center">
+                        J{i + 1}
+                      </span>
+                    ))}
+                    <span className="text-right">Total</span>
+                  </div>
+                  {g.rows.map((r, i) => {
+                    const me = r.playerId === myPlayerId;
+                    const name = byId.get(r.playerId)?.name ?? '(jugador borrado)';
+                    const line = isTorneo && r.entry ? g.lines.find((l) => l.entry.id === r.entry!.id) : undefined;
+                    const after = i > 0 && !me && g.rows[i - 1].playerId !== myPlayerId;
+                    return (
+                      <div
+                       
+                        key={r.playerId}
+                        className={cx(
+                          'relative grid min-h-[50px] items-center gap-1.5 py-[5px] pr-3.5 pl-4',
+                          me && 'bg-accent-soft',
+                          after && "before:absolute before:top-0 before:right-0 before:left-4 before:h-px before:bg-line before:content-['']",
+                        )}
+                        style={grid}
+                      >
+                        <PlayerName
+                          name={name}
+                          me={me}
+                          detail={line ? `hcp ${line.hcp}` : null}
+                          sticky={wide}
+                          onClick={onOpen && r.entry ? () => onOpen(r.entry!) : undefined}
+                        />
+                        {Array.from({ length: shown }, (_, k) => (
+                          <SheetCell
+                            key={k}
+                            cell={r.cells[k] ?? EMPTY_CELL}
+                            me={me}
+                            ball={dotOf(r, k)}
+                            label={`${name}, juego ${k + 1}`}
+                            onClick={
+                              (r.entry && !readOnly) || (me && onOpenMine && r.cells[k]?.partial) ? () => openCell(r, k) : undefined
+                            }
+                          />
+                        ))}
+                        <span className={cx('num text-right text-lg font-[650] tracking-[-0.02em]', !r.counted && 'text-faint')}>
+                          {r.counted ? r.total : '–'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
+
+      <div className="mx-1 mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <i aria-hidden="true" className="inline-block size-3 rounded bg-warn-soft shadow-[inset_0_0_0_1.5px_var(--warn)]" />
+          Por aprobar (aún no suma)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <i aria-hidden="true" className="inline-block size-3 rounded shadow-[inset_0_0_0_1.5px_var(--accent)]" />
+          Jugando
+        </span>
+        {anyDot && (
+          <span className="inline-flex items-center gap-1.5">
+            <BallDot color="var(--accent)" className="size-3 border-0" />
+            Bola
+          </span>
+        )}
+      </div>
+
+      {!readOnly && (
+        <>
+          <div className="mt-3.5 grid gap-2" style={{ gridTemplateColumns: `repeat(${tools.length}, minmax(0, 1fr))` }}>
+            {tools.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={t.onClick}
+                disabled={t.disabled || t.busy}
+                aria-busy={t.busy || undefined}
+                aria-label={t.aria}
+                className={cx(
+                  'inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-[14px] bg-surface-2 px-2 text-sm font-semibold whitespace-nowrap text-fg transition',
+                  'hover:brightness-95 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50',
+                )}
+              >
+                <BusyIcon busy={!!t.busy} icon={<t.icon aria-hidden="true" className="size-4 shrink-0 max-[379px]:hidden" />} className="size-4 shrink-0" />
+                <span className="truncate">{t.label}</span>
+              </button>
+            ))}
+          </div>
+          <QuietToggle icon={Keyboard} onClick={() => setQuick(true)}>
+            Escribir los puntajes a mano
+          </QuietToggle>
+        </>
+      )}
+    </div>
+  );
+
+  const quickView = (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-section">Escribir a mano</h3>
+        <button
+          type="button"
+          onClick={() => setQuick(false)}
+          className="-my-2 inline-flex min-h-11 items-center gap-0.5 text-meta font-[550] text-accent focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <ChevronLeft aria-hidden="true" className="size-[18px]" />
+          Ver la planilla
+        </button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button icon={<ScanLine className="size-4" />} onClick={() => setScanFor(null)} disabled={!players.length}>
@@ -426,6 +656,13 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
         )}
         <span>Enter baja al siguiente jugador.</span>
       </p>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {confirmedNotice}
+      {quick && !readOnly ? quickView : sheetView}
 
       <ScanModal
         open={scanFor !== undefined}
@@ -507,6 +744,108 @@ export function GamesTab({ event, entries, players }: { event: BowlingEvent; ent
         />
       )}
     </div>
+  );
+}
+
+const EMPTY_CELL: BoardCell = { kind: 'empty', score: null };
+
+/** Lo que dice una casilla al lector de pantalla. */
+function cellSpoken(cell: BoardCell): string {
+  if (cell.kind === 'empty') return 'sin anotar';
+  if (cell.kind === 'play') return cell.partial ? `jugando, lleva ${cell.score ?? 0}` : `${cell.score}, en su teléfono`;
+  return cell.kind === 'pend' ? `${cell.score}, por aprobar` : String(cell.score);
+}
+
+/**
+ * Una casilla de la Planilla (38 px; se toca en 46): lo que cuenta en gris (en tu fila, en blanco), «Por aprobar» en ámbar,
+ * «Jugando» con el contorno del deporte («74…» a medias) o vacía con contorno; en tu fila, el punto de la bola.
+ */
+export function SheetCell({
+  cell,
+  me,
+  ball,
+  label,
+  onClick,
+}: {
+  cell: BoardCell;
+  me?: boolean;
+  ball?: { color: string | null } | null;
+  label: string;
+  onClick?: () => void;
+}) {
+  const text = cell.kind === 'empty' ? '' : cell.partial ? `${cell.score ?? ''}…` : String(cell.score);
+  const cls = cx(
+    'relative grid h-[38px] min-w-0 place-items-center rounded-[11px] text-base font-semibold tabular-nums',
+    cell.kind === 'ok' && (me ? 'mm-ev-mine' : 'bg-surface-2'),
+    cell.kind === 'pend' && 'bg-warn-soft text-warn shadow-[inset_0_0_0_1.5px_var(--warn)]',
+    cell.kind === 'play' && 'mm-ev-play text-[15px] text-accent shadow-[inset_0_0_0_1.5px_var(--accent)]',
+    cell.kind === 'empty' && 'shadow-[inset_0_0_0_1.5px_var(--line)]',
+    onClick &&
+      "transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+  );
+  const inner = (
+    <>
+      {text}
+      {ball && <BallDot color={ball.color} className="absolute top-1 right-1 size-[7px] border-0" />}
+    </>
+  );
+  const spoken = `${label}: ${cellSpoken(cell)}`;
+  return onClick ? (
+    <button type="button" onClick={onClick} aria-label={spoken} className={cls}>
+      {inner}
+    </button>
+  ) : (
+    <span aria-label={spoken} className={cls}>
+      {inner}
+    </span>
+  );
+}
+
+/**
+ * El nombre corto en la Planilla («Pedro G.»), con «Tú» debajo en tu fila (o el hcp en un torneo). Si se toca, ocupa
+ * todo el alto de la fila (50 px, con su ::after sobre el relleno de la fila).
+ */
+function PlayerName({ name, me, detail, sticky, onClick }: { name: string; me: boolean; detail: string | null; sticky: boolean; onClick?: () => void }) {
+  const body = (
+    <>
+      <span className="block truncate text-[15px] font-semibold">{shortName(name)}</span>
+      {me && <span className="block text-xs leading-tight font-semibold text-accent">Tú</span>}
+      {detail && <span className="block text-xs leading-tight text-muted tabular-nums">{detail}</span>}
+    </>
+  );
+  const cls = cx('min-w-0 text-left', sticky && cx('sticky left-0 z-[1] -ml-4 self-stretch py-1 pl-4', me ? 'bg-accent-soft' : 'bg-surface'), sticky && 'flex flex-col justify-center');
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${name}: ver sus juegos`}
+      className={cx(
+        cls,
+        // Pegado a la izquierda (sticky) ya sirve de marco para el ::after; si no, relative.
+        !sticky && 'relative',
+        "flex flex-col justify-center self-stretch outline-none after:absolute after:inset-x-0 after:-inset-y-[5px] after:content-[''] focus-visible:underline",
+      )}
+    >
+      {body}
+    </button>
+  ) : (
+    <span title={name} className={cls}>
+      {body}
+    </span>
+  );
+}
+
+/** Link discreto centrado (44 px): «Escribir los puntajes a mano». */
+function QuietToggle({ icon: Icon, onClick, children }: { icon: LucideIcon; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-1.5 flex h-11 items-center justify-center gap-1.5 self-center px-2 text-meta font-[550] text-fg-2 transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <Icon aria-hidden="true" className="size-[18px] shrink-0" />
+      {children}
+    </button>
   );
 }
 

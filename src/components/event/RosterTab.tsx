@@ -8,10 +8,14 @@ import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { NumberCell } from '../NumberCell';
 import { Avatar } from '../Avatar';
-import { Badge, Button, Card, Empty } from '../ui';
+import { Badge, Button, Card, Empty, cx } from '../ui';
 import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
 import { AddPlayersModal } from './AddPlayersModal';
+
+/** Los botones de 40 px (y la X de 32) se tocan en 44: su ::after sale un poco por fuera. */
+const HIT_40 = "relative after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
+const HIT_32 = "relative after:absolute after:-inset-1.5 after:content-['']";
 
 /** Torneo: inscritos con su promedio, handicap y equipo. */
 export function RosterTab({ event, entries, players }: { event: BowlingEvent; entries: Entry[]; players: Player[] }) {
@@ -63,11 +67,11 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" icon={<UserPlus className="size-4" />} onClick={() => setAdding(true)}>
+        <Button variant="primary" className={HIT_40} icon={<UserPlus className="size-4" />} onClick={() => setAdding(true)}>
           Inscribir jugadores
         </Button>
         {entries.length > 0 && (
-          <Button icon={<RefreshCw className="size-4" />} loading={syncing} onClick={syncAverages}>
+          <Button className={HIT_40} icon={<RefreshCw className="size-4" />} loading={syncing} onClick={syncAverages}>
             Actualizar promedios
           </Button>
         )}
@@ -100,7 +104,7 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="md:order-last"
+                  className={cx(HIT_32, 'md:order-last')}
                   aria-label={`Sacar a ${name}`}
                   loading={removing.isBusy(e.id)}
                   disabled={removing.isBusy()}

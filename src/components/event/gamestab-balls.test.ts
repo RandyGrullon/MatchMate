@@ -1,5 +1,6 @@
 /**
- * La bola de cada juego en la hoja de juegos del evento (GamesTab), sin navegador (renderToString con las bolas de la
+ * La bola de cada juego en «Escribir a mano» de la Planilla (GamesTab con `quick`: la planilla de siempre, una casilla
+ * por juego), sin navegador (renderToString con las bolas de la
  * cuenta en la caché): solo en la fila de la cuenta (el dueño, un admin o el anotador que también juega), un botón por
  * juego debajo de la casilla, también sin bolas («Agregar»); en la de los demás, nunca. Cada juego sale con la que tenía
  * (la del servidor con la cola encima), uno con puntaje y sin bola sin bola, y uno sin jugar con la del juego anterior o
@@ -103,7 +104,7 @@ const render = (p: { entries?: Entry[]; ctx?: Partial<LeagueCtx>; event?: Bowlin
       h(
         FeedbackProvider,
         null,
-        h(LeagueContext.Provider, { value: { ...ctx, ...p.ctx } }, h(GamesTab, { event: p.event ?? event, entries: p.entries ?? entries, players })),
+        h(LeagueContext.Provider, { value: { ...ctx, ...p.ctx } }, h(GamesTab, { event: p.event ?? event, entries: p.entries ?? entries, players, quick: true })),
       ),
     ),
   );

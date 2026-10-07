@@ -158,5 +158,12 @@ describe('«Tu pista» en el inicio del boliche', () => {
     expect(nextPractice([later], '2099-01-06')).toBeUndefined();
     expect(render(h(NextPracticeCard, { events: [later], playerId: 'a' }))).toContain('Tu pista');
     expect(render(h(NextPracticeCard, { events: [later], playerId: 'a', lane: false }))).not.toContain('Tu pista');
+    // La de hoy que ya se está jugando no es «la próxima» (esa se anota): sale la siguiente.
+    expect(nextPractice([later, sooner], '2099-01-01', new Set(['e0']))?.id).toBe('e1');
+    // Una fila con la fecha y «Voy» en línea (sin botón grande).
+    const card = render(h(NextPracticeCard, { events: [later], playerId: 'a', lane: false }));
+    expect(card).toContain('Próxima práctica');
+    expect(card).toMatch(/<time dateTime="2099-01-05"/);
+    expect(card).toContain('aria-label="Voy"');
   });
 });

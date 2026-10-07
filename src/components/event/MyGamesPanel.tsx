@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Camera, CheckCircle2, Clock, Grid3x3, PencilLine, Plus, Send, SlidersHorizontal, Smartphone, Target, Trash2, XCircle } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Camera, CheckCircle2, Clock, PencilLine, Plus, Send, Smartphone, Trash2, XCircle, type LucideIcon } from 'lucide-react';
 import { addEventGame } from '../../lib/data';
 import { ballKeys, ballTags, fetchMyBallGames, queuedBallsByGame, useMyBallGames } from '../../lib/data/balls';
 import { getUserId, queryClient, type Live } from '../../lib/data/client';
@@ -7,21 +7,22 @@ import { saveDraft, useDraft } from '../../lib/draft';
 import { useLeagueCtx } from '../../lib/league';
 import type { LiveInfo } from '../../lib/live';
 import { ballForGame, ballLabel, ballsByGame, draftBallsAfter, type BallGame } from '../../lib/balls';
-import { hasMark, type GameMark } from '../../lib/bowlingSeason';
+import type { GameMark } from '../../lib/bowlingSeason';
 import { slots } from '../../lib/stats';
 import type { BowlingEvent, Entry, Submission } from '../../lib/types';
 import { BallArt } from '../balls/BallArt';
 import { GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { BusyIcon } from '../busy';
 import { useFeedback } from '../feedback';
-import { preferredMode, setPreferredMode, type ScoreMode, type ScoreValue } from '../frames/FrameEditor';
+import { type ScoreValue } from '../frames/FrameEditor';
 import { clearGameDraft, gameKey, myGamesPlace, readGameDraft } from '../frames/draftMemory';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { eventLabel } from '../../lib/format';
 import { nextGameLabel, partialGame, useMemoryTick, type PartialGame } from '../../lib/useNextGame';
 import { todayTitle } from '../home/logic';
-import { Badge, Button, Card, cx } from '../ui';
-import { MarkIcon, MarksLine } from './GameMarks';
+import { Button, Card, GameTile, cx } from '../ui';
+import { gamesList } from './board';
+import { MarksLine } from './GameMarks';
 
 type Cell =
   | { kind: 'tabla'; score: number; counted: boolean }
@@ -31,13 +32,90 @@ type Cell =
 
 const sentAt = (s: Submission) => s.createdAt?.toMillis() ?? Number.MAX_SAFE_INTEGER;
 
-const MODES: { key: ScoreMode; label: string; icon: typeof Target }[] = [
-  { key: 'pines', label: 'Pines', icon: Target },
-  { key: 'teclado', label: 'Teclado', icon: Grid3x3 },
-  { key: 'total', label: 'Total', icon: SlidersHorizontal },
-];
-
 const NO_GAMES: BallGame[] = [];
+
+/** La línea de estado de «Tus juegos». */
+export interface GamesStatus {
+  tone: 'ok' | 'muted' | 'accent';
+  text: string;
+}
+
+/**
+ * Lo que se sabe de los juegos en una línea (solo las excepciones llevan marca): «Los juegos 1 y 2 ya cuentan en la
+ * liga», «El juego 3 está por aprobar», «El juego 2 está en tu teléfono, sin enviar», o varias juntas («Los juegos 1 y 2
+ * ya cuentan · el 3, por aprobar»). Lo que la liga todavía no tiene (por aprobar: enviado o en la tabla sin la foto que
+ * exige) no cuenta. null = nada que decir (todavía no anota ninguno).
+ */
+export function myGamesStatus(cells: readonly Cell[]): GamesStatus | null {
+  const counted: number[] = [];
+  const pending: number[] = [];
+  const phone: number[] = [];
+  cells.forEach((c, i) => {
+    if (c.kind === 'tabla') (c.counted ? counted : pending).push(i);
+    else if (c.kind === 'enviado') pending.push(i);
+    else if (c.kind === 'telefono') phone.push(i);
+  });
+  if (counted.length && counted.length === cells.length) return { tone: 'ok', text: 'Tus juegos ya cuentan en la liga' };
+  // Cada cosa: completa si va sola («ya cuentan en la liga»), corta si va primera de varias («ya cuentan») y, detrás,
+  // «el 3, por aprobar».
+  const all: { idx: number[]; alone: [string, string]; first: [string, string]; after: string; tone: GamesStatus['tone'] }[] = [
+    { idx: counted, alone: ['ya cuenta en la liga', 'ya cuentan en la liga'], first: ['ya cuenta', 'ya cuentan'], after: 'ya cuenta', tone: 'ok' },
+    { idx: pending, alone: ['está por aprobar', 'están por aprobar'], first: ['está por aprobar', 'están por aprobar'], after: 'por aprobar', tone: 'muted' },
+    {
+      idx: phone,
+      alone: ['está en tu teléfono, sin enviar', 'están en tu teléfono, sin enviar'],
+      first: ['está en tu teléfono', 'están en tu teléfono'],
+      after: 'en tu teléfono',
+      tone: 'accent',
+    },
+  ];
+  const parts = all.filter((p) => p.idx.length);
+  if (!parts.length) return null;
+  const [first, ...rest] = parts;
+  const many = first.idx.length > 1 ? 1 : 0;
+  const lead = `${many ? 'Los juegos' : 'El juego'} ${gamesList(first.idx)}`;
+  if (!rest.length) return { tone: first.tone, text: `${lead} ${first.alone[many]}` };
+  const others = rest.map((p) => `${p.idx.length === 1 ? 'el' : 'los'} ${gamesList(p.idx)}, ${p.after}`);
+  return { tone: first.tone, text: [`${lead} ${first.first[many]}`, ...others].join(' · ') };
+}
+
+const STATUS_ICON: Record<GamesStatus['tone'], { icon: LucideIcon; className: string }> = {
+  ok: { icon: CheckCircle2, className: 'text-ok' },
+  muted: { icon: Clock, className: 'text-muted' },
+  accent: { icon: Smartphone, className: 'text-accent' },
+};
+
+/** Una línea discreta de la tarjeta (la foto del marcador, enviar, otro juego): 44 px para el dedo. */
+function QuietAction({
+  icon: Icon,
+  onClick,
+  busy,
+  accent,
+  children,
+}: {
+  icon: LucideIcon;
+  onClick: () => void;
+  busy?: boolean;
+  accent?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      className={cx(
+        'flex h-11 w-full min-w-0 items-center justify-center gap-1.5 text-meta font-[550] transition active:opacity-70 disabled:opacity-60',
+        'focus-visible:outline-2 focus-visible:outline-accent',
+        accent ? 'text-accent' : 'text-fg-2',
+      )}
+    >
+      <BusyIcon busy={!!busy} icon={<Icon aria-hidden="true" className="size-[18px] shrink-0" />} className="size-[18px] shrink-0" />
+      <span className="truncate">{children}</span>
+    </button>
+  );
+}
 
 /**
  * Mis juegos con bola de esos envíos, en una sola lectura (useMyBallGames lee un solo lugar y aquí puede haber más de
@@ -53,17 +131,25 @@ function useSubBallGames(subIds: readonly string[], enabled: boolean): Live<Ball
   );
 }
 
+/** Cómo se ve «Tus juegos»: grande (Lite), compacta (Pro) o solo la hoja de anotar (Pro, quien lleva la Planilla). */
+export type MyGamesLook = 'lite' | 'pro' | 'sheet';
+
 /**
- * El jugador anota sus juegos del evento uno a uno mientras juega, de la forma que elija (pines, teclado o
- * total): cada juego se guarda en su teléfono y al final los envía a revisión. La foto del marcador es
- * opcional y sirve para verificar. En una práctica puede sumar un juego más si siguen jugando.
+ * «Tus juegos» (rediseño «Calma y foco»): el jugador anota sus juegos del evento uno a uno mientras juega (pines,
+ * teclado o total, en «Teclado ▾» dentro de la hoja): cada juego se guarda en su teléfono y al final los envía a
+ * revisión. Arriba la serie y el promedio; las fichas en grande (el que dejó a medias, «A medias»); una línea con lo que
+ * ya cuenta y lo que falta («Los juegos 1 y 2 ya cuentan en la liga»); UN botón («Seguir mi juego 3», «Anotar juego 3»
+ * o «Enviar mis juegos») y, a la vista, «Anotar con foto del marcador». En una práctica puede sumar otro juego.
+ *
+ * `look`: 'lite' (por defecto), 'pro' (la misma, más compacta: J1 J2 J3 Serie) o 'sheet' (Pro con Planilla: sin
+ * tarjeta, solo la hoja, que se abre desde «?anotar=1» o con `openRequest`; si tiene juegos en el teléfono sin enviar,
+ * sale la tarjeta compacta para enviarlos).
  */
 export function MyGamesPanel({
   event,
   playerId,
   entry,
   subs,
-  live,
   today,
   autoStart,
   onAutoStarted,
@@ -71,13 +157,17 @@ export function MyGamesPanel({
   onSend,
   marks,
   onAutoDone,
+  look = 'lite',
+  openRequest,
+  className,
 }: {
   event: BowlingEvent;
   playerId: string;
   entry: Entry | null;
   /** Envíos del jugador en este evento. */
   subs: Submission[];
-  live: LiveInfo;
+  /** Si se está jugando (ya lo dicen la pantalla y «Cómo van todos»: aquí no se repite). */
+  live?: LiveInfo;
   today: string;
   /** Abrir el próximo juego sin anotar al entrar (desde "En juego ahora"). */
   autoStart: boolean;
@@ -91,11 +181,15 @@ export function MyGamesPanel({
    * al cerrarla, al guardar el juego o con «Guardar y salir».
    */
   onAutoDone?: () => void;
+  look?: MyGamesLook;
+  /** Abrir la hoja de ese juego (desde la Planilla: su propio juego a medias). `at` distingue dos pedidos iguales. */
+  openRequest?: { game: number; at: number } | null;
+  /** De la tarjeta (el espacio de arriba): en 'sheet' sin tarjeta no ocupa nada. */
+  className?: string;
 }) {
   const { lid } = useLeagueCtx();
   const { toast, confirm } = useFeedback();
   const draft = useDraft(lid, playerId, event.id);
-  const [mode, setMode] = useState<ScoreMode>(preferredMode);
   const [adding, setAdding] = useState(false);
   // La bola de cada juego: la que ya eligió en el teléfono, la del juego anterior o la última que usó. Se elige arriba
   // del editor (aunque la cuenta no tenga ninguna: «Agregar») y se envía con los juegos («Enviar a revisión»).
@@ -135,14 +229,8 @@ export function MyGamesPanel({
   useMemoryTick();
   const place = myGamesPlace(getUserId(), lid, playerId, event.id);
   const halfway: (PartialGame | null)[] = cells.map((c, i) => (c.kind === 'vacio' ? partialGame(readGameDraft(gameKey(place, i))) : null));
+  // El que sigue, si quedó a medias: «Seguir mi juego 3» (los textos de Hoy, useNextGame).
   const nextHalf = nextEmpty >= 0 ? halfway[nextEmpty] : null;
-  /** «Seguir mi juego 3» si quedó a medias; si no, «Anotar juego 3» (los textos de Hoy). `short`: «Seguir juego 3» o «Juego 3». */
-  const nextLabel = (short = false) =>
-    nextHalf
-      ? nextGameLabel({ kind: 'medias', game: nextEmpty + 1, progress: nextHalf.progress, to: '' }, { pro: short })
-      : short
-        ? `Juego ${nextEmpty + 1}`
-        : nextGameLabel({ kind: 'anotar', game: nextEmpty + 1, to: '' });
 
   // La bola de cada juego, en su casilla y al abrirlo. Los del teléfono: ballOf (la misma que se envía). Los que ya
   // salieron del teléfono (en la tabla o enviados): lo de la cola encima de lo del servidor. Sin bolas en la cuenta no se
@@ -193,10 +281,6 @@ export function MyGamesPanel({
     if (done !== false) toast(`Juego ${n} agregado a la sesión`);
   }
 
-  function pickMode(m: ScoreMode) {
-    setPreferredMode(m);
-    setMode(m);
-  }
   const allInTable = cells.every((c) => c.kind === 'tabla');
 
   // Lo que ya llegó a la tabla (lo anotó el admin o el anotador) sale del teléfono: no se vuelve a enviar.
@@ -231,7 +315,6 @@ export function MyGamesPanel({
   /** Se cierra la hoja (la X, «Guardar y salir», guardar o borrar el juego). */
   function closeSheet() {
     setEditing(null);
-    setMode(preferredMode());
     if (autoOpened.current) {
       autoOpened.current = false;
       onAutoDone?.();
@@ -266,6 +349,12 @@ export function MyGamesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
 
+  // Desde la Planilla (Pro): su propio juego, en esta hoja (la misma memoria del teléfono que «Seguir mi juego 3»).
+  useEffect(() => {
+    if (openRequest && !notYet && openRequest.game < count) edit(openRequest.game);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest?.at]);
+
   const editingCell = editing != null ? cells[editing] : null;
   // Un juego ya enviado se abre con lo que se envió (también sus cuadros).
   const initial: ScoreValue =
@@ -281,191 +370,31 @@ export function MyGamesPanel({
   // (la misma que «Subir mis juegos» de ese evento: es el mismo juego en el teléfono).
   const memoryKey = editing != null ? gameKey(place, editing) : undefined;
 
-  return (
-    <Card className={cx('flex flex-col gap-3 p-4', live.live && !notYet && 'border-ok/40')}>
-      <div className="flex items-center gap-2">
-        <h2 className="font-semibold">Mis juegos</h2>
-        {live.live && !live.startsSoon && (
-          <Badge tone="ok">
-            <span className="live-dot" /> En juego
-          </Badge>
-        )}
-        {live.live && live.startsSoon && live.startLabel && <Badge tone="accent">Empieza a las {live.startLabel}</Badge>}
-      </div>
+  const pro = look !== 'lite';
+  const phoneGames = cells.flatMap((c, i) => (c.kind === 'telefono' ? [i] : []));
+  const status = myGamesStatus(cells);
+  const rejected = !pending.length && last?.status === 'rechazado' && inPhone === 0 && !allInTable ? last : null;
+  // Las fichas: hasta 3 juegos en grande («Juego 1»); con más (o en Pro), compactas («J1») y en Pro con la serie al final.
+  const dense = pro || count > 3;
+  const columns = Math.max(3, Math.min(count + (pro ? 1 : 0), 5));
+  // El botón principal: el juego que sigue (o el que quedó a medias); con todos anotados y en el teléfono, enviarlos.
+  const primary =
+    notYet || allInTable
+      ? null
+      : nextEmpty >= 0
+        ? {
+            label: nextHalf
+              ? nextGameLabel({ kind: 'medias', game: nextEmpty + 1, progress: nextHalf.progress, to: '' }, { pro })
+              : nextGameLabel({ kind: 'anotar', game: nextEmpty + 1, to: '' }),
+            icon: PencilLine,
+            onClick: () => edit(nextEmpty),
+          }
+        : inPhone > 0
+          ? { label: nextGameLabel({ kind: 'enviar', count: inPhone, to: '' }), icon: Send, onClick: onSend }
+          : null;
 
-      {notYet ? (
-        <p className="text-sm text-muted">El día del evento podrás anotar aquí tus juegos mientras juegas.</p>
-      ) : (
-        <>
-          {!allInTable && (
-            <div className="flex items-center gap-2 text-xs text-muted" data-tour="modo">
-              <span className="shrink-0">Anotar con</span>
-              <div role="radiogroup" aria-label="Forma de anotar" className="grid flex-1 grid-cols-3 gap-1 rounded-lg bg-surface-2 p-0.5">
-                {MODES.map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === key}
-                    onClick={() => pickMode(key)}
-                    className={cx(
-                      'flex min-h-11 items-center justify-center gap-1 rounded-md py-1.5 font-medium transition',
-                      mode === key ? 'bg-surface text-fg shadow-sm' : 'hover:text-fg',
-                    )}
-                  >
-                    <Icon className="size-3.5" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="grid gap-2" data-tour="juegos" style={{ gridTemplateColumns: `repeat(${Math.min(count + (canAddGame ? 1 : 0), 5)}, minmax(0, 1fr))` }}>
-            {cells.map((c, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => (c.kind === 'tabla' ? onOpenEntry() : edit(i))}
-                aria-label={`Juego ${i + 1}${c.kind === 'vacio' ? (halfway[i] ? ': a medias' : ': anotar') : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`}
-                className={cx(
-                  'flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-2 transition active:scale-95',
-                  c.kind === 'tabla' &&
-                    (c.counted ? (hasMark(marks?.[i]) ? 'border-accent/50 bg-accent-soft/60' : 'border-ok/40 bg-ok-soft/50') : 'border-line bg-surface-2'),
-                  c.kind === 'telefono' && 'border-accent/50 bg-accent-soft/50',
-                  c.kind === 'enviado' && 'border-warn/40 bg-warn-soft/40',
-                  c.kind === 'vacio' &&
-                    (halfway[i]
-                      ? 'border-dashed border-accent bg-accent-soft text-accent'
-                      : 'border-dashed border-line text-muted hover:border-accent hover:text-accent'),
-                )}
-              >
-                <span className="flex items-center gap-0.5 text-[11px] font-medium text-muted">
-                  J{i + 1}
-                  {/* Con qué bola lo tiró: solo se ve (se cambia al abrir el juego). */}
-                  {tileBalls[i] && <BallArt ball={tileBalls[i]} size={18} className="shrink-0" />}
-                </span>
-                {c.kind === 'vacio' ? (
-                  // A medias: lo que lleva («74…»), o el lápiz si todavía no suma nada.
-                  halfway[i]?.score ? (
-                    <span className="text-lg leading-none font-bold tabular-nums">{halfway[i]!.score}…</span>
-                  ) : halfway[i] ? (
-                    <PencilLine className="size-5" />
-                  ) : (
-                    <Plus className="size-5" />
-                  )
-                ) : (
-                  <span className="text-lg leading-none font-bold tabular-nums">{c.score}</span>
-                )}
-                <span className="flex items-center gap-0.5 text-[10px] text-muted">
-                  {c.kind === 'tabla' ? (
-                    c.counted && hasMark(marks?.[i]) ? (
-                      <span className="flex items-center gap-0.5 font-medium text-accent">
-                        <MarkIcon mark={marks?.[i]} /> {marks![i]!.record ? 'Récord' : `+${marks![i]!.over}`}
-                      </span>
-                    ) : c.counted ? (
-                      <>
-                        <CheckCircle2 className="size-3 text-ok" /> En la tabla
-                      </>
-                    ) : (
-                      'Sin verificar'
-                    )
-                  ) : c.kind === 'telefono' ? (
-                    <>
-                      <Smartphone className="size-3 text-accent" /> Guardado
-                    </>
-                  ) : c.kind === 'enviado' ? (
-                    <>
-                      <Clock className="size-3 text-warn" /> Enviado
-                    </>
-                  ) : halfway[i] ? (
-                    <span className="font-semibold text-accent">A medias</span>
-                  ) : (
-                    'Anotar'
-                  )}
-                </span>
-              </button>
-            ))}
-            {canAddGame && (
-              <button
-                type="button"
-                onClick={addGame}
-                disabled={adding}
-                aria-busy={adding || undefined}
-                data-tour="otro-juego"
-                aria-label="Agregar otro juego a la sesión"
-                className="flex min-h-[4.5rem] flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-line px-1 py-2 text-muted transition hover:border-accent hover:text-accent active:scale-95 disabled:opacity-50"
-              >
-                <BusyIcon busy={adding} icon={<Plus className="size-5" />} className="size-5" />
-                <span className="text-[10px]">Otro juego</span>
-              </button>
-            )}
-          </div>
-
-          <MarksLine marks={marks} />
-
-          {average != null && (
-            <div className="flex items-baseline justify-between rounded-xl bg-surface-2 px-3 py-2">
-              <span className="text-sm text-muted">
-                {known.length === count ? 'Promedio de la sesión' : `Promedio (${known.length} de ${count})`}
-              </span>
-              <span className="text-sm text-muted tabular-nums">
-                Serie <b className="text-fg">{series}</b> · <b className="text-lg text-fg">{average}</b>
-              </span>
-            </div>
-          )}
-
-          {pending.length > 0 && inPhone === 0 && (
-            <p className="flex items-center gap-1.5 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
-              <Clock className="size-4 shrink-0" /> Enviado. El admin lo revisa y lo pone en la tabla.
-            </p>
-          )}
-          {!pending.length && last?.status === 'rechazado' && inPhone === 0 && !allInTable && (
-            <p className="flex items-start gap-1.5 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
-              <XCircle className="mt-0.5 size-4 shrink-0" />
-              <span>
-                El admin no aceptó tu envío{last.note ? `: ${last.note}` : '.'} Anota de nuevo y vuelve a enviarlo.
-              </span>
-            </p>
-          )}
-
-          {allInTable ? (
-            <p className="flex items-center gap-1.5 text-sm text-ok">
-              <CheckCircle2 className="size-4" /> Tus juegos ya están en la tabla.
-            </p>
-          ) : inPhone > 0 ? (
-            <>
-              <div className="flex gap-2">
-                {nextEmpty >= 0 && (
-                  <Button icon={<PencilLine className="size-4" />} onClick={() => edit(nextEmpty)}>
-                    {nextLabel(true)}
-                  </Button>
-                )}
-                <Button variant="primary" className="flex-1" icon={<Send className="size-4" />} onClick={onSend} data-tour="enviar">
-                  Enviar a revisión ({inPhone})
-                </Button>
-              </div>
-              <p className="text-xs text-muted">
-                Se guardan en este teléfono hasta que los envíes. La foto del marcador es opcional: sirve para que el admin lo verifique.
-              </p>
-            </>
-          ) : nextEmpty >= 0 ? (
-            <>
-              <Button variant="primary" icon={<PencilLine className="size-4" />} onClick={() => edit(nextEmpty)} data-tour="anotar">
-                {nextLabel()}
-              </Button>
-              <button type="button" onClick={onSend} className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted hover:text-fg">
-                <Camera className="size-3.5" /> O sube la foto del marcador y se leen solos
-              </button>
-            </>
-          ) : (
-            // Todo enviado (o parte en la tabla): la foto del marcador sirve para que el admin lo verifique.
-            <Button icon={<Camera className="size-4" />} onClick={onSend}>
-              Subir la foto del marcador
-            </Button>
-          )}
-        </>
-      )}
-
+  const sheet = (
+    <>
       {/* La bola de este juego va arriba del editor (en las tres formas de anotar) en cuanto se sabe la lista de bolas,
           aunque no tenga ninguna («Agregar»). Si el juego se abrió antes de leerla (desde "En juego ahora"), sale al leerla
           y arranca con la última que usó. Se vuelve a montar con cada juego. */}
@@ -505,6 +434,109 @@ export function MyGamesPanel({
           )
         }
       />
+    </>
+  );
+
+  // Pro con Planilla: solo la hoja (su fila de la Planilla y «?anotar=1» la abren); con juegos sin enviar, la tarjeta.
+  if (look === 'sheet' && inPhone === 0) return sheet;
+
+  const statusIcon = status ? STATUS_ICON[status.tone] : null;
+  return (
+    <Card className={cx(pro ? 'p-[18px]' : 'px-5 pt-5 pb-1.5', className)}>
+      <section aria-label="Tus juegos">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className={pro ? 'text-[17px] leading-tight font-[650] tracking-[-0.015em]' : 'text-section'}>Tus juegos</h2>
+          {average != null && (
+            <span className={cx('min-w-0 truncate text-muted', pro ? 'text-[13px]' : 'text-sm')}>
+              Serie <b className="num font-[650] text-fg">{series}</b> · Prom. <b className="num font-[650] text-fg">{average}</b>
+            </span>
+          )}
+        </div>
+
+        {notYet ? (
+          <p className="mt-2 mb-3.5 text-meta text-muted">El día del evento podrás anotar aquí tus juegos mientras juegas.</p>
+        ) : (
+          <>
+            <div className={cx('grid', dense ? 'mt-3.5 mb-3 gap-2' : 'mt-4 mb-3 gap-2.5')} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+              {cells.map((c, i) => {
+                const label = dense ? `J${i + 1}` : `Juego ${i + 1}`;
+                const spoken = `Juego ${i + 1}${c.kind === 'vacio' ? (halfway[i] ? ': a medias' : ': anotar') : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`;
+                const open = () => (c.kind === 'tabla' ? onOpenEntry() : edit(i));
+                // Lo que todavía no cuenta (enviado, o en la tabla sin la foto que se exige) va en gris.
+                const faint = c.kind === 'enviado' || (c.kind === 'tabla' && !c.counted);
+                return (
+                  <div key={i} className="relative min-w-0">
+                    {c.kind !== 'vacio' ? (
+                      <GameTile label={label} score={c.score} dense={dense} onClick={open} ariaLabel={spoken} className={faint ? 'text-faint' : undefined} />
+                    ) : halfway[i] ? (
+                      // A medias: la barrita con lo que lleva (en Pro, «74…»).
+                      <GameTile
+                        label={label}
+                        state="draft"
+                        progress={halfway[i]!.progress}
+                        score={dense && halfway[i]!.score ? halfway[i]!.score : null}
+                        dense={dense}
+                        onClick={open}
+                        ariaLabel={spoken}
+                      />
+                    ) : i === nextEmpty ? (
+                      <GameTile label={label} state="next" dense={dense} onClick={open} ariaLabel={spoken} />
+                    ) : (
+                      <GameTile label={label} dense={dense} onClick={open} ariaLabel={spoken} className="text-faint" />
+                    )}
+                    {/* Con qué bola lo tiró: solo se ve (se cambia al abrir el juego). */}
+                    {tileBalls[i] && (
+                      <BallArt ball={tileBalls[i]} size={18} className={cx('pointer-events-none absolute', dense ? 'top-1.5 right-1.5' : 'top-2.5 right-2.5')} />
+                    )}
+                  </div>
+                );
+              })}
+              {pro && <GameTile label="Serie" score={series || null} state="total" dense />}
+            </div>
+
+            {status && statusIcon && (
+              <p className={cx('mx-0.5 flex items-center gap-[7px] text-fg-2', pro ? 'mb-3 text-[13px]' : 'mb-4 text-sm')}>
+                <statusIcon.icon aria-hidden="true" className={cx('size-[17px] shrink-0', statusIcon.className)} />
+                <span className="min-w-0">{status.text}</span>
+              </p>
+            )}
+            <MarksLine marks={marks} className={cx('mx-0.5 -mt-2', pro ? 'mb-3' : 'mb-4')} />
+            {rejected && (
+              <p className="mx-0.5 mb-4 flex items-start gap-[7px] text-sm text-danger">
+                <XCircle aria-hidden="true" className="mt-px size-[17px] shrink-0" />
+                <span>
+                  El admin no aceptó tu envío{rejected.note ? `: ${rejected.note}` : '.'} Anota de nuevo y vuelve a enviarlo.
+                </span>
+              </p>
+            )}
+
+            {primary && (
+              <Button variant="primary" size={pro ? 'lg' : 'xl'} className="w-full" icon={<primary.icon className={pro ? 'size-[18px]' : 'size-5'} />} onClick={primary.onClick}>
+                {primary.label}
+              </Button>
+            )}
+            <div className={cx('flex flex-col', primary && 'mt-0.5', !primary && !allInTable && '-mt-1')}>
+              {nextEmpty >= 0 && phoneGames.length > 0 && (
+                <QuietAction icon={Send} onClick={onSend} accent>
+                  {phoneGames.length === 1 ? 'Enviar mi juego' : 'Enviar mis juegos'} {gamesList(phoneGames)}
+                </QuietAction>
+              )}
+              {canAddGame && nextEmpty < 0 && (
+                <QuietAction icon={Plus} onClick={() => void addGame()} busy={adding}>
+                  Otro juego
+                </QuietAction>
+              )}
+              {!allInTable && inPhone === 0 && (
+                <QuietAction icon={Camera} onClick={onSend}>
+                  Anotar con foto del marcador
+                </QuietAction>
+              )}
+            </div>
+            {allInTable && !pro && <div className="h-3.5" />}
+          </>
+        )}
+      </section>
+      {sheet}
     </Card>
   );
 }

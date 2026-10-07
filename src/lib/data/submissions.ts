@@ -7,6 +7,7 @@ import { lastBall } from '../balls';
 import { queueGameBalls, rememberBall } from './balls';
 import { backend, enqueue, getUserId, invalidate, rpc, select, useLive, type Live, type QueryDesc } from './client';
 import { keys, tags } from './keys';
+import { organizerTags } from './organizer';
 import { overlaySubs, pendingOps } from './pending';
 import { toSubmission, type SubmissionRow } from './rows';
 import type { Wire } from './stamp';
@@ -165,13 +166,21 @@ export async function approveSubmission(
     // Dónde cae el J1 del envío: la bola de cada juego pasa a su juego del evento (20260930000100_bolas.sql).
     p_start: start,
   });
-  invalidate(tags.subs(lid), tags.entries(lid), tags.events(lid), tags.feeds, ...(r?.event_id ? [tags.eventEntries(r.event_id), tags.eventSubs(r.event_id)] : []));
+  // También lo pendiente de la liga (league_pending): el número de «Organizar» y la fila «Organizas esta liga» bajan ya.
+  invalidate(
+    tags.subs(lid),
+    tags.entries(lid),
+    tags.events(lid),
+    tags.feeds,
+    organizerTags.pending(lid),
+    ...(r?.event_id ? [tags.eventEntries(r.event_id), tags.eventSubs(r.event_id)] : []),
+  );
   return { entryId: r?.entry_id ?? '', eventId: r?.event_id ?? event.id };
 }
 
 export async function rejectSubmission(lid: string, sub: Pick<Submission, 'id'>, note: string | null) {
   await rpc('reject_submission', { p_submission: sub.id, p_note: note });
-  invalidate(tags.subs(lid), tags.feeds);
+  invalidate(tags.subs(lid), tags.feeds, organizerTags.pending(lid));
 }
 
 /**

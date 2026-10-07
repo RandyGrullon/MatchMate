@@ -349,12 +349,12 @@ export function SubmitGamesModal({
       <Modal
         open={open && framesFor == null}
         onClose={onClose}
-        title="Subir mis juegos"
+        title="Enviar mis juegos"
         footer={
           <>
             <Button onClick={onClose}>Cerrar</Button>
             <Button variant="primary" icon={<Send className="size-4" />} disabled={!canSend} loading={sending} onClick={send}>
-              Enviar para aprobar
+              Enviar
             </Button>
           </>
         }

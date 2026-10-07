@@ -188,7 +188,7 @@ export function ScanModal({
         queueGameBalls('event', event.id, balls, lid);
         rememberBall(lastBall(Object.values(balls)));
       }
-      toast(`${gamesToSave} ${gamesToSave === 1 ? 'juego verificado' : 'juegos verificados'}`);
+      toast(`${gamesToSave} ${gamesToSave === 1 ? 'juego aprobado' : 'juegos aprobados'}`);
       onClose();
     }
   }
