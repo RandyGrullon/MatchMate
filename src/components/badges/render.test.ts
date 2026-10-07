@@ -15,7 +15,7 @@ import { BadgeTile } from './BadgeTile';
 import { AttendanceFold, TitleShield, WinnersList } from './LeagueBadgePanels';
 import { currentTitle, playerPageId } from './LeagueBadges';
 import { emptyOwnText, featurableLeagueTiles, featuredModel, groupTiles, leagueShelves, lockedModels, monthAwards, progressByBadge, reviewModel, unlockPlan, viewAward, yearRecap } from './logic';
-import { BadgesTabView, FeaturedChoices, FeaturedRow, pickerSave, pickerStart, tabModel } from './ProfileBadges';
+import { BadgesPreviewView, BadgesTabView, FeaturedChoices, FeaturedRow, badgesLine, pickerSave, pickerStart, previewBadges, tabModel, wonOn } from './ProfileBadges';
 import { ReviewRow } from './ReviewsPanel';
 import { UnlockContent, YearRecapCard } from './UnlockModal';
 
@@ -227,6 +227,53 @@ describe('pestaña Insignias del perfil', () => {
     const html = render(h(BadgesTabView, { ...props, model: tabModel(data, [], ['bowling'], NOW) }));
     expect(text(html)).toContain('Solo en tu liga');
     expect(html).toContain(', solo en tu liga"');
+  });
+});
+
+describe('Yo: la tarjeta «Insignias» (Lite) y la línea de Pro', () => {
+  it('las 3: las ganadas más nuevas con su fecha y la más cerca de ganarse con lo que falta (sin las ocultas ni en revisión)', () => {
+    const items = previewBadges(tabModel(profile(true), progress, ['bowling'], NOW));
+    expect(items).toHaveLength(3);
+    // La del mes es de hace 2 días: sale como nueva.
+    expect(items.map((b) => b.state)).toEqual(['new', 'unlocked', 'progress']);
+    expect(items[0].label.endsWith(', nueva')).toBe(true);
+    expect(items[0].name).toBe(viewAward(figure)!.name);
+    expect(items[0].sub).toBe(wonOn(figure.awardedAt));
+    expect(items[0].to).toBe(`?tab=insignias&insignia=${figure.id}`);
+    expect(items[2].sub).toBe('te faltan 3 juegos');
+    expect(items[2].progress).toBeCloseTo(0.9);
+    expect(items.some((b) => b.label.includes('Ruptura') || b.label.includes('Juego perfecto'))).toBe(false);
+  });
+
+  it('sin ganadas ni progreso: las que faltan por ganar; sin nada, ninguna', () => {
+    const empty: ProfileBadges = { userId: 'u', isMe: true, featured: [], featuredLeague: [], hasChosen: false, truncated: false, awards: [], leagueAwards: [] };
+    const items = previewBadges(tabModel(empty, [], ['bowling'], NOW));
+    expect(items).toHaveLength(3);
+    expect(items.every((b) => b.state === 'locked' && b.sub === 'Por ganar' && b.to === '?tab=insignias')).toBe(true);
+    expect(previewBadges(tabModel({ ...empty, isMe: false }, [], [], NOW))).toEqual([]);
+  });
+
+  it('«6 oct»: el día y el mes corto', () => {
+    expect(wonOn('2026-10-06T15:00:00Z')).toBe('6 oct');
+    expect(wonOn('no')).toBe('');
+  });
+
+  it('la tarjeta: 3 a 60 px con su nombre, la fecha o lo que falta (con su barrita), «Ver todas» a la vitrina', () => {
+    const items = previewBadges(tabModel(profile(true), progress, ['bowling'], NOW));
+    const html = render(h(BadgesPreviewView, { items }));
+    const t = text(html);
+    expect(t).toContain('Insignias');
+    expect(t).toContain('Ver todas');
+    expect(html).toContain('href="/?tab=insignias"');
+    expect(html).toContain(`href="/?tab=insignias&amp;insignia=${figure.id}"`);
+    expect(html.match(/<svg[^>]*width="60"/g)).toHaveLength(3);
+    expect(t).toContain('te faltan 3 juegos');
+    expect(html.match(/w-16/g)).toHaveLength(1);
+  });
+
+  it('la línea de Pro: «5 de N · la que sigue: te faltan…»; la de otra cuenta, solo el total', () => {
+    expect(badgesLine(tabModel(profile(true), progress, ['bowling'], NOW))).toMatch(/^5 de \d+ · .+: te faltan 3 juegos$/);
+    expect(badgesLine(tabModel(profile(false), [], ['bowling'], NOW))).toBe('5 insignias');
   });
 });
 

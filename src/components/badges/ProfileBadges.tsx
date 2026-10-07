@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Award, ChevronDown, Lock, Pencil, Save, Sparkles } from 'lucide-react';
+import { Award, ChevronDown, ChevronRight, Lock, Pencil, Save, Sparkles } from 'lucide-react';
 import { Insignia } from '../../badges/visual';
 import { getUserId, invalidate } from '../../lib/data/client';
 import { useMyMemberships } from '../../lib/data/members';
@@ -8,7 +8,7 @@ import { badgeTags, setFeaturedBadges, useBadgeProgress, useBadgeStats, useProfi
 import { useNow } from '../../lib/useNow';
 import { FilterChips } from '../notifications/FilterChips';
 import { useAction, useFeedback } from '../feedback';
-import { Button, Card, Empty, LoadError, Modal, Skeleton, cx } from '../ui';
+import { Button, Card, Empty, LoadError, Modal, SectionHeader, Skeleton, cx, sectionLinkClass } from '../ui';
 import { BadgeSheet, tileSub, type SheetSubject } from './BadgeSheet';
 import { BadgeGrid, BadgeTile, LeagueMark } from './BadgeTile';
 import {
@@ -387,6 +387,168 @@ export default function ProfileBadgesTab({ userId, name, sports }: { userId: str
         animate={animate}
       />
     </>
+  );
+}
+
+// ---------- Yo: las 3 de la tarjeta «Insignias» y la línea de Pro ----------
+
+const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Lo que llevan los links de Yo a sus partes: «‹ Yo» vuelve atrás en vez de abrir Yo otra vez. */
+export const YO_STATE = { yo: true } as const;
+
+/** «6 oct»: cuándo la ganó (debajo del nombre en la tarjeta de Yo). */
+export function wonOn(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+}
+
+/** «Te faltan 6 pinos» → «te faltan 6 pinos» (en la mitad de una frase). */
+const lowerFirst = (s: string) => (s ? s[0].toLowerCase() + s.slice(1) : s);
+
+/** Una de las 3 insignias de la tarjeta de Yo: ganada (con su fecha), en camino (con su barrita) o por ganar. */
+export interface PreviewBadge {
+  id: string;
+  look: BadgeTileModel['top']['look'];
+  state: 'unlocked' | 'new' | 'progress' | 'locked';
+  /** 0 a 1 (solo las que van en camino). */
+  progress: number | null;
+  name: string;
+  sub: string;
+  /** A dónde lleva: la vitrina con esa insignia abierta (`?tab=insignias&insignia=…`) o la vitrina. */
+  to: string;
+  label: string;
+}
+
+/**
+ * Las 3 de la tarjeta «Insignias» de Yo: las ganadas más nuevas (dejando lugar a la que está más cerca de ganarse, «te
+ * faltan 6») y, si no alcanza, las que van en camino y las que faltan por ganar.
+ */
+export function previewBadges(model: BadgesTabModel, max = 3): PreviewBadge[] {
+  const won: PreviewBadge[] = model.tiles
+    .filter((t) => t.bucket === 'ok')
+    .map((t) => ({
+      id: t.id,
+      look: t.top.look,
+      state: t.state === 'new' ? 'new' : 'unlocked',
+      progress: null,
+      name: t.top.name,
+      sub: wonOn(t.top.award.awardedAt),
+      to: `?tab=insignias&insignia=${encodeURIComponent(t.top.award.id)}`,
+      label: `${t.top.label}${t.state === 'new' ? ', nueva' : ''}`,
+    }));
+  const going: PreviewBadge[] = model.upcoming.map((p) => ({
+    id: p.id,
+    look: p.look,
+    state: 'progress',
+    progress: p.ratio,
+    name: p.name,
+    sub: lowerFirst(p.text),
+    to: '?tab=insignias',
+    label: `${p.name}, bloqueada. ${p.text}`,
+  }));
+  const locked: PreviewBadge[] = model.locked
+    .filter((l) => !l.progress)
+    .map((l) => ({ id: l.id, look: l.look, state: 'locked', progress: null, name: l.name, sub: 'Por ganar', to: '?tab=insignias', label: `${l.name}, bloqueada` }));
+  const room = max - Math.min(going.length, 1);
+  return [...won.slice(0, room), ...going, ...won.slice(room), ...locked].slice(0, max);
+}
+
+/** La línea de «Insignias» en Pro: «2 de 18 · Serie de 600: te faltan 6». */
+export function badgesLine(model: BadgesTabModel): string {
+  const total = model.count + model.locked.length;
+  const next = model.upcoming[0];
+  return [model.own && total > model.count ? `${model.count} de ${total}` : countText(model.count), next && `${next.name}: ${lowerFirst(next.text)}`]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** La vitrina de la cuenta, ya calculada (para la tarjeta y la línea de Yo); null mientras se lee. */
+export function useBadgesModel(userId: string, sports: readonly string[]): { model: BadgesTabModel | null; loading: boolean } {
+  const data = useProfileBadges(userId);
+  const own = !!data.data?.isMe || userId === getUserId();
+  const progress = useBadgeProgress(own);
+  const now = useNow().getTime();
+  const [opened] = useOpened(own ? userId : null);
+  const model = useMemo(() => (data.data ? tabModel(data.data, progress.data, sports, now, opened) : null), [data.data, progress.data, sports, now, opened]);
+  return { model, loading: data.loading && !data.data };
+}
+
+/** La tarjeta «Insignias» de Yo, sin leer la base: 3 insignias a 60 px con su nombre y su fecha o lo que falta. */
+export function BadgesPreviewView({ items, className }: { items: readonly PreviewBadge[]; className?: string }) {
+  return (
+    <section aria-labelledby="yo-insignias" className={className}>
+      <SectionHeader
+        id="yo-insignias"
+        title="Insignias"
+        action={
+          <Link to="?tab=insignias" state={YO_STATE} className={sectionLinkClass}>
+            Ver todas
+            <ChevronRight aria-hidden="true" className="size-4" />
+          </Link>
+        }
+      />
+      <Card className="grid grid-cols-3 px-2 pt-[18px] pb-4">
+        {items.map((b) => (
+          <Link
+            key={b.id}
+            to={b.to}
+            state={YO_STATE}
+            aria-label={b.label}
+            className="flex min-w-0 flex-col items-center rounded-2xl px-0.5 text-center transition active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <Insignia badge={b.look} size={64} px={60} pad state={b.state} progress={b.progress ?? undefined} />
+            <b className="mt-2.5 line-clamp-2 w-full text-sm leading-tight font-[650] tracking-[-0.01em]">{b.name}</b>
+            <span className="mt-px line-clamp-2 w-full text-[12.5px] leading-tight text-muted">{b.sub}</span>
+            {b.progress != null && (
+              <span aria-hidden="true" className="mt-1.5 block h-[5px] w-16 overflow-hidden rounded-[3px] bg-surface-2">
+                <i className="block h-full rounded-[3px] bg-accent" style={{ width: `${Math.round(b.progress * 100)}%` }} />
+              </span>
+            )}
+          </Link>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+/** Yo › Lite › «Insignias»: 3 (las ganadas y las que van en camino) y «Ver todas» (la vitrina, `?tab=insignias`). */
+export function BadgesPreview({ userId, sports, className }: { userId: string; sports: readonly string[]; className?: string }) {
+  const { model, loading } = useBadgesModel(userId, sports);
+  if (loading) return <Skeleton className={cx('h-[196px] rounded-3xl', className)} />;
+  const items = model ? previewBadges(model) : [];
+  if (!items.length) return null;
+  return <BadgesPreviewView items={items} className={className} />;
+}
+
+/** Yo › Pro › fila «Insignias»: la línea «2 de 18 · Serie de 600: te faltan 6». */
+export function BadgesLineText({ userId, sports }: { userId: string; sports: readonly string[] }) {
+  const { model } = useBadgesModel(userId, sports);
+  return <>{model ? badgesLine(model) : 'Tu vitrina'}</>;
+}
+
+/**
+ * Yo › Insignias › «Destacadas»: las que los demás ven debajo de tu nombre (hasta 3), con el lápiz para elegirlas. No
+ * sale si no hay ninguna que se pueda destacar.
+ */
+export function FeaturedSection({ userId, className }: { userId: string; className?: string }) {
+  const data = useProfileBadges(userId);
+  const [picking, setPicking] = useState(false);
+  const stats = useBadgeStats(featuredIsAuto(data.data));
+  const model = useMemo(() => featuredModel(data.data, stats.data), [data.data, stats.data]);
+  if (!data.data) return null;
+  const own = data.data.isMe;
+  const canPick = own && canFeature(data.data);
+  if (!model.items.length && !canPick) return null;
+  return (
+    <section aria-labelledby="yo-destacadas" className={className}>
+      <SectionHeader id="yo-destacadas" title="Destacadas" />
+      <p className="mx-1 -mt-1.5 mb-3 text-sm text-muted">Las ven los demás debajo de tu nombre.</p>
+      <Card className="p-3">
+        <FeaturedRow model={model} own={own} canPick={canPick} onPick={() => setPicking(true)} />
+      </Card>
+      {own && picking && <FeaturedPicker data={data.data} shown={model} onClose={() => setPicking(false)} />}
+    </section>
   );
 }
 

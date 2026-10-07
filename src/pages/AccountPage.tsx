@@ -1,10 +1,9 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, Check, ChevronRight, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Settings } from 'lucide-react';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { AtSign, Check, ChevronLeft, ChevronRight, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
-import { BackLink } from '../components/BackLink';
 import { AppShell } from '../components/Shell';
 import { AppearanceCard } from '../components/AppearanceCard';
 import { NotificationsCard } from '../components/NotificationsOptIn';
@@ -77,11 +76,12 @@ export default function AccountPage() {
   return (
     <AppShell>
       <div className="flex flex-col gap-5">
-        <div className="flex items-center gap-2">
-          <BackLink fallback="/" className="-ml-2 flex size-11 items-center justify-center p-0" />
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Settings className="size-6 text-accent" /> Configuración
-          </h1>
+        {/* Se llega con el único engranaje, el de Yo: «‹ Yo» vuelve ahí. */}
+        <div>
+          <div className="-mt-2 mb-1 flex min-h-13 items-center">
+            <BackToYo />
+          </div>
+          <h1 className="text-title">Configuración</h1>
         </div>
         <Card className="flex flex-col gap-4 p-5">
           <div className="flex items-center gap-4">
@@ -194,6 +194,30 @@ export default function AccountPage() {
         </nav>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * «‹ Yo» arriba de Configuración: si se llegó con el engranaje de Yo, vuelve atrás; si se entró directo, abre Yo.
+ */
+function BackToYo() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const fromYo = !!(location.state as { yo?: boolean } | null)?.yo;
+  return (
+    <Link
+      to="/perfil"
+      replace={!fromYo}
+      onClick={(e) => {
+        if (!fromYo) return;
+        e.preventDefault();
+        navigate(-1);
+      }}
+      className="-ml-1.5 inline-flex h-11 items-center gap-0.5 rounded-xl pr-2 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <ChevronLeft aria-hidden="true" className="size-6" />
+      Yo
+    </Link>
   );
 }
 

@@ -228,7 +228,8 @@ export function ProfileView({
   );
 }
 
-function GamesTab({ userId, sports, isMe, name }: { userId: string; sports: SportId[]; isMe: boolean; name: string }) {
+/** Los juegos de una cuenta (con sus me gusta y «Ver más»), por deporte si juega varios. También es Yo › Mis juegos. */
+export function GamesTab({ userId, sports, isMe, name }: { userId: string; sports: SportId[]; isMe: boolean; name: string }) {
   const active = useActiveSport();
   // undefined = no ha tocado: el deporte en que estás (si lo juega); null = todos.
   const [pick, setPick] = useState<SportId | null | undefined>(undefined);
@@ -254,6 +255,7 @@ function GamesTab({ userId, sports, isMe, name }: { userId: string; sports: Spor
       <GameList
         key={sport ?? '*'}
         games={games}
+        hideSport={isMe && sports.length <= 1}
         empty={
           <Empty icon={<CalendarDays className="size-7" aria-hidden="true" />} title={meta ? `Sin juegos de ${meta.lower}` : 'Todavía no hay juegos'}>
             {isMe
@@ -282,7 +284,8 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function StatsTab({ userId, skipBowling, isMe }: { userId: string; skipBowling?: boolean; isMe: boolean }) {
+/** El resumen por deporte (`skipBowling`: el boliche ya sale con más detalle). También va en Yo › Por liga y temporada. */
+export function StatsTab({ userId, skipBowling, isMe }: { userId: string; skipBowling?: boolean; isMe: boolean }) {
   const stats = useProfileStats(userId);
   return (
     <SportStats

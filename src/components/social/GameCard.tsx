@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router';
-import { BadgeCheck, ChevronRight, Flame, Flag, Medal, Timer } from 'lucide-react';
+import { ChevronRight, Flame, Flag, Medal, Timer } from 'lucide-react';
 import { toIsoDate } from '../../lib/format';
 import { gameSummary, type ProfileGame } from '../../lib/data/profileGames';
 import { formatSwimTime } from '../../sports/swimming/time';
@@ -29,6 +29,7 @@ export function GameCard({
   today,
   marks,
   mine,
+  hideSport,
 }: {
   game: ProfileGame;
   showUser?: boolean;
@@ -38,6 +39,8 @@ export function GameCard({
   marks?: (GameMark | null)[] | null;
   /** El juego es de quien mira («tu promedio»; si no, «su promedio»). */
   mine?: boolean;
+  /** Sin el chip del deporte (Yo › Mis juegos de quien juega uno solo: se repetía en cada tarjeta). */
+  hideSport?: boolean;
 }) {
   const date = gameDateLabel(game.eventDate, today ?? toIsoDate(new Date()));
   const title = game.kind === 'solo' ? game.detail.title || game.eventName || 'Juego suelto' : game.eventName || game.leagueName || 'Juego';
@@ -57,7 +60,7 @@ export function GameCard({
           </div>
         )}
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <SportBadge sport={game.sport} />
+          {!hideSport && <SportBadge sport={game.sport} />}
           {date && <span className="text-[11px] text-muted first-letter:uppercase">{date}</span>}
         </div>
       </div>
@@ -116,7 +119,7 @@ export function ScoreChips({
             s >= 200 ? 'bg-accent text-accent-fg' : (markedChip(marks?.[k]) ?? 'bg-surface-2'),
             verified?.[k] === false && 'opacity-70',
           )}
-          title={`Juego ${k + 1}${verified?.[k] === false ? ' (sin verificar)' : ''}`}
+          title={`Juego ${k + 1}${verified?.[k] === false ? ' (por aprobar)' : ''}`}
         >
           {s >= 200 ? <Flame className="mr-0.5 size-3" aria-hidden="true" /> : <MarkIcon mark={marks?.[k]} className="mr-0.5 size-3" />}
           {s}
@@ -131,17 +134,14 @@ function GameBody({ game, marks, mine }: { game: ProfileGame; marks?: (GameMark 
     case 'bowling': {
       const d = game.detail;
       if (!d.scores.length) return <p className="text-sm text-muted">Sin juegos anotados</p>;
-      const allVerified = d.verified.length > 0 && d.verified.every(Boolean);
+      // Lo que cuenta no lleva marca; lo que falta aprobar dice «Por aprobar» (rediseño: sin «Verificado»).
+      const pending = d.verified.some((v) => v === false);
       return (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-end gap-3">
             <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
               <ScoreChips scores={d.scores} verified={d.verified} marks={marks} />
-              {allVerified && (
-                <span className="inline-flex items-center gap-1 self-center text-[11px] font-medium text-ok">
-                  <BadgeCheck className="size-3.5" aria-hidden="true" /> Verificado
-                </span>
-              )}
+              {pending && <span className="self-center text-[11px] font-medium text-muted">Por aprobar</span>}
             </div>
             <Big value={d.scores.length > 1 ? d.series : d.high} note={d.scores.length > 1 ? `Serie · alto ${d.high}` : 'Pinos'} />
           </div>

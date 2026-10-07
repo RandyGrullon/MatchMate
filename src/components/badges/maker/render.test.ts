@@ -388,7 +388,7 @@ describe('quién la tiene, la lista y los ajustes', () => {
   });
 });
 
-describe('Admin › Insignias', () => {
+describe('Organizar › Insignias', () => {
   const league = (badgeMakers?: 'owner' | 'admins' | 'chosen'): League => ({
     id: 'l1',
     name: 'Liga del Club',
@@ -417,17 +417,18 @@ describe('Admin › Insignias', () => {
     base: '/l/l1',
   });
   const page = (c: LeagueCtx) =>
-    renderToString(h(MemoryRouter, { initialEntries: ['/l/l1/admin?tab=liga'] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: c }, h(AdminPage)))));
-  /** Los nombres de las pestañas de Admin. */
-  const tabs = (c: LeagueCtx) => [...page(c).matchAll(/<button[^>]*role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => text(m[1]).trim());
+    renderToString(h(MemoryRouter, { initialEntries: ['/l/l1/admin?tab=insignias'] }, h(FeedbackProvider, null, h(LeagueContext.Provider, { value: c }, h(AdminPage)))));
+  /** El creador de insignias (MakerAdmin) llega aparte: mientras, su esqueleto debajo de los ajustes. */
+  const maker = (c: LeagueCtx) => page(c).includes('skeleton');
 
-  it('la pestaña sale para quien diseña y da, y los ajustes traen «¿Quién diseña y da insignias?»', () => {
-    expect(tabs(ctx('owner', 'owner'))).toContain('Insignias');
+  it('la pantalla trae los ajustes («¿Quién diseña y da insignias?») y, para quien diseña y da, el creador', () => {
     expect(text(page(ctx('owner', 'owner')))).toContain('¿Quién diseña y da insignias?');
-    expect(tabs(ctx('admin', 'admins'))).toContain('Insignias');
-    expect(tabs(ctx('admin', 'owner'))).not.toContain('Insignias');
-    expect(tabs(ctx('admin', 'chosen'))).not.toContain('Insignias');
-    expect(tabs(ctx('admin', 'chosen', true))).toContain('Insignias');
+    expect(text(page(ctx('admin', 'owner')))).toContain('Insignias automáticas');
+    expect(maker(ctx('owner', 'owner'))).toBe(true);
+    expect(maker(ctx('admin', 'admins'))).toBe(true);
+    expect(maker(ctx('admin', 'owner'))).toBe(false);
+    expect(maker(ctx('admin', 'chosen'))).toBe(false);
+    expect(maker(ctx('admin', 'chosen', true))).toBe(true);
   });
 
   const inLeague = (c: LeagueCtx, el: ReactElement) => text(render(h(LeagueContext.Provider, { value: c }, el)));

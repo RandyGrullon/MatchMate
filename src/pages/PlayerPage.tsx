@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { CalendarCheck, CalendarDays, Camera, CheckCircle2, ChevronRight, Clock, Flame, Globe, Hash, Layers, LogOut, Share2, Sigma, Target, Trophy, Upload, UserPlus, UserRound, XCircle } from 'lucide-react';
+import { CalendarCheck, CalendarDays, Camera, Check, CheckCircle2, ChevronRight, Clock, Flame, Globe, Hash, Layers, LogOut, PencilLine, Send, Share2, Sigma, Target, Trophy, UserPlus, UserRound, XCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { byDate, countedFrames, entryStatGames } from '../lib/bowlingStats';
 import { removeMember, useEntriesOfEvents, useEvents, usePlayer, usePlayerEntries, usePlayerSubmissions } from '../lib/data';
@@ -8,6 +8,9 @@ import { useLeagueSeasons } from '../lib/data/seasons';
 import { averageForDay, averageSourceLabel, buildGameContexts, entryMarks, type GameMark } from '../lib/bowlingSeason';
 import { eventLabel, formatDate, formatDateLong, toIsoDate } from '../lib/format';
 import { rememberLeague, useLeagueCtx } from '../lib/league';
+import { liveGames, type LiveGame } from '../lib/live';
+import { nextGameLabel, useNextGame } from '../lib/useNextGame';
+import { useNow } from '../lib/useNow';
 import { currentSeason, inSeason } from '../lib/seasons';
 import { effectiveAverage, entryLine, eventPosition, playerStats } from '../lib/stats';
 import type { BowlingEvent, Entry } from '../lib/types';
@@ -15,6 +18,8 @@ import { FrameStatsPanel } from '../components/stats/FrameStatsPanel';
 import { TrendSection } from '../components/stats/TrendSection';
 import { SubmitGamesModal } from '../components/SubmitGamesModal';
 import { NextPracticeCard } from '../components/NextPracticeCard';
+import { ActionLink } from '../components/home/TodayCard';
+import { useLeagueFeed } from '../components/league/home/useLeagueData';
 import { useAction, useFeedback } from '../components/feedback';
 import { useBusy } from '../components/busy';
 import { playerUrl, shareLink } from '../components/share';
@@ -25,6 +30,28 @@ import { BackLink } from '../components/BackLink';
 import { SuggestionBox } from '../components/SuggestionBox';
 import { ClaimPlayerButton } from '../components/claims/ClaimPlayerButton';
 import { MarkIcon, MarksLine, markedChip } from '../components/event/GameMarks';
+
+/**
+ * «Anotar» en tu página de la liga (rediseño «Calma y foco»): si hoy se juega, lo mismo que Hoy y la Liga (useNextGame:
+ * «Anotar juego 3», «Seguir mi juego 3», «Enviar mis juegos»), que abre la hoja de anotar en ese evento; si no, «Anotar
+ * un juego» (la hoja para enviar los juegos de otro día, con la foto del marcador).
+ */
+function OwnerScoreButton({ game, today, onOther }: { game: LiveGame | null; today: string; onOther: () => void }) {
+  const mine = useNextGame(game, today);
+  if (game && mine && !mine.loading) {
+    const Icon = mine.next.kind === 'enviar' ? Send : mine.next.kind === 'ver' ? Check : PencilLine;
+    return (
+      <ActionLink to={mine.next.to} icon={Icon} size="lg" className="w-full sm:w-auto">
+        {nextGameLabel(mine.next)}
+      </ActionLink>
+    );
+  }
+  return (
+    <Button variant="primary" size="lg" icon={<PencilLine className="size-[18px]" />} onClick={onOther} className="w-full sm:w-auto">
+      Anotar un juego
+    </Button>
+  );
+}
 
 /** Página del jugador en la liga: sus números, torneos y prácticas. En una liga pública se ve sin login. */
 export default function PlayerPage({ playerId: own }: { playerId?: string }) {
@@ -41,6 +68,13 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   const subs = usePlayerSubmissions(lid, playerId);
   const [submitting, setSubmitting] = useState(false);
   const busy = useBusy<'compartir' | 'salir'>();
+  // Lo que se juega hoy en la liga (para «Anotar juego N» y para que «Próxima práctica» no sea la de hoy en juego).
+  const { feed } = useLeagueFeed();
+  const now = useNow();
+  const today = toIsoDate(now);
+  const mePage = !!myPlayerId && myPlayerId === playerId;
+  const live = useMemo(() => (mePage ? liveGames([feed], [league], now) : []), [mePage, feed, league, now]);
+  const liveIds = useMemo(() => new Set(live.map((g) => g.event.id)), [live]);
 
   const eventById = useMemo(() => new Map(events.data.map((e) => [e.id, e])), [events.data]);
   const mine = useMemo(
@@ -157,14 +191,15 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
   return (
     <>
       <div className="flex flex-col gap-6">
-        <div className="relative flex flex-col items-center gap-3 overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-accent-soft via-surface to-surface p-5 text-center sm:flex-row sm:pr-14 sm:text-left">
+        <div className="card-shadow relative flex flex-col items-center gap-3 overflow-hidden rounded-3xl bg-surface p-5 text-center sm:flex-row sm:pr-14 sm:text-left">
           {/* Jugador abierto desde el ranking o un evento (no "Mis juegos"): flecha para volver. */}
           {!own && <BackLink fallback={league.kind === 'torneo' ? base : `${base}/ranking`} className="absolute top-3 left-3 sm:static sm:self-start" />}
           <UserLink userId={account} name={p.name} hideName avatarClassName="size-16 text-xl ring-4 ring-surface" className="shrink-0" />
           <div className="flex-1">
             <h1 className="text-2xl font-bold tracking-tight">{p.name}</h1>
             <p className="text-sm text-muted">
-              {stats.games} juegos verificados{stats.pending > 0 && ` · ${stats.pending} por verificar`}
+              {stats.games} {stats.games === 1 ? 'juego aprobado' : 'juegos aprobados'}
+              {stats.pending > 0 && ` · ${stats.pending} por aprobar`}
             </p>
             {account && !isOwner && (
               <Link
@@ -175,11 +210,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
               </Link>
             )}
           </div>
-          {isOwner && (
-            <Button variant="primary" icon={<Upload className="size-4" />} onClick={() => setSubmitting(true)} className="w-full sm:w-auto">
-              Subir juegos
-            </Button>
-          )}
+          {isOwner && <OwnerScoreButton game={live[0] ?? null} today={today} onOther={() => setSubmitting(true)} />}
           <Button
             variant="ghost"
             size="sm"
@@ -225,7 +256,7 @@ export default function PlayerPage({ playerId: own }: { playerId?: string }) {
           </Link>
         )}
 
-        {isOwner && <NextPracticeCard events={events.data} playerId={p.id} />}
+        {isOwner && <NextPracticeCard events={events.data} playerId={p.id} skip={liveIds} />}
 
         {isOwner && openSubs.length > 0 && (
           <section className="flex flex-col gap-2">

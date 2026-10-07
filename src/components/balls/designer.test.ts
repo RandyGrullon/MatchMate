@@ -16,7 +16,7 @@ import { FeedbackProvider } from '../feedback';
 import { BALL_HOLES, StickerArt, ballArtMetrics } from './BallArt';
 import { BallDesigner, DesignColors, DesignPattern, DesignStickers } from './BallDesigner';
 import { BallSheet } from './BallSheet';
-import { BallCard, BallStatsSection } from './BallStats';
+import { BallCard, BallStatsSection, MyBallsSection } from './BallStats';
 import {
   ballTap,
   designNeedsSave,
@@ -382,15 +382,50 @@ describe('la bola dibujada en «Mis bolas»', () => {
       await resetDataClientForTests();
     });
 
-    it('cada bola dibujada a 40 px, con su diseño', () => {
+    it('Yo › Pro › «Por bola»: cada bola dibujada a 30 px con su diseño, nombre y peso, juegos y strikes, y su promedio', () => {
       const b = ball({ design: galaxy, color: galaxy.base });
-      queryClient.setQueryData(ballKeys.list(UID), { balls: [b, ball({ id: 'b2', name: 'Spare', color: '#f8fafc', cover: 'poliester' })], lastUsed: null });
+      queryClient.setQueryData(ballKeys.list(UID), { balls: [b, ball({ id: 'b2', name: 'Spare', weight: 14, color: '#f8fafc', cover: 'poliester' })], lastUsed: null });
       queryClient.setQueryData(ballKeys.games(UID, null), [...games('b1', [210, 190]), ...games('b2', [150])]);
       const out = renderToString(h(MemoryRouter, null, h(BallStatsSection)));
-      expect(out.match(/<svg[^>]*width="40" height="40"/g)).toHaveLength(2);
+      expect(out.match(/<svg[^>]*width="30" height="30"/g)).toHaveLength(2);
       expect(out).toContain('fill="#0b1026"');
       expect(out).toContain('fill="#f8fafc"');
-      expect(text(out)).toContain('Phaze II');
+      const t = text(out);
+      expect(t).toContain('Por bola');
+      expect(t).toContain('Mis bolas');
+      expect(t).toContain('Phaze II 15 lb');
+      expect(t).toContain('2 juegos');
+      expect(t).toContain('Spare 14 lb 1 juego');
+      expect(t).toMatch(/Phaze II 15 lb 2 juegos\s+200/);
+      // Cada bola abre su hoja en Mis bolas.
+      expect(out).toContain('href="/bolas?bola=b1"');
+      expect(out).toContain('href="/bolas"');
+    });
+
+    it('Yo › Lite › «Mis bolas»: una tarjeta por bola (38 px) con cuántos juegos lleva, y «Agregar»', () => {
+      queryClient.setQueryData(ballKeys.list(UID), {
+        balls: [ball({ name: 'Morada', weight: 14 }), ball({ id: 'b2', name: 'Negra', color: '#111827' }), ball({ id: 'b3', name: 'Vieja', retired: true })],
+        lastUsed: null,
+      });
+      queryClient.setQueryData(ballKeys.games(UID, null), [...games('b1', [210, 190, 200, 180, 170]), ...games('b2', [150, 160, 170]), ...games('b3', [140])]);
+      const out = renderToString(h(MemoryRouter, null, h(MyBallsSection)));
+      const t = text(out);
+      expect(t).toContain('Mis bolas');
+      expect(t).toContain('Agregar');
+      expect(out).toContain('href="/bolas?nueva=1"');
+      expect(t).toContain('Morada 5 juegos');
+      expect(t).toContain('Negra 3 juegos');
+      // Las retiradas no salen en Lite (siguen en Mis bolas).
+      expect(t).not.toContain('Vieja');
+      expect(out.match(/<svg[^>]*width="38" height="38"/g)).toHaveLength(2);
+      expect(out).toContain('href="/bolas?bola=b2"');
+    });
+
+    it('Yo › Lite › «Mis bolas» sin bolas: «Agrega tu bola»', () => {
+      queryClient.setQueryData(ballKeys.list(UID), { balls: [], lastUsed: null });
+      const t = text(renderToString(h(MemoryRouter, null, h(MyBallsSection))));
+      expect(t).toContain('Agrega tu bola');
+      expect(t).toContain('Y mira con cuál tiras mejor');
     });
   });
 });

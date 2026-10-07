@@ -36,7 +36,20 @@ export function GameCardsSkeleton({ rows = 3 }: { rows?: number }) {
  * Lista de juegos por páginas (perfil o inicio): cargando, error (con reintentar), vacía (`empty`) y «Ver más».
  * `limit`: cuántos se ven como máximo antes de «Ver más» (el inicio muestra pocos).
  */
-export function GameList({ games, showUser, empty, limit }: { games: Paged<ProfileGame>; showUser?: boolean; empty: ReactNode; limit?: number }) {
+export function GameList({
+  games,
+  showUser,
+  empty,
+  limit,
+  hideSport,
+}: {
+  games: Paged<ProfileGame>;
+  showUser?: boolean;
+  empty: ReactNode;
+  limit?: number;
+  /** Sin el chip del deporte en cada tarjeta (quien juega uno solo, en Yo). */
+  hideSport?: boolean;
+}) {
   const now = useNow();
   const today = toIsoDate(now);
   const [max, setMax] = useState(limit ?? Number.POSITIVE_INFINITY);
@@ -73,6 +86,7 @@ export function GameList({ games, showUser, empty, limit }: { games: Paged<Profi
             key={g.key}
             game={g}
             showUser={showUser}
+            hideSport={hideSport}
             i={i}
             today={today}
             marks={

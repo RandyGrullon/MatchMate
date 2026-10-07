@@ -53,9 +53,18 @@ describe('GameCard', () => {
     expect(t).toContain('210');
     expect(t).toContain('540');
     expect(t).toContain('Serie · alto 210');
-    expect(t).toContain('Verificado');
+    // Lo que cuenta no lleva marca (sin «Verificado»); lo que falta aprobar dice «Por aprobar».
+    expect(t).not.toContain('Verificado');
+    expect(t).not.toContain('Por aprobar');
     expect(t).toContain('ayer');
     expect(t).toContain('Boliche');
+  });
+
+  it('boliche con un juego por aprobar: «Por aprobar» (y ese juego más tenue)', () => {
+    const pending: ProfileGame = { ...bowling, detail: { ...bowling.detail, verified: [true, false, true] } as typeof bowling.detail };
+    const html = render(h(GameCard, { game: pending, today: '2026-09-28' }));
+    expect(text(html)).toContain('Por aprobar');
+    expect(html).toContain('Juego 2 (por aprobar)');
   });
 
   it('partido: resultado, lados y marcador', () => {

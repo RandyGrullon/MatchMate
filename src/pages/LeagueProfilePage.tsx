@@ -80,7 +80,7 @@ function SignInPrompt() {
   const next = encodeURIComponent(location.pathname);
   return (
     <Empty icon={<UserRound className="size-8" />} title="Tu perfil de jugador">
-      Entra para ver tus números, confirmar asistencia y subir tus juegos.
+      Entra para ver tus números, confirmar asistencia y anotar tus juegos.
       <div className="mt-4 flex justify-center gap-2">
         <Link to={`/login?next=${next}`} className="inline-flex h-10 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2">
           <LogIn className="size-4" /> Entrar

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, Archive, ChevronRight, Palette, Pencil, RotateCcw, Sparkles } from 'lucide-react';
-import { ballDetail, ballStats, bestBallText, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
+import { AlertTriangle, Archive, ChevronRight, Palette, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react';
+import { ballDetail, ballStats, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
 import { useMyBallGames, useMyBalls } from '../../lib/data/balls';
 import { formatDate } from '../../lib/format';
-import { Button, Card, cx } from '../ui';
+import { Button, Card, ListRow, SectionHeader, Skeleton, cx, sectionLinkClass } from '../ui';
 import { BallArt } from './BallArt';
+import { BallIcon } from './BallPicker';
 
 /** Un número chico de la tarjeta de una bola. */
 function Mini({ label, value }: { label: string; value: string | number }) {
@@ -133,26 +134,28 @@ export function BallCard({
   );
 }
 
-/** Una fila de «Por bola»: la bola dibujada, nombre, juegos, mejor juego y strikes, y el promedio grande. */
+/** «Morada 14 lb»: el nombre con el peso, como en las filas de «Por bola». */
+export const ballTitle = (b: Pick<Ball, 'name' | 'weight'>) => (b.weight ? `${b.name} ${b.weight} lb` : b.name);
+
+/** Debajo del nombre en «Por bola»: «5 juegos · 41% strikes» (y «toca pulirla» cuando ya le toca). */
+export function ballRowLine(s: Pick<BallStats, 'games' | 'strikePct' | 'needsResurface'>): string {
+  return [`${s.games} ${s.games === 1 ? 'juego' : 'juegos'}`, s.strikePct != null && `${s.strikePct}% strikes`, s.needsResurface && 'toca pulirla']
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Una fila de «Por bola»: la bola dibujada (30 px), nombre y peso, juegos y strikes, y el promedio grande. Abre esa bola. */
 function BallRow({ stats: s }: { stats: BallStats }) {
   return (
-    <Link to="/bolas" className="flex min-h-14 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-      <BallArt ball={s.ball} size={40} className="shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{s.ball.name}</div>
-        <div className="text-xs text-muted tabular-nums">
-          {s.games} {s.games === 1 ? 'juego' : 'juegos'}
-          {s.high > 0 && ` · mejor ${s.high}`}
-          {s.strikePct != null && ` · strikes ${s.strikePct}%`}
-          {s.needsResurface && ' · toca pulirla'}
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="text-lg font-bold tabular-nums">{s.average ?? '—'}</div>
-        <div className="text-[11px] text-muted">promedio</div>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
-    </Link>
+    <ListRow
+      to={`/bolas?bola=${encodeURIComponent(s.ball.id)}`}
+      ariaLabel={`${ballTitle(s.ball)}: promedio ${s.average ?? 'sin juegos'}, ${ballRowLine(s)}`}
+      leading={<BallArt ball={s.ball} size={30} className="shrink-0" />}
+      title={ballTitle(s.ball)}
+      subtitle={ballRowLine(s)}
+      value={s.average ?? <span className="text-faint">—</span>}
+      chevron={false}
+    />
   );
 }
 
@@ -161,31 +164,92 @@ export function statsForSection(balls: readonly Ball[], games: readonly BallGame
   return ballStats(balls, games).filter((s) => !s.ball.retired || s.games > 0);
 }
 
-/**
- * «Por bola» en «Mis estadísticas» del perfil: con cuál tiras mejor y los números de cada bola (juegos, promedio, el
- * más alto, strikes), con el link a «Mis bolas». Solo si la cuenta tiene bolas.
- */
-export function BallStatsSection() {
+/** Las bolas de la cuenta con sus números (las de «Por bola»), si tiene alguna y si todavía se están leyendo. */
+export function useBallSection(): { stats: BallStats[]; has: boolean; loading: boolean } {
   const mine = useMyBalls();
   const has = mine.data.balls.length > 0;
   const games = useMyBallGames(null, has);
   const stats = useMemo(() => statsForSection(mine.data.balls, games.data), [mine.data.balls, games.data]);
+  return { stats, has, loading: mine.loading && !has };
+}
+
+/**
+ * Yo › Pro › «Por bola»: los números de cada bola (el promedio grande, juegos y strikes; tocarla la abre en Mis bolas),
+ * con el link a «Mis bolas» (ahí está con cuál tiras mejor y cuándo pulirlas). Solo si la cuenta tiene bolas.
+ */
+export function BallStatsSection({ className }: { className?: string }) {
+  const { stats, has } = useBallSection();
   if (!has || !stats.length) return null;
-  const best = bestBallText(stats);
   return (
-    <section className="flex flex-col gap-2" aria-label="Por bola">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-muted">Por bola</h3>
-        <Link to="/bolas" className="-my-2 flex min-h-11 items-center text-xs font-medium text-accent">
-          Mis bolas
-        </Link>
-      </div>
-      {best && <p className="rounded-xl bg-accent-soft px-3 py-2 text-sm text-accent">{best}</p>}
-      <Card className="divide-y divide-line overflow-hidden">
+    <Card className={cx('overflow-hidden', className)}>
+      <section aria-label="Por bola">
+        <div className="mm-row flex min-h-[52px] items-center justify-between gap-3 pr-[18px] pl-5">
+          <h3 className="text-base font-[650] tracking-[-0.01em]">Por bola</h3>
+          <Link to="/bolas" className="-my-1 inline-flex min-h-11 items-center text-sm font-semibold text-accent">
+            Mis bolas
+          </Link>
+        </div>
         {stats.map((s) => (
           <BallRow key={s.ball.id} stats={s} />
         ))}
-      </Card>
+      </section>
+    </Card>
+  );
+}
+
+/**
+ * Yo › Lite › «Mis bolas»: cada bola en su tarjeta (dibujada, con su nombre y cuántos juegos lleva) y «Agregar»; tocar
+ * una la abre en Mis bolas. Sin bolas, una tarjeta para agregar la primera.
+ */
+export function MyBallsSection({ className }: { className?: string }) {
+  const { stats, loading } = useBallSection();
+  const active = stats.filter((s) => !s.ball.retired);
+  return (
+    <section aria-labelledby="yo-mis-bolas" className={className}>
+      <SectionHeader
+        id="yo-mis-bolas"
+        title="Mis bolas"
+        action={
+          <Link to="/bolas?nueva=1" className={sectionLinkClass}>
+            <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} /> Agregar
+          </Link>
+        }
+      />
+      {loading ? (
+        <Skeleton className="h-[66px] rounded-3xl" />
+      ) : active.length ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {active.map((s) => (
+            <Link
+              key={s.ball.id}
+              to={`/bolas?bola=${encodeURIComponent(s.ball.id)}`}
+              className="card-shadow flex min-w-0 items-center gap-3 rounded-3xl bg-surface p-3.5 transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <BallArt ball={s.ball} size={38} className="shrink-0" />
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-[650] tracking-[-0.01em]">{s.ball.name}</span>
+                <span className="mt-px block truncate text-[13px] text-muted">
+                  {s.games} {s.games === 1 ? 'juego' : 'juegos'}
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <Link
+          to="/bolas?nueva=1"
+          className="card-shadow flex min-h-row items-center gap-3.5 rounded-3xl bg-surface py-2.5 pr-[18px] pl-5 transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
+            <BallIcon className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-body font-semibold">Agrega tu bola</span>
+            <span className="mt-0.5 block text-sm text-muted">Y mira con cuál tiras mejor</span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-faint" />
+        </Link>
+      )}
     </section>
   );
 }

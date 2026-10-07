@@ -87,7 +87,7 @@ export default function MakerAdmin() {
 
       {policy && (
         <p className="text-xs text-muted">
-          Las diseñan y las dan: <b className="text-fg">{policy.who}</b>. {ctx.isOwner ? 'Lo cambias en la pestaña de la liga.' : 'Lo decide el dueño.'}
+          Las diseñan y las dan: <b className="text-fg">{policy.who}</b>. {ctx.isOwner ? 'Lo cambias aquí arriba, en «¿Quién diseña y da insignias?».' : 'Lo decide el dueño.'}
         </p>
       )}
 

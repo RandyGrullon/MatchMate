@@ -79,7 +79,7 @@ export function BadgeMakersCard() {
         <div className="min-w-0">
           <h2 className="text-base font-bold tracking-tight">¿Quién diseña y da insignias?</h2>
           <p className="text-sm text-muted">
-            Las insignias propias de la liga (Admin › Insignias). Nadie se las da a sí mismo. {isOwner ? 'Tú decides.' : 'Solo el dueño lo cambia.'}
+            Las insignias propias de la liga (más abajo, en «Insignias de la liga»). Nadie se las da a sí mismo. {isOwner ? 'Tú decides.' : 'Solo el dueño lo cambia.'}
           </p>
         </div>
       </div>
