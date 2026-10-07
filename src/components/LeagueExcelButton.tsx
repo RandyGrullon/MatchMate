@@ -1,18 +1,30 @@
 import { useState } from 'react';
-import { FileSpreadsheet } from 'lucide-react';
+import { Download, FileSpreadsheet } from 'lucide-react';
 import { fetchEntriesOfEvents } from '../lib/data';
 import { formatDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import type { Season } from '../lib/seasons';
 import type { BowlingEvent, Player } from '../lib/types';
 import { useAction } from './feedback';
-import { Button, Modal } from './ui';
+import { pillClass } from './ranking/parts';
+import { Button, Modal, cx } from './ui';
 
 /**
- * Ranking › Excel: descarga la temporada elegida en el ranking (sus fechas; la que sigue abierta, hasta hoy) o toda
- * la liga, con el ranking, todos los juegos y cada práctica y torneo. Sin temporadas: las fechas de la liga.
+ * Tabla › «Excel» (Pro, la píldora de arriba): descarga la temporada elegida en la tabla (sus fechas; la que sigue
+ * abierta, hasta hoy) o toda la liga, con la tabla, todos los juegos y cada práctica y torneo. Sin temporadas: las
+ * fechas de la liga.
  */
-export function LeagueExcelButton({ season, events, players }: { season: Season | null; events: BowlingEvent[]; players: Player[] }) {
+export function LeagueExcelButton({
+  season,
+  events,
+  players,
+  className,
+}: {
+  season: Season | null;
+  events: BowlingEvent[];
+  players: Player[];
+  className?: string;
+}) {
   const { lid, league } = useLeagueCtx();
   const run = useAction();
   const [open, setOpen] = useState(false);
@@ -42,7 +54,10 @@ export function LeagueExcelButton({ season, events, players }: { season: Season 
 
   return (
     <>
-      <Button variant="ghost" aria-label="Descargar en Excel" title="Descargar en Excel" icon={<FileSpreadsheet className="size-5" />} onClick={() => setOpen(true)} />
+      <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" title="Descargar en Excel" className={cx(pillClass, className)}>
+        <Download aria-hidden="true" className="size-4 shrink-0" />
+        Excel
+      </button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
@@ -54,7 +69,7 @@ export function LeagueExcelButton({ season, events, players }: { season: Season 
         footer={<Button onClick={() => setOpen(false)}>Cerrar</Button>}
       >
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">Ranking de jugadores, todos los juegos y el resumen de cada práctica y torneo (solo juegos verificados).</p>
+          <p className="text-sm text-muted">La tabla de jugadores, todos los juegos y el resumen de cada práctica y torneo (solo juegos aprobados).</p>
           {scopes.map((s) => (
             <Button key={s.key} className="justify-start" icon={<FileSpreadsheet className="size-4" />} loading={busy === s.key} disabled={!!busy} onClick={() => download(s)}>
               {s.label}

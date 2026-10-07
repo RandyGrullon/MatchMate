@@ -1,43 +1,72 @@
-import { useMemo, type CSSProperties, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router';
-import { CalendarCheck, Flame, Layers, Medal, Target, TrendingUp, UserRound } from 'lucide-react';
+import { useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
+import { Medal } from 'lucide-react';
 import { useEntriesOfEvents, useEvents, usePlayers } from '../lib/data';
 import { useLeagueSeasons } from '../lib/data/seasons';
-import { mostImproved, rankGap, rankGapLabel, rankingRows, readBowlingSnapshot, seasonEvents, totalsByPlayer, type Improvement, type RankingRow } from '../lib/bowlingSeason';
-import { formatDate } from '../lib/format';
+import { mostImproved, rankingRows, readBowlingSnapshot, seasonEvents, totalsByPlayer } from '../lib/bowlingSeason';
 import { useLeagueCtx } from '../lib/league';
-import { previousSeason, type Season } from '../lib/seasons';
+import { previousSeason } from '../lib/seasons';
 import { MIN_RANK_GAMES, rank } from '../lib/stats';
-import { AnimatedNumber, Card, Empty, ListSkeleton, LoadError, Position, Tabs, cx } from '../components/ui';
-import { Avatar } from '../components/Avatar';
+import { Card, ListSkeleton, LoadError, RowIcon, Segmented, Skeleton, cx } from '../components/ui';
 import { LeagueExcelButton } from '../components/LeagueExcelButton';
-import { SeasonAwardsCard, SeasonSelect, useSeasonParam } from '../components/season/SeasonSelect';
+import { useIsPro } from '../components/mode';
+import { SeasonAwardsCard, useSeasonParam } from '../components/season/SeasonSelect';
 import { ShareButton, type ShareTableSpec } from '../components/share';
 import { TitleMark, useCurrentTitle } from '../components/badges/LeagueBadges';
+import { LeagueBackBar } from '../components/league/home/LeagueTopBar';
+import {
+  METRICS,
+  cellText,
+  eligibleFor,
+  hcpFormula,
+  leagueHcp,
+  metricDef,
+  metricOf,
+  myPlace,
+  placeCopy,
+  playedEvents,
+  seasonRangeLabel,
+  seasonRecords,
+  sortOf,
+  standingsTable,
+  withSnapshot,
+  type Metric,
+  type SortKey,
+} from '../components/ranking/logic';
+import { MyPlaceCard } from '../components/ranking/MyPlaceCard';
+import { PillSelect } from '../components/ranking/parts';
+import { RankList } from '../components/ranking/RankList';
+import { MostImprovedCard, SeasonRecordsCard } from '../components/ranking/SeasonExtras';
+import { StandingsTable } from '../components/ranking/StandingsTable';
 
-type Metric = 'promedio' | 'juego' | 'serie' | 'asistencia';
-
-const metrics: { key: Metric; label: string; short: string; icon: ReactNode; value: (r: RankingRow) => number }[] = [
-  { key: 'promedio', label: 'Promedio', short: 'Prom.', icon: <Target className="size-4" />, value: (r) => r.average },
-  { key: 'juego', label: 'Mejor juego', short: 'Juego', icon: <Flame className="size-4" />, value: (r) => r.high },
-  { key: 'serie', label: 'Mejor serie', short: 'Serie', icon: <Layers className="size-4" />, value: (r) => r.series },
-  { key: 'asistencia', label: 'Asistencia', short: 'Eventos', icon: <CalendarCheck className="size-4" />, value: (r) => r.events },
+/** Las columnas que van en la imagen para compartir la tabla de Pro (las que no caben se quitan, menos la ordenada). */
+const SHARE_COLUMNS: readonly { key: SortKey; label: string }[] = [
+  { key: 'juegos', label: 'J' },
+  { key: 'promedio', label: 'Prom.' },
+  { key: 'hcp', label: 'Hcp' },
+  { key: 'juego', label: 'Alto' },
+  { key: 'serie', label: 'Serie' },
+  { key: 'asistencia', label: 'Asist.' },
 ];
 
-/** «1 ene 2026 – en curso», «1 ene 2026 – hasta el 20 dic 2026» o, cerrada, «1 ene 2026 – 20 dic 2026». */
-export function seasonRangeLabel(season: Pick<Season, 'startsOn' | 'endsOn' | 'status'>): string {
-  const end = season.status === 'active' ? (season.endsOn ? `hasta el ${formatDate(season.endsOn)}` : 'en curso') : season.endsOn ? formatDate(season.endsOn) : '';
-  return `${formatDate(season.startsOn)} – ${end}`;
-}
+/** La última opción de «Temporada 2026 ▾»: lleva al historial de temporadas (campeones y tablas guardadas). */
+const ALL_SEASONS = 'todas';
 
 /**
- * Ranking de la liga por temporada (la elegida en «Temporada 2026 ▾»; por defecto la de ahora), para motivar a ir a
- * las prácticas. Una temporada cerrada muestra su tabla guardada (si la tiene) y sus premios. Con el promedio: el
- * más mejorado contra la temporada anterior y, a quien todavía no tiene el mínimo, cuántos juegos le faltan.
+ * Tabla de la liga (`/l/:lid/ranking`) por temporada: la elegida en la dirección (`?temporada=`; por defecto la de
+ * ahora). Solo cuentan los juegos aprobados. Rediseño «Calma y foco»:
+ * - Lite: «‹ Liga», «Tabla» con «Promedio ▾» (Mejor juego, Mejor serie y Asistencia en el menú), las fechas de la
+ *   temporada, tu lugar («Vas 2.º de 6, con 195 · Pedro te lleva 24 pinos», con su barra; o cuántos juegos te faltan)
+ *   y la lista con «Tú». Una línea con la regla: «Cuentan los juegos aprobados · mínimo 6 para salir».
+ * - Pro: «Excel» y compartir arriba, «Temporada ▾» y Scratch | Con hcp, la tabla completa con columnas que se ordenan
+ *   tocándolas (se desliza de lado), la fórmula del handicap en una línea, los récords y el más mejorado.
+ * Una temporada cerrada muestra sus premios y, si la guardó, su tabla tal como quedó.
  */
 export default function RankingPage() {
   const { lid, base, myPlayerId, member, league } = useLeagueCtx();
+  const isPro = useIsPro();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const events = useEvents(lid);
   const players = usePlayers(lid);
   const seasons = useLeagueSeasons(lid);
@@ -46,196 +75,202 @@ export default function RankingPage() {
   // El campeón de la última temporada cerrada lleva el escudo «Título vigente» (§6.2 de docs/insignias.md).
   const title = useCurrentTitle();
 
-  const metric = (metrics.find((m) => m.key === params.get('ver'))?.key ?? 'promedio') as Metric;
   // Sin temporadas (no se pudieron leer): toda la liga.
   const seasonIds = useMemo(() => seasonEvents(events.data, season).map((e) => e.id), [events.data, season]);
   const prevIds = useMemo(() => (prev ? seasonEvents(events.data, prev).map((e) => e.id) : []), [events.data, prev]);
   const entries = useEntriesOfEvents(lid, useMemo(() => [...seasonIds, ...prevIds], [seasonIds, prevIds]));
 
-  const { rows, improved } = useMemo(() => {
+  const { rows, improved, played } = useMemo(() => {
     const inSeason = new Set(seasonIds);
     const inPrev = new Set(prevIds);
     const current = entries.data.filter((e) => inSeason.has(e.eventId));
     const names = new Map(players.data.map((p) => [p.id, p.name]));
     const up = prev ? mostImproved(totalsByPlayer(current), totalsByPlayer(entries.data.filter((e) => inPrev.has(e.eventId)))) : [];
-    return { rows: rankingRows(current, players.data), improved: up.filter((u) => names.has(u.playerId)).map((u) => ({ ...u, name: names.get(u.playerId)! })) };
+    return {
+      rows: rankingRows(current, players.data),
+      improved: up.filter((u) => names.has(u.playerId)).map((u) => ({ ...u, name: names.get(u.playerId)! })),
+      played: playedEvents(current),
+    };
   }, [entries.data, players.data, seasonIds, prevIds, prev]);
+  // El handicap de la tabla de Pro: el del último torneo con handicap de la temporada (o de la liga; o 80 % de 230).
+  const hcp = useMemo(() => leagueHcp(events.data, new Set(seasonIds)), [events.data, seasonIds]);
 
   // Temporada cerrada con su tabla guardada: el promedio y el mejor juego se ven tal como quedaron al cerrarla (la
   // serie y la asistencia no se guardan: salen de los juegos).
-  const snapshot = season?.status === 'closed' ? readBowlingSnapshot(season.standings) : null;
-  const shown = snapshot && (snapshot.covers as string[]).includes(metric) ? snapshot.rows : rows;
-  const minGames = MIN_RANK_GAMES;
-  const current = metrics.find((m) => m.key === metric)!;
-  const eligible = shown.filter((r) => (metric === 'promedio' ? r.games >= minGames : current.value(r) > 0));
-  const ranked = rank(eligible, current.value);
-  const podium = ranked.slice(0, 3);
-  // «Tú: 14.º · te faltan 2 juegos para entrar» (solo mientras la temporada sigue).
-  const gap = metric === 'promedio' && season?.status !== 'closed' ? rankGap(shown, myPlayerId, minGames) : null;
-  const seasonName = season?.name ?? 'la temporada';
+  const closed = season?.status === 'closed';
+  const snapshot = closed ? readBowlingSnapshot(season.standings) : null;
 
-  const set = (k: string, v: string) => {
+  // Lite: una métrica (?ver=promedio|juego|serie|asistencia).
+  const metric: Metric = metricOf(params.get('ver'));
+  const def = metricDef(metric);
+  const liteRows = snapshot && (snapshot.covers as string[]).includes(metric) ? snapshot.rows : rows;
+  const ranked = rank(eligibleFor(liteRows, metric), def.value);
+  const place = myPlace(liteRows, myPlayerId, metric, { closed });
+
+  // Pro: la columna ordenada (?ver=, las 4 de Lite y además juegos, hcp y nombre) y «Con hcp» (?hcp=1).
+  const sort = sortOf(params.get('ver'));
+  const withHcp = params.get('hcp') === '1';
+  const proRows = withSnapshot(rows, snapshot);
+  const table = standingsTable(proRows, { sort, withHcp, hcp });
+
+  const set = (k: string, v: string | null) => {
     const p = new URLSearchParams(params);
-    p.set(k, v);
+    if (v == null) p.delete(k);
+    else p.set(k, v);
     setParams(p, { replace: true });
   };
   const error = events.error ?? players.error ?? entries.error;
   const loading = events.loading || players.loading || (seasons.loading && !seasons.data.length) || (entries.loading && !entries.data.length);
+  const seasonName = season?.name ?? 'la temporada';
 
-  // Imagen del ranking que se ve (temporada y métrica) para mandar al grupo.
-  const shareCard = (): ShareTableSpec => ({
-    kind: 'table',
-    title: league.name,
-    subtitle: `Ranking${season ? ` · ${season.name}` : ''} · ${current.label}`,
-    nameLabel: 'Jugador',
-    columns: [{ label: 'Juegos' }, { label: current.short, strong: true }],
-    sections: [{ rows: ranked.map(({ row, pos }) => ({ rank: pos, name: row.name, values: [row.games, current.value(row)] })) }],
-    note: metric === 'promedio' ? `Solo juegos verificados. Mínimo ${minGames} juegos en la temporada.` : 'Solo juegos verificados.',
-  });
+  // Imagen de la tabla que se ve (temporada, columna ordenada y con o sin hcp) para mandar al grupo.
+  const shareCard = (): ShareTableSpec => {
+    const strong: SortKey = sort === 'nombre' ? 'promedio' : sort;
+    const byAverage = strong === 'promedio' || strong === 'hcp';
+    return {
+      kind: 'table',
+      title: league.name,
+      subtitle: `Tabla${season ? ` · ${season.name}` : ''}${withHcp ? ' · Con hcp' : ''}`,
+      nameLabel: 'Jugador',
+      columns: SHARE_COLUMNS.map((c) => ({ label: c.label, strong: c.key === strong, optional: c.key !== strong && c.key !== 'juegos' })),
+      sections: [{ rows: table.map((t) => ({ rank: t.pos, name: t.row.name, values: SHARE_COLUMNS.map((c) => cellText(t, c.key, played)) })) }],
+      note: ['Solo juegos aprobados.', byAverage ? `Mínimo ${MIN_RANK_GAMES} juegos en la temporada.` : null, withHcp ? `${hcpFormula(hcp)}.` : null]
+        .filter(Boolean)
+        .join(' '),
+    };
+  };
+
+  const byMinimum = isPro ? sort === 'promedio' || sort === 'hcp' || sort === 'nombre' : metric === 'promedio';
+  const empty = (className: string) => (
+    <Card className={cx('flex items-center gap-3.5 px-5 py-[18px]', className)}>
+      <RowIcon>
+        <Medal className="size-5" />
+      </RowIcon>
+      <div className="min-w-0">
+        <p className="font-semibold">Todavía no sale nadie</p>
+        <p className="mt-0.5 text-sm text-muted">
+          {byMinimum ? `Hace falta tener al menos ${MIN_RANK_GAMES} juegos aprobados en ${seasonName}.` : 'Aún no hay juegos aprobados.'}
+        </p>
+      </div>
+    </Card>
+  );
 
   return (
     <>
-      <div className="flex flex-col gap-5">
-        <div className="flex items-start gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-            <Medal className="size-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold tracking-tight">Ranking de la liga</h1>
-            <p className="text-sm text-muted">Prácticas y torneos de la temporada, solo juegos verificados.</p>
-          </div>
-          {ranked.length > 0 && <ShareButton variant="ghost" size="md" iconOnly label="Compartir el ranking" card={shareCard} />}
-          {member && events.data.length > 0 && <LeagueExcelButton season={season} events={events.data} players={players.data} />}
-        </div>
-
-        {season && (
-          <div className="-mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <SeasonSelect seasons={seasons.data} value={season} onChange={setSeason} />
-            <span className="text-xs text-muted">{seasonRangeLabel(season)}</span>
-          </div>
+      {/* «‹ Liga de los martes» (la de la liga, en lugar de la que pone LeagueShell) con «Excel» y compartir en Pro. */}
+      <LeagueBackBar
+        actions={
+          isPro && (
+            <>
+              {member && events.data.length > 0 && <LeagueExcelButton season={season} events={events.data} players={players.data} />}
+              {table.length > 0 && (
+                <ShareButton
+                  variant="ghost"
+                  size="md"
+                  iconOnly
+                  label="Compartir la tabla"
+                  card={shareCard}
+                  className="relative rounded-full! bg-surface-2 text-fg-2 after:absolute after:-inset-0.5 after:content-['']"
+                />
+              )}
+            </>
+          )
+        }
+      />
+      <div className="flex flex-col px-2">
+        {isPro ? (
+          <>
+            <h1 className="mt-0.5 text-title-pro">Tabla</h1>
+            <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
+              {season && (
+                <PillSelect
+                  label="Temporada"
+                  className="max-w-full"
+                  options={[
+                    ...seasons.data.map((s) => ({ key: s.id, label: s.name, option: `${s.name}${s.status === 'active' ? ' (en curso)' : ''}` })),
+                    { key: ALL_SEASONS, label: 'Temporadas', option: 'Ver todas las temporadas…' },
+                  ]}
+                  value={season.id}
+                  onChange={(id) => (id === ALL_SEASONS ? navigate(`${base}/temporadas`) : setSeason(id))}
+                />
+              )}
+              <Segmented
+                label="Cómo se cuentan los pinos"
+                className="[&>button]:px-3 [&>button]:text-sm"
+                options={[
+                  { key: 'scratch', label: 'Scratch' },
+                  { key: 'hcp', label: 'Con hcp' },
+                ]}
+                value={withHcp ? 'hcp' : 'scratch'}
+                onChange={(k) => set('hcp', k === 'hcp' ? '1' : null)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <h1 className="text-title">Tabla</h1>
+              <PillSelect label="Ordenar la tabla por" options={METRICS.map((m) => ({ key: m.key, label: m.label }))} value={metric} onChange={(k) => set('ver', k)} />
+            </div>
+            {season && <p className="mt-1.5 text-meta text-muted">{`${season.name} · ${seasonRangeLabel(season)}`}</p>}
+          </>
         )}
 
-        {season?.status === 'closed' && <SeasonAwardsCard season={season} />}
-
-        <Tabs items={metrics.map(({ key, label, icon }) => ({ key, label, icon }))} active={metric} onChange={(k) => set('ver', k)} />
-
-        {gap && !loading && !error && (
-          <p className="flex min-h-11 items-center gap-2 rounded-xl bg-accent-soft/60 px-3 py-2 text-sm font-medium">
-            <UserRound className="size-4 shrink-0 text-accent" aria-hidden="true" />
-            {rankGapLabel(gap)}
-          </p>
+        {closed && season && (
+          <div className="mt-5">
+            <SeasonAwardsCard season={season} />
+          </div>
         )}
 
         {error ? (
-          <LoadError error={error} />
-        ) : loading ? (
-          <ListSkeleton rows={6} />
-        ) : ranked.length === 0 ? (
-          <Empty icon={<Medal className="size-8" />} title="Todavía no hay ranking">
-            {metric === 'promedio' ? `Hace falta tener al menos ${minGames} juegos verificados en ${seasonName}.` : 'Aún no hay juegos verificados.'}
-          </Empty>
-        ) : (
-          <div key={`${metric}-${season?.id ?? 'todo'}`} className="flex flex-col gap-4">
-            <div className="stagger grid grid-cols-3 items-end gap-2">
-              {[podium[1], podium[0], podium[2]].map((p, i) =>
-                p ? (
-                  <Link
-                    key={p.row.playerId || p.row.name}
-                    to={`${base}/j/${p.row.playerId}`}
-                    style={{ '--i': i } as CSSProperties}
-                    className={cx(
-                      'flex flex-col items-center gap-1.5 rounded-2xl border border-line bg-surface p-3 text-center transition hover:-translate-y-0.5',
-                      p.pos === 1 ? 'pb-6 pt-4' : 'pb-3',
-                    )}
-                  >
-                    <Position pos={p.pos} />
-                    <Avatar name={p.row.name} className={p.pos === 1 ? 'size-14 text-lg' : 'size-11 text-sm'} />
-                    <span className="line-clamp-2 text-xs font-medium">{p.row.name}</span>
-                    <TitleMark title={title} playerId={p.row.playerId} />
-                    <span className="text-xl font-bold">
-                      <AnimatedNumber value={current.value(p.row)} />
-                    </span>
-                  </Link>
-                ) : (
-                  <div key={i} />
-                ),
-              )}
-            </div>
-
-            {ranked.length > 3 && (
-              <Card className="stagger divide-y divide-line overflow-hidden">
-                {ranked.slice(3).map(({ row, pos }, i) => (
-                  <Link
-                    key={row.playerId || row.name}
-                    to={`${base}/j/${row.playerId}`}
-                    style={{ '--i': i } as CSSProperties}
-                    className={cx('flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2', row.playerId === myPlayerId && 'bg-accent-soft/50')}
-                  >
-                    <Position pos={pos} />
-                    <Avatar name={row.name} className="size-8 text-xs" />
-                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                      <span className="truncate font-medium">{row.name}</span>
-                      <TitleMark title={title} playerId={row.playerId} />
-                    </span>
-                    <span className="text-xs text-muted">{row.games} juegos</span>
-                    <span className="w-12 text-right text-base font-bold tabular-nums">{current.value(row)}</span>
-                  </Link>
-                ))}
-              </Card>
-            )}
-            {metric === 'promedio' && <p className="text-xs text-muted">Mínimo {minGames} juegos verificados en la temporada para aparecer.</p>}
+          <div className="mt-5">
+            <LoadError error={error} />
           </div>
-        )}
-
-        {metric === 'promedio' && !loading && !error && season && prev && improved.length > 0 && (
-          <MostImprovedCard list={improved} season={season} previous={prev} base={base} myPlayerId={myPlayerId} />
+        ) : loading ? (
+          isPro ? (
+            <Skeleton className="mt-3.5 h-[362px] rounded-3xl" />
+          ) : (
+            <>
+              <Skeleton className="mt-5 h-[142px] rounded-3xl" />
+              <div className="mt-3.5">
+                <ListSkeleton rows={6} />
+              </div>
+            </>
+          )
+        ) : isPro ? (
+          <>
+            {table.length > 0 ? (
+              <StandingsTable rows={table} sort={sort} onSort={(k) => set('ver', k)} me={myPlayerId} base={base} totalEvents={played} />
+            ) : (
+              empty('mt-3.5')
+            )}
+            <p className="mx-1 mt-1.5 text-[12.5px] leading-[1.4] text-muted">{hcpFormula(hcp)}</p>
+            <SeasonRecordsCard className="mt-6" records={seasonRecords(proRows, played, myPlayerId)} />
+            {sort === 'promedio' && season && prev && improved.length > 0 && (
+              <MostImprovedCard className="mt-[30px]" list={improved} season={season} previous={prev} base={base} myPlayerId={myPlayerId} />
+            )}
+          </>
+        ) : (
+          <>
+            {place && <MyPlaceCard className="mt-5" copy={placeCopy(place, metric, closed)} />}
+            {ranked.length > 0 ? (
+              <RankList
+                className={place ? 'mt-3.5' : 'mt-5'}
+                ranked={ranked}
+                value={def.value}
+                me={myPlayerId}
+                base={base}
+                mark={(id) => <TitleMark title={title} playerId={id} />}
+              />
+            ) : (
+              empty(place ? 'mt-3.5' : 'mt-5')
+            )}
+            <p className="mt-3.5 text-center text-[13px] leading-[1.4] text-muted">
+              {metric === 'promedio' ? `Cuentan los juegos aprobados · mínimo ${MIN_RANK_GAMES} para salir` : 'Cuentan los juegos aprobados'}
+            </p>
+          </>
         )}
       </div>
     </>
-  );
-}
-
-/** Cuántos se ven en «Más mejorado». */
-const IMPROVED_SHOWN = 5;
-
-/** Más mejorado: promedio de esta temporada contra el de la anterior (con el mínimo de juegos en las dos). */
-export function MostImprovedCard({
-  list,
-  season,
-  previous,
-  base,
-  myPlayerId,
-}: {
-  list: readonly (Improvement & { name: string })[];
-  season: Pick<Season, 'name'>;
-  previous: Pick<Season, 'name'>;
-  base: string;
-  myPlayerId?: string | null;
-}) {
-  const ranked = rank(list.slice(0, IMPROVED_SHOWN), (r) => r.delta);
-  return (
-    <section className="flex flex-col gap-2" aria-label="Más mejorado">
-      <h2 className="flex items-center gap-1.5 text-sm font-semibold text-muted">
-        <TrendingUp className="size-4" aria-hidden="true" /> Más mejorado
-      </h2>
-      <Card className="divide-y divide-line overflow-hidden">
-        {ranked.map(({ row, pos }) => (
-          <Link
-            key={row.playerId}
-            to={`${base}/j/${row.playerId}`}
-            className={cx('flex min-h-12 items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2', row.playerId === myPlayerId && 'bg-accent-soft/50')}
-          >
-            <Position pos={pos} />
-            <Avatar name={row.name} className="size-8 text-xs" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium">{row.name}</span>
-              <span className="block text-xs text-muted tabular-nums">{`${row.previous} → ${row.current}`}</span>
-            </span>
-            <span className="text-base font-bold text-ok tabular-nums">{`+${row.delta}`}</span>
-          </Link>
-        ))}
-      </Card>
-      <p className="text-xs text-muted">{`Promedio de ${season.name} contra ${previous.name}, con al menos ${MIN_RANK_GAMES} juegos verificados en las dos.`}</p>
-    </section>
   );
 }
