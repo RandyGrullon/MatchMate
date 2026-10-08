@@ -114,6 +114,13 @@ const item = (p: Partial<CalendarItem>): CalendarItem => ({
   ...p,
 });
 
+/** Mañana en la fecha local (la tarjeta dice «juega mañana» sin depender del día en que corre la prueba). */
+const tomorrow = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
 const publicLeague = (id: string, name: string, extra: Partial<PublicLeague> = {}): PublicLeague =>
   ({
     ...league(id, name),
@@ -121,7 +128,7 @@ const publicLeague = (id: string, name: string, extra: Partial<PublicLeague> = {
     players: 8,
     activity: 3,
     nextEventAt: null,
-    nextEventDate: '2026-10-08',
+    nextEventDate: tomorrow,
     lastActivityAt: null,
     ...extra,
   }) as PublicLeague;
