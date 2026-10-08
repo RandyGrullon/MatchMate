@@ -1,0 +1,85 @@
+/**
+ * MMR de Rocket League por modo: el mínimo de cada división, copiado de docs/datos/rocket-league-rangos.md (rangos
+ * observados por el tracker, no oficiales; cambian cada temporada). Solo el primer número de cada celda; Bronce I
+ * empieza en −100. Cuando cambie la temporada se reemplaza este archivo (y RL_MMR_SEASON) y se ajusta la prueba de
+ * `rlRankFromMmr` en ranks.test.ts. Nunca se lee el tracker desde la app.
+ */
+
+/** Temporada de los datos (se muestra «aprox., temporada actual»). */
+export const RL_MMR_SEASON = '2026-10';
+
+/** Mínimo de MMR de cada división, por modo: RL_MMR_MIN[mode][tier] = [div I, div II, div III, div IV] (ssl: [min]). */
+export const RL_MMR_MIN: Readonly<Record<'1v1' | '2v2' | '3v3', Readonly<Record<string, readonly number[]>>>> = {
+  '1v1': {
+    ssl: [1353],
+    gc3: [1285, 1299, 1318, 1337],
+    gc2: [1226, 1240, 1259, 1277],
+    gc1: [1175, 1181, 1198, 1217],
+    champion3: [1100, 1120, 1100, 1100],
+    champion2: [1055, 1060, 1078, 1097],
+    champion1: [995, 1000, 980, 980],
+    diamond3: [935, 939, 920, 920],
+    diamond2: [875, 879, 898, 917],
+    diamond1: [800, 800, 800, 800],
+    platinum3: [740, 740, 740, 740],
+    platinum2: [680, 680, 680, 680],
+    platinum1: [620, 639, 658, 677],
+    gold3: [560, 579, 598, 617],
+    gold2: [500, 519, 538, 557],
+    gold1: [440, 459, 478, 497],
+    silver3: [380, 399, 418, 437],
+    silver2: [320, 339, 358, 377],
+    silver1: [260, 279, 298, 317],
+    bronze3: [200, 220, 238, 257],
+    bronze2: [155, 162, 178, 197],
+    bronze1: [-100, 115, 130, 144],
+  },
+  '2v2': {
+    ssl: [1863],
+    gc3: [1715, 1744, 1788, 1832],
+    gc2: [1575, 1602, 1647, 1677],
+    gc1: [1435, 1460, 1498, 1537],
+    champion3: [1315, 1335, 1371, 1402],
+    champion2: [1195, 1215, 1248, 1282],
+    champion1: [1075, 1095, 1128, 1162],
+    diamond3: [995, 1005, 1028, 1052],
+    diamond2: [915, 924, 948, 972],
+    diamond1: [835, 845, 868, 892],
+    platinum3: [773, 779, 798, 817],
+    platinum2: [715, 719, 738, 757],
+    platinum1: [655, 659, 678, 697],
+    gold3: [594, 599, 618, 637],
+    gold2: [535, 539, 558, 577],
+    gold1: [475, 479, 498, 517],
+    silver3: [415, 419, 438, 457],
+    silver2: [355, 359, 378, 397],
+    silver1: [294, 300, 318, 337],
+    bronze3: [229, 240, 258, 277],
+    bronze2: [170, 180, 199, 217],
+    bronze1: [-100, 125, 139, 157],
+  },
+  '3v3': {
+    ssl: [1868],
+    gc3: [1707, 1745, 1788, 1832],
+    gc2: [1575, 1600, 1647, 1677],
+    gc1: [1435, 1461, 1498, 1537],
+    champion3: [1315, 1335, 1368, 1402],
+    champion2: [1195, 1214, 1248, 1282],
+    champion1: [1075, 1060, 1060, 1060],
+    diamond3: [980, 980, 980, 980],
+    diamond2: [915, 924, 948, 972],
+    diamond1: [835, 820, 820, 820],
+    platinum3: [760, 760, 760, 760],
+    platinum2: [715, 719, 738, 757],
+    platinum1: [640, 640, 640, 640],
+    gold3: [580, 599, 618, 637],
+    gold2: [520, 539, 558, 577],
+    gold1: [460, 479, 498, 517],
+    silver3: [400, 419, 438, 457],
+    silver2: [340, 359, 378, 397],
+    silver1: [280, 300, 318, 337],
+    bronze3: [220, 240, 258, 277],
+    bronze2: [175, 184, 198, 217],
+    bronze1: [-100, 120, 145, 157],
+  },
+};
