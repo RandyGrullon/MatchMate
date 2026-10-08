@@ -32,7 +32,8 @@ import type {
 // ---------------------------------------------------------------------------------------------------------
 // Ayudas para escribir el catálogo
 
-const ALL_SPORTS = Object.keys(SPORT_FAMILY) as SportId[];
+/** Deportes con insignias. Esports todavía no tiene (docs/esports.md, D17): sin evaluadores, no saldrían ganables. */
+const ALL_SPORTS = (Object.keys(SPORT_FAMILY) as SportId[]).filter((s) => s !== 'esports');
 const RACKET: readonly SportId[] = ['padel', 'tennis', 'pickleball', 'table_tennis'];
 const TEAM: readonly SportId[] = ['basketball', 'football', 'futsal'];
 const FOOTBALL: readonly SportId[] = ['football', 'futsal'];

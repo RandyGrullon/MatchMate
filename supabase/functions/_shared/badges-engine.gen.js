@@ -2,8 +2,8 @@
 // GENERADO por scripts/badges/bundle.mjs (pnpm badges:bundle): no se edita a mano.
 // El motor de las insignias (src/badges/edge.ts y lo que importa: 67 archivos) en un solo ESM sin imports para la
 // Edge Function supabase/functions/insignias (Deno). src/badges/bundle.test.ts falla si quedó viejo.
-// fuente: sha256-d08250e97f74f852c5f05d432dbbfb1ab8303c9b73d056b9523fb0cdd9033763
-// salida: sha256-fd8b5ae94e803fc1529126bc8c2bd315cb865b9857bff2fe07c45dd693838ac3
+// fuente: sha256-e2e4cc1868a542be4ed6f985d876e33844df42ccea75fa81d7a36ffa411b4728
+// salida: sha256-9ca33324c9b14b83a761f63300c34b901e0847fa246c0c9ed8263cff01c968d1
 // ---
 //#region src/sports/types.ts
 const SPORT_FAMILY = {
@@ -16,7 +16,8 @@ const SPORT_FAMILY = {
 	table_tennis: "racket",
 	basketball: "team",
 	football: "team",
-	futsal: "team"
+	futsal: "team",
+	esports: "esports"
 };
 //#endregion
 //#region src/badges/catalog.ts
@@ -34,7 +35,8 @@ const SPORT_FAMILY = {
 * gane después; lo ya ganado se queda.
 * - 2026-09-29: valores iniciales del diseño.
 */
-const ALL_SPORTS = Object.keys(SPORT_FAMILY);
+/** Deportes con insignias. Esports todavía no tiene (docs/esports.md, D17): sin evaluadores, no saldrían ganables. */
+const ALL_SPORTS = Object.keys(SPORT_FAMILY).filter((s) => s !== "esports");
 const RACKET = [
 	"padel",
 	"tennis",
@@ -4128,7 +4130,8 @@ const DAY_WEIGHT = {
 	football: 1,
 	futsal: 1,
 	golf: 2,
-	swimming: 2
+	swimming: 2,
+	esports: 1
 };
 const holderOf = (a, by = "user") => by === "user" ? a.user_id ?? a.player_id : a.player_id;
 /** Días activos: uno por (dueño, fecha), sin importar cuántas ligas o actividades hubo ese día. En orden. */
@@ -13685,4 +13688,4 @@ function withPushLabels(decisions) {
 }
 //#endregion
 export { evaluateJob, pushLabel, withPushLabels };
-export const SOURCE_HASH = "sha256-d08250e97f74f852c5f05d432dbbfb1ab8303c9b73d056b9523fb0cdd9033763";
+export const SOURCE_HASH = "sha256-e2e4cc1868a542be4ed6f985d876e33844df42ccea75fa81d7a36ffa411b4728";

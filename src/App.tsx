@@ -57,6 +57,13 @@ const RankingPage = lazy(() => import('./pages/RankingPage'));
 const GamesFeedPage = lazy(() => import('./pages/GamesFeedPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SeasonsPage = lazy(() => import('./components/season/SeasonsPage'));
+// Esports (docs/esports.md §12): el índice, la página de cada juego, equipos, IDs de juego y crear torneo.
+const EsportsHomePage = lazy(() => import('./pages/esports/EsportsHomePage'));
+const GameIdsPage = lazy(() => import('./pages/esports/GameIdsPage'));
+const TeamPage = lazy(() => import('./pages/esports/TeamPage'));
+const JoinTeamPage = lazy(() => import('./pages/esports/JoinTeamPage'));
+const CreateTournamentPage = lazy(() => import('./pages/esports/CreateTournamentPage'));
+const GameHubPage = lazy(() => import('./pages/esports/GameHubPage'));
 
 /** Un torneo sin liga no tiene ranking de temporada: vuelve al torneo. */
 function LeagueRanking() {
@@ -100,6 +107,24 @@ function SportHomeRoute() {
 function PlayerRoute() {
   const { playerId } = useParams();
   return <PlayerPage key={playerId} />;
+}
+
+/** `/esports/:game`: la página del juego, de nuevo al pasar a otro juego (un juego que no existe lo resuelve la página). */
+function EsportsGameRoute() {
+  const { game } = useParams();
+  return <GameHubPage key={game} />;
+}
+
+/** `/esports/:game/nuevo-torneo`: el asistente de nuevo al pasar a otro juego (si no, se queda con el formulario del anterior). */
+function EsportsCreateRoute() {
+  const { game } = useParams();
+  return <CreateTournamentPage key={game} />;
+}
+
+/** `/esports/equipo/:teamId`: de nuevo al pasar a otro equipo. */
+function EsportsTeamRoute() {
+  const { teamId } = useParams();
+  return <TeamPage key={teamId} />;
 }
 
 /** El aviso de error de una pantalla de arriba va dentro del marco de la app: la barra de navegación sigue. */
@@ -174,6 +199,13 @@ export default function App() {
                       <Route path="/organizar" element={<Screen area="organizar" framed><OrganizePage /></Screen>} />
                       {/* «¿Dónde juego esta semana?»: lo abierto en las ligas públicas (con y sin cuenta). */}
                       <Route path="/agenda" element={<Screen area="agenda" framed><AgendaPage /></Screen>} />
+                      {/* Esports: las rutas fijas antes que /esports/:game (la página de cada juego). */}
+                      <Route path="/esports" element={<Screen area="esports" framed><EsportsHomePage /></Screen>} />
+                      <Route path="/esports/mi-id" element={<Screen area="esports/mi-id" framed><GameIdsPage /></Screen>} />
+                      <Route path="/esports/equipo/:teamId" element={<Screen area="esports/equipo" framed><EsportsTeamRoute /></Screen>} />
+                      <Route path="/esports/unirse/:code" element={<Screen area="esports/unirse" framed><JoinTeamPage /></Screen>} />
+                      <Route path="/esports/:game/nuevo-torneo" element={<Screen area="esports/nuevo-torneo" framed><EsportsCreateRoute /></Screen>} />
+                      <Route path="/esports/:game" element={<Screen area="esports/juego" framed><EsportsGameRoute /></Screen>} />
                       <Route path="/unirse/:code" element={<Screen area="unirse" framed><JoinPage /></Screen>} />
                       {/* El link para anotar de un torneo (con o sin cuenta; ?entrar=1 al volver de /login). */}
                       <Route path="/anotar/:code" element={<Screen area="anotar" framed><ScorerJoinPage /></Screen>} />

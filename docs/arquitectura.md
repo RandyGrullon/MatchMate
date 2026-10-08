@@ -138,6 +138,25 @@ ni el backend:
 - Pruebas: `src/sports/racket/tableTennis.test.ts`, `src/pages/sports/table_tennis/*.test.ts` y
   `court/logic.test.ts`, `tests/sql/ping-pong.test.ts` y la sección 9k de `scripts/supabase/smoke.sql`.
 
+## Esports (`20261008000100_esports.sql`; docs/esports.md)
+
+- **El deporte:** id `esports` (familia propia `esports`, abierto, orden 11), «Esports» con el alias «Videojuegos», ícono
+  `Gamepad2`, color `#7c3aed` (violeta; `#5b21b6` en las imágenes para compartir), escena `esports` (el control y el
+  «GG»), lugar «Sede». Las reglas de la liga solo dicen el juego (`{ game }`): **el juego decide la lógica**
+  (`src/sports/esports`: catálogo de 15 juegos, rangos, IDs, marcador de series, tablas, cuadros con doble
+  eliminación, siembra, ajustes y fases del torneo). Sin insignias todavía (`ALL_SPORTS` del catálogo lo saca).
+- **Datos:** `src/lib/data/esports.ts` (equipos globales, torneos, inscripciones, fases del cuadro, battle royale,
+  capturas de los partidos; tiempo real 'esports' en `event:<evento>`) y `src/lib/data/esportsIds.ts` (IDs de juego,
+  rangos, conectar la cuenta y el aviso «Tu ID pasó a otra cuenta»). El ID se comprueba solo donde es automático
+  (login de Epic o Steam, búsqueda de Riot); en los demás juegos se declara y no es exclusivo. Las series son partidos
+  (`matches`) y van por `matches.ts` tal cual. Piezas de pantalla compartidas en `src/components/esports/bits.tsx`
+  (`GameMark`, `RankChip`, `IdChip`, `TeamLogo`, `PhaseChip`…).
+- **Rutas:** `/esports` (índice), `/esports/:game` (torneos y equipos del juego), `/esports/equipo/:teamId`,
+  `/esports/unirse/:code`, `/esports/mi-id`, `/esports/:game/nuevo-torneo`; el torneo es una liga (`/l/:lid`, pantallas
+  en `src/pages/sports/esports/`). `/d/esports` lleva a `/esports`; la barra de abajo lo cuenta como Ligas; Hoy y Ligas
+  tienen su fila; elegir Esports en «Crear» lleva a `/esports?crear=torneo` (o `liga`).
+- Todo lo demás (SQL, Edge Functions `esports-verify` y `esports-auth`, pantallas y pruebas) está en docs/esports.md.
+
 ## Datos por módulo (`src/lib/data/`)
 
 `client` (select/rpc con errores normalizados), `keys`/`topics` (claves de caché y temas de tiempo real),

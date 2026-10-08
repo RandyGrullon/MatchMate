@@ -49,7 +49,9 @@ describe('lista curada', () => {
   it('cada deporte tiene su emblema; fútbol y sala comparten balón', () => {
     for (const s of Object.keys(SPORT_FAMILY) as SportId[]) expect(isBadgeIconKey(SPORT_EMBLEM[s]), s).toBe(true);
     expect(SPORT_EMBLEM.futsal).toBe(SPORT_EMBLEM.football);
-    expect(new Set(Object.values(SPORT_EMBLEM)).size).toBe(9);
+    expect(new Set(Object.values(SPORT_EMBLEM)).size).toBe(10);
+    // Esports: la mira (ya curada), aunque todavía no tenga insignias.
+    expect(SPORT_EMBLEM.esports).toBe('crosshair');
     // Los de tenis y baloncesto son los mismos de src/sports/registry.ts.
     expect(BADGE_ICONS.tennis.node[0]).toEqual(['circle', { cx: '12', cy: '12', r: '10' }]);
     expect(BADGE_ICONS.swimming.node.length).toBe(5);

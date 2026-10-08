@@ -644,6 +644,7 @@ export const SPORT_EMBLEM: Readonly<Record<SportId, BadgeIconKey>> = {
   golf: 'golf',
   swimming: 'swimming',
   table_tennis: 'ping-pong',
+  esports: 'crosshair',
 };
 
 /** Emblema cuando la clave no se conoce (un diseño viejo o un error): el trofeo. */

@@ -49,17 +49,17 @@ beforeEach(() => {
 });
 
 describe('Acerca de', () => {
-  it('sin cuenta: el logo, la frase, los 9 deportes, qué puedes hacer, cómo empezar, entrar y crear cuenta', () => {
+  it('sin cuenta: el logo, la frase, los 10 deportes, qué puedes hacer, cómo empezar, entrar y crear cuenta', () => {
     const out = render(AboutPage, '/acerca');
     const t = text(out);
     expect(out).toContain('aria-label="MatchMate"');
     expect(t).toContain(ABOUT_TAGLINE);
     expect(ABOUT_TAGLINE).toBe('Tus ligas, tus juegos y tus estadísticas en un solo lugar');
-    for (const name of ['Boliche', 'Pádel', 'Tenis', 'Pickleball', 'Baloncesto', 'Fútbol', 'Golf', 'Natación', 'Ping pong']) expect(t).toContain(name);
+    for (const name of ['Boliche', 'Pádel', 'Tenis', 'Pickleball', 'Baloncesto', 'Fútbol', 'Golf', 'Natación', 'Ping pong', 'Esports']) expect(t).toContain(name);
     // Un cuadro por deporte (el fútbol de campo y el de sala, uno solo), que lleva a su Home.
-    expect(out.match(/href="\/d\/[a-z_]+"/g)).toHaveLength(9);
-    // 9 cuadros en 3 columnas: 3 filas llenas (con 4 columnas el ping pong quedaba solo en la tercera).
-    expect(out).toContain('class="grid grid-cols-3 gap-2.5"');
+    expect(out.match(/href="\/d\/[a-z_]+"/g)).toHaveLength(10);
+    // 10 cuadros en 4 columnas (con 3 columnas esports quedaba solo en la cuarta fila).
+    expect(out).toContain('class="grid grid-cols-4 gap-2.5"');
     // Rediseño: el título con la marca, qué puedes hacer y cómo empezar en filas (ListRow) dentro de tarjetas sin borde.
     expect(t).toMatch(/Acerca de Match ?Mate/);
     expect(out.match(/class="mm-row /g)?.length ?? 0).toBeGreaterThanOrEqual(ABOUT_FEATURES.length + ABOUT_STEPS.length);
@@ -69,6 +69,9 @@ describe('Acerca de', () => {
     // El ping pong lleva su otro nombre en el nombre accesible del cuadro.
     expect(out).toContain('href="/d/table_tennis"');
     expect(out).toContain('aria-label="Ping pong (tenis de mesa)"');
+    // Esports, al final, con «Videojuegos» en el nombre accesible (su cuadro lleva a /esports por /d/esports).
+    expect(out).toContain('href="/d/esports"');
+    expect(out).toContain('aria-label="Esports (videojuegos)"');
     expect(out).toContain('href="/d/bowling"');
     expect(t).toContain('Qué puedes hacer');
     expect(ABOUT_FEATURES).toHaveLength(6);

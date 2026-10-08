@@ -110,13 +110,14 @@ const under = (p: string, ...roots: string[]) => roots.some((r) => p === r || p.
 
 // Hoy: el único inicio (y el de cada deporte, /d/:sport, mientras exista); la campana de Hoy lleva a /avisos.
 const HOY: SectionDef = { key: 'home', to: '/', label: 'Hoy', icon: House, match: (p) => p === '/' || under(p, '/d', '/avisos') };
-// Ligas: tus ligas y torneos, las públicas, y todo lo de adentro de una liga (en Pro, menos su Organizar).
+// Ligas: tus ligas y torneos, las públicas, y todo lo de adentro de una liga (en Pro, menos su Organizar). Esports
+// (sus juegos, equipos, torneos e IDs de juego) también es de Ligas.
 const LIGAS: SectionDef = {
   key: 'leagues',
   to: '/ligas',
   label: 'Ligas',
   icon: Trophy,
-  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion'),
+  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports'),
 };
 // Organizar (solo Pro): lo del admin de cada liga y la consola del dueño de la app.
 const ORGANIZAR: SectionDef = {

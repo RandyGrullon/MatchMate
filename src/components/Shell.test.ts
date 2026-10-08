@@ -79,6 +79,9 @@ describe('secciones de la barra', () => {
     expect(at('/avisos')).toBe('home');
     expect(at('/d/bowling')).toBe('home');
     for (const p of ['/ligas', '/l/L1', '/l/L1/ranking', '/l/L1/e/E1', '/unirse/ABCD', '/agenda', '/invitacion/i1']) expect(at(p)).toBe('leagues');
+    // Esports (el índice, cada juego, equipos, unirse a un equipo e IDs de juego) es de Ligas.
+    for (const p of ['/esports', '/esports/valorant', '/esports/equipo/T1', '/esports/unirse/ABCD2345', '/esports/mi-id']) expect(at(p)).toBe('leagues');
+    expect(at('/esportsx')).toBeNull();
     for (const p of ['/perfil', '/cuenta', '/bolas', '/juegos-sueltos', '/buscar']) expect(at(p)).toBe('me');
     expect(at('/acerca')).toBeNull();
     // /ligasx no es /ligas.

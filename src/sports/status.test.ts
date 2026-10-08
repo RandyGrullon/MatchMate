@@ -17,7 +17,7 @@ import {
 
 const withStatus = (patch: Partial<SportStatusMap>): SportStatusMap => ({ ...DEFAULT_SPORT_STATUS, ...patch });
 
-const ALL_SPORTS = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis'];
+const ALL_SPORTS = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis', 'esports'];
 
 /** Como estaba antes de abrirlos todos: boliche abierto y lo demás en beta (la consola lo puede volver a poner así). */
 const BETA_WORLD: SportStatusMap = withStatus({
@@ -30,6 +30,7 @@ const BETA_WORLD: SportStatusMap = withStatus({
   golf: 'beta',
   swimming: 'beta',
   table_tennis: 'beta',
+  esports: 'beta',
 });
 
 /** Almacenamiento en memoria (como localStorage). */
@@ -92,7 +93,7 @@ describe('estado de los deportes (lo puro)', () => {
 
   it('selector: una cuenta normal ve todos, con el fútbol en un grupo; lo de beta solo el superadmin', () => {
     const all = sportChoices(DEFAULT_SPORT_STATUS, false);
-    expect(all.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis']);
+    expect(all.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis', 'esports']);
     expect(all.find((g) => g.id === 'football')?.sports).toEqual(['football', 'futsal']);
     expect(sportChoices(BETA_WORLD, false).map((g) => g.id)).toEqual(['bowling']);
     expect(sportChoices(BETA_WORLD, true).map((g) => g.id)).toEqual(all.map((g) => g.id));

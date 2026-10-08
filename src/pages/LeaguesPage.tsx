@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { Plus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { inSport } from '../lib/sportContext';
+import { inSport, useActiveSport } from '../lib/sportContext';
 import { useIsPro } from '../lib/useMode';
 import { sportsOf } from '../sports/registry';
 import { useCreateMenu } from '../components/CreateMenu';
+import { EsportsRowCard, useEsportsPresence } from '../components/home/EsportsHomeRow';
 import { AppShell } from '../components/Shell';
 import { ALL_SPORTS, ligasSport, openLeaguesSubtitle, splitMine, tourneysOf } from '../components/eventos/logic';
 import { useActivity, useMyLeagues } from '../components/home/useHomeData';
@@ -18,7 +19,9 @@ import { Card, ListSkeleton, LoadError, Loading, SectionHeader, cx } from '../co
  * que antes era el botón del centro de la barra), «Tus ligas» (cada una con lo de hoy: «En juego hoy · 6 jugadores»),
  * «Tus torneos» (los sin liga y los de tus ligas que vienen) y «Buscar ligas abiertas» (las públicas de todos los
  * deportes y la agenda pública, en `?ver=abiertas`). El filtro de deporte sale solo si juegas más de uno. Lo de hoy y
- * lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin cuenta: las abiertas.
+ * lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin cuenta: las abiertas. Con el filtro en
+ * Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports» lleva a `/esports` (los torneos donde
+ * juega salen solos: es miembro de su liga).
  */
 export default function LeaguesPage() {
   const auth = useAuth();
@@ -58,6 +61,10 @@ function MyLeagues() {
   }, [act.games, act.liveItems, act.feeds]);
   const logoOf = (lid: string) => leagues.find((l) => l.id === lid)?.logoPath ?? null;
   const ligasCount = leagues.filter((l) => l.kind !== 'torneo').length;
+  // Esports: con el filtro en Esports, o sin filtro y la cuenta en esports (sus ligas, el deporte activo, sus equipos).
+  const activeSport = useActiveSport();
+  const esports = useEsportsPresence(mine.uid, activeSport);
+  const showEsports = sport === 'esports' || (!sport && (mySports.includes('esports') || esports.show));
 
   const setSport = (s: string | null) =>
     setParams(
@@ -148,7 +155,11 @@ function MyLeagues() {
 
       {body}
 
-      <div className={cx(mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5')}>
+      {showEsports && (
+        <EsportsRowCard title="Torneos de esports" subtitle="Torneos y equipos por juego" pro={pro} className={mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5'} />
+      )}
+
+      <div className={cx(showEsports ? 'mt-3.5' : mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5')}>
         <OpenLeaguesRow subtitle={openLeaguesSubtitle(mySports)} pro={pro} />
       </div>
     </div>

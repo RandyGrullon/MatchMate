@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { Gamepad2 } from 'lucide-react';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -81,7 +82,7 @@ describe('registro de deportes: contrato', () => {
         expect(text.trim()).not.toBe('');
       }
       expect(m.lower).toBe(m.lower.toLowerCase());
-      expect(['Bolera', 'Club', 'Cancha', 'Campo', 'Piscina']).toContain(m.venue);
+      expect(['Bolera', 'Club', 'Cancha', 'Campo', 'Piscina', 'Sede']).toContain(m.venue);
       expect(m.icon).toBeTruthy();
     }
     expect(SPORTS.bowling.venue).toBe('Bolera');
@@ -121,7 +122,30 @@ describe('registro de deportes: contrato', () => {
     expect(m.order).toBe(10);
     expect(m.eventTypes.map((t) => t.id)).toEqual(['liga', 'torneo', 'cajas', 'escalera']);
     expect((m.defaultRules().match as { sport: string; bestOf: number }).bestOf).toBe(5);
-    expect(SPORT_LIST.filter((x) => x.alias).map((x) => x.id)).toEqual(['table_tennis']);
+    expect(SPORT_LIST.filter((x) => x.alias).map((x) => x.id)).toEqual(['table_tennis', 'esports']);
+  });
+
+  it('esports: «Videojuegos» de alias, familia propia, al final, violeta y con torneos (el juego decide la lógica)', () => {
+    const m = SPORTS.esports;
+    expect([m.name, m.label, m.short, m.lower, m.alias]).toEqual(['Esports', 'Esports', 'Esports', 'esports', 'Videojuegos']);
+    expect(m.family).toBe('esports');
+    expect(SPORT_FAMILY.esports).toBe('esports');
+    expect(m.group).toBe('esports');
+    expect(m.order).toBe(11);
+    expect(SPORT_LIST.at(-1)?.id).toBe('esports');
+    expect(m.color).toBe('#7c3aed');
+    expect(m.icon).toBe(Gamepad2);
+    expect([m.venue, m.venueHint]).toEqual(['Sede', 'Online, cibercafé o centro gamer']);
+    expect(m.units).toEqual({ match: ['serie', 'series'], score: 'mapas', side: ['equipo', 'equipos'] });
+    expect(m.eventTypes.map((t) => [t.id, t.label, t.plural])).toEqual([['torneo', 'Torneo', 'Torneos']]);
+    expect([m.photos, m.ready, m.phase, m.scene]).toEqual([false, true, 8, 'esports']);
+    // Las reglas de la liga solo dicen el juego.
+    expect(m.defaultRules()).toEqual({ game: 'valorant' });
+    expect(m.validateRules({ game: 'rocket_league' })).toEqual([]);
+    expect(m.validateRules({ game: 'ajedrez' })).toEqual(['Elige el juego.']);
+    expect(m.validateRules({})).toEqual(['Elige el juego.']);
+    expect(m.validateRules({ game: 'valorant', bestOf: 3 })).toEqual(['Las reglas no son válidas.']);
+    expect(dispatchSport('esports')).toMatchObject({ kind: 'ready', sport: 'esports' });
   });
 
   it('color por deporte: el boliche usa el de la app; los demás, uno propio que se lee en claro y en oscuro', () => {
@@ -292,11 +316,12 @@ describe('registro de deportes: funciones', () => {
   });
 
   it('grupos del selector: el fútbol junta campo y sala', () => {
-    expect(SPORT_GROUPS.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis']);
+    expect(SPORT_GROUPS.map((g) => g.id)).toEqual(['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis', 'esports']);
     expect(SPORT_GROUPS.find((g) => g.id === 'football')).toMatchObject({ name: 'Fútbol', sports: ['football', 'futsal'] });
     // El ping pong lleva su otro nombre («Tenis de mesa») para el selector; los demás no tienen.
     expect(SPORT_GROUPS.find((g) => g.id === 'table_tennis')).toMatchObject({ name: 'Ping pong', alias: 'Tenis de mesa', sports: ['table_tennis'] });
-    expect(SPORT_GROUPS.filter((g) => g.alias).map((g) => g.id)).toEqual(['table_tennis']);
+    expect(SPORT_GROUPS.filter((g) => g.alias).map((g) => g.id)).toEqual(['table_tennis', 'esports']);
+    expect(SPORT_GROUPS.find((g) => g.id === 'esports')).toMatchObject({ name: 'Esports', alias: 'Videojuegos', sports: ['esports'] });
     expect(groupSports(['futsal', 'bowling'])).toMatchObject([
       { id: 'bowling', sports: ['bowling'] },
       { id: 'football', sports: ['futsal'] },

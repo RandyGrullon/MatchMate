@@ -53,7 +53,7 @@ vi.mock('../../sports/status', async (orig) => {
 vi.mock('../home/LeagueCard', () => ({ LeagueLogo: ({ children }: { children: ReactNode }) => children }));
 
 const { CreateSheet, JoinCodeBox, SoloOption, createChoices } = await import('./CreateSheet');
-const { CreateWizard, StepBar, wizardSport } = await import('./CreateWizard');
+const { CreateWizard, StepBar, esportsCreatePath, wizardSport } = await import('./CreateWizard');
 const logic = await import('./logic');
 
 const render = (node: ReactNode) => renderToString(h(MemoryRouter, null, h(FeedbackProvider, null, node)));
@@ -199,6 +199,18 @@ describe('el asistente «Crear una liga»', () => {
     expect(wizardSport(['bowling', 'padel'], null, ['padel'])).toBe('padel');
     expect(wizardSport(['bowling', 'padel'], null, ['padel', 'bowling'])).toBe('bowling');
     expect(wizardSport(['padel'], null, [])).toBe('padel');
+  });
+
+  it('esports: marcado solo si se pidió (quien solo juega esports igual puede crear otra cosa)', () => {
+    expect(wizardSport(['bowling', 'esports'], 'esports', [])).toBe('esports');
+    expect(wizardSport(['bowling', 'padel', 'esports'], null, ['esports'])).toBe('bowling');
+    expect(wizardSport(['padel', 'esports'], null, ['esports', 'padel'])).toBe('padel');
+    expect(wizardSport(['esports'], null, [])).toBe('esports');
+  });
+
+  it('elegir esports lleva a Esports a elegir el juego (torneo o liga)', () => {
+    expect(esportsCreatePath('torneo')).toBe('/esports?crear=torneo');
+    expect(esportsCreatePath('liga')).toBe('/esports?crear=liga');
   });
 });
 

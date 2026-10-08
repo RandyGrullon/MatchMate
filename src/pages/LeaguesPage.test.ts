@@ -197,6 +197,20 @@ describe('Ligas (Lite)', () => {
     expect(padel).toContain('Pádel Naco');
     expect(padel).not.toContain('Liga de los martes');
   });
+
+  it('esports: con el filtro en Esports, o sin filtro y la cuenta en esports, la fila «Torneos de esports» → /esports', () => {
+    // Sin nada de esports: no sale.
+    expect(text(render())).not.toContain('Torneos de esports');
+    world.leagues = [league('l1', 'Liga de los martes'), league('l3', 'Copa Radiante', { sport: 'esports', kind: 'torneo' })];
+    const all = render();
+    expect(text(all)).toContain('Torneos de esports');
+    expect(all).toContain('href="/esports"');
+    // Antes de «Buscar ligas abiertas».
+    expect(text(all).indexOf('Torneos de esports')).toBeLessThan(text(all).indexOf('Buscar ligas abiertas'));
+    expect(text(render('/ligas?deporte=esports'))).toContain('Torneos de esports');
+    // Con el filtro en otro deporte, no.
+    expect(text(render('/ligas?deporte=bowling'))).not.toContain('Torneos de esports');
+  });
 });
 
 describe('Ligas (Pro)', () => {

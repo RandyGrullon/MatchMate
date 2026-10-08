@@ -36,6 +36,8 @@ import type { BadgeDef, BadgeGroup, BadgeSport, Variant } from './types';
 import { BADGE_ICON_KEYS } from './visual/icons';
 
 const ALL_SPORTS = Object.keys(SPORT_FAMILY) as SportId[];
+/** Los que tienen insignias: todos menos esports (docs/esports.md, D17). */
+const BADGE_SPORTS = ALL_SPORTS.filter((s) => s !== 'esports');
 const SHAPES = ['hex', 'shield', 'circle', 'star', 'medal', 'medal_laurel', 'square'];
 const RARITIES = ['C', 'PC', 'R', 'E', 'L'];
 
@@ -86,6 +88,8 @@ describe('catálogo: totales del diseño (§2.0 y §2.13)', () => {
       futsal: 51,
       golf: 45,
       swimming: 33,
+      // Sin insignias de esports en esta entrega (D17).
+      esports: 0,
       all: 29,
     };
     let total = 0;
@@ -95,8 +99,9 @@ describe('catálogo: totales del diseño (§2.0 y §2.13)', () => {
       total += got;
     }
     expect(total).toBe(505);
-    // Cada uno de los 10 deportes tiene su debut, su «Fijo del mes», «Todo el año» y la asistencia de temporada.
-    for (const s of ALL_SPORTS) {
+    // Cada uno de los 10 deportes con insignias tiene su debut, su «Fijo del mes», «Todo el año» y la asistencia de temporada.
+    expect(BADGE_SPORTS).toHaveLength(10);
+    for (const s of BADGE_SPORTS) {
       for (const key of ['debut', 'monthly_regular', 'full_year', 'season_attendance']) expect(badgesForSport(s).map((b) => b.key)).toContain(key);
     }
   });

@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>MatchMate</title>
-    <meta name="description" content="Ligas, torneos y partidos entre amigos, en español: pádel, tenis, pickleball, ping pong, boliche, baloncesto, fútbol, golf y natación. Tablas, estadísticas y resultados en vivo." />
+    <meta name="description" content="Ligas, torneos y partidos entre amigos, en español: pádel, tenis, pickleball, ping pong, boliche, baloncesto, fútbol, golf, natación y esports. Tablas, estadísticas y resultados en vivo." />
     <meta name="application-name" content="MatchMate" />
     <!-- Vista previa al compartir un link (WhatsApp, Facebook, X, Telegram…): nombre, descripción y logo. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="MatchMate" />
     <meta property="og:locale" content="es_DO" />
     <meta property="og:title" content="MatchMate — ligas y torneos de tu deporte" />
-    <meta property="og:description" content="Tu liga en el teléfono: tablas, resultados en vivo y estadísticas de pádel, tenis, pickleball, ping pong, boliche, baloncesto, fútbol, golf y natación. Gratis y en español." />
+    <meta property="og:description" content="Tu liga en el teléfono: tablas, resultados en vivo y estadísticas de pádel, tenis, pickleball, ping pong, boliche, baloncesto, fútbol, golf, natación y esports. Gratis y en español." />
     <meta property="og:image" content="https://matchmate-oficial.vercel.app/icon-512.png" />
     <meta property="og:image:secure_url" content="https://matchmate-oficial.vercel.app/icon-512.png" />
     <meta property="og:image:type" content="image/png" />
@@ -219,6 +219,20 @@
       @keyframes sp-table_tennis-sq{0%,19%{transform:none}20.5%{transform:scale(1.25,.75)}23%,49%{transform:none}50.5%{transform:scale(1.25,.75)}53%,100%{transform:none}}
       @keyframes sp-table_tennis-half{0%,49%{fill-opacity:.18}52%{fill-opacity:.5}70%,100%{fill-opacity:.18}}
       @keyframes sp-table_tennis-mark{0%,49%{opacity:0;transform:scale(.3)}52%{opacity:.45;transform:none}100%{opacity:.3;transform:none}}
+      .sp-esports .pad{filter:var(--sp-drop);animation:sp-esports-pad 2s both}
+      .sp-esports .dpad{fill:none;stroke:var(--sp-fg);stroke-opacity:.55;stroke-width:4;stroke-linecap:round}
+      .sp-esports .mid{fill:none;stroke:var(--sp-edge);stroke-width:2.4;stroke-linecap:round}
+      .sp-esports .bt{fill:var(--sp-edge);fill-opacity:.45}
+      .sp-esports .press{transform-box:fill-box;transform-origin:center;animation:sp-esports-press 2s both}
+      .sp-esports .lit{animation:sp-esports-lit 2s both}
+      .sp-esports .ring{fill:none;stroke:var(--sp-acc);stroke-width:1.2;opacity:0;transform-box:fill-box;transform-origin:center;animation:sp-esports-ring 2s both}
+      .sp-esports .gg{fill:none;stroke:var(--sp-acc);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
+      .sp-esports .gg{transform-box:fill-box;transform-origin:50% 100%;animation:sp-esports-gg 2s both}
+      @keyframes sp-esports-pad{0%{opacity:0;transform:translateY(16px);animation-timing-function:cubic-bezier(.2,.8,.2,1)}16%{opacity:1;transform:translateY(-2px)}22%,100%{opacity:1;transform:none}}
+      @keyframes sp-esports-press{0%,24%{transform:none;animation-timing-function:ease-in}31%{transform:scale(.72);animation-timing-function:ease-out}40%,100%{transform:none}}
+      @keyframes sp-esports-lit{0%,29%{opacity:0}33%,100%{opacity:1}}
+      @keyframes sp-esports-ring{0%,31%{opacity:0;transform:scale(.8)}34%{opacity:.9}58%,100%{opacity:0;transform:scale(3.2)}}
+      @keyframes sp-esports-gg{0%,36%{opacity:0;transform:translateY(12px) scale(.5);animation-timing-function:cubic-bezier(.2,.8,.2,1)}52%{opacity:1;transform:translateY(-3px) scale(1.08)}62%,100%{opacity:1;transform:none}}
     </style>
     <!-- /splash:css -->
   </head>
@@ -390,6 +404,28 @@
         </g></g></g>
       </svg>
     </template>
+    <template id="sp-esports">
+      <svg class="sp-esports" viewBox="0 0 220 120">
+        <path class="gnd" d="M20 110H206"/>
+        <g class="gg">
+          <path d="M104.5 18.5A8 10.5 0 1 0 105 29V26h-6"/>
+          <path d="M130.5 18.5A8 10.5 0 1 0 131 29V26h-6"/>
+        </g>
+        <g class="pad">
+          <path class="pc" d="M62 66c0-8 6-12 14-12h68c8 0 14 4 14 12l8 30c2 8-3 13-9 13-5 0-8-3-11-8l-5-8H79l-5 8c-3 5-6 8-11 8-6 0-11-5-9-13z"/>
+          <path class="dpad" d="M78 72h12M84 66v12"/>
+          <path class="mid" d="M102 66h5M113 66h5"/>
+          <circle class="bt" cx="136" cy="65" r="3.4"/>
+          <circle class="bt" cx="129" cy="72" r="3.4"/>
+          <circle class="bt" cx="136" cy="79" r="3.4"/>
+          <circle class="ring" cx="143" cy="72" r="3.6"/>
+          <g class="press">
+            <circle class="bt" cx="143" cy="72" r="3.6"/>
+            <circle class="acc lit" cx="143" cy="72" r="3.6"/>
+          </g>
+        </g>
+      </svg>
+    </template>
     <div id="splash" class="mm-sp" aria-hidden="true"><div class="word">Match<b>Mate</b></div></div>
     <script>
       // Una vez por sesión (al abrir la app instalada siempre es una sesión nueva); nunca más de 4 s.
@@ -400,7 +436,7 @@
           if (sessionStorage.getItem('mm:splash')) { el.remove(); return; }
           sessionStorage.setItem('mm:splash', '1');
         } catch (e) {}
-        var scenes = {"bowling":"bowling","padel":"padel","tennis":"tennis","pickleball":"pickleball","basketball":"basketball","football":"football","futsal":"football","golf":"golf","swimming":"swimming","table_tennis":"table_tennis"};
+        var scenes = {"bowling":"bowling","padel":"padel","tennis":"tennis","pickleball":"pickleball","basketball":"basketball","football":"football","futsal":"football","golf":"golf","swimming":"swimming","table_tennis":"table_tennis","esports":"esports"};
         var scene = 'generic';
         try {
           var sport = localStorage.getItem('mm:sport');

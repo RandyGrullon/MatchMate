@@ -22,6 +22,8 @@ export const DAY_WEIGHT: Readonly<Record<SportId, 1 | 2>> = {
   futsal: 1,
   golf: 2,
   swimming: 2,
+  // Sin insignias de esports todavía (docs/esports.md, D17): el peso queda listo para cuando las haya.
+  esports: 1,
 };
 
 /** Tope de días ponderados por semana ISO y por cuenta. */

@@ -3,10 +3,13 @@
  * (sin React, sin backend, sin fechas del sistema): reciben datos y devuelven datos, y se prueban solos.
  */
 
-export type SportId = 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'futsal' | 'golf' | 'swimming' | 'table_tennis';
+export type SportId = 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'futsal' | 'golf' | 'swimming' | 'table_tennis' | 'esports';
 
-/** series: cada quien anota su número (pinos, golpes, tiempo). racket: partidos con sets. team: equipos por tiempos. */
-export type SportFamily = 'series' | 'racket' | 'team';
+/**
+ * series: cada quien anota su número (pinos, golpes, tiempo). racket: partidos con sets. team: equipos por tiempos.
+ * esports: series de mapas o juegos, 1 contra 1 o battle royale (la lógica la decide el juego, src/sports/esports).
+ */
+export type SportFamily = 'series' | 'racket' | 'team' | 'esports';
 
 export const SPORT_FAMILY: Record<SportId, SportFamily> = {
   bowling: 'series',
@@ -19,6 +22,7 @@ export const SPORT_FAMILY: Record<SportId, SportFamily> = {
   basketball: 'team',
   football: 'team',
   futsal: 'team',
+  esports: 'esports',
 };
 
 export type Side = 1 | 2;

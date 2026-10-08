@@ -49,13 +49,23 @@ const MINORS_RULES = [
   'Sin link para anotar: a cada anotador se le invita por su @usuario. Quien entró con un link solo para anotar sale de la liga.',
 ];
 
-/** El deporte marcado al abrir: el pedido (si se puede crear), el único que juegas, o el boliche (o el primero). */
+/**
+ * El deporte marcado al abrir: el pedido (si se puede crear), el único que juegas, o el boliche (o el primero). Esports
+ * sale marcado solo si se pidió (al elegirlo, el asistente lleva a crear en Esports: ver `esportsCreatePath`).
+ */
 export function wizardSport(creatable: readonly SportId[], wanted: SportId | null | undefined, mySports: readonly string[]): SportId {
   if (wanted && creatable.includes(wanted)) return wanted;
-  const mine = mySports.filter((s): s is SportId => (creatable as readonly string[]).includes(s));
+  const others = creatable.filter((s) => s !== 'esports');
+  const mine = mySports.filter((s): s is SportId => (others as readonly string[]).includes(s));
   if (mine.length === 1) return mine[0];
-  return initialSport(creatable, null).sport;
+  return initialSport(others.length ? others : creatable, null).sport;
 }
+
+/**
+ * Esports no sigue este asistente (el juego decide todo, docs/esports.md §11.2): al elegirlo se cierra y va a Esports a
+ * elegir el juego, para crear un torneo (`?crear=torneo`) o una liga de esports (`?crear=liga`).
+ */
+export const esportsCreatePath = (kind: LeagueKind): string => (kind === 'torneo' ? '/esports?crear=torneo' : '/esports?crear=liga');
 
 /** El tamaño del teclado del teléfono (0 sin teclado): el pie con el botón queda encima de él. */
 function useKeyboard(): number {
@@ -153,6 +163,11 @@ export function CreateWizard({
     touched.current = true;
     setSport(id);
   };
+  // Esports: en lugar de seguir, a Esports a elegir el juego (también si abrió con esports marcado).
+  useEffect(() => {
+    if (sport === 'esports') onDone(esportsCreatePath(kind));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sport]);
 
   async function close() {
     // Mientras se crea no se cierra (quedaría creada sin llevarte a ella).

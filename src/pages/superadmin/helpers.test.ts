@@ -8,11 +8,14 @@ import { areaPath, fraction, lastValues, linePath, meterTone, nearestIndex, nice
 import { LEAGUE_CSV_COLUMNS, USER_CSV_COLUMNS, csvCell, csvDate, csvFileName, toCsv } from './csv';
 import { MB } from './format';
 import {
+  AUDIT_ACTIONS,
+  TARGET_LABEL,
   audienceKey,
   audienceLabel,
   auditActionLabel,
   auditSummary,
   auditTargetPath,
+  auditTone,
   canBlock,
   cleanAnnouncement,
   isInAppPath,
@@ -209,6 +212,9 @@ describe('secciones', () => {
     expect(sectionPath('resumen')).toBe('/superadmin');
     expect(sectionPath('auditoria')).toBe('/superadmin/auditoria');
     expect(new Set(SECTIONS.map((s) => s.key)).size).toBe(SECTIONS.length);
+    // Ya no hay «Reclamos de ID» (esports: la verificación solo es automática).
+    expect(sectionFromParam('reclamos-id')).toBeNull();
+    expect(SECTIONS.map((s) => s.label)).not.toContain('Reclamos de ID');
   });
 });
 
@@ -289,6 +295,21 @@ describe('auditoría', () => {
     expect(auditSummary({ action: 'delete_league', detail: { name: 'Liga Vieja', ownerName: 'Ana' } })).toBe('Borró «Liga Vieja» (de Ana)');
     expect(auditSummary({ action: 'transfer_league', detail: { name: 'Copa', fromName: 'Ana', toName: 'Luis' } })).toBe('Pasó «Copa» de Ana a Luis');
     expect(auditSummary({ action: 'transfer_league', detail: {} })).toBe('Pasó la liga a otra cuenta');
+  });
+
+  it('esports: el ID que pasó a otra cuenta que entró con Steam, Epic o Riot (sin reclamos)', () => {
+    expect(auditActionLabel('esports_id_login')).toBe('ID de juego por cuenta conectada');
+    expect(auditTone('esports_id_login')).toBe('warn');
+    const login = { action: 'esports_id_login', targetType: 'user' as const, targetId: 'u-ana', detail: { game: 'cs2', idDisplay: '22202', by: 'u-luis', provider: 'steam' } };
+    expect(auditSummary(login)).toBe('El ID 22202 de Counter-Strike 2 pasó a otra cuenta que entró con Steam');
+    expect(auditSummary({ ...login, detail: { game: 'fortnite', idDisplay: 'NinjaDR', provider: 'epic' } })).toBe('El ID NinjaDR de Fortnite pasó a otra cuenta que entró con Epic');
+    expect(auditSummary({ ...login, detail: { game: 'lol', idDisplay: 'Ana#LAN', provider: 'riot' } })).toBe('El ID Ana#LAN de League of Legends pasó a otra cuenta que entró con Riot');
+    expect(auditSummary({ ...login, detail: {} })).toBe('Un ID de juego pasó a otra cuenta');
+    // La cuenta que lo perdió es el objetivo.
+    expect(auditTargetPath(login)).toBe('/superadmin/cuentas?u=u-ana');
+    // De esports solo queda esa acción; sin objetivo «reclamo».
+    expect(AUDIT_ACTIONS.filter((a) => a.key.startsWith('esports_')).map((a) => a.key)).toEqual(['esports_id_login']);
+    expect(Object.keys(TARGET_LABEL)).toEqual(['user', 'league', 'sport', 'app']);
   });
 
   it('a dónde lleva el objetivo', () => {

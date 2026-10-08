@@ -38,10 +38,16 @@ describe('escenas de apertura', () => {
   });
 
   it('cada deporte tiene escena; sin deporte, desconocido o apagado: la genérica', () => {
-    const sports: SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis'];
+    const sports: SportId[] = ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis', 'esports'];
     for (const s of sports) expect(SCENE_ORDER).toContain(SCENE_FOR_SPORT[s]);
     expect(SCENE_FOR_SPORT.table_tennis).toBe('table_tennis');
     expect(sceneForSport('table_tennis')).toBe('table_tennis');
+    // Esports: su propia escena (el control y el «GG»), activa al abrir y la última de la vista previa.
+    expect(SCENE_FOR_SPORT.esports).toBe('esports');
+    expect(sceneForSport('esports')).toBe('esports');
+    expect(SCENE_ORDER.at(-1)).toBe('esports');
+    expect(LIVE_SCENES).toContain('esports');
+    expect(SCENES.esports.label).toBe('Esports');
     expect(SCENE_FOR_SPORT.futsal).toBe('football');
     expect(sceneForSport('bowling')).toBe('bowling');
     expect(sceneForSport(null)).toBe('generic');

@@ -2,12 +2,14 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Crown, PencilLine } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
+import { useActiveSport } from '../lib/sportContext';
 import type { League } from '../lib/types';
 import { recentEvents, resumeElsewhere, scorePath, startedGames, useMemoryTick, type RecentEvent } from '../lib/useNextGame';
 import { leagueSport, sportsOf } from '../sports/registry';
 import { useSportStatus } from '../sports/status';
 import { useCreateMenu } from '../components/CreateMenu';
 import { Landing } from '../components/cuenta/Landing';
+import { EsportsRowCard, useEsportsHome } from '../components/home/EsportsHomeRow';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { HomeHeader } from '../components/home/HomeHeader';
 import { CalendarSheet, ModeSheet, WhereSheet } from '../components/home/HomeSheets';
@@ -36,6 +38,9 @@ import type { LeagueFeed } from '../lib/data';
  * - Pro: lo mismo más denso, con «Planilla», «Por hacer», «En vivo» y «Esta semana» (y la etiqueta «PRO ▾»).
  * - Cuenta nueva: «Únete a tu liga» con el código (y el QR), crear tu liga, un juego suelto o buscar ligas abiertas.
  * Un solo aviso por pantalla (NoticeSlot). Tus ligas están en Ligas; los deportes, en Ligas › Buscar ligas abiertas.
+ * Esports: con el deporte activo en esports o si la cuenta tiene equipos o inscripciones, la fila «Esports» (a
+ * `/esports`); y el aviso de un ID de juego tuyo que pasó a otra cuenta (alguien entró con esa cuenta de Epic, Steam
+ * o Riot).
  */
 export default function HomePage() {
   const auth = useAuth();
@@ -86,6 +91,8 @@ function Hoy() {
   const notices = useNotifications();
   const [sheet, setSheet] = useState<HomeSheet | null>(null);
   useHomeNotices({ feeds: act.feeds, leagues: act.leagues, pro: isPro });
+  const activeSport = useActiveSport();
+  const esports = useEsportsHome(mine.uid, activeSport);
 
   const first = displayName(auth).split(' ')[0];
   const featured = act.games[0] ?? null;
@@ -179,6 +186,8 @@ function Hoy() {
             )}
           </>
         )}
+
+        {esports.show && <EsportsRowCard title="Esports" subtitle="Tus equipos y torneos" pro={isPro} className="mt-7" />}
 
         <FollowingSlot sport={null} className="mt-7" />
 

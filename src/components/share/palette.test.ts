@@ -18,7 +18,7 @@ function contrast(a: string, b: string): number {
 
 describe('colores de las imágenes', () => {
   it('cada deporte tiene color y todos se leen con letras blancas', () => {
-    for (const id of ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis']) {
+    for (const id of ['bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'futsal', 'golf', 'swimming', 'table_tennis', 'esports']) {
       const c = SPORT_COLORS[id];
       expect(c, id).toMatch(/^#[0-9a-f]{6}$/i);
       expect(contrast(c, INK.onColor), id).toBeGreaterThanOrEqual(4.5);
@@ -36,6 +36,8 @@ describe('colores de las imágenes', () => {
     expect(sportColor(null)).toBe(BRAND.light.accent);
     expect(sportColor('constructor')).toBe(BRAND.light.accent);
     expect(sportColor('padel')).toBe(SPORT_COLORS.padel);
+    // Esports: el violeta oscuro (en la app es #7c3aed; en la imagen, uno que se lee con letras blancas).
+    expect(sportColor('esports')).toBe('#5b21b6');
   });
 
   it('la tinta del cuadro blanco se lee (texto normal y gris)', () => {

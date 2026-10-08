@@ -20,7 +20,7 @@ import type { SportId } from '../../sports/types';
 import { SPLASH_SEEN_KEY, SPORT_KEY } from '../../lib/splash';
 import { DUO_HEAD_R, DUO_HEADS, DUO_M, DUO_STROKE } from './brand';
 
-export type SceneId = 'generic' | 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'golf' | 'swimming' | 'table_tennis';
+export type SceneId = 'generic' | 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'golf' | 'swimming' | 'table_tennis' | 'esports';
 
 export interface Scene {
   id: SceneId;
@@ -36,7 +36,7 @@ export const DURATION = '2s';
 const T = DURATION;
 
 /** Orden de la vista previa. */
-export const SCENE_ORDER: readonly SceneId[] = ['generic', 'bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis'];
+export const SCENE_ORDER: readonly SceneId[] = ['generic', 'bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis', 'esports'];
 
 /** Escena de cada deporte (el futsal usa la del fútbol). */
 export const SCENE_FOR_SPORT: Record<SportId, SceneId> = {
@@ -50,13 +50,14 @@ export const SCENE_FOR_SPORT: Record<SportId, SceneId> = {
   golf: 'golf',
   swimming: 'swimming',
   table_tennis: 'table_tennis',
+  esports: 'esports',
 };
 
 /**
  * Escenas que ya salen al abrir la app. Las demás solo se ven en la vista previa hasta que se encienda su deporte:
  * se agrega aquí y se corre `node scripts/icons/splash.mjs`.
  */
-export const LIVE_SCENES: readonly SceneId[] = ['generic', 'bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis'];
+export const LIVE_SCENES: readonly SceneId[] = ['generic', 'bowling', 'padel', 'tennis', 'pickleball', 'basketball', 'football', 'golf', 'swimming', 'table_tennis', 'esports'];
 
 /** La escena de un deporte; sin deporte, desconocido o con la escena apagada: la genérica. */
 export function sceneForSport(sport: string | null | undefined, live: readonly SceneId[] = LIVE_SCENES): SceneId {
@@ -501,7 +502,54 @@ const tableTennis: Scene = {
   ].join('\n'),
 };
 
-export const SCENES: Record<SceneId, Scene> = { generic, bowling, padel, tennis, pickleball, basketball, football, golf, swimming, table_tennis: tableTennis };
+/**
+ * Esports: entra un control de juego; el botón de la derecha se hunde y se ilumina con el color del deporte (con un
+ * anillo que se abre) y arriba aparece «GG» (dos letras de trazo, no texto), que sube un poco y se queda. Quieto: el
+ * control con el botón encendido y el «GG» arriba.
+ */
+const esports: Scene = {
+  id: 'esports',
+  label: 'Esports',
+  svg: svg('esports', [
+    '<path class="gnd" d="M20 110H206"/>',
+    '<g class="gg">',
+    '  <path d="M104.5 18.5A8 10.5 0 1 0 105 29V26h-6"/>',
+    '  <path d="M130.5 18.5A8 10.5 0 1 0 131 29V26h-6"/>',
+    '</g>',
+    '<g class="pad">',
+    '  <path class="pc" d="M62 66c0-8 6-12 14-12h68c8 0 14 4 14 12l8 30c2 8-3 13-9 13-5 0-8-3-11-8l-5-8H79l-5 8c-3 5-6 8-11 8-6 0-11-5-9-13z"/>',
+    '  <path class="dpad" d="M78 72h12M84 66v12"/>',
+    '  <path class="mid" d="M102 66h5M113 66h5"/>',
+    '  <circle class="bt" cx="136" cy="65" r="3.4"/>',
+    '  <circle class="bt" cx="129" cy="72" r="3.4"/>',
+    '  <circle class="bt" cx="136" cy="79" r="3.4"/>',
+    '  <circle class="ring" cx="143" cy="72" r="3.6"/>',
+    '  <g class="press">',
+    '    <circle class="bt" cx="143" cy="72" r="3.6"/>',
+    '    <circle class="acc lit" cx="143" cy="72" r="3.6"/>',
+    '  </g>',
+    '</g>',
+  ]),
+  css: [
+    `.sp-esports .pad{filter:var(--sp-drop);animation:sp-esports-pad ${T} both}`,
+    '.sp-esports .dpad{fill:none;stroke:var(--sp-fg);stroke-opacity:.55;stroke-width:4;stroke-linecap:round}',
+    '.sp-esports .mid{fill:none;stroke:var(--sp-edge);stroke-width:2.4;stroke-linecap:round}',
+    '.sp-esports .bt{fill:var(--sp-edge);fill-opacity:.45}',
+    `.sp-esports .press{transform-box:fill-box;transform-origin:center;animation:sp-esports-press ${T} both}`,
+    `.sp-esports .lit{animation:sp-esports-lit ${T} both}`,
+    `.sp-esports .ring{fill:none;stroke:var(--sp-acc);stroke-width:1.2;opacity:0;transform-box:fill-box;transform-origin:center;animation:sp-esports-ring ${T} both}`,
+    '.sp-esports .gg{fill:none;stroke:var(--sp-acc);stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}',
+    `.sp-esports .gg{transform-box:fill-box;transform-origin:50% 100%;animation:sp-esports-gg ${T} both}`,
+    '@keyframes sp-esports-pad{0%{opacity:0;transform:translateY(16px);animation-timing-function:cubic-bezier(.2,.8,.2,1)}16%{opacity:1;transform:translateY(-2px)}22%,100%{opacity:1;transform:none}}',
+    '@keyframes sp-esports-press{0%,24%{transform:none;animation-timing-function:ease-in}31%{transform:scale(.72);animation-timing-function:ease-out}40%,100%{transform:none}}',
+    '@keyframes sp-esports-lit{0%,29%{opacity:0}33%,100%{opacity:1}}',
+    '@keyframes sp-esports-ring{0%,31%{opacity:0;transform:scale(.8)}34%{opacity:.9}58%,100%{opacity:0;transform:scale(3.2)}}',
+    '@keyframes sp-esports-gg{0%,36%{opacity:0;transform:translateY(12px) scale(.5);animation-timing-function:cubic-bezier(.2,.8,.2,1)}' +
+      '52%{opacity:1;transform:translateY(-3px) scale(1.08)}62%,100%{opacity:1;transform:none}}',
+  ].join('\n'),
+};
+
+export const SCENES: Record<SceneId, Scene> = { generic, bowling, padel, tennis, pickleball, basketball, football, golf, swimming, table_tennis: tableTennis, esports };
 
 /** El SVG de una escena con sus id únicos (`prefix` distinto por cada copia en la página). */
 export function sceneSvg(id: SceneId, prefix: string): string {

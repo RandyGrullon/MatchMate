@@ -10,10 +10,12 @@
  *
  * Qué deportes se pueden CREAR no lo dice este archivo: lo dice la base (`sport_status`, ver status.ts).
  * Las reglas por defecto salen de los motores de cada familia (src/sports/racket, team, golf, swimming) y se
- * guardan en `leagues.rules` (jsonb) al crear la liga: tienen que ser JSON plano.
+ * guardan en `leagues.rules` (jsonb) al crear la liga: tienen que ser JSON plano. En esports solo dicen el juego
+ * (`{ game }`): el juego decide todo lo demás (src/sports/esports, docs/esports.md).
  */
-import { CircleDashed, CircleDot, Goal, Grid2x2, LandPlot, Waves, createLucideIcon, type LucideIcon } from 'lucide-react';
+import { CircleDashed, CircleDot, Gamepad2, Goal, Grid2x2, LandPlot, Waves, createLucideIcon, type LucideIcon } from 'lucide-react';
 import type { SceneId } from '../components/splash/scenes';
+import { isGameId } from './esports/catalog';
 import { DEFAULT_ALLOWANCE } from './golf/course';
 import { DEFAULT_MERIT_POINTS } from './golf/leaderboard';
 import { defaultRules as racketDefaultRules, validateRules as validateRacketRules, type RacketRules, type RacketSport } from './racket/rules';
@@ -55,7 +57,7 @@ export interface SportMeta {
   group: string;
   family: SportFamily;
   icon: LucideIcon;
-  /** Cómo se llama el lugar donde juegan: Bolera, Club, Cancha, Campo, Piscina. */
+  /** Cómo se llama el lugar donde juegan: Bolera, Club, Cancha, Campo, Piscina, Sede (esports). */
   venue: string;
   /** Ejemplo para el campo del lugar. */
   venueHint: string;
@@ -168,6 +170,12 @@ const validateSwimming = validator((r, e) => {
   if (!isPoints(r.points)) e.push('Faltan los puntos por puesto.');
   if (r.ageGroups !== undefined && r.ageGroups !== 'cccan' && r.ageGroups !== 'masters' && r.ageGroups !== 'none')
     e.push('Las categorías por edad no son válidas.');
+});
+
+/** Esports: `{ game }` y nada más (el juego decide la lógica; los ajustes van en cada torneo). */
+const validateEsports = validator((r, e) => {
+  if (!isGameId(r.game)) return 'Elige el juego.';
+  if (Object.keys(r).some((k) => k !== 'game')) e.push('Las reglas no son válidas.');
 });
 
 // ---------- Iconos ----------
@@ -460,6 +468,32 @@ export const SPORTS: Readonly<Record<SportId, SportMeta>> = {
     // Fucsia: ni el rojo de --danger ni el ámbar de --warn (registry.test.ts), lejos del morado de la marca y del rosa
     // del pickleball.
     color: '#b01cbd',
+  },
+  esports: {
+    id: 'esports',
+    name: 'Esports',
+    alias: 'Videojuegos',
+    modality: null,
+    label: 'Esports',
+    short: 'Esports',
+    lower: 'esports',
+    group: 'esports',
+    family: SPORT_FAMILY.esports,
+    icon: Gamepad2,
+    venue: 'Sede',
+    venueHint: 'Online, cibercafé o centro gamer',
+    units: { match: ['serie', 'series'], score: 'mapas', side: TEAM },
+    defaultRules: () => ({ game: 'valorant' }),
+    validateRules: validateEsports,
+    // Los formatos (eliminación, grupos, battle royale…) viven en cada torneo (esports_tournaments), no en el tipo.
+    eventTypes: [{ id: 'torneo', label: 'Torneo', plural: 'Torneos' }],
+    photos: false,
+    ready: true,
+    phase: 8,
+    scene: 'esports',
+    order: 11,
+    // Violeta: el color de los esports, lejos del morado de la marca, del azul del tenis y del fucsia del ping pong.
+    color: '#7c3aed',
   },
 };
 

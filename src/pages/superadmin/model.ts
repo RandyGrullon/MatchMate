@@ -18,6 +18,7 @@ import type { SportStatus } from '../../sports/status';
 import type { SportFamily } from '../../sports/types';
 import type { LeagueRole } from '../../lib/types';
 import { sportMeta } from '../../sports/registry';
+import { LINK_PROVIDER_NAME, gameMeta, type LinkProvider } from '../../sports/esports/catalog';
 import { fmtNum } from './format';
 
 // ---------- Cuentas ----------
@@ -81,6 +82,7 @@ export const FAMILY_LABEL: Record<SportFamily, string> = {
   series: 'Por marcas',
   racket: 'Raqueta, a sets',
   team: 'Equipos, por tiempos',
+  esports: 'Esports',
 };
 
 // ---------- Anuncios ----------
@@ -172,6 +174,8 @@ export const AUDIT_ACTIONS: readonly { key: string; label: string }[] = [
   { key: 'revoke_league_badge', label: 'Insignia de liga retirada' },
   { key: 'resolve_badge_reports', label: 'Reportes cerrados' },
   { key: 'blocked_terms', label: 'Palabras bloqueadas' },
+  // Esports: alguien entró con su cuenta de Steam, Epic o Riot y el ID pasó a su cuenta (esports_link_account).
+  { key: 'esports_id_login', label: 'ID de juego por cuenta conectada' },
 ];
 
 export function auditActionLabel(action: string): string {
@@ -187,6 +191,7 @@ export function auditTone(action: string): AuditTone {
   if (action === 'delete_league' || action === 'block_user' || action === 'delete_account' || action === 'revoke_badge') return 'danger';
   if (action === 'hide_league_badge' || action === 'revoke_league_badge' || action === 'badges_backfill') return 'warn';
   if (action === 'unblock_user') return 'ok';
+  if (action === 'esports_id_login') return 'warn';
   if (action === 'announce') return 'accent';
   if (action === 'set_sport_status' || action === 'transfer_league') return 'warn';
   return 'neutral';
@@ -250,6 +255,14 @@ export function auditSummary(e: Pick<AdminAuditEntry, 'action' | 'detail'> & { t
       const what = n != null && n > 1 ? `${fmtNum(n)} reportes` : 'un reporte';
       const note = str(d.note);
       return `${verb} ${what}${note ? `: «${note.length > 80 ? `${note.slice(0, 79)}…` : note}»` : ''}`;
+    }
+    case 'esports_id_login': {
+      // 20261008000100_esports.sql (esports_link_account): {game, idDisplay, by, provider}.
+      const id = str(d.idDisplay);
+      const game = gameMeta(str(d.game))?.name;
+      const provider = str(d.provider);
+      const via = provider ? ` que entró con ${LINK_PROVIDER_NAME[provider as LinkProvider] ?? provider}` : '';
+      return `${id ? `El ID ${id}` : 'Un ID de juego'}${game ? ` de ${game}` : ''} pasó a otra cuenta${via}`;
     }
     default:
       return auditActionLabel(e.action);
