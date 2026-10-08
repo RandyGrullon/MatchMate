@@ -1,14 +1,13 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
-import { Ban, ChevronRight, Copy, Crown, LockOpen, ShieldCheck, ShieldOff } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Ban, Copy, Crown, LockOpen, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Avatar } from '../../components/Avatar';
-import { useBusy } from '../../components/busy';
+import { BusyIcon, useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
-import { Badge, Button, Empty, Field, Modal, Skeleton } from '../../components/ui';
+import { Badge, Button, Card, Field, ListRow, Modal, RowIcon, Skeleton } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { blockUser, setUserSuperadmin, unblockUser, useAdminUser, type AdminUser } from '../../lib/data/admin';
 import { SportIcon } from '../sports/SportBits';
-import { Counter, Drawer, ErrorRetry, Fact, TextArea } from './bits';
+import { Counter, Drawer, EmptyState, ErrorRetry, Fact, GroupTitle, TextArea, ToneIcon } from './bits';
 import { fmtDate, fmtDateTime, fmtNum, relativeTime } from './format';
 import { copyText, useRun } from './hooks';
 import { BLOCK_REASON_MAX, ROLE_LABEL, canBlock, providerLabel, userFlags } from './model';
@@ -107,10 +106,10 @@ export function BlockModal({ user, onClose }: { user: Pick<AdminUser, 'id' | 'na
       title={user ? `Bloquear a ${user.name}` : 'Bloquear'}
       footer={
         <>
-          <Button onClick={close} className="max-sm:min-h-11">
+          <Button variant="quiet" size="lg" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="danger" icon={<Ban className="size-4" />} disabled={!valid} loading={busy} onClick={submit} className="max-sm:min-h-11">
+          <Button variant="danger" size="lg" icon={<Ban className="size-[18px]" />} disabled={!valid} loading={busy} onClick={submit}>
             Bloquear
           </Button>
         </>
@@ -123,11 +122,16 @@ export function BlockModal({ user, onClose }: { user: Pick<AdminUser, 'id' | 'na
           void submit();
         }}
       >
-        <p className="text-sm text-muted">
-          No podrá guardar nada (anotar, enviar juegos, crear ligas, subir o borrar fotos) hasta que la desbloquees. Puede seguir viendo sus
-          ligas y no se borra nada. El motivo queda en la auditoría y la persona lo puede ver en su cuenta.
-        </p>
-        <Field label="Motivo (obligatorio)" hint={<Counter value={reason} max={BLOCK_REASON_MAX} />}>
+        <p className="text-[15px] text-fg-2">No podrá anotar ni guardar nada hasta que la desbloquees. Sigue viendo sus ligas y no se borra nada.</p>
+        <Field
+          label="Motivo (obligatorio)"
+          hint={
+            <span className="flex justify-between gap-3">
+              <span>Lo ve en su cuenta y queda en la auditoría.</span>
+              <Counter value={reason} max={BLOCK_REASON_MAX} />
+            </span>
+          }
+        >
           <TextArea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={BLOCK_REASON_MAX + 20} required placeholder="Ej.: anotaciones falsas en varias ligas" />
         </Field>
       </form>
@@ -145,87 +149,95 @@ export function UserDrawer({ id, onClose }: { id: string | null; onClose: () => 
   // Mientras una acción espera, las demás se apagan (son sobre la misma cuenta).
   const waiting = busy.isBusy();
 
-  return (
-    <>
-      <Drawer
-        open={id != null}
-        onClose={onClose}
-        title={u?.name ?? 'Cuenta'}
-        footer={
-          u && (
-            <>
-              {u.email && (
-                <Button icon={<Copy className="size-4" />} loading={busy.isBusy('copy')} disabled={waiting} onClick={() => copyEmail(u.email)} className="max-sm:min-h-11">
-                  Copiar correo
-                </Button>
-              )}
-              <Button
-                icon={u.superadmin ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
-                onClick={() => toggleSuper(u)}
-                loading={busy.isBusy(`super:${u.id}`)}
-                disabled={u.id === me || waiting}
-                title={u.id === me ? 'No te puedes quitar superadmin a ti mismo' : undefined}
-                className="max-sm:min-h-11"
-              >
-                {u.superadmin ? 'Quitar superadmin' : 'Hacer superadmin'}
-              </Button>
-              {flags?.blocked ? (
-                <Button variant="primary" icon={<LockOpen className="size-4" />} loading={busy.isBusy(`unblock:${u.id}`)} disabled={waiting} onClick={() => unblock(u)} className="max-sm:min-h-11">
-                  Desbloquear
-                </Button>
-              ) : (
-                <Button
-                  variant="danger"
-                  icon={<Ban className="size-4" />}
-                  onClick={() => setBlocking(u)}
-                  disabled={!canBlock(u, me) || waiting}
-                  title={!canBlock(u, me) ? 'No se puede bloquear a un superadmin ni a ti mismo' : undefined}
-                  className="max-sm:min-h-11"
-                >
-                  Bloquear
-                </Button>
-              )}
-            </>
+  // Una acción como fila: con su ruedita mientras espera; sin poder tocarse mientras otra espera o si no se puede.
+  const action = (key: string, icon: ReactNode, title: string, opts: { onClick: () => void; busyKey: string; why?: string | null; danger?: boolean }) => {
+    const spinning = busy.isBusy(opts.busyKey);
+    const blocked = !!opts.why;
+    return (
+      <ListRow
+        key={key}
+        dense
+        leading={
+          opts.danger && !blocked ? (
+            <ToneIcon tone="danger">
+              <BusyIcon busy={spinning} icon={icon} className="size-5" />
+            </ToneIcon>
+          ) : (
+            <RowIcon>
+              <BusyIcon busy={spinning} icon={icon} className="size-5" />
+            </RowIcon>
           )
         }
-      >
+        title={<span className={blocked ? 'text-muted' : opts.danger ? 'text-danger' : undefined}>{title}</span>}
+        subtitle={opts.why ?? undefined}
+        onClick={blocked || waiting ? undefined : opts.onClick}
+        chevron={false}
+      />
+    );
+  };
+
+  return (
+    <>
+      <Drawer open={id != null} onClose={onClose} title="Cuenta" label={u ? `Cuenta de ${u.name}` : 'Cuenta'}>
         {detail.error && !u ? (
           <ErrorRetry error={detail.error} compact />
         ) : detail.loading && !u ? (
           <div className="flex flex-col gap-4" aria-busy="true">
-            <div className="flex items-center gap-3">
-              <Skeleton className="size-12 rounded-full" />
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-14 rounded-full" />
               <div className="flex flex-1 flex-col gap-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-56" />
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-3.5 w-56" />
               </div>
             </div>
-            <Skeleton className="h-28" />
-            <Skeleton className="h-40" />
+            <Skeleton className="h-36 rounded-3xl" />
+            <Skeleton className="h-48 rounded-3xl" />
           </div>
         ) : !u ? (
-          <Empty title="Esta cuenta ya no existe">Puede que la hayan borrado.</Empty>
+          <EmptyState title="Esta cuenta ya no existe">Puede que la hayan borrado.</EmptyState>
         ) : (
-          <div className="flex flex-col gap-5">
-            <div className="flex items-center gap-3">
-              <Avatar name={u.name} className="size-12 text-base" />
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center gap-4">
+              <Avatar name={u.name} className="size-14 text-lg" />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold">{u.name}</p>
-                <p className="truncate text-sm text-muted">{u.email ?? 'Sin correo'}</p>
-                <div className="mt-1">
+                <p className="truncate text-card-title-pro">{u.name}</p>
+                <p className="mt-0.5 truncate text-meta text-muted">{u.email ?? 'Sin correo'}</p>
+                <div className="mt-1.5">
                   <UserBadges u={u} me={me} />
                 </div>
               </div>
             </div>
 
             {u.blockedAt && (
-              <div role="status" className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5 text-sm">
+              <div role="status" className="rounded-2xl bg-danger-soft px-4 py-3 text-sm">
                 <p className="font-semibold text-danger">Bloqueada {relativeTime(u.blockedAt)}</p>
-                <p className="text-muted">{u.blockedReason ? `Motivo: ${u.blockedReason}` : 'Sin motivo anotado.'}</p>
+                <p className="text-fg-2">{u.blockedReason ? `Motivo: ${u.blockedReason}` : 'Sin motivo anotado.'}</p>
               </div>
             )}
 
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-line p-3">
+            <section aria-labelledby="mm-user-actions">
+              <GroupTitle id="mm-user-actions">Acciones</GroupTitle>
+              <Card className="overflow-hidden">
+                {u.email && action('copy', <Copy className="size-5" />, 'Copiar correo', { onClick: () => copyEmail(u.email), busyKey: 'copy' })}
+                {action('super', u.superadmin ? <ShieldOff className="size-5" /> : <ShieldCheck className="size-5" />, u.superadmin ? 'Quitar superadmin' : 'Hacer superadmin', {
+                  onClick: () => toggleSuper(u),
+                  busyKey: `super:${u.id}`,
+                  why: u.id === me ? 'No te lo puedes quitar a ti mismo' : null,
+                })}
+                {flags?.blocked
+                  ? action('unblock', <LockOpen className="size-5" />, 'Desbloquear', { onClick: () => unblock(u), busyKey: `unblock:${u.id}` })
+                  : action('block', <Ban className="size-5" />, 'Bloquear', {
+                      onClick: () => setBlocking(u),
+                      busyKey: 'block',
+                      danger: true,
+                      why: canBlock(u, me) ? null : 'No se puede bloquear a un superadmin',
+                    })}
+              </Card>
+            </section>
+
+            <section aria-labelledby="mm-user-facts">
+            <GroupTitle id="mm-user-facts">Datos</GroupTitle>
+            <dl className="card-shadow grid grid-cols-2 gap-x-4 gap-y-4 rounded-3xl bg-surface px-5 py-[18px]">
               <Fact label="Alta">
                 <span title={fmtDateTime(u.createdAt)}>{fmtDate(u.createdAt)}</span>
               </Fact>
@@ -243,37 +255,35 @@ export function UserDrawer({ id, onClose }: { id: string | null; onClose: () => 
               <Fact label="Ligas">{fmtNum(u.leagues)}</Fact>
               <Fact label="Dueño de">{fmtNum(u.ownedLeagues)}</Fact>
             </dl>
+            </section>
 
-            <section aria-labelledby="mm-user-leagues" className="flex flex-col gap-2">
-              <h3 id="mm-user-leagues" className="text-sm font-semibold">
-                Sus ligas y torneos ({fmtNum(u.memberships.length)})
-              </h3>
+            <section aria-labelledby="mm-user-leagues">
+              <GroupTitle id="mm-user-leagues">Sus ligas y torneos ({fmtNum(u.memberships.length)})</GroupTitle>
               {u.memberships.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-muted">No es miembro de ninguna liga.</p>
+                <Card className="px-5 py-4 text-center text-sm text-muted">No es miembro de ninguna liga.</Card>
               ) : (
-                <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+                <Card className="overflow-hidden">
                   {u.memberships.map((m) => (
-                    <li key={m.leagueId}>
-                      <Link to={`/l/${m.leagueId}`} className="flex min-h-11 items-center gap-3 px-3 py-2 transition hover:bg-surface-2">
-                        <SportIcon sport={m.sport} className="size-4 shrink-0 text-muted" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{m.leagueName}</span>
-                          <span className="block text-xs text-muted">
-                            {m.kind === 'torneo' ? 'Torneo' : 'Liga'}
-                            {m.joinedAt ? ` · desde ${fmtDate(m.joinedAt)}` : ''}
-                          </span>
-                        </span>
-                        <Badge tone={m.role === 'owner' ? 'accent' : m.role === 'admin' ? 'warn' : 'neutral'}>{ROLE_LABEL[m.role]}</Badge>
-                        {m.scorer && <Badge tone="neutral">Anotador</Badge>}
-                        <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
-                      </Link>
-                    </li>
+                    <ListRow
+                      key={m.leagueId}
+                      dense
+                      leading={
+                        <RowIcon tone={m.role === 'owner' ? 'accent' : 'neutral'}>
+                          <SportIcon sport={m.sport} className="size-5" />
+                        </RowIcon>
+                      }
+                      title={m.leagueName}
+                      subtitle={[m.kind === 'torneo' ? 'Torneo' : 'Liga', ROLE_LABEL[m.role], m.scorer ? 'Anotador' : null, m.joinedAt ? `desde ${fmtDate(m.joinedAt)}` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      to={`/l/${m.leagueId}`}
+                    />
                   ))}
-                </ul>
+                </Card>
               )}
             </section>
 
-            <p className="text-xs break-all text-muted">
+            <p className="mx-1 text-xs break-all text-muted">
               Id: <span className="font-mono">{u.id}</span>
             </p>
           </div>

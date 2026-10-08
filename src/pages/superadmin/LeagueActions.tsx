@@ -6,7 +6,7 @@ import { Button, Field, Input, ListSkeleton, Modal, cx } from '../../components/
 import { useLeagueMembers } from '../../lib/data';
 import { adminDeleteLeague, transferLeague, type AdminLeague } from '../../lib/data/admin';
 import { ErrorRetry } from './bits';
-import { fmtNum } from './format';
+import { fmtNum, plural } from './format';
 import { useRun } from './hooks';
 import { ROLE_LABEL } from './model';
 
@@ -40,48 +40,45 @@ export function TransferLeagueModal({ league, onClose }: { league: LeagueRef | n
       title={league ? `Pasar «${league.name}» a otro dueño` : 'Pasar a otro dueño'}
       footer={
         <>
-          <Button onClick={close} className="max-sm:min-h-11">
+          <Button variant="quiet" size="lg" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="primary" icon={<ArrowRightLeft className="size-4" />} disabled={!chosen} loading={busy} onClick={submit} className="max-sm:min-h-11">
+          <Button variant="primary" size="lg" icon={<ArrowRightLeft className="size-[18px]" />} disabled={!chosen} loading={busy} onClick={submit} className="max-w-full">
             {chosen ? `Pasar a ${chosen.name}` : 'Pasar'}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">
-          Hoy es de <span className="font-medium text-fg">{league?.ownerName}</span>, que queda de admin. Elige quién será el nuevo dueño de {what} (tiene que ser
-          miembro).
+        <p className="text-[15px] text-fg-2">
+          Hoy es de <span className="font-semibold text-fg">{league?.ownerName}</span>, que queda de admin. Elige al nuevo dueño de {what}:
         </p>
         {members.error && !members.data.length ? (
           <ErrorRetry error={members.error} compact />
         ) : members.loading && !members.data.length ? (
           <ListSkeleton rows={3} />
         ) : !candidates.length ? (
-          <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-muted">
-            No hay otros miembros. Primero alguien tiene que unirse con el código de invitación.
-          </p>
+          <p className="rounded-2xl bg-surface-2 px-4 py-6 text-center text-sm text-muted">No hay otros miembros. Primero alguien se tiene que unir con el código.</p>
         ) : (
-          <fieldset className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+          <fieldset className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
             <legend className="sr-only">Nuevo dueño</legend>
             {candidates.map((m) => (
               <label
                 key={m.uid}
                 className={cx(
-                  'flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition',
-                  choice === m.uid ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
+                  'flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 transition has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-accent',
+                  choice === m.uid ? 'bg-accent-soft shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'bg-surface-2 hover:brightness-95',
                 )}
               >
-                <input type="radio" name="mm-new-owner" value={m.uid} checked={choice === m.uid} onChange={() => setChoice(m.uid)} className="size-4 accent-[var(--accent)]" />
-                <Avatar name={m.name} className="size-8 text-xs" />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.name}</span>
-                <span className="text-xs text-muted">{ROLE_LABEL[m.role]}</span>
+                <input type="radio" name="mm-new-owner" value={m.uid} checked={choice === m.uid} onChange={() => setChoice(m.uid)} className="size-[18px] shrink-0 accent-[var(--accent)]" />
+                <Avatar name={m.name} className="size-9 text-xs" />
+                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{m.name}</span>
+                <span className="text-[13px] text-muted">{ROLE_LABEL[m.role]}</span>
               </label>
             ))}
           </fieldset>
         )}
-        {candidates.length > 0 && <p className="text-xs text-muted">{fmtNum(candidates.length)} miembros para elegir.</p>}
+        {candidates.length > 0 && <p className="text-[13px] text-muted">{fmtNum(candidates.length)} miembros para elegir.</p>}
       </div>
     </Modal>
   );
@@ -112,10 +109,10 @@ export function DeleteLeagueModal({ league, onClose }: { league: Pick<AdminLeagu
       title={league ? `Borrar «${league.name}»` : 'Borrar'}
       footer={
         <>
-          <Button onClick={close} className="max-sm:min-h-11">
+          <Button variant="quiet" size="lg" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="danger" icon={<Trash2 className="size-4" />} disabled={!matches} loading={busy.isBusy()} onClick={submit} className="max-sm:min-h-11">
+          <Button variant="danger" size="lg" icon={<Trash2 className="size-[18px]" />} disabled={!matches} loading={busy.isBusy()} onClick={submit}>
             Borrar para siempre
           </Button>
         </>
@@ -128,11 +125,11 @@ export function DeleteLeagueModal({ league, onClose }: { league: Pick<AdminLeagu
           void submit();
         }}
       >
-        <div className="rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5 text-sm">
+        <div className="rounded-2xl bg-danger-soft px-4 py-3 text-sm">
           <p className="font-semibold text-danger">Esto no se puede deshacer.</p>
-          <p className="text-muted">
-            Se borra {what} con sus {fmtNum(league?.events ?? 0)} eventos, jugadores, juegos, partidos y fotos. {fmtNum(league?.members ?? 0)} miembros dejan de verla.
-            Si hace falta, baja antes un respaldo desde Sistema.
+          <p className="mt-0.5 text-fg-2">
+            Se borra {what} con {plural(league?.events ?? 0, 'evento', 'eventos')}, juegos y fotos; {plural(league?.members ?? 0, 'miembro deja', 'miembros dejan')} de
+            verla. Antes puedes bajar un respaldo en Sistema.
           </p>
         </div>
         <Field label={`Escribe «${league?.name ?? ''}» para confirmar`}>

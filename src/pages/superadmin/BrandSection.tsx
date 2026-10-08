@@ -9,19 +9,18 @@ export default function BrandSection() {
   return (
     <>
       <SectionHeader title="Marca" hint={sectionMeta('logo').hint} />
-      <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <Palette className="size-6" aria-hidden="true" />
+      <Card className="flex flex-col gap-4 px-5 pt-[22px] pb-5 sm:max-w-xl">
+        <span aria-hidden="true" className="grid size-[52px] place-items-center rounded-2xl bg-accent-soft text-accent">
+          <Palette className="size-[26px]" />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">Logo y animaciones de apertura</p>
-          <p className="text-sm text-muted">Mira el logo y la animación de cada deporte en claro y en oscuro, como la ve la gente al abrir la app.</p>
+        <div>
+          <h2 className="text-card-title-pro">Logo y animaciones de apertura</h2>
+          <p className="mt-1.5 text-[15.5px] leading-[1.45] text-fg-2">Cada deporte, en claro y en oscuro, como lo ve la gente al abrir la app.</p>
         </div>
         <Link
           to="/superadmin/marca"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:h-10"
+          className="inline-flex h-btn-pro items-center justify-center gap-2 rounded-[15px] bg-accent px-5 text-base font-semibold text-accent-fg transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:self-start"
         >
-          <Palette className="size-4" aria-hidden="true" />
           Abrir la marca
         </Link>
       </Card>

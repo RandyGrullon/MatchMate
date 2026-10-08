@@ -72,15 +72,15 @@ export const BLOCK_REASON_MAX = MAX_BLOCK_REASON;
 // ---------- Deportes ----------
 
 export const SPORT_STATUS_HELP: Record<SportStatus, string> = {
-  open: 'Cualquiera puede crear ligas y torneos de este deporte.',
-  beta: 'En prueba: solo tú (superadmin) puedes crear; los demás no lo ven al crear.',
-  closed: 'Nadie puede crear nuevas. Las ligas que ya existen siguen igual.',
+  open: 'Cualquiera puede crear ligas y torneos.',
+  beta: 'En prueba: solo un superadmin puede crear.',
+  closed: 'Nadie puede crear nuevas; las de antes siguen.',
 };
 
 export const FAMILY_LABEL: Record<SportFamily, string> = {
-  series: 'Por marcas (cada quien anota su número)',
-  racket: 'Raqueta (partidos a sets)',
-  team: 'Equipos (partidos por tiempos)',
+  series: 'Por marcas',
+  racket: 'Raqueta, a sets',
+  team: 'Equipos, por tiempos',
 };
 
 // ---------- Anuncios ----------

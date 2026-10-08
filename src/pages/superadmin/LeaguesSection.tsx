@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowRightLeft, Baby, Download, ExternalLink, Globe, Lock, Trash2, Trophy } from 'lucide-react';
-import { Badge, Button, Card, Empty, Select } from '../../components/ui';
+import { ArrowDownUp, ArrowRightLeft, Download, ExternalLink, Globe, MoreHorizontal, Trash2, Trophy, UserRound } from 'lucide-react';
+import { Card, ListRow, RowIcon, Sheet } from '../../components/ui';
 import { useAdminLeagues, type AdminLeague, type AdminLeagueSort } from '../../lib/data/admin';
 import type { LeagueKind, Visibility } from '../../lib/types';
-import { SPORT_IDS, isSportId } from '../../sports/registry';
-import { SportBadge, SportChips } from '../sports/SportBits';
-import { ErrorRetry, Pager, SearchBox, SectionHeader, Segmented, TableSkeleton } from './bits';
+import { SPORT_IDS, isSportId, sportMeta } from '../../sports/registry';
+import { SportIcon } from '../sports/SportBits';
+import { EmptyCard, ErrorRetry, FilterChips, MenuList, Pager, Pill, PillSelect, RoundButton, SearchBox, SectionHeader, Segmented, TD, TH, TableSkeleton, type MenuItem } from './bits';
 import { LEAGUE_CSV_COLUMNS, csvFileName, downloadText, toCsv } from './csv';
-import { fmtDate, fmtDateTime, fmtNum, relativeTime } from './format';
+import { fmtDate, fmtDateTime, fmtNum, plural, relativeTime } from './format';
 import { PAGE_SIZES, intParam, useSearchState, useSearchText } from './hooks';
 import { DeleteLeagueModal, TransferLeagueModal } from './LeagueActions';
 import { sectionMeta } from './sections';
@@ -24,30 +24,38 @@ const isSort = (v: string): v is AdminLeagueSort => LEAGUE_SORTS.some((x) => x.k
 type KindFilter = 'all' | LeagueKind;
 type VisFilter = 'all' | Visibility;
 
-function LeagueBadges({ l }: { l: AdminLeague }) {
+/** Lo que se dice de una liga en su fila: deporte, torneo, privada y con menores (en ámbar: hay que cuidarla). */
+function LeagueTags({ l }: { l: AdminLeague }) {
+  const parts = [sportMeta(l.sport)?.short ?? 'Otro deporte', l.kind === 'torneo' ? 'Torneo' : null, l.visibility === 'private' ? 'Privada' : 'Pública'].filter(Boolean);
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      {l.kind === 'torneo' && <Badge tone="accent">Torneo</Badge>}
-      {l.visibility === 'private' ? (
-        <Badge tone="neutral">
-          <Lock className="size-3" aria-hidden="true" />
-          Privada
-        </Badge>
-      ) : (
-        <Badge tone="neutral">
-          <Globe className="size-3" aria-hidden="true" />
-          Pública
-        </Badge>
-      )}
+    <>
+      {parts.join(' · ')}
       {l.hasMinors && (
-        <Badge tone="warn">
-          <Baby className="size-3" aria-hidden="true" />
-          Con menores
-        </Badge>
+        <>
+          {' · '}
+          <span className="font-semibold text-warn">Con menores</span>
+        </>
       )}
-    </span>
+    </>
   );
 }
+
+/** El menú «•••» de una liga: abrirla, ver a su dueño, pasarla a otro dueño y (al final, en rojo) borrarla. */
+export function leagueMenuItems(l: Pick<AdminLeague, 'id' | 'ownerId' | 'ownerName' | 'kind'>, on: { move: () => void; remove: () => void }): MenuItem[] {
+  const what = l.kind === 'torneo' ? 'el torneo' : 'la liga';
+  return [
+    { key: 'abrir', icon: ExternalLink, label: `Abrir ${what}`, to: `/l/${l.id}` },
+    { key: 'dueno', icon: UserRound, label: 'Ver al dueño', hint: l.ownerName, to: `/superadmin/cuentas?u=${encodeURIComponent(l.ownerId)}` },
+    { key: 'pasar', icon: ArrowRightLeft, label: 'Pasar a otro dueño', hint: `${l.ownerName} queda de admin`, onClick: on.move },
+    { key: 'borrar', icon: Trash2, label: `Borrar ${what}`, onClick: on.remove, danger: true },
+  ];
+}
+
+const VIS_OPTIONS: readonly { key: VisFilter; label: string; short: string }[] = [
+  { key: 'all', label: 'Públicas y privadas', short: 'Todas' },
+  { key: 'public', label: 'Solo públicas', short: 'Públicas' },
+  { key: 'private', label: 'Solo privadas', short: 'Privadas' },
+];
 
 /** Ligas y torneos de todos: buscar, filtrar, ordenar, abrir, pasar a otro dueño y borrar. */
 export default function LeaguesSection() {
@@ -75,43 +83,16 @@ export default function LeaguesSection() {
     pageSize,
   });
   const { rows, total } = leagues.data;
+  const [menu, setMenu] = useState<AdminLeague | null>(null);
   const [moving, setMoving] = useState<AdminLeague | null>(null);
   const [deleting, setDeleting] = useState<AdminLeague | null>(null);
   const filtered = !!(search || sport || kind !== 'all' || visibility !== 'all');
 
-  const actions = (l: AdminLeague, big = false) => {
-    const cls = big ? 'size-11' : '';
-    return (
-      <div className="flex items-center justify-end gap-1">
-        <Link
-          to={`/l/${l.id}`}
-          aria-label={`Abrir ${l.name}`}
-          title="Abrir"
-          className={`inline-flex items-center justify-center rounded-xl text-fg transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent ${big ? 'size-11' : 'size-8'}`}
-        >
-          <ExternalLink className="size-4" />
-        </Link>
-        <Button
-          size={big ? 'md' : 'sm'}
-          variant="ghost"
-          icon={<ArrowRightLeft className="size-4" />}
-          aria-label={`Pasar ${l.name} a otro dueño`}
-          title="Pasar a otro dueño"
-          onClick={() => setMoving(l)}
-          className={cls}
-        />
-        <Button
-          size={big ? 'md' : 'sm'}
-          variant="ghost"
-          icon={<Trash2 className="size-4 text-danger" />}
-          aria-label={`Borrar ${l.name}`}
-          title="Borrar"
-          onClick={() => setDeleting(l)}
-          className={cls}
-        />
-      </div>
-    );
-  };
+  const more = (l: AdminLeague) => (
+    <RoundButton label={`Más opciones de ${l.name}`} onClick={() => setMenu(l)} popup>
+      <MoreHorizontal aria-hidden="true" strokeWidth={2.4} className="size-5" />
+    </RoundButton>
+  );
 
   return (
     <>
@@ -119,34 +100,29 @@ export default function LeaguesSection() {
         title="Ligas y torneos"
         hint={sectionMeta('ligas').hint}
         actions={
-          <Button
+          <Pill
             icon={<Download className="size-4" />}
             disabled={!rows.length}
             onClick={() => downloadText(csvFileName('ligas'), toCsv(rows, LEAGUE_CSV_COLUMNS))}
-            title="Baja en CSV las ligas de esta página"
-            className="max-sm:min-h-11"
+            label="Bajar en CSV las ligas de esta página"
           >
-            Bajar CSV
-          </Button>
+            CSV
+          </Pill>
         }
       />
 
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <SearchBox label="Buscar ligas por nombre o dueño" placeholder="Buscar por nombre o dueño" value={text} onChange={setText} />
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <span className="shrink-0">Ordenar</span>
-            <Select value={sort} onChange={(e) => s.patch({ orden: e.target.value === 'activity' ? null : e.target.value, p: null })} className="max-sm:h-11 sm:w-44">
-              {LEAGUE_SORTS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-          </label>
-        </div>
-        <SportChips sports={SPORT_IDS} value={sport} onChange={(v) => s.patch({ dep: v, p: null })} />
-        <div className="flex flex-wrap gap-2">
+        <SearchBox label="Buscar ligas por nombre o dueño" placeholder="Buscar por nombre o dueño" value={text} onChange={setText} />
+        <FilterChips
+          label="Filtrar por deporte"
+          items={[
+            { key: 'todos', label: 'Todos' },
+            ...SPORT_IDS.map((id) => ({ key: id as string, label: sportMeta(id)?.short ?? id, icon: <SportIcon sport={id} className="size-[18px]" /> })),
+          ]}
+          value={sport ?? 'todos'}
+          onChange={(v) => s.patch({ dep: v === 'todos' || v === sport ? null : v, p: null })}
+        />
+        <div className="flex flex-wrap items-center gap-2">
           <Segmented
             label="Tipo"
             options={[
@@ -157,16 +133,22 @@ export default function LeaguesSection() {
             value={kind}
             onChange={(v) => s.patch({ tipo: v === 'all' ? null : v, p: null })}
           />
-          <Segmented
-            label="Visibilidad"
-            options={[
-              { value: 'all', label: 'Todas' },
-              { value: 'public', label: 'Públicas' },
-              { value: 'private', label: 'Privadas' },
-            ]}
-            value={visibility}
-            onChange={(v) => s.patch({ vis: v === 'all' ? null : v, p: null })}
-          />
+          <span className="flex flex-wrap items-center gap-2">
+            <PillSelect
+              label="Visibilidad"
+              icon={<Globe aria-hidden="true" className="size-4 shrink-0" />}
+              options={VIS_OPTIONS}
+              value={visibility}
+              onChange={(v) => s.patch({ vis: v === 'all' ? null : v, p: null })}
+            />
+            <PillSelect
+              label="Ordenar"
+              icon={<ArrowDownUp aria-hidden="true" className="size-4 shrink-0" />}
+              options={LEAGUE_SORTS}
+              value={sort}
+              onChange={(v) => s.patch({ orden: v === 'activity' ? null : v, p: null })}
+            />
+          </span>
         </div>
       </div>
 
@@ -175,34 +157,34 @@ export default function LeaguesSection() {
       ) : leagues.loading && !rows.length ? (
         <TableSkeleton rows={8} cols={6} />
       ) : !rows.length ? (
-        <Empty icon={<Trophy className="size-8" />} title={filtered ? 'No hay ligas con estos filtros' : 'Todavía no hay ligas'}>
+        <EmptyCard icon={<Trophy className="size-8" />} title={filtered ? 'No hay ligas con estos filtros' : 'Todavía no hay ligas'}>
           {filtered ? 'Prueba con otra búsqueda o quita los filtros.' : 'Cuando alguien cree una liga o un torneo, sale aquí.'}
-        </Empty>
+        </EmptyCard>
       ) : (
-        <Card className={leagues.loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          <table className="hidden w-full text-sm lg:table">
+        <Card className={leagues.loading ? 'overflow-hidden opacity-60 transition-opacity' : 'overflow-hidden transition-opacity'}>
+          <table className="hidden w-full text-[15px] lg:table">
             <caption className="sr-only">Ligas y torneos, página {page + 1}</caption>
-            <thead className="border-b border-line text-left text-xs text-muted">
+            <thead className="border-b border-line text-left">
               <tr>
-                <th scope="col" className="px-4 py-2.5 font-medium">
+                <th scope="col" className={`${TH} w-[32%] pl-5`}>
                   Liga
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
+                <th scope="col" className={`${TH} w-[22%]`}>
                   Dueño
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th scope="col" className={`${TH} text-right`}>
                   Miembros
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th scope="col" className={`${TH} text-right`}>
                   Jugadores
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th scope="col" className={`${TH} text-right`}>
                   Eventos
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
+                <th scope="col" className={TH}>
                   Actividad
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th scope="col" className="w-14 pr-4">
                   <span className="sr-only">Acciones</span>
                 </th>
               </tr>
@@ -210,66 +192,62 @@ export default function LeaguesSection() {
             <tbody className="divide-y divide-line">
               {rows.map((l) => (
                 <tr key={l.id} className="transition hover:bg-surface-2/60">
-                  <td className="max-w-0 px-4 py-2.5">
-                    <Link to={`/l/${l.id}`} className="block truncate font-medium hover:underline">
+                  <td className={`${TD} max-w-0 pl-5`}>
+                    <Link to={`/l/${l.id}`} className="block truncate font-semibold hover:underline">
                       {l.name}
                     </Link>
-                    <span className="mt-1 flex flex-wrap items-center gap-1">
-                      <SportBadge sport={l.sport} />
-                      <LeagueBadges l={l} />
+                    <span className="mt-0.5 block truncate text-[13px] text-muted">
+                      <LeagueTags l={l} />
                     </span>
                   </td>
-                  <td className="max-w-0 px-3 py-2.5">
+                  <td className={`${TD} max-w-0`}>
                     <Link to={`/superadmin/cuentas?u=${encodeURIComponent(l.ownerId)}`} className="block truncate hover:underline">
                       {l.ownerName}
                     </Link>
-                    <span className="block truncate text-xs text-muted">{l.ownerEmail ?? ''}</span>
+                    <span className="block truncate text-[13px] text-muted">{l.ownerEmail ?? ''}</span>
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtNum(l.members)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtNum(l.players)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{fmtNum(l.events)}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
+                  <td className={`${TD} num text-right font-semibold`}>{fmtNum(l.members)}</td>
+                  <td className={`${TD} num text-right`}>{fmtNum(l.players)}</td>
+                  <td className={`${TD} num text-right`}>{fmtNum(l.events)}</td>
+                  <td className={`${TD} whitespace-nowrap`}>
                     <span title={fmtDateTime(l.lastActivityAt)}>{relativeTime(l.lastActivityAt)}</span>
-                    <span className="block text-xs text-muted" title={fmtDateTime(l.createdAt)}>
+                    <span className="block text-[13px] text-muted" title={fmtDateTime(l.createdAt)}>
                       creada {fmtDate(l.createdAt)}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5">{actions(l)}</td>
+                  <td className="pr-4 text-right">{more(l)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <ul className="divide-y divide-line lg:hidden">
+          {/* Teléfono y tableta: filas (la fila abre la liga; «•••», lo demás). */}
+          <div className="lg:hidden">
             {rows.map((l) => (
-              <li key={l.id} className="flex flex-col gap-2 px-4 py-3">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <Link to={`/l/${l.id}`} className="block truncate font-medium hover:underline">
-                      {l.name}
-                    </Link>
-                    <span className="mt-1 flex flex-wrap items-center gap-1">
-                      <SportBadge sport={l.sport} />
-                      <LeagueBadges l={l} />
+              <ListRow
+                key={l.id}
+                dense
+                leading={
+                  <RowIcon>
+                    <SportIcon sport={l.sport} className="size-5" />
+                  </RowIcon>
+                }
+                title={l.name}
+                subtitle={
+                  <>
+                    <span className="block truncate">
+                      <LeagueTags l={l} />
                     </span>
-                  </div>
-                </div>
-                <p className="text-xs text-muted">
-                  De{' '}
-                  <Link to={`/superadmin/cuentas?u=${encodeURIComponent(l.ownerId)}`} className="font-medium text-fg hover:underline">
-                    {l.ownerName}
-                  </Link>{' '}
-                  · {fmtNum(l.members)} miembros · {fmtNum(l.players)} jugadores · {fmtNum(l.events)} eventos
-                </p>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted" title={fmtDateTime(l.lastActivityAt)}>
-                    Actividad {relativeTime(l.lastActivityAt)}
-                  </span>
-                  {actions(l, true)}
-                </div>
-              </li>
+                    <span className="block truncate">
+                      {l.ownerName} · {plural(l.members, 'miembro', 'miembros')} · {relativeTime(l.lastActivityAt)}
+                    </span>
+                  </>
+                }
+                to={`/l/${l.id}`}
+                trailing={more(l)}
+              />
             ))}
-          </ul>
+          </div>
         </Card>
       )}
 
@@ -284,6 +262,14 @@ export default function LeaguesSection() {
         />
       )}
 
+      <Sheet
+        open={menu != null}
+        onClose={() => setMenu(null)}
+        title={menu?.name ?? 'Liga'}
+        subtitle={menu ? `${plural(menu.members, 'miembro', 'miembros')} · ${plural(menu.events, 'evento', 'eventos')}` : undefined}
+      >
+        {menu && <MenuList items={leagueMenuItems(menu, { move: () => setMoving(menu), remove: () => setDeleting(menu) })} onPick={() => setMenu(null)} />}
+      </Sheet>
       <TransferLeagueModal league={moving} onClose={() => setMoving(null)} />
       <DeleteLeagueModal league={deleting} onClose={() => setDeleting(null)} />
     </>

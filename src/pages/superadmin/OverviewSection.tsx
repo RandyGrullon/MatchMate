@@ -1,33 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import {
-  Activity,
-  CalendarDays,
-  CircleCheck,
-  CircleAlert,
-  Gamepad2,
-  Image,
-  Info,
-  Megaphone,
-  Palette,
-  ScrollText,
-  Server,
-  Swords,
-  Table2,
-  TriangleAlert,
-  Trophy,
-  UserPlus,
-  Users,
-  ChartLine,
-} from 'lucide-react';
-import { Button, Select, Skeleton, cx } from '../../components/ui';
+import { Activity, CalendarDays, CircleCheck, CircleAlert, Gamepad2, Image, Info, Swords, Table2, TriangleAlert, Trophy, UserPlus, Users, ChartLine } from 'lucide-react';
+import { ListRow, Skeleton } from '../../components/ui';
 import { useAdminOverview, useAdminSeries, type AdminOverview, type AdminSeriesPoint } from '../../lib/data/admin';
 import { sportMeta } from '../../sports/registry';
 import { SportIcon } from '../sports/SportBits';
 import { healthAlerts, LIMITS, type HealthAlert } from './alerts';
 import { BarList, ChartTable, LineChart, Meter, Sparkline, type ChartPoint } from './charts';
 import { lastValues, sortSeries, weekOverWeek, type SeriesMetric } from './chart';
-import { ErrorRetry, KpiCard, KpiSkeleton, Panel, QuickLink, SectionHeader, Segmented } from './bits';
+import { ErrorRetry, KpiCard, KpiGrid, KpiSkeleton, Panel, PillSelect, SectionHeader, Segmented, ToneIcon } from './bits';
+import { SectionList, useConsoleBack } from './ConsoleShell';
 import { fmtBytes, fmtCompact, fmtDay, fmtNum, fmtPct, ratio, relativeTime } from './format';
 import { intParam, useSearchState } from './hooks';
 import { sectionMeta } from './sections';
@@ -55,9 +36,20 @@ const isMetric = (v: string): v is SeriesMetric => METRICS.some((m) => m.key ===
 export const seriesPoints = (series: readonly AdminSeriesPoint[], metric: SeriesMetric): ChartPoint[] =>
   sortSeries(series).map((p) => ({ key: p.day, label: fmtDay(p.day), longLabel: fmtDay(p.day, true), value: p[metric] ?? 0 }));
 
-/** Resumen: números clave, actividad, ligas por deporte, avisos de salud y accesos rápidos. */
+/** Ver la actividad como gráfica o como tabla. */
+const VIEW_OPTIONS = [
+  { value: 'grafica', label: 'Gráfica', icon: <ChartLine className="size-4" aria-hidden="true" /> },
+  { value: 'tabla', label: 'Tabla', icon: <Table2 className="size-4" aria-hidden="true" /> },
+] as const;
+
+/**
+ * La consola (Resumen): en el teléfono primero lo que hay que revisar, los números clave, la lista de las secciones y
+ * después la actividad, las ligas por deporte y el uso del plan gratis. En la computadora los números arriba, la
+ * actividad con los avisos al lado y el menú de secciones a la izquierda.
+ */
 export default function OverviewSection() {
   const s = useSearchState();
+  const back = useConsoleBack();
   const range = intParam(s.get('rango'), 30, [30, 90, 365]) as Range;
   const metricRaw = s.get('serie', 'activeUsers');
   const metric: SeriesMetric = isMetric(metricRaw) ? metricRaw : 'activeUsers';
@@ -73,53 +65,40 @@ export default function OverviewSection() {
 
   return (
     <>
-      <SectionHeader
-        title="Resumen"
-        hint={o ? `${sectionMeta('resumen').hint} Actualizado ${relativeTime(o.generatedAt)}.` : sectionMeta('resumen').hint}
-      />
+      <SectionHeader title="Consola" hint={o ? `${sectionMeta('resumen').hint} · actualizado ${relativeTime(o.generatedAt)}` : sectionMeta('resumen').hint} back={back} />
 
-      {ov.error && !o ? (
-        <ErrorRetry error={ov.error} />
-      ) : ov.loading || !o ? (
-        <KpiSkeleton n={8} />
-      ) : (
-        <Kpis o={o} series={month.data} />
-      )}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Panel title="Avisos" subtitle="Lo que hay que revisar" flush className="lg:order-2">
+          {ov.error && !o ? (
+            <div className="px-5 pb-4">
+              <ErrorRetry error={ov.error} compact />
+            </div>
+          ) : !o ? (
+            <div className="flex flex-col gap-2 px-5 pb-4">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+          ) : (
+            <AlertList alerts={alerts} />
+          )}
+        </Panel>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="lg:order-first lg:col-span-3">
+          {ov.error && !o ? <ErrorRetry error={ov.error} /> : ov.loading || !o ? <KpiSkeleton n={8} /> : <Kpis o={o} series={month.data} />}
+        </div>
+
+        <SectionList />
+
         <Panel
-          className="lg:col-span-2"
+          className="lg:order-1 lg:col-span-2"
           title="Actividad"
           subtitle={`${metricLabel} por día`}
-          actions={
-            <>
-              <Select aria-label="Qué mostrar" value={metric} onChange={(e) => s.patch({ serie: e.target.value === 'activeUsers' ? null : e.target.value })} className="h-11 w-auto sm:h-8 sm:py-0 sm:text-xs">
-                {METRICS.map((m) => (
-                  <option key={m.key} value={m.key}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
-              <Segmented
-                size="sm"
-                label="Periodo"
-                options={RANGES}
-                value={`${range}` as `${Range}`}
-                onChange={(v) => s.patch({ rango: v === '30' ? null : v })}
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-pressed={asTable}
-                onClick={() => setAsTable((t) => !t)}
-                icon={asTable ? <ChartLine className="size-4" /> : <Table2 className="size-4" />}
-                aria-label={asTable ? 'Ver como gráfica' : 'Ver como tabla'}
-                title={asTable ? 'Ver como gráfica' : 'Ver como tabla'}
-                className="max-sm:size-11"
-              />
-            </>
-          }
+          actions={<PillSelect label="Qué mostrar" options={METRICS} value={metric} onChange={(v) => s.patch({ serie: v === 'activeUsers' ? null : v })} />}
         >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <Segmented size="sm" label="Periodo" options={RANGES} value={`${range}` as `${Range}`} onChange={(v) => s.patch({ rango: v === '30' ? null : v })} />
+            <Segmented size="sm" label="Ver como" options={VIEW_OPTIONS} value={asTable ? 'tabla' : 'grafica'} onChange={(v) => setAsTable(v === 'tabla')} />
+          </div>
           {series.error && !series.data.length ? (
             <ErrorRetry error={series.error} compact />
           ) : series.loading && !series.data.length ? (
@@ -129,26 +108,11 @@ export default function OverviewSection() {
           ) : asTable ? (
             <ChartTable points={points} seriesName={metricLabel} />
           ) : (
-            <LineChart points={points} seriesName={metricLabel} dim={series.loading} className="pt-8" />
+            <LineChart points={points} seriesName={metricLabel} dim={series.loading} className="pt-6" />
           )}
         </Panel>
 
-        <Panel title="Avisos" subtitle="Lo que hay que revisar">
-          {ov.error && !o ? (
-            <ErrorRetry error={ov.error} compact />
-          ) : !o ? (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-            </div>
-          ) : (
-            <AlertList alerts={alerts} />
-          )}
-        </Panel>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Panel title="Ligas por deporte" subtitle={o ? `${fmtNum(o.leagues.total)} en total · activas = con algo nuevo en 7 días` : undefined}>
+        <Panel className="lg:order-3 lg:col-span-2" title="Ligas por deporte" subtitle={o ? `${fmtNum(o.leagues.total)} en total · activas: algo nuevo en 7 días` : undefined}>
           {!o ? (
             ov.error ? (
               <ErrorRetry error={ov.error} compact />
@@ -182,7 +146,7 @@ export default function OverviewSection() {
           )}
         </Panel>
 
-        <Panel title="Uso del plan gratis" subtitle="Topes de Supabase">
+        <Panel className="lg:order-4" title="Uso del plan gratis" subtitle="Topes de Supabase">
           {!o ? (
             ov.error ? (
               <ErrorRetry error={ov.error} compact />
@@ -197,17 +161,6 @@ export default function OverviewSection() {
             <PlanUsage o={o} />
           )}
         </Panel>
-
-        <Panel title="Accesos rápidos">
-          <div className="flex flex-col gap-2">
-            <QuickLink to="/superadmin/cuentas" icon={<Users className="size-4" />} title="Cuentas" hint="Buscar, bloquear, nombrar superadmins" />
-            <QuickLink to="/superadmin/ligas" icon={<Trophy className="size-4" />} title="Ligas y torneos" hint="Abrir, pasar a otro dueño, borrar" />
-            <QuickLink to="/superadmin/anuncios" icon={<Megaphone className="size-4" />} title="Mandar un anuncio" hint="Aviso al teléfono" />
-            <QuickLink to="/superadmin/sistema" icon={<Server className="size-4" />} title="Sistema y respaldo" hint="Límites, tareas, respaldo completo" />
-            <QuickLink to="/superadmin/auditoria" icon={<ScrollText className="size-4" />} title="Auditoría" hint="Lo que se hizo desde la consola" />
-            <QuickLink to="/superadmin/marca" icon={<Palette className="size-4" />} title="Marca" hint="Logo y animaciones" />
-          </div>
-        </Panel>
       </div>
     </>
   );
@@ -219,14 +172,14 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
   const trend = (m: SeriesMetric) => (series.length >= 7 ? <Sparkline values={lastValues(series, m, 30)} /> : null);
   const icon = 'size-4';
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <KpiGrid>
       <KpiCard
         label="Cuentas"
         value={fmtCompact(o.users.total)}
         icon={<Users className={icon} />}
         change={wow('signups')}
-        changeLabel="altas vs. semana anterior"
-        note={`+${fmtNum(o.users.new7d)} en 7 días`}
+        changeLabel="vs. semana anterior"
+        note={`+${fmtNum(o.users.new7d)} en 7 días · +${fmtNum(o.users.new30d)} en 30`}
         trend={trend('signups')}
         to="/superadmin/cuentas"
       />
@@ -234,7 +187,7 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
         label="Activas en 7 días"
         value={fmtCompact(o.users.active7d)}
         icon={<Activity className={icon} />}
-        note={`${fmtPct(ratio(o.users.active7d, o.users.total))} de las cuentas · ${fmtNum(o.users.active30d)} en 30 días`}
+        note={`${fmtPct(ratio(o.users.active7d, o.users.total))} · ${fmtNum(o.users.active30d)} en 30 días`}
         trend={trend('activeUsers')}
       />
       <KpiCard
@@ -245,14 +198,14 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
         to="/superadmin/ligas"
       />
       <KpiCard
-        label="Ligas activas (7 días)"
+        label="Ligas activas"
         value={fmtCompact(o.leagues.active7d)}
         icon={<CalendarDays className={icon} />}
-        note={`${fmtPct(ratio(o.leagues.active7d, o.leagues.total))} del total`}
+        note={`en 7 días · ${fmtPct(ratio(o.leagues.active7d, o.leagues.total))}`}
         to="/superadmin/ligas?orden=activity"
       />
       <KpiCard
-        label="Eventos (7 días)"
+        label="Eventos en 7 días"
         value={fmtCompact(o.activity.events7d)}
         icon={<CalendarDays className={icon} />}
         change={wow('events')}
@@ -260,7 +213,7 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
         trend={trend('events')}
       />
       <KpiCard
-        label="Partidos (7 días)"
+        label="Partidos en 7 días"
         value={fmtCompact(o.activity.matches7d)}
         icon={<Swords className={icon} />}
         change={wow('matches')}
@@ -268,7 +221,7 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
         trend={trend('matches')}
       />
       <KpiCard
-        label="Juegos anotados (7 días)"
+        label="Juegos en 7 días"
         value={fmtCompact(o.activity.entries7d)}
         icon={<Gamepad2 className={icon} />}
         change={wow('entries')}
@@ -276,63 +229,73 @@ function Kpis({ o, series }: { o: AdminOverview; series: readonly AdminSeriesPoi
         trend={trend('entries')}
       />
       <KpiCard
-        label="Fotos subidas (7 días)"
+        label="Fotos en 7 días"
         value={fmtCompact(o.activity.photos7d)}
         icon={<Image className={icon} />}
-        note={`${fmtNum(o.activity.submissionsPending)} envíos sin aprobar · ${fmtNum(o.users.new30d)} cuentas nuevas en 30 días`}
+        note={`${fmtNum(o.activity.submissionsPending)} envíos sin aprobar`}
         to="/superadmin/fotos"
       />
-    </div>
+    </KpiGrid>
   );
 }
 
 const ALERT_STYLE = {
-  danger: { box: 'border-danger/30 bg-danger-soft', icon: 'text-danger', Icon: CircleAlert, label: 'Urgente' },
-  warn: { box: 'border-warn/30 bg-warn-soft', icon: 'text-warn', Icon: TriangleAlert, label: 'Revisar' },
-  info: { box: 'border-line bg-surface-2', icon: 'text-muted', Icon: Info, label: 'Para saber' },
+  danger: { tone: 'danger', Icon: CircleAlert, label: 'Urgente' },
+  warn: { tone: 'warn', Icon: TriangleAlert, label: 'Revisar' },
+  info: { tone: 'neutral', Icon: Info, label: 'Para saber' },
 } as const;
 
+/** Los avisos de salud como filas (la que lleva a algún lado se toca entera); sin avisos, «Todo en orden». */
 export function AlertList({ alerts }: { alerts: readonly HealthAlert[] }) {
   if (!alerts.length)
     return (
-      <div className="flex items-center gap-3 rounded-xl bg-ok-soft px-3 py-3 text-sm text-ok">
-        <CircleCheck className="size-5 shrink-0" aria-hidden="true" />
-        <span>
-          <span className="font-semibold">Todo en orden.</span> Nada que revisar ahora.
-        </span>
-      </div>
+      <ListRow
+        dense
+        leading={
+          <ToneIcon tone="ok">
+            <CircleCheck className="size-5" />
+          </ToneIcon>
+        }
+        title="Todo en orden"
+        subtitle="Nada que revisar ahora."
+      />
     );
   return (
-    <ul className="flex flex-col gap-2">
+    <>
       {alerts.map((a) => {
         const st = ALERT_STYLE[a.level];
         return (
-          <li key={a.id} className={cx('flex gap-3 rounded-xl border px-3 py-2.5', st.box)}>
-            <st.Icon className={cx('mt-0.5 size-4 shrink-0', st.icon)} aria-label={st.label} />
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold">{a.title}</p>
-              <p className="text-xs text-muted">{a.detail}</p>
-              {a.to && (
-                <Link to={a.to} className="mt-1 inline-flex min-h-8 items-center text-xs font-medium text-accent hover:underline">
-                  Ver más
-                </Link>
-              )}
-            </div>
-          </li>
+          <ListRow
+            key={a.id}
+            dense
+            leading={
+              <ToneIcon tone={st.tone}>
+                <st.Icon className="size-5" />
+              </ToneIcon>
+            }
+            title={
+              <>
+                <span className="sr-only">{st.label}: </span>
+                {a.title}
+              </>
+            }
+            subtitle={a.detail}
+            to={a.to ?? undefined}
+          />
         );
       })}
-    </ul>
+    </>
   );
 }
 
 function UsageRow({ label, value, max, text }: { label: string; value: number | null; max: number; text: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-xs text-muted tabular-nums">{text}</span>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[15px] font-semibold">{label}</span>
+        <span className="num text-[13px] text-muted">{text}</span>
       </div>
-      {value == null ? <p className="text-xs text-muted">No se puede medir en este modo.</p> : <Meter value={value} max={max} label={label} />}
+      {value == null ? <p className="text-[13px] text-muted">No se puede medir en este modo.</p> : <Meter value={value} max={max} label={label} />}
     </div>
   );
 }
@@ -359,7 +322,7 @@ function PlanUsage({ o }: { o: AdminOverview }) {
         max={o.scan.dailyLimit}
         text={`${fmtNum(o.scan.today)} de ${fmtNum(o.scan.dailyLimit)}`}
       />
-      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-xs text-muted">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-3 text-[13px] text-muted">
         <span>
           <UserPlus className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
           {fmtNum(o.push.subscriptions)} teléfonos con avisos

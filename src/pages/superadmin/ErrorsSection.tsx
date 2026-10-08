@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { Bug, CheckCircle2, Copy, Smartphone, Trash2, Users } from 'lucide-react';
 import { useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
-import { Badge, Button, Card, Empty } from '../../components/ui';
+import { Badge, Button, Card } from '../../components/ui';
 import {
   CLIENT_ERROR_DAYS,
   CLIENT_ERROR_KINDS,
@@ -11,7 +11,7 @@ import {
   type AdminClientError,
 } from '../../lib/data/admin';
 import type { ClientErrorKind } from '../../lib/errorReport';
-import { ErrorRetry, FilterChips, Pager, SearchBox, SectionHeader, Segmented, TableSkeleton } from './bits';
+import { EmptyCard, ErrorRetry, FilterChips, Pager, SearchBox, SectionHeader, Segmented, TableSkeleton } from './bits';
 import { fmtDateTime, fmtNum, plural, relativeTime } from './format';
 import { PAGE_SIZES, copyText, intParam, useRun, useSearchState, useSearchText } from './hooks';
 import { CLIENT_ERROR_KIND_HELP, CLIENT_ERROR_KIND_LABEL, clientErrorTone, describeUa } from './model';
@@ -56,18 +56,17 @@ export default function ErrorsSection() {
       <SectionHeader
         title="Errores"
         hint={sectionMeta('errores').hint}
-        actions={
-          rows.length > 0 && (
-            <Button variant="ghost" icon={<Trash2 className="size-4" />} loading={clearing.isBusy()} onClick={clearAll} className="text-danger max-sm:min-h-11">
-              Borrar todos
-            </Button>
-          )
+        menu={
+          rows.length > 0
+            ? [{ key: 'borrar', icon: Trash2, label: 'Borrar todos', hint: 'De todos los días, no solo esta lista', onClick: () => void clearAll(), busy: clearing.isBusy(), danger: true }]
+            : undefined
         }
+        menuTitle="Errores"
       />
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <SearchBox label="Buscar errores por mensaje, pantalla o ruta" placeholder="Buscar en el mensaje, la pantalla o la ruta" value={text} onChange={setText} />
+          <SearchBox label="Buscar errores por mensaje, pantalla o ruta" placeholder="Mensaje, pantalla o ruta" value={text} onChange={setText} />
           <Segmented
             label="Desde cuándo"
             options={DAY_OPTIONS}
@@ -84,7 +83,7 @@ export default function ErrorsSection() {
           value={kind}
           onChange={(k) => s.patch({ t: k === 'all' ? null : k, p: null })}
         />
-        {kind !== 'all' && <p className="text-xs text-muted">{CLIENT_ERROR_KIND_HELP[kind]}</p>}
+        {kind !== 'all' && <p className="mx-1 text-[13px] text-muted">{CLIENT_ERROR_KIND_HELP[kind]}</p>}
       </div>
 
       {errors.error && !rows.length ? (
@@ -92,17 +91,15 @@ export default function ErrorsSection() {
       ) : errors.loading && !rows.length ? (
         <TableSkeleton rows={6} cols={4} />
       ) : !rows.length ? (
-        <Empty icon={search ? <Bug className="size-8" /> : <CheckCircle2 className="size-8" />} title={search ? `Nada con «${search}»` : 'Sin errores en estos días'}>
-          {search || kind !== 'all'
-            ? 'Prueba con otra búsqueda o quita el filtro.'
-            : 'Cuando algo falle en un teléfono, aparece aquí con la pantalla, el teléfono y cuántas veces pasó.'}
-        </Empty>
+        <EmptyCard icon={search ? <Bug className="size-8" /> : <CheckCircle2 className="size-8" />} title={search ? `Nada con «${search}»` : 'Sin errores en estos días'}>
+          {search || kind !== 'all' ? 'Prueba con otra búsqueda o quita el filtro.' : 'Cuando algo falle en un teléfono, sale aquí.'}
+        </EmptyCard>
       ) : (
         <>
-          <p className="text-sm text-muted" aria-live="polite">
+          <p className="num mx-1 -mb-2 text-meta text-muted" aria-live="polite">
             {plural(hits, 'vez', 'veces')} · {plural(total, 'error distinto', 'errores distintos')} · {plural(users, 'cuenta', 'cuentas')}
           </p>
-          <Card className={errors.loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          <Card className={errors.loading ? 'overflow-hidden opacity-60 transition-opacity' : 'overflow-hidden transition-opacity'}>
             <ol className="divide-y divide-line">
               {rows.map((e) => (
                 <ErrorRow key={e.fingerprint} e={e} />
@@ -151,17 +148,17 @@ function ErrorRow({ e }: { e: AdminClientError }) {
   }
 
   return (
-    <li className="flex flex-col gap-2 px-4 py-3">
+    <li className="flex flex-col gap-2 px-5 py-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={clientErrorTone(e.kind)}>{CLIENT_ERROR_KIND_LABEL[e.kind]}</Badge>
-        {e.component && <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-muted">{e.component}</span>}
+        {e.component && <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-fg-2">{e.component}</span>}
         <time dateTime={e.lastAt} title={fmtDateTime(e.lastAt)} className="ml-auto text-xs text-muted">
           {relativeTime(e.lastAt)}
         </time>
       </div>
-      <p className="text-sm font-medium break-words">{e.message}</p>
-      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-        <span className="font-medium text-fg tabular-nums">{plural(e.hits, 'vez', 'veces')}</span>
+      <p className="text-[15px] font-semibold break-words">{e.message}</p>
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
+        <span className="num font-semibold text-fg">{plural(e.hits, 'vez', 'veces')}</span>
         <span className="flex items-center gap-1">
           <Users className="size-3.5" aria-hidden="true" /> {plural(e.users, 'cuenta', 'cuentas')}
         </span>
@@ -173,14 +170,14 @@ function ErrorRow({ e }: { e: AdminClientError }) {
       {e.routes.length > 0 && (
         <p className="flex flex-wrap gap-1.5 text-xs">
           {e.routes.map((r) => (
-            <code key={r} className="rounded bg-surface-2 px-1.5 py-0.5 break-all">
+            <code key={r} className="rounded-md bg-surface-2 px-1.5 py-0.5 break-all">
               {r}
             </code>
           ))}
         </p>
       )}
       <details>
-        <summary className="inline-flex min-h-9 cursor-pointer items-center text-xs font-medium text-accent select-none">Ver detalle</summary>
+        <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold text-accent select-none">Ver detalle</summary>
         <div className="mt-1 flex flex-col gap-2 text-xs">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
             <dt className="text-muted">Primera vez</dt>
@@ -205,15 +202,15 @@ function ErrorRow({ e }: { e: AdminClientError }) {
             <dt className="text-muted">Huella</dt>
             <dd className="font-mono break-all">{e.fingerprint}</dd>
           </dl>
-          {e.stack && <pre className="max-h-72 overflow-auto rounded-lg bg-surface-2 p-2.5 font-mono leading-relaxed whitespace-pre-wrap break-all">{e.stack}</pre>}
+          {e.stack && <pre className="max-h-72 overflow-auto rounded-xl bg-surface-2 p-3 font-mono leading-relaxed whitespace-pre-wrap break-all">{e.stack}</pre>}
         </div>
       </details>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="ghost" icon={<Copy className="size-3.5" />} loading={busy.isBusy('copy')} disabled={busy.isBusy()} onClick={copy} className="max-sm:h-11">
-          Copiar
-        </Button>
-        <Button size="sm" variant="ghost" icon={<CheckCircle2 className="size-3.5" />} onClick={fixed} loading={busy.isBusy('fixed')} disabled={busy.isBusy()} className="max-sm:h-11">
+        <Button variant="soft" icon={<CheckCircle2 className="size-4" />} onClick={fixed} loading={busy.isBusy('fixed')} disabled={busy.isBusy()} className="max-sm:h-11">
           Ya se arregló
+        </Button>
+        <Button variant="quiet" icon={<Copy className="size-4" />} loading={busy.isBusy('copy')} disabled={busy.isBusy()} onClick={copy} className="max-sm:h-11">
+          Copiar
         </Button>
       </div>
     </li>

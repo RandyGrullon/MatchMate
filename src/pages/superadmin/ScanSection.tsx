@@ -1,16 +1,21 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { ChartLine, ScanLine, Table2 } from 'lucide-react';
+import { ChartLine, Cpu, ScanLine, Table2 } from 'lucide-react';
 import { Avatar } from '../../components/Avatar';
-import { Button, Empty, Skeleton } from '../../components/ui';
+import { Card, ListRow, RowIcon, Skeleton } from '../../components/ui';
 import { useAdminScanStats } from '../../lib/data/admin';
 import { ChartTable, LineChart, Meter, type ChartPoint } from './charts';
-import { ErrorRetry, KpiCard, KpiSkeleton, Panel, SectionHeader, Segmented } from './bits';
+import { EmptyState, ErrorRetry, KpiCard, KpiGrid, KpiSkeleton, Panel, SectionHeader, Segmented } from './bits';
 import { fmtDay, fmtNum, fmtPct, ratio } from './format';
 import { intParam, useSearchState } from './hooks';
 import { sectionMeta } from './sections';
 
 type Days = 30 | 90;
+
+/** Ver las lecturas por día como gráfica o como tabla. */
+const VIEW_OPTIONS = [
+  { value: 'grafica', label: 'Gráfica', icon: <ChartLine className="size-4" aria-hidden="true" /> },
+  { value: 'tabla', label: 'Tabla', icon: <Table2 className="size-4" aria-hidden="true" /> },
+] as const;
 
 /** Lectura de fotos del marcador con IA: hoy contra el tope, por día, por modelo y quién más lee. */
 export default function ScanSection() {
@@ -34,7 +39,7 @@ export default function ScanSection() {
       <SectionHeader
         title="Lectura de fotos"
         hint={sectionMeta('fotos').hint}
-        actions={
+        below={
           <Segmented
             label="Periodo"
             options={[
@@ -51,110 +56,88 @@ export default function ScanSection() {
         <ErrorRetry error={stats.error} />
       ) : !d ? (
         <>
+          <Skeleton className="h-36 w-full rounded-3xl" />
           <KpiSkeleton n={4} />
-          <Skeleton className="h-72 w-full rounded-2xl" />
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard label="Hoy" value={fmtNum(d.today)} note={`${fmtPct(ratio(d.today, d.dailyLimit))} del tope diario`} />
-            <KpiCard label="Tope diario (toda la app)" value={fmtNum(d.dailyLimit)} note={`Quedan ${fmtNum(Math.max(0, d.dailyLimit - d.today))} hoy`} />
-            <KpiCard label="Tope por cuenta" value={fmtNum(d.perUserLimit)} note="lecturas por día" />
-            <KpiCard label={`Total en ${days} días`} value={fmtNum(total)} note={`${fmtNum(Math.round(total / Math.max(1, points.length)))} por día en promedio`} />
-          </div>
-
-          <Panel title="Hoy contra el tope" subtitle="Al llegar al tope, la foto se guarda igual pero no se lee sola hasta mañana">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between text-sm">
-                <span>
-                  <span className="text-2xl font-semibold">{fmtNum(d.today)}</span> <span className="text-muted">de {fmtNum(d.dailyLimit)}</span>
-                </span>
-                <span className="text-muted tabular-nums">{fmtPct(ratio(d.today, d.dailyLimit))}</span>
-              </div>
-              <Meter value={d.today} max={d.dailyLimit} label="Lecturas de fotos de hoy" />
+          <Card className="flex flex-col gap-3 px-5 pt-[18px] pb-5">
+            <h2 className="text-[17px] leading-tight font-semibold tracking-[-0.01em]">Hoy contra el tope</h2>
+            <div className="flex items-end justify-between gap-3">
+              <p>
+                <b className="num text-stat">{fmtNum(d.today)}</b> <span className="text-meta text-muted">de {fmtNum(d.dailyLimit)}</span>
+              </p>
+              <span className="num text-row-num-pro text-fg-2">{fmtPct(ratio(d.today, d.dailyLimit))}</span>
             </div>
-          </Panel>
+            <Meter value={d.today} max={d.dailyLimit} label="Lecturas de fotos de hoy" />
+            <p className="text-[13px] text-muted">Al llegar al tope, la foto se guarda pero se lee mañana.</p>
+          </Card>
+
+          <KpiGrid>
+            <KpiCard label="Quedan hoy" value={fmtNum(Math.max(0, d.dailyLimit - d.today))} note={`tope de ${fmtNum(d.dailyLimit)} en toda la app`} />
+            <KpiCard label="Tope por cuenta" value={fmtNum(d.perUserLimit)} note="lecturas por día" />
+            <KpiCard label={`Total en ${days} días`} value={fmtNum(total)} />
+            <KpiCard label="Promedio por día" value={fmtNum(Math.round(total / Math.max(1, points.length)))} note={`en ${days} días`} />
+          </KpiGrid>
 
           <Panel
             title="Lecturas por día"
             subtitle={`Últimos ${days} días`}
-            actions={
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-pressed={asTable}
-                onClick={() => setAsTable((t) => !t)}
-                icon={asTable ? <ChartLine className="size-4" /> : <Table2 className="size-4" />}
-                aria-label={asTable ? 'Ver como gráfica' : 'Ver como tabla'}
-                title={asTable ? 'Ver como gráfica' : 'Ver como tabla'}
-                className="max-sm:size-11"
-              />
-            }
+            actions={<Segmented size="sm" label="Ver como" options={VIEW_OPTIONS} value={asTable ? 'tabla' : 'grafica'} onChange={(v) => setAsTable(v === 'tabla')} />}
           >
             {!points.length ? (
               <p className="py-12 text-center text-sm text-muted">Sin lecturas en este periodo.</p>
             ) : asTable ? (
               <ChartTable points={points} seriesName="Lecturas" />
             ) : (
-              <LineChart points={points} seriesName="Lecturas" dim={stats.loading} className="pt-8" />
+              <LineChart points={points} seriesName="Lecturas" dim={stats.loading} className="pt-6" />
             )}
           </Panel>
 
-          <div className="grid gap-5 lg:grid-cols-2">
-            <Panel title="Por modelo" subtitle="Qué modelo de IA leyó las fotos">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Panel title="Por modelo" subtitle={`Qué modelo de IA las leyó: hoy y en ${days} días`} flush>
               {!d.models.length ? (
-                <p className="py-6 text-center text-sm text-muted">Sin lecturas todavía.</p>
+                <p className="px-5 pt-2 pb-5 text-center text-sm text-muted">Sin lecturas todavía.</p>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b border-line text-left text-xs text-muted">
-                    <tr>
-                      <th scope="col" className="py-2 pr-3 font-medium">
-                        Modelo
-                      </th>
-                      <th scope="col" className="px-3 py-2 text-right font-medium">
-                        Hoy
-                      </th>
-                      <th scope="col" className="py-2 pl-3 text-right font-medium">
-                        En {days} días
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {[...d.models]
-                      .sort((a, b) => b.total - a.total)
-                      .map((m) => (
-                        <tr key={m.model}>
-                          <td className="max-w-0 truncate py-2 pr-3 font-mono text-xs" title={m.model}>
-                            {m.model}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums">{fmtNum(m.today)}</td>
-                          <td className="py-2 pl-3 text-right tabular-nums">{fmtNum(m.total)}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                [...d.models]
+                  .sort((a, b) => b.total - a.total)
+                  .map((m) => (
+                    <ListRow
+                      key={m.model}
+                      dense
+                      leading={
+                        <RowIcon>
+                          <Cpu className="size-5" />
+                        </RowIcon>
+                      }
+                      title={<span className="font-mono text-sm">{m.model}</span>}
+                      subtitle={`${fmtNum(m.today)} hoy`}
+                      value={fmtNum(m.total)}
+                    />
+                  ))
               )}
             </Panel>
 
-            <Panel title="Cuentas que más leen" subtitle={`En los últimos ${days} días`}>
+            <Panel title="Cuentas que más leen" subtitle={`En los últimos ${days} días`} flush>
               {!d.topUsers.length ? (
-                <Empty icon={<ScanLine className="size-8" />} title="Nadie ha leído fotos en este periodo" />
+                <EmptyState icon={<ScanLine className="size-8" />} title="Nadie ha leído fotos en este periodo" className="pt-4" />
               ) : (
-                <ol className="divide-y divide-line">
-                  {d.topUsers.map((u, i) => (
-                    <li key={u.userId}>
-                      <Link to={`/superadmin/cuentas?u=${encodeURIComponent(u.userId)}`} className="flex min-h-11 items-center gap-3 py-2 transition hover:bg-surface-2/60">
-                        <span className="w-5 text-right text-xs text-muted tabular-nums">{i + 1}</span>
-                        <Avatar name={u.name} className="size-8 text-xs" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{u.name}</span>
-                          <span className="block truncate text-xs text-muted">{u.email ?? ''}</span>
-                        </span>
-                        <span className="text-sm font-medium tabular-nums">{fmtNum(u.scans)}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
+                d.topUsers.map((u, i) => (
+                  <ListRow
+                    key={u.userId}
+                    dense
+                    leading={
+                      <span className="flex items-center gap-2.5">
+                        <span className="num w-5 text-right text-[13px] text-muted">{i + 1}</span>
+                        <Avatar name={u.name} className="size-9 text-xs" />
+                      </span>
+                    }
+                    title={u.name}
+                    subtitle={u.email ?? undefined}
+                    value={fmtNum(u.scans)}
+                    to={`/superadmin/cuentas?u=${encodeURIComponent(u.userId)}`}
+                  />
+                ))
               )}
             </Panel>
           </div>

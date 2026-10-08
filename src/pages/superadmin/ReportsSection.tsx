@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { CheckCircle2, Flag, Trash2, UserRound, UserX } from 'lucide-react';
+import { CheckCircle2, Flag, MoreHorizontal, Trash2, UserRound, UserX } from 'lucide-react';
+import { BusyIcon } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
-import { ReportItem, ResolveButtons } from '../../components/report/ReportItem';
-import { Button, Card, Empty } from '../../components/ui';
+import { ReportItem } from '../../components/report/ReportItem';
+import { Button, Card, Modal, Sheet, Textarea } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
-import { REPORT_KINDS, REPORT_KIND_LABEL, deleteReportedComment, useReports, type Report, type ReportFilter, type ReportKind } from '../../lib/data/reports';
-import { ErrorRetry, FilterChips, Pager, SectionHeader, TableSkeleton } from './bits';
+import {
+  REPORT_KINDS,
+  REPORT_KIND_LABEL,
+  REPORT_NOTE_MAX,
+  deleteReportedComment,
+  reportErrorText,
+  resolveReport,
+  useReports,
+  type Report,
+  type ReportFilter,
+  type ReportKind,
+} from '../../lib/data/reports';
+import { EmptyCard, ErrorRetry, FilterChips, MenuList, Pager, RoundButton, SectionHeader, Segmented, TableSkeleton, type MenuItem } from './bits';
+import { fmtNum } from './format';
 import { PAGE_SIZES, intParam, useRun, useSearchState } from './hooks';
 import { DeleteLeagueModal } from './LeagueActions';
 import { sectionMeta, sectionPath } from './sections';
@@ -19,8 +32,9 @@ const isFilter = (v: string): v is ReportFilter => v === 'open' || v === 'closed
 /**
  * Reportes: lo que la gente reportó (comentarios, avisos, juegos, ligas y cuentas), lo más nuevo primero. Cada uno con
  * lo reportado a la vista y su link, quién lo reportó, la nota y cuántos hay de lo mismo. Acciones: descartar, marcar
- * como atendido (con nota) y las herramientas de siempre: borrar el comentario, bloquear la cuenta (admin_block_user)
- * o borrar la liga (delete_league). Descartar o atender cierra todos los abiertos de lo mismo y queda en la auditoría.
+ * como atendido (con nota) a la vista, y en su «•••» las herramientas de siempre: ver la cuenta, borrar el comentario,
+ * bloquear la cuenta (admin_block_user) o borrar la liga (delete_league). Descartar o atender cierra todos los abiertos
+ * de lo mismo y queda en la auditoría.
  * Los admins de cada liga ven y atienden los comentarios, avisos y juegos de su liga (Admin › Reportes).
  * Los reportes de insignias (diseños del creador e insignias automáticas) son otra cola: Consola › Insignias.
  */
@@ -33,9 +47,9 @@ export default function ReportsSection() {
   const page = Math.max(0, intParam(s.get('p'), 1) - 1);
   const pageSize = intParam(s.get('n'), 25, PAGE_SIZES);
   const list = useReports(true, { status, kind: kind === 'all' ? null : kind, page, pageSize });
-  const { rows, total, open, all } = list.data;
+  const { rows, total, open } = list.data;
   const [blocking, setBlocking] = useState<{ id: string; name: string } | null>(null);
-  const [deleting, setDeleting] = useState<{ id: string; name: string; kind: 'liga' | 'torneo'; members: number; events: number } | null>(null);
+  const [deleting, setDeleting] = useState<LeagueToDelete | null>(null);
 
   return (
     <>
@@ -43,8 +57,8 @@ export default function ReportsSection() {
         title="Reportes"
         hint={
           <>
-            {sectionMeta('reportes').hint} Los de insignias van en{' '}
-            <Link to={sectionPath('insignias')} className="font-medium text-accent hover:underline">
+            {sectionMeta('reportes').hint}. Los de insignias van en{' '}
+            <Link to={sectionPath('insignias')} className="font-semibold text-accent">
               Insignias
             </Link>
             .
@@ -53,12 +67,12 @@ export default function ReportsSection() {
       />
 
       <div className="flex flex-col gap-3">
-        <FilterChips
+        <Segmented
           label="Estado"
-          items={[
-            { key: 'open' as ReportFilter, label: 'Abiertos', count: open },
-            { key: 'closed' as ReportFilter, label: 'Cerrados', count: Math.max(0, all - open) },
-            { key: 'all' as ReportFilter, label: 'Todos', count: all },
+          options={[
+            { value: 'open' as ReportFilter, label: open ? `Abiertos (${fmtNum(open)})` : 'Abiertos' },
+            { value: 'closed' as ReportFilter, label: 'Cerrados' },
+            { value: 'all' as ReportFilter, label: 'Todos' },
           ]}
           value={status}
           onChange={(v) => s.patch({ e: v === 'open' ? null : v, p: null })}
@@ -76,14 +90,12 @@ export default function ReportsSection() {
       ) : list.loading && !rows.length ? (
         <TableSkeleton rows={4} cols={3} />
       ) : !rows.length ? (
-        <Empty icon={status === 'open' ? <CheckCircle2 className="size-8" /> : <Flag className="size-8" />} title={status === 'open' ? 'Nada por revisar' : 'Todavía no hay reportes aquí'}>
-          {status === 'open'
-            ? 'Cuando alguien reporte un comentario, un aviso, un juego, una liga o una cuenta, sale aquí y te llega un aviso al teléfono.'
-            : 'Los reportes que se descarten o se atiendan quedan aquí.'}
-        </Empty>
+        <EmptyCard icon={status === 'open' ? <CheckCircle2 className="size-8" /> : <Flag className="size-8" />} title={status === 'open' ? 'Nada por revisar' : 'Todavía no hay reportes aquí'}>
+          {status === 'open' ? 'Cuando alguien reporte algo, sale aquí y te llega un aviso.' : 'Los que se descarten o se atiendan quedan aquí.'}
+        </EmptyCard>
       ) : (
-        <Card className={list.loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          <ol className="divide-y divide-line">
+        <Card className={list.loading ? 'overflow-hidden opacity-60 transition-opacity' : 'overflow-hidden transition-opacity'}>
+          <ol className="divide-y divide-line [&>li]:px-5 [&>li]:py-4">
             {rows.map((r) => (
               <ReportItem
                 key={r.id}
@@ -113,22 +125,46 @@ export default function ReportsSection() {
   );
 }
 
-/** Lo que se puede hacer con un reporte: ver la cuenta, las herramientas y (si está abierto) descartar o atender. */
-function ReportTools({
-  report: r,
-  onBlock,
-  onDeleteLeague,
-}: {
-  report: Report;
-  onBlock: (u: { id: string; name: string }) => void;
-  onDeleteLeague: (l: { id: string; name: string; kind: 'liga' | 'torneo'; members: number; events: number }) => void;
-}) {
+/**
+ * Las herramientas de un reporte, para su «•••»: ver la cuenta de quien lo escribió y (si está abierto) borrar el
+ * comentario, bloquear la cuenta o borrar la liga, en rojo. Vacío si no hay ninguna.
+ */
+export function reportToolItems(
+  r: Report,
+  me: string | undefined,
+  on: { removeComment: () => void; block: (u: { id: string; name: string }) => void; deleteLeague: (l: LeagueToDelete) => void },
+  busy = false,
+): MenuItem[] {
+  const t = r.target;
+  const owner = t?.userId && t.userId !== me ? { id: t.userId, name: t.userName ?? 'esta cuenta' } : null;
+  const open = r.status === 'open';
+  const items: MenuItem[] = [];
+  if (owner) items.push({ key: 'cuenta', icon: UserRound, label: 'Ver la cuenta', hint: owner.name, to: `/superadmin/cuentas?u=${encodeURIComponent(owner.id)}` });
+  if (open && r.kind === 'comment' && t) items.push({ key: 'comentario', icon: Trash2, label: 'Borrar comentario', onClick: on.removeComment, busy, danger: true });
+  if (open && owner && t?.blocked !== true) items.push({ key: 'bloquear', icon: UserX, label: 'Bloquear cuenta', onClick: () => on.block(owner), danger: true });
+  if (open && r.kind === 'league' && t?.leagueId) {
+    const kind = t.leagueKind ?? 'liga';
+    items.push({
+      key: 'liga',
+      icon: Trash2,
+      label: `Borrar ${kind === 'torneo' ? 'torneo' : 'liga'}`,
+      onClick: () => on.deleteLeague({ id: t.leagueId!, name: t.title, kind, members: t.members ?? 0, events: t.events ?? 0 }),
+      danger: true,
+    });
+  }
+  return items;
+}
+
+type LeagueToDelete = { id: string; name: string; kind: 'liga' | 'torneo'; members: number; events: number };
+
+/** Lo que se puede hacer con un reporte: descartar o atender (si está abierto) y «•••» con las herramientas. */
+function ReportTools({ report: r, onBlock, onDeleteLeague }: { report: Report; onBlock: (u: { id: string; name: string }) => void; onDeleteLeague: (l: LeagueToDelete) => void }) {
   const { user } = useAuth();
   const { confirm } = useFeedback();
   const run = useRun();
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const t = r.target;
-  const owner = t?.userId && t.userId !== user?.uid ? { id: t.userId, name: t.userName ?? 'esta cuenta' } : null;
 
   async function removeComment() {
     const ok = await confirm({
@@ -143,38 +179,107 @@ function ReportTools({
     setBusy(false);
   }
 
+  const items = reportToolItems(r, user?.uid, { removeComment: () => void removeComment(), block: onBlock, deleteLeague: onDeleteLeague }, busy);
   return (
     <>
-      {owner && (
-        <Link
-          to={`/superadmin/cuentas?u=${encodeURIComponent(owner.id)}`}
-          className="inline-flex h-8 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft max-sm:h-11"
-        >
-          <UserRound className="size-3.5" aria-hidden="true" /> Ver la cuenta
-        </Link>
+      {r.status === 'open' && <ResolveActions report={r} />}
+      {items.length > 0 && (
+        <>
+          <span className="ml-auto">
+            <RoundButton label="Más herramientas" onClick={() => setOpen(true)} busy={busy} popup>
+              <BusyIcon busy={busy} icon={<MoreHorizontal aria-hidden="true" strokeWidth={2.4} className="size-5" />} className="size-5" />
+            </RoundButton>
+          </span>
+          <Sheet open={open} onClose={() => setOpen(false)} title="Herramientas" subtitle={t?.title ?? REPORT_KIND_LABEL[r.kind]}>
+            <MenuList items={items} onPick={() => setOpen(false)} />
+          </Sheet>
+        </>
       )}
-      {r.status === 'open' && r.kind === 'comment' && t && (
-        <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} loading={busy} onClick={removeComment} className="text-danger max-sm:h-11">
-          Borrar comentario
-        </Button>
-      )}
-      {r.status === 'open' && owner && t?.blocked !== true && (
-        <Button size="sm" variant="ghost" icon={<UserX className="size-3.5" />} onClick={() => onBlock(owner)} className="text-danger max-sm:h-11">
-          Bloquear cuenta
-        </Button>
-      )}
-      {r.status === 'open' && r.kind === 'league' && t?.leagueId && (
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<Trash2 className="size-3.5" />}
-          onClick={() => onDeleteLeague({ id: t.leagueId!, name: t.title, kind: t.leagueKind ?? 'liga', members: t.members ?? 0, events: t.events ?? 0 })}
-          className="text-danger max-sm:h-11"
-        >
-          Borrar {t.leagueKind === 'torneo' ? 'torneo' : 'liga'}
-        </Button>
-      )}
-      {r.status === 'open' && <ResolveButtons report={r} />}
+    </>
+  );
+}
+
+/**
+ * «Descartar» (con confirmación) y «Atender» (con una nota de lo que se hizo): lo mismo que ResolveButtons
+ * (report/ReportItem), con nombres cortos para que quepan con «•••» en el teléfono. Cierran también los demás abiertos
+ * de lo mismo.
+ */
+function ResolveActions({ report }: { report: Report }) {
+  const { confirm, toast } = useFeedback();
+  // Cuál se está guardando: la ruedita va en ese botón.
+  const [busy, setBusy] = useState<'dismissed' | 'actioned' | null>(null);
+  const [attending, setAttending] = useState(false);
+  const [note, setNote] = useState('');
+  const others = report.sameTarget > 1 ? ` y los otros ${report.sameTarget - 1} de lo mismo` : '';
+
+  async function run(status: 'dismissed' | 'actioned', text: string | null) {
+    if (busy) return false;
+    setBusy(status);
+    try {
+      await resolveReport(report.id, status, text);
+      toast(status === 'actioned' ? 'Reporte atendido' : 'Reporte descartado');
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast(reportErrorText(e), 'error');
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function dismiss() {
+    const ok = await confirm({
+      title: '¿Descartar el reporte?',
+      message: `Queda cerrado sin hacer nada${others}. Si vuelve a pasar, lo pueden reportar otra vez.`,
+      confirmText: 'Descartar',
+    });
+    if (ok) await run('dismissed', null);
+  }
+
+  async function attend() {
+    if (await run('actioned', note)) {
+      setAttending(false);
+      setNote('');
+    }
+  }
+
+  return (
+    <>
+      <Button variant="quiet" onClick={dismiss} loading={busy === 'dismissed'} disabled={!!busy} className="max-sm:h-11">
+        Descartar
+      </Button>
+      <Button variant="soft" icon={<CheckCircle2 className="size-4" />} onClick={() => setAttending(true)} disabled={!!busy} className="max-sm:h-11">
+        Atender
+      </Button>
+      <Modal
+        open={attending}
+        onClose={() => setAttending(false)}
+        title="Marcar como atendido"
+        footer={
+          <>
+            <Button variant="quiet" size="lg" onClick={() => setAttending(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" size="lg" icon={<CheckCircle2 className="size-[18px]" />} loading={busy === 'actioned'} onClick={attend}>
+              Listo
+            </Button>
+          </>
+        }
+      >
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[15px]">
+            ¿Qué se hizo?<span className="text-muted"> Queda anotado en el reporte{others}.</span>
+          </span>
+          <Textarea
+            rows={3}
+            maxLength={REPORT_NOTE_MAX}
+            value={note}
+            onChange={(e) => setNote(e.target.value.slice(0, REPORT_NOTE_MAX))}
+            placeholder="Hablé con el admin y borró el comentario."
+          />
+        </label>
+      </Modal>
     </>
   );
 }

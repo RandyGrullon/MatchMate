@@ -9,7 +9,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackProvider } from '../../components/feedback';
 
 type Mode = 'data' | 'loading' | 'error' | 'empty';
-const state = vi.hoisted(() => ({ mode: 'data' as Mode, super: true }));
+const state = vi.hoisted(() => ({ mode: 'data' as Mode, super: true, pro: false }));
 
 vi.mock('../../lib/data/admin', async (importOriginal) => {
   // Lo demás del módulo (tipos, límites, touchSeenDaily…) queda como es; solo se cambian lecturas y acciones.
@@ -129,7 +129,7 @@ vi.mock('../../lib/auth', async (importOriginal) => {
     ...real,
     useAuth: () => ({
       user: { uid: 'u-me', email: 'yo@matchmate.do', displayName: 'Randy' },
-      profile: { id: 'u-me', email: 'yo@matchmate.do', name: 'Randy Dueño', superadmin: state.super },
+      profile: { id: 'u-me', email: 'yo@matchmate.do', name: 'Randy Dueño', superadmin: state.super, uiMode: state.pro ? 'pro' : 'lite' },
       isSuper: state.super,
       loading: false,
       recovering: false,
@@ -150,6 +150,7 @@ beforeAll(async () => {
 beforeEach(() => {
   state.mode = 'data';
   state.super = true;
+  state.pro = false;
 });
 
 const text = (html: string) =>
@@ -197,15 +198,39 @@ describe('consola del superadmin', () => {
     expect(render('/superadmin?tab=cuentas')).not.toContain('Consola');
   });
 
-  it('el marco: menú con todas las secciones, avisos en Resumen y el selector del teléfono', () => {
+  it('el marco: menú con todas las secciones (y su número), la lista del teléfono y la barra de abajo', () => {
     const out = render('/superadmin');
+    const raw = html('/superadmin');
     expect(out).toContain('Consola');
     for (const label of ['Resumen', 'Cuentas', 'Ligas y torneos', 'Reportes', 'Deportes', 'Anuncios', 'Lectura de fotos', 'Sistema', 'Errores', 'Legal', 'Auditoría', 'Marca', 'Insignias']) expect(out).toContain(label);
     expect(out).toContain('Superadmin: Randy Dueño');
-    expect(out).toContain('(1 avisos)');
-    // Reportes abiertos al lado de «Reportes»; los de insignias (otra cola), al lado de «Insignias».
-    expect(out).toContain('Reportes (3 avisos)');
-    expect(out).toContain('Insignias (2 avisos)');
+    // Menú de la izquierda: el número de avisos en Resumen, los reportes abiertos en «Reportes» y los de insignias (otra
+    // cola) en «Insignias», en el globo del color del deporte.
+    expect(raw).toContain('aria-label="1 aviso"');
+    expect(raw).toContain('aria-label="3 avisos"');
+    expect(raw).toContain('aria-label="2 avisos"');
+    // Teléfono: ya no hay selector arriba; las secciones son filas en el Resumen, con su número.
+    expect(raw).not.toContain('<select aria-label="Sección de la consola"');
+    expect(out).toContain('Secciones');
+    expect(raw).toContain('aria-label="Reportes: 3 avisos"');
+    expect(raw).toContain('aria-label="Insignias: 2 avisos"');
+    for (const key of ['cuentas', 'ligas', 'reportes', 'deportes', 'anuncios', 'fotos', 'sistema', 'errores', 'legal', 'auditoria', 'logo', 'insignias'])
+      expect(raw, key).toContain(`href="/superadmin/${key}"`);
+    // La barra de abajo de la app (como en todas las pantallas).
+    expect(raw).toContain('aria-label="Secciones"');
+    // Una línea corta debajo del título, sin explicaciones largas.
+    expect(out).toContain('Cómo va la app hoy');
+  });
+
+  it('el marco: «‹ Hoy» en Lite y «‹ Organizar» en Pro; en cada sección, «‹ Consola», actualizar y su título', () => {
+    expect(html('/superadmin')).toMatch(/href="\/"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Hoy<\/span>/);
+    state.pro = true;
+    expect(html('/superadmin')).toMatch(/href="\/organizar"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Organizar<\/span>/);
+    state.pro = false;
+    const raw = html('/superadmin/sistema');
+    expect(raw).toMatch(/href="\/superadmin"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Consola<\/span>/);
+    expect(raw).toContain('aria-label="Actualizar los datos"');
+    expect(raw).toMatch(/<h1 class="[^"]*text-title-pro[^"]*">Sistema<\/h1>/);
   });
 
   it('reportes: filtros, lo reportado con link, quién reportó, cuántos de lo mismo y las herramientas', () => {
@@ -224,15 +249,17 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Lo reportó una cuenta borrada');
     expect(out).toContain('2 reportes abiertos de esto');
     expect(out).toContain('Ya no existe (se borró).');
-    expect(out).toContain('Borrar comentario');
-    expect(out).toContain('Bloquear cuenta');
-    expect(out).toContain('Borrar liga');
+    // A la vista solo Descartar y Atender (como Rechazar / Aprobar); las herramientas van en «•••».
     expect(out).toContain('Descartar');
-    expect(out).toContain('Marcar como atendido');
+    expect(out).toContain('Atender');
+    expect(out).not.toContain('Borrar comentario');
     const raw = html('/superadmin/reportes');
+    expect(raw.match(/aria-label="Más herramientas"/g)).toHaveLength(2);
+    // Estado en un segmentado (3 opciones), con los abiertos contados.
+    expect(raw).toMatch(/role="radiogroup" aria-label="Estado"/);
+    expect(out).toContain('Abiertos (3)');
     expect(raw).toContain('href="/l/l1/juegos?juego=e1&amp;evento=ev1"');
     expect(raw).toContain('href="/superadmin/cuentas?u=u-ana"');
-    expect(raw).toContain('href="/superadmin/cuentas?u=u-luis"');
   });
 
   it('legal: versiones, cuántas cuentas aceptaron y lo que falta completar', () => {
@@ -258,7 +285,7 @@ describe('consola del superadmin', () => {
     const out = render('/superadmin');
     expect(out).toContain('1,240');
     expect(out).toContain('Activas en 7 días');
-    expect(out).toContain('Juegos anotados (7 días)');
+    expect(out).toContain('Juegos en 7 días');
     expect(out).toContain('Actividad');
     expect(out).toContain('Cuentas activas por día');
     expect(out).toContain('Ligas por deporte');
@@ -268,7 +295,11 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Hay 1 cuenta bloqueada');
     expect(out).toContain('Uso del plan gratis');
     expect(out).toContain('450 MB de 500 MB');
-    expect(out).toContain('Accesos rápidos');
+    // Las secciones (antes «Accesos rápidos»), como filas.
+    expect(out).toContain('Secciones');
+    expect(out).not.toContain('Accesos rápidos');
+    // Gráfica o tabla: un segmentado, no un botón de ícono.
+    expect(html('/superadmin')).toMatch(/role="radiogroup" aria-label="Ver como"/);
   });
 
   it('cuentas: filtros con números, tabla y tarjetas, estados y paginación', () => {
@@ -281,7 +312,8 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Bloqueada');
     expect(out).toContain('Sin confirmar');
     expect(out).toContain('1–3 de 3 cuentas');
-    expect(out).toContain('Bajar CSV');
+    expect(out).toContain('CSV');
+    expect(html('/superadmin/cuentas')).toContain('aria-label="Bajar en CSV las cuentas de esta página"');
   });
 
   it('cuentas: el detalle abierto desde el link (?u=) con sus ligas y acciones', () => {
@@ -295,6 +327,13 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Hacer superadmin');
     expect(out).toContain('Bloquear');
     expect(out).toContain('Copiar correo');
+    // Las acciones son filas (no una fila de botones abajo); los datos y sus ligas, en tarjetas.
+    expect(out).toContain('Acciones');
+    expect(out).toContain('Datos');
+    expect(out).toMatch(/Copiar correo.*Hacer superadmin.*Bloquear/);
+    const raw = html('/superadmin/cuentas?u=u-ana');
+    expect(raw).toContain('href="/l/l1"');
+    expect(raw).toContain('aria-label="Cerrar"');
   });
 
   it('ligas: filtros, deporte, insignias, dueño y acciones', () => {
@@ -308,8 +347,12 @@ describe('consola del superadmin', () => {
     expect(out).toContain('1–2 de 2 ligas');
     // Botones de solo ícono: con nombre para lectores de pantalla.
     const raw = html('/superadmin/ligas');
-    expect(raw).toContain('aria-label="Pasar Copa Pádel a otro dueño"');
-    expect(raw).toContain('aria-label="Borrar Liga del Martes"');
+    // Pasar a otro dueño y borrar van en el «•••» de cada liga.
+    expect(raw).toContain('aria-label="Más opciones de Copa Pádel"');
+    expect(raw).toContain('aria-label="Más opciones de Liga del Martes"');
+    expect(raw).toMatch(/role="radiogroup" aria-label="Tipo"/);
+    expect(raw).toContain('aria-label="Visibilidad"');
+    expect(raw).toContain('aria-label="Ordenar"');
     expect(raw).toContain('href="/l/l1"');
     expect(raw).toContain('href="/superadmin/cuentas?u=u-ana"');
   });
@@ -388,7 +431,8 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Ver detalle');
     expect(out).toContain('Cuenta borrada');
     expect(out).toContain('Ya se arregló');
-    expect(out).toContain('Borrar todos');
+    // «Borrar todos» va en el «•••» de la pantalla.
+    expect(html('/superadmin/errores')).toContain('aria-label="Más opciones"');
     const raw = html('/superadmin/errores');
     expect(raw).toContain('href="/superadmin/cuentas?u=u-ana"');
     // Filtro por tipo en el link.
@@ -417,6 +461,51 @@ describe('consola del superadmin', () => {
     const out = render('/superadmin/insignias');
     expect(out).toContain('Consola');
     expect(out).toContain('Insignias');
+  });
+
+  it('reportes: las herramientas de cada uno (su «•••»): ver la cuenta, borrar, bloquear; las peligrosas en rojo', async () => {
+    const { reportToolItems } = await import('./ReportsSection');
+    const { useReports } = await import('../../lib/data/reports');
+    const rows = useReports(true, { status: 'open', kind: null, page: 0, pageSize: 25 }).data.rows;
+    const on = { removeComment: vi.fn(), block: vi.fn(), deleteLeague: vi.fn() };
+    const labels = (r: (typeof rows)[number], me = 'u-me') => reportToolItems(r, me, on).map((x) => x.label);
+    expect(labels(rows[0])).toEqual(['Ver la cuenta', 'Borrar comentario', 'Bloquear cuenta']);
+    expect(reportToolItems(rows[0], 'u-me', on)[0].to).toBe('/superadmin/cuentas?u=u-luis');
+    expect(reportToolItems(rows[0], 'u-me', on).filter((x) => x.danger).map((x) => x.key)).toEqual(['comentario', 'bloquear']);
+    expect(labels(rows[1])).toEqual(['Ver la cuenta', 'Bloquear cuenta', 'Borrar liga']);
+    // Lo reportado ya no existe: no hay herramientas (ni «•••»).
+    expect(labels(rows[2])).toEqual([]);
+    // Lo escribió uno mismo: ni verse ni bloquearse.
+    expect(labels(rows[0], 'u-luis')).toEqual(['Borrar comentario']);
+    // Cerrado: solo ver la cuenta.
+    expect(labels({ ...rows[0], status: 'dismissed' })).toEqual(['Ver la cuenta']);
+    reportToolItems(rows[1], 'u-me', on).find((x) => x.key === 'liga')!.onClick!();
+    expect(on.deleteLeague).toHaveBeenCalledWith(expect.objectContaining({ id: 'l2', name: 'Liga Falsa', members: 3, events: 0 }));
+    reportToolItems(rows[0], 'u-me', on).find((x) => x.key === 'bloquear')!.onClick!();
+    expect(on.block).toHaveBeenCalledWith({ id: 'u-luis', name: 'Luis Soto' });
+  });
+
+  it('ligas: el «•••» de cada liga lleva a abrirla, ver al dueño, pasarla y (al final, en rojo) borrarla', async () => {
+    const { leagueMenuItems } = await import('./LeaguesSection');
+    const move = vi.fn();
+    const remove = vi.fn();
+    const items = leagueMenuItems({ id: 'l1', ownerId: 'u-ana', ownerName: 'Ana Pérez', kind: 'liga' }, { move, remove });
+    expect(items.map((i) => i.label)).toEqual(['Abrir la liga', 'Ver al dueño', 'Pasar a otro dueño', 'Borrar la liga']);
+    expect(items[0].to).toBe('/l/l1');
+    expect(items[1].to).toBe('/superadmin/cuentas?u=u-ana');
+    expect(items.at(-1)?.danger).toBe(true);
+    items[2].onClick!();
+    items[3].onClick!();
+    expect(move).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+    expect(leagueMenuItems({ id: 't1', ownerId: 'u', ownerName: 'X', kind: 'torneo' }, { move, remove }).map((i) => i.label)).toContain('Borrar el torneo');
+  });
+
+  it('deportes: una tarjeta con cada deporte, su segmentado Abierto · Beta · Cerrado y una línea', () => {
+    const raw = html('/superadmin/deportes');
+    expect(raw).toMatch(/role="radiogroup" aria-label="Estado de Boliche"/);
+    // Ya no va el cuadro que explicaba los tres estados: lo dice la línea de cada uno.
+    expect(render('/superadmin/deportes')).not.toContain('En prueba: solo tú');
   });
 
   it.each(['loading', 'error', 'empty'] as const)('cada sección se dibuja %s', (mode) => {

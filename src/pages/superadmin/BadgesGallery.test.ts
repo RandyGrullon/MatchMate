@@ -4,6 +4,7 @@
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BADGES, definitionCount } from '../../badges/catalog';
 import { BADGE_ICON_KEYS } from '../../badges/visual';
@@ -13,7 +14,8 @@ let html = '';
 
 beforeAll(async () => {
   const { default: BadgesGallery } = await import('./BadgesGallery');
-  html = renderToString(h(BadgesGallery));
+  // Arriba va «‹ Consola» (un link): se dibuja dentro de un router, como en la app.
+  html = renderToString(h(MemoryRouter, null, h(BadgesGallery)));
 }, 120_000);
 
 describe('galería de insignias', () => {

@@ -140,7 +140,7 @@ function ThemeBoxes({ modes, children, className }: { modes: readonly Mode[]; ch
   return (
     <div className={cx('grid gap-3', modes.length > 1 && 'xl:grid-cols-2')}>
       {modes.map((m) => (
-        <div key={m} className={cx('min-w-0 rounded-xl border border-line p-3', className)} style={badgeThemeVars(m) as CSSProperties}>
+        <div key={m} className={cx('min-w-0 rounded-2xl border border-line p-3', className)} style={badgeThemeVars(m) as CSSProperties}>
           <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">{MODE_LABEL[m]}</p>
           {children(m)}
         </div>
@@ -213,11 +213,11 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
       <SectionHeader
         title="Insignias"
         hint={sectionMeta('insignias').hint}
-        actions={
-          <>
+        below={
+          <div className="flex flex-wrap items-center gap-2">
             {tabs}
             <Segmented label="Tema de la galería" options={MODE_OPTIONS} value={choice} onChange={setChoice} size="sm" />
-          </>
+          </div>
         }
       />
 
@@ -332,10 +332,10 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
         subtitle="§4.8 · 1.3 s; con movimiento reducido o la pestaña oculta, solo un fundido de 200 ms."
         actions={
           <>
-            <Button size="sm" variant={still ? 'primary' : 'secondary'} icon={<Pause className="size-4" />} onClick={() => setStill((v) => !v)} aria-pressed={still}>
+            <Button size="sm" variant={still ? 'soft' : 'quiet'} icon={<Pause className="size-4" />} onClick={() => setStill((v) => !v)} aria-pressed={still} className="max-sm:h-11">
               Sin movimiento
             </Button>
-            <Button size="sm" variant="primary" icon={<RotateCcw className="size-4" />} onClick={() => setReplay((r) => r + 1)}>
+            <Button size="sm" variant="soft" icon={<RotateCcw className="size-4" />} onClick={() => setReplay((r) => r + 1)} className="max-sm:h-11">
               Repetir
             </Button>
           </>
@@ -352,8 +352,8 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
                 setReplay((r) => r + 1);
               }}
               className={cx(
-                'h-8 rounded-full px-3 text-sm font-medium transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                unlockTier === t ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
+                "relative h-9 rounded-full px-3.5 text-sm font-semibold transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                unlockTier === t ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-fg-2 hover:text-fg',
               )}
             >
               {TIER_LABEL[t]}
@@ -380,7 +380,7 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
                 const sp = sportFor(def, sport);
                 const cells = catalogCells(def, sp);
                 return (
-                  <article key={def.key} className="flex min-w-0 flex-col gap-2 rounded-lg bg-surface-2/60 p-2.5">
+                  <article key={def.key} className="flex min-w-0 flex-col gap-2 rounded-xl bg-surface-2/60 p-2.5">
                     <header className="min-w-0">
                       <h3 className="truncate text-sm font-semibold">{fillText(nameOf(def, { sport: sp }), { anio: 2026 })}</h3>
                       <p className="truncate text-xs text-muted">
@@ -426,7 +426,7 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
           onChange={(e) => setIconQuery(e.target.value)}
           placeholder="Busca: trofeo, fuego, cigua…"
           aria-label="Buscar ícono"
-          className="mb-3 h-10 w-full max-w-sm rounded-xl border border-line bg-bg px-3 text-sm outline-none focus-visible:border-accent"
+          className="mb-3 h-11 w-full max-w-sm rounded-2xl bg-surface-2 px-4 text-base outline-none placeholder:text-faint focus-visible:outline-2 focus-visible:outline-accent sm:text-sm"
         />
         {(iconKeys ? [{ key: 'q', label: `Con «${iconQuery.trim()}»`, keys: iconKeys }] : ICON_TABS.map((t) => ({ key: t.key, label: t.label, keys: searchIcons('', t.key) }))).map((g) => (
           <section key={g.key} className="mb-3">
@@ -434,7 +434,7 @@ export default function BadgesGallery({ tabs }: { tabs?: ReactNode } = {}) {
             {g.keys.length ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-2">
                 {g.keys.map((k) => (
-                  <div key={k} className="flex flex-col items-center gap-1 rounded-lg bg-surface-2 p-2 text-center" title={k}>
+                  <div key={k} className="flex flex-col items-center gap-1 rounded-xl bg-surface-2 p-2 text-center" title={k}>
                     <IconGlyph icon={k} className="size-6" />
                     <span className="text-[11px] leading-tight">{BADGE_ICONS[k].label}</span>
                   </div>

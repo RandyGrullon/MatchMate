@@ -23,25 +23,25 @@ export type SectionKey =
 export interface SectionMeta {
   key: SectionKey;
   label: string;
-  /** Una línea bajo el título de la sección. */
+  /** Una línea corta bajo el título de la sección (y en su fila de la lista de la consola). */
   hint: string;
   icon: LucideIcon;
 }
 
 export const SECTIONS: readonly SectionMeta[] = [
-  { key: 'resumen', label: 'Resumen', hint: 'Cómo va la app hoy: cuentas, ligas, actividad y avisos.', icon: LayoutDashboard },
-  { key: 'cuentas', label: 'Cuentas', hint: 'Todas las cuentas: buscar, ver sus ligas, nombrar superadmins y bloquear.', icon: Users },
-  { key: 'ligas', label: 'Ligas y torneos', hint: 'Todas las ligas y torneos de todos los deportes.', icon: Trophy },
-  { key: 'reportes', label: 'Reportes', hint: 'Lo que la gente reportó: comentarios, avisos, juegos, ligas y cuentas. Descartar, atender y las herramientas.', icon: Flag },
-  { key: 'deportes', label: 'Deportes', hint: 'Qué deportes están abiertos a todos, en prueba o cerrados.', icon: Volleyball },
-  { key: 'anuncios', label: 'Anuncios', hint: 'Mandar un aviso al teléfono de todos o de un grupo.', icon: Megaphone },
-  { key: 'fotos', label: 'Lectura de fotos', hint: 'Cuántas fotos del marcador se leen con IA y quién las usa.', icon: ScanLine },
-  { key: 'sistema', label: 'Sistema', hint: 'Base de datos, límites del plan gratis, tareas y respaldo.', icon: Server },
-  { key: 'errores', label: 'Errores', hint: 'Lo que falla en los teléfonos: qué pantalla, cuántas veces, a cuántas cuentas y en qué teléfono.', icon: Bug },
-  { key: 'legal', label: 'Legal', hint: 'Versiones de los términos y la privacidad, quién ya las aceptó y lo que falta completar.', icon: Scale },
-  { key: 'auditoria', label: 'Auditoría', hint: 'Todo lo que se hizo desde esta consola, con quién y cuándo.', icon: ScrollText },
-  { key: 'logo', label: 'Marca', hint: 'Logo y animaciones de apertura de cada deporte.', icon: Palette },
-  { key: 'insignias', label: 'Insignias', hint: 'Hazañas por confirmar, reportes y palabras bloqueadas; el motor (cola, historial y rareza) y la galería del catálogo.', icon: Award },
+  { key: 'resumen', label: 'Resumen', hint: 'Cómo va la app hoy', icon: LayoutDashboard },
+  { key: 'cuentas', label: 'Cuentas', hint: 'Buscar, bloquear y nombrar superadmins', icon: Users },
+  { key: 'ligas', label: 'Ligas y torneos', hint: 'De todos los deportes', icon: Trophy },
+  { key: 'reportes', label: 'Reportes', hint: 'Lo que la gente reportó', icon: Flag },
+  { key: 'deportes', label: 'Deportes', hint: 'Abiertos, en prueba o cerrados', icon: Volleyball },
+  { key: 'anuncios', label: 'Anuncios', hint: 'Un aviso al teléfono de todos o de un grupo', icon: Megaphone },
+  { key: 'fotos', label: 'Lectura de fotos', hint: 'Fotos del marcador leídas con IA', icon: ScanLine },
+  { key: 'sistema', label: 'Sistema', hint: 'Base de datos, plan gratis y respaldo', icon: Server },
+  { key: 'errores', label: 'Errores', hint: 'Lo que falla en los teléfonos', icon: Bug },
+  { key: 'legal', label: 'Legal', hint: 'Términos, privacidad y quién los aceptó', icon: Scale },
+  { key: 'auditoria', label: 'Auditoría', hint: 'Lo que se hizo en la consola, quién y cuándo', icon: ScrollText },
+  { key: 'logo', label: 'Marca', hint: 'Logo y animaciones de apertura', icon: Palette },
+  { key: 'insignias', label: 'Insignias', hint: 'Por revisar, el motor y la galería', icon: Award },
 ];
 
 export const DEFAULT_SECTION: SectionKey = 'resumen';

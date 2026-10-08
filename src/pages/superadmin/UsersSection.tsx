@@ -1,8 +1,8 @@
 import { ChevronRight, Download, Users } from 'lucide-react';
 import { Avatar } from '../../components/Avatar';
-import { Button, Card, Empty } from '../../components/ui';
+import { Card, ListRow } from '../../components/ui';
 import { useAdminOverview, useAdminUsers, type AdminOverview, type AdminUser, type AdminUserFilter } from '../../lib/data/admin';
-import { ErrorRetry, FilterChips, Pager, SearchBox, SectionHeader, TableSkeleton } from './bits';
+import { EmptyCard, ErrorRetry, FilterChips, Pager, Pill, SearchBox, SectionHeader, TD, TH, TableSkeleton } from './bits';
 import { USER_CSV_COLUMNS, csvFileName, downloadText, toCsv } from './csv';
 import { fmtDate, fmtDateTime, fmtNum, relativeTime } from './format';
 import { PAGE_SIZES, intParam, useSearchState, useSearchText } from './hooks';
@@ -52,15 +52,14 @@ export default function UsersSection() {
         title="Cuentas"
         hint={sectionMeta('cuentas').hint}
         actions={
-          <Button
+          <Pill
             icon={<Download className="size-4" />}
             disabled={!rows.length}
             onClick={() => downloadText(csvFileName('cuentas'), toCsv(rows, USER_CSV_COLUMNS))}
-            title="Baja en CSV las cuentas de esta página"
-            className="max-sm:min-h-11"
+            label="Bajar en CSV las cuentas de esta página"
           >
-            Bajar CSV
-          </Button>
+            CSV
+          </Pill>
         }
       />
 
@@ -79,32 +78,32 @@ export default function UsersSection() {
       ) : users.loading && !rows.length ? (
         <TableSkeleton rows={8} cols={5} />
       ) : !rows.length ? (
-        <Empty icon={<Users className="size-8" />} title={search ? `Nada con «${search}»` : 'No hay cuentas con este filtro'}>
+        <EmptyCard icon={<Users className="size-8" />} title={search ? `Nada con «${search}»` : 'No hay cuentas con este filtro'}>
           {search || filter !== 'all' ? 'Prueba con otra búsqueda o quita el filtro.' : 'Todavía nadie se ha registrado.'}
-        </Empty>
+        </EmptyCard>
       ) : (
-        <Card className={users.loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+        <Card className={users.loading ? 'overflow-hidden opacity-60 transition-opacity' : 'overflow-hidden transition-opacity'}>
           {/* Computadora: tabla. */}
-          <table className="hidden w-full text-sm md:table">
+          <table className="hidden w-full text-[15px] md:table">
             <caption className="sr-only">Cuentas, página {page + 1}</caption>
-            <thead className="border-b border-line text-left text-xs text-muted">
+            <thead className="border-b border-line text-left">
               <tr>
-                <th scope="col" className="px-4 py-2.5 font-medium">
+                <th scope="col" className={`${TH} w-[38%] pl-5`}>
                   Cuenta
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
+                <th scope="col" className={TH}>
                   Alta
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
+                <th scope="col" className={TH}>
                   Última vez
                 </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <th scope="col" className={`${TH} text-right`}>
                   Ligas
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
+                <th scope="col" className={TH}>
                   Estado
                 </th>
-                <th scope="col" className="w-10 px-2 py-2.5">
+                <th scope="col" className="w-10 px-2">
                   <span className="sr-only">Abrir</span>
                 </th>
               </tr>
@@ -112,9 +111,9 @@ export default function UsersSection() {
             <tbody className="divide-y divide-line">
               {rows.map((u) => (
                 <tr key={u.id} className="cursor-pointer transition hover:bg-surface-2/60" onClick={() => open(u)}>
-                  <td className="max-w-0 px-4 py-2.5">
+                  <td className={`${TD} max-w-0 pl-5`}>
                     <div className="flex items-center gap-3">
-                      <Avatar name={u.name} className="size-8 text-xs" />
+                      <Avatar name={u.name} className="size-9 text-xs" />
                       <div className="min-w-0">
                         <button
                           type="button"
@@ -122,56 +121,58 @@ export default function UsersSection() {
                             e.stopPropagation();
                             open(u);
                           }}
-                          className="block max-w-full truncate text-left font-medium hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                          className="block max-w-full truncate text-left font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-accent"
                         >
                           {u.name}
                         </button>
-                        <div className="truncate text-xs text-muted">{u.email ?? 'Sin correo'}</div>
+                        <div className="truncate text-[13px] text-muted">{u.email ?? 'Sin correo'}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-muted" title={fmtDateTime(u.createdAt)}>
+                  <td className={`${TD} whitespace-nowrap text-muted`} title={fmtDateTime(u.createdAt)}>
                     {fmtDate(u.createdAt)}
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-muted" title={fmtDateTime(u.lastSeenAt)}>
+                  <td className={`${TD} whitespace-nowrap text-muted`} title={fmtDateTime(u.lastSeenAt)}>
                     {relativeTime(u.lastSeenAt)}
                   </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums">
+                  <td className={`${TD} num text-right font-semibold whitespace-nowrap`}>
                     {fmtNum(u.leagues)}
-                    {u.ownedLeagues > 0 && <span className="block text-xs text-muted">dueño de {fmtNum(u.ownedLeagues)}</span>}
+                    {u.ownedLeagues > 0 && <span className="block text-xs font-normal text-muted">dueño de {fmtNum(u.ownedLeagues)}</span>}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className={TD}>
                     <UserBadges u={u} me={me} />
                   </td>
-                  <td className="px-2 py-2.5 text-muted">
-                    <ChevronRight className="size-4" aria-hidden="true" />
+                  <td className="px-2 text-faint">
+                    <ChevronRight className="size-5" aria-hidden="true" />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          {/* Teléfono: tarjetas. */}
-          <ul className="divide-y divide-line md:hidden">
+          {/* Teléfono: filas (toda la fila abre el detalle). */}
+          <div className="md:hidden">
             {rows.map((u) => (
-              <li key={u.id}>
-                <button type="button" onClick={() => open(u)} className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition active:bg-surface-2">
-                  <Avatar name={u.name} className="size-9 text-xs" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{u.name}</span>
-                    <span className="block truncate text-xs text-muted">{u.email ?? 'Sin correo'}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <ListRow
+                key={u.id}
+                dense
+                leading={<Avatar name={u.name} className="size-10 text-sm" />}
+                title={u.name}
+                subtitle={
+                  <>
+                    <span className="block truncate">{u.email ?? 'Sin correo'}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                       <UserBadges u={u} me={me} />
                       <span>
                         {fmtNum(u.leagues)} {u.leagues === 1 ? 'liga' : 'ligas'} · {relativeTime(u.lastSeenAt)}
                       </span>
                     </span>
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
-                </button>
-              </li>
+                  </>
+                }
+                onClick={() => open(u)}
+              />
             ))}
-          </ul>
+          </div>
         </Card>
       )}
 

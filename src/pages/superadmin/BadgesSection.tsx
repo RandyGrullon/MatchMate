@@ -21,7 +21,7 @@ import {
   type EngineJob,
 } from '../../lib/data/badgeAdmin';
 import { hideLeagueBadge } from '../../lib/data/leagueBadges';
-import { ErrorRetry, KpiCard, KpiSkeleton, Panel, SectionHeader, Segmented } from './bits';
+import { ErrorRetry, KpiCard, KpiGrid, KpiSkeleton, Panel, SectionHeader, Segmented } from './bits';
 import { RARITY_NAME, VERDICT_LABEL, jobKindLabel, rarityRows, raritySummary, reportedView, shortError, sportLabel, type RarityRow } from './badgesModel';
 import { fmtDateTime, fmtDay, fmtNum, relativeTime } from './format';
 import { refreshAll, useRun, useSearchState } from './hooks';
@@ -55,7 +55,7 @@ export default function BadgesSection() {
     );
   return (
     <>
-      <SectionHeader title="Insignias" hint={sectionMeta('insignias').hint} actions={tabs} />
+      <SectionHeader title="Insignias" hint={sectionMeta('insignias').hint} below={tabs} />
       {view === 'revisar' ? <ReviewView /> : <EngineView />}
     </>
   );
@@ -68,12 +68,12 @@ function ReviewView() {
   const notices = useBadgeNotices();
   return (
     <>
-      <Panel title="Hazañas por confirmar" subtitle="Las que llevan 14 días o más sin que su liga las confirme, o que nadie de su liga puede confirmar">
+      <Panel title="Hazañas por confirmar" subtitle="14 días o más sin que su liga las confirme (o nadie puede)">
         <ReviewList
           reviews={notices.data.reviews}
           loading={notices.loading}
           error={notices.error}
-          empty={<p className="py-2 text-sm text-muted">No hay hazañas esperando. Cuando una lleve 14 días sin que su liga la confirme, sale aquí.</p>}
+          empty={<p className="py-1 text-sm text-muted">No hay hazañas esperando.</p>}
         />
       </Panel>
       <ReportsPanel />
@@ -119,9 +119,8 @@ function ReportsPanel() {
       title="Reportes"
       subtitle={
         <>
-          Diseños del creador e insignias automáticas que alguien reportó. Los de comentarios, avisos, juegos, ligas y
-          cuentas van en{' '}
-          <Link to={sectionPath('reportes')} className="font-medium text-accent hover:underline">
+          Diseños del creador e insignias automáticas. Lo demás va en{' '}
+          <Link to={sectionPath('reportes')} className="font-semibold text-accent">
             Reportes
           </Link>
           .
@@ -165,10 +164,10 @@ function ReportsPanel() {
         title={pending?.kind === 'hide' ? 'Esconder el diseño' : pending?.kind === 'revoke' ? 'Retirar por fraude' : 'Dejarla como está'}
         footer={
           <>
-            <Button className="h-11" onClick={() => setPending(null)}>
+            <Button variant="quiet" size="lg" onClick={() => setPending(null)}>
               Cancelar
             </Button>
-            <Button className="h-11" variant={pending?.kind === 'dismiss' ? 'primary' : 'danger'} loading={busy} onClick={() => void act()}>
+            <Button size="lg" variant={pending?.kind === 'dismiss' ? 'primary' : 'danger'} loading={busy} onClick={() => void act()}>
               {pending?.kind === 'hide' ? 'Esconder' : pending?.kind === 'revoke' ? 'Retirar' : 'Cerrar el reporte'}
             </Button>
           </>
@@ -206,10 +205,10 @@ function ReportRow({ report: r, onAct }: { report: BadgeReport; onAct: (kind: 'h
     if (yes && (await busy.run('unhide', () => run(() => hideLeagueBadge(r.design!, false), 'Ya no está escondido')))) refreshAll();
   };
   return (
-    <li className="flex items-start gap-3 py-3">
+    <li className="flex items-start gap-3.5 py-3.5">
       {v ? <Insignia badge={v.look} size={40} label={v.name} /> : <Flag className="mt-2 size-5 text-muted" aria-hidden="true" />}
       <div className="min-w-0 flex-1">
-        <p className="leading-snug font-semibold break-words">
+        <p className="text-[15px] leading-snug font-semibold break-words">
           {v?.name ?? 'Insignia que esta versión no conoce'}
           {r.sameTarget > 1 && (
             <Badge tone="warn" className="ml-2 align-middle">
@@ -217,35 +216,35 @@ function ReportRow({ report: r, onAct }: { report: BadgeReport; onAct: (kind: 'h
             </Badge>
           )}
         </p>
-        <p className="text-sm text-muted">{[v?.detail, r.leagueName].filter(Boolean).join(' · ')}</p>
-        <p className="mt-1 text-sm break-words">{r.reason ? `«${r.reason}»` : <span className="text-muted">Sin motivo</span>}</p>
-        <p className="text-xs text-muted">{`${r.reporterName ?? 'Una cuenta'} · ${relativeTime(r.createdAt)}`}</p>
-        {r.resolvedAt && <p className="mt-1 text-xs text-muted">{`${r.resolution ? RESOLUTION_LABEL[r.resolution] : 'Cerrado'} · ${relativeTime(r.resolvedAt)}`}</p>}
+        <p className="text-[13px] text-muted">{[v?.detail, r.leagueName].filter(Boolean).join(' · ')}</p>
+        <p className="mt-1 text-[15px] break-words">{r.reason ? `«${r.reason}»` : <span className="text-muted">Sin motivo</span>}</p>
+        <p className="text-[13px] text-muted">{`${r.reporterName ?? 'Una cuenta'} · ${relativeTime(r.createdAt)}`}</p>
+        {r.resolvedAt && <p className="mt-1 text-[13px] text-muted">{`${r.resolution ? RESOLUTION_LABEL[r.resolution] : 'Cerrado'} · ${relativeTime(r.resolvedAt)}`}</p>}
         <div className="mt-2 flex flex-wrap gap-2">
           {!r.resolvedAt && (
             <>
               {r.design && r.design.status !== 'oculta' && (
-                <Button className="h-11" variant="danger" icon={<EyeOff className="size-4" />} onClick={() => onAct('hide')}>
+                <Button className="max-sm:h-11" variant="danger" icon={<EyeOff className="size-4" />} onClick={() => onAct('hide')}>
                   Esconder diseño
                 </Button>
               )}
               {r.design?.status === 'oculta' && (
-                <Button className="h-11" icon={<Eye className="size-4" />} loading={busy.isBusy('unhide')} onClick={() => void unhide()}>
+                <Button className="max-sm:h-11" variant="soft" icon={<Eye className="size-4" />} loading={busy.isBusy('unhide')} onClick={() => void unhide()}>
                   Dejar de esconder
                 </Button>
               )}
               {r.award && r.award.status !== 'revocada' && (
-                <Button className="h-11" variant="danger" icon={<Ban className="size-4" />} onClick={() => onAct('revoke')}>
+                <Button className="max-sm:h-11" variant="danger" icon={<Ban className="size-4" />} onClick={() => onAct('revoke')}>
                   Retirar por fraude
                 </Button>
               )}
-              <Button className="h-11" icon={<X className="size-4" />} onClick={() => onAct('dismiss')}>
+              <Button className="max-sm:h-11" variant="quiet" icon={<X className="size-4" />} onClick={() => onAct('dismiss')}>
                 Dejarla
               </Button>
             </>
           )}
           {r.leagueId && (
-            <Link to={`/l/${r.leagueId}`} className="inline-flex h-11 items-center rounded-xl px-3 text-sm font-semibold text-accent hover:bg-accent-soft">
+            <Link to={`/l/${r.leagueId}`} className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-semibold text-accent hover:bg-accent-soft max-sm:h-11">
               Ver la liga
             </Link>
           )}
@@ -271,7 +270,7 @@ function TermsPanel() {
     if (await busy.run('add', () => run(() => editBlockedTerms({ add: words, whole }), words.length === 1 ? 'Palabra bloqueada' : 'Palabras bloqueadas'))) setText('');
   };
   return (
-    <Panel title="Palabras bloqueadas" subtitle="El creador de insignias rechaza nombres y textos que las tengan. Se comparan sin acentos ni mayúsculas, y con 0→o, 1→i, 3→e, 4→a, 5→s y @→a">
+    <Panel title="Palabras bloqueadas" subtitle="El creador las rechaza sin importar acentos, mayúsculas ni 0→o, 1→i, 3→e, 4→a, 5→s, @→a">
       <form
         className="flex flex-col gap-2 sm:flex-row sm:items-center"
         onSubmit={(e) => {
@@ -279,12 +278,12 @@ function TermsPanel() {
           void add();
         }}
       >
-        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Una o varias, separadas por coma" aria-label="Palabras para bloquear" className="h-11 sm:flex-1" maxLength={400} />
+        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Una o varias, separadas por coma" aria-label="Palabras para bloquear" className="h-11 rounded-2xl sm:flex-1" maxLength={400} />
         <label className="flex min-h-11 items-center gap-2 text-sm">
           <input type="checkbox" className="size-5 accent-[var(--color-accent)]" checked={whole} onChange={(e) => setWhole(e.target.checked)} />
           Solo la palabra entera
         </label>
-        <Button type="submit" variant="primary" className="h-11" loading={busy.isBusy('add')} disabled={!words.length || busy.isBusy()}>
+        <Button type="submit" variant="soft" className="h-11" loading={busy.isBusy('add')} disabled={!words.length || busy.isBusy()}>
           Bloquear
         </Button>
       </form>
@@ -315,7 +314,7 @@ function TermsPanel() {
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted">{terms.loading ? 'Cargando…' : 'La lista está vacía: el filtro solo revisa enlaces, teléfonos y letras repetidas.'}</p>
+        <p className="mt-3 text-sm text-muted">{terms.loading ? 'Cargando…' : 'La lista está vacía: solo se revisan enlaces, teléfonos y letras repetidas.'}</p>
       )}
     </Panel>
   );
@@ -334,12 +333,12 @@ function EngineView() {
   if (!e) return <KpiSkeleton n={4} />;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <KpiGrid>
         <KpiCard label="En cola" value={fmtNum(e.queue.pending)} note={e.queue.locked ? `${fmtNum(e.queue.locked)} corriendo ahora` : 'trabajos del motor'} />
         <KpiCard label="Ya tocan" value={fmtNum(e.queue.due)} note={e.queue.oldestDue ? `el más viejo, ${relativeTime(e.queue.oldestDue)}` : 'nada atrasado'} />
         <KpiCard label="Ya no se toman" value={fmtNum(e.queue.dead)} note="5 intentos fallidos" />
         <KpiCard label="Avisos por salir" value={fmtNum(e.queue.notices)} note="push agrupados" />
-      </div>
+      </KpiGrid>
       {e.byKind.length > 0 && (
         <Panel title="En cola por tipo">
           <ul className="flex flex-wrap gap-2">
@@ -356,13 +355,13 @@ function EngineView() {
       <DryRunPanel engine={e} selected={runId} onSelect={(id) => s.patch({ corrida: id })} />
       <RarityPanel
         title="Rareza real"
-        subtitle="La de cada noche (badge_stats) contra la estimada en el catálogo. Con menos de 50 cuentas en la base no se juzga"
+        subtitle="La de cada noche contra la del catálogo (con menos de 50 cuentas no se juzga)"
         rows={stats.data}
         loading={stats.loading}
         empty="Todavía no se ha medido: la rareza se calcula cada noche."
       />
       {e.periods.length > 0 && (
-        <Panel title="Últimos periodos que corrieron" subtitle="Meses, años, eventos e historial: cada uno corre una sola vez">
+        <Panel title="Últimos periodos que corrieron" subtitle="Cada mes, año, evento e historial corre una sola vez">
           <ul className="flex flex-col divide-y divide-line text-sm">
             {e.periods.map((p) => (
               <li key={`${p.kind}|${p.scope}|${p.periodKey}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2">
@@ -394,7 +393,7 @@ function DeadJobs({ jobs }: { jobs: readonly EngineJob[] }) {
   return (
     <Panel
       title="Trabajos que ya no se toman"
-      subtitle="Fallaron 5 veces (el motor, la foto de datos o la base). Sin error guardado: la función se quedó sin tiempo o sin CPU; un historial grande conviene partirlo por liga"
+      subtitle="Fallaron 5 veces. Sin error guardado: se quedó sin tiempo (un historial grande, mejor por liga)"
       actions={
         jobs.length > 1 ? (
           <Button size="sm" className="max-sm:h-11" icon={<RefreshCw className="size-3.5" />} loading={busy.isBusy('all')} disabled={busy.isBusy()} onClick={() => void act(jobs.map((j) => j.id), 'retry', 'all')}>
@@ -416,10 +415,10 @@ function DeadJobs({ jobs }: { jobs: readonly EngineJob[] }) {
               <p className="rounded-lg bg-danger-soft px-2 py-1 font-mono text-xs break-words text-danger">{shortError(j.lastError)}</p>
               <p className="text-xs text-muted">{`Entró ${fmtDateTime(j.createdAt)}`}</p>
               <div className="flex flex-wrap gap-2">
-                <Button className="h-11" icon={<RefreshCw className="size-4" />} loading={busy.isBusy(`r${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'retry', `r${j.id}`)}>
+                <Button className="max-sm:h-11" variant="soft" icon={<RefreshCw className="size-4" />} loading={busy.isBusy(`r${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'retry', `r${j.id}`)}>
                   Reintentar
                 </Button>
-                <Button className="h-11" variant="ghost" icon={<Trash2 className="size-4" />} loading={busy.isBusy(`d${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'drop', `d${j.id}`)}>
+                <Button className="max-sm:h-11" variant="quiet" icon={<Trash2 className="size-4" />} loading={busy.isBusy(`d${j.id}`)} disabled={busy.isBusy()} onClick={() => void act([j.id], 'drop', `d${j.id}`)}>
                   Borrar
                 </Button>
               </div>
@@ -456,11 +455,11 @@ function BackfillPanel({ engine: e }: { engine: BadgeEngine }) {
     if (ok) toast(`${fmtNum(jobs)} trabajos en la cola: el motor los va corriendo de 25 en 25`);
   };
   return (
-    <Panel title="Historial (la primera corrida)" subtitle="Da lo que ya se ganó con lo que se jugó antes de las insignias: un trabajo por liga y uno por cuenta">
-      <ol className="mb-3 flex list-decimal flex-col gap-1 pl-5 text-sm text-muted">
-        <li>Corre en seco: no da nada, solo cuenta cuántas cuentas tendrían cada insignia.</li>
-        <li>Compara abajo con la rareza estimada y ajusta los umbrales del catálogo si algo sale muy fácil o muy poco.</li>
-        <li>Corre de verdad: cada cuenta recibe un solo aviso, «Te dimos 12 insignias por tu historial».</li>
+    <Panel title="Historial (la primera corrida)" subtitle="Da lo que ya se ganó antes de las insignias">
+      <ol className="mb-4 flex list-decimal flex-col gap-1 pl-5 text-[15px] text-fg-2 marker:text-faint">
+        <li>En seco: no da nada, solo cuenta quién tendría cada una.</li>
+        <li>Compara abajo con la rareza y ajusta los umbrales si hace falta.</li>
+        <li>De verdad: cada cuenta recibe un solo aviso con su lista.</li>
       </ol>
       {running.length > 0 && (
         <ul className="mb-3 flex flex-col gap-1 text-sm">
@@ -473,10 +472,10 @@ function BackfillPanel({ engine: e }: { engine: BadgeEngine }) {
         </ul>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button className="h-11" variant="primary" icon={<FlaskConical className="size-4" />} loading={busy === 'dry'} disabled={!!busy || running.length > 0} onClick={() => void start(true)}>
+        <Button size="lg" variant="primary" icon={<FlaskConical className="size-[18px]" />} loading={busy === 'dry'} disabled={!!busy || running.length > 0} onClick={() => void start(true)}>
           Correr en seco
         </Button>
-        <Button className="h-11" variant="danger" icon={<Play className="size-4" />} loading={busy === 'real'} disabled={!!busy || running.length > 0 || !hadDryRun} onClick={() => void start(false)}>
+        <Button size="lg" variant="danger" icon={<Play className="size-[18px]" />} loading={busy === 'real'} disabled={!!busy || running.length > 0 || !hadDryRun} onClick={() => void start(false)}>
           Correr de verdad
         </Button>
       </div>
@@ -491,7 +490,7 @@ function DryRunPanel({ engine: e, selected, onSelect }: { engine: BadgeEngine; s
   return (
     <RarityPanel
       title="Corrida en seco"
-      subtitle="Cuántas cuentas la tendrían, sobre las activas del deporte en los últimos 365 días, contra la rareza estimada"
+      subtitle="Quién la tendría (de las activas del deporte en 365 días) contra la rareza del catálogo"
       rows={e.dryRun?.rows ?? []}
       loading={false}
       empty="Esta corrida todavía no tiene resultados: el motor la está corriendo."
@@ -534,7 +533,7 @@ function RarityPanel({ title, subtitle, rows, loading, empty, actions }: { title
             ))}
           </ul>
           {model.length > shown.length && (
-            <Button className="mt-2 h-11 w-full" variant="ghost" onClick={() => setAll(true)}>
+            <Button className="mt-2 h-11 w-full" variant="quiet" onClick={() => setAll(true)}>
               {`Ver las ${fmtNum(model.length)}`}
             </Button>
           )}

@@ -158,9 +158,9 @@ export function LineChart({
 /** Tabla con los mismos datos de una gráfica (para leerlos sin pasar el mouse). */
 export function ChartTable({ points, seriesName, format = fmtNum }: { points: readonly ChartPoint[]; seriesName: string; format?: (v: number) => string }) {
   return (
-    <div className="max-h-72 overflow-y-auto rounded-xl border border-line">
+    <div className="max-h-72 overflow-y-auto rounded-2xl bg-surface-2/60">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-surface-2 text-left text-xs text-muted">
+        <thead className="sticky top-0 bg-surface-2 text-left text-[11px] font-semibold tracking-[0.06em] text-muted uppercase">
           <tr>
             <th scope="col" className="px-3 py-2 font-medium">
               Día
