@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createMeet, updateMeet, type AgeScheme, type SwimMeet } from '../../../lib/data/swimming';
 import { toIsoDate } from '../../../lib/format';
 import { useAction } from '../../../components/feedback';
-import { Button, Field, Input, Modal, Select } from '../../../components/ui';
+import { Button, Field, Input, Modal, Select, Textarea } from '../../../components/ui';
 import { Segmented } from './bits';
 import { clubMeetTemplate, pointsFor, SCHEME_LABEL, timeTrialTemplate } from './logic';
 
@@ -92,10 +92,10 @@ export function MeetFormModal({
       title={editing ? 'Cambiar encuentro' : 'Nuevo encuentro'}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" className="h-11" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" loading={busy} disabled={!valid} onClick={save}>
+          <Button variant="primary" className="h-11" loading={busy} disabled={!valid} onClick={save}>
             {editing ? 'Guardar' : 'Crear'}
           </Button>
         </>
@@ -117,14 +117,14 @@ export function MeetFormModal({
           />
         </Field>
         <Field label="Nombre (opcional)">
-          <Input value={name} maxLength={80} placeholder="Copa Delfín" onChange={(e) => setName(e.target.value)} />
+          <Input className="h-11" value={name} maxLength={80} placeholder="Copa Delfín" onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Fecha">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <Input type="date" className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
           <Field label="Hora (opcional)">
-            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            <Input type="time" className="h-11" value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -142,6 +142,7 @@ export function MeetFormModal({
           <Field label="Carriles">
             <Select
               value={lanes}
+              className="h-11"
               onChange={(e) => {
                 const n = Number(e.target.value);
                 // Los puntos por defecto siguen a los carriles mientras no se cambien a mano.
@@ -159,11 +160,11 @@ export function MeetFormModal({
         </div>
         {type === 'encuentro' && (
           <Field label="Puntos por puesto" hint="Del 1.º en adelante, separados por guiones. En un empate se reparten.">
-            <Input value={points} inputMode="numeric" aria-invalid={!parsed} onChange={(e) => setPoints(e.target.value)} />
+            <Input className="h-11" value={points} inputMode="numeric" aria-invalid={!parsed} onChange={(e) => setPoints(e.target.value)} />
           </Field>
         )}
         <Field label="Categorías" hint="Se calculan con el año de nacimiento (edad al 31 de diciembre).">
-          <Select value={scheme} onChange={(e) => setScheme(e.target.value as AgeScheme)}>
+          <Select className="h-11" value={scheme} onChange={(e) => setScheme(e.target.value as AgeScheme)}>
             {(Object.keys(SCHEME_LABEL) as AgeScheme[]).map((s) => (
               <option key={s} value={s}>
                 {SCHEME_LABEL[s]}
@@ -173,7 +174,7 @@ export function MeetFormModal({
         </Field>
         {!editing && (
           <Field label="Empezar con" hint="Después puedes agregar, cambiar o quitar pruebas.">
-            <Select value={template} onChange={(e) => setTemplate(e.target.value as Template)}>
+            <Select className="h-11" value={template} onChange={(e) => setTemplate(e.target.value as Template)}>
               <option value="club">Pruebas de un encuentro de club ({clubMeetTemplate(pool, scheme).length})</option>
               <option value="control">Pruebas de control de marcas ({timeTrialTemplate().length})</option>
               <option value="none">Sin pruebas</option>
@@ -181,12 +182,11 @@ export function MeetFormModal({
           </Field>
         )}
         <Field label="Anuncio (opcional)">
-          <textarea
+          <Textarea
             value={announcement}
             maxLength={1000}
             rows={2}
             onChange={(e) => setAnnouncement(e.target.value)}
-            className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-fg sm:text-sm"
             placeholder="Calentamiento 7:30 am. Traigan gorro del club."
           />
         </Field>

@@ -17,7 +17,10 @@ import { useLeagueCtx } from '../../../lib/league';
 import type { Player } from '../../../lib/types';
 import { BusyIcon, useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Empty, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { useIsPro } from '../../../components/mode';
+import { TuTag } from '../../../components/ranking/parts';
+import { Badge, Button, Card, Field, Input, ListRow, Modal, SectionHeader, Select, cx } from '../../../components/ui';
+import { EmptyCard, ProLine } from '../FieldChrome';
 import { MAX_INDEX, MIN_INDEX, isValidIndex } from '../../../sports/golf/course';
 import { HcpExplain } from './bits';
 import { cardHoles, hcpText, holesDone, indexText, isComplete } from './logic';
@@ -35,8 +38,9 @@ export function parseIndex(text: string): number | null {
 export const indexInput = (v: number | null | undefined) => (v == null ? '' : v < 0 ? `+${Math.abs(v)}` : String(v));
 
 /**
- * Jugadores de la ronda: inscribirme (con salida e Index), mi tarjeta, los grupos y, para el admin,
- * inscribir a otros, armar grupos, descalificar o sacar.
+ * Jugadores de la ronda (rediseño «Calma y foco»): inscribirme (con salida e Index) o mi tarjeta arriba, y los grupos
+ * como filas («Grupo 1 · sale por el hoyo 1»). Para el admin, en Pro: inscribir a otros, armar grupos y tocar una fila
+ * para cambiar la salida, descalificar o sacar (en Lite, «Esto es de Pro · Usar Pro»).
  */
 export function GolfPlayers({
   round,
@@ -50,12 +54,15 @@ export function GolfPlayers({
   onSign: (card: GolfCardDoc) => void;
 }) {
   const { isAdmin, myPlayerId } = useLeagueCtx();
+  const pro = useIsPro();
   const [adding, setAdding] = useState(false);
   const [grouping, setGrouping] = useState(false);
   const [editing, setEditing] = useState<GolfCardDoc | null>(null);
   const nameOf = (pid: string) => players.find((p) => p.id === pid)?.name ?? '(jugador borrado)';
   const myCard = myPlayerId ? (cards.find((c) => c.playerId === myPlayerId) ?? null) : null;
   const open = !round.closed;
+  // Las herramientas del admin son de Pro (en Lite, solo mirar).
+  const manage = isAdmin && pro;
 
   const groups = useMemo(() => {
     const m = new Map<number | null, GolfCardDoc[]>();
@@ -64,69 +71,71 @@ export function GolfPlayers({
   }, [cards]);
 
   const teeName = (id: string) => round.course.tees.find((t) => t.id === id)?.name ?? id;
-  const startLabel = (c: GolfCardDoc) => `sale por el hoyo ${c.startHole}`;
+  const statusOf = (c: GolfCardDoc) =>
+    c.dq ? (
+      <Badge tone="danger">Descalificado</Badge>
+    ) : c.signed ? (
+      <Badge tone="ok">Firmada</Badge>
+    ) : holesDone(c) ? (
+      <Badge>{isComplete(c) ? 'Sin firmar' : `${holesDone(c)} hoyos`}</Badge>
+    ) : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-[26px]">
       {open && myPlayerId && !myCard && <RegisterCard round={round} playerId={myPlayerId} />}
       {myCard && <MyCard round={round} card={myCard} onSign={onSign} />}
 
-      {isAdmin && open && (
-        <div className="flex flex-wrap gap-2">
-          <Button icon={<UserPlus className="size-4" />} onClick={() => setAdding(true)}>
-            Inscribir jugadores
+      {isAdmin && open && !pro && <ProLine text="Inscribir y armar grupos" />}
+      {manage && open && (
+        <div className="grid grid-cols-2 gap-2.5">
+          <Button variant="quiet" size="lg" icon={<UserPlus className="size-5" />} onClick={() => setAdding(true)}>
+            Inscribir
           </Button>
-          <Button icon={<Users className="size-4" />} onClick={() => setGrouping(true)} disabled={!cards.length}>
+          <Button variant="quiet" size="lg" icon={<Users className="size-5" />} onClick={() => setGrouping(true)} disabled={!cards.length}>
             Armar grupos
           </Button>
         </div>
       )}
 
       {!cards.length ? (
-        <Empty icon={<Users className="size-8" />} title="Nadie inscrito todavía">
-          {isAdmin ? 'Inscribe a los jugadores o comparte la ronda para que cada quien se inscriba.' : 'Inscríbete arriba con tu salida y tu Index.'}
-        </Empty>
+        <EmptyCard
+          icon={<Users className="size-5" />}
+          title="Nadie inscrito todavía"
+          text={isAdmin ? 'Inscribe a los jugadores o comparte la ronda para que cada quien se inscriba.' : 'Inscríbete arriba con tu salida y tu Index.'}
+        />
       ) : (
         groups.map(([g, list]) => (
-          <Card key={String(g)} className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-              <span className="font-semibold">{g == null ? 'Sin grupo' : `Grupo ${g}`}</span>
-              {g != null && <span className="text-xs text-muted">{startLabel(list[0])}</span>}
-            </div>
-            <ul className="divide-y divide-line">
+          <section key={String(g)} aria-label={g == null ? 'Sin grupo' : `Grupo ${g}`}>
+            <SectionHeader
+              title={g == null ? 'Sin grupo' : `Grupo ${g}`}
+              action={g != null ? <span className="text-sm text-muted">sale por el hoyo {list[0].startHole}</span> : undefined}
+            />
+            <Card className="overflow-hidden">
               {[...list]
                 .sort((a, b) => nameOf(a.playerId).localeCompare(nameOf(b.playerId)))
-                .map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      disabled={!isAdmin}
-                      onClick={() => setEditing(c)}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left enabled:hover:bg-surface-2"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">
-                          {nameOf(c.playerId)}
-                          {c.playerId === myPlayerId && <span className="text-muted"> (tú)</span>}
+                .map((c) => {
+                  const me = c.playerId === myPlayerId;
+                  return (
+                    <ListRow
+                      key={c.id}
+                      dense
+                      me={me}
+                      onClick={manage ? () => setEditing(c) : undefined}
+                      ariaLabel={manage ? `Cambiar la tarjeta de ${nameOf(c.playerId)}` : undefined}
+                      chevron={false}
+                      title={
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{nameOf(c.playerId)}</span>
+                          {me && <TuTag small />}
                         </span>
-                        <span className="text-xs text-muted">
-                          {teeName(c.teeId)} · Index {indexText(c.hcpIndex)} · Hcp de juego {hcpText(c.playingHcp)}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 flex-col items-end gap-1">
-                        {c.dq ? (
-                          <Badge tone="danger">Descalificado</Badge>
-                        ) : c.signed ? (
-                          <Badge tone="ok">Firmada</Badge>
-                        ) : holesDone(c) ? (
-                          <Badge>{isComplete(c) ? 'Sin firmar' : `${holesDone(c)} hoyos`}</Badge>
-                        ) : null}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </Card>
+                      }
+                      subtitle={`${teeName(c.teeId)} · Index ${indexText(c.hcpIndex)} · Hcp ${hcpText(c.playingHcp)}`}
+                      trailing={statusOf(c)}
+                    />
+                  );
+                })}
+            </Card>
+          </section>
         ))
       )}
 
@@ -141,7 +150,7 @@ export function GolfPlayers({
 function TeeSelect({ round, value, onChange, disabled, busy = false }: { round: GolfRoundFull; value: string; onChange: (v: string) => void; disabled?: boolean; busy?: boolean }) {
   return (
     <span className="relative block">
-      <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled || busy} aria-busy={busy || undefined} className={busy ? 'appearance-none' : undefined}>
+      <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled || busy} aria-busy={busy || undefined} className={cx('h-11', busy && 'appearance-none')}>
         {round.course.tees.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name} · {t.rating} / {t.slope} · par {t.par}
@@ -177,14 +186,17 @@ function RegisterCard({ round, playerId }: { round: GolfRoundFull; playerId: str
   }
 
   return (
-    <Card className="flex flex-col gap-3 px-4 py-4">
-      <p className="font-semibold">Inscribirme en esta ronda</p>
+    <Card className="flex flex-col gap-4 p-5">
+      <div>
+        <p className="text-card-title-pro">Inscríbete en la ronda</p>
+        <p className="mt-1 text-meta text-muted">Tu salida y tu Index: con eso sale tu handicap de juego.</p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Salida (tees)">
           <TeeSelect round={round} value={tee} onChange={setTee} />
         </Field>
         <Field label="Handicap Index (no oficial)" hint="El de FEDOGOLF o GHIN. Plus: +1.2. Vacío = sin Index.">
-          <Input inputMode="decimal" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ej.: 14.2" aria-invalid={bad} />
+          <Input inputMode="decimal" className="h-11" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ej.: 14.2" aria-invalid={bad} />
         </Field>
       </div>
       {bad ? (
@@ -194,7 +206,7 @@ function RegisterCard({ round, playerId }: { round: GolfRoundFull; playerId: str
       ) : (
         <HcpExplain round={round} teeId={tee} index={index} />
       )}
-      <Button variant="primary" className="h-12 text-base" onClick={go} loading={busy} disabled={bad || !tee}>
+      <Button variant="primary" size="xl" icon={<UserPlus className="size-5" />} onClick={go} loading={busy} disabled={bad || !tee}>
         Inscribirme
       </Button>
     </Card>
@@ -211,10 +223,11 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
   const started = holesDone(card) > 0 || !!card.scoredAt;
   const signing = !card.signed && pendingGolfSign(lid, card.id);
   const locked = round.closed || card.signed || started;
+  const tee = round.course.tees.find((t) => t.id === card.teeId);
   return (
-    <Card className="flex flex-col gap-3 px-4 py-4">
+    <Card className="flex flex-col gap-3.5 p-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="font-semibold">Mi tarjeta</p>
+        <p className="text-card-title-pro">Mi tarjeta</p>
         {card.signed ? (
           <Badge tone="ok">Firmada</Badge>
         ) : signing ? (
@@ -225,25 +238,35 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
           <Badge>{holesDone(card)} hoyos</Badge>
         )}
       </div>
-      <Field label="Salida (tees)" hint={locked ? 'Ya empezaste a anotar: la salida no cambia (pídeselo al admin).' : undefined}>
-        <TeeSelect
-          round={round}
-          value={card.teeId}
-          disabled={locked || busy.isBusy()}
-          busy={busy.isBusy('salida')}
-          onChange={(teeId) => void busy.run('salida', () => run(() => registerGolf(lid, round.eventId, { teeId }), 'Salida cambiada'))}
-        />
-      </Field>
+      {locked ? (
+        // Ya anotó (o está firmada o cerrada): la salida se ve, no se cambia.
+        <p className="text-meta">
+          <span className="text-muted">Salida: </span>
+          <b className="font-semibold">{tee ? `${tee.name} · ${tee.rating} / ${tee.slope} · par ${tee.par}` : card.teeId}</b>
+          {!round.closed && !card.signed && <span className="mt-0.5 block text-xs text-muted">Ya anotaste: la salida no cambia (pídeselo al admin).</span>}
+        </p>
+      ) : (
+        <Field label="Salida (tees)">
+          <TeeSelect
+            round={round}
+            value={card.teeId}
+            disabled={busy.isBusy()}
+            busy={busy.isBusy('salida')}
+            onChange={(teeId) => void busy.run('salida', () => run(() => registerGolf(lid, round.eventId, { teeId }), 'Salida cambiada'))}
+          />
+        </Field>
+      )}
       <HcpExplain round={round} teeId={card.teeId} index={card.hcpIndex} />
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {!card.signed && !signing && isComplete(card) && !round.closed && (
-          <Button variant="primary" icon={<Signature className="size-4" />} onClick={() => onSign(card)}>
+          <Button variant="primary" size="lg" className="flex-1" icon={<Signature className="size-5" />} onClick={() => onSign(card)}>
             Revisar y firmar
           </Button>
         )}
         {!locked && (
           <Button
-            variant="ghost"
+            variant="quiet"
+            className="h-11"
             loading={busy.isBusy('salir')}
             disabled={busy.isBusy()}
             onClick={async () => {

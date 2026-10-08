@@ -5,7 +5,9 @@ import { useHoldBadgeUnlock } from '../../../components/badges/hold';
 import { recordHeat, type SwimEntry, type SwimEventItem } from '../../../lib/data/swimming';
 import { formatSwimTime, type SwimStatus } from '../../../sports/swimming';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Empty, Select, cx } from '../../../components/ui';
+import { PillSelect } from '../../../components/ranking/parts';
+import { Badge, Button, Card, cx } from '../../../components/ui';
+import { EmptyCard, STICKY_ABOVE_NAV } from '../FieldChrome';
 import { FieldModeButton, FieldScreen, useFieldMode } from '../golf/FieldScreen';
 import { ClubTag, TimeKeypad, TimeText } from './bits';
 import { groupLabel, pendingHeats, raceName, raceTitle } from './logic';
@@ -72,7 +74,7 @@ export function TimingPanel({ data }: { data: MeetData }) {
     if (!sel && auto) setSel(auto);
   }, [sel, auto?.ev, auto?.heat]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!seeded.length || !auto) return <Empty icon={<Timer className="size-8" />} title="No hay series publicadas">Primero se publica la hoja de series.</Empty>;
+  if (!seeded.length || !auto) return <EmptyCard icon={<Timer className="size-5" />} title="No hay series publicadas" text="Primero se publica la hoja de series." />;
 
   const cur = sel && seeded.some((e) => e.id === sel.ev) ? sel : auto;
   const ev = seeded.find((e) => e.id === cur.ev)!;
@@ -90,15 +92,17 @@ export function TimingPanel({ data }: { data: MeetData }) {
 
   const selectors = (
     <>
-      <Select value={ev.id} onChange={(e) => setSel({ ev: e.target.value, heat: heatsOf(seeded.find((x) => x.id === e.target.value)!, entries)[0] })} aria-label="Prueba">
-        {seeded.map((e) => (
-          <option key={e.id} value={e.id}>
-            {e.num}. {raceName(e)} · {e.gender === 'F' ? 'Fem.' : e.gender === 'M' ? 'Masc.' : 'Mixto'}
-            {pendingHeats(e, entries).length === 0 ? ' ✓' : ''}
-          </option>
-        ))}
-      </Select>
-      <div className={cx('no-scrollbar flex gap-1.5 overflow-x-auto', !field.on && '-mx-4 px-4')} role="group" aria-label="Serie">
+      <PillSelect
+        label="Prueba"
+        className="max-w-full self-start"
+        options={seeded.map((e) => ({
+          key: e.id,
+          label: `${e.num}. ${raceName(e)} · ${e.gender === 'F' ? 'Fem.' : e.gender === 'M' ? 'Masc.' : 'Mixto'}${pendingHeats(e, entries).length === 0 ? ' ✓' : ''}`,
+        }))}
+        value={ev.id}
+        onChange={(id) => setSel({ ev: id, heat: heatsOf(seeded.find((x) => x.id === id)!, entries)[0] })}
+      />
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Serie">
         {heats.map((h) => {
           const done = entries.some((e) => e.swimEventId === ev.id && e.heat === h && hasResult(e));
           return (
@@ -108,12 +112,12 @@ export function TimingPanel({ data }: { data: MeetData }) {
               onClick={() => setSel({ ev: ev.id, heat: h })}
               aria-pressed={h === heat}
               className={cx(
-                'flex min-h-10 shrink-0 items-center gap-1 rounded-full px-4 text-sm font-medium transition active:scale-95',
-                h === heat ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
+                'flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-meta font-semibold transition active:scale-95',
+                h === heat ? 'bg-accent text-accent-fg' : done ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-fg-2',
               )}
             >
               Serie {h}
-              {done && <CheckCircle2 className="size-3.5" />}
+              {done && <CheckCircle2 aria-hidden="true" className="size-4" />}
             </button>
           );
         })}
@@ -155,7 +159,7 @@ function Clock({ startedAt }: { startedAt: number }) {
     return () => clearInterval(id);
   }, []);
   return (
-    <p className="min-w-0 flex-1 font-mono text-4xl font-bold tabular-nums sm:text-5xl" aria-live="off">
+    <p className="num min-w-0 flex-1 text-[44px] leading-none font-[650] sm:text-hero-sm" aria-live="off">
       {formatSwimTime(elapsedCs(startedAt, now), { full: true })}
     </p>
   );
@@ -268,17 +272,18 @@ function HeatTimer({
   const body = (
     <>
       {!field.on && (
-        <p className="text-sm font-semibold">
-          {raceTitle(ev)} · Serie {heat} de {heatCount}
+        <p className="mx-1 text-meta font-semibold text-fg-2">
+          Serie {heat} de {heatCount}
+          {running && <span className="font-normal text-muted"> · en marcha</span>}
         </p>
       )}
-      {meet.finalizedAt && <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">El encuentro está finalizado: ya no se publican series.</p>}
+      {meet.finalizedAt && <p className="rounded-2xl bg-warn-soft px-4 py-3 text-sm text-warn">El encuentro está finalizado: ya no se publican series.</p>}
 
-      <Card className="flex flex-col gap-2 p-3">
+      <Card className="flex flex-col gap-2.5 p-4">
         {running ? (
           <div className="flex items-center gap-3">
             <Clock startedAt={state.startedAt!} />
-            <Button variant="ghost" icon={<RotateCcw className="size-4" />} onClick={reset}>
+            <Button variant="quiet" className="h-11" icon={<RotateCcw className="size-4" />} onClick={reset}>
               Cero
             </Button>
           </div>
@@ -286,12 +291,12 @@ function HeatTimer({
           <button
             type="button"
             onClick={() => push({ t: 'start', at: Date.now() })}
-            className="flex h-16 items-center justify-center gap-2 rounded-2xl bg-accent text-xl font-bold tracking-wide text-accent-fg shadow-sm transition active:scale-[0.98]"
+            className="flex h-btn items-center justify-center gap-2.5 rounded-btn bg-accent text-xl font-bold tracking-wide text-accent-fg shadow-sm transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <Timer className="size-6" /> SALIDA
+            <Timer aria-hidden="true" className="size-6" /> SALIDA
           </button>
         )}
-        <p className="text-center text-xs text-muted">Cronómetro de este teléfono · no oficial. Para los tiempos de los cronómetros, toca el tiempo del carril.</p>
+        <p className="text-center text-[13px] text-muted">Cronómetro del teléfono, no oficial. Para el tiempo del cronómetro, toca el del carril.</p>
       </Card>
 
       <div className="flex flex-col gap-2">
@@ -300,11 +305,11 @@ function HeatTimer({
           const v = values[lane];
           const watchPending = running && state.lanes[lane]?.source !== 'watch' && v.status !== 'dns';
           return (
-            <Card key={e.id} className={cx('flex flex-col gap-2 p-3', v.status !== 'ok' && 'border-warn')}>
+            <Card key={e.id} className={cx('flex flex-col gap-2.5 p-3.5', v.status !== 'ok' && 'border-warn')}>
               <div className="flex items-center gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xl font-bold tabular-nums">{lane}</span>
+                <span className="num grid size-11 shrink-0 place-items-center rounded-xl bg-surface-2 text-xl font-[650] text-fg-2">{lane}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{name(e.playerId)}</p>
+                  <p className="truncate text-body font-semibold">{name(e.playerId)}</p>
                   <div className="flex flex-wrap items-center gap-x-2">
                     <ClubTag club={e.clubId ? clubs.get(e.clubId) : null} short />
                     {e.ageGroup && <span className="text-xs text-muted">{groupLabel(e.ageGroup)}</span>}
@@ -317,10 +322,10 @@ function HeatTimer({
                   type="button"
                   onClick={() => setKeypad(lane)}
                   disabled={v.status === 'dns' || v.status === 'dnf'}
-                  className="flex h-12 min-w-24 flex-col items-end justify-center rounded-xl bg-surface-2 px-3 transition active:scale-95 disabled:opacity-60"
+                  className="flex h-12 min-w-24 flex-col items-end justify-center rounded-xl bg-surface-2 px-3 transition active:scale-95 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-accent"
                   aria-label={`Escribir tiempo del carril ${lane}`}
                 >
-                  <TimeText cs={v.time} empty="--.--" className="text-lg font-bold" />
+                  <TimeText cs={v.time} empty="--.--" className="num text-[19px] leading-tight font-[650]" />
                   {order[lane] && <span className="text-[11px] leading-3 text-muted">{order[lane]}.º de la serie</span>}
                 </button>
               </div>
@@ -329,7 +334,7 @@ function HeatTimer({
                   <button
                     type="button"
                     onClick={() => push({ t: 'stop', lane, at: Date.now() })}
-                    className="h-12 flex-1 rounded-xl bg-danger text-lg font-bold text-on-danger transition active:scale-[0.97]"
+                    className="h-12 flex-1 rounded-key bg-danger text-lg font-bold text-on-danger transition active:scale-[0.97]"
                   >
                     STOP {lane}
                   </button>
@@ -363,8 +368,9 @@ function HeatTimer({
   const bar = (
     <>
       <Button
-        variant="ghost"
-        className="h-14"
+        variant="quiet"
+        size="xl"
+        className="px-4"
         icon={<Undo2 className="size-5" />}
         disabled={!log.length}
         onClick={() => setLog((prev) => prev.slice(0, -1))}
@@ -372,7 +378,7 @@ function HeatTimer({
       >
         <span className="hidden sm:inline">Deshacer</span>
       </Button>
-      <Button variant="primary" className="h-14 flex-1 text-base" loading={busy} disabled={!!meet.finalizedAt} icon={<Send className="size-5" />} onClick={publish}>
+      <Button variant="primary" size="xl" className="flex-1" loading={busy} disabled={!!meet.finalizedAt} icon={<Send className="size-5" />} onClick={publish}>
         {publishedAt || onServer ? 'Publicar de nuevo' : 'Publicar serie'}
       </Button>
     </>
@@ -418,7 +424,7 @@ function HeatTimer({
     <div className="flex flex-col gap-3">
       {body}
       {/* Siempre a la vista: fijo abajo, encima de la barra de la app en el teléfono (antes quedaba tapado). */}
-      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex gap-2 rounded-2xl border border-line bg-surface/95 p-2 shadow-lg backdrop-blur sm:bottom-2">
+      <div className={cx(STICKY_ABOVE_NAV, 'card-shadow flex gap-2 rounded-[26px] bg-surface/95 p-2 backdrop-blur')}>
         {bar}
       </div>
       {note}

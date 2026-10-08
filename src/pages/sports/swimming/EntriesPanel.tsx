@@ -14,7 +14,9 @@ import {
 import { usePlayers } from '../../../lib/data';
 import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Empty, Input, Modal, cx } from '../../../components/ui';
+import { Badge, Button, Card, Input, Modal, cx } from '../../../components/ui';
+import { TuTag } from '../../../components/ranking/parts';
+import { EmptyCard } from '../FieldChrome';
 import { ClubTag, SeedField, TimeText, useSwim } from './bits';
 import { canEnter, groupForMeet, groupLabel, raceDetail, raceName } from './logic';
 import type { MeetData } from './MeetPage';
@@ -41,7 +43,7 @@ export function EntriesPanel({ data }: { data: MeetData }) {
   const canEnterAny = !closed && (isAdmin || coachOf.size > 0 || !!myPlayerId);
   const mayManage = (e: SwimEntry) => isAdmin || e.playerId === myPlayerId || (!!e.clubId && coachOf.has(e.clubId));
 
-  if (!events.length) return <Empty icon={<Users className="size-8" />} title="Todavía no hay pruebas">Primero se arma el programa.</Empty>;
+  if (!events.length) return <EmptyCard icon={<Users className="size-5" />} title="Todavía no hay pruebas" text="Primero se arma el programa." />;
 
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -57,8 +59,8 @@ export function EntriesPanel({ data }: { data: MeetData }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted">
-        {entries.length === 1 ? '1 inscripción' : `${entries.length} inscripciones`} en {events.length} pruebas. NT = sin tiempo de siembra.
+      <p className="mx-1 text-meta text-muted">
+        {entries.length === 1 ? '1 inscripción' : `${entries.length} inscripciones`} · {events.length} pruebas · NT = sin tiempo
       </p>
       {events.map((ev) => {
         const list = entries.filter((e) => e.swimEventId === ev.id).sort(bySeed);
@@ -66,56 +68,66 @@ export function EntriesPanel({ data }: { data: MeetData }) {
         const meIn = !!myPlayerId && list.some((e) => e.playerId === myPlayerId);
         return (
           <Card key={ev.id} className="overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2.5">
-              <button type="button" onClick={() => toggle(ev.id)} aria-expanded={isOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-sm font-bold tabular-nums">{ev.num}</span>
+            <div className="flex min-h-row items-center gap-2 py-2 pr-3 pl-4">
+              <button
+                type="button"
+                onClick={() => toggle(ev.id)}
+                aria-expanded={isOpen}
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-3.5 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                <span className={cx('num grid size-10 shrink-0 place-items-center rounded-xl text-[17px] font-[650]', meIn ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-fg-2')}>
+                  {ev.num}
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{raceName(ev)}</span>
-                  <span className="block truncate text-xs text-muted">
-                    {raceDetail(ev)} · {list.length}
-                    {meIn ? ' · estás inscrito' : ''}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-body font-semibold">{raceName(ev)}</span>
+                    {meIn && <TuTag small />}
+                  </span>
+                  <span className="block truncate text-sm text-muted">
+                    {raceDetail(ev)} · {list.length === 1 ? '1 inscrito' : `${list.length} inscritos`}
                   </span>
                 </span>
-                <ChevronDown className={cx('size-4 shrink-0 text-muted transition', isOpen && 'rotate-180')} />
+                <ChevronDown aria-hidden="true" className={cx('size-5 shrink-0 text-faint transition', isOpen && 'rotate-180')} />
               </button>
               {canEnterAny && (
-                <Button size="sm" icon={<UserPlus className="size-4" />} onClick={() => setEntering(ev)} aria-label={`Inscribir en la prueba ${ev.num}`}>
+                <Button variant="soft" className="h-11 min-w-11 shrink-0 px-3" icon={<UserPlus className="size-[18px]" />} onClick={() => setEntering(ev)} aria-label={`Inscribir en la prueba ${ev.num}`}>
                   <span className="hidden sm:inline">Inscribir</span>
                 </Button>
               )}
             </div>
             {isOpen && (
-              <div className="divide-y divide-line border-t border-line">
-                {!list.length && <p className="px-4 py-3 text-sm text-muted">Nadie inscrito todavía.</p>}
+              <div className="border-t border-line">
+                {!list.length && <p className="px-5 py-3.5 text-sm text-muted">Nadie inscrito todavía.</p>}
                 {list.map((e) => {
                   const manage = !closed && mayManage(e) && e.resultAt == null && e.time == null;
+                  const me = !!myPlayerId && e.playerId === myPlayerId;
                   return (
-                    <div key={e.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div key={e.id} className={cx('mm-row relative flex min-h-row-pro items-center gap-2 py-2 pr-2 pl-5', me && 'mm-row-me bg-accent-soft')}>
                       <div className="min-w-0 flex-1">
-                        <Link to={`${base}/j/${e.playerId}`} className="block truncate font-medium hover:text-accent">
+                        <Link to={`${base}/j/${e.playerId}`} className="block truncate text-[15px] font-semibold hover:text-accent">
                           {name(e.playerId)}
                         </Link>
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                           <ClubTag club={e.clubId ? clubs.get(e.clubId) : null} short />
                           {e.ageGroup && <span className="text-xs text-muted">{groupLabel(e.ageGroup)}</span>}
                           {e.heat != null && (
-                            <span className="text-xs text-muted">
+                            <span className="text-xs font-[550] text-fg-2">
                               Serie {e.heat} · carril {e.lane}
                             </span>
                           )}
                         </div>
                       </div>
                       {manage ? (
-                        <button type="button" onClick={() => setSeedOf(e)} className="rounded-lg px-2 py-1 hover:bg-surface-2" aria-label="Cambiar siembra">
-                          <TimeText cs={e.seed} className="text-sm" />
+                        <button type="button" onClick={() => setSeedOf(e)} className="min-h-11 rounded-xl px-2.5 text-sm font-semibold hover:bg-surface-2" aria-label="Cambiar siembra">
+                          <TimeText cs={e.seed} />
                         </button>
                       ) : (
-                        <TimeText cs={e.seed} className="px-2 text-sm text-muted" />
+                        <TimeText cs={e.seed} className="px-2.5 text-sm text-muted" />
                       )}
                       {manage && (
                         <Button
-                          size="sm"
                           variant="ghost"
+                          className="h-11 w-11 text-muted"
                           aria-label="Sacar de la prueba"
                           icon={<X className="size-4" />}
                           loading={removing.isBusy(e.id)}
@@ -157,11 +169,12 @@ function SeedModal({ data, entry, onClose }: { data: MeetData; entry: SwimEntry 
       title={entry ? data.name(entry.playerId) : ''}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" className="h-11" onClick={onClose}>
             Cancelar
           </Button>
           <Button
             variant="primary"
+            className="h-11"
             loading={busy}
             disabled={bad}
             onClick={async () => {
@@ -258,10 +271,10 @@ function EnterModal({ data, ev, info, onClose }: { data: MeetData; ev: SwimEvent
       title={`Prueba ${ev.num} · ${raceName(ev)}`}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" className="h-11" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" loading={busy} disabled={!picked.size || bad.size > 0} onClick={save}>
+          <Button variant="primary" className="h-11" loading={busy} disabled={!picked.size || bad.size > 0} onClick={save}>
             Inscribir {picked.size ? `(${picked.size})` : ''}
           </Button>
         </>

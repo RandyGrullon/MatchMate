@@ -14,7 +14,7 @@ import {
 import { toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { useAction } from '../../../components/feedback';
-import { Button, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { Button, Field, Input, Modal, Segmented, Select, cx } from '../../../components/ui';
 import { COMPETITION_TEMPLATES, sameCompetition } from './logic';
 
 /** Formato de la competencia: plantillas y % de handicap. */
@@ -32,11 +32,11 @@ export function CompetitionPicker({ value, onChange }: { value: GolfCompetition;
               onClick={() => onChange({ ...t.comp, allowance: t.comp.basis === 'gross' ? 100 : (value.allowance ?? t.comp.allowance) })}
               aria-pressed={active}
               className={cx(
-                'rounded-xl border px-3 py-2 text-left text-sm transition active:scale-[0.98]',
-                active ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
+                'min-h-14 rounded-2xl px-3 py-2.5 text-left text-sm transition active:scale-[0.98]',
+                active ? 'bg-accent-soft shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'shadow-[inset_0_0_0_1px_var(--line)] hover:bg-surface-2',
               )}
             >
-              <span className="block font-medium">{t.label}</span>
+              <span className={cx('block font-semibold', active && 'text-accent')}>{t.label}</span>
               <span className="block text-xs text-muted">{t.hint}</span>
             </button>
           );
@@ -47,6 +47,7 @@ export function CompetitionPicker({ value, onChange }: { value: GolfCompetition;
           <Input
             type="number"
             inputMode="numeric"
+            className="h-11"
             min={0}
             max={100}
             value={value.allowance ?? 95}
@@ -72,7 +73,7 @@ export function RoundForm({
   /** Cambiar una ronda: su evento, lo que tiene (null = todavía sin campo) y si ya se anotó algo. */
   edit?: { eventId: string; round: GolfRoundFull | null; started: boolean };
 }) {
-  const { lid, base } = useLeagueCtx();
+  const { lid, base, isAdmin } = useLeagueCtx();
   const navigate = useNavigate();
   const run = useAction();
   const courses = useGolfCourses(lid);
@@ -119,8 +120,8 @@ export function RoundForm({
       eighteen
         ? [
             { v: 'all' as Nine, l: '18 hoyos' },
-            { v: 'front' as Nine, l: 'Ida (1–9)' },
-            { v: 'back' as Nine, l: 'Vuelta (10–18)' },
+            { v: 'front' as Nine, l: 'Ida 1–9' },
+            { v: 'back' as Nine, l: 'Vuelta 10–18' },
           ]
         : [{ v: 'all' as Nine, l: '9 hoyos' }],
     [eighteen],
@@ -170,8 +171,10 @@ export function RoundForm({
       title={edit ? 'Ronda: campo y formato' : 'Nueva ronda'}
       footer={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={submit} loading={busy} disabled={!valid}>
+          <Button className="h-11" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" className="h-11" onClick={submit} loading={busy} disabled={!valid}>
             {edit ? 'Guardar' : kind === 'ronda' ? 'Crear ronda' : `Crear torneo (${dates.length} ${dates.length === 1 ? 'ronda' : 'rondas'})`}
           </Button>
         </>
@@ -182,63 +185,71 @@ export function RoundForm({
           <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
             Primero agrega el campo del club en{' '}
             <Link to={`${base}/admin?tab=campos`} className="font-semibold underline" onClick={onClose}>
-              Admin · Campos
+              Organizar › Campos
             </Link>
             .
           </p>
         ) : null}
         {!edit && (
-          <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
-            {(['ronda', 'torneo'] as const).map((k) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={kind === k}
-                onClick={() => setKind(k)}
-                className={cx('rounded-lg px-3 py-2 text-sm font-medium', kind === k ? 'bg-surface shadow-sm' : 'text-muted')}
-              >
-                {k === 'ronda' ? 'Una ronda' : 'Torneo de varias rondas'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            full
+            label="Qué se crea"
+            options={[
+              { key: 'ronda' as const, label: 'Una ronda' },
+              { key: 'torneo' as const, label: 'Un torneo' },
+            ]}
+            value={kind}
+            onChange={setKind}
+          />
         )}
         {!edit && (
           <Field label={kind === 'ronda' ? 'Nombre (opcional)' : 'Nombre del torneo'}>
-            <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={kind === 'ronda' ? 'Mensual de octubre' : 'Copa del Club'} />
+            <Input className="h-11" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={kind === 'ronda' ? 'Mensual de octubre' : 'Copa del Club'} />
           </Field>
         )}
         {!edit && kind === 'ronda' && (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Fecha">
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input type="date" className="h-11" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="Hora de salida (opcional)">
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              <Input type="time" className="h-11" value={time} onChange={(e) => setTime(e.target.value)} />
             </Field>
           </div>
         )}
         {!edit && kind === 'torneo' && (
-          <Field label="Fechas (una por ronda, hasta 6)">
+          <Field label="Fechas del torneo (una por ronda, hasta 6)">
             <div className="flex flex-col gap-2">
               {dates.map((d, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="w-16 shrink-0 text-sm text-muted">Ronda {i + 1}</span>
-                  <Input type="date" value={d} onChange={(e) => setDates(dates.map((x, k) => (k === i ? e.target.value : x)))} />
+                  <Input type="date" className="h-11" value={d} onChange={(e) => setDates(dates.map((x, k) => (k === i ? e.target.value : x)))} />
                   {dates.length > 1 && (
                     <Button variant="ghost" aria-label="Quitar ronda" icon={<Trash2 className="size-4" />} onClick={() => setDates(dates.filter((_, k) => k !== i))} />
                   )}
                 </div>
               ))}
               {dates.length < 6 && (
-                <Button size="sm" icon={<Plus className="size-4" />} onClick={() => setDates([...dates, dates[dates.length - 1] ?? today])}>
+                <Button variant="quiet" className="h-11 self-start" icon={<Plus className="size-4" />} onClick={() => setDates([...dates, dates[dates.length - 1] ?? today])}>
                   Otra ronda
                 </Button>
               )}
             </div>
           </Field>
         )}
-        <Field label="Campo" hint={lockCourse ? 'Ya hay golpes anotados: el campo y los hoyos no cambian.' : undefined}>
-          <Select value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={lockCourse}>
+        <Field
+          label="Campo"
+          hint={
+            lockCourse ? (
+              'Ya hay golpes anotados: el campo y los hoyos no cambian.'
+            ) : isAdmin && courses.data.length > 0 ? (
+              <Link to={`${base}/admin?tab=campos`} onClick={onClose} className="font-medium text-accent">
+                Agregar o cambiar campos
+              </Link>
+            ) : undefined
+          }
+        >
+          <Select className="h-11" value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={lockCourse}>
             {courses.data.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} · {c.holes.length} hoyos · par {c.holes.reduce((a, h) => a + h.par, 0)}
@@ -248,25 +259,20 @@ export function RoundForm({
         </Field>
         {nineOptions.length > 1 && (
           <Field label="Hoyos">
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
-              {nineOptions.map((o) => (
-                <button
-                  key={o.v}
-                  type="button"
-                  disabled={lockCourse}
-                  onClick={() => setNine(o.v)}
-                  className={cx('rounded-lg px-2 py-2 text-sm font-medium disabled:opacity-60', nine === o.v ? 'bg-surface shadow-sm' : 'text-muted')}
-                >
-                  {o.l}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              full
+              label="Hoyos de la ronda"
+              className={lockCourse ? 'pointer-events-none opacity-60' : undefined}
+              options={nineOptions.map((o) => ({ key: o.v, label: o.l }))}
+              value={nine}
+              onChange={setNine}
+            />
           </Field>
         )}
         <Field label="Formato">
           <CompetitionPicker value={comp} onChange={setComp} />
         </Field>
-        <label className="flex items-start gap-3 rounded-xl border border-line px-3 py-2.5">
+        <label className="flex min-h-14 items-start gap-3 rounded-2xl px-3 py-3 shadow-[inset_0_0_0_1px_var(--line)]">
           <input type="checkbox" className="mt-1 size-5 accent-[var(--accent)]" checked={shotgun} onChange={(e) => setShotgun(e.target.checked)} />
           <span className="text-sm">
             <span className="font-medium">Salida simultánea (shotgun)</span>

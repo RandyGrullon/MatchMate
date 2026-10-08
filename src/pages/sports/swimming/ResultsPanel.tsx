@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ListOrdered, Medal } from 'lucide-react';
 import { GENDER_LABEL, STATUS_LABEL, formatSwimTime, type MedalRow, type TeamScore } from '../../../sports/swimming';
 import type { SwimEventItem } from '../../../lib/data/swimming';
 import { ShareButton, medalPointsShare, type ShareTableSpec } from '../../../components/share';
-import { Card, Empty, Position, Select, cx } from '../../../components/ui';
+import { PillSelect, PosNum, TuTag } from '../../../components/ranking/parts';
+import { Card, SectionHeader, cx } from '../../../components/ui';
+import { EmptyCard } from '../FieldChrome';
 import { ClubTag, StatusBadge, TimeText, meetTitle, useSwim } from './bits';
 import { eventResults, groupLabel, meetScores, raceName, raceTitle, scores, type ResultGroup } from './logic';
 import type { MeetData } from './MeetPage';
@@ -44,9 +46,13 @@ export function raceShare(data: Pick<MeetData, 'meet' | 'clubs' | 'name'>, ev: S
   };
 }
 
-/** Resultados por prueba y categoría: puesto, tiempo y puntos (DQ, DNS y DNF al final, sin puesto). */
+/**
+ * Resultados por prueba y categoría (rediseño «Calma y foco»): cada prueba con su título y compartir, y cada categoría en
+ * una tarjeta con el puesto, el nadador (tú, resaltado), su club y el tiempo grande con sus puntos (DQ, DNS y DNF al
+ * final, sin puesto). Con más de 2 pruebas, «Todas las pruebas ▾» para ver una.
+ */
 export function ResultsPanel({ data }: { data: MeetData }) {
-  const { base } = useSwim();
+  const { base, myPlayerId } = useSwim();
   const { meet, events, entries, clubs, name } = data;
   const [only, setOnly] = useState<string>('');
   const withResults = useMemo(
@@ -56,62 +62,77 @@ export function ResultsPanel({ data }: { data: MeetData }) {
   const withPoints = scores(meet);
 
   if (!withResults.length) {
-    return <Empty icon={<ListOrdered className="size-8" />} title="Todavía no hay resultados">Salen aquí apenas se publica cada serie.</Empty>;
+    return <EmptyCard icon={<ListOrdered className="size-5" />} title="Todavía no hay resultados" text="Salen aquí apenas se publica cada serie." />;
   }
   const shown = only ? withResults.filter((x) => x.ev.id === only) : withResults;
 
   return (
-    <div className="flex flex-col gap-4">
-      {!meet.finalizedAt && <p className="text-xs text-muted">Resultados provisionales hasta que el organizador finalice el encuentro.</p>}
-      {withResults.length > 2 && (
-        <Select value={only} onChange={(e) => setOnly(e.target.value)} aria-label="Prueba">
-          <option value="">Todas las pruebas</option>
-          {withResults.map(({ ev }) => (
-            <option key={ev.id} value={ev.id}>
-              {raceTitle(ev)}
-            </option>
-          ))}
-        </Select>
+    <div className="flex flex-col gap-[26px]">
+      {(withResults.length > 2 || !meet.finalizedAt) && (
+        <div className="-mb-2 flex flex-wrap items-center justify-between gap-2">
+          {withResults.length > 2 ? (
+            <PillSelect
+              label="Prueba"
+              className="max-w-full"
+              options={[{ key: '', label: 'Todas las pruebas' }, ...withResults.map(({ ev }) => ({ key: ev.id, label: raceTitle(ev) }))]}
+              value={only}
+              onChange={setOnly}
+            />
+          ) : (
+            <span />
+          )}
+          {!meet.finalizedAt && <span className="text-[13px] text-muted">Provisionales hasta finalizar</span>}
+        </div>
       )}
       {shown.map(({ ev, groups }) => (
-        <section key={ev.id} className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <h2 className="min-w-0 flex-1 text-sm font-semibold">{raceTitle(ev)}</h2>
-            <ShareButton
-              variant="ghost"
-              size="md"
-              iconOnly
-              className="-my-2 -mr-2"
-              label={`Compartir los resultados de ${raceName(ev)}`}
-              path={`${base}/e/${meet.id}?ver=resultados`}
-              card={() => raceShare(data, ev, groups)}
-            />
-          </div>
+        <section key={ev.id} aria-label={raceTitle(ev)} className="flex flex-col gap-2.5">
+          <SectionHeader
+            className="mb-0.5"
+            title={raceTitle(ev)}
+            action={
+              <ShareButton
+                variant="ghost"
+                size="md"
+                iconOnly
+                className="-my-2 -mr-1 rounded-full! text-fg-2"
+                label={`Compartir los resultados de ${raceName(ev)}`}
+                path={`${base}/e/${meet.id}?ver=resultados`}
+                card={() => raceShare(data, ev, groups)}
+              />
+            }
+          />
           {groups.map((g) => (
             <Card key={g.key} className="overflow-hidden">
-              <p className="border-b border-line bg-surface-2 px-4 py-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+              <p className="px-5 pt-3.5 pb-1.5 text-xs font-semibold tracking-[0.06em] text-muted uppercase">
                 {GENDER_LABEL[g.gender]} · {groupLabel(g.ageGroup)}
               </p>
-              <div className="divide-y divide-line">
-                {g.rows.map((r) => (
-                  <div key={r.entryId} className={cx('flex items-center gap-3 px-4 py-2.5', r.place == null && 'opacity-70')}>
-                    <span className="w-6 shrink-0 text-center">{r.place != null ? <Position pos={r.place} /> : <span className="text-muted">—</span>}</span>
-                    <div className="min-w-0 flex-1">
-                      <Link to={`${base}/j/${r.swimmerId}`} className="block truncate font-medium hover:text-accent">
-                        {name(r.swimmerId)}
-                      </Link>
-                      <div className="flex flex-wrap items-center gap-x-2">
-                        <ClubTag club={r.teamId ? clubs.get(r.teamId) : null} short />
-                        {r.tied && <span className="text-xs text-muted">empate</span>}
+              <div>
+                {g.rows.map((r) => {
+                  const me = !!myPlayerId && r.swimmerId === myPlayerId;
+                  return (
+                    <div
+                      key={r.entryId}
+                      className={cx('mm-row relative flex min-h-row-pro items-center gap-3 py-2 pr-5 pl-4', me && 'mm-row-me bg-accent-soft', r.place == null && 'opacity-70')}
+                    >
+                      <span className="w-[18px] shrink-0 text-center">{r.place != null ? <PosNum pos={r.place} /> : <span className="text-faint">–</span>}</span>
+                      <div className="min-w-0 flex-1">
+                        <Link to={`${base}/j/${r.swimmerId}`} className="flex min-w-0 items-center gap-1.5 hover:text-accent">
+                          <span className="truncate text-[15px] font-semibold">{name(r.swimmerId)}</span>
+                          {me && <TuTag small />}
+                        </Link>
+                        <div className="flex flex-wrap items-center gap-x-2">
+                          <ClubTag club={r.teamId ? clubs.get(r.teamId) : null} short />
+                          {r.tied && <span className="text-xs text-muted">empate</span>}
+                        </div>
+                      </div>
+                      <StatusBadge status={r.status} />
+                      <div className="flex shrink-0 flex-col items-end">
+                        <TimeText cs={r.time} empty="" className="num text-row-num-pro" />
+                        {withPoints && r.points > 0 && <span className="text-xs text-muted">{pts(r.points)} {r.points === 1 ? 'pt' : 'pts'}</span>}
                       </div>
                     </div>
-                    <StatusBadge status={r.status} />
-                    <div className="flex shrink-0 flex-col items-end">
-                      <TimeText cs={r.time} empty="" className="font-semibold" />
-                      {withPoints && r.points > 0 && <span className="text-[11px] text-muted">{pts(r.points)} pts</span>}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           ))}
@@ -127,7 +148,7 @@ export function ScoresPanel({ data }: { data: MeetData }) {
   const { meet, events, entries, clubs } = data;
   const s = useMemo(() => meetScores(events, entries, meet.points), [events, entries, meet.points]);
   if (!s.clubs.length && !s.medals.length) {
-    return <Empty icon={<Medal className="size-8" />} title="Todavía no hay puntos">Los puntos por club salen de los resultados de cada prueba.</Empty>;
+    return <EmptyCard icon={<Medal className="size-5" />} title="Todavía no hay puntos" text="Los puntos por club salen de los resultados de cada prueba." />;
   }
   // Imagen de los puntos por club (con las medallas) para mandar al grupo.
   const shareCard = () =>
@@ -139,15 +160,26 @@ export function ScoresPanel({ data }: { data: MeetData }) {
       note: `Puntos por puesto: ${meet.points.join('-')}. En un empate se reparten.`,
     });
   return (
-    <div className="flex flex-col gap-4">
-      {s.clubs.length > 0 && (
-        <div className="flex justify-end">
-          <ShareButton path={`${base}/e/${meet.id}?ver=puntos`} card={shareCard} />
-        </div>
-      )}
-      <ClubPointsCard rows={s.clubs} clubs={clubs} caption={`Puntos por puesto: ${meet.points.join('-')}. En un empate se reparten.`} />
+    <div className="flex flex-col gap-[26px]">
+      <ClubPointsCard
+        rows={s.clubs}
+        clubs={clubs}
+        caption={`Por puesto: ${meet.points.join('-')}. En un empate se reparten.${meet.finalizedAt ? '' : ' Provisional hasta finalizar.'}`}
+        action={
+          s.clubs.length > 0 ? (
+            <ShareButton
+              variant="ghost"
+              size="md"
+              iconOnly
+              className="-my-2 -mr-1 rounded-full! text-fg-2"
+              label="Compartir los puntos por club"
+              path={`${base}/e/${meet.id}?ver=puntos`}
+              card={shareCard}
+            />
+          ) : undefined
+        }
+      />
       <MedalsCard rows={s.medals} clubs={clubs} />
-      {!meet.finalizedAt && <p className="text-xs text-muted">Provisional hasta que el organizador finalice el encuentro.</p>}
     </div>
   );
 }
@@ -160,7 +192,7 @@ export function MedalDots({ gold, silver, bronze }: { gold: number; silver: numb
     </span>
   );
   return (
-    <span className="flex items-center gap-2 text-xs text-muted">
+    <span className="flex items-center gap-2.5 text-xs text-muted">
       {dot(gold, 'bg-gold', 'oro')}
       {dot(silver, 'bg-silver', 'plata')}
       {dot(bronze, 'bg-bronze', 'bronce')}
@@ -168,72 +200,79 @@ export function MedalDots({ gold, silver, bronze }: { gold: number; silver: numb
   );
 }
 
+/** Los clubes por puntos, como filas (el puesto, el club con su color y sus medallas, los puntos en grande). */
 export function ClubPointsCard({
   rows,
   clubs,
   caption,
   title = 'Puntos por club',
+  action,
 }: {
   rows: (Pick<TeamScore, 'points' | 'gold' | 'silver' | 'bronze' | 'rank'> & { teamId?: string; clubId?: string })[];
   clubs: Map<string, { id: string; name: string; short: string; color: string | null; coachId: string | null }>;
   caption?: string;
   title?: string;
+  action?: ReactNode;
 }) {
   return (
-    <Card className="overflow-hidden">
-      <h2 className="border-b border-line px-4 py-2.5 font-semibold">{title}</h2>
-      <div className="divide-y divide-line">
+    <section aria-label={title}>
+      <SectionHeader title={title} action={action} />
+      <Card className="overflow-hidden">
         {rows.map((r) => {
           const id = r.teamId ?? r.clubId ?? '';
+          const club = clubs.get(id) ?? { id, name: '(club borrado)', short: '', color: null, coachId: null };
           return (
-            <div key={id} className="flex items-center gap-3 px-4 py-3">
-              <Position pos={r.rank} />
+            <div key={id} className="mm-row relative flex min-h-row items-center gap-3.5 py-2.5 pr-5 pl-4">
+              <PosNum pos={r.rank} />
+              <span aria-hidden="true" className="size-3 shrink-0 rounded-full" style={{ background: club.color ?? 'var(--line)' }} />
               <div className="min-w-0 flex-1">
-                <ClubTag club={clubs.get(id) ?? { id, name: '(club borrado)', short: '', color: null, coachId: null }} className="text-sm font-medium text-fg" />
+                <p className="truncate text-body font-semibold">{club.name}</p>
                 <MedalDots gold={r.gold} silver={r.silver} bronze={r.bronze} />
               </div>
-              <span className="text-lg font-bold tabular-nums">{pts(r.points)}</span>
+              <span className="num shrink-0 text-row-num">{pts(r.points)}</span>
             </div>
           );
         })}
-      </div>
-      {caption && <p className="border-t border-line px-4 py-2 text-xs text-muted">{caption}</p>}
-    </Card>
+      </Card>
+      {caption && <p className="mx-1 mt-2 text-[12.5px] leading-[1.4] text-muted">{caption}</p>}
+    </section>
   );
 }
 
 function MedalsCard({ rows, clubs }: { rows: MedalRow[]; clubs: MeetData['clubs'] }) {
   if (!rows.length) return null;
   return (
-    <Card className="overflow-hidden">
-      <h2 className="border-b border-line px-4 py-2.5 font-semibold">Medallero</h2>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-muted">
-            <th className="px-4 py-2 text-left font-medium">Club</th>
-            <th className="w-12 py-2 font-medium">Oro</th>
-            <th className="w-12 py-2 font-medium">Plata</th>
-            <th className="w-14 py-2 font-medium">Bronce</th>
-            <th className="w-12 py-2 pr-4 font-medium">Total</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((m) => (
-            <tr key={m.id}>
-              <td className="max-w-0 px-4 py-2.5">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 shrink-0 text-xs text-muted tabular-nums">{m.rank}</span>
-                  <ClubTag club={clubs.get(m.id) ?? { id: m.id, name: '(club borrado)', short: '', color: null, coachId: null }} className="text-sm text-fg" />
-                </span>
-              </td>
-              <td className="text-center font-semibold tabular-nums">{m.gold}</td>
-              <td className="text-center tabular-nums">{m.silver}</td>
-              <td className="text-center tabular-nums">{m.bronze}</td>
-              <td className="pr-4 text-center tabular-nums text-muted">{m.total}</td>
+    <section aria-label="Medallero">
+      <SectionHeader title="Medallero" />
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs tracking-[0.06em] text-muted uppercase">
+              <th className="px-5 pt-3.5 pb-2 text-left font-semibold">Club</th>
+              <th className="w-12 pt-3.5 pb-2 font-semibold">Oro</th>
+              <th className="w-12 pt-3.5 pb-2 font-semibold">Plata</th>
+              <th className="w-14 pt-3.5 pb-2 font-semibold">Bronce</th>
+              <th className="w-14 pt-3.5 pr-5 pb-2 font-semibold">Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {rows.map((m) => (
+              <tr key={m.id}>
+                <td className="max-w-0 px-5 py-3">
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 shrink-0 text-xs text-muted tabular-nums">{m.rank}</span>
+                    <ClubTag club={clubs.get(m.id) ?? { id: m.id, name: '(club borrado)', short: '', color: null, coachId: null }} className="text-sm font-[550] text-fg" />
+                  </span>
+                </td>
+                <td className="num text-center font-semibold">{m.gold}</td>
+                <td className="num text-center">{m.silver}</td>
+                <td className="num text-center">{m.bronze}</td>
+                <td className="num pr-5 text-center text-muted">{m.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </section>
   );
 }

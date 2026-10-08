@@ -31,8 +31,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition active:scale-95',
-        active ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
+        'flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-meta font-semibold transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        active ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-fg-2 hover:text-fg',
       )}
     >
       {children}

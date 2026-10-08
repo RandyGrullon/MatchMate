@@ -122,12 +122,13 @@ export function ScoreTable({ round, card, competition }: { round: { course: Golf
   );
 }
 
+/** Un número de la tarjeta (Bruto, Neto, Stableford) en su ficha gris, como las fichas de juego. */
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="rounded-xl bg-surface-2 px-2 py-2">
-      <div className="text-[11px] text-muted">{label}</div>
-      <div className="text-xl font-bold tabular-nums">{value}</div>
-      {sub != null && <div className="text-xs text-muted">{sub}</div>}
+    <div className="flex min-w-0 flex-col items-center rounded-tile bg-surface-2 px-2 py-2.5">
+      <div className="max-w-full truncate text-xs font-[550] text-muted">{label}</div>
+      <div className="num mt-1 text-[24px] leading-none font-[650]">{value}</div>
+      {sub != null && <div className="mt-1 text-xs text-muted">{sub}</div>}
     </div>
   );
 }

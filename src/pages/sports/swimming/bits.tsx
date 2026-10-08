@@ -6,7 +6,7 @@ import { useSwimClubs, type SwimClub, type SwimMeet } from '../../../lib/data/sw
 import { formatDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { formatSwimTime, parseSwimTime, STATUS_LABEL, timeFromDigits, type SwimStatus } from '../../../sports/swimming';
-import { Badge, Button, Input, Modal, cx } from '../../../components/ui';
+import { Badge, Button, Input, Sheet, cx } from '../../../components/ui';
 
 /**
  * Piezas comunes de las pantallas de natación: quién es quién en la liga (admin, cronometrista, entrenador),
@@ -48,9 +48,9 @@ export function clubMap(clubs: readonly SwimClub[]) {
   return new Map(clubs.map((c) => [c.id, c] as const));
 }
 
-/** Tiempo m:ss.hh (o «NT»), con cifras del mismo ancho. */
+/** Tiempo m:ss.hh (o «NT»), con cifras del mismo ancho (los grandes, con `num`). */
 export function TimeText({ cs, className, empty = 'NT' }: { cs: number | null | undefined; className?: string; empty?: string }) {
-  return <span className={cx('font-mono tabular-nums', className)}>{cs ? formatSwimTime(cs) : empty}</span>;
+  return <span className={cx('tabular-nums', className)}>{cs ? formatSwimTime(cs) : empty}</span>;
 }
 
 export function StatusBadge({ status }: { status: SwimStatus }) {
@@ -66,20 +66,6 @@ export function ClubTag({ club, short, className }: { club: SwimClub | null | un
       <span className="size-2 shrink-0 rounded-full" style={{ background: club.color ?? 'var(--line)' }} aria-hidden="true" />
       <span className="truncate">{short && club.short ? club.short : club.name}</span>
     </span>
-  );
-}
-
-/** Encabezado de pantalla: icono, título y una línea. */
-export function PageHead({ icon, title, sub, children }: { icon: ReactNode; title: string; sub?: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-bold tracking-tight">{title}</h1>
-        {sub && <div className="text-sm text-muted">{sub}</div>}
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -110,7 +96,7 @@ export function SeedField({
       aria-label={label}
       aria-invalid={bad}
       value={text}
-      className={cx('w-24 text-center font-mono tabular-nums', bad && 'border-danger', className)}
+      className={cx('h-11 w-24 text-center tabular-nums', bad && 'border-danger', className)}
       onChange={(e) => {
         setText(e.target.value);
         const t = e.target.value.trim();
@@ -150,44 +136,44 @@ export function TimeKeypad({
       type="button"
       onClick={onClick}
       aria-label={aria}
-      className={cx('flex h-14 items-center justify-center rounded-xl bg-surface-2 text-2xl font-semibold tabular-nums transition active:scale-95', extra)}
+      className={cx('num flex h-key items-center justify-center rounded-key bg-surface-2 text-[26px] font-[650] transition active:scale-95 focus-visible:outline-2 focus-visible:outline-accent', extra)}
     >
       {label}
     </button>
   );
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title={title}
+      subtitle="2845 = 28.45 · 10532 = 1:05.32"
       footer={
-        <>
-          <Button variant="ghost" onClick={() => onSave(null)}>
+        <div className="grid grid-cols-[auto_1fr] gap-2.5">
+          <Button variant="quiet" size="lg" onClick={() => onSave(null)}>
             Sin tiempo
           </Button>
-          <Button variant="primary" disabled={!!digits && !cs} onClick={() => (digits ? cs && onSave(cs) : onClose())}>
+          <Button variant="primary" size="lg" disabled={!!digits && !cs} onClick={() => (digits ? cs && onSave(cs) : onClose())}>
             Guardar
           </Button>
-        </>
+        </div>
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className={cx('text-center font-mono text-4xl font-bold tabular-nums', digits && !cs ? 'text-danger' : !digits && 'text-muted')} aria-live="polite">
+      <div className="flex flex-col gap-4 pb-1">
+        <p className={cx('num text-center text-hero-sm', digits && !cs ? 'text-danger' : !digits && 'text-muted')} aria-live="polite">
           {shown}
         </p>
-        <p className="text-center text-xs text-muted">Escribe el tiempo del cronómetro: 2845 = 28.45 · 10532 = 1:05.32</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2.5">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => key(d, () => press(d)))}
           {key('C', () => setDigits(''), 'text-lg text-muted', 'Borrar todo')}
           {key('0', () => press('0'))}
           {key(<Delete className="size-6" />, () => setDigits((x) => x.slice(0, -1)), undefined, 'Borrar una cifra')}
         </div>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
-/** Botones de opción (segmentados) grandes. */
+/** Botones de opción (segmentados), con el aspecto del segmentado del rediseño; acepta números (25 m | 50 m). */
 export function Segmented<T extends string | number>({
   value,
   options,
@@ -200,7 +186,7 @@ export function Segmented<T extends string | number>({
   label?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex flex-wrap gap-1 rounded-xl bg-surface-2 p-1">
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full flex-wrap gap-0.5 rounded-[14px] bg-surface-2 p-1">
       {options.map((o) => (
         <button
           key={String(o.value)}
@@ -209,8 +195,8 @@ export function Segmented<T extends string | number>({
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            'min-h-9 rounded-lg px-3 text-sm font-medium transition',
-            value === o.value ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
+            "relative min-h-9 rounded-[10px] px-3.5 text-meta font-semibold whitespace-nowrap transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent",
+            value === o.value ? 'bg-seg-on text-fg shadow-[0_1px_3px_rgb(0_0_0/0.08)]' : 'text-muted hover:text-fg',
           )}
         >
           {o.label}

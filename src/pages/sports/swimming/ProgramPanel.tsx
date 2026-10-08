@@ -1,17 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ListChecks, Plus, Trash2 } from 'lucide-react';
 import { deleteSwimEvent, saveSwimEvents, type SwimEventInput, type SwimEventItem } from '../../../lib/data/swimming';
 import { SWIM_DISTANCES, SWIM_STROKES, STROKE_LABEL, GENDER_LABEL, validateSwimEvent, type SwimGender, type SwimStroke } from '../../../sports/swimming';
-import { useBusy } from '../../../components/busy';
+import { useBusy, type Busy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Button, Card, Empty, Field, Modal, Select, cx } from '../../../components/ui';
+import { Button, Card, Field, ListRow, Modal, SectionHeader, Select, cx } from '../../../components/ui';
+import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { Segmented, useSwim } from './bits';
 import { ageGroupsOf, clubMeetTemplate, eventHasResults, raceDetail, raceName, timeTrialTemplate } from './logic';
 import type { MeetData } from './MeetPage';
 
 const toInput = (e: SwimEventItem): SwimEventInput => ({ id: e.id, num: e.num, distance: e.distance, stroke: e.stroke, gender: e.gender, ageGroups: e.ageGroups });
 
-/** Programa del encuentro: las pruebas en orden. El admin las agrega, cambia, ordena y quita. */
+/** El número de la prueba en su caja, al principio de la fila (como el carril en la hoja de series). */
+export function NumBox({ n, on }: { n: number; on?: boolean }) {
+  return (
+    <span aria-hidden="true" className={cx('num grid size-10 shrink-0 place-items-center rounded-xl text-[17px] font-[650]', on ? 'bg-accent-soft text-accent' : 'bg-surface-2 text-fg-2')}>
+      {n}
+    </span>
+  );
+}
+
+/**
+ * Programa del encuentro (rediseño «Calma y foco»): las pruebas en orden, como filas (el número, la prueba, para quién y
+ * cuántos van). El admin agrega con «+ Agregar» y toca una prueba para cambiarla, subirla, bajarla o quitarla. Sin
+ * pruebas, empieza con una plantilla.
+ */
 export function ProgramPanel({ data }: { data: MeetData }) {
   const { isAdmin } = useSwim();
   const run = useAction();
@@ -28,7 +42,8 @@ export function ProgramPanel({ data }: { data: MeetData }) {
     return m;
   }, [entries]);
 
-  const move = (k: number, dir: -1 | 1) => {
+  const move = (ev: SwimEventItem, dir: -1 | 1) => {
+    const k = events.findIndex((e) => e.id === ev.id);
     const a = events[k];
     const b = events[k + dir];
     if (!a || !b) return;
@@ -45,105 +60,93 @@ export function ProgramPanel({ data }: { data: MeetData }) {
       }))
     )
       return;
-    await busy.run(`${ev.id}:del`, () => run(() => deleteSwimEvent(lid, meet.id, ev.id), 'Prueba quitada'));
+    const ok = await busy.run(`${ev.id}:del`, () => run(() => deleteSwimEvent(lid, meet.id, ev.id).then(() => true), 'Prueba quitada'));
+    if (ok) setEditing(null);
   };
   const applyTemplate = (key: 'club' | 'control', list: SwimEventInput[]) => busy.run(key, () => run(() => saveSwimEvents(lid, meet.id, list), 'Pruebas agregadas'));
+  const modal = (
+    <EventFormModal
+      data={data}
+      editing={editing}
+      onClose={() => setEditing(null)}
+      tools={canEdit ? { move, remove, busy, locked: (ev) => eventHasResults(ev.id, entries) } : null}
+    />
+  );
 
   if (!events.length) {
     return (
-      <Empty icon={<ListChecks className="size-8" />} title="Todavía no hay pruebas">
-        {canEdit ? (
-          <div className="mt-3 flex flex-col items-center gap-2">
-            <Button variant="primary" loading={busy.isBusy('club')} disabled={busy.isBusy()} onClick={() => applyTemplate('club', clubMeetTemplate(meet.pool, meet.ageGroups))}>
-              Usar las de un encuentro de club
-            </Button>
-            <Button loading={busy.isBusy('control')} disabled={busy.isBusy()} onClick={() => applyTemplate('control', timeTrialTemplate())}>
-              Usar las de control de marcas
-            </Button>
-            <Button variant="ghost" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-              Agregar una prueba
-            </Button>
-          </div>
-        ) : (
-          'El organizador está armando el programa.'
-        )}
-        <EventFormModal data={data} editing={editing} onClose={() => setEditing(null)} />
-      </Empty>
+      <>
+        <EmptyCard
+          icon={<ListChecks className="size-5" />}
+          title="Todavía no hay pruebas"
+          text={canEdit ? 'Empieza con una plantilla o agrega las pruebas una por una.' : 'El organizador está armando el programa.'}
+          action={
+            canEdit && (
+              <div className="flex flex-col gap-2.5">
+                <Button variant="primary" size="lg" loading={busy.isBusy('club')} disabled={busy.isBusy()} onClick={() => applyTemplate('club', clubMeetTemplate(meet.pool, meet.ageGroups))}>
+                  Usar las de un encuentro de club
+                </Button>
+                <Button variant="quiet" size="lg" loading={busy.isBusy('control')} disabled={busy.isBusy()} onClick={() => applyTemplate('control', timeTrialTemplate())}>
+                  Usar las de control de marcas
+                </Button>
+                <Button variant="ghost" className="h-11" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+                  Agregar una prueba
+                </Button>
+              </div>
+            )
+          }
+        />
+        {modal}
+      </>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            Agregar prueba
-          </Button>
-        </div>
-      )}
-      <Card className="stagger divide-y divide-line overflow-hidden">
-        {events.map((ev, k) => {
+    <section aria-labelledby="natacion-programa" className="flex flex-col">
+      <SectionHeader
+        id="natacion-programa"
+        title={events.length === 1 ? '1 prueba' : `${events.length} pruebas`}
+        action={canEdit ? <SectionAdd label="Agregar" onClick={() => setEditing('new')} /> : undefined}
+      />
+      <Card className="stagger overflow-hidden">
+        {events.map((ev) => {
           const n = counts.get(ev.id) ?? 0;
-          const locked = eventHasResults(ev.id, entries);
           return (
-            <div key={ev.id} className="flex items-center gap-3 px-4 py-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft font-bold text-accent tabular-nums">{ev.num}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{raceName(ev)}</p>
-                <p className="truncate text-xs text-muted">
-                  {raceDetail(ev)} · {n === 1 ? '1 inscrito' : `${n} inscritos`}
-                </p>
-              </div>
-              {canEdit && (
-                <div className="flex shrink-0 items-center">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Subir"
-                    disabled={k === 0 || busy.isBusy()}
-                    loading={busy.isBusy(`${ev.id}:up`)}
-                    icon={<ArrowUp className="size-4" />}
-                    onClick={() => move(k, -1)}
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Bajar"
-                    disabled={k === events.length - 1 || busy.isBusy()}
-                    loading={busy.isBusy(`${ev.id}:down`)}
-                    icon={<ArrowDown className="size-4" />}
-                    onClick={() => move(k, 1)}
-                  />
-                  <Button size="sm" variant="ghost" aria-label="Cambiar" icon={<Pencil className="size-4" />} onClick={() => setEditing(ev)} />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label="Quitar"
-                    disabled={locked || busy.isBusy()}
-                    loading={busy.isBusy(`${ev.id}:del`)}
-                    className="text-danger"
-                    icon={<Trash2 className="size-4" />}
-                    onClick={() => remove(ev)}
-                  />
-                </div>
-              )}
-            </div>
+            <ListRow
+              key={ev.id}
+              dense
+              leading={<NumBox n={ev.num} />}
+              title={raceName(ev)}
+              subtitle={`${raceDetail(ev)} · ${n === 1 ? '1 inscrito' : `${n} inscritos`}`}
+              onClick={canEdit ? () => setEditing(ev) : undefined}
+              ariaLabel={canEdit ? `Cambiar la prueba ${ev.num}: ${raceName(ev)}` : undefined}
+            />
           );
         })}
       </Card>
-      <p className="text-xs text-muted">
-        Finales por tiempo: en cada serie nadan juntas las categorías y el puesto se calcula por categoría.
-      </p>
-      <EventFormModal data={data} editing={editing} onClose={() => setEditing(null)} />
-    </div>
+      <p className="mx-1 mt-3 text-[13px] leading-[1.4] text-muted">Finales por tiempo: en cada serie nadan juntas las categorías; el puesto es por categoría.</p>
+      {modal}
+    </section>
   );
 }
 
-/** Agregar o cambiar una prueba: distancia, estilo, sexo y categorías. */
-function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: SwimEventItem | 'new' | null; onClose: () => void }) {
+/** Agregar o cambiar una prueba: distancia, estilo, sexo y categorías; una que ya existe, además, subirla, bajarla o quitarla. */
+function EventFormModal({
+  data,
+  editing,
+  onClose,
+  tools,
+}: {
+  data: MeetData;
+  editing: SwimEventItem | 'new' | null;
+  onClose: () => void;
+  tools: { move: (ev: SwimEventItem, dir: -1 | 1) => void; remove: (ev: SwimEventItem) => Promise<void>; busy: Busy<string>; locked: (ev: SwimEventItem) => boolean } | null;
+}) {
   const run = useAction();
-  const { lid, meet, entries } = data;
-  const current = editing && editing !== 'new' ? editing : null;
+  const { lid, meet, entries, events } = data;
+  const picked = editing && editing !== 'new' ? editing : null;
+  // La prueba como está ahora (subir y bajar le cambian el número con la ventana abierta).
+  const current = picked ? (events.find((e) => e.id === picked.id) ?? picked) : null;
   const [stroke, setStroke] = useState<SwimStroke>('libre');
   const [distance, setDistance] = useState<number>(50);
   const [gender, setGender] = useState<SwimGender>('X');
@@ -151,15 +154,17 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!editing) return;
-    setStroke(current?.stroke ?? 'libre');
-    setDistance(current?.distance ?? 50);
-    setGender(current?.gender ?? 'X');
-    setGroups(current?.ageGroups ?? []);
-  }, [editing, current]);
+    setStroke(picked?.stroke ?? 'libre');
+    setDistance(picked?.distance ?? 50);
+    setGender(picked?.gender ?? 'X');
+    setGroups(picked?.ageGroups ?? []);
+  }, [editing, picked]);
   const locked = !!current && eventHasResults(current.id, entries);
   const distances = SWIM_DISTANCES.filter((d) => !validateSwimEvent({ distance: d, stroke, pool: meet.pool }).length);
   const errors = validateSwimEvent({ distance: distance as SwimEventItem['distance'], stroke, pool: meet.pool });
   const all = ageGroupsOf(meet.ageGroups);
+  const k = current ? events.findIndex((e) => e.id === current.id) : -1;
+  const waiting = tools?.busy.isBusy() ?? false;
 
   const save = async () => {
     setBusy(true);
@@ -178,10 +183,10 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
       title={current ? `Prueba ${current.num}` : 'Nueva prueba'}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" className="h-11" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" loading={busy} disabled={errors.length > 0} onClick={save}>
+          <Button variant="primary" className="h-11" loading={busy} disabled={errors.length > 0 || waiting} onClick={save}>
             Guardar
           </Button>
         </>
@@ -194,6 +199,7 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
             <Select
               value={stroke}
               disabled={locked}
+              className="h-11"
               onChange={(e) => {
                 const s = e.target.value as SwimStroke;
                 setStroke(s);
@@ -209,7 +215,7 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
             </Select>
           </Field>
           <Field label="Distancia">
-            <Select value={distance} disabled={locked} onChange={(e) => setDistance(Number(e.target.value))}>
+            <Select value={distance} disabled={locked} className="h-11" onChange={(e) => setDistance(Number(e.target.value))}>
               {distances.map((d) => (
                 <option key={d} value={d}>
                   {d} m
@@ -239,7 +245,7 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
                     aria-pressed={on}
                     onClick={() => setGroups((x) => (on ? x.filter((y) => y !== g.id) : all.filter((a) => a.id === g.id || x.includes(a.id)).map((a) => a.id)))}
                     className={cx(
-                      'min-h-9 rounded-full px-3 text-sm font-medium transition active:scale-95',
+                      'min-h-11 rounded-full px-3.5 text-sm font-medium transition active:scale-95',
                       on ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
                     )}
                   >
@@ -249,6 +255,40 @@ function EventFormModal({ data, editing, onClose }: { data: MeetData; editing: S
               })}
             </div>
           </Field>
+        )}
+        {current && tools && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+            <Button
+              variant="quiet"
+              className="h-11"
+              icon={<ArrowUp className="size-4" />}
+              disabled={k <= 0 || waiting}
+              loading={tools.busy.isBusy(`${current.id}:up`)}
+              onClick={() => tools.move(current, -1)}
+            >
+              Subir
+            </Button>
+            <Button
+              variant="quiet"
+              className="h-11"
+              icon={<ArrowDown className="size-4" />}
+              disabled={k < 0 || k >= events.length - 1 || waiting}
+              loading={tools.busy.isBusy(`${current.id}:down`)}
+              onClick={() => tools.move(current, 1)}
+            >
+              Bajar
+            </Button>
+            <Button
+              variant="ghost"
+              className="ml-auto h-11 text-danger"
+              icon={<Trash2 className="size-4" />}
+              disabled={tools.locked(current) || waiting}
+              loading={tools.busy.isBusy(`${current.id}:del`)}
+              onClick={() => void tools.remove(current)}
+            >
+              Quitar prueba
+            </Button>
+          </div>
         )}
       </div>
     </Modal>

@@ -1,11 +1,12 @@
 /**
  * Prueba de humo de las pantallas de natación: se dibujan (en el servidor, sin navegador) con datos de verdad en
- * la caché y muestran lo principal de cada pestaña, para un admin y para un visitante.
+ * la caché y muestran lo principal de cada parte, para un admin, un cronometrista y un visitante, en Lite y en Pro (el
+ * modo es mentira: vi.mock).
  */
 import { createElement, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POINTS_6_LANES } from '../../../sports/swimming';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
@@ -15,6 +16,12 @@ import type { League, Member, Player } from '../../../lib/types';
 import { FeedbackProvider } from '../../../components/feedback';
 import screens from './screens';
 import MeetPage from './MeetPage';
+
+const mode = vi.hoisted(() => ({ pro: false }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+}));
 
 const L = 'L1';
 const M = 'M1';
@@ -34,7 +41,9 @@ const league: League = {
   sport: 'swimming',
   hasMinors: true,
 };
-const today = new Date().toISOString().slice(0, 10);
+// Fecha LOCAL (no UTC): después de las 8 pm en RD, toISOString ya da mañana.
+const now = new Date();
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 const meet: SwimMeet = {
   id: M,
   type: 'encuentro',
@@ -110,6 +119,9 @@ beforeAll(() => {
 });
 
 afterAll(() => queryClient.invalidateAll());
+afterEach(() => {
+  mode.pro = false;
+});
 
 const ctx = (over: Partial<LeagueCtx> = {}): LeagueCtx => ({
   lid: L,
@@ -139,11 +151,17 @@ describe('pantallas de natación', () => {
     expect(screens.tabs).toEqual({ home: 'Encuentros', feed: null, standings: 'Puntos', profile: 'Mis marcas' });
   });
 
-  it('inicio: encuentros y el próximo', () => {
+  it('inicio: el próximo encuentro una vez, con «Cronometrar» el día del encuentro, y los anteriores', () => {
     const t = text(render(createElement(screens.Home)));
-    expect(t).toContain('Encuentros');
+    expect(t).toContain('Próximos encuentros');
     expect(t).toContain('Copa Delfín');
+    expect(t).toContain('Hoy');
+    expect(t).toContain('Cronometrar');
+    expect(t).toContain('Calentamiento 7:30');
     expect(t).toContain('Nuevo');
+    expect(t).toContain('Anteriores');
+    // Ya no hay pestañas Próximos | Anteriores.
+    expect(t).not.toContain('No hay encuentros por venir');
   });
 
   it('encuentro: cada pestaña se dibuja', () => {
@@ -153,7 +171,7 @@ describe('pantallas de natación', () => {
     expect(programa).toContain('100 m Combinado');
     expect(programa).toContain('Femenino · 9-10, 11-12');
     const inscritos = tab('inscritos');
-    expect(inscritos).toContain('5 inscripciones en 2 pruebas');
+    expect(inscritos).toContain('5 inscripciones · 2 pruebas');
     const series = tab('series');
     expect(series).toContain('Serie 1 de 2');
     expect(series).toContain('Ana Pérez');
@@ -175,8 +193,8 @@ describe('pantallas de natación', () => {
 
   it('cronometrar: «Publicar serie» fijo encima de la barra de la app, y el modo piscina a pantalla completa', () => {
     const html = render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`);
-    // La barra de abajo del teléfono mide unos 3.5 rem: la de publicar queda encima (antes: bottom-2, tapada).
-    expect(html).toMatch(/sticky bottom-\[calc\(4rem\+env\(safe-area-inset-bottom\)\)\][^"]*sm:bottom-2/);
+    // La barra de abajo del teléfono mide 77 px (más la barrita del iPhone): la de publicar queda encima.
+    expect(html).toContain('sticky bottom-[calc(5rem+max(0px,env(safe-area-inset-bottom)-1rem))] z-20 sm:bottom-3');
     expect(text(html)).toContain('Modo piscina');
     const full = render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro&piscina=1`);
     expect(full).toContain('aria-label="Salir del modo piscina"');
@@ -199,9 +217,40 @@ describe('pantallas de natación', () => {
     expect(t).toContain('30.00');
   });
 
-  it('el cronometrista (anotador de la liga) sí cronometra', () => {
+  it('el cronometrista (anotador de la liga) sí cronometra: en Lite, el link lo abre igual con «Esto es de Pro»', () => {
     const c = ctx({ member: members[1], isAdmin: false, isOwner: false, canScore: false, myPlayerId: 'p4' });
-    expect(text(render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`, c))).toContain('SALIDA');
+    const t = text(render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`, c));
+    expect(t).toContain('SALIDA');
+    expect(t).toContain('Esto es de Pro');
+    mode.pro = true;
+    const pro = text(render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=cronometro`, c));
+    expect(pro).toContain('SALIDA');
+    expect(pro).not.toContain('Esto es de Pro');
+  });
+
+  it('Lite: Pruebas · Series · Resultados en un segmentado; Pro: todas las partes', () => {
+    const c = ctx({ member: members[1], isAdmin: false, isOwner: false, canScore: false, myPlayerId: 'p4' });
+    // Por su ruta (/l/:lid/e/:eventId), con «‹ Club Acuático» y «•••» arriba.
+    const routed = createElement(Routes, null, createElement(Route, { path: "/l/:lid/e/:eventId", element: createElement(MeetPage) }));
+    const lite = render(routed, `/l/${L}/e/${M}`, c);
+    expect(lite).toContain('role="radiogroup"');
+    expect(text(lite)).toContain('Pruebas');
+    expect(text(lite)).toContain('Series');
+    expect(text(lite)).not.toContain('Programa');
+    expect(lite).toContain('aria-label="Más opciones"');
+    expect(text(lite)).toContain('Club Acuático');
+    mode.pro = true;
+    const pro = text(render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}`, c));
+    expect(pro).toContain('Programa');
+    expect(pro).toContain('Inscritos');
+    expect(pro).toContain('Cronometrar');
+    expect(pro).toContain('Puntos');
+  });
+
+  it('en la hoja de series tu carril se resalta', () => {
+    const c = ctx({ member: members[1], isAdmin: false, isOwner: false, canScore: false, myPlayerId: 'p4' });
+    const html = render(createElement(MeetPage, { meetId: M }), `/l/${L}/e/${M}?ver=series`, c);
+    expect(html).toContain('mm-row-me');
   });
 
   it('tabla de la temporada, mis marcas, perfil de un nadador y el admin', () => {

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Rows3, Shuffle, Send, X } from 'lucide-react';
 import { publishHeats, type SwimEventItem } from '../../../lib/data/swimming';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Empty, cx } from '../../../components/ui';
+import { Badge, Button, Card, SectionHeader, cx, sectionLinkClass } from '../../../components/ui';
+import { EmptyCard, STICKY_ABOVE_NAV } from '../FieldChrome';
 import { ClubTag, TimeText, useSwim } from './bits';
 import { draftHeats, eventHasResults, publishedHeats, raceTitle, sheetAssignments, swapLanes, type SheetHeat } from './logic';
 import type { MeetData } from './MeetPage';
@@ -10,19 +11,20 @@ import type { MeetData } from './MeetPage';
 type LanePick = { ev: string; heat: number; lane: number };
 
 /**
- * Hoja de series. El admin la arma con el motor (los más rápidos en la última serie y en los carriles del
- * centro; los NT en las primeras; mínimo 3 en la primera), puede cambiar carriles tocando dos, y la publica.
- * Una prueba que ya tiene tiempos no se vuelve a armar.
+ * Hoja de series (rediseño «Calma y foco»): cada prueba con sus series en tarjetas y una fila por carril (el número, el
+ * nadador con su club y la siembra). Tu carril, resaltado. El admin (en Pro, `manage`) la arma con el motor (los más
+ * rápidos en la última serie y en los carriles del centro; los NT en las primeras; mínimo 3 en la primera), puede cambiar
+ * carriles tocando dos, y la publica. Una prueba que ya tiene tiempos no se vuelve a armar.
  */
-export function HeatSheetPanel({ data }: { data: MeetData }) {
-  const { isAdmin } = useSwim();
+export function HeatSheetPanel({ data, manage = true }: { data: MeetData; manage?: boolean }) {
+  const { isAdmin, myPlayerId } = useSwim();
   const run = useAction();
   const { confirm } = useFeedback();
   const { lid, meet, events, entries } = data;
   const [draft, setDraft] = useState<Map<string, SheetHeat[]> | null>(null);
   const [pick, setPick] = useState<LanePick | null>(null);
   const [busy, setBusy] = useState(false);
-  const canEdit = isAdmin && !meet.finalizedAt;
+  const canEdit = isAdmin && manage && !meet.finalizedAt;
   const withEntries = events.filter((ev) => entries.some((e) => e.swimEventId === ev.id));
   const seedable = withEntries.filter((ev) => !eventHasResults(ev.id, entries));
 
@@ -62,46 +64,48 @@ export function HeatSheetPanel({ data }: { data: MeetData }) {
   };
 
   if (!withEntries.length) {
-    return <Empty icon={<Rows3 className="size-8" />} title="Sin inscritos todavía">La hoja de series se arma con los inscritos de cada prueba.</Empty>;
+    return <EmptyCard icon={<Rows3 className="size-5" />} title="Sin inscritos todavía" text="La hoja de series se arma con los inscritos de cada prueba." />;
   }
   if (!draft && !meet.heatsPublishedAt) {
     return (
-      <Empty icon={<Rows3 className="size-8" />} title="La hoja de series todavía no está">
-        {canEdit ? (
-          <div className="mt-3 flex flex-col items-center gap-2">
-            <p>Se arma sola con los tiempos de siembra; después puedes mover carriles antes de publicarla.</p>
-            <Button variant="primary" icon={<Shuffle className="size-4" />} onClick={() => build()}>
+      <EmptyCard
+        icon={<Rows3 className="size-5" />}
+        title="La hoja de series todavía no está"
+        text={canEdit ? 'Se arma sola con los tiempos de siembra; después puedes mover carriles antes de publicarla.' : 'El organizador la publica antes del encuentro.'}
+        action={
+          canEdit && (
+            <Button variant="primary" size="lg" icon={<Shuffle className="size-5" />} onClick={() => build()}>
               Armar series
             </Button>
-          </div>
-        ) : (
-          'El organizador la publica antes del encuentro.'
-        )}
-      </Empty>
+          )
+        }
+      />
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-[26px]">
       {draft ? (
-        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-accent bg-surface p-3 shadow-sm">
-          <Badge tone="accent">Borrador</Badge>
-          <p className="min-w-0 flex-1 text-sm text-muted">Toca un carril y después otro para cambiarlos.</p>
-          <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setDraft(null)}>
-            Cancelar
-          </Button>
-          <Button size="sm" variant="primary" loading={busy} icon={<Send className="size-4" />} onClick={publish}>
-            Publicar
-          </Button>
+        <div className={cx(STICKY_ABOVE_NAV, 'order-last flex flex-col gap-2.5 rounded-[26px] bg-surface/95 p-3 shadow-[inset_0_0_0_1.5px_var(--accent)] backdrop-blur')}>
+          <p className="flex items-center gap-2 px-1 text-sm">
+            <Badge tone="accent">Borrador</Badge>
+            <span className="min-w-0 text-muted">Toca un carril y después otro para cambiarlos.</span>
+          </p>
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <Button variant="quiet" size="lg" icon={<X className="size-5" />} onClick={() => setDraft(null)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" size="lg" loading={busy} icon={<Send className="size-5" />} onClick={publish}>
+              Publicar
+            </Button>
+          </div>
         </div>
       ) : (
         canEdit &&
         seedable.length > 0 && (
-          <div className="flex justify-end">
-            <Button icon={<Shuffle className="size-4" />} onClick={() => build()}>
-              Armar de nuevo
-            </Button>
-          </div>
+          <Button variant="quiet" size="lg" icon={<Shuffle className="size-5" />} onClick={() => build()}>
+            Armar de nuevo
+          </Button>
         )
       )}
 
@@ -111,41 +115,56 @@ export function HeatSheetPanel({ data }: { data: MeetData }) {
         const heats = draftOf ?? pub.heats;
         if (draft && !draftOf) return null;
         return (
-          <section key={ev.id} className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <h2 className="min-w-0 flex-1 text-sm font-semibold">{raceTitle(ev)}</h2>
-              {!draft && canEdit && !eventHasResults(ev.id, entries) && (pub.unassigned.length > 0 || !pub.heats.length) && (
-                <Button size="sm" icon={<Shuffle className="size-4" />} onClick={() => build(ev)}>
-                  Armar
-                </Button>
-              )}
-            </div>
+          <section key={ev.id} aria-label={raceTitle(ev)} className="flex flex-col gap-2.5">
+            <SectionHeader
+              className="mb-0.5"
+              title={raceTitle(ev)}
+              action={
+                !draft &&
+                canEdit &&
+                !eventHasResults(ev.id, entries) &&
+                (pub.unassigned.length > 0 || !pub.heats.length) && (
+                  <button type="button" onClick={() => build(ev)} className={sectionLinkClass}>
+                    <Shuffle aria-hidden="true" className="size-4" />
+                    Armar
+                  </button>
+                )
+              }
+            />
             {!draft && pub.unassigned.length > 0 && (
-              <p className="rounded-xl bg-warn-soft px-3 py-2 text-xs text-warn">
+              <p className="mx-1 text-[13px] text-warn">
                 {pub.unassigned.length === 1 ? '1 inscrito sin serie' : `${pub.unassigned.length} inscritos sin serie`} (se inscribieron después).
               </p>
             )}
             {heats.map((h) => (
               <Card key={h.n} className="overflow-hidden">
-                <p className="border-b border-line bg-surface-2 px-4 py-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                <p className="px-5 pt-3.5 pb-1.5 text-xs font-semibold tracking-[0.06em] text-muted uppercase">
                   Serie {h.n} de {heats.length}
                 </p>
-                <div className="divide-y divide-line">
+                <div>
                   {h.lanes.map((l) => {
                     const selected = pick?.ev === ev.id && pick.heat === h.n && pick.lane === l.lane;
+                    const me = !!myPlayerId && l.entry?.playerId === myPlayerId;
                     const row = (
                       <>
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-sm font-bold tabular-nums">{l.lane}</span>
+                        <span
+                          className={cx(
+                            'num grid size-10 shrink-0 place-items-center rounded-xl text-[17px] font-[650]',
+                            me || selected ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-fg-2',
+                          )}
+                        >
+                          {l.lane}
+                        </span>
                         {l.entry ? (
                           <>
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium">{data.name(l.entry.playerId)}</span>
+                              <span className="block truncate text-[15px] font-semibold">{data.name(l.entry.playerId)}</span>
                               <ClubTag club={l.entry.clubId ? data.clubs.get(l.entry.clubId) : null} short />
                             </span>
                             <TimeText cs={l.entry.seed} className="text-sm text-muted" />
                           </>
                         ) : (
-                          <span className="flex-1 text-sm text-muted">—</span>
+                          <span className="flex-1 text-sm text-faint">Libre</span>
                         )}
                       </>
                     );
@@ -155,12 +174,12 @@ export function HeatSheetPanel({ data }: { data: MeetData }) {
                         type="button"
                         onClick={() => tap(ev.id, h.n, l.lane)}
                         aria-pressed={selected}
-                        className={cx('flex min-h-12 w-full items-center gap-3 px-4 py-2 text-left transition', selected ? 'bg-accent-soft' : 'hover:bg-surface-2')}
+                        className={cx('mm-row relative flex min-h-row-pro w-full items-center gap-3.5 py-2 pr-5 pl-4 text-left transition', selected ? 'bg-accent-soft' : 'active:bg-surface-2')}
                       >
                         {row}
                       </button>
                     ) : (
-                      <div key={l.lane} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', !l.entry && 'opacity-60')}>
+                      <div key={l.lane} className={cx('mm-row relative flex min-h-row-pro items-center gap-3.5 py-2 pr-5 pl-4', me && 'mm-row-me bg-accent-soft')}>
                         {row}
                       </div>
                     );

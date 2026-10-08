@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { Maximize, Minimize, Sun, X } from 'lucide-react';
 import { courtVars, isIOS, useFullscreen, useSunMode, useWakeLock } from '../../../court';
 import { useHoldBadgeUnlock } from '../../../components/badges/hold';
-import { Button, cx } from '../../../components/ui';
+import { Button, Card, ListRow, RowIcon, cx } from '../../../components/ui';
 
 /**
  * Pantalla completa «de campo» para lo que se anota fuera de un partido (la tarjeta de golf, el cronometraje de
@@ -60,45 +60,40 @@ export function FieldScreen({
       className={cx('fixed inset-0 z-40 flex flex-col overscroll-none bg-bg text-fg', sun && 'font-semibold', className)}
       style={{ ...vars, touchAction: 'manipulation' }}
     >
-      <div className="pt-safe flex items-center gap-1 border-b border-line px-2 py-1.5">
-        <Button variant="ghost" onClick={onExit} icon={<X className="size-5" />} aria-label={exitLabel} />
+      <div className="pt-safe flex items-center gap-2 border-b border-line px-3 py-2">
+        <button type="button" onClick={onExit} aria-label={exitLabel} className={roundButton(false)}>
+          <X aria-hidden="true" className="size-5" />
+        </button>
         <div className="min-w-0 flex-1 px-1">
-          <p className="truncate text-sm font-semibold">{title}</p>
-          {subtitle && <p className="truncate text-xs text-muted">{subtitle}</p>}
+          <p className="truncate text-body font-semibold">{title}</p>
+          {subtitle && <p className="truncate text-[13px] text-muted">{subtitle}</p>}
         </div>
-        <Button
-          variant={sun ? 'primary' : 'ghost'}
-          onClick={() => setSun(!sun)}
-          icon={<Sun className="size-5" />}
-          aria-label={sun ? 'Quitar modo sol' : 'Modo sol (alto contraste)'}
-          aria-pressed={sun}
-        />
+        <button type="button" onClick={() => setSun(!sun)} aria-label={sun ? 'Quitar modo sol' : 'Modo sol (alto contraste)'} aria-pressed={sun} className={roundButton(sun)}>
+          <Sun aria-hidden="true" className="size-5" />
+        </button>
         {full.supported && (
-          <Button
-            variant="ghost"
-            onClick={full.toggle}
-            icon={full.active ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
-            aria-label={full.active ? 'Salir de pantalla completa' : 'Pantalla completa'}
-          />
+          <button type="button" onClick={full.toggle} aria-label={full.active ? 'Salir de pantalla completa' : 'Pantalla completa'} className={roundButton(false)}>
+            {full.active ? <Minimize aria-hidden="true" className="size-5" /> : <Maximize aria-hidden="true" className="size-5" />}
+          </button>
         )}
       </div>
 
       {wake.hint && !hideHint && (
-        <div role="status" className="mx-3 mt-2 flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-xs">
+        <div role="status" className="mx-3 mt-2 flex items-center gap-2 rounded-2xl bg-surface-2 py-1 pr-1 pl-4 text-[13px] leading-snug">
           <span className="flex-1">
             {isIOS()
-              ? 'Para que la pantalla no se apague: Ajustes › Pantalla y brillo › Bloqueo automático › Nunca (vuélvelo a poner al terminar).'
+              ? 'Para que no se apague: Ajustes › Pantalla y brillo › Bloqueo automático › Nunca (vuélvelo a poner al terminar).'
               : 'Este navegador puede apagar la pantalla: súbele el tiempo de bloqueo mientras anotas.'}
           </span>
-          <Button size="sm" variant="ghost" onClick={() => setHideHint(true)} icon={<X className="size-4" />} aria-label="Cerrar aviso" />
+          <Button variant="ghost" onClick={() => setHideHint(true)} icon={<X className="size-4" />} aria-label="Cerrar aviso" className="h-11 w-11" />
         </div>
       )}
 
-      {top && <div className="flex flex-col gap-2 px-3 pt-2">{top}</div>}
+      {top && <div className="flex flex-col gap-2.5 px-3 pt-3">{top}</div>}
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">{children}</div>
 
-      {footer && <div className="pb-safe flex flex-col gap-2 border-t border-line bg-bg px-3 py-2">{footer}</div>}
+      {footer && <div className="pb-safe flex flex-col gap-2 border-t border-line bg-bg px-3 pt-3 pb-2">{footer}</div>}
     </div>
   );
   return typeof document !== 'undefined' ? createPortal(screen, document.body) : screen;
@@ -141,22 +136,28 @@ export function useFieldMode(param: string, extra: Record<string, string> = {}):
   return { on: search.get(param) === '1', enter, exit };
 }
 
-/** El botón que abre la pantalla completa (con lo que hace, en chiquito). */
+/** Los botones redondos de la barra de la pantalla completa (44 px); el modo sol encendido, en el color del deporte. */
+function roundButton(on: boolean) {
+  return cx(
+    'grid size-11 shrink-0 place-items-center rounded-full transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    on ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-fg-2',
+  );
+}
+
+/** El botón que abre la pantalla completa: una fila tranquila con lo que hace, en chiquito. */
 export function FieldModeButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-12 items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft/50 px-3 py-2 text-left transition active:scale-[0.98]"
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg">
-        <Maximize className="size-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className="block text-xs text-muted">Pantalla completa, siempre encendida y con modo sol</span>
-      </span>
-      <Sun className="size-4 shrink-0 text-muted" aria-hidden="true" />
-    </button>
+    <Card className="overflow-hidden">
+      <ListRow
+        leading={
+          <RowIcon tone="accent">
+            <Maximize className="size-5" />
+          </RowIcon>
+        }
+        title={label}
+        subtitle="Pantalla completa, siempre encendida y con modo sol"
+        onClick={onClick}
+      />
+    </Card>
   );
 }

@@ -1,72 +1,63 @@
 import { useEffect, useMemo, useState } from 'react';
-import { LandPlot, Pencil, Plus, Trash2 } from 'lucide-react';
+import { LandPlot, Plus, Trash2 } from 'lucide-react';
 import { validateCourse, type GolfCourse, type GolfTee } from '../../../sports/golf/course';
 import type { GolfCompetition } from '../../../sports/golf/scoring';
 import { deleteGolfCourse, saveGolfCourse, saveGolfRules, useGolfCourses, useGolfRules, type GolfCourseDoc } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
 import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Button, Card, Empty, Field, Input, ListSkeleton, Modal, Select, cx } from '../../../components/ui';
+import { Button, Card, Field, Input, ListRow, ListSkeleton, Modal, RowIcon, SectionHeader, Segmented, Select } from '../../../components/ui';
+import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { CompetitionPicker } from './RoundForm';
 import { formatLabel } from './logic';
 
 /**
- * Admin · Campos: los campos del club (par y SI por hoyo, salidas con rating y slope) y el formato por
- * defecto de la liga con los puntos del orden de mérito. Editar un campo no cambia las rondas ya creadas.
+ * Organizar › Campos (rediseño «Calma y foco»; el título y «‹ Organizar» los pone la pantalla de Organizar): los campos
+ * del club como filas (par y SI por hoyo, salidas con rating y slope; tocar uno lo abre para cambiarlo o borrarlo) con
+ * «+ Agregar» a la derecha, y el formato por defecto de la liga con los puntos del orden de mérito. Editar un campo no
+ * cambia las rondas ya creadas.
  */
 export default function GolfAdmin() {
   const { lid } = useLeagueCtx();
   const courses = useGolfCourses(lid);
-  const run = useAction();
-  const { confirm } = useFeedback();
-  // El campo que se está borrando: la ruedita en su botón.
-  const removing = useBusy();
   const [editing, setEditing] = useState<GolfCourseDoc | 'nuevo' | null>(null);
 
   return (
-    <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="font-semibold">Campos del club</h2>
-          <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('nuevo')}>
-            Agregar campo
-          </Button>
-        </div>
+    <div className="flex flex-col gap-[26px]">
+      <section aria-labelledby="golf-campos">
+        <SectionHeader
+          id="golf-campos"
+          title="Campos del club"
+          action={courses.data.length > 0 ? <SectionAdd label="Agregar" onClick={() => setEditing('nuevo')} /> : undefined}
+        />
         {courses.loading ? (
           <ListSkeleton rows={2} />
         ) : !courses.data.length ? (
-          <Empty icon={<LandPlot className="size-8" />} title="Todavía no hay campos">
-            Agrega el campo con el par y el SI de cada hoyo y el rating y slope de cada salida (salen en la tarjeta del club).
-          </Empty>
+          <EmptyCard
+            icon={<LandPlot className="size-5" />}
+            title="Todavía no hay campos"
+            text="El par y el SI de cada hoyo y el rating y slope de cada salida (salen en la tarjeta del club)."
+            action={
+              <Button variant="primary" size="lg" icon={<Plus className="size-5" />} onClick={() => setEditing('nuevo')}>
+                Agregar campo
+              </Button>
+            }
+          />
         ) : (
-          <Card className="divide-y divide-line overflow-hidden">
+          <Card className="overflow-hidden">
             {courses.data.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{c.name}</div>
-                  <div className="truncate text-xs text-muted">
-                    {c.holes.length} hoyos · par {c.holes.reduce((a, h) => a + h.par, 0)} · {c.tees.map((t) => `${t.name} ${t.rating}/${t.slope}`).join(' · ')}
-                  </div>
-                </div>
-                <Button size="sm" icon={<Pencil className="size-4" />} onClick={() => setEditing(c)} aria-label={`Editar ${c.name}`} />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={<Trash2 className="size-4" />}
-                  aria-label={`Borrar ${c.name}`}
-                  loading={removing.isBusy(c.id)}
-                  disabled={removing.isBusy()}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: `¿Borrar ${c.name}?`,
-                      message: 'Las rondas ya creadas guardan su copia del campo y no cambian.',
-                      confirmText: 'Borrar',
-                      danger: true,
-                    });
-                    if (ok) await removing.run(c.id, () => run(() => deleteGolfCourse(lid, c.id), 'Campo borrado'));
-                  }}
-                />
-              </div>
+              <ListRow
+                key={c.id}
+                leading={
+                  <RowIcon tone="accent">
+                    <LandPlot className="size-5" />
+                  </RowIcon>
+                }
+                title={c.name}
+                subtitle={`${c.holes.length} hoyos · par ${c.holes.reduce((a, h) => a + h.par, 0)} · ${c.tees.map((t) => `${t.name} ${t.rating}/${t.slope}`).join(' · ')}`}
+                onClick={() => setEditing(c)}
+                ariaLabel={`Editar ${c.name}`}
+              />
             ))}
           </Card>
         )}
@@ -102,19 +93,19 @@ function RulesCard() {
   }
 
   return (
-    <Card className="flex flex-col gap-3 px-4 py-4">
-      <div>
-        <h2 className="font-semibold">Formato de la liga</h2>
-        <p className="text-xs text-muted">Lo que sale al crear una ronda (se puede cambiar en cada una). Ahora: {formatLabel(rules.data.competition)}.</p>
-      </div>
-      <CompetitionPicker value={comp} onChange={setComp} />
-      <Field label="Puntos del orden de mérito por puesto" hint="Del 1.º en adelante, separados por coma. Un empate reparte los puntos de esos puestos.">
-        <Input value={points} onChange={(e) => setPoints(e.target.value)} aria-invalid={bad} />
-      </Field>
-      <Button variant="primary" onClick={save} loading={busy} disabled={bad}>
-        Guardar formato
-      </Button>
-    </Card>
+    <section aria-labelledby="golf-formato">
+      <SectionHeader id="golf-formato" title="Formato de la liga" />
+      <Card className="flex flex-col gap-4 p-5">
+        <p className="text-meta text-muted">Lo que sale al crear una ronda (se cambia en cada una). Ahora: {formatLabel(rules.data.competition)}.</p>
+        <CompetitionPicker value={comp} onChange={setComp} />
+        <Field label="Puntos del orden de mérito por puesto" hint="Del 1.º en adelante, separados por coma. Un empate reparte los puntos.">
+          <Input className="h-11" value={points} onChange={(e) => setPoints(e.target.value)} aria-invalid={bad} />
+        </Field>
+        <Button variant="primary" size="lg" onClick={save} loading={busy} disabled={bad}>
+          Guardar formato
+        </Button>
+      </Card>
+    </section>
   );
 }
 
@@ -177,6 +168,9 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
   const [holes, setHoles] = useState<{ par: number; si: number }[]>([]);
   const [tees, setTees] = useState<TeeDraft[]>([]);
   const [busy, setBusy] = useState(false);
+  const { confirm } = useFeedback();
+  // Borrar el campo (antes, el botón de la fila): la ruedita en su botón.
+  const removing = useBusy();
 
   useEffect(() => {
     if (!open) return;
@@ -240,6 +234,22 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
     if (ok) onClose();
   }
 
+  async function remove() {
+    if (!course) return;
+    const ok = await confirm({
+      title: `¿Borrar ${course.name}?`,
+      message: 'Las rondas ya creadas guardan su copia del campo y no cambian.',
+      confirmText: 'Borrar',
+      danger: true,
+    });
+    if (!ok) return;
+    const done = await removing.run('borrar', () => run(async () => {
+      await deleteGolfCourse(lid, course.id);
+      return true;
+    }, 'Campo borrado'));
+    if (done) onClose();
+  }
+
   const setTee = (i: number, patch: Partial<TeeDraft>) => setTees(tees.map((t, k) => (k === i ? { ...t, ...patch } : t)));
 
   return (
@@ -250,8 +260,15 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
       title={course ? `Editar ${course.name}` : 'Nuevo campo'}
       footer={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={save} loading={busy} disabled={!!errors.length}>
+          {course && (
+            <Button variant="ghost" className="mr-auto h-11 text-danger" icon={<Trash2 className="size-4" />} loading={removing.isBusy()} disabled={busy} onClick={() => void remove()}>
+              Borrar
+            </Button>
+          )}
+          <Button className="h-11" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" className="h-11" onClick={save} loading={busy} disabled={!!errors.length || removing.isBusy()}>
             Guardar campo
           </Button>
         </>
@@ -263,13 +280,16 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
             <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Club de Golf …" />
           </Field>
           <Field label="Hoyos">
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
-              {([9, 18] as const).map((c) => (
-                <button key={c} type="button" onClick={() => setCount(c)} className={cx('rounded-lg py-2 text-sm font-medium', n === c ? 'bg-surface shadow-sm' : 'text-muted')}>
-                  {c} hoyos
-                </button>
-              ))}
-            </div>
+            <Segmented
+              full
+              label="Hoyos del campo"
+              options={[
+                { key: '9', label: '9 hoyos' },
+                { key: '18', label: '18 hoyos' },
+              ]}
+              value={String(n === 9 ? 9 : 18)}
+              onChange={(k) => setCount(k === '9' ? 9 : 18)}
+            />
           </Field>
         </div>
 
@@ -333,7 +353,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
             )}
           </div>
           {tees.map((t, i) => (
-            <Card key={t.id} className="flex flex-col gap-2 px-3 py-3">
+            <div key={t.id} className="flex flex-col gap-2 rounded-2xl bg-surface-2 p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-muted">
                   Salida {i + 1} · par {draft.tees[i]?.par}
@@ -375,7 +395,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
                   </Field>
                 </div>
               )}
-            </Card>
+            </div>
           ))}
         </div>
 

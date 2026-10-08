@@ -1,12 +1,12 @@
 /**
  * Humo de las pantallas del golf: se dibujan (sin navegador, renderToString) con datos puestos en la caché,
- * en cada pestaña de la ronda y con los roles de admin y de jugador. Atrapa errores al dibujar (undefined,
- * claves, textos) sin depender de la base.
+ * en cada parte de la ronda, con los roles de admin y de jugador, y en Lite y en Pro (el modo es mentira: vi.mock).
+ * Atrapa errores al dibujar (undefined, claves, textos) sin depender de la base.
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEMO_COURSE, DEMO_PARS } from '../../../sports/golf/demo';
 import { queryClient } from '../../../lib/data/client';
 import { golfKeys, type GolfCardDoc, type GolfEventData, type GolfRoundFull } from '../../../lib/data/golf';
@@ -16,6 +16,12 @@ import type { League, Player } from '../../../lib/types';
 import { FeedbackProvider } from '../../../components/feedback';
 import screens from './screens';
 import { emptyLog, setHole, writeLog } from './courtLog';
+
+const mode = vi.hoisted(() => ({ pro: false }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+}));
 
 const lid = 'l1';
 const eid = 'e1';
@@ -130,7 +136,10 @@ function render(el: ReactElement, url: string, role: 'admin' | 'player', path = 
 
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
 
-beforeEach(() => seed());
+beforeEach(() => {
+  mode.pro = false;
+  seed();
+});
 afterEach(() => queryClient.invalidateAll());
 
 describe('pantallas del golf', () => {
@@ -177,11 +186,57 @@ describe('pantallas del golf', () => {
       expect(list).toContain('Grupo 1');
       expect(list).toContain('Sin grupo');
     }
-    const admin = text(render(h(screens.Event), `/l/${lid}/e/${eid}?tab=jugadores`, 'admin', '/l/:lid/e/:eventId'));
-    expect(admin).toContain('Inscribir jugadores');
-    expect(admin).toContain('Cerrar ronda');
+    // Lite: el admin no tiene las herramientas en la pantalla (están en Pro, con «Usar Pro»); cerrar la ronda va en «•••».
+    const adminHtml = render(h(screens.Event), `/l/${lid}/e/${eid}?tab=jugadores`, 'admin', '/l/:lid/e/:eventId');
+    const admin = text(adminHtml);
+    expect(admin).toContain('Inscribir y armar grupos');
+    expect(admin).toContain('Usar Pro');
+    expect(admin).not.toContain('Armar grupos');
+    expect(adminHtml).toContain('aria-label="Más opciones"');
+    expect(admin).toContain('Golf del Club');
     const mine = text(render(h(screens.Event), `/l/${lid}/e/${eid}?tab=jugadores`, 'player', '/l/:lid/e/:eventId'));
     expect(mine).toContain('Mi tarjeta');
+    expect(mine).not.toContain('Usar Pro');
+  });
+
+  it('ronda: las partes van en un segmentado (Tarjeta · Leaderboard · Jugadores)', () => {
+    const html = render(h(screens.Event), `/l/${lid}/e/${eid}?tab=leaderboard`, 'player', '/l/:lid/e/:eventId');
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toMatch(/role="radio" aria-checked="true"[^>]*>Leaderboard/);
+    expect(text(html)).toContain('Tarjeta');
+    expect(text(html)).toContain('Jugadores');
+    // Lite: la lista tranquila, sin las columnas de Pro.
+    expect(text(html)).not.toContain('Bruto');
+    expect(text(html)).toContain('Toca un jugador para ver su tarjeta');
+  });
+
+  it('Pro: leaderboard con columnas y modos, y las herramientas del admin en Jugadores', () => {
+    mode.pro = true;
+    const board = render(h(screens.Event), `/l/${lid}/e/${eid}?tab=leaderboard`, 'player', '/l/:lid/e/:eventId');
+    expect(text(board)).toContain('Bruto');
+    expect(text(board)).toContain('Hoyos');
+    expect(board).toContain('aria-label="Cómo ver el leaderboard"');
+    expect(text(board)).toContain('countback');
+    const admin = text(render(h(screens.Event), `/l/${lid}/e/${eid}?tab=jugadores`, 'admin', '/l/:lid/e/:eventId'));
+    expect(admin).toContain('Inscribir');
+    expect(admin).toContain('Armar grupos');
+    expect(admin).not.toContain('Usar Pro');
+  });
+
+  it('inicio: la ronda de hoy una vez, con lo tuyo y un solo botón', () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const ev = { ...(queryClient.getQueryData(keys.event(lid, eid)) as object), date: iso };
+    queryClient.setQueryData(keys.event(lid, eid), ev);
+    queryClient.setQueryData(keys.events(lid), [ev]);
+    const out = text(render(h(screens.Home), `/l/${lid}`, 'player'));
+    expect(out).toContain('Mensual');
+    // Ana terminó los 18 hoyos y no ha firmado.
+    expect(out).toContain('Terminaste');
+    expect(out).toContain('Revisar y firmar');
+    expect(out).toContain('jugando');
+    // Ya no sale repetida en «Próximas rondas».
+    expect(out).toContain('No hay más rondas por ahora');
   });
 
   it('ronda cerrada: sin pestaña de tarjeta; orden de mérito y perfil', () => {
@@ -195,6 +250,8 @@ describe('pantallas del golf', () => {
     const home = text(render(h(screens.Home), `/l/${lid}`, 'admin'));
     expect(home).toContain('Nueva ronda o torneo');
     expect(home).toContain('Resultados');
+    expect(home).toContain('Orden de mérito');
+    expect(home).toContain('Ver toda');
     const profile = text(render(h(screens.MyProfile!), `/l/${lid}/perfil`, 'player'));
     expect(profile).toContain('Handicap Index (no oficial)');
     expect(profile).toContain('Birdies');
@@ -205,6 +262,9 @@ describe('pantallas del golf', () => {
     const out = text(render(h(tab.Component), `/l/${lid}/admin?tab=campos`, 'admin'));
     expect(out).toContain(DEMO_COURSE.name);
     expect(out).toContain('Formato de la liga');
+    // Cada campo es una fila que se toca (borrar va adentro, ya no hay botones chiquitos en la fila).
+    expect(out).toContain('Agregar');
+    expect(out).not.toContain('Borrar');
   });
 });
 

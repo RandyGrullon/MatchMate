@@ -1,80 +1,67 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pencil, Plus, Shield, Timer, Trash2, Waves } from 'lucide-react';
+import { Plus, Shield, Timer, Trash2 } from 'lucide-react';
 import { setMemberScorer, useLeagueMembers } from '../../../lib/data';
 import { deleteClub, saveClub, saveSwimRules, useSwimmers, useSwimRules, type AgeScheme, type SwimClub } from '../../../lib/data/swimming';
 import type { Member } from '../../../lib/types';
 import { BusyIcon, useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { leavesOnRemove, removeConfirm } from '../../../components/scorers/logic';
-import { Button, Card, Empty, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { Button, Card, Field, Input, ListRow, Modal, RowIcon, SectionHeader, Select, cx } from '../../../components/ui';
+import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { Segmented, useSwim } from './bits';
 import { SCHEME_LABEL, pointsFor } from './logic';
 import { parsePoints } from './MeetFormModal';
 
 /**
- * Admin › Clubes: los clubes (los puntos del encuentro son por club) con su entrenador, quién cronometra
- * (anotadores de la liga) y lo que la liga pone por defecto a cada encuentro nuevo.
+ * Organizar › Clubes (rediseño «Calma y foco»; el título lo pone Organizar): los clubes como filas (los puntos del
+ * encuentro son por club; tocar uno lo cambia o lo borra) con «+ Nuevo», quién cronometra (anotadores de la liga) y lo
+ * que la liga pone por defecto a cada encuentro nuevo.
  */
 export function ClubsAdmin() {
   const { lid, isAdmin, clubs } = useSwim();
-  const run = useAction();
-  const { confirm } = useFeedback();
   const members = useLeagueMembers(lid);
   const swimmers = useSwimmers(lid);
-  // El club que se está borrando: la ruedita en su botón.
-  const removing = useBusy();
   const [editing, setEditing] = useState<SwimClub | 'new' | null>(null);
   const memberName = useMemo(() => new Map(members.data.map((m) => [m.uid, m.name] as const)), [members.data]);
   const count = (id: string) => swimmers.data.filter((s) => s.clubId === id).length;
 
   if (!isAdmin) return null;
 
-  const remove = async (c: SwimClub) => {
-    if (!(await confirm({ title: `¿Borrar ${c.name}?`, message: 'Sus nadadores quedan sin club (sus resultados no se borran).', confirmText: 'Borrar', danger: true }))) return;
-    await removing.run(c.id, () => run(() => deleteClub(lid, c.id), 'Club borrado'));
-  };
-
   return (
-    <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Shield className="size-5 text-accent" />
-          <h2 className="min-w-0 flex-1 text-lg font-semibold">Clubes</h2>
-          <Button variant="primary" size="sm" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            Nuevo club
-          </Button>
-        </div>
+    <div className="flex flex-col gap-[30px]">
+      <section aria-labelledby="natacion-clubes">
+        <SectionHeader id="natacion-clubes" title={clubs.data.length === 1 ? '1 club' : `${clubs.data.length} clubes`} action={clubs.data.length > 0 ? <SectionAdd onClick={() => setEditing('new')} /> : undefined} />
         {!clubs.data.length ? (
-          <Empty icon={<Shield className="size-8" />} title="Todavía no hay clubes">
-            Los puntos y el medallero de cada encuentro se cuentan por club. El entrenador de un club registra e inscribe a sus nadadores.
-          </Empty>
+          <EmptyCard
+            icon={<Shield className="size-5" />}
+            title="Todavía no hay clubes"
+            text="Los puntos y el medallero se cuentan por club. El entrenador de un club registra e inscribe a sus nadadores."
+            action={
+              <Button variant="primary" size="lg" icon={<Plus className="size-5" />} onClick={() => setEditing('new')}>
+                Nuevo club
+              </Button>
+            }
+          />
         ) : (
-          <Card className="divide-y divide-line overflow-hidden">
+          <Card className="overflow-hidden">
             {clubs.data.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="size-4 shrink-0 rounded-full border border-line" style={{ background: c.color ?? 'transparent' }} aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">
-                    {c.name}
-                    {c.short && <span className="ml-1.5 text-xs text-muted">{c.short}</span>}
-                  </p>
-                  <p className="truncate text-xs text-muted">
-                    {count(c.id) === 1 ? '1 nadador' : `${count(c.id)} nadadores`}
-                    {c.coachId ? ` · Entrena: ${memberName.get(c.coachId) ?? '—'}` : ''}
-                  </p>
-                </div>
-                <Button size="sm" variant="ghost" aria-label="Cambiar" icon={<Pencil className="size-4" />} onClick={() => setEditing(c)} />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label="Borrar"
-                  className="text-danger"
-                  icon={<Trash2 className="size-4" />}
-                  loading={removing.isBusy(c.id)}
-                  disabled={removing.isBusy()}
-                  onClick={() => remove(c)}
-                />
-              </div>
+              <ListRow
+                key={c.id}
+                leading={
+                  <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2">
+                    <span className="size-4 rounded-full shadow-[inset_0_0_0_1px_var(--line)]" style={{ background: c.color ?? 'transparent' }} />
+                  </span>
+                }
+                title={
+                  <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="truncate">{c.name}</span>
+                    {c.short && <span className="shrink-0 text-xs font-medium text-muted">{c.short}</span>}
+                  </span>
+                }
+                subtitle={`${count(c.id) === 1 ? '1 nadador' : `${count(c.id)} nadadores`}${c.coachId ? ` · Entrena: ${memberName.get(c.coachId) ?? '—'}` : ''}`}
+                onClick={() => setEditing(c)}
+                ariaLabel={`Cambiar ${c.name}`}
+              />
             ))}
           </Card>
         )}
@@ -90,6 +77,9 @@ export function ClubsAdmin() {
 function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null; onClose: () => void }) {
   const { lid } = useSwim();
   const run = useAction();
+  const { confirm } = useFeedback();
+  // Borrar el club (antes, el botón de la fila): la ruedita en su botón.
+  const removing = useBusy();
   const members = useLeagueMembers(lid);
   const club = editing && editing !== 'new' ? editing : null;
   const [name, setName] = useState('');
@@ -111,6 +101,12 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
     setBusy(false);
     if (ok) onClose();
   };
+  const remove = async () => {
+    if (!club) return;
+    if (!(await confirm({ title: `¿Borrar ${club.name}?`, message: 'Sus nadadores quedan sin club (sus resultados no se borran).', confirmText: 'Borrar', danger: true }))) return;
+    const ok = await removing.run(club.id, () => run(() => deleteClub(lid, club.id).then(() => true), 'Club borrado'));
+    if (ok) onClose();
+  };
   return (
     <Modal
       open={!!editing}
@@ -118,10 +114,15 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
       title={club ? club.name : 'Nuevo club'}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          {club && (
+            <Button variant="ghost" className="mr-auto h-11 text-danger" icon={<Trash2 className="size-4" />} loading={removing.isBusy()} disabled={busy} onClick={() => void remove()}>
+              Borrar
+            </Button>
+          )}
+          <Button variant="ghost" className="h-11" onClick={onClose}>
             Cancelar
           </Button>
-          <Button variant="primary" loading={busy} disabled={!valid} onClick={save}>
+          <Button variant="primary" className="h-11" loading={busy} disabled={!valid || removing.isBusy()} onClick={save}>
             Guardar
           </Button>
         </>
@@ -129,11 +130,11 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
     >
       <div className="flex flex-col gap-4">
         <Field label="Nombre">
-          <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Club Delfines" />
+          <Input className="h-11" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Club Delfines" />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Sigla (opcional)" hint="Hasta 8 letras">
-            <Input value={short} maxLength={8} onChange={(e) => setShort(e.target.value.toUpperCase())} placeholder="DEL" />
+            <Input className="h-11" value={short} maxLength={8} onChange={(e) => setShort(e.target.value.toUpperCase())} placeholder="DEL" />
           </Field>
           <Field label="Color">
             <div className="flex h-10 items-center gap-2">
@@ -153,7 +154,7 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
           </Field>
         </div>
         <Field label="Entrenador (opcional)" hint="Un miembro de la liga: registra e inscribe a los nadadores de este club.">
-          <Select value={coach} onChange={(e) => setCoach(e.target.value)}>
+          <Select className="h-11" value={coach} onChange={(e) => setCoach(e.target.value)}>
             <option value="">Sin entrenador</option>
             {members.data.map((m) => (
               <option key={m.uid} value={m.uid}>
@@ -184,23 +185,23 @@ function TimersSection() {
     await saving.run(m.uid, () => run(() => setMemberScorer(m, on), on ? 'Ahora cronometra' : (ask?.done ?? 'Ya no cronometra')));
   }
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <Timer className="size-5 text-accent" />
-        <h2 className="text-lg font-semibold">Cronometristas</h2>
-      </div>
-      <p className="text-sm text-muted">
-        Toman los tiempos en el teléfono y publican las series. Los admins ya pueden.{!isAdmin && ' Los nombra el dueño o un admin.'}
+    <section aria-labelledby="natacion-cronometristas">
+      <SectionHeader id="natacion-cronometristas" title="Cronometristas" />
+      <p className="mx-1 -mt-1 mb-3 text-meta text-muted">
+        Toman los tiempos y publican las series (los admins ya pueden).{!isAdmin && ' Los nombra el dueño o un admin.'}
       </p>
       {!list.length ? (
-        <p className="text-sm text-muted">Todavía no hay miembros sin permisos en la liga.</p>
+        <p className="mx-1 text-sm text-muted">Todavía no hay miembros sin permisos en la liga.</p>
       ) : (
-        <Card className="divide-y divide-line overflow-hidden">
+        <Card className="overflow-hidden">
           {list.map((m) => {
             const busy = saving.isBusy(m.uid);
             return (
-              <label key={m.uid} className={cx('flex min-h-12 items-center gap-3 px-4 py-2', isAdmin && 'cursor-pointer')}>
-                <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+              <label key={m.uid} className={cx('mm-row relative flex min-h-row-pro items-center gap-3.5 py-2 pr-5 pl-4', isAdmin && 'cursor-pointer')}>
+                <RowIcon tone={m.scorer ? 'accent' : 'neutral'}>
+                  <Timer className="size-5" />
+                </RowIcon>
+                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{m.name}</span>
                 <span className="relative inline-flex size-5 shrink-0">
                   <input
                     type="checkbox"
@@ -248,12 +249,9 @@ function RulesSection() {
     setBusy(false);
   };
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <Waves className="size-5 text-accent" />
-        <h2 className="text-lg font-semibold">Para cada encuentro nuevo</h2>
-      </div>
-      <Card className="flex flex-col gap-4 p-4">
+    <section aria-labelledby="natacion-reglas">
+      <SectionHeader id="natacion-reglas" title="Para cada encuentro nuevo" />
+      <Card className="flex flex-col gap-4 p-5">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Piscina">
             <Segmented
@@ -269,6 +267,7 @@ function RulesSection() {
           <Field label="Carriles">
             <Select
               value={lanes}
+              className="h-11"
               onChange={(e) => {
                 const n = Number(e.target.value);
                 if (points === pointsFor(lanes).join('-')) setPoints(pointsFor(n).join('-'));
@@ -284,10 +283,10 @@ function RulesSection() {
           </Field>
         </div>
         <Field label="Puntos por puesto">
-          <Input value={points} inputMode="numeric" aria-invalid={!parsed} onChange={(e) => setPoints(e.target.value)} />
+          <Input className="h-11" value={points} inputMode="numeric" aria-invalid={!parsed} onChange={(e) => setPoints(e.target.value)} />
         </Field>
         <Field label="Categorías">
-          <Select value={scheme} onChange={(e) => setScheme(e.target.value as AgeScheme)}>
+          <Select className="h-11" value={scheme} onChange={(e) => setScheme(e.target.value as AgeScheme)}>
             {(Object.keys(SCHEME_LABEL) as AgeScheme[]).map((s) => (
               <option key={s} value={s}>
                 {SCHEME_LABEL[s]}
@@ -295,11 +294,9 @@ function RulesSection() {
             ))}
           </Select>
         </Field>
-        <div className="flex justify-end">
-          <Button variant="primary" loading={busy} disabled={!dirty || !parsed} onClick={save}>
-            Guardar
-          </Button>
-        </div>
+        <Button variant="primary" size="lg" loading={busy} disabled={!dirty || !parsed} onClick={save}>
+          Guardar
+        </Button>
       </Card>
     </section>
   );
