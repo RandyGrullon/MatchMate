@@ -286,6 +286,23 @@ describe('quien mira una liga pública sin ser miembro', () => {
     expect(out).not.toContain('Seguir mi juego');
     expect(out).not.toContain('Mis números');
   });
+
+  it('en un torneo de esports no sale «Unirme» (se entra al inscribirse): los datos del torneo van en su tarjeta', async () => {
+    const { LeagueHomeFrame } = await import('../LeagueHome');
+    const frame = (sport: League['sport']) =>
+      text(
+        render(
+          h(LeagueHomeFrame, { sections: [], pro: false, children: h('p', null, 'Pantalla del deporte') }),
+          ctx({ league: { ...league, kind: 'torneo', sport, visibility: 'public', name: 'Copa Nitro' }, member: null, myPlayerId: null }),
+        ),
+      );
+    const esports = frame('esports');
+    expect(esports).toContain('Pantalla del deporte');
+    expect(esports).not.toContain('Estás viendo Copa Nitro');
+    expect(esports).toContain('Sobre el torneo');
+    // Los demás deportes siguen con «Unirme».
+    expect(frame('padel')).toContain('Estás viendo Copa Nitro');
+  });
 });
 
 describe('las piezas', () => {

@@ -80,14 +80,17 @@ export function LeagueHomeBottom({ className }: { className?: string }) {
  * secciones (Partidos, Tabla, Playoffs, Mi equipo… y en Pro «Organizas esta liga») como filas debajo de la pantalla
  * del deporte (`sections`).
  * - arriba: el ícono y el nombre con cuándo y dónde juegan (LeagueIdent), el aviso del admin y el reclamo; para quien
- *   mira una liga pública sin ser miembro, «Unirme» con los datos de la liga y «¿Quién eres?»; en Pro, a quien
- *   organiza, «Suspender» si hoy hay juego (src/components/organizer);
+ *   mira una liga pública sin ser miembro, «Unirme» con los datos de la liga y «¿Quién eres?» (en esports no: se entra
+ *   al inscribirse y la acción del torneo es «Inscribirme», docs/esports.md D5); en Pro, a quien organiza,
+ *   «Suspender» si hoy hay juego (src/components/organizer);
  * - abajo: las secciones (con el buzón de sugerencias para los jugadores), el aviso de la pantalla (NoticeSlot),
  *   premios, campeones e insignias, y para los miembros los datos de la liga (lugar, horario, WhatsApp).
  */
 export function LeagueHomeFrame({ sections, pro, children }: { sections: readonly LeagueRowDef[]; pro: boolean; children: ReactNode }) {
   const { league, member, lid, isAdmin } = useLeagueCtx();
   const observer = !member && league.visibility === 'public';
+  // Esports: la liga del torneo se llena al aprobar las inscripciones; «Unirme» competiría con «Inscribirme».
+  const esports = leagueSport(league) === 'esports';
   useLeagueHomeNotices(pro);
   return (
     <div className="flex flex-col px-2">
@@ -98,7 +101,7 @@ export function LeagueHomeFrame({ sections, pro, children }: { sections: readonl
           <SuspendTodayCard key={`suspender-${lid}`} />
         </div>
       )}
-      {observer && (
+      {observer && !esports && (
         <div className="mt-[22px]">
           <JoinLeagueCard />
         </div>
@@ -110,7 +113,7 @@ export function LeagueHomeFrame({ sections, pro, children }: { sections: readonl
       {/* El único aviso de la pantalla, al final de la liga (como una fila discreta). */}
       <NoticeSlot className="mt-4" />
       <LeagueHomeBottom className="mt-[30px]" />
-      {!observer && (
+      {(!observer || esports) && (
         <div className="mt-[30px] empty:hidden">
           <LeagueInfoCard />
         </div>
