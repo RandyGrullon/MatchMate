@@ -202,7 +202,9 @@ describe('el asistente «Crear una liga»', () => {
   });
 
   it('esports: marcado solo si se pidió (quien solo juega esports igual puede crear otra cosa)', () => {
-    expect(wizardSport(['bowling', 'esports'], 'esports', [])).toBe('esports');
+    // Venir de Esports (el deporte en que estabas) no lo marca: el asistente se iría sin dejar elegir otro.
+    expect(wizardSport(['bowling', 'esports'], 'esports', [])).toBe('bowling');
+    expect(wizardSport(['padel', 'esports'], 'esports', ['padel'])).toBe('padel');
     expect(wizardSport(['bowling', 'padel', 'esports'], null, ['esports'])).toBe('bowling');
     expect(wizardSport(['padel', 'esports'], null, ['esports', 'padel'])).toBe('padel');
     expect(wizardSport(['esports'], null, [])).toBe('esports');

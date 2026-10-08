@@ -54,7 +54,9 @@ const MINORS_RULES = [
  * sale marcado solo si se pidió (al elegirlo, el asistente lleva a crear en Esports: ver `esportsCreatePath`).
  */
 export function wizardSport(creatable: readonly SportId[], wanted: SportId | null | undefined, mySports: readonly string[]): SportId {
-  if (wanted && creatable.includes(wanted)) return wanted;
+  // Esports nunca sale marcado por venir de él (el deporte en que estabas): al marcarlo el asistente se iría a Esports
+  // sin dejar elegir otro deporte. Se elige tocándolo (o si es lo único que se puede crear).
+  if (wanted && wanted !== 'esports' && creatable.includes(wanted)) return wanted;
   const others = creatable.filter((s) => s !== 'esports');
   const mine = mySports.filter((s): s is SportId => (others as readonly string[]).includes(s));
   if (mine.length === 1) return mine[0];
@@ -161,13 +163,15 @@ export function CreateWizard({
   const set = <K extends keyof WizardForm>(k: K, v: WizardForm[K]) => setForm((f) => ({ ...f, [k]: v }));
   const chooseSport = (id: SportId) => {
     touched.current = true;
+    // Esports: en lugar de seguir, a Esports a elegir el juego (solo al tocarlo: nunca por haber venido de Esports).
+    if (id === 'esports') return onDone(esportsCreatePath(kind));
     setSport(id);
   };
-  // Esports: en lugar de seguir, a Esports a elegir el juego (también si abrió con esports marcado).
+  // Si Esports es lo único que esta cuenta puede crear, el asistente va directo a Esports.
   useEffect(() => {
-    if (sport === 'esports') onDone(esportsCreatePath(kind));
+    if (sport === 'esports' && sports.creatable.length === 1) onDone(esportsCreatePath(kind));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sport]);
+  }, [sport, sports.creatable.length]);
 
   async function close() {
     // Mientras se crea no se cierra (quedaría creada sin llevarte a ella).
