@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { MailPlus } from 'lucide-react';
 import { respondErrorText, respondInvite, useMyInvites, type LeagueInvite } from '../../lib/data/invites';
 import { relativeTime } from '../../lib/notifications';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { useFeedback } from '../feedback';
 import { LeagueLogo } from '../home/LeagueCard';
-import { Badge, Button, Card } from '../ui';
+import { Badge, Button, Card, SectionHeader } from '../ui';
 import { invitedByLine, leagueTypeLabel, respondedText, scorerInvitedLine } from './inviteText';
 
 /**
@@ -38,57 +37,52 @@ export function InvitesCard({ uid, now }: { uid: string; now: number }) {
   }
 
   return (
-    <Card className="animate-fade-up overflow-hidden">
-      <section aria-labelledby="avisos-invitaciones">
-        <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <MailPlus className="size-4 text-accent" aria-hidden="true" />
-          <h2 id="avisos-invitaciones" className="flex-1 font-semibold">
-            Invitaciones
-          </h2>
-          <Badge tone="accent">{invites.data.length}</Badge>
-        </div>
-        <ul className="divide-y divide-line">
+    // Como las secciones del rediseño: el título con cuántas son y, en la tarjeta, una fila por invitación con
+    // «Rechazar» (gris) y «Aceptar».
+    <section aria-labelledby="avisos-invitaciones" className="animate-fade-up">
+      <SectionHeader
+        id="avisos-invitaciones"
+        title={
+          <span className="inline-flex items-center gap-2">
+            Invitaciones <Badge tone="accent">{invites.data.length}</Badge>
+          </span>
+        }
+      />
+      <Card className="overflow-hidden">
+        <ul>
           {invites.data.map((inv) => {
             const time = Date.parse(inv.createdAt);
             const mine = busy?.id === inv.id;
             const league = inv.leagueName || 'la liga';
             return (
-              <li key={inv.id} className="flex flex-col gap-3 px-4 py-3.5">
-                <div className="flex items-start gap-3">
+              <li key={inv.id} className="mm-row relative flex flex-col gap-3.5 py-4 pr-[18px] pl-5">
+                <div className="flex items-start gap-3.5">
                   <LeagueLogo path={inv.logoPath} className="size-10 rounded-xl">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
                       <SportIcon sport={inv.sport} className="size-5" />
                     </span>
                   </LeagueLogo>
                   <div className="min-w-0 flex-1">
-                    <p className="leading-snug font-semibold break-words">{inv.leagueName || 'Una liga'}</p>
-                    <p className="text-sm text-muted">
+                    <p className="text-body leading-snug font-semibold break-words">{inv.leagueName || 'Una liga'}</p>
+                    <p className="mt-0.5 text-sm text-muted">
                       {inv.scorer ? scorerInvitedLine(inv.invitedBy, inv.scorer.title || league) : invitedByLine(inv.invitedBy)} ·{' '}
                       {leagueTypeLabel(inv.kind, inv.visibility)}
                     </p>
-                    {Number.isFinite(time) && <p className="text-xs text-muted">{relativeTime(time, now)}</p>}
+                    {Number.isFinite(time) && <p className="text-[13px] text-muted">{relativeTime(time, now)}</p>}
                   </div>
                   <Link
                     to={`/invitacion/${inv.id}`}
                     aria-label={`Ver la invitación a ${league}`}
-                    className="-mr-2 inline-flex h-11 shrink-0 items-center rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft"
+                    className="-my-1 -mr-2 inline-flex h-11 shrink-0 items-center rounded-xl px-3 text-meta font-semibold text-accent transition active:opacity-70"
                   >
                     Ver
                   </Link>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2.5">
                   <Button
-                    variant="primary"
-                    className="h-11 flex-1"
-                    aria-label={`Aceptar la invitación a ${league}`}
-                    loading={mine && busy?.accept}
-                    disabled={!!busy}
-                    onClick={() => void respond(inv, true)}
-                  >
-                    Aceptar
-                  </Button>
-                  <Button
-                    className="h-11 flex-1"
+                    variant="quiet"
+                    size="lg"
+                    className="flex-1"
                     aria-label={`Rechazar la invitación a ${league}`}
                     loading={mine && !busy?.accept}
                     disabled={!!busy}
@@ -96,12 +90,23 @@ export function InvitesCard({ uid, now }: { uid: string; now: number }) {
                   >
                     Rechazar
                   </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="flex-1"
+                    aria-label={`Aceptar la invitación a ${league}`}
+                    loading={mine && busy?.accept}
+                    disabled={!!busy}
+                    onClick={() => void respond(inv, true)}
+                  >
+                    Aceptar
+                  </Button>
                 </div>
               </li>
             );
           })}
         </ul>
-      </section>
-    </Card>
+      </Card>
+    </section>
   );
 }

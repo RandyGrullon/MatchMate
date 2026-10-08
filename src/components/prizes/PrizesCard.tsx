@@ -11,7 +11,7 @@ import { namesLine } from '../../prizes/award';
 import { cardModel, correctionWindow, type CardModel, type CardRow, type CorrectionWindow } from '../../prizes/card';
 import { PLACE_LABEL } from '../../prizes/catalog';
 import { useFeedback, saveErrorMessage } from '../feedback';
-import { Badge, Button, Card, cx } from '../ui';
+import { Button, Card, SectionHeader, cx } from '../ui';
 import { dayText } from '../badges/maker/design';
 import { DesignSheet } from '../badges/maker/DesignSheet';
 import { designLook } from '../badges/maker/look';
@@ -123,31 +123,34 @@ export function PrizesCardView(p: PrizesCardViewProps) {
   // Lugar por lugar, como la base: un lugar sin entregar se entrega aunque otro ya pasó sus 14 días.
   const correction = correctionWindow(model, p.now);
   return (
-    <section aria-labelledby="premios-torneo" className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="premios-torneo" className="flex items-center gap-2 text-lg font-bold tracking-tight">
-          <Trophy className="size-5 text-accent" aria-hidden="true" /> Premios del torneo
-        </h2>
-        {closed && admin && (
-          <Badge>
-            <Lock className="size-3" aria-hidden="true" /> Premios cerrados
-          </Badge>
-        )}
-      </div>
-      <Card className="flex flex-col gap-4 p-4">
+    <section aria-labelledby="premios-torneo">
+      <SectionHeader
+        id="premios-torneo"
+        title="Premios del torneo"
+        action={
+          closed && admin ? (
+            <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-muted">
+              <Lock className="size-3.5" aria-hidden="true" /> Premios cerrados
+            </span>
+          ) : undefined
+        }
+      />
+      <Card className="flex flex-col gap-4 p-5">
         {model.state === 'sin_premios' ? (
-          <div className="flex flex-col items-start gap-3">
-            <p className="text-sm text-muted">Elige qué insignia se lleva el campeón.</p>
-            <Button variant="primary" className="min-h-11" icon={<Gift className="size-4" />} onClick={p.onPick}>
+          <div className="flex flex-col gap-3">
+            <p className="flex items-center gap-2.5 text-meta text-fg-2">
+              <Trophy className="size-5 shrink-0 text-accent" aria-hidden="true" /> Elige qué insignia se lleva el campeón.
+            </p>
+            <Button variant="soft" size="lg" className="w-full" icon={<Gift className="size-5" />} onClick={p.onPick}>
               Elegir premios
             </Button>
           </div>
         ) : (
           <>
-            <p className="text-sm font-semibold">{model.heading}</p>
+            <p className="text-body font-semibold">{model.heading}</p>
             {model.sections.map((sec) => (
-              <div key={sec.key} className="flex flex-col gap-2">
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{sec.title}</h3>
+              <div key={sec.key} className="flex flex-col gap-2.5">
+                <h3 className="text-[13px] font-semibold text-muted">{sec.title}</h3>
                 <ul className="flex flex-col gap-2.5">
                   {sec.rows.map((r) => (
                     <PrizeRow key={r.slot.id} row={r} sport={p.sport} period={p.period} base={p.base} nameOf={p.nameOf} onOpenBadge={p.onOpenBadge} />
@@ -282,18 +285,26 @@ function AdminBar(p: {
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Un solo botón principal (Entregar, o Revisar si falta alguno); lo demás en gris. */}
         {canCorrect && (
-          <Button variant={review && model.allDelivered ? 'secondary' : 'primary'} className="min-h-11" icon={<Gift className="size-4" />} disabled={!p.ready && !delivered} onClick={p.onAward}>
+          <Button
+            variant={review && model.allDelivered ? 'quiet' : 'primary'}
+            size="lg"
+            className="w-full"
+            icon={<Gift className="size-4" />}
+            disabled={!p.ready && !delivered}
+            onClick={p.onAward}
+          >
             {review ? 'Revisar premios' : 'Entregar premios'}
           </Button>
         )}
         {p.canPick && !p.closed && (
-          <Button variant="ghost" className="min-h-11" icon={<Pencil className="size-4" />} onClick={p.onPick}>
+          <Button variant="quiet" className="h-11 min-w-0 flex-1" icon={<Pencil className="size-4" />} onClick={p.onPick}>
             Cambiar premios
           </Button>
         )}
         {p.canDeliver && delivered && open && (
-          <Button variant="ghost" className="min-h-11" icon={<Lock className="size-4" />} loading={p.closing} onClick={p.onClosePrizes}>
+          <Button variant="quiet" className="h-11 min-w-0 flex-1" icon={<Lock className="size-4" />} loading={p.closing} onClick={p.onClosePrizes}>
             Cerrar premios
           </Button>
         )}

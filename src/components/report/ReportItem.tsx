@@ -12,7 +12,7 @@ import {
 } from '../../lib/data/reports';
 import { relativeTime } from '../../lib/notifications';
 import { useFeedback } from '../feedback';
-import { Badge, Button, Modal, Textarea, cx } from '../ui';
+import { Badge, Button, Sheet, Textarea, cx } from '../ui';
 
 type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
 
@@ -42,7 +42,7 @@ export function ReportItem({ report: r, showReporter, actions, now = Date.now() 
   const created = Date.parse(r.createdAt);
   const done = resolvedText(r, now);
   return (
-    <li className="flex flex-col gap-2.5 px-4 py-3">
+    <li className="flex flex-col gap-2.5 px-5 py-4">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={reasonTone(r.reason)}>
           <Flag className="size-3" aria-hidden="true" />
@@ -59,7 +59,7 @@ export function ReportItem({ report: r, showReporter, actions, now = Date.now() 
         )}
       </div>
 
-      <div className={cx('rounded-xl border px-3 py-2.5', t ? 'border-line bg-surface-2/60' : 'border-dashed border-line')}>
+      <div className="rounded-2xl bg-surface-2 px-4 py-3">
         {t ? (
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -159,25 +159,20 @@ export function ResolveButtons({ report }: { report: Report }) {
 
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={dismiss} loading={busy === 'dismissed'} disabled={!!busy} className="max-sm:h-11">
-        Descartar
-      </Button>
-      <Button size="sm" icon={<CheckCircle2 className="size-3.5" />} onClick={() => setAttending(true)} disabled={!!busy} className="max-sm:h-11">
+      <Button variant="soft" icon={<CheckCircle2 className="size-4" />} onClick={() => setAttending(true)} disabled={!!busy} className="h-11 rounded-full!">
         Marcar como atendido
       </Button>
-      <Modal
+      <Button variant="quiet" onClick={dismiss} loading={busy === 'dismissed'} disabled={!!busy} className="h-11 rounded-full!">
+        Descartar
+      </Button>
+      <Sheet
         open={attending}
         onClose={() => setAttending(false)}
         title="Marcar como atendido"
         footer={
-          <>
-            <Button onClick={() => setAttending(false)} className="max-sm:h-11">
-              Cancelar
-            </Button>
-            <Button variant="primary" icon={<CheckCircle2 className="size-4" />} loading={busy === 'actioned'} onClick={attend} className="max-sm:h-11">
-              Listo
-            </Button>
-          </>
+          <Button variant="primary" size="xl" className="w-full" icon={<CheckCircle2 className="size-5" />} loading={busy === 'actioned'} onClick={attend}>
+            Listo
+          </Button>
         }
       >
         <label className="flex flex-col gap-1.5">
@@ -192,7 +187,7 @@ export function ResolveButtons({ report }: { report: Report }) {
             placeholder="Hablé con el admin y borró el comentario."
           />
         </label>
-      </Modal>
+      </Sheet>
     </>
   );
 }

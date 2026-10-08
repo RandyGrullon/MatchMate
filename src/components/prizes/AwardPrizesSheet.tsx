@@ -65,14 +65,10 @@ export function AwardPrizesSheet(props: AwardPrizesSheetProps) {
       title={anyDelivered(props.prize) ? 'Revisar premios' : 'Entregar premios'}
       subtitle={props.comp.name}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button className="min-h-11" onClick={props.onClose}>
-            Cancelar
-          </Button>
-          <Button className="min-h-11" variant="primary" type="submit" form={FORM_ID} loading={footer.busy} disabled={footer.disabled}>
-            {footer.label}
-          </Button>
-        </div>
+        // Un solo botón (la X de arriba cierra sin entregar).
+        <Button variant="primary" size="xl" className="w-full" type="submit" form={FORM_ID} loading={footer.busy} disabled={footer.disabled}>
+          {footer.label}
+        </Button>
       }
     >
       {props.open && <AwardFlow key={props.prize.id} {...props} onFooter={setFooter} />}
@@ -224,7 +220,7 @@ export function AwardBody(p: AwardBodyProps) {
         const notes = planNotes(plan, p.plans);
         const id = `entregar-${plan.slot.id}`;
         return (
-          <section key={plan.slot.id} aria-labelledby={`${id}-t`} className={cx('flex flex-col gap-2.5 rounded-xl border border-line p-3', !plan.deliverable && 'bg-surface-2/40')}>
+          <section key={plan.slot.id} aria-labelledby={`${id}-t`} className={cx('flex flex-col gap-2.5 rounded-2xl p-4', plan.deliverable ? 'bg-surface-2' : 'bg-surface-2/50')}>
             <div className="flex items-center gap-3">
               {design ? <Insignia badge={designLook(design, p.sport, p.period)} size={40} label={badgeLabel(design.name, designLook(design, p.sport, p.period))} /> : <span className="size-10 shrink-0 rounded-full bg-surface-2" aria-hidden="true" />}
               <div className="min-w-0 flex-1">

@@ -1,19 +1,21 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { CalendarDays, ChevronRight, Flame, History, MessageCircleHeart, Trophy } from 'lucide-react';
+import { ChevronRight, Heart, MessageCircle, MessageCircleHeart } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useCommentsOfEvents, useEntriesOfEvents, useEvents, usePlayers, useReactionsOfEvents } from '../lib/data';
-import { eventLabel, formatDateLong, toIsoDate, typeLabel } from '../lib/format';
+import { eventLabel, parseDate, toIsoDate, typeLabel } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { liveInfo } from '../lib/live';
 import { entryLine, type Line } from '../lib/stats';
 import type { BowlingEvent, Entry, GameComment, Player, Reaction } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { GameDetailModal } from '../components/event/GameDetailModal';
-import { LiveBoard } from '../components/LiveBoard';
-import { PostSocial, ReactionBar } from '../components/social/Social';
+import { LiveDot } from '../components/home/TodayCard';
+import { useIsPro } from '../components/mode';
+import { ScreenTitle } from '../components/screens/ScreenBits';
+import { PostSocial } from '../components/social/Social';
 import { UserLink } from '../components/social/UserLink';
-import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Skeleton, cx } from '../components/ui';
+import { Button, Card, DateBlock, ListRow, ListSkeleton, LoadError, Skeleton, cx } from '../components/ui';
 
 /** Eventos pasados que se muestran de a poco. */
 const PAGE = 4;
@@ -28,13 +30,26 @@ interface Post {
   badges: string[];
 }
 
+const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+/** Debajo del nombre del evento: «Martes · práctica · 6 jugaron». */
+export function eventLine(event: Pick<BowlingEvent, 'date' | 'type'>, players: number): string {
+  const day = WEEKDAYS[parseDate(event.date).getDay()];
+  return [day, typeLabel(event.type).toLowerCase(), players > 0 && `${players} ${players === 1 ? 'jugó' : 'jugaron'}`].filter(Boolean).join(' · ');
+}
+
 /**
- * Juegos de la liga, como un muro: lo que se está jugando hoy y los juegos pasados de todos.
- * Quien faltó ve cómo le fue a los demás; cualquiera de la liga felicita, da me gusta y comenta.
+ * Resultados anteriores de la liga (`/l/:lid/juegos`, rediseño «Calma y foco»): «‹ Liga de los martes», el título y una
+ * línea. Lo de hoy es una fila que lleva a la práctica (ahí está «Cómo van todos»: la tabla en vivo ya no se repite
+ * aquí). Debajo, cada fecha jugada con su bloque (OCT / 6) y una lista de quienes jugaron, de la mejor serie a la peor:
+ * sus juegos en una línea, la serie grande, «Mejor juego» o «Mejor serie», y cuántos me gusta y comentarios tiene.
+ * Tocar a alguien abre su juego para dar me gusta, felicitar o comentar; tocar sus iniciales, su perfil. Quien faltó ve
+ * cómo le fue a los demás. `?juego=evento_jugador` (un aviso) abre ese juego aunque sea viejo.
  */
 export default function GamesFeedPage() {
   const { lid, league, base, myPlayerId } = useLeagueCtx();
   const { user } = useAuth();
+  const pro = useIsPro();
   const [params, setParams] = useSearchParams();
   const now = useNow();
   const today = toIsoDate(now);
@@ -82,63 +97,76 @@ export default function GamesFeedPage() {
     );
 
   const loading = events.loading || players.loading || (entries.loading && !entries.data.length);
-  const group = (ev: BowlingEvent, live: boolean, startsAt?: string | null) => (
-    <EventGroup
-      key={ev.id}
-      event={ev}
-      live={live}
-      loading={entries.loading}
-      startsAt={startsAt}
-      posts={postsOf(ev, byEvent(ev.id), nameOf, uidOf, live)}
-      reactionsOf={reactionsOf}
-      commentsOf={commentsOf}
-      eventUrl={league.kind === 'torneo' ? base : `${base}/e/${ev.id}`}
-      onOpen={setOpen}
-    />
-  );
+  const urlOf = (ev: BowlingEvent) => (league.kind === 'torneo' ? base : `${base}/e/${ev.id}`);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold tracking-tight">
-          <MessageCircleHeart className="size-6 text-accent" /> Juegos de la liga
-        </h1>
-        <p className="text-sm text-muted">Mira cómo le fue a cada uno, felicita y comenta.</p>
+    <div className="flex flex-col px-2">
+      <ScreenTitle title="Resultados anteriores" hint="Toca a alguien para felicitarlo o comentar" pro={pro} />
+
+      <div className={cx('mt-5 flex flex-col', pro ? 'gap-6' : 'gap-[26px]')}>
+        {loading ? (
+          <ListSkeleton rows={5} />
+        ) : played.length === 0 ? (
+          <Card className="flex flex-col items-center px-5 py-8 text-center">
+            <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+              <MessageCircleHeart className="size-7" />
+            </span>
+            <h2 className="mt-4 text-card-title">Todavía no hay juegos</h2>
+            <p className="mt-2 max-w-sm text-body text-muted">Cuando se juegue una práctica o un torneo, sale aquí.</p>
+          </Card>
+        ) : (
+          <>
+            {/* Hoy: una fila a la práctica (ahí se ve en vivo cómo van todos), no otra tabla en vivo. */}
+            {todays.length > 0 && (
+              <Card soft className="overflow-hidden">
+                {todays.map((ev) => {
+                  const info = liveInfo(ev, league, now);
+                  const playing = byEvent(ev.id).length;
+                  return (
+                    <ListRow
+                      key={ev.id}
+                      dense={pro}
+                      to={urlOf(ev)}
+                      leading={<DateBlock date={ev.date} raised />}
+                      title={eventLabel(ev)}
+                      subtitle={
+                        info.live ? (
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
+                            <LiveDot /> En juego{playing > 0 ? ` · ${playing} jugando` : ''}
+                          </span>
+                        ) : info.startLabel ? (
+                          `Hoy a las ${info.startLabel}`
+                        ) : (
+                          'Hoy'
+                        )
+                      }
+                    />
+                  );
+                })}
+              </Card>
+            )}
+
+            {visiblePast.map((ev) => (
+              <EventGroup
+                key={ev.id}
+                event={ev}
+                dense={pro}
+                loading={entries.loading}
+                posts={postsOf(ev, byEvent(ev.id), nameOf, uidOf, false)}
+                reactionsOf={reactionsOf}
+                commentsOf={commentsOf}
+                eventUrl={urlOf(ev)}
+                onOpen={setOpen}
+              />
+            ))}
+            {past.length > visiblePast.length && (
+              <Button variant="quiet" size={pro ? 'lg' : 'xl'} className="w-full" onClick={() => setShown((n) => n + PAGE)}>
+                Ver fechas más viejas
+              </Button>
+            )}
+          </>
+        )}
       </div>
-
-      {loading ? (
-        <ListSkeleton rows={5} />
-      ) : played.length === 0 ? (
-        <Empty icon={<MessageCircleHeart className="size-8" />} title="Todavía no hay juegos">
-          Cuando se jueguen los torneos y prácticas, aquí salen los juegos de todos para felicitar y comentar.
-        </Empty>
-      ) : (
-        <>
-          {todays.length > 0 && (
-            <section className="flex flex-col gap-3" aria-label="En juego ahora">
-              {/* En juego: el tablero en vivo de todos (tocar un juego que ya está en la tabla para felicitar). */}
-              {todays.map((ev) => {
-                const info = liveInfo(ev, league, now);
-                return info.live ? <LiveBoard key={ev.id} event={ev} info={info} onOpen={setOpen} /> : group(ev, false, info.startLabel ?? '');
-              })}
-            </section>
-          )}
-
-          {past.length > 0 && (
-            <section className="flex flex-col gap-3" aria-label="Juegos pasados">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-muted">
-                <History className="size-4" /> Juegos pasados
-              </h2>
-              {visiblePast.map((ev) => group(ev, false))}
-              {past.length > visiblePast.length && (
-                <Button className="self-center" onClick={() => setShown((n) => n + PAGE)}>
-                  Ver juegos más viejos
-                </Button>
-              )}
-            </section>
-          )}
-        </>
-      )}
 
       {openEntry && openEvent && (
         <GameDetailModal
@@ -170,19 +198,19 @@ function postsOf(event: BowlingEvent, entries: Entry[], nameOf: Map<string, stri
   return lines
     .map(({ entry, line }) => {
       const badges: string[] = [];
-      if (line.high === 300) badges.push('🎳 ¡Juego perfecto!');
-      else if (many && line.high === best) badges.push('🏆 Mejor juego');
-      if (many && line.games > 1 && line.scratch === bestSeries) badges.push('🥇 Mejor serie');
+      if (line.high === 300) badges.push('¡Juego perfecto!');
+      else if (many && line.high === best) badges.push('Mejor juego');
+      if (many && line.games > 1 && line.scratch === bestSeries) badges.push('Mejor serie');
       return { entry, line, name: nameOf.get(entry.playerId) ?? '(jugador borrado)', uid: uidOf.get(entry.playerId) ?? null, badges };
     })
     .sort((a, b) => b.line.scratch - a.line.scratch || b.line.high - a.line.high);
 }
 
+/** Una fecha jugada: su bloque (OCT / 6), el nombre (lleva al evento) y la lista de quienes jugaron. */
 function EventGroup({
   event,
-  live,
+  dense,
   loading,
-  startsAt,
   posts,
   reactionsOf,
   commentsOf,
@@ -190,119 +218,110 @@ function EventGroup({
   onOpen,
 }: {
   event: BowlingEvent;
-  live: boolean;
+  dense: boolean;
   /** Todavía llegan los juegos (no decir "nadie anotó"). */
   loading: boolean;
-  /** Evento de hoy que aún no empieza: su hora ('' si la liga no tiene hora). */
-  startsAt?: string | null;
   posts: Post[];
   reactionsOf: (entryId: string) => Reaction[];
   commentsOf: (entryId: string) => GameComment[];
   eventUrl: string;
   onOpen: (entryId: string) => void;
 }) {
-  const isTorneo = event.type === 'torneo';
+  const titleId = `fecha-${event.id}`;
   return (
-    <div className="flex flex-col gap-2">
-      <Link to={eventUrl} className="group flex items-center gap-2 rounded-xl px-1 py-1">
-        <span className={cx('flex size-8 shrink-0 items-center justify-center rounded-lg', live ? 'bg-ok-soft text-ok' : 'bg-accent-soft text-accent')}>
-          {isTorneo ? <Trophy className="size-4" /> : <CalendarDays className="size-4" />}
-        </span>
+    <section aria-labelledby={titleId}>
+      <Link
+        to={eventUrl}
+        className="mx-1 mb-3 flex min-h-11 items-center gap-3.5 rounded-2xl transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <DateBlock date={event.date} raised />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{eventLabel(event)}</span>
-          <span className="block text-xs text-muted first-letter:uppercase">
-            {formatDateLong(event.date)} · {typeLabel(event.type)}
+          <span id={titleId} className="block truncate text-section">
+            {eventLabel(event)}
           </span>
+          <span className="mt-0.5 block truncate text-sm text-muted">{eventLine(event, posts.length)}</span>
         </span>
-        {live && (
-          <Badge tone="ok">
-            <span className="live-dot" /> En juego
-          </Badge>
-        )}
-        <ChevronRight className="size-4 text-muted transition group-hover:translate-x-0.5" />
+        <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-faint" />
       </Link>
       {posts.length === 0 && loading ? (
-        <Skeleton className="h-24 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-3xl" />
       ) : posts.length === 0 ? (
-        <Card className="px-4 py-3 text-sm text-muted">
-          {startsAt != null
-            ? `Hoy se juega${startsAt ? ` a las ${startsAt}` : ''}. Cuando empiece, aquí ves en vivo cómo va cada uno.`
-            : live
-              ? 'Todavía no hay juegos anotados. Aparecen aquí en vivo.'
-              : 'Nadie anotó juegos en este evento.'}
-        </Card>
+        <p className="mx-1 text-meta text-muted">Nadie anotó juegos en esta fecha.</p>
       ) : (
-        <div className="stagger flex flex-col gap-2">
-          {posts.map((p, i) => (
-            <PostCard key={p.entry.id} post={p} i={i} live={live} reactions={reactionsOf(p.entry.id)} comments={commentsOf(p.entry.id)} onOpen={() => onOpen(p.entry.id)} />
+        <Card className="overflow-hidden">
+          {posts.map((p) => (
+            <PostRow key={p.entry.id} post={p} dense={dense} reactions={reactionsOf(p.entry.id)} comments={commentsOf(p.entry.id)} onOpen={() => onOpen(p.entry.id)} />
           ))}
-        </div>
+        </Card>
       )}
-    </div>
+    </section>
   );
 }
 
-function PostCard({
+/** «176 · 195 · 203 · 192»: los juegos que cuentan, en una línea. */
+export const scoresLine = (scores: readonly (number | null)[]): string => scores.filter((s): s is number => s != null).join(' · ');
+
+/**
+ * Quien jugó: sus iniciales (llevan a su perfil si tiene cuenta), su nombre, sus juegos en una línea con «Mejor juego» o
+ * «Mejor serie» y cuántos me gusta y comentarios lleva, y la serie grande (o los pinos de un juego). Toda la fila abre su
+ * juego (me gusta, felicitar y comentarios).
+ */
+function PostRow({
   post,
-  i,
-  live,
+  dense,
   reactions,
   comments,
   onOpen,
 }: {
   post: Post;
-  i: number;
-  live: boolean;
+  dense: boolean;
   reactions: Reaction[];
   comments: GameComment[];
   onOpen: () => void;
 }) {
-  const { entry, line, name, uid, badges } = post;
+  const { line, name, uid, badges } = post;
+  const likes = reactions.length;
+  const said = comments.length;
   return (
-    <Card className="flex flex-col gap-2 px-3 pt-3 pb-1.5" style={{ '--i': i } as CSSProperties}>
-      <div className="flex items-start gap-3">
-        {/* Nombre e iniciales llevan a su perfil (si tiene cuenta); el resto de la tarjeta abre el juego. */}
-        <UserLink userId={uid} name={name} hideName className="shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <UserLink userId={uid} name={name} avatar={false} className="max-w-full" />
-            {badges.map((b) => (
-              <span key={b} className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
-                {b}
-              </span>
-            ))}
-          </div>
-          <button type="button" onClick={onOpen} className="mt-1.5 flex w-full items-start gap-3 rounded-lg text-left" aria-label={`Ver el juego de ${name}`}>
-            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-              {line.scores.map((s, k) =>
-                s == null ? null : (
-                  <span
-                    key={k}
-                    className={cx(
-                      'inline-flex min-w-11 items-center justify-center rounded-lg px-2 py-1 text-sm font-bold tabular-nums',
-                      s >= 200 ? 'bg-accent text-accent-fg' : 'bg-surface-2',
-                      live && !line.verified[k] && 'opacity-70',
-                    )}
-                    title={`Juego ${k + 1}${live && !line.verified[k] ? ' (sin verificar)' : ''}`}
-                  >
-                    {s >= 200 && <Flame className="mr-0.5 size-3" />}
-                    {s}
-                  </span>
-                ),
+    <ListRow
+      dense={dense}
+      onClick={onOpen}
+      ariaLabel={`Ver el juego de ${name}: ${line.games > 1 ? `serie ${line.scratch}` : `${line.scratch} pinos`}`}
+      // Las iniciales van encima de la fila (z-[1]): llevan a su perfil, no abren el juego.
+      leading={
+        <span className="relative z-[1] shrink-0">
+          <UserLink userId={uid} name={name} hideName avatarClassName={dense ? 'size-9 text-sm' : 'size-10 text-sm'} />
+        </span>
+      }
+      title={name}
+      subtitle={
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="num">{scoresLine(line.scores)}</span>
+          {badges.map((b) => (
+            <span key={b} className="font-semibold text-accent">
+              {b}
+            </span>
+          ))}
+          {(likes > 0 || said > 0) && (
+            <span aria-label={[likes > 0 && `${likes} reacciones`, said > 0 && `${said} comentarios`].filter(Boolean).join(', ')} className="inline-flex items-center gap-2 text-faint">
+              {likes > 0 && (
+                <span className="inline-flex items-center gap-0.5">
+                  <Heart aria-hidden="true" className="size-3.5" />
+                  {likes}
+                </span>
               )}
-            </div>
-            <div className="shrink-0 text-right">
-              <div className="text-lg leading-tight font-bold tabular-nums">{line.scratch}</div>
-              <div className="text-[11px] text-muted">
-                {line.games > 1 ? 'Serie' : 'Pinos'} · prom {line.avg}
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-      <div className="border-t border-line pt-1">
-        <ReactionBar entry={entry} reactions={reactions} comments={comments} onComments={onOpen} />
-      </div>
-    </Card>
+              {said > 0 && (
+                <span className="inline-flex items-center gap-0.5">
+                  <MessageCircle aria-hidden="true" className="size-3.5" />
+                  {said}
+                </span>
+              )}
+            </span>
+          )}
+        </span>
+      }
+      value={line.scratch}
+      chevron={false}
+    />
   );
 }

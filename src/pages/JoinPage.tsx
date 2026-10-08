@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Baby, Globe, Lock, LogIn, Ticket, Trophy, UserPlus, Users } from 'lucide-react';
+import { Baby, LogIn, Ticket, UserPlus } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { getInvite, getInviteDetails, joinLeagueClaim, useLeague, type InviteDetails } from '../lib/data/leagues';
 import { useMembership } from '../lib/data/members';
 import type { Invite } from '../lib/types';
 import { sportMeta } from '../sports/registry';
-import { BackLink } from '../components/BackLink';
 import { LeagueLogo } from '../components/home/LeagueCard';
+import { DeadInvite, InfoCard, InviteHero, heroArtClass, leagueTypeLine } from '../components/screens/InviteBits';
+import { ScreenTop, linkButton } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
 import { SportSplash } from '../components/splash/SportSplash';
 import { useAction, useFeedback } from '../components/feedback';
-import { Badge, Button, Card, Empty, Loading } from '../components/ui';
-import { INFO_FORMAT, InfoItem, InfoList } from '../components/league/LeagueInfo';
+import { Button, Card, Loading } from '../components/ui';
+import { INFO_FORMAT } from '../components/league/LeagueInfo';
 import { countLabel, guessPlayer, infoRows, joinLabel, peopleWord } from '../components/league/logic';
 import { SportTheme } from '../components/league/SportTheme';
 import { joinClaimMessage, WhoAreYouList, type WhoChoice } from '../components/league/WhoAreYou';
-import { SportBadge } from './sports/SportBits';
 
 interface Found {
   invite: Invite | null;
@@ -50,9 +50,11 @@ async function findInvite(code: string, signedIn: boolean): Promise<Found> {
 }
 
 /**
- * Link o QR de invitación: /unirse/<código> (y `?soy=<jugador>` desde el perfil de un jugador sin cuenta). Muestra
- * el deporte, el lugar, el horario y cuántos son; con sesión, «¿Quién eres?» si el admin ya anotó jugadores sin
- * cuenta, para unirse como uno de ellos en vez de crear otro con el mismo nombre.
+ * Link o QR de invitación: /unirse/<código> (y `?soy=<jugador>` desde el perfil de un jugador sin cuenta), rediseño
+ * «Calma y foco»: «‹ Ligas», el logo (o la escena del deporte), «Te invitaron a la liga» con el nombre grande y «Boliche ·
+ * Liga pública»; los datos (lugar, horario, temporada, contacto y cuántos son) en filas, y un solo botón «Unirme». Con
+ * sesión, «¿Quién eres?» si el admin ya anotó jugadores sin cuenta, para unirse como uno de ellos en vez de crear otro con
+ * el mismo nombre. Sin sesión, «Crear cuenta y unirme» o «Ya tengo cuenta» (vuelven aquí).
  */
 export default function JoinPage() {
   const { code = '' } = useParams();
@@ -100,15 +102,10 @@ export default function JoinPage() {
   if (!invite) {
     return (
       <AppShell>
-        <BackLink fallback="/" className="-ml-1.5 mb-3" />
-        <Empty icon={<Ticket className="size-8" />} title="Esta invitación no sirve">
-          El código no existe o lo cambiaron. Pídele a un admin de la liga el link nuevo.
-          <div className="mt-4">
-            <Link to="/ligas" className="font-medium text-accent">
-              Ver ligas
-            </Link>
-          </div>
-        </Empty>
+        <div className="flex flex-col px-2">
+          <ScreenTop label="Ligas" fallback="/ligas" />
+          <DeadInvite icon={<Ticket />} title="Esta invitación no sirve" text="El código no existe o lo cambiaron. Pídele el link nuevo a quien organiza." />
+        </div>
       </AppShell>
     );
   }
@@ -150,68 +147,64 @@ export default function JoinPage() {
 
   return (
     <AppShell>
-      <BackLink fallback="/" className="-ml-1.5 mb-3" />
       <SportTheme sport={invite.sport}>
-        <Card className="mx-auto flex max-w-md flex-col items-center gap-4 p-6 text-center">
-          {/* El logo de la liga si tiene (se ve también sin cuenta); si no, la escena del deporte. */}
-          <LeagueLogo path={invite.logoPath} className="size-24 rounded-3xl">
-            {meta ? (
-              <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
-            ) : (
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-                <Ticket className="size-7" />
-              </div>
-            )}
-          </LeagueLogo>
-          <div className="flex flex-col items-center gap-1.5">
-            <p className="text-sm text-muted">Te invitaron {torneo ? 'al torneo' : 'a la liga'}</p>
-            <h1 className="text-xl font-bold tracking-tight">{invite.leagueName}</h1>
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {invite.sport && <SportBadge sport={invite.sport} />}
-              <Badge tone="neutral">
-                {torneo ? <Trophy className="size-3" /> : invite.visibility === 'public' ? <Globe className="size-3" /> : <Lock className="size-3" />}
-                {torneo ? 'Torneo' : invite.visibility === 'public' ? 'Liga pública' : 'Liga privada'}
-              </Badge>
-            </div>
-          </div>
+        <div className="mx-auto flex max-w-md flex-col px-2">
+          <ScreenTop label="Ligas" fallback="/ligas" />
+          <InviteHero
+            art={
+              // El logo de la liga si tiene (se ve también sin cuenta); si no, la escena del deporte.
+              <LeagueLogo path={invite.logoPath} className={heroArtClass}>
+                {meta ? (
+                  <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
+                ) : (
+                  <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                    <Ticket className="size-7" />
+                  </div>
+                )}
+              </LeagueLogo>
+            }
+            kicker={`Te invitaron ${torneo ? 'al torneo' : 'a la liga'}`}
+            title={invite.leagueName}
+            meta={leagueTypeLine(invite.sport, invite.kind, invite.visibility)}
+          />
 
-          <InfoList
+          <InfoCard
+            className="mt-6"
             rows={rows}
             leagueName={invite.leagueName}
-            className="w-full border-t border-line pt-4"
-            extra={details && details.members > 0 ? <InfoItem icon={<Users className="size-4" />} label="Ya están" value={countLabel(details.members, ['miembro', 'miembros'])} /> : undefined}
+            members={details && details.members > 0 ? countLabel(details.members, ['miembro', 'miembros']) : null}
           />
           {hasMinors && (
-            <p className="flex w-full items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-left text-xs text-muted">
-              <Baby className="mt-0.5 size-4 shrink-0 text-accent" />
+            <p className="mx-1 mt-3 flex items-start gap-2 text-[13px] text-muted">
+              <Baby aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
               {torneo ? 'Torneo con menores' : 'Liga con menores'}: privada, sin fotos ni comentarios. A los menores los registra un admin.
             </p>
           )}
 
           {auth.user ? (
-            <div className="flex w-full flex-col gap-4">
-              {players.length > 0 && <WhoAreYouList players={players} value={picked} onChange={setChoice} people={people} />}
-              <Button variant="primary" className="w-full" loading={busy} onClick={join} icon={<UserPlus className="size-4" />}>
-                <span className="min-w-0 truncate">{pickedName ? `Unirme como ${pickedName}` : joinLabel(invite.kind)}</span>
+            <div className="mt-6 flex flex-col gap-5">
+              {players.length > 0 && (
+                <Card className="p-4">
+                  <WhoAreYouList players={players} value={picked} onChange={setChoice} people={people} />
+                </Card>
+              )}
+              <Button variant="primary" size="xl" className="w-full" loading={busy} onClick={join} icon={<UserPlus className="size-5" />}>
+                {pickedName ? `Unirme como ${pickedName}` : joinLabel(invite.kind)}
               </Button>
             </div>
           ) : (
-            <div className="flex w-full flex-col gap-2">
-              <Link
-                to={`/login?modo=registro&next=${next}`}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg"
-              >
-                <UserPlus className="size-4" /> Crear cuenta y unirme
+            <div className="mt-6 flex flex-col gap-2.5">
+              <Link to={`/login?modo=registro&next=${next}`} className={linkButton('primary', 'w-full')}>
+                <UserPlus aria-hidden="true" className="size-5" />
+                <span className="min-w-0 truncate">Crear cuenta y unirme</span>
               </Link>
-              <Link
-                to={`/login?next=${next}`}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-line px-4 text-sm font-medium hover:bg-surface-2"
-              >
-                <LogIn className="size-4" /> Ya tengo cuenta
+              <Link to={`/login?next=${next}`} className={linkButton('quiet', 'w-full')}>
+                <LogIn aria-hidden="true" className="size-5" />
+                <span className="min-w-0 truncate">Ya tengo cuenta</span>
               </Link>
             </div>
           )}
-        </Card>
+        </div>
       </SportTheme>
     </AppShell>
   );

@@ -24,10 +24,11 @@ export function NoticeList({
   onOpen: (n: Notice) => void;
 }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-[26px]">
       {groups.map((g) => (
         <section key={g.id} aria-labelledby={`avisos-${g.id}`} className="animate-fade-up">
-          <h2 id={`avisos-${g.id}`} className="mb-2 px-1 text-xs font-semibold tracking-wide text-muted uppercase">
+          {/* Como los títulos de sección del rediseño (SectionHeader): «Hoy», «Esta semana», «Antes». */}
+          <h2 id={`avisos-${g.id}`} className="mx-1 mb-3 text-section">
             {g.label}
           </h2>
           <Card className="overflow-hidden">
@@ -67,7 +68,8 @@ export function NoticeRow({
       to={n.to}
       onClick={() => onOpen(n)}
       className={cx(
-        'flex min-h-11 items-start gap-3 px-4 py-3.5 transition outline-none select-none',
+        // Los mismos márgenes de las filas del rediseño (ListRow): 20 px a la izquierda y 18 a la derecha.
+        'flex min-h-11 items-start gap-3.5 py-3.5 pr-[18px] pl-5 transition outline-none select-none',
         'hover:bg-surface-2 focus-visible:bg-surface-2 active:bg-surface-2',
         unread && 'bg-accent-soft/35',
       )}
@@ -101,10 +103,10 @@ export function NoticeRow({
 export function NoticeListSkeleton({ rows = 6 }: { rows?: number }) {
   return (
     <div className="flex flex-col gap-2" aria-busy="true" aria-label="Cargando avisos" role="status">
-      <Skeleton className="ml-1 h-3 w-12" />
+      <Skeleton className="mx-1 mb-1 h-5 w-16" />
       <Card className="divide-y divide-line overflow-hidden">
         {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="flex items-start gap-3 px-4 py-3.5">
+          <div key={i} className="flex items-start gap-3.5 py-3.5 pr-[18px] pl-5">
             <Skeleton className="size-10 shrink-0 rounded-xl" />
             <div className="flex flex-1 flex-col gap-2 pt-0.5">
               <div className="flex items-center gap-3">

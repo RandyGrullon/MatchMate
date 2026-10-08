@@ -59,7 +59,12 @@ describe('Acerca de', () => {
     // Un cuadro por deporte (el fútbol de campo y el de sala, uno solo), que lleva a su Home.
     expect(out.match(/href="\/d\/[a-z_]+"/g)).toHaveLength(9);
     // 9 cuadros en 3 columnas: 3 filas llenas (con 4 columnas el ping pong quedaba solo en la tercera).
-    expect(out).toContain('class="grid grid-cols-3 gap-2"');
+    expect(out).toContain('class="grid grid-cols-3 gap-2.5"');
+    // Rediseño: el título con la marca, qué puedes hacer y cómo empezar en filas (ListRow) dentro de tarjetas sin borde.
+    expect(t).toMatch(/Acerca de Match ?Mate/);
+    expect(out.match(/class="mm-row /g)?.length ?? 0).toBeGreaterThanOrEqual(ABOUT_FEATURES.length + ABOUT_STEPS.length);
+    // (El <dialog> de los avisos de la app, que va al final, sí lleva su borde.)
+    expect(out.split('<dialog')[0]).not.toContain('border border-line');
     expect([8, 9, 10, 12].map(sportGridCols)).toEqual(['grid-cols-4', 'grid-cols-3', 'grid-cols-4', 'grid-cols-4']);
     // El ping pong lleva su otro nombre en el nombre accesible del cuadro.
     expect(out).toContain('href="/d/table_tennis"');
@@ -75,6 +80,10 @@ describe('Acerca de', () => {
     expect(out).toContain('href="/login?modo=registro"');
     expect(out).toContain('href="/login"');
     expect(t).toContain('Crear cuenta');
+    // Un solo botón fuerte: «Crear cuenta»; «Entrar» en gris al lado.
+    expect(out.match(/bg-accent text-accent-fg/g)).toHaveLength(1);
+    // Sin cuenta no hay «‹ Configuración».
+    expect(out).not.toContain('href="/cuenta"');
     expect(out).toContain('href="/privacidad"');
     expect(out).toContain('href="/terminos"');
     expect(out).toContain('href="/contacto"');
@@ -82,11 +91,11 @@ describe('Acerca de', () => {
     expect(t).toMatch(/Versión \S+/);
   });
 
-  it('con cuenta: sin entrar ni crear cuenta, con un link al Home', () => {
+  it('con cuenta: sin entrar ni crear cuenta, con «‹ Configuración» arriba (se llega desde ahí)', () => {
     state.auth = { user: { uid: 'u1', email: 'ana@correo.com' }, profile: { name: 'Ana' }, loading: false };
     const out = render(AboutPage, '/acerca');
     expect(out).not.toContain('href="/login');
-    expect(text(out)).toContain('Ir al Home');
+    expect(out).toMatch(/<a [^>]*href="\/cuenta"[^>]*>.*?Configuración.*?<\/a>/);
   });
 });
 
@@ -96,8 +105,8 @@ describe('Contáctanos', () => {
     const t = text(out);
     expect(CONTACT_EMAIL).toBe('matchmate.oficial@gmail.com');
     expect(out).toContain('href="mailto:matchmate.oficial@gmail.com"');
-    // Toda la fila del correo es el link, de al menos 44 px de alto.
-    expect(out).toMatch(/<a href="mailto:matchmate\.oficial@gmail\.com" class="[^"]*min-h-11[^"]*">.*Nuestro correo/);
+    // Toda la fila del correo es el link, de 64 px de alto como las filas del rediseño (más de 44).
+    expect(out).toMatch(/<a href="mailto:matchmate\.oficial@gmail\.com" class="[^"]*min-h-row[^"]*">.*Nuestro correo/);
     expect(t).toContain('Copiar correo');
     expect(t).toContain('Nombre');
     expect(t).toContain('Tu correo (opcional)');
@@ -114,7 +123,7 @@ describe('Contáctanos', () => {
   });
 
   it('«Copiar correo» da vueltas mientras copia (y no se toca dos veces)', () => {
-    const copy = (html: string) => /<button[^>]*>(?:(?!<\/button>).)*Copiar correo<\/button>/.exec(html)?.[0] ?? '';
+    const copy = (html: string) => /<button[^>]*>(?:(?!<\/button>).)*Copiar correo(?:<\/span>)?<\/button>/.exec(html)?.[0] ?? '';
     expect(copy(render(ContactPage, '/contacto'))).not.toContain('animate-spin');
     pending.key = 'copiar';
     const b = copy(render(ContactPage, '/contacto'));
@@ -122,11 +131,19 @@ describe('Contáctanos', () => {
     expect(b).toContain('disabled=""');
   });
 
-  it('con cuenta: el nombre y el correo ya puestos', () => {
+  it('con cuenta: el nombre y el correo ya puestos, y «‹ Configuración» arriba', () => {
     state.auth = { user: { uid: 'u1', email: 'ana@correo.com' }, profile: { name: 'Ana Pérez' }, loading: false };
     const out = render(ContactPage, '/contacto');
     expect(out).toContain('value="Ana Pérez"');
     expect(out).toContain('value="ana@correo.com"');
+    expect(out).toMatch(/<a [^>]*href="\/cuenta"[^>]*>.*?Configuración.*?<\/a>/);
+  });
+
+  it('las preguntas dicen dónde está crear o unirse ahora (Ligas › Crear o unirme), no el botón + de antes', () => {
+    const t = text(render(ContactPage, '/contacto'));
+    expect(t).toContain('Ligas › Crear o unirme');
+    expect(t).not.toContain('botón +');
+    expect(t).not.toContain('toca +');
   });
 
   it('arma el correo: asunto con el motivo y en el cuerpo el mensaje, el nombre y el correo para responder', () => {

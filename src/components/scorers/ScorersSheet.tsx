@@ -26,7 +26,7 @@ import { Avatar } from '../Avatar';
 import { useFeedback } from '../feedback';
 import { ShareRow } from '../invite/InviteSheet';
 import { handleOf, peopleView } from '../invite/logic';
-import { Badge, Button, Input, ListSkeleton, LoadError, Sheet, Skeleton, Tabs, cx } from '../ui';
+import { Badge, Button, Input, ListSkeleton, LoadError, Segmented, Sheet, Skeleton, cx } from '../ui';
 import {
   adminCount,
   adminsLine,
@@ -227,9 +227,9 @@ export interface ScorersBodyProps {
 }
 
 const TABS: { key: ScorersTab; label: string; icon: ReactNode }[] = [
-  { key: 'liga', label: 'De la liga', icon: <Users className="size-4" /> },
-  { key: 'usuario', label: 'Por @usuario', icon: <Search className="size-4" /> },
-  { key: 'link', label: 'Link', icon: <Link2 className="size-4" /> },
+  { key: 'liga', label: 'De la liga', icon: <Users className="size-4 max-[389px]:hidden" /> },
+  { key: 'usuario', label: 'Por @usuario', icon: <Search className="size-4 max-[389px]:hidden" /> },
+  { key: 'link', label: 'Link', icon: <Link2 className="size-4 max-[389px]:hidden" /> },
 ];
 
 /** Lo de adentro de la hoja (sin datos propios: se dibuja igual en las pruebas). */
@@ -243,7 +243,7 @@ export function ScorersBody(p: ScorersBodyProps) {
       <div className="mm-kb-hide flex flex-col gap-2">
         <p className="text-sm text-muted">{p.reachText}</p>
         {league.hasMinors && (
-          <p className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
+          <p className="flex items-start gap-2 text-[13px] text-muted">
             <Baby className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
             {MINORS_WARNING}
           </p>
@@ -251,7 +251,7 @@ export function ScorersBody(p: ScorersBodyProps) {
       </div>
 
       <section aria-labelledby="anotan-ahora" className="mm-kb-hide flex flex-col gap-2">
-        <h3 id="anotan-ahora" className="text-sm font-semibold">
+        <h3 id="anotan-ahora" className="text-body font-[650]">
           Anotan ahora
         </h3>
         {members.error && !members.data.length ? (
@@ -259,7 +259,7 @@ export function ScorersBody(p: ScorersBodyProps) {
         ) : members.loading && !members.data.length ? (
           <ListSkeleton rows={2} />
         ) : rows.length ? (
-          <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+          <ul className="overflow-hidden rounded-2xl bg-surface-2">
             {rows.map((r) => (
               <PersonRow
                 key={r.key}
@@ -271,7 +271,7 @@ export function ScorersBody(p: ScorersBodyProps) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-11 text-danger"
+                      className="h-11 text-danger!"
                       icon={<UserMinus className="size-4" />}
                       loading={busy === `m:${r.member.uid}`}
                       disabled={!!busy}
@@ -299,12 +299,13 @@ export function ScorersBody(p: ScorersBodyProps) {
             ))}
           </ul>
         ) : (
-          <p className="rounded-2xl border border-dashed border-line px-4 py-4 text-center text-sm text-muted">{emptyScorersText(league.kind, !!league.hasMinors)}</p>
+          <p className="rounded-2xl bg-surface-2 px-4 py-4 text-center text-sm text-muted">{emptyScorersText(league.kind, !!league.hasMinors)}</p>
         )}
         {admins > 0 && <p className="text-xs text-muted">{adminsLine(admins)}</p>}
       </section>
 
-      <Tabs items={tabs} active={p.tab} onChange={p.onTab} />
+      {/* De la liga · Por @usuario · Link: un segmentado de 3. */}
+      <Segmented<ScorersTab> label="Cómo sumar a alguien" full options={tabs} value={p.tab} onChange={p.onTab} />
 
       <div key={p.tab} className="animate-fade-up">
         {p.tab === 'liga' ? <FromLeague {...p} /> : p.tab === 'usuario' ? <ByUsername {...p} /> : <LinkPanel {...p} />}
@@ -326,10 +327,10 @@ function RowMarks({ row }: { row: ScorerRow }) {
 /** Una persona en una lista de la hoja: foto, nombre, marcas y su botón. */
 function PersonRow({ name, sub, marks, action }: { name: string; sub?: string | null; marks?: ReactNode; action: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 px-3 py-2.5">
-      <Avatar name={name} />
+    <li className="mm-row relative flex min-h-row-pro items-center gap-3 py-2 pr-2.5 pl-4">
+      <Avatar name={name} className="size-9 text-sm" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{name}</p>
+        <p className="truncate text-[15px] font-semibold tracking-[-0.01em]">{name}</p>
         <div className="flex flex-wrap items-center gap-1 empty:hidden">
           {sub && <span className="truncate text-xs text-muted">{sub}</span>}
           {marks}
@@ -382,14 +383,14 @@ function FromLeague({ league, members, players, query, onQuery, busy, onMake }: 
       ) : members.loading && !members.data.length ? (
         <ListSkeleton rows={3} />
       ) : list.length ? (
-        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+        <ul className="overflow-hidden rounded-2xl bg-surface-2">
           {list.map(({ member: m, plays }) => (
             <PersonRow
               key={m.uid}
               name={m.name}
               marks={plays ? <Badge tone="ok">Juega</Badge> : null}
               action={
-                <Button size="sm" className="h-11" icon={<UserPlus className="size-4" />} loading={busy === `m:${m.uid}`} disabled={!!busy} onClick={() => onMake(m, plays)}>
+                <Button variant="soft" size="sm" className="h-11 rounded-full!" icon={<UserPlus className="size-4" />} loading={busy === `m:${m.uid}`} disabled={!!busy} onClick={() => onMake(m, plays)}>
                   Hacer anotador
                 </Button>
               }
@@ -412,7 +413,7 @@ function ByUsername({ lid, league, members, access, players, busy, onMake, onInv
   const inviteOf = useMemo(() => new Map(access.data.invites.map((i) => [i.user.id, i] as const)), [access.data.invites]);
 
   const list = (
-    <ul className={cx('divide-y divide-line overflow-hidden rounded-2xl border border-line', !people.settled && 'opacity-70 transition-opacity')} aria-busy={!people.settled}>
+    <ul className={cx('overflow-hidden rounded-2xl bg-surface-2', !people.settled && 'opacity-70 transition-opacity')} aria-busy={!people.settled}>
       {people.data.map((hit) => (
         <HitRow
           key={hit.id}
@@ -513,8 +514,9 @@ function HitRow({
     case 'member':
       button = (
         <Button
+          variant="soft"
           size="sm"
-          className="h-11"
+          className="h-11 rounded-full!"
           icon={<UserPlus className="size-4" />}
           loading={busy === `m:${hit.id}`}
           disabled={!!busy}
@@ -544,7 +546,7 @@ function HitRow({
       break;
     default:
       button = (
-        <Button size="sm" variant="primary" className="h-11" icon={<Send className="size-4" />} loading={busy === `u:${hit.id}`} disabled={!!busy} onClick={() => onInvite(hit)}>
+        <Button size="sm" variant="primary" className="h-11 rounded-full!" icon={<Send className="size-4" />} loading={busy === `u:${hit.id}`} disabled={!!busy} onClick={() => onInvite(hit)}>
           Invitar a anotar
         </Button>
       );
@@ -561,7 +563,7 @@ function HitRow({
 
 /** «Link»: el link para anotar de este torneo (crear, compartir, cambiar, quitar). En una liga con menores, no hay. */
 function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, onRevokeLink }: ScorersBodyProps) {
-  if (league.hasMinors) return <p className="rounded-xl bg-surface-2 px-3 py-3 text-sm text-muted">{MINORS_NO_LINK}</p>;
+  if (league.hasMinors) return <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-muted">{MINORS_NO_LINK}</p>;
   if (access.error && !access.data.links.length) return <LoadError error={access.error} />;
   if (access.loading && !access.data.links.length) return <Skeleton className="h-32 w-full rounded-2xl" />;
   const link = linkFor(access.data.links, target);
@@ -580,7 +582,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
         />
         <p className="truncate text-center font-mono text-xs text-muted">{url.replace(/^https?:\/\//, '')}</p>
         <p className="text-center text-xs text-muted">{linkStateText(link, league.tz)}</p>
-        <p className="flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-xs text-warn">
+        <p className="flex items-start gap-2 rounded-2xl bg-warn-soft px-4 py-3 text-[13px] text-warn">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           {LINK_WARNING}
         </p>
@@ -591,7 +593,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
           <Button
             size="sm"
             variant="ghost"
-            className="h-11 flex-1 text-danger"
+            className="h-11 flex-1 text-danger!"
             icon={<Link2Off className="size-4" />}
             loading={busy === 'link:quitar'}
             disabled={!!busy}
@@ -611,7 +613,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
         Quien entre con el link queda como anotador de {league.kind === 'torneo' ? 'este torneo' : 'la liga'}, sin jugador. Vence a los 7 días y sirve 20
         veces.
       </p>
-      <Button variant="primary" className="h-11 w-full" icon={<Ticket className="size-4" />} loading={busy === 'link'} disabled={!!busy} onClick={onCreateLink}>
+      <Button variant="primary" size="xl" className="mt-2 w-full" icon={<Ticket className="size-5" />} loading={busy === 'link'} disabled={!!busy} onClick={onCreateLink}>
         Crear link para anotar
       </Button>
     </div>

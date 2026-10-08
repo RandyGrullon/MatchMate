@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { BadgeCheck, ExternalLink, Link2, Merge, Plus, Search, ShieldCheck, Trash2, Unlink, UserRound } from 'lucide-react';
 import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useEvents, useLeagueMembers, usePlayers } from '../lib/data';
 import { setPlayerMinor, useGuardians } from '../lib/data/players';
@@ -13,7 +12,8 @@ import { useAction, useFeedback } from '../components/feedback';
 import { useBusy } from '../components/busy';
 import { playerUrl, shareLink } from '../components/share';
 import { Avatar } from '../components/Avatar';
-import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, cx } from '../components/ui';
+import { BusyIcon } from '../components/busy';
+import { Button, Card, Field, Input, ListRow, ListSkeleton, LoadError, RowIcon, SectionHeader, Select, Sheet, cx } from '../components/ui';
 import { leagueSport } from '../sports/registry';
 import { peopleWord } from '../components/league/logic';
 import { AddPlayerModal } from '../components/players/AddPlayerModal';
@@ -46,19 +46,43 @@ export function useStatsByPlayer(entries: Entry[]) {
 
 const noStats: PlayerStats = { games: 0, pins: 0, autoAverage: null, high: 0, highSeries: 0, pending: 0 };
 
-/** El promedio del handicap y de dónde sale: el número y, si no es el de la temporada, una marca («fijo», «anterior»…). */
-function HandicapAverage({ value, className }: { value: SeasonAverage | undefined; className?: string }) {
-  const short = value ? averageSourceShort(value.source) : null;
-  return (
-    <span className={cx('inline-flex items-center gap-1.5', className)} title={value ? averageSourceLabel(value.source) : undefined}>
-      {short && <Badge>{short}</Badge>}
-      <span className="tabular-nums">{value && value.source !== 'ninguno' ? value.average : '—'}</span>
-    </span>
-  );
+/** El promedio del handicap (o «—» si todavía no tiene). */
+const handicapValue = (value: SeasonAverage | undefined): number | null => (value && value.source !== 'ninguno' ? value.average : null);
+
+/**
+ * Debajo del nombre de un jugador: «prom. fijo · 12 juegos · mejor 245» (boliche: de dónde sale su promedio si no es el de la
+ * temporada, cuántos juegos y el mejor), «Sin cuenta» o «Menor · sin cuenta», el número de su deporte y lo que falta
+ * por aprobar («3 sin foto»).
+ */
+export function playerLine(o: {
+  bowling: boolean;
+  hasAccount: boolean;
+  isMinor?: boolean;
+  games: number;
+  high: number;
+  pending: number;
+  source?: SeasonAverage['source'] | null;
+  summary?: string | null;
+}): string {
+  const short = o.bowling && o.source ? averageSourceShort(o.source) : null;
+  return [
+    !o.hasAccount && (o.isMinor ? 'Menor · sin cuenta' : 'Sin cuenta'),
+    short && `prom. ${short}`,
+    o.bowling && `${o.games} ${o.games === 1 ? 'juego' : 'juegos'}`,
+    o.bowling && o.high > 0 && `mejor ${o.high}`,
+    o.summary,
+    o.pending > 0 && `${o.pending} sin foto`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /**
- * Admin: jugadores de la liga, su promedio (boliche) y la cuenta vinculada.
+ * Organizar › Jugadores y miembros › Jugadores (rediseño «Calma y foco»): «Agregar jugador» (el único botón principal),
+ * el buscador si son más de 5 y la lista (cada jugador en una fila: sus iniciales, su nombre con la marca de su cuenta,
+ * «prom. fijo · 12 juegos · mejor 245» y, en el boliche, el promedio del handicap grande). Tocar a alguien abre su hoja:
+ * nombre, el número de su deporte, menor y tutor, su cuenta (vincular o separar), compartir su link, ver su página,
+ * juntarlo con otro y eliminarlo. Abajo, los miembros sin jugador.
  * `variant="accounts"`: el deporte agrega y edita a su gente en su propia pestaña (`addWhere`: Nadadores, Parejas y
  * niveles); aquí queda solo lo de las cuentas (vincular, separar, cambiar el nombre o borrar), dentro de Miembros.
  */
@@ -110,29 +134,40 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight">{accounts ? `${peopleTitle} y sus cuentas` : 'Jugadores'}</h2>
-          <p className="text-sm text-muted">
-            {accounts
-              ? `Si alguien se unió y ya estaba en la lista (quizá con otro nombre), toca su nombre y vincúlalo con su cuenta: así no sale dos veces.${addWhere ? ` Para agregar ${people[1]}, usa «${addWhere}».` : ''}`
-              : bowling
-                ? `Promedio del handicap: el de la temporada con al menos ${MIN_RANK_GAMES} juegos verificados; si no, el de la anterior, el fijo o el de su inscripción.`
-                : 'Quiénes juegan y su cuenta. Sus resultados salen en Tabla y en su página.'}
-          </p>
-        </div>
-        <Button variant={accounts ? 'secondary' : 'primary'} className="shrink-0" icon={<Plus className="size-4" />} onClick={() => setAdding(true)}>
-          <span className="hidden sm:inline">Agregar {people[0]}</span>
-          <span className="sm:hidden">Agregar</span>
-        </Button>
-      </div>
+    <div className="flex flex-col gap-3.5">
+      {accounts && (
+        <SectionHeader title={`${peopleTitle} y sus cuentas`} className="mb-0!" />
+      )}
+      {/* Una línea, no tres: lo demás se ve en la hoja de cada uno. */}
+      <p className="mx-1 text-meta text-muted">
+        {accounts
+          ? `Toca a alguien para vincularlo con su cuenta.${addWhere ? ` Para agregar ${people[1]}, usa «${addWhere}».` : ''}`
+          : bowling
+            ? `El número es el promedio del handicap (con ${MIN_RANK_GAMES} juegos verificados en la temporada).`
+            : 'Toca a alguien para cambiar su nombre o su cuenta.'}
+      </p>
+      <Button
+        variant={accounts ? 'quiet' : 'primary'}
+        size="lg"
+        className="w-full"
+        icon={<Plus className="size-5" strokeWidth={2.4} />}
+        onClick={() => setAdding(true)}
+      >
+        Agregar {people[0]}
+      </Button>
 
       {players.data.length > 5 && (
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-          <Input placeholder="Buscar jugador" value={q} onChange={(e) => setQ(e.target.value)} className="pl-9" />
-        </div>
+        <label className="relative block">
+          <span className="sr-only">Buscar jugador</span>
+          <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted" />
+          <input
+            type="search"
+            placeholder="Buscar jugador"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="card-shadow h-12 w-full rounded-2xl bg-surface pr-4 pl-12 text-base text-fg placeholder:text-faint focus:outline-2 focus:outline-offset-1 focus:outline-accent"
+          />
+        </label>
       )}
 
       {players.error ? (
@@ -140,109 +175,82 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
       ) : players.loading ? (
         <ListSkeleton rows={8} />
       ) : players.data.length === 0 ? (
-        <Empty icon={<UserRound className="size-8" />} title={`Todavía no hay ${people[1]}`}>
-          {accounts && addWhere
-            ? `Agrégalos en «${addWhere}», o deja que cada miembro cree el suyo al unirse.`
-            : 'Agrega a los jugadores de la liga, o deja que cada miembro cree el suyo al unirse.'}
-        </Empty>
+        <Card className="flex flex-col items-center px-5 py-8 text-center">
+          <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+            <UserRound className="size-7" />
+          </span>
+          <h2 className="mt-4 text-section">Todavía no hay {people[1]}</h2>
+          <p className="mt-1.5 max-w-sm text-meta text-muted">
+            {accounts && addWhere ? `Agrégalos en «${addWhere}», o deja que cada miembro cree el suyo al unirse.` : 'Agrégalos o deja que cada miembro cree el suyo al unirse.'}
+          </p>
+        </Card>
       ) : (
-        <Card className="stagger divide-y divide-line overflow-hidden">
-          {bowling && (
-            <div className="hidden grid-cols-[1fr_6rem_5rem_5rem_5.5rem] gap-3 px-4 py-2 text-xs font-medium text-muted sm:grid">
-              <span>Jugador</span>
-              <span className="text-right">Promedio</span>
-              <span className="text-right">Juegos</span>
-              <span className="text-right">Mejor</span>
-              <span />
-            </div>
-          )}
-          {filtered.map((p, i) => {
+        <Card className="overflow-hidden">
+          {filtered.map((p) => {
             const s = stats.get(p.id) ?? noStats;
             const avg = handicap.get(p.id);
             const account = p.uid ? memberByUid.get(p.uid) : undefined;
             const summary = bowling ? null : statSummary(sport, attrs.data[p.id]);
+            const value = handicapValue(avg);
             return (
-              <div
+              <ListRow
                 key={p.id}
-                style={{ '--i': i } as CSSProperties}
-                className={cx('flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2/60', bowling && 'sm:grid sm:grid-cols-[1fr_6rem_5rem_5rem_5.5rem]')}
-              >
-                <button onClick={() => setEditing(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <Avatar name={p.name} />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium">{p.name}</span>
-                      {p.uid && (
-                        <span title={account ? `Cuenta: ${account.name}` : 'Tiene cuenta'} className="shrink-0 text-ok">
-                          {account && account.role !== 'member' ? <ShieldCheck className="size-4" /> : <BadgeCheck className="size-4" />}
-                        </span>
-                      )}
-                    </div>
-                    {(!p.uid || summary) && (
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                        {!p.uid && <Badge>{p.isMinor ? 'Menor · sin cuenta' : 'Sin cuenta'}</Badge>}
-                        {!p.uid && !p.isMinor && <PlayerClaimBadge playerId={p.id} />}
-                        {summary && <span className="tabular-nums">{summary}</span>}
-                      </div>
+                dense
+                onClick={() => setEditing(p)}
+                ariaLabel={`Editar a ${p.name}`}
+                leading={<Avatar name={p.name} className="size-9 text-sm" />}
+                title={
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">{p.name}</span>
+                    {p.uid && (
+                      <span title={account ? `Cuenta: ${account.name}` : 'Tiene cuenta'} className="shrink-0 text-accent">
+                        {account && account.role !== 'member' ? <ShieldCheck aria-label="Admin" className="size-4" /> : <BadgeCheck aria-label="Con cuenta" className="size-4" />}
+                      </span>
                     )}
-                    {bowling && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted sm:hidden">
-                        <span>Prom.</span>
-                        <HandicapAverage value={avg} />
-                        <span>· {s.games} juegos</span>
-                      </div>
-                    )}
+                  </span>
+                }
+                subtitle={
+                  <span className={cx(s.pending > 0 && '[&>b]:font-semibold [&>b]:text-warn')}>
+                    {playerLine({
+                      bowling,
+                      hasAccount: !!p.uid,
+                      isMinor: p.isMinor,
+                      games: s.games,
+                      high: s.high,
+                      pending: 0,
+                      source: avg?.source,
+                      summary,
+                    })}
                     {s.pending > 0 && (
-                      <Badge tone="warn" className="mt-0.5">
-                        {s.pending} sin foto
-                      </Badge>
+                      <>
+                        {' · '}
+                        <b>{s.pending} sin foto</b>
+                      </>
                     )}
-                  </div>
-                </button>
-                {bowling && (
-                  <>
-                    <HandicapAverage value={avg} className="hidden justify-end text-right font-semibold sm:flex" />
-                    <span className="hidden text-right text-muted tabular-nums sm:block">{s.games}</span>
-                    <span className="hidden text-right text-muted tabular-nums sm:block">{s.high || '—'}</span>
-                  </>
-                )}
-                <div className="flex justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    title="Compartir link"
-                    aria-label="Compartir link"
-                    loading={sharing.isBusy(p.id)}
-                    onClick={() => void share(p)}
-                    icon={<Link2 className="size-4" />}
-                  />
-                  <Link
-                    to={`${base}/j/${p.id}`}
-                    title="Ver su página"
-                    aria-label="Ver su página"
-                    className="inline-flex size-8 items-center justify-center rounded-xl text-fg hover:bg-surface-2"
-                  >
-                    <ExternalLink className="size-4" />
-                  </Link>
-                </div>
-              </div>
+                  </span>
+                }
+                value={bowling ? (value ?? <span className="text-faint">—</span>) : undefined}
+                trailing={!p.uid && !p.isMinor ? <PlayerClaimBadge playerId={p.id} /> : undefined}
+                chevron={!bowling}
+              />
             );
           })}
-          {filtered.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted">Nadie coincide con “{q}”.</p>}
+          {filtered.length === 0 && <p className="px-5 py-6 text-center text-meta text-muted">Nadie coincide con «{q}».</p>}
         </Card>
       )}
 
       {unlinked.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold text-muted">Miembros sin jugador ({unlinked.length})</h3>
-          <Card className="divide-y divide-line">
+        <section aria-labelledby="sin-jugador" className="mt-3">
+          <SectionHeader id="sin-jugador" title={`Miembros sin jugador (${unlinked.length})`} />
+          <Card className="overflow-hidden">
             {unlinked.map((u) => (
-              <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                <Avatar name={u.name} className="size-8 text-xs" />
-                <div className="min-w-0 flex-1 truncate font-medium">{u.name}</div>
-                {u.role !== 'member' && <Badge tone="accent">{roleLabel(u.role)}</Badge>}
-                <Badge>Se crea al abrir la liga</Badge>
-              </div>
+              <ListRow
+                key={u.id}
+                dense
+                leading={<Avatar name={u.name} className="size-9 text-sm" />}
+                title={u.name}
+                subtitle={[u.role !== 'member' && roleLabel(u.role), 'Su jugador se crea al abrir la liga'].filter(Boolean).join(' · ')}
+              />
             ))}
           </Card>
         </section>
@@ -259,6 +267,9 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
         members={members.data}
         players={players.data}
         onClose={() => setEditing(null)}
+        sharing={!!editing && sharing.isBusy(editing.id)}
+        onShare={() => editing && void share(editing)}
+        pageUrl={editing ? `${base}/j/${editing.id}` : null}
         onMerge={() => {
           setMergingId(editingId);
           setEditing(null);
@@ -269,7 +280,11 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   );
 }
 
-/** Admin: editar un jugador (nombre, el número de su deporte) y su cuenta. Para agregar: AddPlayerModal. */
+/**
+ * La hoja de un jugador (Organizar): su nombre, el número de su deporte, menor y tutor, su cuenta (vincular o separar) y,
+ * en filas, compartir su link, ver su página, juntarlo con otro y eliminarlo. «Guardar» abajo. Para agregar:
+ * AddPlayerModal.
+ */
 function PlayerFormModal({
   open,
   player,
@@ -281,6 +296,9 @@ function PlayerFormModal({
   players,
   onClose,
   onMerge,
+  onShare,
+  sharing,
+  pageUrl,
 }: {
   open: boolean;
   player: Player | null;
@@ -293,6 +311,11 @@ function PlayerFormModal({
   onClose: () => void;
   /** «Juntar con…»: abre el modal para juntarlo con otro de la lista. */
   onMerge: () => void;
+  /** «Compartir su link» (copia o comparte el link de su página). */
+  onShare: () => void;
+  sharing: boolean;
+  /** Su página en la liga. */
+  pageUrl: string | null;
 }) {
   const { lid, league } = useLeagueCtx();
   const sport = leagueSport(league);
@@ -390,29 +413,23 @@ function PlayerFormModal({
   }
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      title="Editar jugador"
+      title={player?.name || 'Editar jugador'}
+      subtitle={handicap && handicap.source !== 'ninguno' ? `Promedio del handicap: ${handicap.average} (${averageSourceLabel(handicap.source).toLowerCase()})` : undefined}
       footer={
-        <>
-          {player && (
-            <Button
-              variant="ghost"
-              className="mr-auto text-danger"
-              icon={<Trash2 className="size-4" />}
-              loading={busy.isBusy(`${player.id}:eliminar`)}
-              disabled={busy.isBusy()}
-              onClick={remove}
-            >
-              Eliminar
-            </Button>
-          )}
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" type="submit" form="player-form" loading={!!player && busy.isBusy(`${player.id}:guardar`)} disabled={busy.isBusy()}>
-            Guardar
-          </Button>
-        </>
+        <Button
+          variant="primary"
+          size="xl"
+          type="submit"
+          form="player-form"
+          className="w-full"
+          loading={!!player && busy.isBusy(`${player.id}:guardar`)}
+          disabled={busy.isBusy()}
+        >
+          Guardar
+        </Button>
       }
     >
       <form id="player-form" onSubmit={submit} className="flex flex-col gap-4">
@@ -438,17 +455,60 @@ function PlayerFormModal({
         )}
       </form>
       {player && <AccountSection player={player} account={account} members={members} players={players} onDone={closeIf} />}
-      {player && players.length > 1 && (
-        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-line p-3 sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 text-xs text-muted">
-            ¿Está dos veces en la lista (con otro nombre, o con cuenta y sin cuenta)? Júntalo con el otro y queda uno solo, con todos sus resultados.
-          </p>
-          <Button className="h-11 shrink-0 self-start sm:self-auto" icon={<Merge className="size-4" />} onClick={onMerge}>
-            Juntar con…
-          </Button>
+      {player && (
+        <div className="-mx-5 mt-5 border-t border-line">
+          <ListRow
+            dense
+            onClick={onShare}
+            leading={
+              <RowIcon>
+                <BusyIcon busy={sharing} icon={<Link2 className="size-[19px]" />} className="size-[19px]" />
+              </RowIcon>
+            }
+            title="Compartir su link"
+            subtitle="Su página con sus números"
+          />
+          {pageUrl && (
+            <ListRow
+              dense
+              to={pageUrl}
+              leading={
+                <RowIcon>
+                  <ExternalLink className="size-[19px]" />
+                </RowIcon>
+              }
+              title="Ver su página"
+            />
+          )}
+          {players.length > 1 && (
+            <ListRow
+              dense
+              onClick={onMerge}
+              leading={
+                <RowIcon>
+                  <Merge className="size-[19px]" />
+                </RowIcon>
+              }
+              title="Juntar con…"
+              subtitle="Si está dos veces en la lista: queda uno solo, con todo"
+            />
+          )}
+          <ListRow
+            dense
+            onClick={() => void remove()}
+            ariaLabel={`Eliminar a ${player.name}`}
+            leading={
+              <RowIcon className="bg-danger-soft! text-danger!">
+                <BusyIcon busy={busy.isBusy(`${player.id}:eliminar`)} icon={<Trash2 className="size-[19px]" />} className="size-[19px]" />
+              </RowIcon>
+            }
+            title={<span className="text-danger">Eliminar</span>}
+            subtitle="Se borran también sus resultados"
+            chevron={false}
+          />
         </div>
       )}
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -502,10 +562,9 @@ function AccountSection({
       });
     }
     return (
-      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
-        <p className="text-xs text-muted">
-          Sin cuenta. Si es alguien que ya se unió a la liga (quizá con otro nombre), vincúlalo con su cuenta y sus juegos pasan a su perfil.
-        </p>
+      <div className="mt-5 flex flex-col gap-2.5 rounded-2xl bg-surface-2 p-4">
+        <p className="text-body font-semibold">Sin cuenta</p>
+        <p className="-mt-1.5 text-sm text-muted">Si ya se unió (quizá con otro nombre), vincúlalo con su cuenta: sus juegos pasan a su perfil.</p>
         {candidates.length > 0 && (
           <div className="flex gap-2">
             <Select value={who} onChange={(e) => setWho(e.target.value)} aria-label="Cuenta" className="min-w-0 flex-1">
@@ -517,7 +576,7 @@ function AccountSection({
                 </option>
               ))}
             </Select>
-            <Button size="sm" icon={<Link2 className="size-4" />} loading={busy.isBusy(`${player.id}:vincular`)} disabled={!who || busy.isBusy()} onClick={link}>
+            <Button variant="primary" icon={<Link2 className="size-4" />} loading={busy.isBusy(`${player.id}:vincular`)} disabled={!who || busy.isBusy()} onClick={link}>
               Vincular
             </Button>
           </div>
@@ -541,13 +600,13 @@ function AccountSection({
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-xl border border-line p-3">
-      <div className="flex items-center gap-2 text-sm">
-        <BadgeCheck className="size-4 text-ok" />
-        <span className="min-w-0 flex-1 truncate">{account?.name ?? 'Cuenta vinculada'}</span>
-        {account && account.role !== 'member' && <Badge tone="accent">{roleLabel(account.role)}</Badge>}
+    <div className="mt-5 flex items-center gap-3 rounded-2xl bg-surface-2 py-3 pr-3 pl-4">
+      <BadgeCheck aria-hidden="true" className="size-5 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-body font-semibold">{account?.name ?? 'Cuenta vinculada'}</p>
+        <p className="text-sm text-muted">{account && account.role !== 'member' ? `${roleLabel(account.role)} · con cuenta` : 'Con cuenta'}</p>
       </div>
-      <Button size="sm" className="self-start" icon={<Unlink className="size-4" />} loading={busy.isBusy(`${player.id}:desvincular`)} disabled={busy.isBusy()} onClick={unlink}>
+      <Button variant="quiet" className="h-11 shrink-0 bg-surface!" icon={<Unlink className="size-4" />} loading={busy.isBusy(`${player.id}:desvincular`)} disabled={busy.isBusy()} onClick={unlink}>
         Desvincular
       </Button>
     </div>

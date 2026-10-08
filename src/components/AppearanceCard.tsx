@@ -1,17 +1,26 @@
 import { useState } from 'react';
-import { Monitor, Moon, Palette, Sun } from 'lucide-react';
+import { Leaf, Monitor, Moon, Sun, Zap } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 import { loadTheme, saveTheme, type ThemeMode, type ThemePrefs } from '../lib/theme';
-import { Card, cx } from './ui';
+import { useMode } from '../lib/useMode';
+import { openModeSheet } from './mode/modeSheet';
+import { Card, ListRow, RowIcon, SectionHeader, Segmented, type SegmentedOption } from './ui';
 
-const MODES: { key: ThemeMode; label: string; icon: typeof Sun }[] = [
-  { key: 'system', label: 'Automático', icon: Monitor },
-  { key: 'light', label: 'Claro', icon: Sun },
-  { key: 'dark', label: 'Oscuro', icon: Moon },
+/** «Auto» (como el teléfono), claro u oscuro: cortos para que quepan los tres en un teléfono de 360 px. */
+export const THEME_OPTIONS: readonly SegmentedOption<ThemeMode>[] = [
+  { key: 'system', label: 'Auto', ariaLabel: 'Automático, como el teléfono', icon: <Monitor aria-hidden="true" className="size-4" /> },
+  { key: 'light', label: 'Claro', icon: <Sun aria-hidden="true" className="size-4" /> },
+  { key: 'dark', label: 'Oscuro', icon: <Moon aria-hidden="true" className="size-4" /> },
 ];
 
-/** Configuración › Apariencia: claro, oscuro o como el teléfono (en este dispositivo). El color lo pone cada deporte. */
-export function AppearanceCard() {
+/**
+ * Configuración › Apariencia: claro, oscuro o como el teléfono (en este dispositivo; el color lo pone cada deporte) y
+ * cómo ver la app (Lite o Pro: abre la hoja «Elige cómo ver la app», la misma del selector de Yo).
+ */
+export function AppearanceCard({ className }: { className?: string }) {
   const [prefs, setPrefs] = useState<ThemePrefs>(loadTheme);
+  const { user } = useAuth();
+  const { mode, isPro } = useMode();
 
   function update(next: Partial<ThemePrefs>) {
     const p = { ...prefs, ...next };
@@ -20,32 +29,23 @@ export function AppearanceCard() {
   }
 
   return (
-    <Card className="flex flex-col gap-4 p-5">
-      <div>
-        <h2 className="flex items-center gap-2 font-semibold">
-          <Palette className="size-5 text-accent" /> Apariencia
-        </h2>
-        <p className="text-sm text-muted">Se guarda en este teléfono. El color de la app es el del deporte en que estás.</p>
-      </div>
-
-      <div role="radiogroup" aria-label="Modo" className="grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
-        {MODES.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            type="button"
-            role="radio"
-            aria-checked={prefs.mode === key}
-            onClick={() => update({ mode: key })}
-            className={cx(
-              'flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition',
-              prefs.mode === key ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
-            )}
-          >
-            <Icon className="size-4" />
-            {label}
-          </button>
-        ))}
-      </div>
-    </Card>
+    <section aria-labelledby="cfg-apariencia" className={className}>
+      <SectionHeader id="cfg-apariencia" title="Apariencia" />
+      <Card className="overflow-hidden">
+        {/* mm-row: la fila de abajo lleva su línea, como entre dos filas. */}
+        <div className="mm-row relative px-5 pt-[18px] pb-4">
+          <Segmented full label="Tema" options={THEME_OPTIONS} value={prefs.mode} onChange={(m) => update({ mode: m })} />
+          <p className="mx-1 mt-2.5 text-[13px] text-muted">En este teléfono. El color es el de tu deporte.</p>
+        </div>
+        <ListRow
+          dense={isPro}
+          leading={<RowIcon tone="accent">{isPro ? <Zap className="size-5" /> : <Leaf className="size-5" />}</RowIcon>}
+          title="Cómo ver la app"
+          subtitle={isPro ? 'Pro: con todo' : 'Lite: lo esencial'}
+          onClick={() => openModeSheet(mode, user?.uid)}
+          ariaLabel={`Cómo ver la app: ${isPro ? 'Pro' : 'Lite'}. Cambiar`}
+        />
+      </Card>
+    </section>
   );
 }

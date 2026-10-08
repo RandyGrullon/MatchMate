@@ -4,7 +4,7 @@ import { ListPlus, UserPlus, Waves } from 'lucide-react';
 import { useLeagueCtx } from '../../lib/league';
 import { leagueSport } from '../../sports/registry';
 import { useAction, useFeedback } from '../feedback';
-import { Button, Field, Input, Modal, Textarea, cx } from '../ui';
+import { Button, Field, Input, Segmented, Sheet, Textarea, cx } from '../ui';
 import { addManyMinors, addManyPlayers, addPlayerWithStats } from './data';
 import { ConsentCheck, GuardianFields, MinorCheck } from './GuardianFields';
 import {
@@ -125,70 +125,62 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
 
   if (kind === 'swimming') {
     return (
-      <Modal open={open} onClose={onClose} title="Agregar nadador" footer={<Button onClick={onClose}>Cerrar</Button>}>
-        <div className="flex flex-col gap-3 text-sm">
-          <p>
-            Los nadadores se anotan en <b>Nadadores</b>: ahí va su año de nacimiento, su sexo y su club, y los menores con el nombre de su tutor
-            (los menores no tienen cuenta).
-          </p>
+      <Sheet
+        open={open}
+        onClose={onClose}
+        title="Agregar nadador"
+        footer={
           <Link
             to={`${base}/admin?tab=nadadores`}
             onClick={onClose}
-            className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-xl bg-accent px-4 font-medium text-accent-fg"
+            className="inline-flex h-btn w-full items-center justify-center gap-2.5 rounded-btn bg-accent px-6 text-[17px] font-semibold text-accent-fg"
           >
-            <Waves className="size-4" />
+            <Waves className="size-5" aria-hidden="true" />
             Ir a Nadadores
           </Link>
-        </div>
-      </Modal>
+        }
+      >
+        <p className="text-body text-fg-2">
+          Los nadadores se anotan en <b>Nadadores</b>: ahí va su año de nacimiento, su sexo y su club, y los menores con el nombre de su tutor (los menores
+          no tienen cuenta).
+        </p>
+      </Sheet>
     );
   }
 
   const existing = minors ? minors.existing : many.existing;
   const repeated = minors ? minors.repeated : many.repeated;
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Agregar jugador"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form={mode === 'uno' ? 'add-player-one' : 'add-player-many'}
-            loading={busy}
-            disabled={mode === 'varios' && (count === 0 || tooMany || minorsBlocked)}
-          >
-            {mode === 'uno' ? 'Agregar' : count > 1 ? `Agregar ${count}` : 'Agregar'}
-          </Button>
-        </>
+        <Button
+          variant="primary"
+          size="xl"
+          type="submit"
+          form={mode === 'uno' ? 'add-player-one' : 'add-player-many'}
+          className="w-full"
+          loading={busy}
+          disabled={mode === 'varios' && (count === 0 || tooMany || minorsBlocked)}
+        >
+          {mode === 'uno' ? 'Agregar' : count > 1 ? `Agregar ${count}` : 'Agregar'}
+        </Button>
       }
     >
-      <div role="tablist" aria-label="Cómo agregar" className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
-        {(
-          [
-            ['uno', 'Uno', <UserPlus key="i" className="size-4" />],
-            ['varios', 'Varios', <ListPlus key="i" className="size-4" />],
-          ] as const
-        ).map(([k, label, icon]) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            aria-selected={mode === k}
-            onClick={() => setMode(k)}
-            className={cx(
-              'flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition',
-              mode === k ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
-            )}
-          >
-            {icon}
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Uno | Varios (un nombre por línea): un segmentado de 2. */}
+      <Segmented<Mode>
+        label="Cómo agregar"
+        full
+        className="mb-5"
+        options={[
+          { key: 'uno', label: 'Uno', icon: <UserPlus className="size-4" aria-hidden="true" /> },
+          { key: 'varios', label: 'Varios', icon: <ListPlus className="size-4" aria-hidden="true" /> },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
 
       {mode === 'uno' ? (
         <form id="add-player-one" onSubmit={submitOne} className="flex flex-col gap-4">
@@ -203,10 +195,10 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
               {error}
             </p>
           )}
-          <p className="text-xs text-muted">
+          <p className="text-[13px] text-muted">
             {minorOne
               ? 'Queda sin cuenta. Un menor no se puede reclamar: sus resultados quedan en la liga.'
-              : 'Queda sin cuenta. Si después se crea una, puede reclamar este jugador desde la liga y tú lo apruebas: sus juegos pasan a su perfil.'}
+              : 'Queda sin cuenta. Si después se crea una, la puede reclamar y tú lo apruebas.'}
           </p>
         </form>
       ) : (
@@ -258,6 +250,6 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
           )}
         </form>
       )}
-    </Modal>
+    </Sheet>
   );
 }

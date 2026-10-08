@@ -85,6 +85,13 @@ describe('/anotar/<código>', () => {
     expect(out).toContain('href="/login?modo=registro&amp;next=%2Fanotar%2FABCDEFGH23%3Fentrar%3D1"');
     expect(out).toContain('href="/login?next=%2Fanotar%2FABCDEFGH23%3Fentrar%3D1"');
     expect(t).not.toContain('Entrar para anotar');
+    // Rediseño: «‹ Ligas», el nombre grande, «Boliche · Liga privada» en una línea, lo que hace en filas y un solo botón
+    // principal (Crear cuenta…); «Ya tengo cuenta» en gris.
+    expect(t).toContain('Ligas');
+    expect(out).toContain('class="mt-1 text-title');
+    expect(t).toContain('Boliche · Liga privada');
+    expect(t).toContain('Qué haces');
+    expect(out.match(/bg-accent text-accent-fg/g)).toHaveLength(1);
   });
 
   it('un torneo sin liga: sin la línea de «esta liga» ni «en …» si es el mismo nombre', () => {

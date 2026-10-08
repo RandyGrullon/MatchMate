@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { Bell, CheckCheck, ChevronLeft, Inbox, LogIn } from 'lucide-react';
+import { Bell, CheckCheck, ChevronLeft, Inbox } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { filterNotices, groupNotices, isNoticeFilter, NOTICE_FILTERS, type Notice, type NoticeFilter } from '../lib/notifications';
+import { useIsPro } from '../lib/useMode';
 import { useNow } from '../lib/useNow';
 import { isSportId, sportMeta, sportsOf } from '../sports/registry';
 import { SportIcon } from './sports/SportBits';
@@ -14,7 +15,8 @@ import { FilterChips, type ChipItem } from '../components/notifications/FilterCh
 import { InvitesCard } from '../components/notifications/InvitesCard';
 import { NoticeList, NoticeListSkeleton } from '../components/notifications/NoticeList';
 import { AppShell } from '../components/Shell';
-import { Button, Empty, Loading, LoadError, cx } from '../components/ui';
+import { linkButton } from '../components/cuenta/kit';
+import { Button, Card, Loading, LoadError, cx } from '../components/ui';
 
 /** `?deporte=todos`: todos los deportes aunque la app esté en uno. */
 const ALL_SPORTS = 'todos';
@@ -27,24 +29,41 @@ const FILTER_EMPTY: Record<NoticeFilter, string> = {
   admin: 'avisos de admin',
 };
 
-/** «‹ Hoy»: a Avisos se llega con la campana de Hoy, y atrás dice a dónde vuelve. */
-function BackToHoy() {
+/** «‹ Hoy»: a Avisos se llega con la campana de Hoy, y atrás dice a dónde vuelve (sin cuenta, «‹ Inicio»). */
+function BackToHoy({ label = 'Hoy' }: { label?: string }) {
   return (
     <Link
       to="/"
       className="-ml-1.5 inline-flex h-11 items-center gap-0.5 rounded-xl pr-2 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
     >
       <ChevronLeft aria-hidden="true" className="size-6" />
-      Hoy
+      {label}
     </Link>
   );
 }
 
+/**
+ * Cuando no hay nada que mostrar: una tarjeta tranquila (sin el borde punteado de antes) con el ícono en el color del
+ * deporte, una frase y, si hace falta, un botón.
+ */
+function EmptyCard({ icon, title, children, action }: { icon: ReactNode; title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <Card className="flex flex-col items-center px-6 pt-8 pb-7 text-center">
+      <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+        {icon}
+      </span>
+      <p className="mt-4 text-card-title-pro">{title}</p>
+      {children && <div className="mt-1.5 max-w-sm text-meta text-muted">{children}</div>}
+      {action && <div className="mt-5 w-full max-w-xs">{action}</div>}
+    </Card>
+  );
+}
+
 /** Arriba de Avisos: «‹ Hoy» y, a la derecha, lo que se hace con toda la lista. */
-function TopBar({ children }: { children?: ReactNode }) {
+function TopBar({ back, children }: { back?: string; children?: ReactNode }) {
   return (
     <div className="-mt-2 mb-1 flex min-h-13 items-center justify-between gap-3">
-      <BackToHoy />
+      <BackToHoy label={back} />
       {children}
     </div>
   );
@@ -60,6 +79,7 @@ function TopBar({ children }: { children?: ReactNode }) {
  */
 export default function NotificationsPage() {
   const auth = useAuth();
+  const pro = useIsPro();
   const location = useLocation();
   const {
     items,
@@ -145,22 +165,22 @@ export default function NotificationsPage() {
     const next = encodeURIComponent(location.pathname + location.search);
     return (
       <AppShell>
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 px-2">
           <div>
-            <TopBar />
+            <TopBar back="Inicio" />
             <h1 className="text-title">Avisos</h1>
           </div>
-          <Empty icon={<Bell className="size-8" />} title="Entra para ver tus avisos">
-            Tus partidos, resultados, torneos y quién le dio me gusta a tus juegos, todo en un solo sitio.
-            <div className="mt-4 flex justify-center">
-              <Link
-                to={`/login?next=${next}`}
-                className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm transition hover:brightness-110 active:scale-[0.97]"
-              >
-                <LogIn className="size-4" /> Entrar
+          <EmptyCard
+            icon={<Bell className="size-7" />}
+            title="Entra para ver tus avisos"
+            action={
+              <Link to={`/login?next=${next}`} className={linkButton('primary', 'w-full')}>
+                Entrar
               </Link>
-            </div>
-          </Empty>
+            }
+          >
+            Tus partidos, resultados y torneos, en un solo sitio.
+          </EmptyCard>
         </div>
       </AppShell>
     );
@@ -178,18 +198,21 @@ export default function NotificationsPage() {
   else if (error && !items.length) content = <LoadError error={error} />;
   else if (!items.length)
     content = (
-      <Empty icon={<Bell className="size-8" />} title="No tienes avisos">
+      <EmptyCard icon={<Bell className="size-7" />} title="No tienes avisos">
         {emptyText}
-      </Empty>
+      </EmptyCard>
     );
   else if (!shown.length)
     content = (
-      <Empty icon={<Inbox className="size-8" />} title="Nada por aquí">
-        {`No tienes ${FILTER_EMPTY[filter]}${sportName ? ` de ${sportMeta(sport)?.lower ?? sportName}` : ''} por ahora.`}
-        {filtered && (
-          <div className="mt-4 flex justify-center">
+      <EmptyCard
+        icon={<Inbox className="size-7" />}
+        title="Nada por aquí"
+        action={
+          filtered && (
             <Button
-              className="h-11"
+              variant="quiet"
+              size="lg"
+              className="w-full"
               onClick={() =>
                 setParams(
                   (p) => {
@@ -206,15 +229,18 @@ export default function NotificationsPage() {
             >
               Ver todos los avisos
             </Button>
-          </div>
-        )}
-      </Empty>
+          )
+        }
+      >
+        {`No tienes ${FILTER_EMPTY[filter]}${sportName ? ` de ${sportMeta(sport)?.lower ?? sportName}` : ''} por ahora.`}
+      </EmptyCard>
     );
   else content = <NoticeList groups={groups} now={now} isUnread={isUnread} showSport={manySports} onOpen={onOpen} />;
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-4">
+      {/* 24 px a los lados, como Hoy, Ligas y Yo. */}
+      <div className="flex flex-col gap-4 px-2">
         <div className="min-w-0">
           <TopBar>
             <button
@@ -231,7 +257,7 @@ export default function NotificationsPage() {
               <span className="truncate">Marcar todo como leído</span>
             </button>
           </TopBar>
-          <h1 className="text-title">Avisos</h1>
+          <h1 className={pro ? 'text-title-pro' : 'text-title'}>Avisos</h1>
           {subtitle && (
             <p className="mt-1.5 flex items-center gap-1.5 text-meta text-muted">
               {sport && <SportIcon sport={sport} className="size-4 shrink-0" />}
@@ -246,7 +272,8 @@ export default function NotificationsPage() {
 
         <InvitesCard uid={auth.user.uid} now={now} />
 
-        <div className="flex flex-col">
+        {/* Los filtros se deslizan de borde a borde y empiezan alineados con el título (24 px). */}
+        <div className="-mx-2 flex flex-col [&>div]:px-6">
           <FilterChips label="Filtrar avisos por tipo" items={filterItems} value={filter} onChange={(f) => setParam('ver', f === 'todo' ? null : f)} />
           {manySports && (
             <FilterChips

@@ -277,10 +277,10 @@ function useToday() {
 }
 
 /**
- * Botón de avisos: lleva a la página de avisos (/avisos), con el número de lo nuevo. `nav`: en la barra de abajo
- * del teléfono (ícono y nombre); si no, la campana de arriba (en la computadora).
+ * La campana de avisos de arriba (en la computadora, en la consola del superadmin): lleva a la página de avisos
+ * (/avisos), con el número de lo nuevo. En la app la campana va en Hoy (HomeHeader) y ya no hay pestaña de avisos.
  */
-export function NotificationsBell({ variant = 'icon' }: { variant?: 'icon' | 'nav' }) {
+export function NotificationsBell() {
   const { unread } = useNotifications();
   const badge = unread > 0 && (
     <span
@@ -291,20 +291,7 @@ export function NotificationsBell({ variant = 'icon' }: { variant?: 'icon' | 'na
     </span>
   );
   const label = unread ? `Avisos: ${unread} ${unread === 1 ? 'nuevo' : 'nuevos'}` : 'Avisos';
-  return variant === 'nav' ? (
-    <NavLink
-      to={NOTIFICATIONS_PATH}
-      data-tour="campana"
-      aria-label={label}
-      className={({ isActive }) => cx('flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition', isActive ? 'text-accent' : 'text-muted')}
-    >
-      <span className="relative">
-        <Bell className="size-5" />
-        {badge}
-      </span>
-      Avisos
-    </NavLink>
-  ) : (
+  return (
     <NavLink
       to={NOTIFICATIONS_PATH}
       data-tour="campana"

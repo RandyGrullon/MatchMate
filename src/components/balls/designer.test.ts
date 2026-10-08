@@ -201,8 +201,9 @@ describe('la hoja del creador', () => {
     expect(out).toContain('sticky top-0');
     expect(out).toContain('[dialog[data-kb]_&amp;]:static');
     // Las pestañas (44 px de alto): «Colores» abierta.
-    expect(out).toMatch(/role="tab" aria-selected="true"[^>]*min-h-11[^>]*>Colores/);
-    expect(out.match(/role="tab"/g)).toHaveLength(3);
+    // Colores · Dibujo · Figuras es un segmentado (3 opciones).
+    expect(out).toMatch(/role="radio" aria-checked="true"[^>]*>Colores/);
+    expect(out).toContain('aria-label="Qué cambias"');
     expect(t).toContain('Dibujo');
     expect(t).toContain('Figuras');
     // La sólida: solo la base (13 de la paleta), sin automático ni los tres lugares.
@@ -210,7 +211,7 @@ describe('la hoja del creador', () => {
     expect(out).not.toContain('Qué color cambias');
     expect(out).not.toContain('Automático');
     expect(out).toMatch(/role="radio" aria-checked="true" aria-label="Azul"/);
-    expect(out.match(/role="radio"/g)).toHaveLength(13);
+    expect(out.match(/role="radio"/g)).toHaveLength(16); // los 13 colores y las 3 opciones del segmentado
     expect(out).toContain('type="color"');
     expect(out).toContain('value="#1d4ed8"');
     expect(out).toMatch(/<button[^>]*disabled=""[^>]*>.*?Restablecer/);

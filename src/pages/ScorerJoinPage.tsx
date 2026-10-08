@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
-import { CalendarClock, ClipboardPen, Globe, Link2Off, Lock, LogIn, Trophy, UserPlus } from 'lucide-react';
+import { CalendarClock, ClipboardPen, Link2Off, LogIn, Trophy, UserPlus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import {
   getScorerLinkPreview,
@@ -13,8 +13,9 @@ import {
   type ScorerLinkPreview,
 } from '../lib/data/scorers';
 import { sportMeta } from '../sports/registry';
-import { BackLink } from '../components/BackLink';
 import { LeagueLogo } from '../components/home/LeagueCard';
+import { DeadInvite, InfoLine, InviteHero, heroArtClass, leagueTypeLine } from '../components/screens/InviteBits';
+import { ScreenTop, linkButton } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
 import { SportSplash } from '../components/splash/SportSplash';
 import { useFeedback } from '../components/feedback';
@@ -31,8 +32,7 @@ import {
   scorerReachForYou,
   takeScorerIntent,
 } from '../components/scorers/logic';
-import { Badge, Button, Card, Empty, Loading, LoadError } from '../components/ui';
-import { SportBadge } from './sports/SportBits';
+import { Button, Card, Loading, LoadError } from '../components/ui';
 
 /**
  * El link para anotar (/anotar/<código>, docs/anotadores.md §8.3): a qué torneo lleva (nombre, deporte y logo, también
@@ -124,8 +124,10 @@ export default function ScorerJoinPage() {
   if (error && preview === undefined) {
     return (
       <AppShell>
-        <BackLink fallback="/" className="-ml-1.5 mb-3" />
-        <LoadError error={error} onRetry={() => setAttempt((n) => n + 1)} />
+        <div className="mx-auto flex max-w-md flex-col px-2">
+          <ScreenTop label="Ligas" fallback="/ligas" />
+          <LoadError error={error} onRetry={() => setAttempt((n) => n + 1)} />
+        </div>
       </AppShell>
     );
   }
@@ -199,15 +201,10 @@ export function ScorerJoinView({
     const dead = deadLinkText(preview ? (preview.status as Exclude<NonNullable<ScorerLinkPreview>['status'], 'ok'>) : null);
     return (
       <AppShell>
-        <BackLink fallback="/" className="-ml-1.5 mb-3" />
-        <Empty icon={<Link2Off className="size-8" />} title={dead.title}>
-          {dead.body}
-          <div className="mt-4">
-            <Link to="/ligas" className="font-medium text-accent">
-              Ver ligas
-            </Link>
-          </div>
-        </Empty>
+        <div className="mx-auto flex max-w-md flex-col px-2">
+          <ScreenTop label="Ligas" fallback="/ligas" />
+          <DeadInvite icon={<Link2Off />} title={dead.title} text={dead.body} />
+        </div>
       </AppShell>
     );
   }
@@ -224,74 +221,53 @@ export function ScorerJoinView({
 
   return (
     <AppShell>
-      <BackLink fallback="/" className="-ml-1.5 mb-3" />
       <SportTheme sport={info.sport}>
-        <Card className="mx-auto flex max-w-md flex-col items-center gap-4 p-6 text-center">
-          {/* El logo de la liga si tiene (se ve también sin cuenta); si no, la escena del deporte. */}
-          <LeagueLogo path={info.logoPath} className="size-24 rounded-3xl">
-            {meta ? (
-              <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
-            ) : (
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-                <ClipboardPen className="size-7" />
-              </div>
-            )}
-          </LeagueLogo>
-          <div className="flex flex-col items-center gap-1.5">
-            <p className="text-sm text-muted">Te invitaron a anotar</p>
-            <h1 className="text-xl font-bold tracking-tight break-words">{info.name}</h1>
-            {info.title && info.title !== info.name && <p className="text-sm font-medium break-words">en {info.title}</p>}
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {info.sport && <SportBadge sport={info.sport} />}
-              <Badge tone="neutral">
-                {torneo ? <Trophy className="size-3" /> : info.visibility === 'public' ? <Globe className="size-3" /> : <Lock className="size-3" />}
-                {torneo ? 'Torneo' : info.visibility === 'public' ? 'Liga pública' : 'Liga privada'}
-              </Badge>
-            </div>
-          </div>
+        <div className="mx-auto flex max-w-md flex-col px-2">
+          <ScreenTop label="Ligas" fallback="/ligas" />
+          <InviteHero
+            art={
+              // El logo de la liga si tiene (se ve también sin cuenta); si no, la escena del deporte.
+              <LeagueLogo path={info.logoPath} className={heroArtClass}>
+                {meta ? (
+                  <SportSplash scene={meta.scene} word={false} width={176} label={`Animación de ${meta.lower}`} />
+                ) : (
+                  <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+                    <ClipboardPen className="size-7" />
+                  </div>
+                )}
+              </LeagueLogo>
+            }
+            kicker="Te invitaron a anotar"
+            title={info.name}
+            sub={info.title && info.title !== info.name ? `en ${info.title}` : undefined}
+            meta={leagueTypeLine(info.sport, torneo ? 'torneo' : 'liga', info.visibility)}
+          />
 
-          <ul className="flex w-full flex-col gap-2.5 border-t border-line pt-4 text-left text-sm">
-            <li className="flex items-start gap-2.5">
-              <ClipboardPen className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-              <span>Anotas los resultados. No te inscribe como jugador.</span>
-            </li>
-            {reach && (
-              <li className="flex items-start gap-2.5">
-                <Trophy className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-                <span>{reach}</span>
-              </li>
-            )}
-            {day && (
-              <li className="flex items-start gap-2.5 text-muted">
-                <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>El link vence el {day}</span>
-              </li>
-            )}
-          </ul>
+          <Card className="mt-6 overflow-hidden">
+            <dl>
+              <InfoLine icon={<ClipboardPen className="size-5" />} label="Qué haces" value="Anotas los resultados. No te inscribe como jugador." />
+              {reach && <InfoLine icon={<Trophy className="size-5" />} label="Dónde" value={reach} />}
+              {day && <InfoLine icon={<CalendarClock className="size-5" />} label="Hasta cuándo sirve" value={`El link vence el ${day}`} />}
+            </dl>
+          </Card>
 
           {signedIn ? (
-            <Button variant="primary" className="h-11 w-full" loading={busy} onClick={() => onEnter(info)} icon={<ClipboardPen className="size-4" />}>
+            <Button variant="primary" size="xl" className="mt-6 w-full" loading={busy} onClick={() => onEnter(info)} icon={<ClipboardPen className="size-5" />}>
               Entrar para anotar
             </Button>
           ) : (
-            <div className="flex w-full flex-col gap-2">
-              <Link
-                to={`/login?modo=registro&next=${next}`}
-                onClick={() => rememberScorerIntent(code)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg"
-              >
-                <UserPlus className="size-4" /> Crear cuenta y entrar a anotar
+            <div className="mt-6 flex flex-col gap-2.5">
+              <Link to={`/login?modo=registro&next=${next}`} onClick={() => rememberScorerIntent(code)} className={linkButton('primary', 'w-full')}>
+                <UserPlus aria-hidden="true" className="size-5" />
+                <span className="min-w-0 truncate">Crear cuenta y entrar a anotar</span>
               </Link>
-              <Link
-                to={`/login?next=${next}`}
-                onClick={() => rememberScorerIntent(code)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-line px-4 text-sm font-medium hover:bg-surface-2"
-              >
-                <LogIn className="size-4" /> Ya tengo cuenta
+              <Link to={`/login?next=${next}`} onClick={() => rememberScorerIntent(code)} className={linkButton('quiet', 'w-full')}>
+                <LogIn aria-hidden="true" className="size-5" />
+                <span className="min-w-0 truncate">Ya tengo cuenta</span>
               </Link>
             </div>
           )}
-        </Card>
+        </div>
       </SportTheme>
     </AppShell>
   );

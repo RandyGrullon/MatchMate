@@ -60,7 +60,7 @@ describe('buscar personas', () => {
     state.people = { data: [hit('a', { isFollowing: true, followsYou: true }), hit('b', { isFollowing: true })] };
     const out = render();
     const t = text(out);
-    expect(out).toContain('placeholder="Busca por nombre o @usuario"');
+    expect(out).toContain('placeholder="Nombre o @usuario"');
     expect(out).toContain('autofocus=""');
     expect(t).toContain('Personas que sigues');
     expect(t).toContain('Persona a');
@@ -68,6 +68,10 @@ describe('buscar personas', () => {
     expect(t).toContain('Te sigue');
     expect(t).toContain('Siguiendo');
     expect(out).toContain('href="/u/a"');
+    // Rediseño: el título de sección y cada persona en una fila («@usuario · Te sigue»), con Seguir al lado.
+    expect(out).toContain('class="text-section">Personas que sigues');
+    expect(t).toContain('@persona_a · Te sigue');
+    expect(out.match(/class="mm-row /g)).toHaveLength(2);
     expect(state.asked).toContain('');
   });
 

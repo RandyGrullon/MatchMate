@@ -290,22 +290,22 @@ export function SoloGameSheet({
                 disabled={!!busy}
                 aria-busy={busy === 'delete' || undefined}
                 onClick={() => void remove()}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-danger transition select-none hover:bg-danger-soft active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex h-btn items-center justify-center gap-2 rounded-btn px-4 text-meta font-semibold text-danger transition select-none hover:bg-danger-soft active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
               >
-                {busy === 'delete' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                {busy === 'delete' ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : <Trash2 className="size-5" aria-hidden="true" />}
                 Borrar
               </button>
             )}
-            <Button variant="primary" className="h-11 flex-1" loading={busy === 'save'} disabled={!canSave} onClick={() => void save()}>
+            <Button variant="primary" size="xl" className="flex-1" loading={busy === 'save'} disabled={!canSave} onClick={() => void save()}>
               Guardar
             </Button>
           </div>
         }
       >
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           {session?.pending && (
-            <p className="flex items-start gap-2 rounded-xl bg-accent-soft px-3 py-2.5 text-sm text-accent">
-              <CloudUpload className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> Guardado en este teléfono: sale solo cuando haya señal.
+            <p className="flex items-center gap-2 text-meta text-accent">
+              <CloudUpload className="size-4 shrink-0" aria-hidden="true" /> Guardado en este teléfono: sale solo cuando haya señal.
             </p>
           )}
 
@@ -341,40 +341,47 @@ export function SoloGameSheet({
             )
           )}
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <span className="text-xs font-medium text-muted">Tus juegos</span>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 gap-2.5 min-[400px]:grid-cols-4">
               {values.map((v, i) => {
                 const bad = !!v.trim() && !isValidScore(Number(v));
                 return (
-                  <div key={i} className="flex w-16 flex-col items-center gap-0.5">
-                    <span className="text-[11px] text-muted">J{i + 1}</span>
+                  <div
+                    key={i}
+                    className={cx(
+                      'flex min-w-0 flex-col items-stretch rounded-tile bg-surface-2 px-1.5 pt-2.5 pb-1',
+                      bad ? 'shadow-[inset_0_0_0_1.5px_var(--danger)]' : frames[i] && 'shadow-[inset_0_0_0_1.5px_var(--accent)]',
+                    )}
+                  >
+                    <span className="px-1.5 text-[13px] font-[550] text-muted">Juego {i + 1}</span>
                     <input
                       type="number"
                       inputMode="numeric"
                       min={0}
                       max={300}
                       value={v}
+                      placeholder="–"
                       aria-label={`Juego ${i + 1}`}
                       aria-invalid={bad || undefined}
                       onChange={(e) => setValue(i, e.target.value)}
                       className={cx(
-                        'h-11 w-full rounded-lg border bg-surface text-center text-base font-semibold tabular-nums',
-                        bad ? 'border-danger text-danger' : frames[i] ? 'border-accent' : 'border-line',
+                        'num h-11 w-full min-w-0 rounded-lg bg-transparent px-1.5 text-left text-[26px] font-[650] placeholder:text-faint focus:bg-surface focus:outline-2 focus:outline-accent',
+                        bad && 'text-danger',
                       )}
                     />
                     {/* La bola de este juego (también al escribir solo el total). */}
-                    {showBalls && <GameBallChip game={i} balls={choice.balls} value={ballOf(i)} onPick={pickBall} today={today} className="mt-0.5" />}
+                    {showBalls && <GameBallChip game={i} balls={choice.balls} value={ballOf(i)} onPick={pickBall} today={today} className="mx-1 mt-0.5 self-start" />}
                     <button
                       type="button"
                       onClick={() => setFramesFor(i)}
                       aria-label={`Anotar el juego ${i + 1} ${byPins ? 'pino por pino' : 'por cuadros'}`}
                       className={cx(
-                        'flex min-h-11 w-full items-center justify-center gap-0.5 rounded-lg text-[11px] font-medium',
-                        frames[i] ? 'text-accent' : 'text-muted hover:text-fg',
+                        'flex min-h-11 w-full items-center gap-1 rounded-lg px-1.5 text-[13px] font-semibold',
+                        frames[i] ? 'text-accent' : 'text-fg-2 hover:text-fg',
                       )}
                     >
-                      {byPins ? <Target className="size-3" aria-hidden="true" /> : <Grid3x3 className="size-3" aria-hidden="true" />}
+                      {byPins ? <Target className="size-3.5" aria-hidden="true" /> : <Grid3x3 className="size-3.5" aria-hidden="true" />}
                       {byPins ? 'pines' : 'cuadros'}
                     </button>
                   </div>
@@ -385,9 +392,9 @@ export function SoloGameSheet({
                   type="button"
                   onClick={addSlot}
                   aria-label="Agregar otro juego"
-                  className="mt-[1.1rem] flex h-11 items-center gap-1 rounded-lg border border-dashed border-line px-3 text-sm font-medium text-muted hover:text-fg"
+                  className="flex min-h-[104px] flex-col items-center justify-center gap-1 rounded-tile border-[1.5px] border-dashed border-line text-meta font-semibold text-muted transition hover:text-fg active:scale-[0.97]"
                 >
-                  <Plus className="size-4" aria-hidden="true" /> Juego
+                  <Plus className="size-6" aria-hidden="true" /> Juego
                 </button>
               )}
             </div>
@@ -457,12 +464,12 @@ export function SoloGameSheet({
 function SharedSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   const labelId = useId();
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-line p-3">
-      <div className="min-w-0 flex-1 text-sm">
-        <span id={labelId} className="block font-medium">
+    <div className="flex items-center gap-3 rounded-2xl bg-surface-2 py-2 pr-2 pl-4">
+      <div className="min-w-0 flex-1">
+        <span id={labelId} className="block text-body font-semibold">
           Que salga en mi perfil
         </span>
-        <span className="block text-muted">{value ? 'Lo ven quienes ven tu perfil y te siguen.' : 'Solo lo ves tú (igual cuenta en tu promedio).'}</span>
+        <span className="block text-sm text-muted">{value ? 'Lo ven quienes te siguen.' : 'Solo lo ves tú (igual cuenta en tu promedio).'}</span>
       </div>
       <button
         type="button"

@@ -165,22 +165,22 @@ export function BallSheet({
               disabled={!!busy}
               aria-busy={busy === 'delete' || undefined}
               onClick={() => void remove()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-danger transition select-none hover:bg-danger-soft active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex h-btn items-center justify-center gap-2 rounded-btn px-4 text-meta font-semibold text-danger transition select-none hover:bg-danger-soft active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
             >
-              {busy === 'delete' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+              {busy === 'delete' ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : <Trash2 className="size-5" aria-hidden="true" />}
               Borrar
             </button>
           )}
-          <Button variant="primary" className="h-11 flex-1" loading={busy === 'save'} disabled={!!busy} onClick={() => void save()}>
+          <Button variant="primary" size="xl" className="flex-1" loading={busy === 'save'} disabled={!!busy} onClick={() => void save()}>
             Guardar
           </Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-3">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center gap-3.5 rounded-3xl bg-surface-2 py-3 pr-3 pl-3.5">
           <BallArt design={ball?.design ?? null} color={draft.color} cover={draft.cover} size={64} className="shrink-0" />
-          <p className="min-w-0 flex-1 text-sm text-muted">
+          <p className="min-w-0 flex-1 text-sm text-fg-2">
             {!ball
               ? 'Así se verá. Cuando la agregues la puedes diseñar: colores, dibujo y figuras.'
               : designed
@@ -188,7 +188,7 @@ export function BallSheet({
                 : 'Hazla como la tuya: colores, dibujo y figuras.'}
           </p>
           {ball && onDesign && (
-            <Button className="h-11 shrink-0" icon={<Palette className="size-4" />} disabled={!!busy} onClick={() => void design()}>
+            <Button variant="soft" className="h-11 shrink-0" icon={<Palette className="size-4" />} disabled={!!busy} onClick={() => void design()}>
               Diseñar
             </Button>
           )}
@@ -273,9 +273,7 @@ export function BallSheet({
             {ballProblemText(problem)}
           </p>
         )}
-        <p className="text-xs text-muted">
-          Desde la última pulida contamos tus juegos con ella: cada {RESURFACE_EVERY} juegos, más o menos, toca pulirla otra vez.
-        </p>
+        <p className="text-[13px] text-muted">Desde la última pulida contamos tus juegos: cada {RESURFACE_EVERY} juegos, más o menos, toca pulirla.</p>
       </div>
     </Sheet>
   );

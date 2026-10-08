@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, ArrowLeft, Download, FileSpreadsheet, FileText, Share2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronRight, Download, FileSpreadsheet, FileText, Share2 } from 'lucide-react';
 import { useLeagueBadges } from '../../lib/data/leagueBadges';
 import { usePlayers } from '../../lib/data/players';
 import { useTournamentPrize } from '../../lib/data/prizes';
@@ -120,15 +120,16 @@ function Option({ icon, title, text, disabled, onClick }: { icon: ReactNode; tit
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left transition hover:bg-surface-2 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="flex min-h-row w-full items-center gap-3.5 rounded-2xl bg-surface-2 py-2.5 pr-4 pl-3.5 text-left transition active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
     >
-      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface text-accent" aria-hidden="true">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-semibold">{title}</span>
-        <span className="block text-xs text-muted">{text}</span>
+        <span className="block text-body font-semibold">{title}</span>
+        <span className="block text-sm text-muted">{text}</span>
       </span>
+      <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-faint" />
     </button>
   );
 }
@@ -148,38 +149,39 @@ export function ReportSheetView(p: {
 }) {
   const { phase } = p;
   const back = (
-    <Button variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={p.onBack}>
+    <Button variant="quiet" size="lg" className="min-w-0 flex-1" icon={<ArrowLeft className="size-4" />} onClick={p.onBack}>
       Otro formato
     </Button>
   );
+  // Un solo botón principal (Compartir, o Descargar otra vez); lo demás en gris al lado.
   const footer =
     phase.kind === 'ready' ? (
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap gap-2">
         {back}
         {phase.canShare ? (
           <>
-            <Button icon={<Download className="size-4" />} onClick={p.onDownload}>
+            <Button variant="quiet" size="lg" className="min-w-0 flex-1" icon={<Download className="size-4" />} onClick={p.onDownload}>
               Descargar
             </Button>
-            <Button variant="primary" loading={p.busy} icon={<Share2 className="size-4" />} onClick={p.onShare}>
+            <Button variant="primary" size="xl" className="w-full" loading={p.busy} icon={<Share2 className="size-5" />} onClick={p.onShare}>
               Compartir
             </Button>
           </>
         ) : (
-          <Button variant="primary" icon={<Download className="size-4" />} onClick={p.onDownload}>
+          <Button variant="primary" size="lg" className="min-w-0 flex-1" icon={<Download className="size-4" />} onClick={p.onDownload}>
             Descargar otra vez
           </Button>
         )}
       </div>
     ) : phase.kind === 'error' ? (
-      <div className="flex justify-end">{back}</div>
+      <div className="flex">{back}</div>
     ) : undefined;
 
   return (
     <Sheet open={p.open} onClose={p.onClose} title="Reporte del torneo" subtitle={p.subtitle} footer={footer}>
       {phase.kind === 'choose' ? (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">El torneo con todo en la primera página (campeones, premios y resultados) y el individual en las siguientes.</p>
+          <p className="text-meta text-muted">Campeones, premios y resultados en la primera página; el individual después.</p>
           <Option
             icon={<FileText className="size-5" />}
             title="PDF"
@@ -206,15 +208,15 @@ export function ReportSheetView(p: {
           <p className="text-sm text-muted">Haciendo el {FORMAT_NAME[phase.format]}…</p>
         </div>
       ) : phase.kind === 'ready' ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl bg-surface-2 px-4 py-6 text-center">
-          {phase.format === 'pdf' ? <FileText className="size-8 text-accent" /> : <FileSpreadsheet className="size-8 text-accent" />}
+        <div className="flex flex-col items-center gap-2 rounded-3xl bg-surface-2 px-4 py-7 text-center">
+          {phase.format === 'pdf' ? <FileText className="size-9 text-accent" /> : <FileSpreadsheet className="size-9 text-accent" />}
           <p className="text-sm font-medium break-all">{phase.fileName}</p>
           <p className="text-xs text-muted">
             {phase.canShare ? 'Toca «Compartir» y elige WhatsApp (o donde quieras).' : 'Se descargó: búscalo en tus descargas.'}
           </p>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-2 rounded-xl bg-surface-2 px-4 py-8 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-3xl bg-surface-2 px-4 py-8 text-center">
           <AlertTriangle className="size-6 text-warn" />
           <p className="text-sm">No se pudo hacer el {FORMAT_NAME[phase.format]}. Prueba otra vez.</p>
         </div>

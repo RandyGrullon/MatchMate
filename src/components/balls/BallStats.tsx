@@ -1,27 +1,29 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { AlertTriangle, Archive, ChevronRight, Palette, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react';
-import { ballDetail, ballStats, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
+import { AlertTriangle, Archive, ChevronRight, MoreHorizontal, Palette, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react';
+import { RESURFACE_EVERY, ballDetail, ballStats, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
 import { useMyBallGames, useMyBalls } from '../../lib/data/balls';
 import { formatDate } from '../../lib/format';
+import { EventMenu, type MenuItem } from '../event/EventHeader';
 import { Button, Card, ListRow, SectionHeader, Skeleton, cx, sectionLinkClass } from '../ui';
 import { BallArt } from './BallArt';
 import { BallIcon } from './BallPicker';
 
-/** Un número chico de la tarjeta de una bola. */
+/** Un número de la tarjeta de una bola (sin caja: los cuatro en una fila, como en Yo). */
 function Mini({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex flex-col-reverse items-center rounded-xl bg-surface-2 px-1 py-2">
-      <dt className="text-[11px] text-muted">{label}</dt>
-      <dd className="text-lg leading-tight font-bold tabular-nums">{value}</dd>
+    <div className="flex min-w-0 flex-col-reverse">
+      <dt className="truncate text-xs font-[550] text-muted">{label}</dt>
+      <dd className="num text-[22px] leading-[1.15] font-[650]">{value}</dd>
     </div>
   );
 }
 
 /**
- * Una bola en «Mis bolas»: la bola dibujada (con su diseño; tocarla abre «Diseñar»), nombre y detalle; juegos,
- * promedio, el más alto y strikes (de los juegos anotados por cuadros); cuántos juegos lleva desde la última pulida (en
- * amarillo cuando ya le toca) y las acciones: editar, «La pulí hoy» y retirar (o volver a usar).
+ * Una bola en «Mis bolas» (rediseño «Calma y foco»): la bola dibujada (con su diseño; tocarla abre «Diseñar»), nombre y
+ * detalle, y «•••» con Editar, Diseñar y Retirar (o Volver a usarla); sus números (juegos, promedio, el más alto y
+ * strikes de los juegos anotados por cuadros) en una fila, y cuántos juegos lleva desde la última pulida con una barrita
+ * (en ámbar cuando ya le toca) y «La pulí hoy» al lado. Una retirada trae «Volver a usarla» a la vista.
  */
 export function BallCard({
   stats: s,
@@ -40,21 +42,57 @@ export function BallCard({
   onRetire: () => void;
 }) {
   const b = s.ball;
-  // `busy` dice que la bola espera; la ruedita va en el botón que se tocó.
+  // `busy` dice que la bola espera; la ruedita va en lo que se tocó.
   const [pressed, setPressed] = useState<'resurface' | 'retire' | null>(null);
+  const [menu, setMenu] = useState(false);
+  const wear = Math.min(1, s.sinceResurface / RESURFACE_EVERY);
+  const retire = () => {
+    setMenu(false);
+    setPressed('retire');
+    onRetire();
+  };
+  const items: MenuItem[] = [
+    {
+      key: 'editar',
+      icon: Pencil,
+      label: 'Editar',
+      hint: 'Nombre, peso, cubierta y fechas',
+      onClick: () => {
+        setMenu(false);
+        onEdit();
+      },
+    },
+    ...(onDesign
+      ? [
+          {
+            key: 'disenar',
+            icon: Palette,
+            label: 'Diseñar',
+            hint: 'Su color y su dibujo',
+            onClick: () => {
+              setMenu(false);
+              onDesign();
+            },
+          },
+        ]
+      : []),
+    b.retired
+      ? { key: 'volver', icon: RotateCcw, label: 'Volver a usarla', onClick: retire, busy: busy && pressed === 'retire' }
+      : { key: 'retirar', icon: Archive, label: 'Retirar', hint: 'Ya no sale al anotar; sus números se quedan', onClick: retire, busy: busy && pressed === 'retire' },
+  ];
   return (
-    <Card className={cx('flex flex-col gap-3 p-4', b.retired && 'opacity-80')}>
-      <div className="flex items-center gap-3">
+    <Card className={cx('flex flex-col gap-4 p-5', b.retired && 'opacity-80')}>
+      <div className="flex items-center gap-3.5">
         {onDesign ? (
           <button
             type="button"
             onClick={onDesign}
             aria-label={`Diseñar la ${b.name}`}
             title="Diseñar"
-            className="-m-1 flex shrink-0 flex-col items-center gap-0.5 rounded-2xl p-1 transition hover:bg-surface-2 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="-m-1 flex shrink-0 flex-col items-center gap-0.5 rounded-2xl p-1 transition active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             <BallArt ball={b} size={64} />
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-accent">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent">
               <Palette className="size-3" aria-hidden="true" /> Diseñar
             </span>
           </button>
@@ -62,48 +100,52 @@ export function BallCard({
           <BallArt ball={b} size={64} className="shrink-0" />
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold">{b.name}</h3>
-          <p className="truncate text-xs text-muted">
+          <h3 className="truncate text-[19px] leading-tight font-[650] tracking-[-0.015em]">{b.name}</h3>
+          <p className="mt-0.5 truncate text-sm text-muted">
             {ballDetail(b)}
             {b.retired && ' · retirada'}
           </p>
         </div>
         <button
           type="button"
-          onClick={onEdit}
-          aria-label={`Editar la ${b.name}`}
-          title="Editar"
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          onClick={() => setMenu(true)}
+          aria-label={`Más opciones de la ${b.name}`}
+          aria-haspopup="dialog"
+          className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 text-fg-2 transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
-          <Pencil className="size-4" aria-hidden="true" />
+          <MoreHorizontal aria-hidden="true" strokeWidth={2.4} className="size-[22px]" />
         </button>
       </div>
-      <dl className="grid grid-cols-4 gap-2">
+      <dl className="grid grid-cols-4 gap-2 border-t border-line pt-4">
         <Mini label="Juegos" value={s.games} />
         <Mini label="Promedio" value={s.average ?? '—'} />
         <Mini label="Más alto" value={s.high || '—'} />
         <Mini label="Strikes" value={pctText(s.strikePct)} />
       </dl>
       {(s.framed > 0 || s.pending > 0) && (
-        <p className="text-xs text-muted">
+        <p className="-mt-1 text-[13px] text-muted">
           {s.framed > 0 && `Strikes ${pctText(s.strikePct)} y spares ${pctText(s.sparePct)} con ${s.framed} ${s.framed === 1 ? 'juego anotado' : 'juegos anotados'} por cuadros.`}
           {s.framed > 0 && s.pending > 0 && ' '}
           {s.pending > 0 && `${s.pending} ${s.pending === 1 ? 'juego cuenta' : 'juegos cuentan'} cuando se ${s.pending === 1 ? 'verifique' : 'verifiquen'}.`}
         </p>
       )}
-      {!b.retired && (
-        <p className={cx('flex items-start gap-1.5 text-sm', s.needsResurface ? 'rounded-xl bg-warn-soft px-3 py-2 text-warn' : 'text-muted')}>
-          {s.needsResurface ? <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <Sparkles className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
-          <span>
-            {resurfaceText(s)}
-            {b.resurfacedOn && ` La puliste el ${formatDate(b.resurfacedOn)}.`}
-          </span>
-        </p>
-      )}
-      <div className="flex gap-2">
-        {!b.retired && (
+      {!b.retired ? (
+        <div className={cx('flex items-center gap-3 rounded-2xl py-3 pr-3 pl-4 max-[380px]:flex-wrap', s.needsResurface ? 'bg-warn-soft text-warn' : 'bg-surface-2')}>
+          <div className="min-w-0 flex-1 max-[380px]:basis-full">
+            <p className={cx('flex items-start gap-1.5 text-sm', !s.needsResurface && 'text-fg-2')}>
+              {s.needsResurface && <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
+              <span>
+                {resurfaceText(s)}
+                {b.resurfacedOn && ` La puliste el ${formatDate(b.resurfacedOn)}.`}
+              </span>
+            </p>
+            <span aria-hidden="true" className={cx('mt-2 block h-1.5 overflow-hidden rounded-full', s.needsResurface ? 'bg-warn/20' : 'bg-line')}>
+              <span className={cx('block h-full rounded-full', s.needsResurface ? 'bg-warn' : 'bg-accent')} style={{ width: `${Math.round(wear * 100)}%` }} />
+            </span>
+          </div>
           <Button
-            className="h-11 flex-1"
+            variant={s.needsResurface ? 'primary' : 'soft'}
+            className="h-11 shrink-0 max-[380px]:w-full"
             icon={<Sparkles className="size-4" />}
             disabled={busy}
             loading={busy && pressed === 'resurface'}
@@ -114,11 +156,13 @@ export function BallCard({
           >
             La pulí hoy
           </Button>
-        )}
+        </div>
+      ) : (
         <Button
-          variant="ghost"
-          className="h-11 flex-1"
-          icon={b.retired ? <RotateCcw className="size-4" /> : <Archive className="size-4" />}
+          variant="quiet"
+          size="lg"
+          className="w-full"
+          icon={<RotateCcw className="size-4" />}
           disabled={busy}
           loading={busy && pressed === 'retire'}
           onClick={() => {
@@ -126,10 +170,11 @@ export function BallCard({
             onRetire();
           }}
         >
-          {b.retired ? 'Volver a usarla' : 'Retirar'}
+          Volver a usarla
         </Button>
-      </div>
-      {s.lastUsedOn && <p className="-mt-1 text-[11px] text-muted">Último juego con ella: {formatDate(s.lastUsedOn)}</p>}
+      )}
+      {s.lastUsedOn && <p className="-mt-1 text-[13px] text-muted">Último juego con ella: {formatDate(s.lastUsedOn)}</p>}
+      <EventMenu open={menu} onClose={() => setMenu(false)} title={b.name} items={items} />
     </Card>
   );
 }

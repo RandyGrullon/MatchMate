@@ -45,7 +45,7 @@ export function ConsentCheck({
   hint?: string;
 }) {
   return (
-    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-surface-2 p-3">
+    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl bg-surface-2 p-4">
       <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-[var(--accent)]" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="text-sm">
         {label}
@@ -125,7 +125,7 @@ export function useQuickMinor(show: boolean): QuickMinor {
 
   const fields =
     on && show ? (
-      <div className="flex flex-col gap-3 rounded-xl border border-line p-3">
+      <div className="flex flex-col gap-3 rounded-2xl bg-surface-2 p-4">
         <MinorCheck checked={isMinor} onChange={setIsMinor} />
         {isMinor && <GuardianFields value={guardian} onChange={setGuardian} />}
         {error && isMinor && (

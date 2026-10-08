@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { MIN_PASSWORD } from '../lib/auth';
-import { Input } from './ui';
+import { BigInput } from './cuenta/kit';
 
-/** Contraseña con botón para verla. */
+/** Contraseña con botón para verla: el campo grande del rediseño (Entrar, Configuración › Contraseña). */
 export function PasswordInput({
   value,
   onChange,
@@ -19,8 +19,8 @@ export function PasswordInput({
 }) {
   const [show, setShow] = useState(false);
   return (
-    <div className="relative">
-      <Input
+    <span className="relative block">
+      <BigInput
         type={show ? 'text' : 'password'}
         autoComplete={autoComplete}
         autoFocus={autoFocus}
@@ -28,16 +28,17 @@ export function PasswordInput({
         minLength={autoComplete === 'new-password' ? MIN_PASSWORD : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={invalid ? 'border-danger pr-10' : 'pr-10'}
+        aria-invalid={invalid || undefined}
+        className="pr-14"
       />
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
-        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted"
+        className="absolute inset-y-0 right-1.5 my-auto grid size-11 place-items-center rounded-xl text-muted transition hover:text-fg"
         aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}
       >
-        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        {show ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
       </button>
-    </div>
+    </span>
   );
 }

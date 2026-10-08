@@ -6,7 +6,7 @@ import type { Player } from '../../lib/types';
 import { Avatar } from '../Avatar';
 import { useFeedback } from '../feedback';
 import { searchPlayers } from '../league/logic';
-import { Badge, Button, Input, Modal, Spinner, cx } from '../ui';
+import { Button, Input, ListRow, Sheet, Spinner, cx } from '../ui';
 import { mergeCandidates, mergeSummary } from './logic';
 
 /**
@@ -99,54 +99,45 @@ export function MergePlayerModal({
   const blocked = preview ? mergeBlockText(preview.reason, preview.keep.name, preview.drop.name) : null;
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title={player ? `Juntar a ${player.name} con…` : 'Juntar jugadores'}
+      subtitle={!otherPlayer ? 'Elige al otro: todo pasa a uno solo' : undefined}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          {otherPlayer && (
-            <Button variant="primary" icon={<Merge className="size-4" />} loading={busy} disabled={!preview?.canMerge || loading} onClick={merge}>
-              Juntar
-            </Button>
-          )}
-        </>
+        otherPlayer ? (
+          <Button variant="primary" size="xl" className="w-full" icon={<Merge className="size-5" />} loading={busy} disabled={!preview?.canMerge || loading} onClick={merge}>
+            Juntar
+          </Button>
+        ) : undefined
       }
     >
       {!otherPlayer ? (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-muted">
-            ¿Está dos veces en la lista (con otro nombre, o una vez con cuenta y otra sin cuenta)? Elige al otro: sus juegos, partidos y «voy» pasan a uno
-            solo.
-          </p>
           {candidates.length >= 8 && (
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar jugador" aria-label="Buscar jugador" className="pl-9" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar jugador" aria-label="Buscar jugador" className="h-11 pl-9" />
             </div>
           )}
-          <div className="max-h-80 divide-y divide-line overflow-y-auto rounded-xl border border-line">
+          <div className="-mx-5">
             {shown.map((p) => (
-              <button
+              <ListRow
                 key={p.id}
-                type="button"
+                dense
                 onClick={() => setOther(p.id)}
-                className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-sm transition hover:bg-surface-2"
-              >
-                <Avatar name={p.name} className="size-8 text-xs" />
-                <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-                {p.uid ? (
-                  <Badge tone="ok">
-                    <BadgeCheck className="size-3" aria-hidden="true" /> Con cuenta
-                  </Badge>
-                ) : p.isMinor ? (
-                  <Badge>Menor</Badge>
-                ) : null}
-              </button>
+                leading={<Avatar name={p.name} className="size-9 text-sm" />}
+                title={
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">{p.name}</span>
+                    {p.uid && <BadgeCheck aria-label="Con cuenta" className="size-4 shrink-0 text-accent" />}
+                  </span>
+                }
+                subtitle={p.uid ? 'Con cuenta' : p.isMinor ? 'Menor' : 'Sin cuenta'}
+              />
             ))}
             {shown.length === 0 && (
-              <p className="px-3 py-3 text-center text-sm text-muted">{candidates.length ? 'Nadie se llama así en la lista.' : 'No hay nadie más en la lista.'}</p>
+              <p className="px-5 py-3 text-center text-meta text-muted">{candidates.length ? 'Nadie se llama así en la lista.' : 'No hay nadie más en la lista.'}</p>
             )}
           </div>
         </div>
@@ -168,18 +159,14 @@ export function MergePlayerModal({
                   <label
                     key={p.id}
                     className={cx(
-                      'flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent/50',
-                      on ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
+                      'flex min-h-14 cursor-pointer items-center gap-3 rounded-2xl px-4 py-2 text-[15px] transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent',
+                      on ? 'bg-accent-soft shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'bg-surface-2',
                     )}
                   >
                     <input type="radio" name="merge-keep" className="sr-only" checked={on} onChange={() => setKeepMine(p.id === player.id)} />
                     <Avatar name={p.name} className="size-8 text-xs" />
                     <span className={cx('min-w-0 flex-1 truncate', on ? 'font-semibold text-accent' : 'font-medium')}>{p.name}</span>
-                    {p.uid && (
-                      <Badge tone="ok">
-                        <BadgeCheck className="size-3" aria-hidden="true" /> Con cuenta
-                      </Badge>
-                    )}
+                    {p.uid && <BadgeCheck aria-label="Con cuenta" className="size-4 shrink-0 text-accent" />}
                     <span
                       aria-hidden="true"
                       className={cx(
@@ -214,18 +201,18 @@ export function MergePlayerModal({
                 <span className="mt-1 block">Quita lo repetido (borra uno de los dos resultados) y junta otra vez.</span>
               </Problem>
             )}
-            {preview?.canMerge && <p className="rounded-xl bg-surface-2 px-3 py-2.5 text-sm">{mergeSummary(preview)}</p>}
+            {preview?.canMerge && <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-fg-2">{mergeSummary(preview)}</p>}
             {error && <Problem>{error}</Problem>}
           </div>
         </div>
       )}
-    </Modal>
+    </Sheet>
   );
 }
 
 function Problem({ children }: { children: ReactNode }) {
   return (
-    <div role="alert" className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-sm text-danger">
+    <div role="alert" className="flex items-start gap-2 rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <div className="min-w-0">{children}</div>
     </div>

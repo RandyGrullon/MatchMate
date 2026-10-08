@@ -64,7 +64,7 @@ describe('la tarjeta de una bola', () => {
       h(MemoryRouter, null, h(BallCard, { stats: ballStats([b], gs)[0], onEdit: noop, onResurface: noop, onRetire: noop })),
     );
 
-  it('sus números, cuántos juegos lleva sin pulir y las acciones', () => {
+  it('sus números en una fila, cuántos juegos lleva sin pulir con «La pulí hoy» y lo demás en «•••»', () => {
     const out = card(ball('a'), games('a', [200, 181, 150]));
     const t = text(out);
     expect(t).toContain('Phaze II');
@@ -72,11 +72,15 @@ describe('la tarjeta de una bola', () => {
     expect(t).toContain('Juegos');
     expect(t).toContain('177');
     expect(t).toContain('200');
+    expect(out).toMatch(/<dd class="num[^"]*">177<\/dd>/);
     expect(t).toContain('3 juegos sin pulir.');
     expect(t).toContain('La pulí hoy');
-    expect(t).toContain('Retirar');
     expect(t).toContain('Último juego con ella');
-    expect(out).toContain('aria-label="Editar la Phaze II"');
+    // Editar, Diseñar y Retirar van en el menú «•••» (se abre al tocarlo).
+    expect(out).toContain('aria-label="Más opciones de la Phaze II"');
+    expect(t).not.toContain('Retirar');
+    // La barrita de lo que lleva sin pulir: 3 de 60.
+    expect(out).toContain('width:5%');
     expect(out).not.toContain('bg-warn-soft');
   });
 
@@ -90,7 +94,7 @@ describe('la tarjeta de una bola', () => {
     expect(out).toContain('bg-warn-soft');
   });
 
-  it('retirada: «Volver a usarla» y sin pulir', () => {
+  it('retirada: «Volver a usarla» a la vista y sin pulir', () => {
     const t = text(card(ball('a', { retired: true }), []));
     expect(t).toContain('retirada');
     expect(t).toContain('Volver a usarla');

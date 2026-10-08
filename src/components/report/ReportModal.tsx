@@ -4,12 +4,13 @@ import { Flag } from 'lucide-react';
 import { REPORT_KIND_THIS, REPORT_NOTE_MAX, REPORT_REASONS, reportContent, reportErrorText, type ReportKind, type ReportReason } from '../../lib/data/reports';
 import { TERMS_PATH } from '../../pages/legal/legal';
 import { useFeedback } from '../feedback';
-import { Button, Modal, Textarea, cx } from '../ui';
+import { Button, Sheet, Textarea, cx } from '../ui';
 
 /**
- * El modal de «Reportar»: el motivo (obligatorio), una nota opcional y a quién le llega. Lo revisa el equipo de
- * MatchMate y, si es un comentario, un aviso o un juego de una liga, sus admins (sin saber quién reportó; el admin del
- * que es lo reportado no lo ve). Reportar lo mismo otra vez no crea otro.
+ * La hoja de «Reportar» (rediseño «Calma y foco»: sube desde abajo en el teléfono): el motivo (obligatorio, una fila por
+ * motivo), una nota opcional y a quién le llega, con un solo botón «Enviar reporte». Lo revisa el equipo de MatchMate y,
+ * si es un comentario, un aviso o un juego de una liga, sus admins (sin saber quién reportó; el admin del que es lo
+ * reportado no lo ve). Reportar lo mismo otra vez no crea otro.
  */
 export default function ReportModal({ kind, targetId, onClose }: { kind: ReportKind; targetId: string; onClose: () => void }) {
   const { toast } = useFeedback();
@@ -36,36 +37,31 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
   }
 
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title={`Reportar ${REPORT_KIND_THIS[kind]}`}
       footer={
-        <>
-          <Button onClick={onClose} className="max-sm:h-11">
-            Cancelar
-          </Button>
-          <Button variant="primary" icon={<Flag className="size-4" />} loading={busy} disabled={!reason} onClick={send} className="max-sm:h-11">
-            Enviar reporte
-          </Button>
-        </>
+        <Button variant="primary" size="xl" className="w-full" icon={<Flag className="size-5" />} loading={busy} disabled={!reason} onClick={send}>
+          Enviar reporte
+        </Button>
       }
     >
       <form
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-5"
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
       >
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5 text-sm font-medium">¿Qué pasa?</legend>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-body font-semibold">¿Qué pasa?</legend>
           {REPORT_REASONS.map((r) => (
             <label
               key={r.key}
               className={cx(
-                'flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition',
-                reason === r.key ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2',
+                'flex min-h-14 cursor-pointer items-center gap-3.5 rounded-2xl px-4 py-2.5 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent',
+                reason === r.key ? 'bg-accent-soft shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'bg-surface-2',
               )}
             >
               <input
@@ -74,11 +70,11 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
                 value={r.key}
                 checked={reason === r.key}
                 onChange={() => setReason(r.key)}
-                className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]"
+                className="size-5 shrink-0 accent-[var(--accent)]"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-medium">{r.label}</span>
-                <span className="block text-xs text-muted">{r.hint}</span>
+                <span className={cx('block text-[15px] font-semibold', reason === r.key && 'text-accent')}>{r.label}</span>
+                <span className="block text-[13px] text-muted">{r.hint}</span>
               </span>
             </label>
           ))}
@@ -98,8 +94,8 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
             {note.length}/{REPORT_NOTE_MAX}
           </span>
         </label>
-        {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-        <p className="text-xs text-muted">
+        {error && <p className="rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p>}
+        <p className="text-[13px] text-muted">
           Lo revisa el equipo de MatchMate{inLeague ? ' y los admins de la liga (sin saber quién lo reportó)' : ''}. La persona reportada no sabe
           que fuiste tú. Mira lo que no se permite en los{' '}
           <Link to={TERMS_PATH} className="font-medium text-accent underline underline-offset-2">
@@ -108,6 +104,6 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
           .
         </p>
       </form>
-    </Modal>
+    </Sheet>
   );
 }

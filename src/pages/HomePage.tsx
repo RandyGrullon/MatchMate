@@ -1,47 +1,36 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Compass, Crown, LayoutGrid, PencilLine } from 'lucide-react';
+import { Crown, PencilLine } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
-import { usePublicLeagues } from '../lib/data';
-import { toIsoDate } from '../lib/format';
-import { countBySport, mySportsFirst, offeredSports } from '../lib/sportContext';
 import type { League } from '../lib/types';
-import { useNow } from '../lib/useNow';
 import { recentEvents, resumeElsewhere, scorePath, startedGames, useMemoryTick, type RecentEvent } from '../lib/useNextGame';
 import { leagueSport, sportsOf } from '../sports/registry';
-import { openSports, useSportStatus } from '../sports/status';
+import { useSportStatus } from '../sports/status';
 import { useCreateMenu } from '../components/CreateMenu';
-import { AgendaLinkCard } from '../components/home/AgendaLinkCard';
+import { Landing } from '../components/cuenta/Landing';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { HomeHeader } from '../components/home/HomeHeader';
 import { CalendarSheet, ModeSheet, WhereSheet } from '../components/home/HomeSheets';
 import { HomeStats } from '../components/home/HomeStats';
 import { JoinLeagueCard } from '../components/home/JoinLeagueCard';
 import { LiveSectionPro, ToDoSection, WeekStrip, toDoOf } from '../components/home/ProSections';
-import { PublicLeagues } from '../components/home/PublicLeagues';
 import { useRsvp } from '../components/home/RsvpButton';
-import { Section, SectionLink } from '../components/home/Section';
-import { SportPickerRow } from '../components/home/SportPickerRow';
 import { SportTint } from '../components/home/SportTint';
 import { IdleCard, NextUpCard, QuietLink, TodayCard } from '../components/home/TodayCard';
 import { UpNext, canRsvp } from '../components/home/UpNext';
 import { useActivity, useMyLeagues, type Activity } from '../components/home/useHomeData';
 import { useHomeNotices } from '../components/home/useHomeNotices';
-import { Welcome } from '../components/home/Welcome';
 import { LiveMatchesCard, NextMatchCard } from '../components/LiveNowMatches';
 import { useMode } from '../components/mode';
 import { NoticeSlot } from '../components/NoticeSlot';
 import { useNotifications } from '../components/Notifications';
 import { AppShell } from '../components/Shell';
-import { ListSkeleton, LoadError, Loading, Skeleton } from '../components/ui';
+import { LoadError, Loading, Skeleton } from '../components/ui';
 import type { LeagueFeed } from '../lib/data';
 
-/** Ligas públicas que se muestran en la portada sin cuenta. */
-const WELCOME_PUBLIC = 5;
-
 /**
- * Hoy (`/`), el único inicio (rediseño «Calma y foco»; `/d/:sport` lleva aquí). Sin cuenta: la portada con los deportes
- * y las ligas públicas. Con cuenta, de todos tus deportes:
+ * Hoy (`/`), el único inicio (rediseño «Calma y foco»; `/d/:sport` lleva aquí). Sin cuenta: la portada (Landing) con
+ * «Crear mi cuenta» y las ligas abiertas. Con cuenta, de todos tus deportes:
  * - Lite: la fecha, «Hola, Ana» y la campana; lo de hoy UNA vez (TodayCard: tus juegos y un botón, o tu próxima fecha
  *   con «Voy»); tu promedio y tu lugar (abre la Tabla); «Lo que viene» con «Voy» en línea y el Calendario en una hoja.
  * - Pro: lo mismo más denso, con «Planilla», «Por hacer», «En vivo» y «Esta semana» (y la etiqueta «PRO ▾»).
@@ -54,42 +43,14 @@ export default function HomePage() {
   return auth.user ? <Hoy /> : <SignedOutHome />;
 }
 
-/** Sin cuenta: qué es MatchMate, los deportes, «¿Dónde juego esta semana?» y las ligas públicas. */
+/**
+ * Sin cuenta: la portada (Landing): qué es MatchMate en un título y una línea, «Crear mi cuenta», las ligas abiertas y
+ * «¿Dónde juego esta semana?». Los deportes uno por uno están en Acerca de y en Ligas abiertas.
+ */
 function SignedOutHome() {
-  const auth = useAuth();
-  const { status } = useSportStatus(auth.isSuper);
-  const publics = usePublicLeagues();
-  const today = toIsoDate(useNow());
-  const counts = useMemo(() => countBySport([]), []);
-  const sports = useMemo(
-    () => mySportsFirst(offeredSports({ status, isSuper: auth.isSuper, mine: [], visible: sportsOf(publics.data) }), counts),
-    [status, auth.isSuper, publics.data, counts],
-  );
   return (
     <AppShell>
-      <div className="flex flex-col gap-6">
-        <Welcome open={openSports(status)} />
-        <Section title="Elige tu deporte" icon={<LayoutGrid className="size-4" aria-hidden="true" />}>
-          <SportPickerRow sports={sports} counts={counts} status={status} />
-        </Section>
-        <AgendaLinkCard />
-        <Section title="Ligas públicas" icon={<Compass className="size-4" aria-hidden="true" />} action={<SectionLink to="/ligas">Ver todas</SectionLink>}>
-          {publics.loading && !publics.data.length ? (
-            <ListSkeleton rows={3} />
-          ) : publics.error && !publics.data.length ? (
-            // Sin señal o muchas visitas seguidas sin cuenta: no es que no haya ligas.
-            <LoadError error={publics.error} />
-          ) : (
-            <PublicLeagues
-              leagues={publics.data}
-              today={today}
-              showSport={sportsOf(publics.data).length > 1}
-              limit={WELCOME_PUBLIC}
-              emptyText="Todavía no hay ligas públicas. Crea tu cuenta y arma la primera."
-            />
-          )}
-        </Section>
-      </div>
+      <Landing />
     </AppShell>
   );
 }

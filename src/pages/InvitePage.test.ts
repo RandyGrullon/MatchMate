@@ -120,6 +120,13 @@ describe('pantalla de una invitación', () => {
     expect(t).toContain('12 miembros');
     expect(t).toContain('Aceptar');
     expect(t).toContain('Rechazar');
+    // Rediseño: «‹ Avisos» arriba, el nombre grande, «Boliche · Liga privada» en una línea y los datos en filas.
+    expect(t).toContain('Avisos');
+    expect(out).toContain('class="mt-1 text-title');
+    expect(t).toContain('Boliche · Liga privada');
+    expect(t).toContain('Ya están 12 miembros');
+    // Un solo botón principal (Aceptar); Rechazar en gris.
+    expect(out.match(/bg-accent text-accent-fg/g)).toHaveLength(1);
     // Sin jugadores libres no hay «¿Quién eres?».
     expect(out).not.toContain('type="radio"');
   });

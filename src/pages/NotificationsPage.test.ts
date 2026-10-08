@@ -109,11 +109,15 @@ beforeEach(() => {
 });
 
 describe('página de avisos', () => {
-  it('sin cuenta: invita a entrar y vuelve a /avisos', () => {
+  it('sin cuenta: invita a entrar y vuelve a /avisos, en una tarjeta con un solo botón', () => {
     state.auth = { user: null, loading: false };
     const out = render();
     expect(text(out)).toContain('Entra para ver tus avisos');
     expect(out).toContain('href="/login?next=%2Favisos"');
+    // Ya no es el cuadro de borde punteado: una tarjeta del rediseño y el botón grande.
+    expect(out).not.toContain('border-dashed');
+    const entrar = /<a [^>]*href="\/login\?next=%2Favisos"[^>]*>/.exec(out)?.[0] ?? '';
+    expect(entrar).toContain('h-btn');
   });
 
   it('arriba: «‹ Hoy» (se llega con la campana de Hoy), el título grande y el único aviso de la pantalla', () => {
@@ -123,9 +127,9 @@ describe('página de avisos', () => {
     // El aviso (instalar o activar las notificaciones) va en su lugar, antes de las invitaciones y la lista.
     expect(out).toContain('data-slot');
     expect(out.indexOf('data-slot')).toBeLessThan(out.indexOf('Aviso partido'));
-    // Sin cuenta también se puede volver a Hoy.
+    // Sin cuenta también se puede volver: a la portada, que sin cuenta se llama «Inicio» (como en la barra de abajo).
     state.auth = { user: null, loading: false };
-    expect(render()).toMatch(/<a [^>]*href="\/"[^>]*>.*?Hoy<\/a>/);
+    expect(render()).toMatch(/<a [^>]*href="\/"[^>]*>.*?Inicio<\/a>/);
   });
 
   it('todos los avisos, por grupo, con lo sin leer y «Marcar todo como leído»', () => {

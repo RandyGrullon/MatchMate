@@ -3,7 +3,7 @@ import { CheckCircle2, Trash2 } from 'lucide-react';
 import { deleteReportedComment, reportErrorText, useReports, type Report, type ReportFilter } from '../../lib/data/reports';
 import { useLeagueCtx } from '../../lib/league';
 import { useFeedback } from '../feedback';
-import { Button, Card, Empty, ListSkeleton, LoadError, Tabs } from '../ui';
+import { Button, Card, ListSkeleton, LoadError, Segmented } from '../ui';
 import { ReportItem, ResolveButtons } from './ReportItem';
 
 const PAGE = 50;
@@ -22,17 +22,17 @@ export function LeagueReportsPanel() {
   const closed = Math.max(0, all - open);
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">
-        Lo que alguien reportó en tu liga: comentarios, avisos y juegos. No sabes quién lo reportó, y la persona reportada tampoco. El equipo
-        de MatchMate también lo ve. Si reportan algo tuyo, no sale aquí: lo revisa solo el equipo de MatchMate.
-      </p>
-      <Tabs<Exclude<ReportFilter, 'all'>>
-        items={[
-          { key: 'open', label: 'Abiertos', count: open },
-          { key: 'closed', label: 'Cerrados', count: closed },
+    <div className="flex flex-col gap-3.5">
+      {/* Una línea, no cuatro: quién lo ve y que nadie sabe quién reportó. */}
+      <p className="mx-1 text-meta text-muted">Comentarios, avisos y juegos de tu liga. Nadie sabe quién los reportó.</p>
+      <Segmented<Exclude<ReportFilter, 'all'>>
+        label="Qué reportes ver"
+        full
+        options={[
+          { key: 'open', label: open > 0 ? `Abiertos (${open})` : 'Abiertos' },
+          { key: 'closed', label: closed > 0 ? `Cerrados (${closed})` : 'Cerrados' },
         ]}
-        active={filter}
+        value={filter}
         onChange={setFilter}
       />
       {list.error && !rows.length ? (
@@ -40,11 +40,17 @@ export function LeagueReportsPanel() {
       ) : list.loading && !rows.length ? (
         <ListSkeleton rows={3} />
       ) : !rows.length ? (
-        <Empty icon={<CheckCircle2 className="size-8" />} title={filter === 'open' ? 'Nada por revisar' : 'Todavía no hay reportes cerrados'}>
-          {filter === 'open' ? 'Cuando alguien reporte algo de tu liga, sale aquí.' : 'Los que descartes o atiendas quedan aquí.'}
-        </Empty>
+        <Card className="flex flex-col items-center px-5 py-8 text-center">
+          <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+            <CheckCircle2 className="size-7" />
+          </span>
+          <h2 className="mt-4 text-section">{filter === 'open' ? 'Nada por revisar' : 'Todavía no hay reportes cerrados'}</h2>
+          <p className="mt-1.5 max-w-sm text-meta text-muted">
+            {filter === 'open' ? 'Cuando alguien reporte algo de tu liga, sale aquí.' : 'Los que descartes o atiendas quedan aquí.'}
+          </p>
+        </Card>
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <ol className="divide-y divide-line">
             {rows.map((r) => (
               <ReportItem key={r.id} report={r} actions={r.status === 'open' ? <LeagueActions report={r} /> : undefined} />
@@ -83,7 +89,7 @@ function LeagueActions({ report }: { report: Report }) {
   return (
     <>
       {report.kind === 'comment' && report.target && (
-        <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} loading={busy} onClick={removeComment} className="text-danger max-sm:h-11">
+        <Button variant="ghost" icon={<Trash2 className="size-4" />} loading={busy} onClick={removeComment} className="h-11 rounded-full! text-danger!">
           Borrar comentario
         </Button>
       )}

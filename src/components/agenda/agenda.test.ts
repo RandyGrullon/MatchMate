@@ -3,7 +3,7 @@ import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { AgendaItem } from '../../lib/data/agenda';
-import { AgendaCard } from '../../pages/AgendaPage';
+import { AgendaRow, agendaLine, agendaView } from '../../pages/AgendaPage';
 import { AgendaLinkCard } from '../home/AgendaLinkCard';
 import {
   agendaCardNote,
@@ -135,23 +135,31 @@ describe('agenda: textos de cada tarjeta', () => {
 });
 
 describe('agenda: pantallas', () => {
-  it('la tarjeta: qué, a qué hora, dónde, cuántos y «Me apunto»', () => {
-    const t = text(render(h(AgendaCard, { item: item({ taken: 5 }), onJoin: () => undefined })));
-    expect(t).toContain('Liga Abierta');
-    expect(t).toContain('7:00 pm');
-    expect(t).toContain('Bowling Center');
-    expect(t).toContain('5 van');
+  it('la fila: la fecha (OCT / 6), qué, el día, la hora, la liga, dónde, cuántos y «Me apunto»; toda la fila abre el evento', () => {
+    const out = render(h(AgendaRow, { item: item({ taken: 5 }), today: '2026-10-01', onJoin: () => undefined }));
+    const t = text(out);
+    expect(t).toContain('OCT 6');
+    expect(t).toContain('Martes · 7:00 pm · Liga Abierta · Bowling Center · 5 van');
     expect(t).toContain('Me apunto');
-    expect(t).toContain('Ver evento');
+    expect(out).toContain(`href="${item().url}"`);
+    expect(out).toContain('aria-label="Me apunto a');
   });
 
   it('ya apuntado: dice cómo quedó en vez del botón', () => {
-    expect(text(render(h(AgendaCard, { item: item({ mine: true }), onJoin: () => undefined })))).not.toContain('Me apunto');
-    expect(text(render(h(AgendaCard, { item: item({ mine: true }), onJoin: () => undefined })))).toContain('Vas');
-    expect(text(render(h(AgendaCard, { item: item({ join: 'signup' }), joined: 'En espera', onJoin: () => undefined })))).toContain('En espera');
-    const later = text(render(h(AgendaCard, { item: item({ join: 'signup', timeLabel: null, until: '2026-10-05T22:00:00Z' }), onJoin: () => undefined })));
-    expect(later).toContain('Hora por confirmar');
-    expect(later).toContain('Inscripción hasta el');
+    const row = (over: Partial<AgendaItem>, joined?: string) => text(render(h(AgendaRow, { item: item(over), today: '2026-10-06', joined, onJoin: () => undefined })));
+    expect(row({ mine: true })).not.toContain('Me apunto');
+    expect(row({ mine: true })).toContain('Vas');
+    expect(row({ join: 'signup' }, 'En espera')).toContain('En espera');
+    const later = row({ join: 'signup', timeLabel: null, until: '2026-10-05T22:00:00Z' });
+    expect(later).toContain('Hoy · Liga Abierta');
+    expect(later).toContain('hasta el');
+  });
+
+  it('el Calendario: «Tus ligas» con ?ver=mias (si tienes ligas); si no, lo abierto', () => {
+    expect(agendaView('mias', true)).toBe('mias');
+    expect(agendaView('mias', false)).toBe('abiertas');
+    expect(agendaView(null, true)).toBe('abiertas');
+    expect(agendaLine(item({ venue: '' }), '2026-10-06')).toBe('Hoy · 7:00 pm · Liga Abierta · 3 van');
   });
 
   it('la entrada del Home y la del Home del deporte (con el deporte en el link)', () => {

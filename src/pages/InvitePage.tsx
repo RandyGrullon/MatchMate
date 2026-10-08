@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Ban, CircleCheck, ClipboardPen, Globe, Lock, LogIn, MailX, Ticket, Trophy, UserPlus, Users, X } from 'lucide-react';
+import { Ban, CircleCheck, ClipboardPen, MailX, Ticket, UserPlus, X } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { respondErrorText, respondInvite, useInviteDetails, type InviteStatus, type LeagueInviteDetails } from '../lib/data/invites';
 import { AppShell } from '../components/Shell';
-import { BackLink } from '../components/BackLink';
 import { useFeedback } from '../components/feedback';
 import { LeagueLogo } from '../components/home/LeagueCard';
-import { INFO_FORMAT, InfoItem, InfoList } from '../components/league/LeagueInfo';
+import { INFO_FORMAT } from '../components/league/LeagueInfo';
 import { countLabel, guessPlayer, infoRows, peopleWord } from '../components/league/logic';
 import { SportTheme } from '../components/league/SportTheme';
 import { joinClaimMessage, WhoAreYouList, type WhoChoice } from '../components/league/WhoAreYou';
@@ -23,17 +22,19 @@ import {
   scorerInviteBody,
 } from '../components/notifications/inviteText';
 import { scorerReach, scorerReachForYou } from '../components/scorers/logic';
-import { Badge, Button, Card, Empty, Loading, LoadError } from '../components/ui';
-import { SportBadge, SportIcon } from './sports/SportBits';
-
-const linkBtn = 'inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition active:scale-[0.97]';
+import { DeadInvite, InfoCard, InviteHero, heroArtClass } from '../components/screens/InviteBits';
+import { ScreenTop, SignInCard, linkButton } from '../components/screens/ScreenBits';
+import { Button, Card, Loading, LoadError } from '../components/ui';
+import { SportIcon } from './sports/SportBits';
+import { sportMeta } from '../sports/registry';
 
 /**
- * Una invitación a una liga (/invitacion/<id>, el push y el aviso de la campana llevan aquí): quién invitó, la
- * liga (deporte, tipo, lugar, horario y cuántos son), «¿Quién eres?» si el admin ya anotó jugadores sin cuenta, y
- * Aceptar (entra a la liga, como con el código) o Rechazar. Solo la ve la cuenta invitada (el superadmin también,
- * pero sin poder responderla); si ya se respondió, dice cómo quedó. Una invitación de anotador («te invitó a anotar
- * en Copa Aniversario») dice hasta dónde anota y si también juega; «Aceptar y anotar» lleva al torneo.
+ * Una invitación a una liga (/invitacion/<id>, el push y el aviso de la campana llevan aquí), rediseño «Calma y foco»:
+ * «‹ Avisos», el logo, quién invitó y el nombre grande con «Boliche · Liga privada», los datos de la liga en filas
+ * (lugar, horario, temporada y cuántos son), «¿Quién eres?» si el admin ya anotó jugadores sin cuenta, y un solo botón
+ * «Aceptar» (entra a la liga, como con el código) con «Rechazar» debajo. Solo la ve la cuenta invitada (el superadmin
+ * también, pero sin poder responderla); si ya se respondió, dice cómo quedó. Una invitación de anotador («te invitó a
+ * anotar en Copa Aniversario») dice hasta dónde anota y si también juega; «Aceptar y anotar» lleva al torneo.
  */
 export default function InvitePage() {
   const { inviteId = '' } = useParams();
@@ -46,17 +47,16 @@ export default function InvitePage() {
     const next = encodeURIComponent(`/invitacion/${inviteId}`);
     return (
       <AppShell>
-        <Empty icon={<Ticket className="size-7" aria-hidden="true" />} title="Entra para ver tu invitación">
-          Entra con la cuenta a la que te invitaron para unirte a la liga.
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Link to={`/login?next=${next}`} className={`${linkBtn} border border-line text-fg hover:bg-surface-2`}>
-              <LogIn className="size-4" aria-hidden="true" /> Entrar
-            </Link>
-            <Link to={`/login?modo=registro&next=${next}`} className={`${linkBtn} bg-accent text-accent-fg`}>
-              <UserPlus className="size-4" aria-hidden="true" /> Crear cuenta
-            </Link>
-          </div>
-        </Empty>
+        <div className="mx-auto flex max-w-md flex-col px-2">
+          <ScreenTop label="Avisos" fallback="/avisos" />
+          <SignInCard
+            className="mt-2"
+            icon={<Ticket />}
+            title="Entra para ver tu invitación"
+            text="Entra con la cuenta a la que te invitaron."
+            next={next}
+          />
+        </div>
       </AppShell>
     );
   }
@@ -64,25 +64,20 @@ export default function InvitePage() {
 
   return (
     <AppShell>
-      <BackLink fallback="/avisos" className="-ml-2 mb-2 flex size-11 items-center justify-center p-0" />
-      {details.error && !d ? (
-        <LoadError error={details.error} />
-      ) : !d ? (
-        <Empty icon={<MailX className="size-7" aria-hidden="true" />} title="Esta invitación no existe o no es para ti.">
-          Revisa que entraste con la cuenta a la que te invitaron.
-          <div className="mt-4 flex justify-center">
-            <Link to="/ligas" className={`${linkBtn} font-semibold text-accent hover:bg-accent-soft`}>
-              Ver ligas
-            </Link>
-          </div>
-        </Empty>
-      ) : !d.mine ? (
-        <OtherInvite invite={d} />
-      ) : d.status === 'pending' && !d.member ? (
-        <PendingInvite key={d.id} invite={d} />
-      ) : (
-        <DecidedInvite invite={d} />
-      )}
+      <div className="mx-auto flex max-w-md flex-col px-2">
+        <ScreenTop label="Avisos" fallback="/avisos" />
+        {details.error && !d ? (
+          <LoadError error={details.error} />
+        ) : !d ? (
+          <DeadInvite icon={<MailX />} title="Esta invitación no existe o no es para ti." text="Revisa que entraste con la cuenta a la que te invitaron." />
+        ) : !d.mine ? (
+          <OtherInvite invite={d} />
+        ) : d.status === 'pending' && !d.member ? (
+          <PendingInvite key={d.id} invite={d} />
+        ) : (
+          <DecidedInvite invite={d} />
+        )}
+      </div>
     </AppShell>
   );
 }
@@ -95,16 +90,18 @@ function OtherInvite({ invite: d }: { invite: LeagueInviteDetails }) {
   const noun = leagueNoun(d.league.kind);
   const line = `${who ? `${who} invitó` : 'Invitaron'} a otra cuenta a ${d.league.name || noun}. Está ${STATUS_WORD[d.status]}: solo esa cuenta la puede responder.`;
   return (
-    <Empty icon={<Ticket className="size-7" />} title="Esta invitación es de otra cuenta">
-      {line}
-      {d.league.id && (
-        <div className="mt-4 flex justify-center">
-          <Link to={`/l/${d.league.id}`} className={`${linkBtn} font-semibold text-accent hover:bg-accent-soft`}>
+    <DeadInvite
+      icon={<Ticket />}
+      title="Esta invitación es de otra cuenta"
+      text={line}
+      action={
+        d.league.id ? (
+          <Link to={`/l/${d.league.id}`} className={linkButton('quiet', 'w-full')}>
             Ir a {noun}
           </Link>
-        </div>
-      )}
-    </Empty>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -112,22 +109,20 @@ function OtherInvite({ invite: d }: { invite: LeagueInviteDetails }) {
 function DecidedInvite({ invite: d }: { invite: LeagueInviteDetails }) {
   const status = inviteOutcomeOf(d.status, d.member);
   const { title, body } = inviteOutcome(status, d.league.kind, d.league.name);
-  const icon = status === 'accepted' ? <CircleCheck className="size-7" /> : status === 'declined' ? <X className="size-7" /> : <Ban className="size-7" />;
+  const icon = status === 'accepted' ? <CircleCheck /> : status === 'declined' ? <X /> : <Ban />;
   return (
-    <Empty icon={icon} title={title}>
-      {body}
-      <div className="mt-4 flex justify-center">
-        {status === 'accepted' && d.league.id ? (
-          <Link to={d.scorer?.path ?? `/l/${d.league.id}`} className={`${linkBtn} bg-accent font-semibold text-accent-fg`}>
+    <DeadInvite
+      icon={icon}
+      title={title}
+      text={body}
+      action={
+        status === 'accepted' && d.league.id ? (
+          <Link to={d.scorer?.path ?? `/l/${d.league.id}`} className={linkButton('primary', 'w-full')}>
             {d.scorer ? 'Ir a anotar' : `Ir a ${leagueNoun(d.league.kind)}`}
           </Link>
-        ) : (
-          <Link to="/ligas" className={`${linkBtn} font-semibold text-accent hover:bg-accent-soft`}>
-            Ver ligas
-          </Link>
-        )}
-      </div>
-    </Empty>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -173,64 +168,47 @@ function PendingInvite({ invite: d }: { invite: LeagueInviteDetails }) {
     }
   }
 
+  const meta = sportMeta(l.sport);
   return (
     <SportTheme sport={l.sport}>
-      <Card className="mx-auto flex max-w-md flex-col items-center gap-4 p-6 text-center">
-        <LeagueLogo path={l.logoPath} className="size-20 rounded-3xl">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-            <SportIcon sport={l.sport} className="size-7" />
-          </div>
-        </LeagueLogo>
-        <div className="flex flex-col items-center gap-1.5">
-          {sc ? (
-            <>
-              <p className="text-sm text-muted">{invitedByLine(d.invitedBy)} a anotar en</p>
-              <h1 className="text-xl font-bold tracking-tight break-words">{sc.title || l.name || 'Un torneo'}</h1>
-              {sc.title && l.name && sc.title !== l.name && <p className="text-sm text-muted break-words">{l.name}</p>}
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-muted">
-                {invitedByLine(d.invitedBy)} {torneo ? 'al torneo' : 'a la liga'}
-              </p>
-              <h1 className="text-xl font-bold tracking-tight break-words">{l.name || 'Una liga'}</h1>
-            </>
-          )}
-          <div className="flex flex-wrap justify-center gap-1.5">
-            {l.sport && <SportBadge sport={l.sport} />}
-            <Badge tone="neutral">
-              {torneo ? <Trophy className="size-3" /> : l.visibility === 'public' ? <Globe className="size-3" /> : <Lock className="size-3" />}
-              {leagueTypeLabel(l.kind, l.visibility)}
-            </Badge>
-          </div>
-        </div>
+      <InviteHero
+        art={
+          <LeagueLogo path={l.logoPath} className={heroArtClass}>
+            <div className={`${heroArtClass} flex items-center justify-center bg-accent-soft text-accent`}>
+              <SportIcon sport={l.sport} className="size-10" />
+            </div>
+          </LeagueLogo>
+        }
+        kicker={sc ? `${invitedByLine(d.invitedBy)} a anotar en` : `${invitedByLine(d.invitedBy)} ${torneo ? 'al torneo' : 'a la liga'}`}
+        title={sc ? sc.title || l.name || 'Un torneo' : l.name || 'Una liga'}
+        sub={sc && sc.title && l.name && sc.title !== l.name ? l.name : undefined}
+        meta={[meta?.short, leagueTypeLabel(l.kind, l.visibility)].filter(Boolean).join(' · ')}
+      />
 
-        {sc && (
-          <p className="flex w-full items-start gap-2 rounded-xl bg-surface-2 px-3 py-2 text-left text-sm">
-            <ClipboardPen className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-            {scorerInviteBody(scorerReachForYou(scorerReach({ id: l.id, kind: l.kind, sport: l.sport })), sc.asPlayer)}
-          </p>
+      {sc && (
+        <p className="mx-1 mt-5 flex items-start gap-2.5 text-meta text-fg-2">
+          <ClipboardPen className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden="true" />
+          {scorerInviteBody(scorerReachForYou(scorerReach({ id: l.id, kind: l.kind, sport: l.sport })), sc.asPlayer)}
+        </p>
+      )}
+
+      <InfoCard className="mt-6" rows={rows} leagueName={l.name} members={l.members > 0 ? countLabel(l.members, ['miembro', 'miembros']) : null} />
+
+      <div className="mt-6 flex flex-col gap-5">
+        {players.length > 0 && (
+          <Card className="p-4">
+            <WhoAreYouList players={players} value={picked} onChange={setChoice} people={peopleWord(l.sport)} />
+          </Card>
         )}
-
-        <InfoList
-          rows={rows}
-          leagueName={l.name}
-          className="w-full border-t border-line pt-4"
-          extra={l.members > 0 ? <InfoItem icon={<Users className="size-4" />} label="Ya están" value={countLabel(l.members, ['miembro', 'miembros'])} /> : undefined}
-        />
-
-        <div className="flex w-full flex-col gap-4">
-          {players.length > 0 && <WhoAreYouList players={players} value={picked} onChange={setChoice} people={peopleWord(l.sport)} />}
-          <div className="flex flex-col gap-2">
-            <Button variant="primary" className="h-11 w-full" loading={busy === 'accept'} disabled={!!busy} onClick={() => void respond(true)} icon={<UserPlus className="size-4" />}>
-              <span className="min-w-0 truncate">{pickedName ? `Aceptar como ${pickedName}` : sc ? 'Aceptar y anotar' : 'Aceptar'}</span>
-            </Button>
-            <Button className="h-11 w-full" loading={busy === 'decline'} disabled={!!busy} onClick={() => void respond(false)}>
-              Rechazar
-            </Button>
-          </div>
+        <div className="flex flex-col gap-2.5">
+          <Button variant="primary" size="xl" className="w-full" loading={busy === 'accept'} disabled={!!busy} onClick={() => void respond(true)} icon={<UserPlus className="size-5" />}>
+            {pickedName ? `Aceptar como ${pickedName}` : sc ? 'Aceptar y anotar' : 'Aceptar'}
+          </Button>
+          <Button variant="quiet" size="xl" className="w-full" loading={busy === 'decline'} disabled={!!busy} onClick={() => void respond(false)}>
+            Rechazar
+          </Button>
         </div>
-      </Card>
+      </div>
     </SportTheme>
   );
 }

@@ -1,27 +1,27 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
-import { LogIn, Plus, Trophy, UserPlus } from 'lucide-react';
+import { useLocation, useSearchParams } from 'react-router';
+import { Plus, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { BALL_MAX, ballStats, bestBallText, resurfaceQuestion, type Ball } from '../lib/balls';
 import { ballErrorText, resurfaceBall, retireBall, useMyBallGames, useMyBalls } from '../lib/data/balls';
 import { formatDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
-import { BackLink } from '../components/BackLink';
 import { BallDesigner } from '../components/balls/BallDesigner';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallSheet } from '../components/balls/BallSheet';
 import { BallCard } from '../components/balls/BallStats';
 import { useFeedback } from '../components/feedback';
+import { ScreenTitle, ScreenTop, SignInCard } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
-import { Button, Empty, ListSkeleton, Loading, LoadError } from '../components/ui';
+import { Button, Card, ListSkeleton, Loading, LoadError, SectionHeader } from '../components/ui';
 
 /**
- * Mis bolas (/bolas): las bolas de boliche de la cuenta, dibujadas con su diseño, con sus números (juegos, promedio, el
- * más alto y strikes de los juegos anotados por cuadros), con cuál tiras mejor y cuántos juegos lleva cada una desde la
- * última pulida (a los 60, avisa). Se agregan, cambian, diseñan, pulen, retiran y borran aquí; la bola de cada juego se
- * elige al anotarlo (juegos sueltos, «Mis juegos» y «Subir mis juegos» en la liga). `?bola=<id>` abre esa; `?nueva=1`,
- * una nueva; `?disenar=<id>`, el creador de esa. Solo la cuenta ve sus bolas. Sin cuenta, invita a entrar y vuelve
- * aquí.
+ * Mis bolas (/bolas), rediseño «Calma y foco»: «‹ Yo», el título y una línea; con cuál tiras mejor (una sola línea), cada
+ * bola en su tarjeta (dibujada con su diseño, sus números en una fila y cuántos juegos lleva desde la última pulida, con
+ * «La pulí hoy»; Editar, Diseñar y Retirar en su «•••»), un solo botón «Agregar bola» y las retiradas aparte. La bola de
+ * cada juego se elige al anotarlo (juegos sueltos, «Mis juegos» y «Subir mis juegos» en la liga). `?bola=<id>` abre esa;
+ * `?nueva=1`, una nueva; `?disenar=<id>`, el creador de esa. Solo la cuenta ve sus bolas. Sin cuenta, invita a entrar y
+ * vuelve aquí.
  */
 export default function BallsPage() {
   const auth = useAuth();
@@ -39,25 +39,16 @@ export default function BallsPage() {
     const next = encodeURIComponent(location.pathname + location.search);
     return (
       <AppShell>
-        <div className="flex flex-col gap-5">
-          <h1 className="text-2xl font-bold tracking-tight">Mis bolas</h1>
-          <Empty icon={<BallIcon className="size-8" />} title="Entra para registrar tus bolas">
-            Anota con qué bola tiras cada juego y mira con cuál te va mejor y cuándo toca pulirla.
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <Link
-                to={`/login?next=${next}`}
-                className="inline-flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2"
-              >
-                <LogIn className="size-4" aria-hidden="true" /> Entrar
-              </Link>
-              <Link
-                to={`/login?modo=registro&next=${next}`}
-                className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg"
-              >
-                <UserPlus className="size-4" aria-hidden="true" /> Crear cuenta
-              </Link>
-            </div>
-          </Empty>
+        <div className="flex flex-col px-2">
+          <ScreenTop label="Yo" fallback="/perfil" />
+          <ScreenTitle title="Mis bolas" />
+          <SignInCard
+            className="mt-5"
+            icon={<BallIcon />}
+            title="Entra para registrar tus bolas"
+            text="Mira con cuál te va mejor y cuándo toca pulirla."
+            next={next}
+          />
         </div>
       </AppShell>
     );
@@ -142,6 +133,12 @@ function Balls() {
     await act(id, () => retireBall(id, on), on ? 'Bola retirada' : 'Bola de vuelta');
   }
 
+  // El único botón principal de la pantalla.
+  const add = (
+    <Button variant="primary" size="xl" className="w-full" icon={<Plus className="size-5" strokeWidth={2.4} />} disabled={full} onClick={() => setOpen('nueva')}>
+      Agregar bola
+    </Button>
+  );
   let content;
   if (mine.loading && !balls.length) {
     content = <ListSkeleton rows={2} />;
@@ -149,21 +146,21 @@ function Balls() {
     content = <LoadError error={mine.error} />;
   } else if (!balls.length) {
     content = (
-      <Empty icon={<BallIcon className="size-8" />} title="Todavía no tienes bolas">
-        Registra tus bolas y elige con cuál tiras cada juego al anotarlo: verás con cuál te va mejor y cuándo toca pulirla.
-        <div className="mt-4 flex justify-center">
-          <Button variant="primary" className="h-11" icon={<Plus className="size-4" />} onClick={() => setOpen('nueva')}>
-            Agregar bola
-          </Button>
-        </div>
-      </Empty>
+      <Card className="flex flex-col items-center px-5 pt-7 pb-5 text-center">
+        <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+          <BallIcon className="size-7" />
+        </span>
+        <h2 className="mt-4 text-card-title">Todavía no tienes bolas</h2>
+        <p className="mt-2 max-w-sm text-body text-muted">Elige con cuál tiras cada juego al anotarlo y verás con cuál te va mejor.</p>
+        <div className="mt-6 w-full">{add}</div>
+      </Card>
     );
   } else {
     content = (
       <>
         {best && (
-          <p className="flex items-start gap-2 rounded-xl bg-accent-soft px-3 py-2.5 text-sm text-accent">
-            <Trophy className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> {best}
+          <p className="flex items-center gap-3 rounded-2xl bg-accent-soft py-3 pr-4 pl-3.5 text-meta font-[550] text-accent">
+            <Trophy className="size-5 shrink-0" aria-hidden="true" /> {best}
           </p>
         )}
         {games.error && !games.data.length && <LoadError error={games.error} />}
@@ -178,13 +175,11 @@ function Balls() {
             onRetire={() => void retire(s.ball.id, s.ball.name, true)}
           />
         ))}
-        <Button variant="primary" className="h-11" icon={<Plus className="size-4" />} disabled={full} onClick={() => setOpen('nueva')}>
-          Agregar bola
-        </Button>
-        {full && <p className="text-center text-xs text-muted">Ya tienes {BALL_MAX} bolas: borra una que ya no uses para agregar otra.</p>}
+        {add}
+        {full && <p className="-mt-2 text-center text-[13px] text-muted">Ya tienes {BALL_MAX} bolas: borra una que ya no uses para agregar otra.</p>}
         {retired.length > 0 && (
-          <section className="flex flex-col gap-3" aria-label="Retiradas">
-            <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">Retiradas</h2>
+          <section className="flex flex-col gap-3.5" aria-labelledby="bolas-retiradas">
+            <SectionHeader id="bolas-retiradas" title="Retiradas" className="mb-0!" />
             {retired.map((s) => (
               <BallCard
                 key={s.ball.id}
@@ -198,26 +193,17 @@ function Balls() {
             ))}
           </section>
         )}
-        <p className="text-xs text-muted">
-          Elige la bola al anotar cada juego: en tus juegos sueltos y en tus juegos de la liga («Mis juegos» y «Subir mis
-          juegos»). Los promedios usan los juegos que ya cuentan en cada liga; strikes y spares, los anotados por cuadros.
-          Solo tú ves tus bolas.
-        </p>
+        <p className="mx-1 text-[13px] text-muted">Elige la bola al anotar cada juego. Strikes y spares salen de los juegos anotados por cuadros.</p>
       </>
     );
   }
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start gap-2">
-          <BackLink fallback="/perfil" className="-ml-2 flex size-11 items-center justify-center p-0" />
-          <div className="min-w-0 pt-0.5">
-            <h1 className="text-2xl font-bold tracking-tight">Mis bolas</h1>
-            <p className="text-sm text-muted">Con cuál tiras mejor y cuándo toca pulirlas</p>
-          </div>
-        </div>
-        {content}
+      <div className="flex flex-col px-2">
+        <ScreenTop label="Yo" fallback="/perfil" />
+        <ScreenTitle title="Mis bolas" hint="Solo tú ves tus bolas" />
+        <div className="mt-5 flex flex-col gap-3.5">{content}</div>
       </div>
       {designing ? (
         <BallDesigner key={designing.id} ball={designing} onClose={() => setOpen(null)} />

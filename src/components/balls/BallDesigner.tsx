@@ -24,7 +24,7 @@ import {
 } from '../../lib/ballDesign';
 import { ballDesignErrorText, setBallDesign } from '../../lib/data/balls';
 import { useFeedback } from '../feedback';
-import { Button, Input, Sheet, cx } from '../ui';
+import { Button, Input, Segmented, Sheet, cx } from '../ui';
 import { BallArt, StickerArt } from './BallArt';
 import {
   COLOR_SLOTS,
@@ -166,10 +166,10 @@ export function BallDesigner({ ball, onClose }: { ball: Ball; onClose: () => voi
       subtitle="Colores, dibujo y figuras"
       footer={
         <div className="flex items-center gap-2">
-          <Button variant="ghost" className="h-11" icon={<RotateCcw className="size-4" />} disabled={busy || sameBallDesign(draft, plain)} onClick={() => void reset()}>
+          <Button variant="quiet" size="xl" icon={<RotateCcw className="size-4" />} disabled={busy || sameBallDesign(draft, plain)} onClick={() => void reset()}>
             Restablecer
           </Button>
-          <Button variant="primary" className="h-11 flex-1" loading={busy} disabled={busy} onClick={() => void save()}>
+          <Button variant="primary" size="xl" className="flex-1" loading={busy} disabled={busy} onClick={() => void save()}>
             Guardar
           </Button>
         </div>
@@ -192,26 +192,26 @@ export function BallDesigner({ ball, onClose }: { ball: Ball; onClose: () => voi
           </div>
         </div>
 
-        <div role="tablist" aria-label="Qué cambias" className="grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
-          {DESIGN_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              className={cx(
-                'flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-                tab === t.key ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
-              )}
-            >
-              {t.label}
-              {t.key === 'figuras' && draft.stickers.length > 0 && (
-                <span className="rounded-full bg-accent px-1.5 text-[11px] leading-4 text-accent-fg">{draft.stickers.length}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Colores · Dibujo · Figuras: un segmentado (son 3), con cuántas figuras lleva. */}
+        <Segmented
+          label="Qué cambias"
+          full
+          value={tab}
+          onChange={setTab}
+          options={DESIGN_TABS.map((t) => ({
+            key: t.key,
+            label: (
+              <>
+                {t.label}
+                {t.key === 'figuras' && draft.stickers.length > 0 && (
+                  <span className="num grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1.5 text-[11px] font-bold tracking-normal text-accent-fg">
+                    {draft.stickers.length}
+                  </span>
+                )}
+              </>
+            ),
+          }))}
+        />
 
         {tab === 'colores' && <DesignColors draft={draft} slot={slot} onSlot={setSlot} onColor={(k, hex) => setDraft((d) => withSlotColor(d, k, hex))} />}
         {tab === 'dibujo' && <DesignPattern draft={draft} onPattern={pickPattern} onChange={change} />}
@@ -251,7 +251,7 @@ export function DesignColors({
   const three = patternInfo(draft.pattern).colors === 3;
   const active: ColorSlot = three ? slot : 'base';
   return (
-    <div role="tabpanel" aria-label="Colores" className="flex flex-col gap-4">
+    <div role="group" aria-label="Colores" className="flex flex-col gap-4">
       {three && (
         <div role="radiogroup" aria-label="Qué color cambias" className="grid grid-cols-3 gap-2">
           {COLOR_SLOTS.map((s) => {
@@ -305,7 +305,7 @@ export function DesignPattern({
   onChange: (patch: Partial<BallDesign>) => void;
 }) {
   return (
-    <div role="tabpanel" aria-label="Dibujo" className="flex flex-col gap-4">
+    <div role="group" aria-label="Dibujo" className="flex flex-col gap-4">
       <div role="radiogroup" aria-label="Dibujo" className="grid grid-cols-4 gap-2">
         {BALL_PATTERNS.map((p) => (
           <PatternChip
@@ -363,7 +363,7 @@ export function DesignStickers({
   // El color con que saldría una nueva: el de los botones para agregar.
   const addColor = newSticker('estrella', draft).color;
   return (
-    <div role="tabpanel" aria-label="Figuras" className="flex flex-col gap-4">
+    <div role="group" aria-label="Figuras" className="flex flex-col gap-4">
       <fieldset className="flex min-w-0 flex-col gap-1.5">
         <legend className="mb-1.5 text-xs font-medium text-muted">{`Agregar una figura (${draft.stickers.length} de ${BALL_STICKERS_MAX})`}</legend>
         <div className="grid grid-cols-4 gap-2">

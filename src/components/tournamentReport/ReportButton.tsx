@@ -48,15 +48,16 @@ export function ReportButton({ report, comp, look = 'icon', disabled, className 
   if (look === 'card') {
     return (
       <>
-        <Card className={cx('flex items-center gap-3 border-accent/30 bg-accent-soft/40 p-3', className)}>
+        {/* Una fila en una tarjeta (sin borde de color): el reporte, para quien organiza cuando el torneo terminó. */}
+        <Card className={cx('flex min-h-row items-center gap-3.5 py-2.5 pr-3 pl-5', className)}>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
             <FileDown className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Reporte del torneo</p>
-            <p className="text-xs text-muted">PDF para WhatsApp o imprimir, o Excel.</p>
+            <p className="text-body font-semibold">Reporte del torneo</p>
+            <p className="text-sm text-muted">PDF para WhatsApp o imprimir, o Excel.</p>
           </div>
-          <Button variant="primary" size="sm" disabled={disabled} loading={loading.isBusy()} onClick={() => void start()}>
+          <Button variant="soft" className="h-11 shrink-0 rounded-full!" disabled={disabled} loading={loading.isBusy()} onClick={() => void start()}>
             Descargar
           </Button>
         </Card>

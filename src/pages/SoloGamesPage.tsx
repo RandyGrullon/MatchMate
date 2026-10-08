@@ -1,35 +1,30 @@
 import { useCallback, useMemo } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
-import { BarChart3, CalendarDays, ChevronRight, CloudUpload, Flame, Hash, Heart, Layers, Lock, LogIn, Plus, Target, UserPlus } from 'lucide-react';
+import { useLocation, useSearchParams } from 'react-router';
+import { CloudUpload, Heart, Lock, Plus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { countedFrames, soloStatGames } from '../lib/bowlingStats';
 import { soloByMonth, soloHigh, soloOldestFirst, soloSeries, soloSummary, soloVenues, useMySoloSessions, type SoloSession } from '../lib/data/solo';
-import { formatDate, parseDate, toIsoDate } from '../lib/format';
+import { formatDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
 import { getSport } from '../sports/registry';
-import { BackLink } from '../components/BackLink';
-import { Stat } from '../components/event/StandingsTab';
+import { useIsPro } from '../components/mode';
+import { ScreenTitle, ScreenTop, SignInCard } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
-import { ScoreChips } from '../components/social/GameCard';
 import { SoloGameSheet } from '../components/solo/SoloGameSheet';
-import { FrameStatsPanel } from '../components/stats/FrameStatsPanel';
-import { TrendSection } from '../components/stats/TrendSection';
-import { Button, Card, Empty, ListSkeleton, Loading, LoadError, StatsSkeleton, cx } from '../components/ui';
+import { NumbersGrid, ShotsCard, TrendCard } from '../components/stats/YoStats';
+import { Button, Card, DateBlock, ListRow, ListSkeleton, Loading, LoadError, SectionHeader, Segmented, Skeleton, StatDuo, cx } from '../components/ui';
 
-/** «sáb 27»: el día de la semana y el número, para la columna de la fecha. */
-function dayParts(date: string): { weekday: string; day: string } {
-  const d = parseDate(date);
-  return { weekday: d.toLocaleDateString('es-DO', { weekday: 'short' }).replace('.', ''), day: String(d.getDate()) };
-}
+/** «Por día» (la lista) o «Estadísticas» (la tendencia y tus tiros). */
+type SoloView = 'dias' | 'estadisticas';
 
 /**
- * Juegos sueltos (/juegos-sueltos): los juegos de boliche de la cuenta fuera de una liga o torneo. Arriba los números
- * (juegos, promedio, el más alto y la mejor serie de 3), «Anotar juego suelto» y la lista por mes (la fecha, la bolera,
- * los juegos, la serie y un candado si no sale en el perfil). Tocar uno lo abre para cambiarlo o borrarlo.
- * «Estadísticas» (`?ver=estadisticas`) cambia la lista por la tendencia y lo que sale de los cuadros (porcentajes,
- * pino por pino y spares según lo que quedó).
- * `?juego=<id>` abre ese (los avisos y el perfil llevan aquí); `?nuevo=1`, uno nuevo (el menú Crear y el Home del
- * boliche). Sin cuenta, invita a entrar y vuelve aquí.
+ * Juegos sueltos (/juegos-sueltos), rediseño «Calma y foco»: «‹ Yo», el título y una línea, tus números (Lite: el promedio
+ * y el mejor juego; Pro: los 6 de siempre), un solo botón «Anotar juego suelto» y la lista por mes (la fecha, la bolera,
+ * los juegos y la serie; el candado si no sale en tu perfil y la nube si falta enviarlo). Tocar uno lo abre para
+ * cambiarlo o borrarlo. En Pro, «Por día | Estadísticas» (`?ver=estadisticas`) cambia la lista por la tendencia y tus
+ * tiros (como en Yo).
+ * `?juego=<id>` abre ese (los avisos y el perfil llevan aquí); `?nuevo=1`, uno nuevo (Crear o unirme y «¿Dónde
+ * jugaste?» en Hoy). Sin cuenta, invita a entrar y vuelve aquí.
  */
 export default function SoloGamesPage() {
   const auth = useAuth();
@@ -48,25 +43,16 @@ export default function SoloGamesPage() {
     const Icon = getSport('bowling').icon;
     return (
       <AppShell>
-        <div className="flex flex-col gap-5">
-          <h1 className="text-2xl font-bold tracking-tight">Juegos sueltos</h1>
-          <Empty icon={<Icon className="size-8" aria-hidden="true" />} title="Entra para anotar tus juegos sueltos">
-            Anota los juegos de boliche que haces fuera de una liga o torneo y lleva tu promedio y tus mejores juegos.
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <Link
-                to={`/login?next=${next}`}
-                className="inline-flex h-11 items-center gap-2 rounded-xl border border-line px-4 text-sm font-medium text-fg hover:bg-surface-2"
-              >
-                <LogIn className="size-4" aria-hidden="true" /> Entrar
-              </Link>
-              <Link
-                to={`/login?modo=registro&next=${next}`}
-                className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-fg"
-              >
-                <UserPlus className="size-4" aria-hidden="true" /> Crear cuenta
-              </Link>
-            </div>
-          </Empty>
+        <div className="flex flex-col px-2">
+          <ScreenTop label="Yo" fallback="/perfil" />
+          <ScreenTitle title="Juegos sueltos" />
+          <SignInCard
+            className="mt-5"
+            icon={<Icon />}
+            title="Entra para anotar tus juegos sueltos"
+            text="Lleva tu promedio y tus mejores juegos de boliche fuera de una liga."
+            next={next}
+          />
         </div>
       </AppShell>
     );
@@ -89,6 +75,7 @@ function SoloGames() {
     [sessions.data],
   );
   const frames = useMemo(() => countedFrames(games), [games]);
+  const pro = useIsPro();
   const statsView = params.get('ver') === 'estadisticas';
 
   const openId = params.get('juego');
@@ -125,13 +112,19 @@ function SoloGames() {
     [setParams],
   );
 
+  // El único botón de la pantalla.
+  const add = (
+    <Button variant="primary" size={pro ? 'lg' : 'xl'} className="w-full" icon={<Plus className="size-5" strokeWidth={2.4} />} onClick={() => setOpen('nuevo')}>
+      Anotar juego suelto
+    </Button>
+  );
   // Un link a uno que todavía no está en la lista (la copia del teléfono es vieja) se abre cuando llega; si ya no
   // existe, no se abre nada.
   let content;
   if (sessions.loading && !sessions.data.length) {
     content = (
-      <div className="flex flex-col gap-4" aria-busy="true" aria-label="Cargando tus juegos sueltos">
-        <StatsSkeleton />
+      <div className="flex flex-col gap-3.5" aria-busy="true" aria-label="Cargando tus juegos sueltos">
+        <Skeleton className="h-[104px] rounded-3xl" />
         <ListSkeleton rows={3} />
       </div>
     );
@@ -140,63 +133,66 @@ function SoloGames() {
   } else if (!sessions.data.length) {
     const Icon = getSport('bowling').icon;
     content = (
-      <Empty icon={<Icon className="size-8" aria-hidden="true" />} title="Todavía no tienes juegos sueltos">
-        Anota los juegos que haces fuera de una liga o torneo: tu promedio y tus mejores juegos salen aquí y en tu perfil.
-        <div className="mt-4 flex justify-center">
-          <Button variant="primary" className="h-11" icon={<Plus className="size-4" />} onClick={() => setOpen('nuevo')}>
-            Anotar juego suelto
-          </Button>
-        </div>
-      </Empty>
+      <Card className="flex flex-col items-center px-5 pt-7 pb-5 text-center">
+        <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+          <Icon className="size-7" />
+        </span>
+        <h2 className="mt-4 text-card-title">Todavía no tienes juegos sueltos</h2>
+        <p className="mt-2 max-w-sm text-body text-muted">Tu promedio y tus mejores juegos salen aquí y en tu perfil.</p>
+        <div className="mt-6 w-full">{add}</div>
+      </Card>
     );
   } else {
+    // En Lite la lista; «Estadísticas» es de Pro (si llega un link con ?ver=estadisticas, se ve y se puede volver).
+    const showViews = pro || statsView;
     content = (
       <>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat icon={<Hash className="size-4" />} label="Juegos" value={summary.games} sub={`${summary.sessions} ${summary.sessions === 1 ? 'día' : 'días'}`} />
-          <Stat icon={<Target className="size-4" />} label="Promedio" value={summary.average ?? '—'} />
-          <Stat icon={<Flame className="size-4" />} label="Más alto" value={summary.high || '—'} />
-          <Stat icon={<Layers className="size-4" />} label="Mejor serie" value={summary.bestSeries || '—'} sub="3 juegos seguidos" />
-        </div>
-        <Button variant="primary" className="h-11" icon={<Plus className="size-4" />} onClick={() => setOpen('nuevo')}>
-          Anotar juego suelto
-        </Button>
-        <div role="tablist" aria-label="Qué ver" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1 text-sm">
-          {(
-            [
-              [false, 'Por día', CalendarDays],
-              [true, 'Estadísticas', BarChart3],
-            ] as const
-          ).map(([on, label, Icon]) => (
-            <button
-              key={label}
-              type="button"
-              role="tab"
-              aria-selected={statsView === on}
-              onClick={() => setStatsView(on)}
-              className={cx(
-                'flex min-h-11 items-center justify-center gap-1.5 rounded-lg font-medium transition',
-                statsView === on ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg',
-              )}
-            >
-              <Icon className="size-4" aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
+        {pro ? (
+          <NumbersGrid
+            items={[
+              { label: 'Promedio', value: summary.average ?? '—', accent: true },
+              { label: 'Más alto', value: summary.high || '—' },
+              { label: 'Mejor serie', value: summary.bestSeries || '—' },
+              { label: 'Juegos', value: summary.games },
+              { label: summary.sessions === 1 ? 'Día' : 'Días', value: summary.sessions },
+              { label: 'Por cuadros', value: frames.length },
+            ]}
+          />
+        ) : (
+          <div>
+            <StatDuo left={{ value: summary.average ?? '—', label: 'Promedio' }} right={{ value: summary.high || '—', label: 'Más alto' }} />
+            <p className="mx-1 mt-2.5 text-meta text-muted">
+              {summary.games} {summary.games === 1 ? 'juego' : 'juegos'} en {summary.sessions} {summary.sessions === 1 ? 'día' : 'días'}
+              {summary.bestSeries ? ` · mejor serie ${summary.bestSeries}` : ''}
+            </p>
+          </div>
+        )}
+        {add}
+        {showViews && (
+          <Segmented<SoloView>
+            label="Qué ver"
+            full
+            options={[
+              { key: 'dias', label: 'Por día' },
+              { key: 'estadisticas', label: 'Estadísticas' },
+            ]}
+            value={statsView ? 'estadisticas' : 'dias'}
+            onChange={(k) => setStatsView(k === 'estadisticas')}
+          />
+        )}
         {statsView ? (
-          <>
-            <TrendSection games={games} average={summary.average} heading="h2" />
-            {games.length < 2 && <p className="text-sm text-muted">Con dos juegos o más aquí ves cómo vas.</p>}
-            <FrameStatsPanel frames={frames} games={summary.games} heading="h2" />
-          </>
+          <div className="flex flex-col gap-3.5">
+            <TrendCard games={games} average={summary.average} today={today} />
+            {games.length < 2 && <p className="mx-1 text-meta text-muted">Con dos juegos o más aquí ves cómo vas.</p>}
+            <ShotsCard frames={frames} games={summary.games} />
+          </div>
         ) : (
           months.map((m) => (
-            <section key={m.month} className="flex flex-col gap-2" aria-label={m.label}>
-              <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">{m.label}</h2>
-              <Card className="divide-y divide-line overflow-hidden">
+            <section key={m.month} aria-labelledby={`mes-${m.month}`}>
+              <SectionHeader id={`mes-${m.month}`} title={m.label.charAt(0).toUpperCase() + m.label.slice(1)} />
+              <Card className="overflow-hidden">
                 {m.sessions.map((s) => (
-                  <SoloRow key={s.id} session={s} onOpen={() => setOpen(s.id)} />
+                  <SoloRow key={s.id} session={s} dense={pro} onOpen={() => setOpen(s.id)} />
                 ))}
               </Card>
             </section>
@@ -208,15 +204,10 @@ function SoloGames() {
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start gap-2">
-          <BackLink fallback="/perfil" className="-ml-2 flex size-11 items-center justify-center p-0" />
-          <div className="min-w-0 pt-0.5">
-            <h1 className="text-2xl font-bold tracking-tight">Juegos sueltos</h1>
-            <p className="text-sm text-muted">Tus juegos de boliche fuera de una liga o torneo</p>
-          </div>
-        </div>
-        {content}
+      <div className="flex flex-col px-2">
+        <ScreenTop label="Yo" fallback="/perfil" />
+        <ScreenTitle title="Juegos sueltos" hint="Boliche sin liga ni torneo" pro={pro} />
+        <div className={cx('mt-5 flex flex-col', pro ? 'gap-3.5' : 'gap-[22px]')}>{content}</div>
       </div>
       {(isNew || editing) && (
         <SoloGameSheet key={editing?.id ?? 'nuevo'} session={editing} venues={venues} today={today} onClose={() => setOpen(null)} />
@@ -225,9 +216,14 @@ function SoloGames() {
   );
 }
 
-/** Un día de juegos sueltos en la lista: toda la fila lo abre. */
-export function SoloRow({ session: s, onOpen }: { session: SoloSession; onOpen: () => void }) {
-  const { weekday, day } = dayParts(s.playedOn);
+/** «210 · 180 · 190»: los juegos del día, en una línea. */
+export const soloScoresLine = (s: Pick<SoloSession, 'scores'>): string => s.scores.join(' · ');
+
+/**
+ * Un día de juegos sueltos en la lista: la fecha (OCT / 13), la bolera, los juegos y, a la derecha, la serie (o los pinos
+ * de un solo juego). El candado dice que no sale en tu perfil y la nube, que falta enviarlo. Toda la fila lo abre.
+ */
+export function SoloRow({ session: s, onOpen, dense }: { session: SoloSession; onOpen: () => void; dense?: boolean }) {
   const many = s.scores.length > 1;
   const label = [
     `${s.venue || 'Juego suelto'}, ${formatDate(s.playedOn)}`,
@@ -237,37 +233,32 @@ export function SoloRow({ session: s, onOpen }: { session: SoloSession; onOpen: 
   ]
     .filter(Boolean)
     .join(' · ');
+  const marks = !s.shared || s.pending || s.likes > 0;
   return (
-    <button
-      type="button"
+    <ListRow
+      dense={dense}
       onClick={onOpen}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-2 active:bg-surface-2"
-      aria-label={label}
-    >
-      <span className="flex w-10 shrink-0 flex-col items-center leading-tight" aria-hidden="true">
-        <span className="text-[11px] text-muted uppercase">{weekday}</span>
-        <span className="text-lg font-bold tabular-nums">{day}</span>
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-sm">
-          <span className="truncate font-medium">{s.venue || 'Juego suelto'}</span>
-          {!s.shared && <Lock className="size-3.5 shrink-0 text-muted" aria-hidden="true" />}
-          {s.pending && <CloudUpload className="size-3.5 shrink-0 text-accent" aria-hidden="true" />}
-          {s.likes > 0 && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted">
-              <Heart className="size-3" aria-hidden="true" /> {s.likes}
+      ariaLabel={label}
+      leading={<DateBlock date={s.playedOn} />}
+      title={s.venue || 'Juego suelto'}
+      subtitle={
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="num truncate">{soloScoresLine(s)}</span>
+          {marks && (
+            <span aria-hidden="true" className="flex shrink-0 items-center gap-1.5 text-faint">
+              {!s.shared && <Lock className="size-3.5" />}
+              {s.pending && <CloudUpload className="size-3.5 text-accent" />}
+              {s.likes > 0 && (
+                <span className="inline-flex items-center gap-0.5">
+                  <Heart className="size-3.5" /> {s.likes}
+                </span>
+              )}
             </span>
           )}
         </span>
-        <span className="flex flex-wrap gap-1">
-          <ScoreChips scores={s.scores} />
-        </span>
-      </span>
-      <span className="shrink-0 text-right" aria-hidden="true">
-        <span className="block text-lg leading-tight font-bold tabular-nums">{many ? soloSeries(s) : soloHigh(s)}</span>
-        <span className="block text-[11px] text-muted">{many ? 'serie' : 'pinos'}</span>
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
-    </button>
+      }
+      value={many ? soloSeries(s) : soloHigh(s)}
+      chevron={false}
+    />
   );
 }

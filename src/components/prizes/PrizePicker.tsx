@@ -54,14 +54,10 @@ export function PrizePicker({ open, onClose, comp, prize, designs }: PrizePicker
       title={prize ? 'Cambiar premios' : 'Elegir premios'}
       subtitle={comp.name}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button className="min-h-11" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button className="min-h-11" variant="primary" type="submit" form={FORM_ID} loading={busy}>
-            Guardar premios
-          </Button>
-        </div>
+        // Un solo botón (la X de arriba cierra sin guardar).
+        <Button variant="primary" size="xl" className="w-full" type="submit" form={FORM_ID} loading={busy}>
+          Guardar premios
+        </Button>
       }
     >
       {open && <PickerForm key={prize?.id ?? 'nuevo'} comp={comp} prize={prize} designs={designs} onDone={onClose} onBusy={setBusy} />}
@@ -292,7 +288,7 @@ export function PickerBody(p: PickerBodyProps) {
             const locked = p.delivered.has(key);
             const id = `premio-${key.replace(/[^A-Za-z0-9]/g, '-')}`;
             return (
-              <div key={key} className={cx('flex flex-col gap-2 rounded-xl border border-line p-3', !row.on && 'bg-surface-2/40')}>
+              <div key={key} className={cx('flex flex-col gap-2 rounded-2xl p-4', row.on ? 'bg-surface-2' : 'bg-surface-2/50')}>
                 <div className="flex items-center gap-3">
                   {/* Toda la fila es el interruptor (44 px de alto, como el resto de la hoja). */}
                   <label htmlFor={id} className={cx('flex min-h-11 min-w-0 flex-1 items-center gap-3 text-sm font-medium', locked ? 'cursor-default' : 'cursor-pointer')}>

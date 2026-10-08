@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Check, ChevronRight, Clock, MapPin, Search, Users } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { CalendarSearch, Check } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { dayLabel } from '../lib/calendar';
 import { joinAgendaItem, useAgenda, type AgendaItem } from '../lib/data/agenda';
 import { useMyMemberships } from '../lib/data/members';
-import { toIsoDate } from '../lib/format';
+import { parseDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
-import { isSportId, sportMeta } from '../sports/registry';
-import { SportBadge, SportIcon } from './sports/SportBits';
+import { isSportId, sportMeta, sportsOf } from '../sports/registry';
+import { SportIcon } from './sports/SportBits';
 import {
   agendaJoinStep,
   agendaSports,
@@ -21,32 +21,61 @@ import {
   mineLabel,
   spotsText,
 } from '../components/agenda/logic';
-import { BackLink } from '../components/BackLink';
+import { BusyIcon } from '../components/busy';
 import { useAction, useFeedback } from '../components/feedback';
-import { LeagueLogo } from '../components/home/LeagueCard';
-import { SportTint } from '../components/home/SportTint';
+import { useActivity, useMyLeagues } from '../components/home/useHomeData';
+import { WeekAgenda } from '../components/home/WeekAgenda';
 import { useJoinFlow } from '../components/league/WhoAreYou';
+import { useIsPro } from '../components/mode';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
+import { ScreenTitle, ScreenTop } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
-import { Badge, Button, Card, Empty, ListSkeleton, LoadError, cx } from '../components/ui';
+import { Card, DateBlock, ListRow, ListSkeleton, LoadError, Segmented, cx } from '../components/ui';
 
 const ALL = 'todos';
 
-/** «Inscripción hasta el 3 oct, 6:00 p. m.» */
+/** «hasta el 3 oct, 6:00 p. m.» */
 const untilLabel = (iso: string) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('es-DO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 };
 
+/** Las dos partes del Calendario: tus ligas, o lo abierto en las ligas públicas («¿Dónde juego esta semana?»). */
+export type AgendaView = 'mias' | 'abiertas';
+
+/** `?ver=mias` abre tus ligas; si no, lo abierto (los links de «¿Dónde juego esta semana?» y de Ligas llevan aquí). */
+export const agendaView = (raw: string | null, canMine: boolean): AgendaView => (raw === 'mias' && canMine ? 'mias' : 'abiertas');
+
+const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+/** Debajo del nombre: «Sábado · 7:00 pm · Liga de los martes · Bolera Sambil · Quedan 3 lugares · hasta el 3 oct». */
+export function agendaLine(
+  item: Pick<AgendaItem, 'date' | 'timeLabel' | 'leagueName' | 'venue' | 'join' | 'cap' | 'taken' | 'spotsLeft' | 'waitlist' | 'until'>,
+  today: string,
+): string {
+  const day = item.date === today ? 'Hoy' : WEEKDAYS[parseDate(item.date).getDay()];
+  const until = item.until ? untilLabel(item.until) : '';
+  return [day, item.timeLabel, item.leagueName, item.venue?.trim(), spotsText(item), until && `hasta el ${until}`]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /**
- * «¿Dónde juego esta semana?» (`/agenda`): lo que viene en los próximos 14 días en las ligas públicas donde uno se
- * puede apuntar y hay lugar (boliche, golf, noches y torneos de raqueta), por día, con filtro por deporte (`?deporte=`)
- * y por día (`?dia=`). «Me apunto» usa el flujo de siempre; sin cuenta, primero entra y vuelve aquí a apuntarse; en
- * una liga de la que no es miembro, primero se une como en todas partes («¿Quién eres?» si hay jugadores sin cuenta).
+ * El Calendario (`/agenda`, rediseño «Calma y foco»: un solo calendario en vez de tres). «‹ Ligas», el título y, con
+ * ligas, «Tus ligas | Abiertas»:
+ * - Tus ligas (`?ver=mias`): la semana de tus ligas con sus fechas, «Voy» en las prácticas y las semanas que vienen
+ *   (la misma de la hoja Calendario de Hoy).
+ * - Abiertas («¿Dónde juego esta semana?»): lo que viene en los próximos 14 días en las ligas públicas donde uno se
+ *   puede apuntar y hay lugar (boliche, golf, noches y torneos de raqueta), cada fecha en una fila (OCT / 13, la liga,
+ *   la hora y los lugares) con «Me apunto» al lado; filtro por deporte (`?deporte=`) y, en Pro, por día (`?dia=`).
+ *   «Me apunto» usa el flujo de siempre; sin cuenta, primero entra y vuelve aquí a apuntarse; en una liga de la que no
+ *   es miembro, primero se une como en todas partes («¿Quién eres?» si hay jugadores sin cuenta). Tocar la fila abre el
+ *   evento.
  */
 export default function AgendaPage() {
   const auth = useAuth();
   const agenda = useAgenda();
+  const pro = useIsPro();
   const navigate = useNavigate();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
@@ -157,69 +186,108 @@ export default function AgendaPage() {
   ];
   const dayChips: ChipItem<string>[] = [{ key: ALL, label: 'Todos los días' }, ...days.map((d) => ({ key: d, label: dayLabel(d, today) }))];
 
+  // Tus ligas (si tienes): la semana de siempre, la de la hoja Calendario de Hoy.
+  const my = useMyLeagues();
+  const canMine = !!auth.user && my.all.length > 0;
+  const view = agendaView(params.get('ver'), canMine);
+  const showDays = days.length > 1 && (pro || !!day);
+  const shownItems = shown.flatMap((g) => g.items);
+
+  const open = (
+    <div className="flex flex-col gap-3.5">
+      {sports.length > 1 && (
+        <FilterChips items={sportChips} value={sport ?? ALL} onChange={(k) => setParam('deporte', k === ALL ? null : k)} label="Filtrar por deporte" />
+      )}
+      {showDays && <FilterChips items={dayChips} value={day ?? ALL} onChange={(k) => setParam('dia', k === ALL ? null : k)} label="Filtrar por día" />}
+
+      {agenda.error && !items.length ? (
+        <LoadError error={agenda.error} />
+      ) : agenda.loading && !items.length ? (
+        <ListSkeleton rows={4} />
+      ) : !shownItems.length ? (
+        <Card className="flex flex-col items-center px-5 py-8 text-center">
+          <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+            <CalendarSearch className="size-7" />
+          </span>
+          <h2 className="mt-4 text-card-title">{items.length ? 'Nada con ese filtro' : 'Nada abierto por ahora'}</h2>
+          <p className="mt-2 max-w-sm text-body text-muted">
+            {items.length ? 'Prueba con otro deporte u otro día.' : 'Cuando una liga pública abra una fecha con lugar, sale aquí.'}
+          </p>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          {shownItems.map((item) => (
+            <AgendaRow
+              key={item.eventId}
+              item={item}
+              today={today}
+              dense={pro}
+              showSport={sports.length > 1 && !sport}
+              busy={busy === item.eventId || flow.busy === item.leagueId}
+              joined={joined[item.eventId] ?? null}
+              onJoin={() => void join(item)}
+            />
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+
   return (
     <AppShell>
-      <div className="flex flex-col gap-5">
-        <div className="flex items-start gap-2">
-          <BackLink fallback="/" className="mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold tracking-tight">¿Dónde juego esta semana?</h1>
-            <p className="text-sm text-muted">Lo que viene en las ligas públicas donde te puedes apuntar y hay lugar.</p>
-          </div>
-        </div>
-
-        {sports.length > 1 && (
-          <FilterChips items={sportChips} value={sport ?? ALL} onChange={(k) => setParam('deporte', k === ALL ? null : k)} label="Filtrar por deporte" />
+      <div className="flex flex-col px-2">
+        <ScreenTop label="Ligas" fallback="/ligas" />
+        <ScreenTitle
+          title="Calendario"
+          hint={view === 'mias' ? 'Tus ligas, semana por semana' : 'Ligas públicas con lugar en los próximos días'}
+          pro={pro}
+        />
+        {canMine && (
+          <Segmented<AgendaView>
+            label="Qué fechas ver"
+            full
+            className="mt-5"
+            options={[
+              { key: 'mias', label: 'Tus ligas' },
+              { key: 'abiertas', label: 'Abiertas' },
+            ]}
+            value={view}
+            onChange={(k) => setParam('ver', k === 'mias' ? 'mias' : null)}
+          />
         )}
-        {days.length > 1 && <FilterChips items={dayChips} value={day ?? ALL} onChange={(k) => setParam('dia', k === ALL ? null : k)} label="Filtrar por día" />}
-
-        {agenda.error && !items.length ? (
-          <LoadError error={agenda.error} />
-        ) : agenda.loading && !items.length ? (
-          <ListSkeleton rows={4} />
-        ) : !shown.length ? (
-          <Empty icon={<Search className="size-8" />} title={items.length ? 'Nada con ese filtro' : 'Nada abierto por ahora'}>
-            {items.length
-              ? 'Prueba con otro deporte u otro día.'
-              : 'Cuando una liga pública abra una práctica, una ronda o una noche con lugar, sale aquí.'}
-          </Empty>
-        ) : (
-          shown.map((g) => (
-            <section key={g.date} className="flex flex-col gap-2" aria-label={dayLabel(g.date, today)}>
-              <h2 className="text-sm font-semibold text-muted first-letter:uppercase">{dayLabel(g.date, today)}</h2>
-              <div className="stagger flex flex-col gap-3">
-                {g.items.map((item, i) => (
-                  <AgendaCard
-                    key={item.eventId}
-                    item={item}
-                    i={i}
-                    showSport={sports.length > 1 && !sport}
-                    busy={busy === item.eventId || flow.busy === item.leagueId}
-                    joined={joined[item.eventId] ?? null}
-                    onJoin={() => void join(item)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))
-        )}
+        <div className="mt-5">{view === 'mias' ? <MyWeeks leagues={my.leagues} uid={my.uid} /> : open}</div>
       </div>
       {flow.modal}
     </AppShell>
   );
 }
 
-/** Una tarjeta de la agenda: qué, dónde, a qué hora, cuántos lugares y «Me apunto». */
-export function AgendaCard({
+/** Tus ligas: la semana con sus fechas y «Voy», y las semanas que vienen (hasta 8). */
+function MyWeeks({ leagues, uid }: { leagues: Parameters<typeof useActivity>[0]; uid: string | undefined }) {
+  const act = useActivity(leagues, uid);
+  const manySports = sportsOf(leagues).length > 1;
+  if (act.loading && !act.feeds.length) return <ListSkeleton rows={4} />;
+  if (!act.feeds.length && !act.mine.length) return <p className="mx-1 text-meta text-muted">Todavía no hay fechas en tus ligas.</p>;
+  return <WeekAgenda feeds={act.feeds} leagues={act.leagues} matches={act.mine} today={act.today} showSport={manySports} />;
+}
+
+/**
+ * Una fecha abierta: el bloque de la fecha (OCT / 13), qué es, «Sábado · 7:00 pm · la liga · cuántos lugares», y «Me
+ * apunto» al lado (o cómo quedó: «Vas», «En espera»…). Toda la fila abre el evento.
+ */
+export function AgendaRow({
   item,
-  i = 0,
+  today,
+  dense,
   showSport,
   busy,
   joined,
   onJoin,
 }: {
   item: AgendaItem;
-  i?: number;
+  today: string;
+  dense?: boolean;
+  /** La lista trae varios deportes: el ícono de cada uno. */
   showSport?: boolean;
   busy?: boolean;
   /** Se acaba de apuntar aquí: cómo quedó («Vas», «En espera»…). */
@@ -227,58 +295,50 @@ export function AgendaCard({
   onJoin: () => void;
 }) {
   const mine = joined ?? (item.mine ? mineLabel(item) : null);
+  const title = agendaTitle(item);
   return (
-    <Card className="flex flex-col gap-3 p-4" style={{ '--i': i } as CSSProperties}>
-      <div className="flex items-start gap-3">
-        <LeagueLogo path={item.logoPath} className="size-10 rounded-xl">
-          <SportTint sport={item.sport} className="shrink-0">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">
-              <SportIcon sport={item.sport} className="size-5" />
+    <ListRow
+      dense={dense}
+      to={item.url}
+      ariaLabel={`${title}, ${item.leagueName}`}
+      leading={
+        // El deporte de cada fecha, en una esquina del bloque, cuando la lista trae varios.
+        <span className="relative shrink-0">
+          <DateBlock date={item.date} />
+          {showSport && (
+            <span aria-hidden="true" className="absolute -right-1.5 -bottom-1.5 grid size-6 place-items-center rounded-lg bg-surface text-accent shadow-sm">
+              <SportIcon sport={item.sport} className="size-3.5" />
             </span>
-          </SportTint>
-        </LeagueLogo>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">{agendaTitle(item)}</p>
-          <p className="truncate text-xs text-muted">{item.leagueName}</p>
-        </div>
-        {showSport && <SportBadge sport={item.sport} className="shrink-0" />}
-      </div>
-
-      <ul className="flex flex-col gap-1 text-sm text-muted">
-        <li className="flex items-center gap-1.5">
-          <Clock className="size-4 shrink-0" aria-hidden="true" />
-          {item.timeLabel ?? 'Hora por confirmar'}
-        </li>
-        {item.venue && (
-          <li className="flex min-w-0 items-center gap-1.5">
-            <MapPin className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{item.venue}</span>
-          </li>
-        )}
-        <li className="flex items-center gap-1.5">
-          <Users className="size-4 shrink-0" aria-hidden="true" />
-          {spotsText(item)}
-        </li>
-        {item.until && untilLabel(item.until) && <li className="text-xs">Inscripción hasta el {untilLabel(item.until)}</li>}
-      </ul>
-
-      <div className="flex items-center gap-2">
-        {mine ? (
-          <Badge tone="ok" className="h-8 px-3 text-sm">
-            <Check className="size-4" aria-hidden="true" /> {mine}
-          </Badge>
+          )}
+        </span>
+      }
+      // En 360 px el botón deja poco ancho: el nombre baja a dos líneas en vez de cortarse en «Práctica d…».
+      title={<span className="line-clamp-2 whitespace-normal">{title}</span>}
+      subtitle={agendaLine(item, today)}
+      trailing={
+        mine ? (
+          <span className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-soft px-3 text-sm font-[650] text-accent">
+            <Check aria-hidden="true" className="size-4" strokeWidth={2.6} /> {mine}
+          </span>
         ) : (
-          <Button variant="primary" className="h-11 flex-1 sm:flex-none" loading={busy} onClick={onJoin}>
-            Me apunto
-          </Button>
-        )}
-        <Link
-          to={item.url}
-          className={cx('inline-flex h-11 items-center gap-1 rounded-xl px-3 text-sm font-medium text-accent transition hover:bg-accent-soft', mine && 'ml-auto')}
-        >
-          Ver evento <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
-      </div>
-    </Card>
+          <button
+            type="button"
+            onClick={onJoin}
+            disabled={busy}
+            aria-busy={busy || undefined}
+            aria-label={`Me apunto a ${title}`}
+            className={cx(
+              "relative inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-accent px-3.5 text-sm font-[650] text-accent-fg transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-[''] active:scale-[0.97]",
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-80',
+            )}
+          >
+            <span aria-hidden="true" className={cx(busy && 'text-transparent')}>
+              Me apunto
+            </span>
+            <BusyIcon busy={!!busy} className="absolute inset-0 m-auto size-4" />
+          </button>
+        )
+      }
+    />
   );
 }
