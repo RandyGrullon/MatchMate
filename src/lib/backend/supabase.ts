@@ -64,6 +64,17 @@ const TABLE_KEYS: Record<string, readonly string[]> = {
   match_officials: ['match_id'],
   event_signups: ['event_id', 'entrant_id'],
   sport_status: ['id'],
+  // Sin `id` (su clave es compuesta): pedirlas ordenadas por id daba 400 en Supabase.
+  badge_progress: ['holder', 'badge_key', 'sport'],
+  badge_stats: ['badge_key', 'sport', 'level'],
+  legal_acceptances: ['user_id', 'doc', 'version'],
+  // Esports: las tablas sin `id` (su clave es otra; pedirlas ordenadas por id da 400 en Supabase).
+  esports_tournaments: ['event_id'],
+  esports_matches: ['match_id'],
+  esports_entry_members: ['entry_id', 'user_id'],
+  esports_team_members: ['team_id', 'user_id'],
+  esports_game_ids: ['user_id', 'game', 'platform'],
+  esports_br_results: ['game_id', 'entry_id'],
 };
 
 /** El orden pedido más la clave de la tabla al final (desempate estable entre páginas). */
