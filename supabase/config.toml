@@ -459,6 +459,13 @@ deno_version = 2
 # VAPID_SUBJECT = "env(VAPID_SUBJECT)"
 # CRON_SECRET = "env(CRON_SECRET)"
 # APP_ORIGIN = "env(APP_ORIGIN)"
+# Esports (todos opcionales, docs/esports.md §8.1):
+# RIOT_API_KEY = "env(RIOT_API_KEY)"
+# RIOT_CLIENT_ID = "env(RIOT_CLIENT_ID)"
+# RIOT_CLIENT_SECRET = "env(RIOT_CLIENT_SECRET)"
+# EPIC_CLIENT_ID = "env(EPIC_CLIENT_ID)"
+# EPIC_CLIENT_SECRET = "env(EPIC_CLIENT_SECRET)"
+# STEAM_WEB_API_KEY = "env(STEAM_WEB_API_KEY)"
 
 # Edge Functions de MatchMate. verify_jwt = false en todas (crítica 1): con las claves nuevas (sb_publishable_ /
 # sb_secret_) la verificación de la puerta no sirve, así que cada función valida por dentro:
@@ -487,6 +494,22 @@ verify_jwt = false
 # insignias (el motor de las insignias automáticas): como send-push, la llama pg_net desde el cron (mm-insignias y
 # mm-insignias-diario) con la cabecera x-cron-secret, que se compara con CRON_SECRET por dentro.
 [functions.insignias]
+enabled = true
+verify_jwt = false
+
+# esports-verify (docs/esports.md §8.2): decir qué está encendido y buscar un Riot ID (LoL y VALORANT) con la API de
+# Riot. Valida el JWT por dentro (auth.getClaims) y el origen (SCAN_ALLOWED_ORIGINS). Secreto opcional: RIOT_API_KEY.
+[functions.esports-verify]
+enabled = true
+verify_jwt = false
+
+# esports-auth (§8.3): «Conectar con Steam / Epic / Riot». La vuelta del proveedor (/esports-auth/<proveedor>/callback)
+# llega sin JWT: la protege el state de un solo uso atado a la cuenta (esports_link_begin) y al navegador (cookie que
+# pone /go, al que solo se llega desde la app); /start valida el JWT por dentro. Secretos opcionales:
+# EPIC_CLIENT_ID + EPIC_CLIENT_SECRET, RIOT_CLIENT_ID + RIOT_CLIENT_SECRET (solo cuando Riot apruebe RSO),
+# STEAM_WEB_API_KEY (solo el nombre del perfil; Steam OpenID no necesita ninguno). En local la vuelta no sirve
+# (SUPABASE_URL es la interna): se prueba en staging.
+[functions.esports-auth]
 enabled = true
 verify_jwt = false
 

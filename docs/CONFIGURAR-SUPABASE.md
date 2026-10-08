@@ -20,6 +20,7 @@ clave `sb_publishable_`, la VAPID pública y la site key de Turnstile.
 | Edge Functions `scan-bowling` (lectura de fotos), `send-push` (notificaciones) y `delete-account` («Borrar mi cuenta»), cron de recordatorios y limpieza | Claude | Hecho |
 | Privacidad y términos (`/privacidad`, `/terminos`), «Tengo 18 años o más», «Descargar mis datos» y «Borrar mi cuenta» | Claude | Hecho; el texto es un **borrador** que revisa un abogado (paso 13) |
 | Turnstile (casilla anti-robots) en registro, entrar con correo y «Olvidé mi contraseña» | Claude | Hecho (se enciende con el paso 12) |
+| Edge Functions de esports `esports-verify` (buscar el Riot ID en LoL y VALORANT) y `esports-auth` («Conectar con Steam / Epic / Riot») | Claude | Hecho (cada proveedor se enciende con su secreto, paso 9b) |
 | Cuentas, proyectos, claves, Google, correo, secretos | **Tú** | Pasos 1 a 13 |
 
 Necesitas: tu gestor de contraseñas, el repo **privado** `matchmate` en GitHub, el proyecto de Vercel ligado a
@@ -255,6 +256,86 @@ los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* s
 4. La app vuelve a Home sin sesión; en *Authentication › Users* la cuenta ya no está; la liga sigue, ahora de la
    otra cuenta; en *Edge Functions › delete-account › Logs* sale «cuenta borrada». Si dice «El borrado de cuentas
    no está configurado», falta publicar la función o la clave secreta del proyecto.
+
+## Paso 9b. Esports: buscar IDs de juego y «Conectar con…» (opcional)
+
+**Quién: tú.** Las funciones `esports-verify` y `esports-auth` ya están en el repo (`supabase/functions`; la
+explicación completa está en `docs/esports.md` §8). El ID de juego solo se comprueba donde se puede hacer solo:
+Rocket League y Fortnite con «Conectar con Epic», CS2 con «Conectar con Steam», y LoL y VALORANT con «Buscar» (la API
+de Riot; «Conectar con Riot» solo si Riot aprueba RSO). En los otros juegos la persona escribe su ID y queda
+«Declarado». **Sin ningún secreto todo funciona**: cada ID queda «Declarado» y «Conectar con Steam» está siempre
+encendido (no pide nada). Cada secreto de abajo enciende **una cosa más, sola**: la pantalla «Mi ID de juego» le
+pregunta a `esports-verify` qué está encendido y muestra solo eso. Puedes ponerlos de a uno, cuando los tengas.
+
+- [ ] Publicar las dos (primero staging; `REF` es el del proyecto):
+  ```powershell
+  npx -y supabase@2 functions deploy esports-verify --project-ref REF
+  npx -y supabase@2 functions deploy esports-auth --project-ref REF
+  ```
+  (O todas juntas con `npx -y supabase@2 functions deploy --project-ref REF`, como en el paso 9.)
+- [ ] `SCAN_ALLOWED_ORIGINS` (paso 9) tiene que tener la dirección de la app: las dos funciones solo aceptan
+  pedidos desde ahí, y «Conectar con…» revisa que el navegador venga de la app.
+- [ ] Solo en **staging**: el secreto `APP_ORIGIN` = la dirección de la app de staging (a dónde vuelve la persona
+  después de conectar). En producción no hace falta: vuelve a `https://matchmate-oficial.vercel.app`.
+- [ ] Los secretos, en *Edge Functions › Secrets* (o en el `.env` del paso 9), con estos nombres exactos:
+
+  | Secreto | Qué enciende | De dónde sale |
+  |---|---|---|
+  | `RIOT_API_KEY` | «Buscar» el Riot ID en VALORANT y League of Legends («¿Eres tú?» → «Comprobado»), y el rango verificado de LoL (Solo/Dúo). VALORANT: solo dice si la cuenta existe (su rango no está en la API pública). | Riot, abajo |
+  | `RIOT_CLIENT_ID` + `RIOT_CLIENT_SECRET` | «Conectar con Riot» (LoL y VALORANT), solo cuando Riot apruebe RSO. Hacen falta **los dos**. | Riot, abajo (Riot lo aprueba aparte) |
+  | `EPIC_CLIENT_ID` + `EPIC_CLIENT_SECRET` | «Conectar con Epic» (Rocket League y Fortnite). Hacen falta **los dos**. | Epic, abajo |
+  | `STEAM_WEB_API_KEY` (opcional) | Solo el nombre del perfil de Steam al conectar en CS2. «Conectar con Steam» **no** la necesita: sin ella, el ID se conecta igual (con el código de amigo). | Steam, abajo |
+
+  Todos son **secretos** (como los del paso 9): van solo en Supabase y en tu gestor, nunca en el chat ni en el repo.
+
+**Las direcciones que piden los proveedores** (proyecto de producción `jbismsdjgjxutfvwnlmf`; en staging, cambia el
+ref por el de staging y registra también esas):
+
+| Para qué | Dirección |
+|---|---|
+| Vuelta de Epic (se registra en Epic) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/epic/callback` |
+| Vuelta de Riot (se registra en Riot) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/riot/callback` |
+| Vuelta de Steam (no se registra) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/steam/callback` (el «sitio» que muestra Steam es `https://jbismsdjgjxutfvwnlmf.supabase.co`) |
+| A dónde vuelve la persona | `https://matchmate-oficial.vercel.app/esports/mi-id?conectado=…` (o `?error=…`) |
+| Sitio, privacidad y términos | `https://matchmate-oficial.vercel.app`, `https://matchmate-oficial.vercel.app/privacidad`, `https://matchmate-oficial.vercel.app/terminos` |
+
+**Riot (VALORANT y League of Legends).**
+- [ ] https://developer.riotgames.com con tu cuenta de Riot › *Register product*. Para «Buscar» basta un producto
+  **Personal API Key** (MatchMate; la clave de desarrollo que da al entrar vence cada 24 h: sirve solo para probar).
+  Cuando lo aprueben, copia la clave (`RGAPI-…`) como `RIOT_API_KEY`.
+- [ ] «Conectar con Riot» es **Riot Sign On (RSO)** y Riot lo da solo a productos **Production** aprobados. Al
+  pedirlo: la vuelta de Riot de la tabla, el scope `openid`, y el sitio, privacidad y términos. Te dan un *client ID*
+  y un *client secret*: `RIOT_CLIENT_ID` y `RIOT_CLIENT_SECRET`. Mientras no lo aprueben, VALORANT y LoL se comprueban
+  con «Buscar» (o quedan «Declarado»).
+
+**Epic (Rocket League y Fortnite).**
+- [ ] https://dev.epicgames.com/portal con tu cuenta de Epic › crea una organización y un producto **MatchMate**.
+- [ ] *Product Settings › Clients* › agrega un client (el portal te deja elegir la política del client; la más
+  simple que permita entrar con la cuenta de Epic). Copia su *Client ID* y *Client Secret*.
+- [ ] *Epic Account Services* › crea la aplicación: en *Brand settings* el sitio, privacidad y términos; en
+  *Permissions* solo **Basic Profile** (nada de amigos ni presencia); en *Linked clients* el client de arriba con la
+  **vuelta de Epic** de la tabla como *Redirect URL*. Epic revisa la marca antes de dejar entrar a cualquiera: hasta
+  entonces solo funciona con las cuentas de tu organización.
+- [ ] `EPIC_CLIENT_ID` y `EPIC_CLIENT_SECRET` en los secretos.
+
+**Steam (Counter-Strike 2).**
+- [ ] «Conectar con Steam» ya funciona (Steam OpenID: no hay nada que registrar).
+- [ ] Opcional (solo para mostrar el nombre del perfil al conectar): https://steamcommunity.com/dev/apikey con la
+  cuenta de Steam de MatchMate (Steam pide que la cuenta haya gastado al menos 5 USD), dominio
+  `matchmate-oficial.vercel.app` › copia la clave como `STEAM_WEB_API_KEY`.
+
+**Comprobar** (en staging, con tu cuenta):
+1. *Edge Functions* muestra `esports-verify` y `esports-auth` con *Verify JWT* **apagado** (es a propósito).
+2. En la app, *Esports › Mi ID de juego*: en CS2 sale «Conectar con Steam». Con `RIOT_API_KEY`, en VALORANT y LoL
+   sale «Buscar»; con `EPIC_…`, «Conectar con Epic» en Rocket League y Fortnite.
+3. «Conectar con Steam»: entras con Steam y vuelves a *Mi ID de juego* con «Listo: tu cuenta quedó conectada.»;
+   el ID de CS2 queda como «Cuenta conectada». En *Edge Functions › esports-auth › Logs* sale «cuenta conectada».
+   Si otra cuenta de MatchMate tenía esa misma cuenta de Steam conectada, el ID pasa a la tuya y a la otra le llega
+   el aviso «Tu ID … pasó a otra cuenta».
+4. Si vuelve con «Se venció el inicio de sesión»: pasaron más de 10 minutos, o el navegador no guardó la cookie de
+   la función (`__Host-mm_esports_state`, solo de ese dominio, sirve para saber que vuelve el mismo navegador que
+   empezó en la app), o `SCAN_ALLOWED_ORIGINS` no tiene la dirección de la app. Si dice «El proveedor no lo
+   confirmó», la vuelta registrada en Epic o Riot no es exactamente la de la tabla.
 
 ## Paso 10. Secretos del cron en Vault
 
