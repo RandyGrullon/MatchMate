@@ -3,7 +3,7 @@ import { CheckSquare, Square, UserPlus, X } from 'lucide-react';
 import type { Match } from '../../../lib/data/matches';
 import { useMatchRsvps } from '../../../lib/data/teamSports';
 import type { Side } from '../../../sports/types';
-import { Button, Field, Modal, Select, Tabs, cx } from '../../../components/ui';
+import { Button, Field, Segmented, Select, Sheet, cx } from '../../../components/ui';
 import { rosterOf, teamColor } from './logic';
 import { Jersey, RsvpBadge } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
@@ -94,38 +94,45 @@ export function PresentesModal({
   };
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Presentes"
+      subtitle="Cuenta como partido jugado para cada uno"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={save}>
-            Guardar presentes ({picked[0].length} y {picked[1].length})
-          </Button>
-        </>
+        <Button variant="primary" size="lg" className="w-full" onClick={save}>
+          Guardar presentes ({picked[0].length} y {picked[1].length})
+        </Button>
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">Marca quién está en la cancha. Cuenta como partido jugado para cada uno.</p>
-        <Tabs
-          items={m.sides.map((s, k) => ({ key: String(k + 1) as '1' | '2', label: tl.teamOf(s.teamId)?.name ?? s.label, count: picked[k].length }))}
-          active={tab}
+      <div className="flex flex-col gap-3 pb-1">
+        <Segmented
+          full
+          label="Equipo"
+          options={m.sides.map((s, k) => ({
+            key: String(k + 1) as '1' | '2',
+            label: (
+              <>
+                <span className="min-w-0 truncate">{tl.teamOf(s.teamId)?.name ?? s.label}</span>
+                <span className="num text-muted">{picked[k].length}</span>
+              </>
+            ),
+          }))}
+          value={tab}
           onChange={(k) => setTab(k)}
         />
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => setSide(roster.filter((r) => statusOf(r.playerId) === 'yes').map((r) => r.playerId).concat(extras))}>
+          <Button variant="quiet" size="lg" onClick={() => setSide(roster.filter((r) => statusOf(r.playerId) === 'yes').map((r) => r.playerId).concat(extras))}>
             Los que dijeron «Voy»
           </Button>
-          <Button size="sm" onClick={() => setSide([...roster.map((r) => r.playerId), ...extras])}>
+          <Button variant="quiet" size="lg" onClick={() => setSide([...roster.map((r) => r.playerId), ...extras])}>
             Todos
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSide([])}>
+          <Button variant="ghost" size="lg" onClick={() => setSide([])}>
             Ninguno
           </Button>
         </div>
-        {!roster.length && <p className="text-sm text-muted">Este equipo no tiene plantilla. Agrega refuerzos o arma la plantilla en Admin › Equipos.</p>}
+        {!roster.length && <p className="text-meta text-muted">Este equipo no tiene plantilla. Agrega refuerzos o arma la plantilla en Organizar › Equipos.</p>}
         <ul className="flex flex-col gap-1">
           {roster.map((r) => {
             const on = picked[i].includes(r.playerId);
@@ -135,26 +142,26 @@ export function PresentesModal({
                   type="button"
                   onClick={() => toggle(r.playerId)}
                   aria-pressed={on}
-                  className={cx('flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left transition', on ? 'bg-accent-soft' : 'hover:bg-surface-2')}
+                  className={cx('flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 text-left transition', on ? 'bg-accent-soft' : 'hover:bg-surface-2')}
                 >
                   {on ? <CheckSquare className="size-5 shrink-0 text-accent" /> : <Square className="size-5 shrink-0 text-muted" />}
                   <Jersey n={r.jersey} color={on ? color : undefined} />
-                  <span className="min-w-0 flex-1 truncate">{tl.nameOf(r.playerId)}</span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{tl.nameOf(r.playerId)}</span>
                   <RsvpBadge status={statusOf(r.playerId)} />
                 </button>
               </li>
             );
           })}
         </ul>
-        <div className="flex flex-col gap-2 rounded-xl bg-surface-2 p-3">
-          <p className="text-sm font-medium">
+        <div className="flex flex-col gap-2 rounded-[20px] bg-surface-2 p-4">
+          <p className="text-[15px] font-semibold">
             Refuerzos ({extras.length} de {reinforcements})
           </p>
           {extras.map((pid) => (
             <div key={pid} className="flex items-center gap-2">
               <UserPlus className="size-4 text-muted" />
               <span className="flex-1 truncate text-sm">{tl.nameOf(pid)}</span>
-              <Button size="sm" variant="ghost" icon={<X className="size-4" />} aria-label={`Quitar a ${tl.nameOf(pid)}`} onClick={() => toggle(pid)} />
+              <Button variant="ghost" size="lg" icon={<X className="size-4" />} aria-label={`Quitar a ${tl.nameOf(pid)}`} onClick={() => toggle(pid)} />
             </div>
           ))}
           {reinforcements > 0 && (
@@ -179,6 +186,6 @@ export function PresentesModal({
           )}
         </div>
       </div>
-    </Modal>
+    </Sheet>
   );
 }

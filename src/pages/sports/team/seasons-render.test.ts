@@ -249,7 +249,10 @@ describe('temporadas en una liga de equipos', () => {
     expect(t).toContain('Próximo juego');
     expect(t).toContain('Final · Juego 2');
     expect(t).toContain('Sin fecha todavía');
-    expect(t).toContain('Borrar playoffs');
+    expect(t).toContain('La llave');
+    expect(t).toContain('Series');
+    // Reporte, Anotadores y Borrar van en «•••» (la barra de arriba).
+    expect(render(h(screens.Playoffs!), `/l/${lid}/playoffs`, 'admin')).toContain('aria-label="Más opciones"');
     const visit = text(render(h(screens.Playoffs!), `/l/${lid}/playoffs`, 'visit'));
     expect(visit).not.toContain('Borrar playoffs');
     expect(visit).not.toContain('Sin fecha todavía');
@@ -259,7 +262,9 @@ describe('temporadas en una liga de equipos', () => {
     seed({ playoffs: [] });
     const admin = text(render(h(screens.Playoffs!), `/l/${lid}/playoffs`, 'admin'));
     expect(admin).toContain('Armar playoffs');
-    expect(admin).toContain('Los 2 primeros');
+    // Con 2 equipos no hay cuántos elegir: la siembra de la tabla y al mejor de cuántos.
+    expect(admin).toContain('El 1.º contra el último');
+    expect(admin).toContain('1 T Tigres 2 L Leones');
     expect(admin).toContain('Final');
     expect(admin).toContain('Al mejor de 5');
     const visit = text(render(h(screens.Playoffs!), `/l/${lid}/playoffs`, 'visit'));

@@ -16,10 +16,11 @@ import {
 import { formatClock } from '../../../sports/team/clock';
 import type { Side } from '../../../sports/types';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Field, Input, Modal, cx } from '../../../components/ui';
+import { Button, Field, Input, Segmented, Sheet, cx } from '../../../components/ui';
 import { rosterOf, shortName, teamColor, textOn } from '../team/logic';
 import { PresentesModal, type PresentEntry } from '../team/PresentesModal';
 import { BigButton, JerseyButton, ScoreHeader, useTicker } from '../team/ScorerPieces';
+import { DangerButton } from '../team/TeamUi';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { basketballAdapter, EJECTION_LABEL, eventLabel, FOUL_LABEL } from './adapter';
 import { basketballConfigFrom, basketballTeamRules } from './rules';
@@ -154,7 +155,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
     return (
       <>
         <span className="tabular-nums">Faltas {s.teamFouls[i]}</span>
-        {inPenalty(s, side) && <Badge tone="danger">BONUS</Badge>}
+        {inPenalty(s, side) && <b className="text-[11px] font-bold tracking-[0.05em] text-danger">BONUS</b>}
         <span className="tabular-nums">· TM {basketballTimeoutsLeft(s, side, now)}</span>
       </>
     );
@@ -166,16 +167,16 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
       b={{ name: names[1], color: colors[1], score: s.score[1], sub: sub(2) }}
       center={
         <>
-          <span className="text-xs font-semibold uppercase text-muted">{basketballPeriodLabel(config, s.period)}</span>
+          <span className="text-[13px] font-semibold text-accent">{basketballPeriodLabel(config, s.period)}</span>
           {left !== null && (
-            <span className={cx('text-3xl font-black tabular-nums leading-none', timeUp ? 'text-danger' : s.clock.running && 'text-ok')} aria-live="off">
+            <span className={cx('num text-[30px] leading-none font-bold', timeUp ? 'text-danger' : s.clock.running && 'text-accent')} aria-live="off">
               {formatClock(left, 'up')}
             </span>
           )}
           {left !== null && (
             <Button
-              size="sm"
-              variant={s.clock.running ? 'secondary' : 'primary'}
+              size="md"
+              variant={s.clock.running ? 'quiet' : 'primary'}
               disabled={readOnly || (timeUp && !s.clock.running)}
               onClick={toggleClock}
               icon={s.clock.running ? <Pause className="size-4" /> : <Play className="size-4" />}
@@ -208,19 +209,22 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
       <div className="flex min-h-0 flex-col gap-2">
         <div className="flex items-center gap-1.5">
           <Button
-            size="sm"
-            className="flex-1"
+            variant="quiet"
+            size="lg"
+            className={mode === 'quick' ? 'flex-1' : 'shrink-0'}
             disabled={readOnly || tLeft === 0}
             onClick={() => timeout(side)}
             icon={<Timer className="size-4" />}
             aria-label={`Tiempo muerto de ${names[i]} (quedan ${tLeft})`}
           >
-            T. muerto
+            {/* Por jugador va al lado de «Equipo»: «TM» (como en la cabecera) para que quepan los dos. */}
+            {mode === 'quick' ? 'Tiempo muerto' : 'TM'}
           </Button>
           {mode === 'players' && (
             <Button
-              size="sm"
-              variant={sel?.side === side && sel.playerId === null ? 'primary' : 'secondary'}
+              size="lg"
+              className="min-w-0 flex-1"
+              variant={sel?.side === side && sel.playerId === null ? 'primary' : 'quiet'}
               disabled={readOnly}
               onClick={() => setSel({ side, playerId: null })}
               aria-label={`Anotar a ${names[i]} sin jugador`}
@@ -262,7 +266,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
                 />
               );
             })}
-            {!ids.length && <p className="col-span-full py-4 text-center text-xs text-muted">Sin plantilla: usa «Equipo» o marca los presentes.</p>}
+            {!ids.length && <p className="col-span-full py-4 text-center text-[13px] text-muted">Sin plantilla: usa «Equipo» o marca los presentes.</p>}
           </div>
         )}
       </div>
@@ -301,8 +305,9 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
       onFinished={() => onExit()}
       actions={
         <Button
-          variant={timeUp ? 'primary' : 'secondary'}
-          className="h-14 px-3 text-base"
+          variant={timeUp ? 'primary' : 'quiet'}
+          size="xl"
+          className="shrink-0 px-4"
           disabled={readOnly || otNoEnd}
           onClick={() => setEnding(true)}
           aria-label={periodEndLabel(config, s?.period ?? 1)}
@@ -314,39 +319,49 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
       }
     >
       <div className="flex h-full min-h-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div role="group" aria-label="Modo de anotar" className="flex rounded-xl bg-surface-2 p-0.5">
-            {(['quick', 'players'] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={mode === k}
-                onClick={() => setMode(k)}
-                className={cx('rounded-lg px-3 py-1.5 text-sm font-medium', mode === k ? 'bg-surface shadow-sm' : 'text-muted')}
-              >
-                {k === 'quick' ? 'Rápido' : 'Por jugador'}
-              </button>
-            ))}
-          </div>
-          <Button size="sm" icon={<Users className="size-4" />} disabled={court.readOnly || !s} onClick={() => setPresentes(true)}>
-            Presentes
-          </Button>
-          <Button size="sm" variant="ghost" icon={<MoreHorizontal className="size-4" />} disabled={court.readOnly || !s} onClick={() => setMore(true)} aria-label="Más jugadas" />
+        <div className="flex items-center gap-2">
+          <Segmented
+            label="Modo de anotar"
+            className="[&>button]:px-3"
+            options={[
+              { key: 'quick', label: 'Rápido' },
+              { key: 'players', label: 'Por jugador' },
+            ]}
+            value={mode}
+            onChange={setMode}
+          />
+          <Button
+            variant="quiet"
+            size="lg"
+            icon={<Users className="size-5" />}
+            disabled={court.readOnly || !s}
+            onClick={() => setPresentes(true)}
+            aria-label="Presentes"
+            title="Presentes"
+          />
+          <Button
+            variant="quiet"
+            size="lg"
+            icon={<MoreHorizontal className="size-5" strokeWidth={2.4} />}
+            disabled={court.readOnly || !s}
+            onClick={() => setMore(true)}
+            aria-label="Más jugadas"
+          />
         </div>
 
         {official && official.userId !== tl.userId && !court.readOnly && (
-          <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
+          <p className="rounded-2xl bg-surface-2 px-4 py-2.5 text-[13px] text-muted">
             El anotador de mesa designado es <b>{official.name || 'otra persona'}</b>. Si terminas tú y juegas en un equipo, el resultado lo confirma el rival.
           </p>
         )}
         {noPresent && !court.readOnly && (
-          <button type="button" onClick={() => setPresentes(true)} className="flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-2 text-left text-sm">
+          <button type="button" onClick={() => setPresentes(true)} className="flex min-h-11 items-center gap-2 rounded-2xl bg-accent-soft px-4 py-2.5 text-left text-[15px] font-semibold text-accent">
             <Users className="size-4 shrink-0 text-accent" />
             <span className="flex-1">Antes de empezar, marca los presentes: así cuenta el partido jugado de cada uno.</span>
           </button>
         )}
         {lastFoulText && (
-          <p role="status" className={cx('flex items-start gap-2 rounded-xl px-3 py-2 text-sm', lf?.out ? 'bg-danger-soft text-danger' : lf?.warning ? 'bg-warn-soft text-warn' : 'bg-surface-2')}>
+          <p role="status" className={cx('flex items-start gap-2 rounded-2xl px-4 py-2.5 text-sm', lf?.out ? 'bg-danger-soft text-danger' : lf?.warning ? 'bg-warn-soft text-warn' : 'bg-surface-2')}>
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
               {lastFoulText}
@@ -356,7 +371,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
           </p>
         )}
         {timeUp && s && !court.over && (
-          <p role="status" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+          <p role="status" className="rounded-2xl bg-danger-soft px-4 py-2.5 text-sm font-semibold text-danger">
             Se acabó el tiempo: toca «{periodEndLabel(config, s.period)}».
           </p>
         )}
@@ -367,13 +382,13 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
         </div>
 
         {sel && s && (
-          <div className="flex flex-col gap-2 rounded-2xl border-2 bg-surface p-2" style={{ borderColor: colors[sel.side - 1] }}>
-            <div className="flex items-center gap-2 text-sm font-semibold">
+          <div className="card-shadow flex flex-col gap-2 rounded-3xl bg-surface p-2.5 shadow-[inset_0_0_0_2px_var(--sel)]" style={{ ['--sel' as string]: colors[sel.side - 1] }}>
+            <div className="flex items-center gap-2 pl-1.5 text-[15px] font-semibold">
               <span className="min-w-0 flex-1 truncate">
                 {who(sel.side, sel.playerId)}
                 {sel.playerId ? ` · ${names[sel.side - 1]}` : ' (sin jugador)'}
               </span>
-              <Button size="sm" variant="ghost" icon={<X className="size-4" />} onClick={() => setSel(null)} aria-label="Quitar selección" />
+              <Button variant="ghost" size="lg" icon={<X className="size-4" />} onClick={() => setSel(null)} aria-label="Quitar selección" />
             </div>
             <div className={cx('grid gap-2', pts.length === 3 ? 'grid-cols-4' : 'grid-cols-3')}>
               {pts.map((p) => (
@@ -397,15 +412,19 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
         onPick={(kind) => foulFor && addFoul(foulFor.side, kind, foulFor.playerId)}
       />
 
-      <Modal
+      <Sheet
         open={ending}
         onClose={() => setEnding(false)}
         title={s ? periodEndLabel(config, s.period) : ''}
         footer={
-          <>
-            <Button onClick={() => setEnding(false)}>Seguir</Button>
+          <div className="flex gap-2.5">
+            <Button variant="quiet" size="lg" className="flex-1" onClick={() => setEnding(false)}>
+              Seguir
+            </Button>
             <Button
               variant="primary"
+              size="lg"
+              className="flex-1"
               onClick={() => {
                 act({ type: 'period_end', at: Date.now() });
                 setEnding(false);
@@ -413,12 +432,12 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
             >
               Confirmar
             </Button>
-          </>
+          </div>
         }
       >
         {s && (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="text-2xl font-bold tabular-nums">
+          <div className="flex flex-col gap-2 pb-1 text-body text-fg-2">
+            <p className="num text-stat text-fg">
               {s.score[0]}-{s.score[1]}
             </p>
             {s.period >= config.periods && s.score[0] !== s.score[1] ? (
@@ -432,7 +451,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
             )}
           </div>
         )}
-      </Modal>
+      </Sheet>
 
       {s && (
         <MoreModal
@@ -477,37 +496,37 @@ function FoulPicker({ open, title, withPlayer, onClose, onPick }: { open: boolea
     bench_technical: 'No cuenta como falta de equipo',
   };
   return (
-    <Modal open={open} onClose={onClose} title={title}>
-      <div className="grid grid-cols-2 gap-2">
+    <Sheet open={open} onClose={onClose} title={title}>
+      <div className="grid grid-cols-2 gap-2.5">
         {main.map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => onPick(k)}
-            className="flex min-h-16 flex-col items-center justify-center rounded-2xl border-2 border-line bg-surface px-2 text-center font-semibold active:scale-[0.97]"
+            className="flex min-h-[72px] flex-col items-center justify-center gap-0.5 rounded-key bg-surface-2 px-2 text-center text-[17px] font-semibold transition active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-accent"
           >
             {FOUL_LABEL[k]}
-            {hint[k] && <span className="text-[11px] font-normal text-muted">{hint[k]}</span>}
+            {hint[k] && <span className="text-[12px] leading-tight font-normal text-muted">{hint[k]}</span>}
           </button>
         ))}
       </div>
-      <div className="mt-3">
+      <div className="mt-3 pb-1">
         {moreKinds ? (
           <div className="flex flex-col gap-2">
             {extra.map((k) => (
-              <Button key={k} className="h-12 justify-start" onClick={() => onPick(k)}>
+              <Button key={k} variant="quiet" size="lg" className="justify-start" onClick={() => onPick(k)}>
                 {FOUL_LABEL[k]}
-                <span className="text-xs font-normal text-muted">{hint[k]}</span>
+                <span className="text-[13px] font-normal text-muted">{hint[k]}</span>
               </Button>
             ))}
           </div>
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setMoreKinds(true)}>
+          <button type="button" onClick={() => setMoreKinds(true)} className="inline-flex min-h-11 items-center text-meta font-[550] text-accent">
             Más tipos (descalificante{withPlayer ? '' : ', entrenador, banco'})
-          </Button>
+          </button>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -557,36 +576,36 @@ function MoreModal({
     if (yes) doAct({ type: kind, side, at: Date.now() });
   };
   return (
-    <Modal open={open} onClose={onClose} title="Más jugadas" footer={<Button onClick={onClose}>Cerrar</Button>}>
-      <div className="flex flex-col gap-4">
+    <Sheet open={open} onClose={onClose} title="Más jugadas">
+      <div className="flex flex-col gap-5 pb-1">
         {config.variant === '5x5' && (
           <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">Posesión</h3>
+            <h3 className="text-[15px] font-semibold">Posesión</h3>
             {s.arrow === null ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {([1, 2] as const).map((side) => (
-                  <Button key={side} className="h-12" onClick={() => doAct({ type: 'jump_ball', side })}>
+                  <Button key={side} variant="quiet" size="lg" onClick={() => doAct({ type: 'jump_ball', side })}>
                     Salto: ganó {names[side - 1]}
                   </Button>
                 ))}
               </div>
             ) : (
-              <Button className="h-12" onClick={() => doAct({ type: 'alternating' })}>
+              <Button variant="quiet" size="lg" onClick={() => doAct({ type: 'alternating' })}>
                 Posesión alterna: saca {names[s.arrow - 1]} (y se voltea la flecha)
               </Button>
             )}
           </section>
         )}
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">Técnica al entrenador o al banco</h3>
-          <div className="grid grid-cols-2 gap-2">
+          <h3 className="text-[15px] font-semibold">Técnica al entrenador o al banco</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
             {([1, 2] as const).map((side) => (
-              <Button key={side} className="h-12" onClick={() => onFoul(side, 'coach_technical')}>
+              <Button key={side} variant="quiet" size="lg" onClick={() => onFoul(side, 'coach_technical')}>
                 Entrenador {names[side - 1]}
               </Button>
             ))}
             {([1, 2] as const).map((side) => (
-              <Button key={`b${side}`} className="h-12" onClick={() => onFoul(side, 'bench_technical')}>
+              <Button key={`b${side}`} variant="quiet" size="lg" onClick={() => onFoul(side, 'bench_technical')}>
                 Banco {names[side - 1]}
               </Button>
             ))}
@@ -594,42 +613,42 @@ function MoreModal({
         </section>
         {config.clock ? (
           <section className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold">Corregir el reloj</h3>
+            <h3 className="text-[15px] font-semibold">Corregir el reloj</h3>
             <div className="flex gap-2">
               <Field label="Lo que falta (mm:ss)" className="flex-1">
                 <Input inputMode="numeric" value={clock} onChange={(e) => setClock(e.target.value)} placeholder="2:00" />
               </Field>
-              <Button className="mt-auto" onClick={setRemaining} disabled={!/^(\d{1,2})[:.](\d{2})$/.test(clock.trim())}>
+              <Button variant="quiet" className="mt-auto h-10" onClick={setRemaining} disabled={!/^(\d{1,2})[:.](\d{2})$/.test(clock.trim())}>
                 Poner
               </Button>
             </div>
-            <p className="text-xs text-muted">El reloj del teléfono es de referencia, no oficial.</p>
+            <p className="text-[13px] text-muted">El reloj del teléfono es de referencia, no oficial.</p>
           </section>
         ) : (
           config.variant === '5x5' &&
           s.period === config.periods && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="size-5" checked={late} onChange={(e) => setLate(e.target.checked)} />
+            <label className="flex min-h-12 items-center gap-3 text-[15px]">
+              <input type="checkbox" className="size-5 accent-[var(--accent)]" checked={late} onChange={(e) => setLate(e.target.checked)} />
               Estamos en los últimos 2 minutos (máximo {config.timeouts.lastTwoMinutes} tiempos muertos)
             </label>
           )
         )}
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">Forfeit o default</h3>
+          <h3 className="text-[15px] font-semibold">Forfeit o default</h3>
           <div className="grid grid-cols-2 gap-2">
             {([1, 2] as const).map((side) => (
-              <Button key={side} className="h-12" variant="ghost" onClick={() => void ending('forfeit', side)}>
+              <DangerButton key={side} onClick={() => void ending('forfeit', side)}>
                 No vino {names[side - 1]}
-              </Button>
+              </DangerButton>
             ))}
             {([1, 2] as const).map((side) => (
-              <Button key={`d${side}`} className="h-12" variant="ghost" onClick={() => void ending('default', side)}>
+              <DangerButton key={`d${side}`} onClick={() => void ending('default', side)}>
                 {names[side - 1]} sin jugadores
-              </Button>
+              </DangerButton>
             ))}
           </div>
         </section>
       </div>
-    </Modal>
+    </Sheet>
   );
 }

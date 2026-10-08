@@ -4,7 +4,7 @@ import type { Match, PlayerDraft } from '../../../lib/data/matches';
 import { useMatchRsvps } from '../../../lib/data/teamSports';
 import type { Suspended } from '../../../sports/team/discipline';
 import type { Side } from '../../../sports/types';
-import { Badge, Button, Field, Modal, Select, Tabs, cx } from '../../../components/ui';
+import { Badge, Button, Field, Segmented, Select, Sheet, cx } from '../../../components/ui';
 import { rosterOf, teamColor } from '../team/logic';
 import { Jersey, RsvpBadge } from '../team/TeamBits';
 import type { TeamLeague } from '../team/useTeamLeague';
@@ -118,31 +118,38 @@ export function LineupModal({
   };
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Alineación"
+      subtitle={`Los ${players} titulares de cada equipo`}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={save}>
-            Guardar ({picked[0].starters.length} y {picked[1].starters.length})
-          </Button>
-        </>
+        <Button variant="primary" size="lg" className="w-full" onClick={save}>
+          Guardar ({picked[0].starters.length} y {picked[1].starters.length})
+        </Button>
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">
-          Marca los {players} titulares de cada equipo y toca <Hand className="inline size-4 align-[-3px]" /> para el portero. Cuenta como partido jugado; los que
-          entran de cambio se suman solos.
+      <div className="flex flex-col gap-3 pb-1">
+        <p className="text-meta text-muted">
+          Toca <Hand aria-label="el guante" className="inline size-4 align-[-3px]" /> para el portero. Los que entran de cambio se suman solos.
         </p>
-        <Tabs
-          items={m.sides.map((s, k) => ({ key: String(k + 1) as '1' | '2', label: tl.teamOf(s.teamId)?.name ?? s.label, count: picked[k].starters.length }))}
-          active={tab}
+        <Segmented
+          full
+          label="Equipo"
+          options={m.sides.map((s, k) => ({
+            key: String(k + 1) as '1' | '2',
+            label: (
+              <>
+                <span className="min-w-0 truncate">{tl.teamOf(s.teamId)?.name ?? s.label}</span>
+                <span className="num text-muted">{picked[k].starters.length}</span>
+              </>
+            ),
+          }))}
+          value={tab}
           onChange={(k) => setTab(k)}
         />
         {warnings.length > 0 && (
-          <p role="alert" className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
+          <p role="alert" className="flex items-start gap-2 rounded-2xl bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
               {warnings.map((id) => tl.nameOf(id)).join(', ')} {warnings.length === 1 ? 'está suspendido' : 'están suspendidos'} para este partido. Si juega, sale
@@ -150,21 +157,18 @@ export function LineupModal({
             </span>
           </p>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => update({ starters: list.filter((pid) => statusOf(pid) === 'yes').slice(0, players), goalkeeper: null })}
-          >
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="quiet" size="lg" onClick={() => update({ starters: list.filter((pid) => statusOf(pid) === 'yes').slice(0, players), goalkeeper: null })}>
             Los que dijeron «Voy»
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => update({ starters: [], goalkeeper: null })}>
+          <Button variant="ghost" size="lg" onClick={() => update({ starters: [], goalkeeper: null })}>
             Ninguno
           </Button>
-          <span className={cx('ml-auto self-center text-xs', full ? 'font-semibold text-ok' : 'text-muted')}>
+          <span className={cx('num ml-auto text-sm', full ? 'font-semibold text-accent' : 'text-muted')}>
             {mine.starters.length} de {players}
           </span>
         </div>
-        {!roster.length && !extras[i].length && <p className="text-sm text-muted">Este equipo no tiene plantilla. Arma la plantilla en Admin › Equipos.</p>}
+        {!roster.length && !extras[i].length && <p className="text-meta text-muted">Este equipo no tiene plantilla. Arma la plantilla en Organizar › Equipos.</p>}
         <ul className="flex flex-col gap-1">
           {list.map((pid) => {
             const on = mine.starters.includes(pid);
@@ -177,19 +181,18 @@ export function LineupModal({
                   onClick={() => toggle(pid)}
                   aria-pressed={on}
                   disabled={!on && full}
-                  className={cx('flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-left transition disabled:opacity-50', on ? 'bg-accent-soft' : 'hover:bg-surface-2')}
+                  className={cx('flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 text-left transition disabled:opacity-50', on ? 'bg-accent-soft' : 'hover:bg-surface-2')}
                 >
                   {on ? <CheckSquare className="size-5 shrink-0 text-accent" /> : <Square className="size-5 shrink-0 text-muted" />}
                   <Jersey n={jersey(pid)} color={on ? color : undefined} />
-                  <span className="min-w-0 flex-1 truncate">{tl.nameOf(pid)}</span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{tl.nameOf(pid)}</span>
                   {s && <Badge tone="danger">Suspendido</Badge>}
                   {!s && extras[i].includes(pid) && <Badge>Refuerzo</Badge>}
                   {!s && !extras[i].includes(pid) && <RsvpBadge status={statusOf(pid)} />}
                 </button>
                 <Button
-                  size="sm"
-                  variant={gk ? 'primary' : 'ghost'}
-                  className="h-12 w-12"
+                  variant={gk ? 'primary' : 'quiet'}
+                  className="size-14 rounded-2xl"
                   aria-pressed={gk}
                   aria-label={gk ? `${tl.nameOf(pid)} es el portero` : `Poner a ${tl.nameOf(pid)} de portero`}
                   icon={<Hand className="size-5" />}
@@ -200,14 +203,14 @@ export function LineupModal({
           })}
         </ul>
         {susp.size > 0 && (
-          <p className="text-xs text-muted">
+          <p className="text-[13px] text-muted">
             Suspendidos:{' '}
             {[...susp.values()].map((s) => `${tl.nameOf(s.player)} (${REASON_TEXT[s.reason] ?? s.reason})`).join(', ')}.
           </p>
         )}
         {reinforcements > 0 && (
-          <div className="flex flex-col gap-2 rounded-xl bg-surface-2 p-3">
-            <p className="text-sm font-medium">
+          <div className="flex flex-col gap-2 rounded-[20px] bg-surface-2 p-4">
+            <p className="text-[15px] font-semibold">
               Refuerzos ({extras[i].length} de {reinforcements})
             </p>
             {extras[i].map((pid) => (
@@ -215,8 +218,8 @@ export function LineupModal({
                 <UserPlus className="size-4 text-muted" />
                 <span className="flex-1 truncate text-sm">{tl.nameOf(pid)}</span>
                 <Button
-                  size="sm"
                   variant="ghost"
+                  size="lg"
                   icon={<X className="size-4" />}
                   aria-label={`Quitar a ${tl.nameOf(pid)}`}
                   onClick={() => {
@@ -255,6 +258,6 @@ export function LineupModal({
           </div>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }

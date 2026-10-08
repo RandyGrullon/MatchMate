@@ -5,7 +5,7 @@ import { saveLeagueRules } from '../../../lib/data/teamSports';
 import { toIsoDate } from '../../../lib/format';
 import { seededRandom, shuffle } from '../../../sports/formats/random';
 import { useAction } from '../../../components/feedback';
-import { Button, Card, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { Button, Card, Field, Input, Select, Sheet, cx } from '../../../components/ui';
 import { isPlayoffMatch } from './playoffs';
 import { isIsoDate, parseCourts } from './schedule';
 import { TeamName } from './TeamBits';
@@ -102,21 +102,18 @@ export function TournamentBuilder({
 
   const maxGroups = Math.max(1, Math.min(8, Math.floor(ids.length / 2)));
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      wide
       title="Torneo relámpago"
+      subtitle="Grupos y la final, en un día"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!plan} onClick={() => void save()} icon={<Trophy className="size-4" />}>
-            Crear {plan?.games.length ?? 0} partidos
-          </Button>
-        </>
+        <Button variant="primary" size="lg" className="w-full" loading={busy} disabled={!plan} onClick={() => void save()} icon={<Trophy className="size-5" />}>
+          Crear {plan?.games.length ?? 0} partidos
+        </Button>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 pb-1">
         <Field label={`Equipos (${ids.length})`}>
           <div className="flex flex-wrap gap-1.5">
             {teams.map((t) => {
@@ -127,7 +124,10 @@ export function TournamentBuilder({
                   type="button"
                   aria-pressed={on}
                   onClick={() => toggle(t.id)}
-                  className={cx('min-h-9 rounded-full border px-3 py-1.5 text-sm transition', on ? 'border-accent bg-accent-soft font-medium' : 'border-line text-muted')}
+                  className={cx(
+                    "relative h-9 rounded-full px-3.5 text-sm font-semibold transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
+                    on ? 'bg-accent-soft text-fg' : 'bg-surface-2 text-muted',
+                  )}
                 >
                   <TeamName team={t} />
                 </button>
@@ -135,7 +135,7 @@ export function TournamentBuilder({
             })}
           </div>
         </Field>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Grupos">
             <Select value={groups} onChange={(e) => setGroups(e.target.value)}>
               {Array.from({ length: maxGroups }, (_, i) => i + 1).map((n) => (
@@ -160,23 +160,23 @@ export function TournamentBuilder({
           <Field label="Primer partido">
             <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
           </Field>
-          <Field label="Un turno cada (minutos)" hint="El partido más el descanso">
+          <Field label="Un turno cada (min)" hint="El partido más el descanso">
             <Input inputMode="numeric" value={slot} onChange={(e) => setSlot(e.target.value.replace(/\D/g, '').slice(0, 3))} />
           </Field>
           <Field label="Canchas" hint="Separadas por coma">
             <Input value={courtsText} onChange={(e) => setCourtsText(e.target.value)} placeholder="Cancha 1, Cancha 2" />
           </Field>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-5" checked={third} onChange={(e) => setThird(e.target.checked)} />
-            Partido por el 3.er lugar
-          </label>
-          <Button size="sm" icon={<Shuffle className="size-4" />} onClick={() => setSeed(Date.now())}>
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 text-[15px]">
+          <span className="min-w-0 flex-1">Partido por el 3.er lugar</span>
+          <input type="checkbox" className="size-5 shrink-0 accent-[var(--accent)]" checked={third} onChange={(e) => setThird(e.target.checked)} />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="quiet" icon={<Shuffle className="size-4" />} size="lg" onClick={() => setSeed(Date.now())}>
             Sortear los grupos
           </Button>
           {seed !== 0 && (
-            <Button size="sm" variant="ghost" onClick={() => setSeed(0)}>
+            <Button variant="ghost" size="lg" onClick={() => setSeed(0)}>
               Por orden
             </Button>
           )}
@@ -186,7 +186,7 @@ export function TournamentBuilder({
           <div className="flex flex-col gap-3">
             <div className="grid gap-2 sm:grid-cols-2">
               {plan.groups.map((gr) => (
-                <Card key={gr.name} className="px-3 py-2">
+                <div key={gr.name} className="rounded-2xl bg-surface-2 px-3.5 py-2.5">
                   <p className="mb-1 text-sm font-semibold">{gr.name}</p>
                   <ul className="flex flex-col gap-0.5 text-sm">
                     {gr.teams.map((t) => (
@@ -195,10 +195,10 @@ export function TournamentBuilder({
                       </li>
                     ))}
                   </ul>
-                </Card>
+                </div>
               ))}
             </div>
-            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-xl bg-surface-2 p-3 text-sm">
+            <div className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-2xl bg-surface-2 px-3.5 py-3 text-sm">
               {plan.games.map((m, k) => (
                 <div key={k} className="flex items-center gap-2">
                   <span className="w-12 shrink-0 tabular-nums text-muted">{m.time}</span>
@@ -213,13 +213,13 @@ export function TournamentBuilder({
           </div>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
 function Warn({ children }: { children: ReactNode }) {
   return (
-    <p role="status" className="flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+    <p role="status" className="flex items-start gap-2 rounded-2xl bg-warn-soft px-3.5 py-2.5 text-sm text-warn">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <span>{children}</span>
     </p>
@@ -264,16 +264,16 @@ export function TournamentAdvance({ tl, rankGroup, className }: { tl: TeamLeague
     setBusy(false);
   };
   return (
-    <Card className={cx('flex flex-col gap-2 p-4', className)}>
-      <p className="flex items-center gap-2 font-semibold">
-        <ArrowRightLeft className="size-5 text-accent" /> Pasar a la fase final
+    <Card soft className={cx('flex flex-col gap-3 px-5 pt-[18px] pb-5', className)}>
+      <p className="flex items-center gap-2 text-sm font-semibold text-accent">
+        <ArrowRightLeft aria-hidden="true" className="size-4" /> Pasar a la fase final
       </p>
-      <ul className="flex flex-col gap-0.5 text-sm">
+      <ul className="flex flex-col gap-1 text-[15px] text-fg-2">
         {changes.map((c) => (
           <li key={c.matchId}>{text(c)}</li>
         ))}
       </ul>
-      <Button variant="primary" className="self-start" loading={busy} onClick={() => void apply()}>
+      <Button variant="primary" size="lg" className="w-full" loading={busy} onClick={() => void apply()}>
         Poner estos equipos
       </Button>
     </Card>

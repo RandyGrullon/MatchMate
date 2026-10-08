@@ -1,18 +1,16 @@
-import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { awaitingConfirmation, hasResult, type Match } from '../../../lib/data/matches';
+import type { Match } from '../../../lib/data/matches';
 import { useNow } from '../../../lib/useNow';
-import { MatchCard, ScheduleList } from '../../../components/match';
-import { ListSkeleton, LoadError, cx } from '../../../components/ui';
+import { MatchCard } from '../../../components/match';
+import { GamesList } from '../team/GamesList';
 import { TeamName } from '../team/TeamBits';
+import { matchLink as teamMatchLink } from '../team/TeamUi';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { LiveStrip } from './bits';
 import { MatchDetail } from './MatchDetail';
 
-type Filter = 'todos' | 'vivo' | 'proximos' | 'resultados' | 'mios';
-
 /** El link de un partido (el push de «resultado por confirmar» trae `?partido=`). */
-export const matchLink = (base: string, id: string) => `${base}/juegos?partido=${id}`;
+export const matchLink = teamMatchLink;
 
 /** Tarjeta de un partido de baloncesto: colores de los equipos y el en vivo abajo. */
 export function BasketballMatchCard({ tl, match: m, now }: { tl: TeamLeague; match: Match; now?: number }) {
@@ -33,32 +31,15 @@ export function BasketballMatchCard({ tl, match: m, now }: { tl: TeamLeague; mat
 }
 
 /**
- * Partidos de la liga (/l/:lid/juegos): en vivo, próximos, resultados y los de mi equipo. Con `?partido=<id>` abre
- * ese partido (así llega el push de «Tienes un resultado por confirmar»); con `&mesa=1`, su mesa anotadora.
+ * Partidos de la liga (/l/:lid/juegos): por jugar, resultados y los de mi equipo, con lo que está en vivo arriba
+ * (../team/GamesList). Con `?partido=<id>` abre ese partido (así llega el push de «Tienes un resultado por confirmar»);
+ * con `&mesa=1`, su mesa anotadora. Al volver, la lista sigue en la opción en que estaba (`?ver=`).
  */
 export default function BasketballGames() {
   const tl = useTeamLeague();
   const [params, setParams] = useSearchParams();
   const partido = params.get('partido');
   const now = useNow(30_000).getTime();
-  const [filter, setFilter] = useState<Filter>('todos');
-  const myTeamIds = tl.myTeams.map((x) => x.team.id);
-
-  const list = useMemo(() => {
-    const all = tl.matches.data;
-    switch (filter) {
-      case 'vivo':
-        return all.filter((m) => m.status === 'live' || m.status === 'suspended');
-      case 'proximos':
-        return all.filter((m) => m.status === 'scheduled' || m.status === 'postponed');
-      case 'resultados':
-        return all.filter((m) => hasResult(m));
-      case 'mios':
-        return all.filter((m) => m.sides.some((s) => s.teamId && myTeamIds.includes(s.teamId)));
-      default:
-        return all;
-    }
-  }, [tl.matches.data, filter, myTeamIds.join()]);
 
   if (partido) {
     return (
@@ -77,53 +58,17 @@ export default function BasketballGames() {
             { replace: !open },
           )
         }
-        onBack={() => setParams({}, { replace: false })}
+        onBack={() =>
+          setParams((p) => {
+            const next = new URLSearchParams(p);
+            next.delete('partido');
+            next.delete('mesa');
+            return next;
+          })
+        }
       />
     );
   }
 
-  if (tl.matches.error) return <LoadError error={tl.matches.error} />;
-  const pendingMine = tl.matches.data.filter((m) => awaitingConfirmation(m, now) && tl.speakerOf(m) !== null && tl.speakerOf(m) !== m.proposedSide).length;
-  const chips: { key: Filter; label: string; count?: number }[] = [
-    { key: 'todos', label: 'Todos' },
-    { key: 'vivo', label: 'En vivo', count: tl.matches.data.filter((m) => m.status === 'live').length },
-    { key: 'proximos', label: 'Por jugar' },
-    { key: 'resultados', label: 'Resultados', count: pendingMine || undefined },
-    ...(myTeamIds.length ? [{ key: 'mios' as const, label: 'Mi equipo' }] : []),
-  ];
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label="Filtrar partidos">
-        {chips.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            aria-pressed={filter === c.key}
-            onClick={() => setFilter(c.key)}
-            className={cx(
-              'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition active:scale-95',
-              filter === c.key ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',
-            )}
-          >
-            {c.label}
-            {!!c.count && <span className="rounded-full bg-danger px-1.5 text-[11px] leading-4 text-on-danger">{c.count}</span>}
-          </button>
-        ))}
-      </div>
-      {tl.matches.loading && !tl.matches.data.length ? (
-        <ListSkeleton rows={4} />
-      ) : (
-        <ScheduleList
-          matches={list}
-          groupBy="round"
-          roundWord="Jornada"
-          tz={tl.tz}
-          now={now}
-          renderMatch={(m) => <BasketballMatchCard tl={tl} match={m} now={now} />}
-          empty={filter === 'todos' ? (tl.isAdmin ? 'Arma el calendario en Admin › Equipos.' : 'Cuando el admin arme el calendario, los partidos salen aquí.') : 'Nada por aquí.'}
-        />
-      )}
-    </div>
-  );
+  return <GamesList tl={tl} now={now} renderMatch={(m) => <BasketballMatchCard tl={tl} match={m} now={now} />} />;
 }

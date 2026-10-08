@@ -257,12 +257,16 @@ describe('letra sobre los colores de estado', () => {
     expect(ON_OK).toBe('var(--on-ok, var(--bg))');
   });
 
-  it('los botones Voy / Tal vez / No voy marcados usan la letra del tema, nunca blanco fijo', () => {
+  it('los botones Voy / Tal vez / No voy marcados (rediseño): Voy en el color del deporte, Tal vez y No voy suaves, nunca blanco fijo', () => {
     const html = (value: 'yes' | 'maybe' | 'no') => renderToString(h(RsvpButtons, { value, onChange: () => {} }));
-    expect(html('yes')).toContain('bg-ok text-[color:var(--on-ok,var(--bg))]');
-    expect(html('maybe')).toContain('bg-warn text-[color:var(--on-warn,var(--bg))]');
-    expect(html('no')).toContain('bg-danger text-on-danger');
+    expect(html('yes')).toContain('bg-accent text-accent-fg');
+    expect(html('maybe')).toContain('bg-warn-soft text-warn');
+    expect(html('no')).toContain('bg-danger-soft text-danger');
     for (const v of ['yes', 'maybe', 'no'] as const) expect(html(v)).not.toContain('text-white');
+    // Los que no están marcados, grises (en blanco sobre la tarjeta de color: `raised`), y de 44 px.
+    expect(html('yes')).toContain('bg-surface-2 text-fg-2');
+    expect(renderToString(h(RsvpButtons, { value: 'yes', onChange: () => {}, raised: true }))).toContain('bg-surface text-fg-2');
+    expect(html('yes')).toContain('h-11');
   });
 
   it('mientras se guarda: la ruedita en el que se tocó (del mismo tamaño) y los tres esperan', () => {

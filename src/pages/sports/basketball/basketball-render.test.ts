@@ -5,7 +5,7 @@
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match, type MatchSide } from '../../../lib/data/matches';
@@ -18,6 +18,13 @@ import type { League, Member, Player } from '../../../lib/types';
 import { FeedbackProvider } from '../../../components/feedback';
 import screens from './screens';
 import { templateRules } from './rules';
+
+// Lite o Pro (el modo de la app): Lite por defecto; algunas pruebas miran lo de Pro.
+const mode = vi.hoisted(() => ({ pro: false }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+}));
 
 const lid = 'l1';
 const now = Date.now();
@@ -191,7 +198,10 @@ function render(el: ReactElement, url: string, role: 'admin' | 'captain' | 'visi
 
 const text = (html: string) => html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ');
 
-beforeEach(() => seed());
+beforeEach(() => {
+  mode.pro = false;
+  seed();
+});
 afterEach(() => queryClient.invalidateAll());
 
 describe('pantallas del baloncesto', () => {
@@ -201,36 +211,71 @@ describe('pantallas del baloncesto', () => {
     expect(screens.tabs).toEqual({ home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' });
   });
 
-  it('calendario: en vivo con periodo, faltas y BONUS; mi próximo partido con su convocatoria; tabla', () => {
+  it('inicio (rediseño): en vivo con periodo, faltas y BONUS; tu próximo partido con Voy en un toque; próximos, resultados y tabla', () => {
     const cap = text(render(h(screens.Home), `/l/${lid}`, 'captain'));
     expect(cap).toContain('En vivo');
     expect(cap).toContain('2.º cuarto');
     expect(cap).toContain('BONUS');
+    // «Tu próximo partido» con la convocatoria en línea (Voy / Tal vez / No voy) y cómo va el equipo.
     expect(cap).toContain('Tu próximo partido');
-    expect(cap).toContain('Convocatoria');
-    expect(cap).toContain('¿Vas a este partido?');
-    expect(cap).toContain('Máximo anotador');
+    expect(cap).toContain('Voy Tal vez No voy');
+    expect(cap).toMatch(/Tu equipo: 1 va · faltan \d/);
+    // Los resultados como filas con quién ganó y el marcador; la tabla con «Tu equipo».
+    expect(cap).toContain('Resultados');
+    expect(cap).toContain('Ganó Tigres');
+    expect(cap).toContain('70–64');
+    expect(cap).toContain('Tabla');
+    expect(cap).toContain('Tu equipo');
+    expect(cap).toContain('Máximo anotador: Otra Díaz');
     expect(cap).not.toContain('Armar calendario');
+    // Con partidos, armar el calendario y el Excel ya no están en el inicio (Organizar y la Tabla en Pro).
     const admin = text(render(h(screens.Home), `/l/${lid}`, 'admin'));
-    expect(admin).toContain('Armar calendario');
-    expect(admin).toContain('Descargar Excel');
+    expect(admin).not.toContain('Armar calendario');
+    expect(admin).not.toContain('Descargar Excel');
+    expect(admin).toContain('Próximos partidos');
   });
 
-  it('partidos: lista por jornada y el detalle con la mesa, cuartos, puntos por jugador y el admin', () => {
+  it('inicio vacío: sin equipos, «Primero, los equipos»; con equipos y sin partidos, el único botón es «Armar calendario»', () => {
+    queryClient.setQueryData(matchKeys.league(lid), []);
+    const empty = text(render(h(screens.Home), `/l/${lid}`, 'admin'));
+    expect(empty).toContain('Todavía no hay calendario');
+    expect(empty).toContain('Armar calendario');
+    expect(text(render(h(screens.Home), `/l/${lid}`, 'visit'))).toContain('Cuando el admin arme el calendario');
+    queryClient.setQueryData(seasonTeamKeys.league(lid), []);
+    const noTeams = text(render(h(screens.Home), `/l/${lid}`, 'admin'));
+    expect(noTeams).toContain('Primero, los equipos');
+    expect(noTeams).toContain('Crear los equipos');
+    expect(noTeams).not.toContain('Armar calendario');
+  });
+
+  it('partidos: Por jugar | Resultados | Mi equipo por jornada, y el detalle con la mesa, cuartos, puntos por jugador y «•••»', () => {
     const list = text(render(h(screens.Feed!), `/l/${lid}/juegos`, 'visit'));
-    expect(list).toContain('Jornada 1');
+    expect(list).toContain('Partidos');
+    expect(list).toContain('Por jugar Resultados');
+    expect(list).toContain('En vivo');
+    expect(list).toContain('Jornada 3');
+    expect(list).not.toContain('Jornada 1');
     expect(list).toContain('Tigres');
-    const detail = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin'));
+    const done = text(render(h(screens.Feed!), `/l/${lid}/juegos?ver=resultados`, 'visit'));
+    expect(done).toContain('Jornada 1');
+    expect(done).toContain('Ganó Tigres');
+    expect(done).toContain('70–64');
+    expect(text(render(h(screens.Feed!), `/l/${lid}/juegos?ver=mios`, 'captain'))).toContain('Mi equipo');
+    const detailHtml = render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin');
+    const detail = text(detailHtml);
+    expect(detail).toContain('Jornada 1');
+    expect(detail).toContain('Final');
     expect(detail).toContain('4C');
     expect(detail).toContain('Ana Pérez');
-    expect(detail).toContain('Corregir resultado');
+    expect(detail).toContain('Compartir el resultado');
+    // Lo del admin va en «•••» (una hoja), ya no en una tarjeta con botones.
+    expect(detailHtml).toContain('aria-label="Más opciones"');
+    expect(detail).not.toContain('Admin del partido');
     const next3 = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m3`, 'captain'));
     expect(next3).toContain('Abrir la mesa anotadora');
     expect(next3).toContain('Anotador de mesa: Otra');
     expect(next3).toContain('Convocatoria');
-    const admin3 = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m3`, 'admin'));
-    expect(admin3).toContain('Admin del partido');
-    expect(admin3).toContain('Delegado de Leones');
+    expect(next3).toContain('¿Vas a este partido?');
     // La mesa se abre encima (sin estado todavía en el servidor).
     const table = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m3&mesa=1`, 'admin'));
     expect(table).toContain('Tigres vs. Leones');
@@ -244,17 +289,36 @@ describe('pantallas del baloncesto', () => {
 
   it('tabla FIBA y perfil con puntos por partido', () => {
     const table = text(render(h(screens.Standings!), `/l/${lid}/ranking`, 'visit'));
+    expect(table).toContain('Tabla Anotadores');
     expect(table).toContain('Tigres');
-    expect(table).toContain('Desempate FIBA');
+    // La regla en una línea; lo demás en «Cómo se cuenta».
+    expect(table).toContain('Ganar 2 · perder 1 · desempate FIBA');
+    expect(table).toContain('Cómo se cuenta');
+    const scorers = text(render(h(screens.Standings!), `/l/${lid}/ranking?ver=anotadores`, 'visit'));
+    expect(scorers).toContain('Otra Díaz');
+    expect(scorers).toContain('por partido');
     const profile = text(render(h(screens.MyProfile!), `/l/${lid}/perfil`, 'captain'));
+    expect(profile).toContain('Tigres');
     expect(profile).toContain('Capitán');
+    expect(profile).toContain('Plantilla');
     expect(profile).toContain('Agregar jugador');
+    expect(profile).toContain('Mis números');
     expect(profile).toContain('Por partido');
     expect(profile).toContain('vs. Leones');
     const player = text(render(h(screens.Player!), `/l/${lid}/j/p3`, 'visit', '/l/:lid/j/:playerId'));
     expect(player).toContain('Otra Díaz');
-    expect(player).toContain('Triples');
+    expect(player).toContain('Leones · Delegado · #4');
     expect(player).toContain('#1 en anotadores');
+    // Lite: los cuatro números de siempre; Pro: también triples, tiros libres, faltas y partido por partido.
+    expect(player).not.toContain('Triples');
+    mode.pro = true;
+    const pro = text(render(h(screens.Player!), `/l/${lid}/j/p3`, 'visit', '/l/:lid/j/:playerId'));
+    expect(pro).toContain('Triples');
+    expect(pro).toContain('Tiros libres');
+    expect(pro).toContain('PTS 3P TL F');
+    const proScorers = text(render(h(screens.Standings!), `/l/${lid}/ranking?ver=anotadores`, 'visit'));
+    expect(proScorers).toContain('PTS');
+    expect(proScorers).toContain('Prom');
   });
 
   it('temporadas: una cerrada sin tabla guardada se calcula con sus partidos y sus equipos; sin temporadas, no sale una tabla mezclada', () => {
@@ -272,7 +336,7 @@ describe('pantallas del baloncesto', () => {
     queryClient.setQueryData(seasonKeys.list(lid), [{ ...activeSeason, startsOn: '2999-01-01' }, before]);
     const closed = text(render(h(screens.Standings!), `/l/${lid}/ranking?temporada=s0`, 'visit'));
     expect(closed).toContain('Campeón: Tigres');
-    expect(closed).toContain('Desempate FIBA');
+    expect(closed).toContain('desempate FIBA');
     expect(closed).toContain('Leones');
     expect(closed).not.toContain('Sin tabla guardada');
     // Otra liga con sus partidos pero sin las temporadas todavía: nada de tabla.
@@ -287,14 +351,46 @@ describe('pantallas del baloncesto', () => {
         h(FeedbackProvider, null, h(LeagueContext.Provider, { value: { ...ctx('visit'), lid: other, base: `/l/${other}` } }, h(Routes, null, h(Route, { path: '*', element: h(screens.Standings!) })))),
       ),
     );
-    expect(text(html)).not.toContain('Desempate FIBA');
+    expect(text(html)).not.toContain('desempate FIBA');
   });
 
-  it('admin: equipos, calendario con anotadores y reglas con plantillas', () => {
+  it('admin: Equipos | Partidos | Reglas (?parte=), con los anotadores de mesa y las plantillas de reglas', () => {
     const tab = screens.adminTabs![0];
     const out = text(render(h(tab.Component), `/l/${lid}/admin?tab=equipos`, 'admin'));
+    expect(out).toContain('Equipos Partidos Reglas');
     expect(out).toContain('Equipos (2)');
     expect(out).toContain('Capitán: Ana Pérez');
+    const cal = text(render(h(tab.Component), `/l/${lid}/admin?tab=equipos&parte=partidos`, 'admin'));
+    expect(cal).toContain('Armar calendario');
+    expect(cal).toContain('Partido suelto');
+    expect(cal).toContain('Anotador de mesa');
+    expect(cal).toContain('Anota: Otra');
+    const rules = text(render(h(tab.Component), `/l/${lid}/admin?tab=equipos&parte=reglas`, 'admin'));
+    expect(rules).toContain('Plantillas');
+    expect(rules).toContain('En uso');
+    expect(rules).toContain('Ajustar a mano');
+    expect(rules).toContain('Guardar reglas');
+  });
+
+  it('«•••» del partido: lo del admin según cómo está el partido, y el anotador de mesa con los capitanes y delegados', async () => {
+    const { adminMenuEntries, OfficialPicker } = await import('../team/MatchAdminPanel');
+    const { scorerCandidates } = await import('../team/logic');
+    const keys = (m: Match) => adminMenuEntries(m, { official: null, first: 'Tigres' }).map((e) => e.label);
+    expect(keys(next)).toEqual(['Anotador de mesa', 'Reprogramar', 'Aplazar', 'W.O.', 'Poner resultado', 'Anular', 'Borrar el partido']);
+    expect(keys(done)).toEqual(['Corregir resultado', 'Anular', 'Borrar el partido']);
+    expect(keys({ ...done, status: 'disputed' })).toContain('Decidir el reclamo');
+    // En disputa: el admin lo ve como tarjeta (dejar lo anotado o decidir); los demás no.
+    queryClient.setQueryData(matchKeys.league(lid), [{ ...done, status: 'disputed', disputeNote: 'Fue 70-66' }, live, next]);
+    const disputed = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin'));
+    expect(disputed).toContain('En disputa');
+    expect(disputed).toContain('«Fue 70-66»');
+    expect(disputed).toContain('Dejar lo anotado');
+    expect(text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'captain'))).not.toContain('Dejar lo anotado');
+    const picker = text(
+      render(h(OfficialPicker, { tl: { lid }, match: next, official, candidates: scorerCandidates(next, teams, members, players) }), `/l/${lid}`, 'admin'),
+    );
+    expect(picker).toContain('Sin designar');
+    expect(picker).toContain('Delegado de Leones');
   });
 
   it('ventanas: armar calendario, presentes y reglas', async () => {

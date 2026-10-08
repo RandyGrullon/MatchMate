@@ -128,7 +128,8 @@ describe.each([
     expect(t).toContain('Copa de octubre');
     expect(t).toContain('Torneo relámpago');
     expect(t).toContain('Los equipos');
-    expect(t).toContain('Nuevo equipo');
+    // Los equipos se crean en su hoja, ahí mismo (el único botón mientras no hay 2).
+    expect(t).toContain('Crear los equipos');
     expect(t).toContain('Arma el torneo');
     expect(t).not.toContain('Sin partidos en este evento');
     expect(t).not.toContain('todos contra todos, de ida');
@@ -141,7 +142,7 @@ describe.each([
     expect(t).toContain('Armar el torneo');
     const visit = text(render(Event, sport, false));
     expect(visit).toContain('El torneo todavía no está armado');
-    expect(visit).toContain('Equipos (4)');
+    expect(visit).toContain('Equipos 4');
     expect(visit).not.toContain('Armar el torneo');
   });
 
@@ -152,7 +153,9 @@ describe.each([
     expect(t).toContain('Grupo A');
     expect(t).toContain('Final');
     expect(t.indexOf('Grupo A')).toBeLessThan(t.lastIndexOf('Final'));
-    expect(t).toContain('Equipos (4)');
+    expect(t).toContain('Equipos 4');
+    // Abierto como evento: «•••» con el reporte y los anotadores (el admin).
+    expect(render(Event, sport)).toContain('aria-label="Más opciones"');
     expect(t).toContain('Tigres');
   });
 });

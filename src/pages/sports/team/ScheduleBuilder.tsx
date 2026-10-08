@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarPlus, Coffee } from 'lucide-react';
 import { createMatches } from '../../../lib/data/matches';
 import { toIsoDate } from '../../../lib/format';
 import { useAction } from '../../../components/feedback';
-import { Badge, Button, Card, Field, Input, Modal, Select, cx } from '../../../components/ui';
+import { Badge, Button, Field, Input, Select, Sheet, cx } from '../../../components/ui';
 import { whenText } from '../../../components/match/format';
 import { isIsoDate, matchClashes, parseCourts, parseTimes, planClashes, planDrafts, planSchedule, zonedIso, type SchedulePlan } from './schedule';
 import { TeamName } from './TeamBits';
@@ -111,21 +111,26 @@ export function ScheduleBuilder({
   const name = (id: string) => tl.teamOf(id)?.name ?? '¿?';
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      wide
       title="Armar el calendario"
+      subtitle="Todos contra todos, con horas y canchas"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!plan || !plan.matches.length || times.times.length === 0} onClick={() => void save()} icon={<CalendarPlus className="size-4" />}>
-            Crear {plan?.matches.length ?? 0} partidos
-          </Button>
-        </>
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={busy}
+          disabled={!plan || !plan.matches.length || times.times.length === 0}
+          onClick={() => void save()}
+          icon={<CalendarPlus className="size-5" />}
+        >
+          Crear {plan?.matches.length ?? 0} partidos
+        </Button>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 pb-1">
         <Field label={`Equipos (${ids.length})`}>
           <div className="flex flex-wrap gap-1.5">
             {teams.map((t) => {
@@ -136,7 +141,10 @@ export function ScheduleBuilder({
                   type="button"
                   aria-pressed={on}
                   onClick={() => toggle(t.id)}
-                  className={cx('rounded-full border px-3 py-1.5 text-sm transition', on ? 'border-accent bg-accent-soft font-medium' : 'border-line text-muted')}
+                  className={cx(
+                    "relative h-9 rounded-full px-3.5 text-sm font-semibold transition after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
+                    on ? 'bg-accent-soft text-fg' : 'bg-surface-2 text-muted',
+                  )}
                 >
                   <TeamName team={t} />
                 </button>
@@ -144,8 +152,8 @@ export function ScheduleBuilder({
             })}
           </div>
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Vueltas">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Vueltas" className="col-span-2">
             <Select value={double ? '2' : '1'} onChange={(e) => setDouble(e.target.value === '2')}>
               <option value="1">Solo ida (todos contra todos una vez)</option>
               <option value="2">Ida y vuelta</option>
@@ -165,20 +173,20 @@ export function ScheduleBuilder({
           <Field label="Empieza en la jornada">
             <Input inputMode="numeric" value={firstRound} onChange={(e) => setFirstRound(e.target.value.replace(/\D/g, ''))} />
           </Field>
-          <Field label="Horas de juego" hint={times.bad.length ? `No se entiende: ${times.bad.join(', ')}` : 'Separadas por coma: 7:00 pm, 8:30 pm'}>
+          <Field label="Horas de juego" hint={times.bad.length ? `No se entiende: ${times.bad.join(', ')}` : 'Separadas por coma: 7:00 pm, 8:30 pm'} className="col-span-2">
             <Input value={timesText} onChange={(e) => setTimesText(e.target.value)} />
           </Field>
-          <Field label="Canchas" hint="Separadas por coma">
+          <Field label="Canchas" hint="Separadas por coma" className="col-span-2">
             <Input value={courtsText} onChange={(e) => setCourtsText(e.target.value)} placeholder="Cancha 1, Cancha 2" />
           </Field>
-          <Field label="Fechas sin juego (opcional)" hint="AAAA-MM-DD, separadas por coma: la jornada pasa al día siguiente" className="sm:col-span-2">
+          <Field label="Fechas sin juego (opcional)" hint="AAAA-MM-DD, separadas por coma: la jornada pasa al día siguiente" className="col-span-2">
             <Input value={skipText} onChange={(e) => setSkipText(e.target.value)} placeholder="2026-12-24, 2026-12-31" />
           </Field>
         </div>
 
         {plan && (
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">
+            <p className="text-[15px] font-semibold">
               {byRound.length} jornadas · {plan.matches.length} partidos
             </p>
             {times.times.length === 0 && <Warn>Escribe al menos una hora de juego.</Warn>}
@@ -194,7 +202,7 @@ export function ScheduleBuilder({
             )}
             <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
               {byRound.map(([round, list]) => (
-                <Card key={round} className="px-3 py-2">
+                <div key={round} className="rounded-2xl bg-surface-2 px-3.5 py-2.5">
                   <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
                     Jornada {round}
                     <span className="font-normal text-muted">{list[0]?.date}</span>
@@ -217,19 +225,19 @@ export function ScheduleBuilder({
                         </li>
                       ))}
                   </ul>
-                </Card>
+                </div>
               ))}
             </div>
           </div>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
 function Warn({ children }: { children: ReactNode }) {
   return (
-    <p role="status" className="flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+    <p role="status" className="flex items-start gap-2 rounded-2xl bg-warn-soft px-3.5 py-2.5 text-sm text-warn">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <span>{children}</span>
     </p>
@@ -272,20 +280,18 @@ export function SingleMatchModal({ tl, open, onClose, format, minutes = 90 }: { 
     if (ok) onClose();
   };
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Partido suelto"
+      subtitle="Un amistoso, una final o uno aplazado"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>
-            Crear partido
-          </Button>
-        </>
+        <Button variant="primary" size="lg" className="w-full" loading={busy} disabled={!valid} onClick={() => void save()}>
+          Crear partido
+        </Button>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3 pb-1">
         <Field label="Local">
           <Select value={home} onChange={(e) => setHome(e.target.value)}>
             <option value="">Elige…</option>
@@ -318,15 +324,15 @@ export function SingleMatchModal({ tl, open, onClose, format, minutes = 90 }: { 
         <Field label="Jornada (opcional)">
           <Input inputMode="numeric" value={round} onChange={(e) => setRound(e.target.value.replace(/\D/g, '').slice(0, 3))} />
         </Field>
-        <Field label="Fase (opcional)" hint="Semifinal, Final, Amistoso…" className="sm:col-span-2">
+        <Field label="Fase (opcional)" hint="Semifinal, Final, Amistoso…" className="col-span-2">
           <Input value={stage} maxLength={40} onChange={(e) => setStage(e.target.value)} />
         </Field>
         {valid && (
-          <p className="text-sm text-muted sm:col-span-2">
+          <p className="col-span-2 text-sm text-muted">
             {whenText(zonedIso(date, time, tl.tz), tl.tz)} {clashes.length > 0 && <Badge tone="warn">Choca con otro partido</Badge>}
           </p>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }

@@ -1,14 +1,10 @@
 import { useCallback } from 'react';
-import { Link, useParams } from 'react-router';
-import { CalendarDays } from 'lucide-react';
+import { useParams } from 'react-router';
 import { useEvent } from '../../../lib/data';
 import { useMatches } from '../../../lib/data/matches';
-import { formatDateLong } from '../../../lib/format';
 import { useNow } from '../../../lib/useNow';
-import { ScheduleList } from '../../../components/match';
-import { BackLink } from '../../../components/BackLink';
-import { Empty, ListSkeleton } from '../../../components/ui';
 import { finishedGroupRanking } from '../team/tournament';
+import { LeagueEventView } from '../team/EventView';
 import { TournamentHub } from '../team/TournamentHub';
 import { useKoEvent, type KoEvent } from '../team/TeamPrizes';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
@@ -32,31 +28,7 @@ export default function BasketballEvent() {
   const e = event.data;
   const koEvent = useKoEvent(tl);
   if (tl.league.kind === 'torneo') return <BasketballTournament tl={tl} title={e?.name || tl.league.name} date={e?.date} announcement={e?.announcement} event={koEvent} />;
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-2">
-        <BackLink fallback={tl.base} label="Calendario" />
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold">{e?.name || 'Jornada'}</h1>
-          {e?.date && <p className="text-sm capitalize text-muted">{formatDateLong(e.date)}</p>}
-          {e?.announcement && <p className="mt-2 text-sm">{e.announcement}</p>}
-        </div>
-      </div>
-      {matches.loading && !matches.data.length ? (
-        <ListSkeleton rows={3} />
-      ) : !matches.data.length ? (
-        <Empty icon={<CalendarDays className="size-8" />} title="Sin partidos en este evento">
-          Los partidos de la liga están en el{' '}
-          <Link to={tl.base} className="font-medium text-accent">
-            Calendario
-          </Link>
-          .
-        </Empty>
-      ) : (
-        <ScheduleList matches={matches.data} groupBy="round" roundWord="Jornada" tz={tl.tz} now={now} renderMatch={(m) => <BasketballMatchCard tl={tl} match={m} now={now} />} />
-      )}
-    </div>
-  );
+  return <LeagueEventView tl={tl} event={e ?? null} matches={matches.data} loading={matches.loading} renderMatch={(m) => <BasketballMatchCard tl={tl} match={m} now={now} />} />;
 }
 
 function BasketballTournament({ tl, title, date, announcement, event }: { tl: TeamLeague; title: string; date?: string; announcement?: string | null; event: KoEvent | null }) {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, CalendarPlus, Check, Gavel, Plus, Trash2, Trophy, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarPlus, Gavel, Plus, Trash2, Trophy, X } from 'lucide-react';
 import { compareMatches, hasResult, type Match } from '../../../lib/data/matches';
 import { saveLeagueRules } from '../../../lib/data/teamSports';
 import { SPORTS } from '../../../sports/registry';
@@ -8,16 +8,17 @@ import type { DisciplineConfig } from '../../../sports/team/discipline';
 import type { FootballTableConfig, FootballTieBreak } from '../../../sports/team/standings';
 import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Card, Field, Input, Select, Tabs, cx } from '../../../components/ui';
+import { Button, Card, Field, Input, SectionHeader, Select } from '../../../components/ui';
+import { AdminActions, AdminSegmented, SettingsCard, TemplateRows, ToggleRow, useAdminPart } from '../team/AdminParts';
 import { rosterOf } from '../team/logic';
 import { OfficialsList } from '../team/OfficialsList';
 import { ScheduleBuilder, SingleMatchModal } from '../team/ScheduleBuilder';
 import { TeamsManager } from '../team/TeamsManager';
 import { TournamentAdvance, TournamentBuilder } from '../team/TournamentBuilder';
+import { DangerButton } from '../team/TeamUi';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { FOOTBALL_POSITIONS } from './bits';
 import { deleteFootballSanction, saveFootballSanction, useFootballSanctions } from './data';
-import { matchLink } from './FootballGames';
 import {
   TIEBREAK_CHOICES,
   TIEBREAK_LABEL,
@@ -38,28 +39,29 @@ import {
 } from './rules';
 import { groupRanking, useFootballSeason } from './season';
 
-type Tab = 'equipos' | 'calendario' | 'reglas' | 'comite';
+type Part = 'equipos' | 'partidos' | 'reglas' | 'comite';
+const PARTS: readonly { key: Part; label: string }[] = [
+  { key: 'equipos', label: 'Equipos' },
+  { key: 'partidos', label: 'Partidos' },
+  { key: 'reglas', label: 'Reglas' },
+  { key: 'comite', label: 'Comité' },
+];
 
-/** Admin › Equipos (fútbol y sala): equipos y plantillas, calendario o torneo con anotadores, reglas y sanciones del comité. */
+/**
+ * Organizar › Equipos (fútbol y sala), rediseño «Calma y foco»: un segmentado Equipos | Partidos | Reglas | Comité
+ * (`?parte=`); los equipos y sus plantillas, armar el calendario o el torneo relámpago con el anotador de mesa de cada
+ * partido, las reglas (una plantilla de un toque o a mano) y las sanciones del comité.
+ */
 export default function FootballAdmin() {
   const tl = useTeamLeague();
-  const [tab, setTab] = useState<Tab>('equipos');
+  const [part, setPart] = useAdminPart(PARTS.map((p) => p.key));
   return (
-    <div className="flex flex-col gap-4">
-      <Tabs
-        items={[
-          { key: 'equipos', label: 'Equipos' },
-          { key: 'calendario', label: 'Calendario' },
-          { key: 'reglas', label: 'Reglas' },
-          { key: 'comite', label: 'Comité' },
-        ]}
-        active={tab}
-        onChange={setTab}
-      />
-      {tab === 'equipos' && <TeamsManager tl={tl} positions={FOOTBALL_POSITIONS} />}
-      {tab === 'calendario' && <CalendarAdmin tl={tl} />}
-      {tab === 'reglas' && <RulesAdmin tl={tl} />}
-      {tab === 'comite' && <CommitteeAdmin tl={tl} />}
+    <div className="flex flex-col gap-[26px]">
+      <AdminSegmented options={PARTS} value={part} onChange={setPart} />
+      {part === 'equipos' && <TeamsManager tl={tl} positions={FOOTBALL_POSITIONS} />}
+      {part === 'partidos' && <CalendarAdmin tl={tl} />}
+      {part === 'reglas' && <RulesAdmin tl={tl} />}
+      {part === 'comite' && <CommitteeAdmin tl={tl} />}
     </div>
   );
 }
@@ -73,26 +75,21 @@ export function CalendarAdmin({ tl }: { tl: TeamLeague }) {
   const template = templateOf(tl.rules.data, variant);
   const few = tl.teams.data.length < 2;
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-2">
-        <Button variant="primary" icon={<CalendarPlus className="size-4" />} disabled={few} onClick={() => setBuilding('liga')}>
-          Armar calendario (liga)
-        </Button>
-        <Button icon={<Trophy className="size-4" />} disabled={few} onClick={() => setBuilding('relampago')}>
-          Torneo relámpago
-        </Button>
-        <Button icon={<Plus className="size-4" />} disabled={few} onClick={() => setSingle(true)}>
-          Partido suelto
-        </Button>
-      </div>
-      {few && <p className="text-sm text-muted">Hacen falta 2 equipos o más.</p>}
+    <div className="flex flex-col gap-[30px]">
+      <AdminActions
+        hint={few ? 'Hacen falta 2 equipos o más.' : undefined}
+        actions={[
+          { key: 'calendario', icon: CalendarPlus, title: 'Armar calendario (liga)', subtitle: 'Todos contra todos, con horas y canchas', onClick: () => setBuilding('liga'), disabled: few },
+          { key: 'relampago', icon: Trophy, title: 'Torneo relámpago', subtitle: 'Grupos y la final, en un día', onClick: () => setBuilding('relampago'), disabled: few },
+          { key: 'suelto', icon: Plus, title: 'Partido suelto', subtitle: 'Un amistoso, una final o uno aplazado', onClick: () => setSingle(true), disabled: few },
+        ]}
+      />
       <TournamentAdvance tl={tl} rankGroup={(stage) => groupRanking(season, tl.matches.data, stage)} />
-      <h2 className="font-semibold">Partidos por jugar y anotador de mesa</h2>
-      <p className="text-sm text-muted">
-        Si termina el partido quien está designado, el resultado queda final. Se puede designar a un admin, a un anotador de la liga o al capitán o delegado de uno
-        de los dos equipos.
-      </p>
-      <OfficialsList tl={tl} linkOf={(m) => matchLink(tl.base, m.id)} />
+      <section aria-labelledby="fb-anotadores">
+        <SectionHeader id="fb-anotadores" title="Anotador de mesa" />
+        <p className="mx-1 -mt-1.5 mb-3 text-meta text-muted">Si termina el partido quien está designado, el resultado queda final.</p>
+        <OfficialsList tl={tl} />
+      </section>
       <ScheduleBuilder
         tl={tl}
         open={building === 'liga'}
@@ -192,46 +189,22 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const missing = TIEBREAK_CHOICES.filter((k) => !tb.includes(k));
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Plantillas</h2>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {templatesFor(variant).map((t) => {
-            const active = tpl?.id === t.id;
-            return (
-              <Card key={t.id} className={cx('flex flex-col gap-2 p-4', active && 'border-accent')}>
-                <div className="flex items-center gap-2">
-                  <p className="flex-1 font-semibold">{t.name}</p>
-                  {active && (
-                    <Badge tone="accent">
-                      <Check className="size-3" /> En uso
-                    </Badge>
-                  )}
-                </div>
-                <p className="flex-1 text-xs text-muted">{t.description}</p>
-                <Button
-                  size="sm"
-                  variant={active ? 'secondary' : 'primary'}
-                  loading={busy.isBusy(t.id)}
-                  disabled={active || busy.isBusy()}
-                  onClick={() => void applyTemplate(t.id)}
-                >
-                  {active ? 'En uso' : 'Usar esta'}
-                </Button>
-              </Card>
-            );
-          })}
-        </div>
-        <p className="text-sm text-muted">Ahora: {describeConfig(base.cfg)}.</p>
-      </section>
+    <div className="flex flex-col gap-[30px]">
+      <TemplateRows
+        templates={templatesFor(variant)}
+        active={tpl?.id}
+        busy={(id) => busy.isBusy(id)}
+        disabled={busy.isBusy()}
+        onPick={(id) => void applyTemplate(id)}
+        footer={`Ahora: ${describeConfig(base.cfg)}.`}
+      />
 
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="font-semibold">El partido</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+      <SettingsCard id="fb-partido" title="El partido">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Minutos de cada tiempo">
             <Input inputMode="numeric" value={String(d.cfg.halfMinutes)} onChange={(e) => setCfg({ halfMinutes: num(e.target.value, 1, 60, d.cfg.halfMinutes) })} />
           </Field>
-          <Field label="Reloj">
+          <Field label="Reloj" className="col-span-2 sm:col-span-1">
             <Select value={d.cfg.clock} onChange={(e) => setCfg({ clock: e.target.value as FootballConfig['clock'] })}>
               <option value="running">Corrido (no se para)</option>
               <option value="stopped">Parado (se para en cada pitazo)</option>
@@ -254,7 +227,7 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
               <option value="libre">Ilimitados</option>
             </Select>
           </Field>
-          <Field label="Penales por equipo (eliminatoria)">
+          <Field label="Penales por equipo (eliminatoria)" className="col-span-2 sm:col-span-1">
             <Select value={String(d.cfg.shootoutKicks)} onChange={(e) => setCfg({ shootoutKicks: Number(e.target.value) })}>
               <option value="3">3 y muerte súbita</option>
               <option value="5">5 y muerte súbita</option>
@@ -264,43 +237,33 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
             <Input inputMode="numeric" value={String(d.cfg.extraTimeMinutes)} onChange={(e) => setCfg({ extraTimeMinutes: num(e.target.value, 1, 30, d.cfg.extraTimeMinutes) })} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.cfg.subs.reentry} onChange={(e) => setCfg({ subs: { ...d.cfg.subs, reentry: e.target.checked } })} />
-          El que sale puede volver a entrar
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.cfg.extraTime} onChange={(e) => setCfg({ extraTime: e.target.checked })} />
-          Prórroga si empatan (partidos de eliminatoria)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.cfg.shootout} onChange={(e) => setCfg({ shootout: e.target.checked })} />
-          Penales si siguen empatados en todos los partidos (si no, solo en la eliminatoria del torneo)
-        </label>
-        {variant === 'futsal' && (
-          <>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="size-5"
-                checked={d.cfg.accumulatedFouls !== null}
-                onChange={(e) => setCfg({ accumulatedFouls: e.target.checked ? { alertAt: 5, penaltyFrom: 6 } : null })}
-              />
-              Faltas acumuladas por mitad (alerta en la 5.ª, tiro desde 10 m desde la 6.ª)
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="size-5" checked={d.cfg.timeoutsPerHalf > 0} onChange={(e) => setCfg({ timeoutsPerHalf: e.target.checked ? 1 : 0 })} />1 tiempo muerto por
-              equipo en cada mitad
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="size-5" checked={d.cfg.powerPlayMs !== null} onChange={(e) => setCfg({ powerPlayMs: e.target.checked ? 120_000 : null })} />
-              Tras una roja, 2 minutos con uno menos (o hasta que le marquen)
-            </label>
-          </>
-        )}
-      </Card>
+        <div className="flex flex-col divide-y divide-line">
+          <ToggleRow checked={d.cfg.subs.reentry} onChange={(v) => setCfg({ subs: { ...d.cfg.subs, reentry: v } })}>
+            El que sale puede volver a entrar
+          </ToggleRow>
+          <ToggleRow checked={d.cfg.extraTime} onChange={(v) => setCfg({ extraTime: v })}>
+            Prórroga si empatan (partidos de eliminatoria)
+          </ToggleRow>
+          <ToggleRow checked={d.cfg.shootout} onChange={(v) => setCfg({ shootout: v })}>
+            Penales si siguen empatados en todos los partidos (si no, solo en la eliminatoria del torneo)
+          </ToggleRow>
+          {variant === 'futsal' && (
+            <>
+              <ToggleRow checked={d.cfg.accumulatedFouls !== null} onChange={(v) => setCfg({ accumulatedFouls: v ? { alertAt: 5, penaltyFrom: 6 } : null })}>
+                Faltas acumuladas por mitad (alerta en la 5.ª, tiro desde 10 m desde la 6.ª)
+              </ToggleRow>
+              <ToggleRow checked={d.cfg.timeoutsPerHalf > 0} onChange={(v) => setCfg({ timeoutsPerHalf: v ? 1 : 0 })}>
+                1 tiempo muerto por equipo en cada mitad
+              </ToggleRow>
+              <ToggleRow checked={d.cfg.powerPlayMs !== null} onChange={(v) => setCfg({ powerPlayMs: v ? 120_000 : null })}>
+                Tras una roja, 2 minutos con uno menos (o hasta que le marquen)
+              </ToggleRow>
+            </>
+          )}
+        </div>
+      </SettingsCard>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="font-semibold">La tabla</h2>
+      <SettingsCard id="fb-tabla" title="La tabla">
         <div className="grid grid-cols-3 gap-3">
           <Field label="Ganar">
             <Input inputMode="numeric" value={String(d.table.win)} onChange={(e) => setTable({ win: num(e.target.value, 0, 10, d.table.win) })} />
@@ -312,22 +275,21 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
             <Input inputMode="numeric" value={String(d.table.loss)} onChange={(e) => setTable({ loss: num(e.target.value, 0, 10, d.table.loss) })} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.table.shootout !== null} onChange={(e) => setTable({ shootout: e.target.checked ? { win: 2, loss: 1 } : null })} />
+        <ToggleRow checked={d.table.shootout !== null} onChange={(v) => setTable({ shootout: v ? { win: 2, loss: 1 } : null })}>
           Empate con penales: 2 puntos al que gana la tanda y 1 al otro (en vez de 1 y 1)
-        </label>
+        </ToggleRow>
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium">Si empatan en puntos, se desempata por (en orden):</p>
+          <p className="text-[15px] font-medium">Si empatan en puntos, se desempata por (en orden):</p>
           <ol className="flex flex-col gap-1">
             {tb.map((k, i) => (
-              <li key={k} className="flex items-center gap-1 rounded-xl bg-surface-2 px-3 py-1.5 text-sm">
-                <span className="w-5 font-semibold tabular-nums">{i + 1}.</span>
+              <li key={k} className="flex min-h-12 items-center gap-0.5 rounded-xl bg-surface-2 py-0.5 pr-0.5 pl-3 text-[15px]">
+                <span className="num w-6 font-semibold text-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1">{TIEBREAK_LABEL[k]}</span>
-                <Button size="sm" variant="ghost" icon={<ArrowUp className="size-4" />} aria-label="Subir" disabled={i === 0} onClick={() => moveTb(i, -1)} />
-                <Button size="sm" variant="ghost" icon={<ArrowDown className="size-4" />} aria-label="Bajar" disabled={i === tb.length - 1} onClick={() => moveTb(i, 1)} />
+                <Button variant="ghost" size="lg" icon={<ArrowUp className="size-4" />} aria-label="Subir" disabled={i === 0} onClick={() => moveTb(i, -1)} />
+                <Button variant="ghost" size="lg" icon={<ArrowDown className="size-4" />} aria-label="Bajar" disabled={i === tb.length - 1} onClick={() => moveTb(i, 1)} />
                 <Button
-                  size="sm"
                   variant="ghost"
+                  size="lg"
                   icon={<X className="size-4" />}
                   aria-label={`Quitar ${TIEBREAK_LABEL[k]}`}
                   disabled={tb.length <= 1}
@@ -346,16 +308,14 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
               ))}
             </Select>
           )}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" className="size-5" checked={d.table.lotSeed !== null} onChange={(e) => setTable({ lotSeed: e.target.checked ? tl.lid : null })} />
+          <ToggleRow checked={d.table.lotSeed !== null} onChange={(v) => setTable({ lotSeed: v ? tl.lid : null })}>
             Si todo sigue igual, sorteo automático (si no, comparten el puesto)
-          </label>
+          </ToggleRow>
         </div>
-      </Card>
+      </SettingsCard>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="font-semibold">Disciplina</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <SettingsCard id="fb-disciplina" title="Disciplina">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Partidos por roja directa">
             <Input inputMode="numeric" value={String(d.discipline.redMatches)} onChange={(e) => setDisc({ redMatches: num(e.target.value, 0, 20, d.discipline.redMatches) })} />
           </Field>
@@ -380,43 +340,49 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
             <Input inputMode="numeric" value={String(d.discipline.yellowMatches)} onChange={(e) => setDisc({ yellowMatches: num(e.target.value, 0, 20, d.discipline.yellowMatches) })} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.discipline.secondYellowCounts} onChange={(e) => setDisc({ secondYellowCounts: e.target.checked })} />
-          Las amarillas de una doble amarilla también suman a la acumulación
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={d.discipline.walkoverServes} onChange={(e) => setDisc({ walkoverServes: e.target.checked })} />
-          Un W.O. cuenta como partido cumplido
-        </label>
-        <p className="text-xs text-muted">{describeDiscipline(d.discipline)}.</p>
-      </Card>
+        <div className="flex flex-col divide-y divide-line">
+          <ToggleRow checked={d.discipline.secondYellowCounts} onChange={(v) => setDisc({ secondYellowCounts: v })}>
+            Las amarillas de una doble amarilla también suman a la acumulación
+          </ToggleRow>
+          <ToggleRow checked={d.discipline.walkoverServes} onChange={(v) => setDisc({ walkoverServes: v })}>
+            Un W.O. cuenta como partido cumplido
+          </ToggleRow>
+        </div>
+        <p className="text-[13px] text-muted">{describeDiscipline(d.discipline)}.</p>
+      </SettingsCard>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="font-semibold">Convocatoria</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Mínimo para jugar (avisa si hay menos «Voy»)">
+      <SettingsCard id="fb-convocatoria" title="Convocatoria">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Mínimo para jugar">
             <Input inputMode="numeric" value={String(d.minPlayers)} onChange={(e) => setDraft({ ...d, minPlayers: num(e.target.value, 1, 30, d.minPlayers) })} />
           </Field>
-          <Field label="Refuerzos por partido (fuera de la plantilla)">
+          <Field label="Refuerzos por partido">
             <Input inputMode="numeric" value={String(d.reinforcements)} onChange={(e) => setDraft({ ...d, reinforcements: num(e.target.value, 0, 30, d.reinforcements) })} />
           </Field>
         </div>
-      </Card>
+        <p className="text-[13px] text-muted">Avisa si hay menos «Voy» que el mínimo. Los refuerzos son de fuera de la plantilla.</p>
+      </SettingsCard>
 
       {errors.length > 0 && (
-        <ul role="alert" className="flex flex-col gap-0.5 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
+        <ul role="alert" className="flex flex-col gap-0.5 rounded-[20px] bg-danger-soft px-[18px] py-3 text-sm text-danger">
           {errors.map((e) => (
             <li key={e}>{e}</li>
           ))}
         </ul>
       )}
-      <div className="flex gap-2">
-        <Button variant="primary" loading={busy.isBusy('guardar')} disabled={!draft || errors.length > 0 || busy.isBusy()} onClick={() => void save()}>
-          Guardar reglas
-        </Button>
-        {draft && <Button onClick={() => setDraft(null)}>Deshacer cambios</Button>}
+      <div className="flex flex-col gap-2.5">
+        <div className="flex gap-2.5">
+          {draft && (
+            <Button variant="quiet" size="lg" onClick={() => setDraft(null)}>
+              Deshacer
+            </Button>
+          )}
+          <Button variant="primary" size="lg" className="flex-1" loading={busy.isBusy('guardar')} disabled={!draft || errors.length > 0 || busy.isBusy()} onClick={() => void save()}>
+            Guardar reglas
+          </Button>
+        </div>
+        <p className="mx-1 text-meta text-muted">Los partidos ya creados guardan sus reglas; los nuevos usan estas. La tabla y la disciplina se recalculan.</p>
       </div>
-      <p className="text-xs text-muted">Los partidos ya creados guardan sus reglas; los nuevos usan estas. La tabla y la disciplina se recalculan con las nuevas.</p>
     </div>
   );
 }
@@ -466,15 +432,9 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">
-        Las rojas y las amarillas acumuladas suspenden solas. Aquí se agregan los partidos que ponga el comité (agresión, reclamos…): se cumplen en los siguientes
-        partidos que ese equipo juegue.
-      </p>
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="flex items-center gap-2 font-semibold">
-          <Gavel className="size-5 text-accent" /> Nueva sanción
-        </h2>
+    <div className="flex flex-col gap-[30px]">
+      <p className="mx-1 text-meta text-muted">Las rojas y las amarillas suspenden solas. Aquí van las sanciones que ponga el comité.</p>
+      <SettingsCard id="fb-nueva-sancion" title="Nueva sanción">
         <Field label="Desde el partido">
           <Select
             value={matchId}
@@ -494,7 +454,7 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
           </Select>
         </Field>
         {match && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Equipo">
               <Select
                 value={teamId}
@@ -531,32 +491,29 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
             </Field>
           </div>
         )}
-        <Button variant="primary" className="self-start" loading={busy} disabled={!valid} onClick={() => void save()}>
+        <Button variant="primary" size="lg" className="w-full" icon={<Gavel className="size-5" />} loading={busy} disabled={!valid} onClick={() => void save()}>
           Guardar sanción
         </Button>
-      </Card>
-      <section className="flex flex-col gap-2">
-        <h2 className="font-semibold">Sanciones del comité ({sanctions.data.length})</h2>
+      </SettingsCard>
+      <section aria-labelledby="fb-sanciones-comite">
+        <SectionHeader id="fb-sanciones-comite" title="Sanciones del comité" action={<span className="text-meta text-muted">{sanctions.data.length}</span>} />
         {!sanctions.data.length ? (
-          <p className="text-sm text-muted">No hay sanciones del comité.</p>
+          <p className="mx-1 text-meta text-muted">No hay sanciones del comité.</p>
         ) : (
-          <Card className="divide-y divide-line overflow-hidden">
+          <Card className="overflow-hidden">
             {sanctions.data.map((s) => (
-              <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <div key={s.id} className="mm-row relative flex min-h-row items-center gap-3 py-2.5 pr-2 pl-5">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">
+                  <span className="block truncate text-body font-semibold">
                     {tl.nameOf(s.playerId)} · {s.matches} {s.matches === 1 ? 'partido' : 'partidos'}
                   </span>
-                  <span className="block truncate text-xs text-muted">
+                  <span className="mt-0.5 block truncate text-sm text-muted">
                     {tl.teamOf(s.teamId)?.name ?? 'Equipo'} · desde {matchText(s.matchId)}
                     {s.note ? ` · ${s.note}` : ''}
                   </span>
                 </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-danger"
-                  icon={<Trash2 className="size-4" />}
+                <DangerButton
+                  icon={<Trash2 className="size-5" />}
                   aria-label={`Quitar la sanción de ${tl.nameOf(s.playerId)}`}
                   loading={removing.isBusy(s.id)}
                   disabled={removing.isBusy()}

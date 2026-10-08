@@ -19,9 +19,10 @@ import {
 } from '../../../sports/team/football';
 import type { Side } from '../../../sports/types';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
-import { Badge, Button, Field, Input, Modal, cx } from '../../../components/ui';
+import { Button, Field, Input, Sheet, cx } from '../../../components/ui';
 import { ON_OK, rosterOf, shortName, teamColor, textOn } from '../team/logic';
 import { BigButton, JerseyButton, ScoreHeader, useTicker } from '../team/ScorerPieces';
+import { DangerButton } from '../team/TeamUi';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { atBreak, eventLabel, footballAdapter, quietAdapter, replaceLastEvent, stageLabel } from './adapter';
 import { CardIcon, REASON_TEXT } from './bits';
@@ -196,7 +197,7 @@ export function FootballCourt({
         {config.accumulatedFouls && (
           <span className={cx('tabular-nums', f.alert && 'font-bold text-danger')}>Faltas {f.count}</span>
         )}
-        {config.accumulatedFouls && f.count >= config.accumulatedFouls.penaltyFrom - 1 && <Badge tone="danger">10 m</Badge>}
+        {config.accumulatedFouls && f.count >= config.accumulatedFouls.penaltyFrom - 1 && <b className="text-[11px] font-bold text-danger">10 m</b>}
         {config.timeoutsPerHalf > 0 && <span className="tabular-nums">· TM {footballTimeoutsLeft(s, side)}</span>}
         {reds > 0 && (
           <span className="flex items-center gap-0.5">
@@ -216,14 +217,14 @@ export function FootballCourt({
       b={{ name: names[1], color: colors[1], score: s.score[1], sub: sub(2) }}
       center={
         <>
-          <span className="text-xs font-semibold uppercase text-muted">{stageLabel(s)}</span>
+          <span className="text-[13px] font-semibold text-accent">{stageLabel(s)}</span>
           {minute && !breakNow && s.status === 'playing' && (
-            <span className={cx('text-3xl font-black tabular-nums leading-none', timeUp ? 'text-danger' : s.clock.running && 'text-ok')} aria-live="off">
+            <span className={cx('num text-[30px] leading-none font-bold', timeUp ? 'text-danger' : s.clock.running && 'text-accent')} aria-live="off">
               {minute}
             </span>
           )}
-          {clockUsed && s.status === 'playing' && started && <span className="text-xs tabular-nums text-muted">{formatClock(elapsed)}</span>}
-          {added != null && added > 0 && s.status === 'playing' && <Badge tone="accent">+{added} añadido</Badge>}
+          {clockUsed && s.status === 'playing' && started && <span className="num text-[13px] text-muted">{formatClock(elapsed)}</span>}
+          {added != null && added > 0 && s.status === 'playing' && <span className="text-[13px] font-semibold text-accent">+{added} añadido</span>}
           {pens && s.status !== 'playing' && (
             <span className="text-sm font-bold tabular-nums">
               Pen. {pens[0]}-{pens[1]}
@@ -231,8 +232,8 @@ export function FootballCourt({
           )}
           {clockUsed && s.status === 'playing' && (
             <Button
-              size="sm"
-              variant={s.clock.running ? 'secondary' : 'primary'}
+              size="md"
+              variant={s.clock.running ? 'quiet' : 'primary'}
               disabled={readOnly}
               onClick={toggleClock}
               icon={s.clock.running ? <Pause className="size-4" /> : <Play className="size-4" />}
@@ -273,20 +274,22 @@ export function FootballCourt({
         {(config.accumulatedFouls || config.timeoutsPerHalf > 0) && (
           <div className="flex items-center gap-1.5">
             {config.accumulatedFouls && (
-              <Button size="sm" className="flex-1" disabled={readOnly} onClick={() => foul(side)} icon={<Hand className="size-4" />} aria-label={`Falta de ${names[i]}`}>
+              <Button variant="quiet" size="lg" className="min-w-0 flex-1" disabled={readOnly} onClick={() => foul(side)} aria-label={`Falta de ${names[i]}`}>
                 Falta
               </Button>
             )}
             {config.timeoutsPerHalf > 0 && (
               <Button
-                size="sm"
-                className="flex-1"
+                variant="quiet"
+                size="lg"
+                className={config.accumulatedFouls ? 'shrink-0' : 'flex-1'}
                 disabled={readOnly || tLeft === 0}
                 onClick={() => timeout(side)}
                 icon={<Timer className="size-4" />}
                 aria-label={`Tiempo muerto de ${names[i]} (quedan ${tLeft})`}
               >
-                T. muerto
+                {/* Al lado de «Falta»: «TM» (como en la cabecera) para que quepan los dos. */}
+                {config.accumulatedFouls ? 'TM' : 'Tiempo muerto'}
               </Button>
             )}
           </div>
@@ -324,7 +327,7 @@ export function FootballCourt({
               </div>
             );
           })}
-          {s && !ids.length && <p className="col-span-full py-4 text-center text-xs text-muted">Sin plantilla: arma la alineación o anota los goles sin jugador.</p>}
+          {s && !ids.length && <p className="col-span-full py-4 text-center text-[13px] text-muted">Sin plantilla: arma la alineación o anota los goles sin jugador.</p>}
         </div>
       </div>
     );
@@ -350,8 +353,9 @@ export function FootballCourt({
       onFinished={() => onExit()}
       actions={
         <Button
-          variant={timeUp ? 'primary' : 'secondary'}
-          className="h-14 px-3 text-base"
+          variant={timeUp ? 'primary' : 'quiet'}
+          size="xl"
+          className="shrink-0 px-4"
           disabled={readOnly || s?.status !== 'playing' || breakNow}
           onClick={() => setEnding(true)}
           aria-label={endLabel}
@@ -363,28 +367,28 @@ export function FootballCourt({
       }
     >
       <div className="flex h-full min-h-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button size="sm" icon={<Users className="size-4" />} disabled={court.readOnly || !s} onClick={() => setLineup(true)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="quiet" size="lg" icon={<Users className="size-4" />} disabled={court.readOnly || !s} onClick={() => setLineup(true)}>
             Alineación
           </Button>
-          <Button size="sm" variant="ghost" icon={<MoreHorizontal className="size-4" />} disabled={court.readOnly || !s} onClick={() => setMore(true)}>
+          <Button variant="quiet" size="lg" icon={<MoreHorizontal className="size-5" strokeWidth={2.4} />} disabled={court.readOnly || !s} onClick={() => setMore(true)}>
             Más
           </Button>
         </div>
 
         {official && official.userId !== tl.userId && !court.readOnly && (
-          <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
+          <p className="rounded-2xl bg-surface-2 px-4 py-2.5 text-[13px] text-muted">
             El anotador de mesa designado es <b>{official.name || 'otra persona'}</b>. Si terminas tú y juegas en un equipo, el resultado lo confirma el rival.
           </p>
         )}
         {noLineup && !court.readOnly && (
-          <button type="button" onClick={() => setLineup(true)} className="flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-2 text-left text-sm">
+          <button type="button" onClick={() => setLineup(true)} className="flex min-h-11 items-center gap-2 rounded-2xl bg-accent-soft px-4 py-2.5 text-left text-[15px] font-semibold text-accent">
             <Users className="size-4 shrink-0 text-accent" />
             <span className="flex-1">Antes de empezar, marca la alineación y el portero de cada equipo: así cuentan los partidos jugados y las vallas invictas.</span>
           </button>
         )}
         {lf && config.accumulatedFouls && (lf.alert || lf.tenMeter) && (
-          <p role="alert" className={cx('flex items-start gap-2 rounded-xl px-3 py-2 text-sm font-medium', lf.tenMeter ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-warn')}>
+          <p role="alert" className={cx('flex items-start gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold', lf.tenMeter ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-warn')}>
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             {lf.tenMeter
               ? `${lf.count}.ª falta de ${names[lf.side - 1]}: tiro libre desde 10 m sin barrera.`
@@ -392,16 +396,16 @@ export function FootballCourt({
           </p>
         )}
         {pps.map((pp, k) => (
-          <p key={k} role="status" className="flex items-center gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm font-medium text-warn">
+          <p key={k} role="status" className="flex items-center gap-2 rounded-2xl bg-warn-soft px-4 py-2.5 text-sm font-semibold text-warn">
             <ShieldAlert className="size-4 shrink-0" />
             <span className="flex-1">
               {names[pp.side - 1]} con uno menos (roja de {who(pp.side, pp.player)})
             </span>
-            <span className="text-lg font-black tabular-nums">{formatClock(pp.remainingMs, 'up')}</span>
+            <span className="num text-lg font-bold">{formatClock(pp.remainingMs, 'up')}</span>
           </p>
         ))}
         {timeUp && s && !breakNow && (
-          <p role="status" className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
+          <p role="status" className="rounded-2xl bg-danger-soft px-4 py-2.5 text-sm font-semibold text-danger">
             Ya se cumplieron los {periodLen} minutos{added ? ` (más ${added} de añadido)` : ''}: cuando pite el árbitro, toca «{endLabel}».
           </p>
         )}
@@ -424,7 +428,7 @@ export function FootballCourt({
                   <span className="flex items-center gap-1.5">
                     <Goal className="size-6" /> GOL
                   </span>
-                  <span className="max-w-full truncate text-xs font-semibold uppercase">{side === 1 ? 'Local' : 'Visita'} · {names[side - 1]}</span>
+                  <span className="max-w-full truncate text-[12px] font-semibold">{side === 1 ? 'Local' : 'Visita'} · {names[side - 1]}</span>
                 </BigButton>
               ))}
             </div>
@@ -503,15 +507,19 @@ export function FootballCourt({
         />
       )}
 
-      <Modal
+      <Sheet
         open={ending}
         onClose={() => setEnding(false)}
         title={endLabel}
         footer={
-          <>
-            <Button onClick={() => setEnding(false)}>Seguir</Button>
+          <div className="flex gap-2.5">
+            <Button variant="quiet" size="lg" className="flex-1" onClick={() => setEnding(false)}>
+              Seguir
+            </Button>
             <Button
               variant="primary"
+              size="lg"
+              className="flex-1"
               onClick={() => {
                 if (act({ type: 'period_end', at: Date.now() })) court.flush();
                 setEnding(false);
@@ -519,11 +527,11 @@ export function FootballCourt({
             >
               Confirmar
             </Button>
-          </>
+          </div>
         }
       >
         {s && <EndText state={s} config={config} names={names} />}
-      </Modal>
+      </Sheet>
 
       {s && (
         <MoreSheet
@@ -618,7 +626,7 @@ function JerseyGrid({
           key={id}
           type="button"
           onClick={() => onPick(id)}
-          className="flex min-h-14 flex-col items-center justify-center rounded-xl border-2 border-line bg-surface px-1 text-center font-semibold active:scale-[0.97]"
+          className="flex min-h-14 flex-col items-center justify-center rounded-key bg-surface-2 px-1 text-center font-semibold transition active:scale-[0.97]"
         >
           <span className="w-full truncate text-sm">{who(side, id)}</span>
         </button>
@@ -655,18 +663,18 @@ function GoalSheet({
         ? `¿Quién asistió a ${who(flow.side, flow.scorer)}?`
         : `¡Gol de ${names[flow.side - 1]}!${minute ? ` (${minute}')` : ''} ¿Quién marcó?`;
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title={title}
       footer={
-        <Button variant="primary" onClick={onClose}>
+        <Button variant="primary" size="lg" className="w-full" onClick={onClose}>
           {flow.step === 'assist' ? 'Sin asistencia' : 'Listo (sin jugador)'}
         </Button>
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">El gol ya cuenta. Esto es opcional.</p>
+      <div className="flex flex-col gap-3 pb-1">
+        <p className="text-meta text-muted">El gol ya cuenta. Esto es opcional.</p>
         <JerseyGrid
           side={flow.step === 'own' ? other : flow.side}
           ids={ids(flow.step === 'own' ? other : flow.side)}
@@ -676,12 +684,12 @@ function GoalSheet({
           onPick={onPick}
         />
         {flow.step === 'scorer' && (
-          <Button className="h-12" variant="ghost" onClick={onOwnGoal}>
+          <Button size="lg" variant="quiet" onClick={onOwnGoal}>
             Fue autogol de {names[other - 1]}
           </Button>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -720,12 +728,12 @@ function PlayerSheet({
   const playing = s.status === 'playing';
   const field = s.onField[side - 1];
   const onField = !field || field.includes(playerId);
-  const big = 'flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-2 text-center font-semibold active:scale-[0.97] disabled:opacity-40';
+  const big = 'flex min-h-16 flex-col items-center justify-center gap-1 rounded-key px-2 text-center font-semibold transition active:scale-[0.97] disabled:opacity-40';
   return (
-    <Modal open onClose={onClose} title={`${name} · ${teamName}`} footer={<Button onClick={onClose}>Cerrar</Button>}>
+    <Sheet open onClose={onClose} title={`${name} · ${teamName}`}>
       <div className="flex flex-col gap-3">
         {suspended && (
-          <p role="alert" className="flex items-center gap-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
+          <p role="alert" className="flex items-center gap-2 rounded-2xl bg-danger-soft px-4 py-2.5 text-sm text-danger">
             <AlertTriangle className="size-4 shrink-0" />
             Está suspendido para este partido ({REASON_TEXT[suspended.reason] ?? suspended.reason}).
           </p>
@@ -756,9 +764,9 @@ function PlayerSheet({
             Falta{config.accumulatedFouls ? ` (${s.fouls[side - 1]} del equipo)` : ''}
           </button>
         </div>
-        {yellows > 0 && <p className="text-xs text-warn">Ya tiene amarilla: la segunda es roja y sale del partido.</p>}
+        {yellows > 0 && <p className="text-[13px] font-semibold text-warn">Ya tiene amarilla: la segunda es roja y sale del partido.</p>}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -792,7 +800,7 @@ function SubSheet({
     return field ? !field.includes(id) : true;
   });
   return (
-    <Modal open onClose={onClose} title={`Sale ${who(out.side, out.playerId)}: ¿quién entra?`} footer={<Button onClick={onClose}>Cancelar</Button>}>
+    <Sheet open onClose={onClose} title={`Sale ${who(out.side, out.playerId)}: ¿quién entra?`}>
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted">
           Cambios: {s.subsUsed[i]}
@@ -809,7 +817,7 @@ function SubSheet({
                 type="button"
                 onClick={() => onPick(id)}
                 className={cx(
-                  'flex min-h-14 flex-col items-center justify-center rounded-xl border-2 bg-surface px-1 text-center font-semibold active:scale-[0.97]',
+                  'flex min-h-14 flex-col items-center justify-center rounded-key bg-surface-2 px-1 text-center font-semibold transition active:scale-[0.97]',
                   suspOf(out.side, id) ? 'border-danger' : 'border-line',
                 )}
               >
@@ -820,7 +828,7 @@ function SubSheet({
           </div>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -906,7 +914,7 @@ export function Shootout({
                   type="button"
                   aria-pressed={kicker === id}
                   onClick={() => setKicker(kicker === id ? null : id)}
-                  className={cx('shrink-0 rounded-xl border-2 px-3 py-2 text-sm font-semibold', kicker === id ? 'border-accent bg-accent-soft' : 'border-line bg-surface')}
+                  className={cx('min-h-11 shrink-0 rounded-xl px-3 py-2 text-sm font-semibold', kicker === id ? 'bg-accent text-accent-fg' : 'bg-surface-2')}
                 >
                   {who(nextSide, id)}
                 </button>
@@ -970,9 +978,9 @@ function MoreSheet({
   const pps = activePowerPlays(s, now);
   const playing = s.status === 'playing';
   return (
-    <Modal open={open} onClose={onClose} title="Más jugadas" footer={<Button onClick={onClose}>Cerrar</Button>}>
+    <Sheet open={open} onClose={onClose} title="Más jugadas">
       <div className="flex flex-col gap-4">
-        <Button className="h-12 justify-start" icon={<Users className="size-5" />} onClick={onLineup}>
+        <Button variant="quiet" size="lg" className="justify-start" icon={<Users className="size-5" />} onClick={onLineup}>
           Alineación y portero
         </Button>
         {config.clock !== 'none' && playing && (
@@ -980,7 +988,7 @@ function MoreSheet({
             <h3 className="text-sm font-semibold">Añadido de este tiempo</h3>
             <div className="flex flex-wrap gap-1.5">
               {[0, 1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
-                <Button key={n} size="sm" variant={s.addedTime[s.period - 1] === n ? 'primary' : 'secondary'} onClick={() => doAct({ type: 'added_time', minutes: n })}>
+                <Button key={n} size="lg" variant={s.addedTime[s.period - 1] === n ? 'primary' : 'quiet'} onClick={() => doAct({ type: 'added_time', minutes: n })}>
                   +{n}
                 </Button>
               ))}
@@ -994,18 +1002,18 @@ function MoreSheet({
               <Field label="Tiempo jugado de este tiempo (mm:ss)" className="flex-1">
                 <Input inputMode="numeric" value={clock} onChange={(e) => setClock(e.target.value)} placeholder="23:00" />
               </Field>
-              <Button className="mt-auto" onClick={setElapsed} disabled={!CLOCK.test(clock.trim())}>
+              <Button variant="quiet" className="mt-auto h-10" onClick={setElapsed} disabled={!CLOCK.test(clock.trim())}>
                 Poner
               </Button>
             </div>
-            <p className="text-xs text-muted">El reloj del teléfono es de referencia; el que manda es el del árbitro.</p>
+            <p className="text-[13px] text-muted">El reloj del teléfono es de referencia; el que manda es el del árbitro.</p>
           </section>
         )}
         {pps.length > 0 && (
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Uno menos (2 minutos)</h3>
             {[...new Set(pps.map((p) => p.side))].map((side) => (
-              <Button key={side} className="h-12" onClick={() => doAct({ type: 'power_play_end', side, at: Date.now() })}>
+              <Button key={side} variant="quiet" size="lg" onClick={() => doAct({ type: 'power_play_end', side, at: Date.now() })}>
                 {names[side - 1]} ya completa
               </Button>
             ))}
@@ -1016,14 +1024,14 @@ function MoreSheet({
             <h3 className="text-sm font-semibold">W.O.</h3>
             <div className="grid grid-cols-2 gap-2">
               {([1, 2] as const).map((side) => (
-                <Button key={side} className="h-12" variant="ghost" onClick={() => void walkover(side)}>
+                <DangerButton key={side} onClick={() => void walkover(side)}>
                   No vino {names[side - 1]}
-                </Button>
+                </DangerButton>
               ))}
             </div>
           </section>
         )}
       </div>
-    </Modal>
+    </Sheet>
   );
 }

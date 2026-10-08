@@ -5,7 +5,7 @@
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match, type MatchSide } from '../../../lib/data/matches';
@@ -23,6 +23,14 @@ import { footballScore, footballWinner } from './adapter';
 import { sanctionKeys, type FootballSanction } from './data';
 import { templateRules } from './rules';
 import screens from './screens';
+
+
+// Lite o Pro (el modo de la app): Lite por defecto; algunas pruebas miran lo de Pro.
+const mode = vi.hoisted(() => ({ pro: false }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+}));
 
 const lid = 'l1';
 const now = Date.now();
@@ -197,6 +205,7 @@ function render(el: ReactElement, url: string, role: 'admin' | 'captain' | 'visi
 const text = (html: string) => html.replace(/<!-- -->/g, '').replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 beforeEach(() => {
+  mode.pro = false;
   sport = 'football';
   seed();
 });
@@ -210,36 +219,46 @@ describe('pantallas del fútbol', () => {
     expect(futsalScreens).toBe(screens);
   });
 
-  it('calendario: en vivo con el minuto, mi próximo partido con convocatoria, suspendidos y tabla', () => {
+  it('inicio (rediseño): en vivo con el minuto, tu próximo partido con Voy en un toque y los suspendidos de tu equipo, resultados y tabla', () => {
     const cap = text(render(h(screens.Home), `/l/${lid}`, 'captain'));
     expect(cap).toContain('En vivo');
     expect(cap).toContain('1.er tiempo');
     expect(cap).toMatch(/2[34]'/);
     expect(cap).toContain('Tu próximo partido');
-    expect(cap).toContain('Convocatoria');
-    expect(cap).toContain('¿Vas a este partido?');
-    expect(cap).toContain('Suspendidos para la próxima jornada');
+    expect(cap).toContain('Voy Tal vez No voy');
+    expect(cap).toMatch(/Tu equipo: 1 va · faltan \d/);
+    // Luis tiene 2 del comité: el aviso va en la tarjeta de tu partido y en «Suspendidos».
+    expect(cap).toContain('Suspendidos: Luis Soto');
+    expect(cap).toContain('Suspendidos');
     expect(cap).toContain('Pedro Gómez'); // roja en el 1.er partido
-    expect(cap).toContain('Luis Soto'); // sanción del comité
-    expect(cap).toContain('Goleador');
+    expect(cap).toContain('Disciplina');
+    expect(cap).toContain('Ganó Tigres');
+    expect(cap).toContain('Goleador: Ana Pérez');
     expect(cap).not.toContain('Armar calendario');
     const admin = text(render(h(screens.Home), `/l/${lid}`, 'admin'));
-    expect(admin).toContain('Armar calendario');
-    expect(admin).toContain('Descargar Excel');
+    expect(admin).not.toContain('Armar calendario');
+    expect(admin).not.toContain('Descargar Excel');
   });
 
-  it('partidos: detalle con goles y tarjetas, jugadores, admin; el acta en la cancha con GOL LOCAL / GOL VISITA', () => {
+  it('partidos: detalle con goles y tarjetas, jugadores en Pro, «•••»; el acta en la cancha con GOL LOCAL / GOL VISITA', () => {
     const list = text(render(h(screens.Feed!), `/l/${lid}/juegos`, 'visit'));
-    expect(list).toContain('Jornada 1');
+    expect(list).toContain('Jornada 3');
     expect(list).toContain('Tigres');
-    const detail = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin'));
+    expect(text(render(h(screens.Feed!), `/l/${lid}/juegos?ver=resultados`, 'visit'))).toContain('Jornada 1');
+    const detailHtml = render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin');
+    const detail = text(detailHtml);
     expect(detail).toContain('Goles y tarjetas');
     expect(detail).toContain("13'");
     expect(detail).toContain('Asistencia: #10 Luis Soto');
     expect(detail).toContain('Ana Pérez');
-    expect(detail).toContain('Corregir resultado');
-    expect(detail).toContain('Corregir el acta');
-    expect(detail).toContain('Ver el acta completa');
+    expect(detail).toContain('Acta completa');
+    expect(detail).toContain('Compartir el resultado');
+    expect(detailHtml).toContain('aria-label="Más opciones"');
+    // Lite: sin la tabla de jugadores; Pro: con goles, asistencias y tarjetas de cada uno.
+    expect(detail).not.toContain('Jugadores');
+    mode.pro = true;
+    expect(text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m1`, 'admin'))).toContain('Jugadores');
+    mode.pro = false;
     const next = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m3`, 'captain'));
     expect(next).toContain('Abrir el acta del partido');
     expect(next).toContain('Anotador de mesa: Otra');
@@ -261,9 +280,16 @@ describe('pantallas del fútbol', () => {
 
   it('tabla 3-1-0 con desempates, goleadores, tarjetas, vallas y disciplina', () => {
     const table = text(render(h(screens.Standings!), `/l/${lid}/ranking`, 'visit'));
+    expect(table).toContain('Tabla Jugadores Disciplina');
     expect(table).toContain('Tigres');
     expect(table).toContain('GF');
-    expect(table).toContain('Desempate: diferencia de goles → goles a favor');
+    expect(table).toContain('Ganar 3 · empatar 1 · perder 0');
+    expect(table).toContain('Cómo se cuenta');
+    const scorers = text(render(h(screens.Standings!), `/l/${lid}/ranking?ver=goleadores`, 'visit'));
+    expect(scorers).toContain('Goleadores');
+    expect(scorers).toContain('Ana Pérez');
+    expect(scorers).toContain('1 asistencia');
+    expect(text(render(h(screens.Standings!), `/l/${lid}/ranking?ver=tarjetas`, 'visit'))).toContain('Pedro Gómez');
     const disc = text(render(h(screens.Standings!), `/l/${lid}/ranking?ver=disciplina`, 'visit'));
     expect(disc).toContain('Roja directa: 1 partido');
     expect(disc).toContain('Sanciones de la temporada');
@@ -272,7 +298,9 @@ describe('pantallas del fútbol', () => {
 
   it('perfil con goles por partido y el aviso de suspensión', () => {
     const profile = text(render(h(screens.MyProfile!), `/l/${lid}/perfil`, 'captain'));
-    expect(profile).toContain('Capitán');
+    expect(profile).toContain('Tigres');
+    expect(profile).toContain('Capitán · #9 · Delantero');
+    expect(profile).toContain('Plantilla');
     expect(profile).toContain('Agregar jugador');
     expect(profile).toContain('#1 en goleadores');
     expect(profile).toContain('vs. Leones');
@@ -285,9 +313,9 @@ describe('pantallas del fútbol', () => {
 
   it('admin: equipos con plantillas', () => {
     const out = text(render(h(screens.adminTabs![0].Component), `/l/${lid}/admin?tab=equipos`, 'admin'));
+    expect(out).toContain('Equipos Partidos Reglas Comité');
     expect(out).toContain('Equipos (2)');
     expect(out).toContain('Capitán: Ana Pérez');
-    expect(out).toContain('Comité');
   });
 
   it('sala: faltas acumuladas con aviso de 10 m en vivo y las plantillas de sala', async () => {
@@ -298,8 +326,8 @@ describe('pantallas del fútbol', () => {
     expect(home).toContain('Faltas: Leones 5 10 m · Tigres 0');
     expect(home).toContain("20+4'");
     const table = text(render(h(screens.Feed!), `/l/${lid}/juegos?partido=m3&mesa=1`, 'admin'));
-    expect(table).toContain('T. muerto');
-    expect(table).toContain('Falta');
+    // En la sala, «Falta» y «TM» (tiempo muerto) en cada equipo.
+    expect(table).toContain('Falta TM');
     const out = text(render(h(screens.adminTabs![0].Component), `/l/${lid}/admin`, 'admin'));
     expect(out).toContain('Equipos');
     const { RulesAdmin, CommitteeAdmin, CalendarAdmin } = await import('./FootballAdmin');
@@ -312,11 +340,13 @@ describe('pantallas del fútbol', () => {
     expect(rules).toContain('Diferencia de goles');
     expect(rules).not.toContain('Liga de campo ida y vuelta');
     const com = text(render(h(() => h(CommitteeAdmin, { tl: useTeamLeague() })), `/l/${lid}/admin`, 'admin'));
-    expect(com).toContain('Sanciones del comité (1)');
+    expect(com).toContain('Nueva sanción');
+    expect(com).toContain('Sanciones del comité 1');
     expect(com).toContain('Luis Soto · 2 partidos');
     const cal = text(render(h(() => h(CalendarAdmin, { tl: useTeamLeague() })), `/l/${lid}/admin`, 'admin'));
     expect(cal).toContain('Torneo relámpago');
-    expect(cal).toContain('Anotador: sin designar');
+    expect(cal).toContain('Sin anotador designado');
+    expect(cal).toContain('Anota: Otra');
   });
 });
 

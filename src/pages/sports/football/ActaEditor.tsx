@@ -3,7 +3,7 @@ import { Minus, Plus, Trash2 } from 'lucide-react';
 import { adminCorrectResult, type Match } from '../../../lib/data/matches';
 import type { Side } from '../../../sports/types';
 import { useAction } from '../../../components/feedback';
-import { Button, Field, Input, Modal, Select, Tabs, cx } from '../../../components/ui';
+import { Button, Field, Input, Segmented, Select, Sheet, cx } from '../../../components/ui';
 import { rosterOf } from '../team/logic';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { correctedScore, decodeLines, pensFromScore, type ScoreLine } from './adapter';
@@ -64,33 +64,30 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
   };
 
   const stepper = (label: string, value: number, set: (n: number) => void, max = 20) => (
-    <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[11px] text-muted">{label}</span>
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="ghost" icon={<Minus className="size-4" />} aria-label={`Menos ${label}`} disabled={value <= 0} onClick={() => set(value - 1)} />
-        <span className="w-5 text-center font-bold tabular-nums">{value}</span>
-        <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} aria-label={`Más ${label}`} disabled={value >= max} onClick={() => set(value + 1)} />
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[11px] font-semibold text-muted">{label}</span>
+      <div className="flex items-center rounded-xl bg-surface-2">
+        <Button variant="ghost" size="lg" icon={<Minus className="size-4" />} aria-label={`Menos ${label}`} disabled={value <= 0} onClick={() => set(value - 1)} />
+        <span className="num w-5 text-center text-[17px] font-bold">{value}</span>
+        <Button variant="ghost" size="lg" icon={<Plus className="size-4" />} aria-label={`Más ${label}`} disabled={value >= max} onClick={() => set(value + 1)} />
       </div>
     </div>
   );
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      wide
       title="Corregir el acta"
+      subtitle="Al guardar, el resultado queda confirmado"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!valid} onClick={() => void save()}>
-            Guardar el acta
-          </Button>
-        </>
+        <Button variant="primary" size="lg" className="w-full" loading={busy} disabled={!valid} onClick={() => void save()}>
+          Guardar el acta
+        </Button>
       }
     >
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="flex flex-col gap-4 pb-1">
+        <div className="grid grid-cols-2 gap-3">
           <Field label={`Goles ${names[0]}`}>
             <Input inputMode="numeric" value={goals[0]} onChange={(e) => setGoals([e.target.value, goals[1]])} />
           </Field>
@@ -111,27 +108,37 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
         {pensSet && pa === pb && <p className="text-sm text-danger">La tanda de penales no termina empatada.</p>}
         {mismatch && <p className="text-sm text-warn">Los goles por jugador suman más que el marcador: revisa.</p>}
 
-        <Tabs
-          items={[1, 2].map((s) => ({ key: String(s) as '1' | '2', label: names[s - 1], count: lines.filter((l) => l.side === s && l.played).length }))}
-          active={tab}
+        <Segmented
+          full
+          label="Equipo"
+          options={[1, 2].map((s) => ({
+            key: String(s) as '1' | '2',
+            label: (
+              <>
+                <span className="min-w-0 truncate">{names[s - 1]}</span>
+                <span className="num text-muted">{lines.filter((l) => l.side === s && l.played).length}</span>
+              </>
+            ),
+          }))}
+          value={tab}
           onChange={setTab}
         />
         <ul className="flex flex-col divide-y divide-line">
           {mine.map((l) => (
             <li key={l.playerId} className="flex flex-col gap-2 py-3">
               <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate font-medium">{tl.nameOf(l.playerId)}</span>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input type="checkbox" className="size-5" checked={l.played} onChange={(e) => patch(l.playerId, { played: e.target.checked })} />
+                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{tl.nameOf(l.playerId)}</span>
+                <label className="flex min-h-11 items-center gap-1.5 text-sm">
+                  <input type="checkbox" className="size-5 accent-[var(--accent)]" checked={l.played} onChange={(e) => patch(l.playerId, { played: e.target.checked })} />
                   Jugó
                 </label>
-                <label className="flex items-center gap-1.5 text-sm">
-                  <input type="checkbox" className="size-5" checked={l.keeper} onChange={(e) => patch(l.playerId, { keeper: e.target.checked })} />
+                <label className="flex min-h-11 items-center gap-1.5 text-sm">
+                  <input type="checkbox" className="size-5 accent-[var(--accent)]" checked={l.keeper} onChange={(e) => patch(l.playerId, { keeper: e.target.checked })} />
                   Portero
                 </label>
                 <Button
-                  size="sm"
                   variant="ghost"
+                  size="lg"
                   icon={<Trash2 className="size-4" />}
                   aria-label={`Quitar a ${tl.nameOf(l.playerId)} del acta`}
                   onClick={() => setLines((ls) => ls.filter((x) => !(x.side === side && x.playerId === l.playerId)))}
@@ -142,10 +149,10 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
                 {stepper('Asist.', l.assists, (n) => patch(l.playerId, { assists: n }))}
                 {stepper('Autogol', l.ownGoals, (n) => patch(l.playerId, { ownGoals: n }))}
                 {stepper('Amarillas', l.yellows, (n) => patch(l.playerId, { yellows: n, red: n >= 2 ? 'second_yellow' : l.red === 'second_yellow' ? null : l.red }), 2)}
-                <label className={cx('flex items-center gap-1.5 pb-1.5 text-sm', l.red === 'second_yellow' && 'text-muted')}>
+                <label className={cx('flex min-h-11 items-center gap-1.5 text-sm', l.red === 'second_yellow' && 'text-muted')}>
                   <input
                     type="checkbox"
-                    className="size-5"
+                    className="size-5 accent-[var(--accent)]"
                     disabled={l.red === 'second_yellow'}
                     checked={l.red === 'direct' || l.red === 'second_yellow'}
                     onChange={(e) => patch(l.playerId, { red: e.target.checked ? 'direct' : null })}
@@ -155,7 +162,7 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
               </div>
             </li>
           ))}
-          {!mine.length && <li className="py-3 text-sm text-muted">Nadie de este equipo en el acta todavía.</li>}
+          {!mine.length && <li className="py-3 text-meta text-muted">Nadie de este equipo en el acta todavía.</li>}
         </ul>
         <Field label="Agregar al acta">
           <Select value={adding} onChange={(e) => add(e.target.value)}>
@@ -168,8 +175,8 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
             ))}
           </Select>
         </Field>
-        <p className="text-xs text-muted">Al guardar, el resultado queda confirmado. Las suspensiones y las tablas se recalculan solas.</p>
+        <p className="text-[13px] text-muted">Las suspensiones y las tablas se recalculan solas.</p>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
