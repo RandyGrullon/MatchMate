@@ -85,13 +85,15 @@ const BO7 = score('11-9 8-11 12-10 6-11 11-7 5-11 15-13', 7);
 const raw = (text: string, games: [number, number], points: [number, number] = [0, 0]) => ({ text, sides: games, totals: { sets: games, games, points } });
 
 describe('el deporte', () => {
-  it('table_tennis: familia racket, abierto para todos y al final de la lista (orden 10)', async () => {
+  it('table_tennis: familia racket, abierto para todos (orden 10, antes de esports)', async () => {
     expect(await db.admin(`select id, family, status, sort_order from public.sport_status where id = 'table_tennis'`)).toEqual([
       { id: 'table_tennis', family: 'racket', status: 'open', sort_order: 10 },
     ]);
     const all = await db.asAnon<{ id: string }>('select id from public.sport_status order by sort_order');
-    expect(all).toHaveLength(10);
-    expect(all.at(-1)).toEqual({ id: 'table_tennis' });
+    expect(all).toHaveLength(11);
+    // Ya no es el último: esports (20261008000100_esports.sql) va después, con orden 11.
+    expect(all.findIndex((s) => s.id === 'table_tennis')).toBe(9);
+    expect(all.at(-1)).toEqual({ id: 'esports' });
   });
 
   it('una cuenta normal crea la liga de ping pong y el torneo suelto', async () => {

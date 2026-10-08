@@ -95,6 +95,16 @@ const RPC_AUTHENTICATED = [
   'set_ball_design',
   // El modo de la app del rediseño (Lite o Pro, guardado en la cuenta).
   'set_ui_mode',
+  // Esports: IDs de juego (y el aviso de «tu ID pasó a otra cuenta»), equipos, torneos, inscripciones, fases, battle
+  // royale y la página del juego.
+  'esports_save_game_id', 'esports_confirm_game_id', 'esports_set_ranks', 'esports_delete_game_id', 'esports_my_game_ids',
+  'esports_my_id_moves', 'esports_seen_id_move', 'esports_create_team', 'esports_update_team', 'esports_delete_team',
+  'esports_team_code', 'esports_renew_team_code', 'esports_team_preview', 'esports_join_team', 'esports_leave_team',
+  'esports_remove_member', 'esports_set_member_role', 'esports_begin_team_logo', 'esports_set_team_logo', 'esports_create_tournament', 'esports_update_tournament',
+  'esports_set_status', 'esports_register_team', 'esports_register_solo', 'esports_set_entry_roster', 'esports_update_entry',
+  'esports_withdraw', 'esports_decide_entry', 'esports_check_in', 'esports_set_seeds', 'esports_form_teams',
+  'esports_assign_free_agent', 'esports_create_stage', 'esports_delete_stage', 'esports_sync', 'esports_br_save_game',
+  'esports_br_delete_game', 'esports_hub', 'esports_my_entries',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -103,11 +113,14 @@ const RPC_SERVICE_ONLY = [
   'scan_begin', 'scan_finish', 'scan_next_model', 'storage_orphans',
   // El motor de insignias (la Edge Function `insignias`): tomar, la foto de datos, aplicar, fallar, soltar y terminar.
   'badge_apply', 'badge_claim', 'badge_fail', 'badge_finish', 'badge_release', 'badge_snapshot',
+  // Esports (las Edge Functions esports-verify y esports-auth): la búsqueda de Riot y conectar la cuenta.
+  'esports_begin_lookup', 'esports_store_lookup', 'esports_link_begin', 'esports_link_take', 'esports_link_account',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
 const ANON_ALLOWED = [
-  'private.readable_leagues', 'public.invite_preview', 'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview',
+  'private.readable_leagues', 'public.esports_hub', 'public.esports_team_preview', 'public.invite_preview', 'public.public_agenda',
+  'public.public_leagues_feed', 'public.scorer_link_preview',
 ];
 
 describe('canario: la RLS se aplica en PGlite', () => {

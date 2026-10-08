@@ -55,13 +55,14 @@ desde este documento. Fuente de verdad: `supabase/migrations/*.sql`.
 | `migrations/20260930000200_ping_pong.sql` | Ping pong (`table_tennis`, ver `docs/ping-pong.md`): la fila de `sport_status` (`racket`, `open`, orden 10); eventos liga, torneo, cajas y escalera (sin noches de puntos); partidos `''` o `sets` con el marcador de los deportes a juegos hasta el mejor de 7 (`private.tt_score_ok`, nueva: `sides` y `totals.sets`/`games` 0–4, `points` 0–9999; y con ganador `private.tt_result_ok`, nueva: un final posible del mejor de 3, 5 o 7 que cuadra con el ganador y con los totales); nivel `players.attrs.tt` de 1 a 10; `table_tennis` en los check de deporte de `badge_awards`, `badge_progress` y `badge_stats` (se borran y se crean con el mismo nombre) y el ícono curado `ping-pong` (53). Redefine `private.raq_sport` (abre cajas, escalera, inscripciones al torneo y la agenda), `private.raq_check_event`, `private.raq_check_match` y `private.raq_check_player` (las de `000700`), `private.prize_comp` (la de `001200`: `racket_tourney`), `private.badge_activity` y `private.badge_apply_decisions` (las de `001110`) y `private.badge_icon_ok` (la de `001120`) |
 | `migrations/20260930000300_diseno_bolas.sql` | El diseño de las bolas («Diseñar» en Mis bolas): `bowling_balls.design` (jsonb con versión o null; CHECK con `private.ball_design_ok`, la misma revisión que `ballDesignProblem` de `src/lib/ballDesign.ts`), `set_ball_design` (solo las bolas propias; copia el color base a `color`) y `my_balls` con `design`. Lo dibuja el teléfono (`<BallArt>`). Sale solo en `export_my_data` |
 | `migrations/20261007000100_modo_app.sql` | El modo de la app del rediseño (Lite o Pro): `profiles.ui_mode` (`'lite'` \| `'pro'` \| null = automático; CHECK), `set_ui_mode` (solo el propio; null vuelve a automático) y `export_my_data` con `uiMode` (redefine la de `001100`). La app lo lee con su perfil (`select …, push_prefs, ui_mode`); nadie más lo ve (salvo el superadmin, como todo el perfil) |
+| `migrations/20261008000100_esports.sql` | Esports (ver «Esports» en RPC y `docs/esports.md`): la familia nueva `esports` en `sport_status.family` y el deporte `esports` (`open`, orden 11); las ayudas puras `private.esp_*` (el catálogo que la base necesita para validar: juegos, modos, mejor de, la regla del marcador de cada juego, la normalización del ID, la verificación de cada juego —`private.esp_verify_kind` y `private.esp_rank_verifiable`—, los rangos y los ajustes; las mismas reglas que `src/sports/esports`); las tablas `esports_game_ids`, `esports_id_moves` (sin lectura directa), `esports_teams`, `esports_team_members`, `esports_team_secrets`, `esports_tournaments`, `esports_entries`, `esports_entry_members`, `esports_matches`, `esports_br_games`, `esports_br_results` y, sin lectura, `private.esports_lookups` y `private.esports_link_states`; los triggers `leagues_esp_check`, `events_esp_check`, `matches_esp_check` (el marcador de la serie con `private.esp_series_ok`) y `matches_esp_advance` (el cuadro avanza solo); 39 RPC con sesión (dos también sin cuenta: `esports_team_preview` y `esports_hub`) y 5 solo de `service_role`; `esports` en los check de deporte de las insignias. El ID de juego se comprueba solo donde es automático (login con Epic, Steam o Riot; la búsqueda de Riot en LoL y VALORANT); en los demás juegos solo se declara y no es exclusivo. Sin reclamos ni capturas. Redefine `private.require_match_league`, `private.check_match` y `private.check_season_team` (las de `000100` partidos: la familia `esports` tiene partidos y equipos de temporada), `private.can_upload_logo_path`, `private.can_remove_logo_path` y `purge_queue_take` (las de `001000`: el logo de un equipo de esports en el bucket `logos`), `private.push_category` (la de `001400`: `esports` y `esports-id` en `liga`) y `export_my_data` (la de `20261007000100_modo_app.sql`: + `esportsIds`, `esportsTeams`, `esportsEntries`, `esportsIdMoves`) |
 | `local/shim.sql` | Para PGlite: roles `anon`/`authenticated`/`service_role`, `auth.users`, `auth.uid()/jwt()/role()`, `storage` mínimo |
 | `seed.sql` | Cuentas de desarrollo y el caso de referencia del boliche (con las RPC de verdad) |
 
 **Cargar en PGlite** (backend local y pruebas): `shim.sql`, luego cada archivo de `migrations/` en orden de nombre
 **saltando los que terminan en `_supabase.sql`**, y opcionalmente `seed.sql`. Ver `tests/sql/harness.ts`.
 
-**Pruebas**: `pnpm test:sql` (Vitest + PGlite, `tests/sql/*.test.ts`, 1038 casos en 53 archivos: las 72 de
+**Pruebas**: `pnpm test:sql` (Vitest + PGlite, `tests/sql/*.test.ts`, 1182 casos en 56 archivos: las 72 de
 `tests/reglas.test.ts` una por una, más seguridad, menores, deporte, `op_id`, `league_id`, tiempo real, el seed y una
 por cada migración).
 
@@ -102,6 +103,7 @@ Toda RPC falla con uno de estos (el `message` del error es el código corto):
 | `P0001` | `texto_bloqueado` · `a_si_mismo` · `cupo_lleno` · `ya_dada` · `no_activa` · `limite: activas` · `limite: total` · `limite: jugador` · `limite: liga` | Insignias de la liga (ver «Insignias de la liga (creador)») | `validation` |
 | `P0001` | `cupo_lleno` | Link para anotar: ya hay 10 abiertos sin vencer en la liga (ver «Anotadores del torneo») | `validation` |
 | `P0001` | `ya_entregado` · `sin_resultado` · `podio_cambio` | Premios del torneo (ver «Premios del torneo»); `cerrado` también: premios cerrados o con más de 14 días, solo el dueño corrige | `validation` |
+| `P0001` | `sin_id` · `id_sin_comprobar` · `sin_rango` · `id_tomado` · `limite: equipos` · `cerrado: cuadro` | Esports (ver «Esports»): no puso su ID de ese juego · el torneo pide el ID comprobado (login o búsqueda) y el suyo está declarado (solo en los juegos que se comprueban) · el torneo pide el rango verificado (solo LoL) y el suyo no lo está — en una inscripción, el `detail` de los tres trae el nombre de quien falla · ese ID está conectado por login en otra cuenta · 3 equipos por juego o 10 en total · el partido siguiente del cuadro ya empezó (anúlalo primero). `cupo_lleno` (ya no hay cupo; el equipo está lleno), `cerrado` (la inscripción está cerrada; el torneo ya empezó) y `duplicado` (ya inscrito; ya hay un equipo con ese nombre) también los usa | `validation` |
 | `23514` `23502` `22P02` `22023` `22003` | (texto de Postgres) | CHECK, falta un dato, tipo mal escrito | `validation` |
 | `23503` | | FK: el id no existe o es de otra liga | `validation` |
 | `23505` | | Único repetido (p. ej. un `p_id` que ya existe) | `conflict` |
@@ -118,9 +120,10 @@ o superadmin. **Admin** = dueño o admin de la liga, o superadmin. Toda tabla qu
 
 ### `sport_status` — todos (también sin cuenta)
 `id` text (`bowling`, `padel`, `tennis`, `pickleball`, `basketball`, `football`, `futsal`, `golf`, `swimming`,
-`table_tennis` = ping pong, desde `20260930000200_ping_pong.sql`),
-`family` (`series`|`racket`|`team`), `status` (`open`|`beta`|`closed`), `sort_order`, `updated_at`.
-Desde `20260929001000_sueltos_logos.sql` todos están `open` (el ping pong nace `open`, con `sort_order` 10). El superadmin puede poner uno en `beta` (solo él crea
+`table_tennis` = ping pong, desde `20260930000200_ping_pong.sql`; `esports`, desde `20261008000100_esports.sql`),
+`family` (`series`|`racket`|`team`|`esports`), `status` (`open`|`beta`|`closed`), `sort_order`, `updated_at`.
+Desde `20260929001000_sueltos_logos.sql` todos están `open` (el ping pong nace `open`, con `sort_order` 10; esports,
+familia propia `esports`, nace `open` con `sort_order` 11). El superadmin puede poner uno en `beta` (solo él crea
 ligas de ese deporte) o `closed` (nadie) con `set_sport_status`.
 
 ### `profiles` — con sesión: el propio (el superadmin, todos). Sin cuenta: nunca (tiene el correo)
@@ -388,6 +391,52 @@ verdad: la última marcada es la «última que usó»). Un juego, una bola (índ
 con la bola, el juego suelto, el evento, el envío o la cuenta. Se escribe con `set_game_balls` y se lee resuelta con
 `my_ball_games`. Sale en `export_my_data`.
 
+### Esports (`20261008000100_esports.sql`; diseño en `docs/esports.md` §9)
+
+Sin tombstones (se leen al abrir; el tiempo real `esports` avisa qué cambió). Las de un torneo llevan `league_id`
+verificado con FK compuesta e índice `(league_id, updated_at)`.
+
+- **`esports_game_ids`** — con sesión, **solo estas columnas** (pedir otra o `*` da `42501`): `user_id`, `game`,
+  `platform` (`''` salvo NBA 2K: `psn`|`xbox`|`steam`|`switch`), `region`, `id_display`, `status`
+  (`pendiente` = declarado | `confirmado` = comprobado), `ranks` (`{main|1v1|2v2|3v3: {tier, div?, mmr?} | {value} |
+  {text}}`, CHECK con `private.esp_ranks_ok`), `rank_source` (`declarado`|`verificado`: solo de una búsqueda de LoL),
+  `ownership` (`declarado`|`busqueda`: la API de Riot lo encontró|`login`: cuenta conectada; CHECK: `confirmado` ⇔ no
+  `declarado`), `verified_at`, `confirmed_at`, `updated_at`. Lo demás (`id_normalized`, `external_id`, `lookup_name`,
+  `created_at`) lo ve su dueño con `esports_my_game_ids`. Clave `(user_id, game, platform)`. Solo el login es
+  exclusivo: único `(game, platform, id_normalized)` y `(game, external_id)` entre los `ownership = 'login'`; un ID
+  declarado o buscado lo pueden tener varias cuentas.
+- **`esports_id_moves`** — sin lectura directa (`esports_my_id_moves`, `esports_seen_id_move`): `id`, `user_id`, `game`,
+  `platform`, `id_display`, `provider` (`steam`|`epic`|`riot`), `created_at`, `seen_at`. Un aviso «tu ID pasó a otra
+  cuenta» por cada ID conectado que otra cuenta conectó después (`esports_link_account`).
+- **`esports_teams`** — todos (también sin cuenta): `id`, `game` (no de 1 contra 1), `name` (2–40, único por juego sin
+  acentos ni mayúsculas), `tag` (`^[A-Z0-9]{2,5}$`), `description` (≤ 200), `logo_path` (`'<equipo>/<uuid>.webp|.jpg|.png'`
+  en el bucket `logos`), `captain_id`, `member_count` (lo mantiene un trigger), `created_by`, `created_at`, `updated_at`.
+- **`esports_team_members`** — con sesión: `team_id`, `user_id`, `role` (`captain`|`member`|`sub`; un capitán),
+  `display_name`, `joined_at`, `updated_at`. Si el capitán borra su cuenta, pasa al titular más antiguo; sin miembros, el
+  equipo se borra.
+- **`esports_team_secrets`** — el capitán y el superadmin: `team_id`, `invite_code` (8 caracteres como los de las ligas),
+  `updated_at`.
+- **`esports_tournaments`** — liga visible (también sin cuenta en una pública): `event_id` (1:1 con un evento `torneo`),
+  `league_id`, `game`, `mode`, `entry_type` (`teams`|`open`), `format` (`single_elim`|`double_elim`|`groups_playoffs`|
+  `round_robin`|`br`), `status` (`registration`|`live`|`finished`|`cancelled`), `starts_at`, `registration_opens_at`,
+  `registration_closes_at`, `checkin_minutes` (10–180 o null), `max_entries` (2–128; BR, hasta el lobby), `settings`
+  (CHECK con `private.esp_settings_ok`), `prize_text`, `created_at`, `updated_at`.
+- **`esports_entries`** — liga visible: `id`, `league_id`, `event_id`, `kind` (`team`|`player`|`free_agent`), `team_id`
+  (equipo de esports o null), `name` (1–40), `tag`, `captain_id`, `status` (`pending`|`approved`|`rejected`|`withdrawn`|
+  `assigned`), `seed`, `checked_in_at`, `note`, `side_team_id` (su equipo de temporada en la liga, al aprobar),
+  `assigned_entry` (agente libre asignado: a qué inscrito pasó), `created_by`, `created_at`, `updated_at`.
+- **`esports_entry_members`** — liga visible: la foto de la plantilla (`entry_id`, `event_id`, `league_id`, `user_id`,
+  `role`, `display_name`, `gamer_tag`, `ranks`, `rank_source`, `player_id`, `created_at`, `updated_at`). Una persona, un
+  inscrito por torneo.
+- **`esports_matches`** — liga visible: los enlaces del cuadro (`match_id`, `league_id`, `event_id`, `stage`
+  (`bracket`|`groups`|`playoffs`|`league`), `part` (`W`|`L`|`GF`|`GF2`|`P3`|`G`), `group_no`, `best_of`, `winner_to`,
+  `winner_side`, `loser_to`, `loser_side`, `updated_at`). Cada serie es una fila de `matches` (`format` = el juego,
+  `rules` = `{game, bestOf, draws, roundsToWin?, stocks?}`, `score` = `{text, sides, totals: {maps, points}, games:
+  [{w?, a?, b?, pa?, pb?, ot?, map?}], bestOf, proof?, wo?}`).
+- **`esports_br_games`** / **`esports_br_results`** — liga visible: las partidas de battle royale (`id`, `event_id`,
+  `round` 1–10, `game_no` 1–12, `map`, `status` (`scheduled`|`finished`|`void`), `scheduled_at`, `proof` (0–3 fotos),
+  `entered_by`) y por inscrito `placement` (1–150, único por partida; null = no jugó) y `kills` (0–200).
+
 ### Solo servidor (sin lectura para la app)
 `reminders_sent` (`event_id`, `kind` = `'<slot>@<YYYY-MM-DD>'`, p. ej. `'dia-antes@2026-10-03'`: un recordatorio por
 evento, turno y fecha, aunque el cron corra otra vez) y `push_outbox` (un mensaje por teléfono: `subscription_id`,
@@ -400,7 +449,9 @@ reservadas), los del motor de insignias (`badge_queue`, `badge_runs`, `badge_dry
 «Motor de insignias»), `blocked_terms` (palabras bloqueadas del creador, normalizadas; `whole` = solo como palabra
 entera), `badge_reports` (reportes de diseños y de insignias automáticas; `resolution` `oculta`|`retirada`|`descartado`)
 y `scorer_links` (los links para anotar, …1400: `code` de 10 caracteres, `scope`/`ref_id`, `created_by`, `expires_at`,
-`revoked_at`, `uses`/`max_uses`, `last_used_at`; uno abierto por contexto; solo por RPC).
+`revoked_at`, `uses`/`max_uses`, `last_used_at`; uno abierto por contexto; solo por RPC), `esports_lookups` (lo que
+encontró `esports-verify`: vale 15 minutos para confirmar) y `esports_link_states` (el `state` de «Conectar con…»: un
+uso, 10 minutos).
 
 **Sincronización por cambios**: `select … where league_id = $1 and updated_at > $cursor` + tombstones desde
 el cursor. `updated_at` es la hora de inicio de la transacción: usar como cursor el máximo `updated_at`
@@ -411,7 +462,8 @@ where user_id = <yo>` con lo local y purgar lo que ya no está.
 ## RPC
 
 Formato: `nombre(argumentos) → retorno` · **quién** · errores propios. Todas exigen sesión salvo
-`invite_preview`, `scorer_link_preview`, `public_leagues_feed` y `public_agenda`; sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
+`invite_preview`, `scorer_link_preview`, `public_leagues_feed`, `public_agenda`, `esports_team_preview` y `esports_hub`;
+sin sesión dan `42501`. `p_patch` = objeto solo con las claves que cambian (una clave
 desconocida da `invalido`). Las que llevan `p_op_id` son las de la cola sin conexión: reintentar con el
 mismo `p_op_id` devuelve lo mismo que la primera vez y no repite nada.
 
@@ -857,6 +909,51 @@ en su mismo grupo** (`solo` después de `save_solo_session`; la liga después de
 | `set_ball_design(p_ball uuid, p_design jsonb) → jsonb` | la cuenta | Pone el diseño de una bola suya (null o el `null` de JSON lo quita: se dibuja lisa con su color) y copia su `base` a `color` (así se reconoce igual en la lista y al anotar); devuelve el diseño que quedó (o null). Diseño = `{v: 1, base, second, third, pattern, scale, softness, angle, shine, holes, stickers}` con justo esas claves: colores `#rrggbb` en minúsculas (`second` y `third` también null: el teléfono los saca de la base), `pattern` `solida` \| `perlada` \| `jaspeada` \| `veteada` \| `bicolor` \| `destellos` \| `galaxia` \| `camuflaje`, `scale` 0.5–2, `softness` 0–1, `angle` 0–360, `shine` y `holes` booleanos, hasta 5 `stickers` `{shape, color, x, y, size, rotation}` (`shape` `estrella` \| `llama` \| `rayo` \| `corazon` \| `calavera` \| `numero` \| `iniciales` \| `logo`; `x` e `y` de −1 a 1, `size` 0.1–0.6, `rotation` 0–360) con `text` solo y siempre en `numero` (1–3 cifras) e `iniciales` (1–3 letras en mayúscula, con Ñ y tildes); menos de 4 kB (`private.ball_design_ok`, la misma revisión que `ballDesignProblem` de `src/lib/ballDesign.ts`, y el CHECK de la columna). `invalido`, `no_existe`, `no_permitido` (de otra cuenta, también para el superadmin), `rate_limited` (el límite de `save_ball`: 100 por día en `balls:<uid>`). El mismo diseño que ya tiene (con su color) no cambia nada ni cuenta en el límite. |
 | `my_ball_games(p_ref uuid=null, p_limit integer=3000) → [{ball, kind, ref, game, date, score, frames, counted}]` | con sesión | Sus juegos con bola, del más nuevo al más viejo (1–5000); con `p_ref`, solo los de ese lugar. `score`: los pinos del juego (null si no tiene); `frames`: sus cuadros; `counted`: si cuenta en los promedios (el suelto siempre; el del evento con su marca de foto). Un envío solo sale mientras espera la revisión (con el puntaje enviado y sin contar): al aprobarlo, sus juegos salen como del evento, con lo que aprobó el admin. Si la cuenta ya no tiene jugador en esa liga, el del evento sale sin puntaje. |
 
+### Esports
+
+`20261008000100_esports.sql` (pruebas: `tests/sql/esports.test.ts` y `esports-ids.test.ts`; diseño: `docs/esports.md`).
+Un torneo de esports es una liga
+(`sport = 'esports'`, `rules = {game}`; `kind 'torneo'` = torneo suelto, `'liga'` = liga de esports de un juego) con un
+evento `torneo` por torneo y su fila de `esports_tournaments`. Los resultados de las series usan las RPC de partidos tal
+cual (`finish_match`, `confirm_result`, `dispute_result`, `resolve_dispute`, `admin_correct_result`, `set_walkover`…):
+`matches_esp_check` revisa el marcador con la regla del juego (`private.esp_series_ok`, el gemelo de `seriesScoreOk` de
+`src/sports/esports/series.ts`) y `matches_esp_advance` lleva al ganador y al perdedor a su partido siguiente al quedar
+`confirmed` o `walkover` (si ese ya empezó con otro equipo: `cerrado: cuadro`; la gran final con `GF2`: gana el lado 2 →
+se juega con los dos; gana el lado 1 → `GF2` queda `void`). Al aprobar una inscripción, el inscrito queda en la liga del
+torneo: miembro, jugador, equipo de temporada (`teams`, `event_id` null) y plantilla (`team_players`: el capitán
+`captain`, los suplentes con `position 'suplente'`), así `match_side_of` da su lado al capitán.
+
+El ID de juego se comprueba solo donde es automático (`private.esp_verify_kind`, el `verify.kind` de `catalog.ts`):
+`login` (Rocket League y Fortnite con Epic, CS2 con Steam), `lookup` (LoL y VALORANT: la búsqueda de Riot; con RSO
+también se conectan) o `none` (los otros 10: solo se declara). Solo el login es exclusivo; el rango verificado solo
+existe en LoL (`private.esp_rank_verifiable`). En una inscripción, `requireConfirmedId` (false si no viene) solo cuenta
+en los juegos que se comprueban y `requireVerifiedRank`, solo en LoL; en los equipos basta con tener el ID puesto.
+
+| RPC | Quién | Qué hace |
+|---|---|---|
+| `esports_save_game_id(p_game, p_id, p_platform='', p_region='') → {status, idDisplay, idNormalized}` | la cuenta | Normaliza (`private.esp_normalize_id`, la misma tabla que `normalizeGameId`) y guarda declarado (`pendiente`). No es exclusivo: otra cuenta puede declarar el mismo; solo choca con uno que otra cuenta tiene conectado por login (`id_tomado`). Si cambió el ID, se borra lo comprobado (los rangos quedan declarados). `invalido` (no sirve, plataforma o región que no son del juego, su ID conectado con login: se quita y se vuelve a conectar), `cerrado` (en una inscripción aprobada de un torneo en curso de ese juego), `rate_limited` (20 cambios por día). |
+| `esports_confirm_game_id(p_game, p_platform='', p_lookup uuid=null) → {status, rankSource, ownership}` | la cuenta | «Sí, soy yo» después de la búsqueda de Riot (LoL y VALORANT): `p_lookup` es una búsqueda suya de `esports-verify`, fresca (15 min), del mismo ID y que lo encontró (si no, o sin `p_lookup`: `invalido`). Queda `confirmado` con `ownership 'busqueda'` (uno conectado sigue `login`); en LoL, los rangos que trajo quedan `verificado`. `id_tomado` (otra cuenta lo tiene conectado por login), `no_existe`. |
+| `esports_set_ranks(p_game, p_platform='', p_ranks jsonb) → void` | la cuenta | Rangos declarados (la escalera del juego: `private.esp_ranks_valid`, como `validateRankMap`). `invalido`, `no_existe`. |
+| `esports_delete_game_id(p_game, p_platform='') → void` | la cuenta | `cerrado` si es de un equipo de ese juego o está en una inscripción viva. |
+| `esports_my_game_ids() → [{userId, game, platform, region, idDisplay, idNormalized, status, ownership, externalId, ranks, rankSource, lookupName, verifiedAt, confirmedAt, createdAt, updatedAt}]` | la cuenta | En el orden del catálogo. |
+| `esports_my_id_moves() → [{id, game, platform, idDisplay, provider, createdAt}]` · `esports_seen_id_move(p_id uuid) → void` | la cuenta | Los avisos «tu ID pasó a otra cuenta» (`esports_id_moves`) sin ver de los últimos 30 días, los más nuevos primero; cerrarlo lo marca visto (el de otra cuenta: `no_existe`). |
+| `esports_create_team(p_game, p_name, p_tag, p_description='', p_id=null) → {teamId, inviteCode}` | la cuenta con su ID del juego puesto, comprobado o no (`sin_id`) | Juego que no es de 1 contra 1 (`invalido`). `duplicado` (nombre), `limite: equipos`, `rate_limited` (5 por día). |
+| `esports_update_team(p_team, p_patch)` · `esports_delete_team(p_team)` · `esports_team_code(p_team) → text` · `esports_renew_team_code(p_team) → text` | el capitán (o superadmin) | Claves `name`, `tag`, `description`. Borrar: retira sus inscripciones vivas en torneos que inscriben (`cerrado` si alguno está en curso). |
+| `esports_team_preview(p_code) → setof {team_id, game, name, tag, logo_path, member_count}` | **cualquiera, también sin cuenta** | Como `invite_preview` (30 códigos malos por hora: `rate_limited`). |
+| `esports_join_team(p_code) → {teamId} \| null` | la cuenta | Código malo: null (10 por hora). `sin_id` (sin su ID del juego puesto), `cupo_lleno` (5v5: 7; RL y BR: 5), `limite: equipos`. |
+| `esports_leave_team(p_team)` · `esports_remove_member(p_team, p_user)` · `esports_set_member_role(p_team, p_user, p_role)` | un miembro · el capitán · el capitán | El capitán no sale con otros adentro (`invalido`); `p_role` `member`, `sub` o `captain` (pasa la capitanía). |
+| `esports_begin_team_logo(p_team, p_path)` · `esports_set_team_logo(p_team, p_path) → text` | el capitán | Como `begin_logo_upload` / `set_league_logo`, con la carpeta del equipo. |
+| `esports_create_tournament(p_game, p_name, p_mode, p_entry_type, p_format, p_starts_at, p_max_entries, p_settings, p_visibility='public', p_league=null, p_registration_opens_at=null, p_registration_closes_at=null, p_checkin_minutes=null, p_venue='', p_announcement='', p_prize_text='', p_tz='America/Santo_Domingo', p_id=null, p_event_id=null) → {leagueId, eventId, inviteCode}` | con sesión (con `p_league`: admin de esa liga de esports del mismo juego) | Sin `p_league`, su liga `torneo` con `create_league` (el tope de 5 por día). `invalido` (checks de la tabla), `no_existe`. |
+| `esports_update_tournament(p_event, p_patch)` · `esports_set_status(p_event, p_status)` | admin | Formato, modo, entrada y ajustes solo en inscripción y sin fases (`cerrado`). Estados: `registration → live → finished`, `→ cancelled`, `live → registration` sin partidos, `cancelled → registration`. |
+| `esports_register_team(p_event, p_team, p_members) → uuid` · `esports_register_solo(p_event) → uuid` | el capitán del equipo · la cuenta | §5.2 de `docs/esports.md`: `cerrado`, `no_permitido` (privado), `invalido`, `sin_id`/`id_sin_comprobar`/`sin_rango` (con el nombre en el `detail`), `duplicado`, `cupo_lleno`. Con `autoApprove`, aprobado y materializado; si no, pendiente (push `esports:pend:<evento>` a los admins). |
+| `esports_set_entry_roster(p_entry, p_members)` · `esports_update_entry(p_entry, p_patch)` · `esports_withdraw(p_entry)` · `esports_decide_entry(p_entry, p_approve, p_note=null)` · `esports_check_in(p_entry, p_undo=false)` | el capitán (en inscripción) o admin · admin · el capitán o admin (solo en inscripción) · admin · el capitán en la ventana o admin | Decidir: push `esports:entry:<inscrito>`; rechazar o retirar en curso: `cerrado`. |
+| `esports_set_seeds(p_event, p_order uuid[])` · `esports_form_teams(p_event, p_teams) → uuid[]` · `esports_assign_free_agent(p_free_agent, p_entry, p_role='member')` | admin | Siembra de todos los aprobados; equipos con agentes libres (`assigned`). |
+| `esports_create_stage(p_event, p_stage, p_matches) → uuid[]` · `esports_delete_stage(p_event, p_stage)` | admin | La fase del cuadro (el plan del motor con ids y enlaces; las reglas de cada serie las arma la base); borrarla sin resultados. `duplicado`, `invalido`, `cerrado`. |
+| `esports_sync(p_event) → integer` | miembro de la liga o superadmin | Aplica los enlaces de lo que pasó a final por las 48 h. |
+| `esports_br_save_game(p_event, p_game) → uuid` · `esports_br_delete_game(p_game)` | admin o anotador · admin | Una partida de battle royale con puestos (sin repetir) y kills; reemplaza sus resultados. |
+| `esports_hub(p_game, p_limit=60) → {tournaments, teams}` | **cualquiera, también sin cuenta** | La página del juego: sus torneos que ve (sin cancelados) y hasta 100 equipos. |
+| `esports_my_entries() → [...]` | la cuenta | Sus inscripciones vivas o de torneos sin terminar. |
+
 ### Push
 
 | RPC | Quién | Qué hace |
@@ -884,6 +981,10 @@ en su mismo grupo** (`solo` después de `save_solo_session`; la liga después de
 | `badge_fail(p_job bigint, p_error text, p_charge boolean=false) → void` | `insignias` | El motor no pudo con ese trabajo: vuelve en 2^intentos minutos con el error (a los 5 intentos ya no se toma). `p_charge`: falló la foto (que es la que cuenta el intento): se cuenta aquí. |
 | `badge_release(p_job bigint) → void` | `insignias` | Se tomó y no alcanzó a correr (sin tiempo o sin CPU): vuelve ya, sin espera, sin error y sin gastar un intento. |
 | `badge_finish() → {remaining, chained, notices}` | `insignias` | Al terminar la corrida: manda los avisos que tocan y, si queda cola vencida, se vuelve a llamar con pg_net. |
+| `esports_begin_lookup(p_user, p_game, p_id, p_platform='') → {ok, display, normalized} \| {ok: false, reason}` | `esports-verify` | Solo LoL y VALORANT (otro juego: `invalido`). Normaliza el ID con la regla de la base y cuenta la búsqueda (20 por hora, 60 por día): `invalido` o `rate_limited`. |
+| `esports_store_lookup(p_user, p_game, p_platform, p_id, p_found, p_display, p_external, p_ranks, p_provider) → uuid` | `esports-verify` | Guarda lo que encontró la API (vale 15 minutos para `esports_confirm_game_id`). Solo LoL y VALORANT (`invalido`); los rangos solo en LoL y si existen en su escalera (VALORANT: `{}`). |
+| `esports_link_begin(p_user, p_provider, p_game) → uuid` · `esports_link_take(p_state) → {userId, provider, game} \| null` | `esports-auth` | El `state` de un uso (10 minutos) del proveedor del juego (10 por hora). |
+| `esports_link_account(p_user, p_game, p_provider, p_external_id, p_display) → 'ok'` | `esports-auth` | El ID de la cuenta conectada queda `confirmado` con `ownership 'login'`. Si otra cuenta lo tenía conectado (mismo ID o misma cuenta externa), esa fila se borra y a esa cuenta le quedan el aviso en la app (`esports_id_moves`), el push «Tu ID {X} de {Juego} pasó a otra cuenta» (`esports-id:login:<cuenta>`) y la auditoría `esports_id_login` (`{game, idDisplay, by, provider}`). Los IDs declarados o buscados de otras cuentas no se tocan. |
 
 **Tareas de pg_cron** (solo Supabase; las funciones corren también en PGlite y tienen pruebas):
 
@@ -976,6 +1077,7 @@ PGlite, `NOTIFY` en el canal `mm` con `{"topic", "event", "payload"}` (`pg.liste
 | `user:<uid>` | `badges` | `{op, ids, kind: 'app'}` | cualquier cambio de sus insignias automáticas (de la cuenta o de sus jugadores): nuevas, firmes, vistas, ocultas, retiradas |
 | `league:<id>` | `badges` | `{op, ids, kind: 'diseno'\|'liga'}` | insignias del creador (…1120): un diseño que se crea, cambia o borra (`diseno`); un otorgamiento que se da, se retira, se oculta o se muestra (`liga`) |
 | `user:<uid>` | `badges` | `{op, ids, kind: 'liga'}` | cualquier cambio de los otorgamientos del creador a sus jugadores (también verlos) |
+| `league:<id>` y `event:<id>` | `esports` | `{table, op, ids}` | torneos de esports (`table`: `tournament`, `entries`, `members`, `links`, `br`; una vez por sentencia). Los equipos de esports no tienen tiempo real |
 
 `op` = `insert` \| `update` \| `delete`. Salvo `live`, el mensaje solo dice qué cambió: volver a leer esas filas.
 Quién escucha (Supabase, `realtime.messages`): `event:`/`league:` quien ve la liga; `user:<uid>` solo esa
@@ -997,6 +1099,7 @@ de lo que ya no usa nadie (en `private.storage_purge_queue` con bucket `logos`),
 borra de Storage. Lo que deja de usarse (el anterior, el de una liga borrada y las reservas sin usar de un día, que
 pasa a diario `private.logo_uploads_cleanup` con pg_cron) queda en la cola; al borrar la liga, el teléfono borra su
 logo justo después. Lo que nadie borró lo borra `purge-photos` al otro día (`purge_queue_take` con `p_bucket` `logos`).
+El logo de un equipo de esports va al mismo bucket con la carpeta = id del equipo (`esports_begin_team_logo`).
 
 ## Motor de insignias
 
@@ -1353,8 +1456,9 @@ vale): `merge_players` con lo mismo más los premios y las tablas guardadas, y `
 - Primera migración: `alter default privileges` quita EXECUTE a PUBLIC y todo a anon/authenticated; al final de
   `…_rpc.sql` se quitan otra vez en todas las funciones de `public` y `private` y se dan explícitos
   (lista `v_authenticated`, `v_anon`). Una fase nueva agrega sus RPC a su propia lista de GRANT.
-- Solo `public.invite_preview`, `public.scorer_link_preview`, `public.public_leagues_feed`, `public.public_agenda` y
-  `private.readable_leagues` son security definer ejecutables por `anon`. `league_seasons`, `league_champions` y `bowling_game_context` también las
+- Solo `public.invite_preview`, `public.scorer_link_preview`, `public.public_leagues_feed`, `public.public_agenda`,
+  `public.esports_team_preview`, `public.esports_hub` y `private.readable_leagues` son security definer ejecutables por
+  `anon`. `league_seasons`, `league_champions` y `bowling_game_context` también las
   llama `anon`, pero leen con la RLS de quien llama (no son security definer).
 - Nadie tiene INSERT/UPDATE/DELETE en ninguna tabla; `profiles` sin UPDATE directo (más estricto que permisos por
   columna) y un trigger impide que una sesión de usuario cambie `is_superadmin`, `email` o `firebase_uid`.
@@ -1369,6 +1473,8 @@ vale): `merge_players` con lo mismo más los premios y las tablas guardadas, y `
 - Deporte fijo (trigger); dueño solo por `transfer_ownership` (trigger); `leagues.owner_id` ON DELETE RESTRICT.
 - Menores: `is_minor` exige `has_minors` (trigger), sin cuenta (CHECK), liga privada sin foto obligatoria (CHECK),
   sin social ni fotos (RPC), `has_minors` solo sube (salvo superadmin y sin menores).
+- `esports_game_ids` con SELECT por columna: `id_normalized`, `external_id`, `lookup_name` y `created_at` no se leen
+  directo (su dueño los ve con `esports_my_game_ids`). `esports_id_moves` no se lee directo (sin SELECT).
 - `league_badge_awards` con SELECT por columna: `note`, `awarded_by`, `revoked_by`, `revoke_reason` y `seen_at` no se
   leen directo (solo por `league_badge_holders`, `profile_badges` y `badge_notices`, que miran quién pregunta).
 - Supabase Security Advisor: puede marcar «security definer function executable by authenticated» en las RPC:

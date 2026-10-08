@@ -16,7 +16,8 @@ begin;
 -- natación (lo mínimo), league_announce, bloqueo de cuentas, lo social, @usuario e invitaciones, aceptar los
 -- términos y reportar, juegos sueltos y el logo de la liga, las insignias y los premios del torneo (también en el
 -- perfil: destacados y quién los ve), los anotadores del torneo, mis bolas (y su diseño), el ping pong (liga,
--- nivel y un partido al mejor de 7), el modo de la app (Lite o Pro), la consola del superadmin y los permisos que
+-- nivel y un partido al mejor de 7), el modo de la app (Lite o Pro), esports (ID de juego, un equipo con su código,
+-- un torneo «Solo equipos», inscribir y aprobar, la página del juego sin cuenta), la consola del superadmin y los permisos que
 -- TIENEN que fallar (alguien de fuera leyendo una liga privada, un miembro llamando admin_*, escrituras sin cuenta).
 --
 -- Efectos de afuera: ninguno. pg_net solo manda sus pedidos después de un COMMIT y realtime.send escribe en
@@ -115,7 +116,7 @@ declare
     '20260929000200', '20260929000500', '20260929000510', '20260929000600', '20260929000700', '20260929000900',
     '20260929001000', '20260929001010', '20260929001100', '20260929001110', '20260929001120', '20260929001180',
     '20260929001190', '20260929001200', '20260929001300', '20260929001400', '20260930000100', '20260930000200', '20260930000300',
-    '20261007000100'];
+    '20261007000100', '20261008000100'];
   v_missing text[];
   v_bowling text;
 begin
@@ -2189,6 +2190,146 @@ begin
 end $$;
 reset role;
 select set_config('request.jwt.claims', '', true);
+
+-- =====================================================================================================================
+-- 9m. Esports (20261008000100): Ana y Luis ponen su ID de Rocket League (declarado: basta), Ana crea un equipo y Luis
+-- entra con el código; el dueño crea un torneo de 2 contra 2 «Solo equipos»; Ana inscribe al equipo y el dueño lo aprueba
+-- (queda en la liga del torneo con su equipo de temporada); sin cuenta se ven la página del juego y a qué equipo lleva el
+-- código; lo que no vale (un duelo no tiene equipos, solo el capitán inscribe) falla
+-- =====================================================================================================================
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.esports_save_game_id(p_game => 'rocket_league', p_id => 'SmkA ' || pg_temp.val('tag'));
+  assert r ->> 'status' = 'pendiente' and r ->> 'idNormalized' = 'smka ' || pg_temp.val('tag'), format('FAIL esports: esports_save_game_id %s', r);
+  perform public.esports_set_ranks(p_game => 'rocket_league', p_ranks => '{"2v2": {"tier": "gold2", "div": 3}}');
+  r := public.esports_my_game_ids() -> 0;
+  assert r ->> 'status' = 'pendiente' and r ->> 'ownership' = 'declarado' and r ->> 'rankSource' = 'declarado'
+         and r -> 'ranks' = '{"2v2": {"tier": "gold2", "div": 3}}'::jsonb, format('FAIL esports: esports_set_ranks %s', r);
+  assert public.esports_my_id_moves() = '[]'::jsonb, 'FAIL esports: esports_my_id_moves de una cuenta nueva';
+  r := public.esports_create_team(p_game => 'rocket_league', p_name => 'Smoke RL ' || pg_temp.val('tag'), p_tag => 'smk');
+  assert r ->> 'inviteCode' ~ '^[A-HJ-NP-Z2-9]{8}$', format('FAIL esports: esports_create_team %s', r);
+  assert (select t.captain_id = pg_temp.id('u_ana') and t.tag = 'SMK' and t.member_count = 1
+            from public.esports_teams t where t.id = (r ->> 'teamId')::uuid), 'FAIL esports: el equipo no quedó con su capitana';
+  perform pg_temp.put('esp_team', r ->> 'teamId');
+  perform pg_temp.put('esp_code', r ->> 'inviteCode');
+  perform pg_temp.ok('esports: Ana pone su ID de Rocket League (declarado, con rango) y crea su equipo con código');
+  perform pg_temp.must_fail('esports: un juego de 1 contra 1 no tiene equipos',
+    format('select public.esports_create_team(p_game => %L, p_name => %L, p_tag => %L)', 'ea_fc', 'Smoke FC', 'FC'), array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('luis'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  perform pg_temp.must_fail('esports: sin su ID del juego no se entra a un equipo',
+    format('select public.esports_join_team(p_code => %L)', pg_temp.val('esp_code')), array['sin_id']);
+  perform public.esports_save_game_id(p_game => 'rocket_league', p_id => 'SmkL ' || pg_temp.val('tag'));
+  r := public.esports_join_team(p_code => lower(pg_temp.val('esp_code')));
+  assert r ->> 'teamId' = pg_temp.val('esp_team'), format('FAIL esports: esports_join_team %s', r);
+  assert (select t.member_count from public.esports_teams t where t.id = pg_temp.id('esp_team')) = 2, 'FAIL esports: member_count';
+  perform pg_temp.ok('esports: Luis pone su ID y entra al equipo con el código (esports_join_team)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.esports_create_tournament(p_game => 'rocket_league', p_name => 'Smoke Copa RL ' || pg_temp.val('tag'), p_mode => '2v2',
+                                        p_entry_type => 'teams', p_format => 'single_elim', p_starts_at => now() + interval '7 days',
+                                        p_max_entries => 8, p_settings => '{"subs": 1, "bestOf": {"groups": 5, "playoffs": 5, "final": 7}}');
+  assert r ->> 'inviteCode' is null and (select l.sport = 'esports' and l.kind = 'torneo' and l.rules = '{"game": "rocket_league"}'::jsonb
+                                           from public.leagues l where l.id = (r ->> 'leagueId')::uuid),
+    format('FAIL esports: esports_create_tournament %s', r);
+  assert (select t.status = 'registration' and t.mode = '2v2' from public.esports_tournaments t where t.event_id = (r ->> 'eventId')::uuid),
+    'FAIL esports: el torneo no quedó en inscripción';
+  perform pg_temp.put('esp_league', r ->> 'leagueId');
+  perform pg_temp.put('esp_event', r ->> 'eventId');
+  perform pg_temp.ok('esports: el dueño crea un torneo de Rocket League 2 contra 2 «Solo equipos» (su liga torneo, el evento y la fila)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('luis'), true);
+set local role authenticated;
+do $$
+begin
+  perform pg_temp.must_fail('esports: solo el capitán inscribe al equipo',
+    format('select public.esports_register_team(p_event => %L, p_team => %L, p_members => %L)', pg_temp.val('esp_event'),
+           pg_temp.val('esp_team'), jsonb_build_array(jsonb_build_object('user_id', pg_temp.val('u_ana')))), array['invalido']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('ana'), true);
+set local role authenticated;
+do $$
+declare
+  v_entry uuid;
+begin
+  v_entry := public.esports_register_team(p_event => pg_temp.id('esp_event'), p_team => pg_temp.id('esp_team'),
+                                          p_members => jsonb_build_array(jsonb_build_object('user_id', pg_temp.val('u_luis'), 'role', 'member')));
+  assert (select e.status = 'pending' and e.kind = 'team' and e.side_team_id is null from public.esports_entries e where e.id = v_entry),
+    'FAIL esports: la inscripción no quedó por aprobar';
+  assert (select count(*) from public.esports_entry_members m where m.entry_id = v_entry) = 2, 'FAIL esports: la foto de la plantilla';
+  assert (select count(*) from jsonb_array_elements(public.esports_my_entries()) x where x ->> 'entryId' = v_entry::text) = 1,
+    'FAIL esports: esports_my_entries no trae la inscripción';
+  perform pg_temp.put('esp_entry', v_entry::text);
+  perform pg_temp.ok('esports: Ana inscribe al equipo con Luis (esports_register_team: por aprobar, con la foto de la plantilla)');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', pg_temp.jwt('owner'), true);
+set local role authenticated;
+do $$
+declare
+  v_team uuid;
+begin
+  perform public.esports_decide_entry(p_entry => pg_temp.id('esp_entry'), p_approve => true);
+  select e.side_team_id into v_team from public.esports_entries e where e.id = pg_temp.id('esp_entry') and e.status = 'approved';
+  assert v_team is not null, 'FAIL esports: aprobar no materializó el inscrito';
+  assert (select count(*) from public.team_players tp where tp.team_id = v_team) = 2
+         and (select tp.role from public.team_players tp join public.players p on p.id = tp.player_id
+               where tp.team_id = v_team and p.user_id = pg_temp.id('u_ana')) = 'captain',
+    'FAIL esports: la plantilla del equipo de temporada';
+  assert (select count(*) from public.league_members m where m.league_id = pg_temp.id('esp_league')
+            and m.user_id in (pg_temp.id('u_ana'), pg_temp.id('u_luis'))) = 2, 'FAIL esports: no quedaron en la liga del torneo';
+  perform pg_temp.ok('esports: el dueño aprueba (esports_decide_entry): miembros, jugadores y equipo de temporada con capitana');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+select set_config('request.jwt.claims', '{"role": "anon"}', true);
+select set_config('request.headers', json_build_object('x-real-ip', 'smoke-' || pg_temp.val('tag'))::text, true);
+set local role anon;
+do $$
+declare
+  h jsonb := public.esports_hub(p_game => 'rocket_league');
+begin
+  assert exists (select 1 from jsonb_array_elements(h -> 'tournaments') x
+                  where x ->> 'eventId' = pg_temp.val('esp_event') and (x ->> 'approved')::integer = 1 and x ->> 'status' = 'registration'),
+    format('FAIL esports: esports_hub sin cuenta no trae el torneo %s', h -> 'tournaments');
+  assert exists (select 1 from public.esports_team_preview(p_code => pg_temp.val('esp_code')) x where x.team_id = pg_temp.id('esp_team')),
+    'FAIL esports: esports_team_preview sin cuenta';
+  assert exists (select 1 from public.esports_entries e where e.id = pg_temp.id('esp_entry')), 'FAIL esports: sin cuenta no se ven los inscritos del torneo público';
+  perform pg_temp.ok('esports: sin cuenta se ven la página del juego (esports_hub), el equipo del código y los inscritos');
+  perform pg_temp.must_fail('esports: sin cuenta no se leen los IDs de juego', 'select user_id from public.esports_game_ids', array['42501']);
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', true);
+select set_config('request.headers', '', true);
 
 -- =====================================================================================================================
 -- 10. Consola del superadmin (lecturas de toda la app; en Supabase leen también cron, migraciones y Storage)

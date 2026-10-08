@@ -138,9 +138,11 @@ describe('permisos', () => {
     // el teléfono de la propia cuenta (una bloqueada también puede apagar sus notificaciones). accept_legal solo
     // guarda que la propia cuenta aceptó los términos vigentes (una bloqueada también, para poder seguir leyendo).
     // public_leagues_feed y scorer_link_preview (a qué lleva un link para anotar) también las llama quien no tiene
-    // cuenta. sync_ladder y sync_playoffs solo ponen al día lo que ya pasó.
+    // cuenta. sync_ladder y sync_playoffs solo ponen al día lo que ya pasó. esports_hub (la página de un juego) y
+    // esports_team_preview (a qué equipo lleva un código) también las llama quien no tiene cuenta.
     expect(rows.map((r) => r.fn)).toEqual([
-      'accept_legal', 'bowling_game_context', 'delete_push_subscription', 'invite_preview', 'league_champions', 'league_seasons',
+      'accept_legal', 'bowling_game_context', 'delete_push_subscription', 'esports_hub', 'esports_team_preview', 'invite_preview',
+      'league_champions', 'league_seasons',
       'list_reports', 'my_matches', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'server_now', 'sync_ladder',
       'sync_playoffs', 'touch_seen',
     ]);
@@ -570,10 +572,12 @@ describe('series y resumen', () => {
     expect(o.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(o.users).toEqual({ total: 10, new7d: 8, new30d: 9, active7d: 1, active30d: 1, superadmins: 2, blocked: 1, unconfirmed: 9 });
     expect(o.leagues).toMatchObject({ total: 2, public: 1, private: 1, tournaments: 0, withMinors: 0, new30d: 2, active7d: 2 });
-    expect(o.leagues.bySport).toHaveLength(10);
+    expect(o.leagues.bySport).toHaveLength(11);
     expect(o.leagues.bySport[0]).toEqual({ sport: 'bowling', leagues: 2, players: 3, active7d: 2 });
     // El ping pong va al final (orden 10).
     expect(o.leagues.bySport[9]).toEqual({ sport: 'table_tennis', leagues: 0, players: 0, active7d: 0 });
+    // Esports va después (orden 11).
+    expect(o.leagues.bySport[10]).toEqual({ sport: 'esports', leagues: 0, players: 0, active7d: 0 });
     expect(o.leagues.bySport[1]).toEqual({ sport: 'padel', leagues: 0, players: 0, active7d: 0 });
     expect(o.activity).toEqual({ events7d: 2, matches7d: 0, entries7d: 1, submissionsPending: 0, photos7d: 1 });
     expect(o.storage.photos).toBe(1);
@@ -655,10 +659,11 @@ describe('sistema y lecturas de fotos', () => {
     let s = await db.rpc<Json>(w.u.dios, 'admin_system');
     expect(s).toMatchObject({ backend: 'local', migrations: null, cron: null, lastHeartbeat: null });
     expect(s.push).toMatchObject({ queued: 2, claimed: 1, failed24h: 0, oldestQueuedAt: expect.stringMatching(/Z$/) });
-    expect(s.sportStatus).toHaveLength(10);
+    expect(s.sportStatus).toHaveLength(11);
     expect(s.sportStatus[0]).toEqual({ sport: 'bowling', status: 'open', leagues: 2 });
     expect(s.sportStatus.map((x: Json) => x.sport)).toContain('swimming');
-    expect(s.sportStatus.at(-1)).toEqual({ sport: 'table_tennis', status: 'open', leagues: 0 });
+    expect(s.sportStatus.at(-1)).toEqual({ sport: 'esports', status: 'open', leagues: 0 });
+    expect(s.sportStatus.at(-2)).toEqual({ sport: 'table_tennis', status: 'open', leagues: 0 });
 
     await db.as(SERVICE, 'select public.ping()');
     s = await db.rpc<Json>(w.u.dios, 'admin_system');

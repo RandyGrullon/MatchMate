@@ -111,7 +111,7 @@ describe('deporte', () => {
     await db.rpc(w.u.dios, 'set_sport_status', { p_sport: 'golf', p_status: 'closed' });
     await fails(db.rpc(w.u.dios, 'create_league', { p_name: 'Golf', p_sport: 'golf' }), 'cerrado');
     // Todos ven qué deportes hay.
-    expect((await db.asAnon('select id from public.sport_status')).length).toBe(10);
+    expect((await db.asAnon('select id from public.sport_status')).length).toBe(11);
   });
 
   it('el tipo de evento y los números siguen las reglas del deporte', async () => {
