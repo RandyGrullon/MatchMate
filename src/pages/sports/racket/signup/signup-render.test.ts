@@ -1,12 +1,12 @@
 /**
  * Humo de la inscripción «Me apunto» (pádel): la noche y el torneo con cupo y lista de espera se dibujan en el
- * servidor (renderToString) con datos en la caché, para el admin, una jugadora en la espera, otro en la lista y
- * un visitante sin cuenta.
+ * servidor (renderToString) con datos en la caché, para el admin (en Pro: «Empezar ronda 1» a la vista; en Lite va con
+ * «Usar Pro»), una jugadora en la espera, otro en la lista y un visitante sin cuenta.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../../lib/data/client';
 import { keys } from '../../../../lib/data/keys';
 import { matchKeys } from '../../../../lib/data/matches';
@@ -17,6 +17,16 @@ import { LeagueContext, type LeagueCtx } from '../../../../lib/league';
 import type { League, Member, Player } from '../../../../lib/types';
 import { FeedbackProvider } from '../../../../components/feedback';
 import screens from '../../padel/screens';
+
+const mode = vi.hoisted(() => ({ pro: true }));
+vi.mock('../../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+  useMode: () => ({ mode: mode.pro ? 'pro' : 'lite', isPro: mode.pro, setMode: async () => 'local', suggestedPro: false }),
+}));
+afterEach(() => {
+  mode.pro = true;
+});
 
 const L = 'LS';
 const league: League = {
@@ -167,6 +177,12 @@ describe('«Me apunto» en la noche', () => {
     expect(t).toContain('Ajustes');
     expect(t).toContain('Al empezar la ronda 1 se cierra la inscripción');
     expect(t).toContain('Invitar por WhatsApp');
+    // En Lite la lista y «Meter» siguen (la espera es de todos los días); «Empezar ronda 1» va con «Usar Pro».
+    mode.pro = false;
+    const lite = text(render(`/l/${L}/e/SN`));
+    expect(lite).toContain('Lista de espera (2)');
+    expect(lite).toContain('Meter');
+    expect(lite).not.toContain('Empezar ronda 1');
   });
 
   it('jugadora en la espera: su turno y «Salir de la espera»; el de la lista: «Ya no puedo»', () => {

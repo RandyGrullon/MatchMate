@@ -7,8 +7,9 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { saveErrorMessage, useFeedback } from '../../../../components/feedback';
 import { whatsappShareUrl } from '../../../../components/match';
-import { Button, Card, Modal, cx } from '../../../../components/ui';
+import { Button, Card, Sheet, cx } from '../../../../components/ui';
 import { PickList, appOrigin } from '../bits';
+import { SaveFooter } from '../night/parts';
 import {
   PHASE_TEXT,
   deadlineText,
@@ -152,33 +153,38 @@ export function SignupPanel({
     .join(' ');
 
   return (
-    <Card className={cx('flex flex-col gap-3 border-accent/40 p-4', className)}>
-      <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+    <Card className={cx('flex flex-col gap-4 px-5 pt-[18px] pb-5', className)}>
+      <div className="flex items-start gap-3.5">
+        <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
           <ClipboardList className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">
+          <p className="text-[17px] font-[650] tracking-[-0.01em]">
             {PHASE_TEXT[phase]}
-            {phase === 'open' && settings.cap != null && allFull && <span className="font-normal text-muted"> · lista llena</span>}
+            {phase === 'open' && settings.cap != null && allFull && <span className="font-medium text-muted"> · lista llena</span>}
           </p>
-          <p className="text-sm text-muted">{counts}</p>
+          <p className="num mt-0.5 text-meta text-fg-2">{counts}</p>
           {settings.until && (phase === 'open' || phase === 'deadline') && (
-            <p className="text-xs text-muted">
+            <p className="text-[13px] text-muted">
               {phase === 'open' ? 'Se cierra' : 'Se cerró'} el {deadlineText(settings.until, league.tz)}
             </p>
           )}
         </div>
         {isAdmin && onEdit && (
-          <Button size="sm" variant="ghost" icon={<Settings2 className="size-4" />} onClick={onEdit}>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="-mt-2 -mr-2 inline-flex min-h-11 shrink-0 items-center gap-1 rounded-xl px-2 text-meta font-semibold text-accent focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <Settings2 aria-hidden="true" className="size-4" />
             Ajustes
-          </Button>
+          </button>
         )}
       </div>
 
       {my ? (
-        <div className={cx('flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5', my.status === 'in' ? 'bg-ok-soft' : 'bg-warn-soft')}>
-          <p className="min-w-0 flex-1 text-sm">
+        <div className={cx('flex flex-col gap-3 rounded-2xl px-4 py-3.5', my.status === 'in' ? 'bg-accent-soft' : 'bg-surface-2')}>
+          <p className={cx('text-[15px]', my.status === 'in' && 'text-accent')}>
             {my.status === 'in' ? (
               <>
                 <b>Estás en la lista</b> (n.º {my.position}){myList?.name ? ` de ${myList.name}` : ''}.
@@ -191,7 +197,7 @@ export function SignupPanel({
             )}
           </p>
           {(my.status === 'wait' || !started) && (
-            <Button size="sm" loading={busy === 'leave'} icon={<UserMinus className="size-4" />} onClick={() => void leave()}>
+            <Button variant="quiet" size="lg" className="w-full bg-surface" loading={busy === 'leave'} icon={<UserMinus className="size-4" />} onClick={() => void leave()}>
               {my.status === 'in' ? 'Ya no puedo' : 'Salir de la espera'}
             </Button>
           )}
@@ -200,17 +206,18 @@ export function SignupPanel({
         <div className="flex flex-col gap-1.5">
           <Button
             variant="primary"
-            className="h-12 text-base"
+            size="xl"
+            className="w-full"
             loading={busy === 'join'}
             icon={auth.user ? <UserPlus className="size-5" /> : <LogIn className="size-5" />}
             onClick={join}
           >
             {!auth.user ? 'Entra para apuntarte' : settings.cap != null && allFull ? 'Me apunto a la lista de espera' : 'Me apunto'}
           </Button>
-          {auth.user && !member && <p className="text-center text-xs text-muted">Al apuntarte entras a {league.name}.</p>}
+          {auth.user && !member && <p className="text-center text-[13px] text-muted">Al apuntarte entras a {league.name}.</p>}
         </div>
       ) : (
-        <p className="text-sm text-muted">
+        <p className="text-meta text-muted">
           {phase === 'closed'
             ? 'El organizador cerró la inscripción.'
             : phase === 'deadline'
@@ -240,7 +247,7 @@ export function SignupPanel({
           href={whatsappShareUrl(invite)}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-xl px-3 text-sm font-medium text-accent hover:bg-surface-2"
+          className="-my-1 inline-flex min-h-11 items-center justify-center gap-2 self-start rounded-xl px-1 text-meta font-semibold text-accent focus-visible:outline-2 focus-visible:outline-accent"
         >
           <MessageCircle className="size-4" /> Invitar por WhatsApp
         </a>
@@ -289,25 +296,25 @@ function WaitingList({
 }) {
   if (!list.waiting.length) return null;
   return (
-    <div className="flex flex-col gap-1.5">
-      <p className="text-xs font-semibold text-muted">
+    <div className="flex flex-col gap-2">
+      <p className="text-[13px] font-semibold text-muted">
         Lista de espera{name ? ` · ${name}` : ''} ({list.waiting.length})
         {!moves && ' · ya no sube nadie sola'}
       </p>
-      <ol className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line">
+      <ol className="flex flex-col overflow-hidden rounded-2xl bg-surface-2">
         {list.waiting.map((w, i) => (
-          <li key={w.entrantId} className="flex min-h-11 items-center gap-2 px-3 py-1.5">
-            <span className="w-5 text-right text-xs text-muted tabular-nums">{i + 1}</span>
-            <span className={cx('min-w-0 flex-1 truncate text-sm', isMine(w.entrantId) && 'font-semibold text-accent')}>{nameOf(w.entrantId)}</span>
+          <li key={w.entrantId} className={cx('flex min-h-12 items-center gap-2 py-1 pr-1.5 pl-4', i > 0 && 'border-t border-line')}>
+            <span className="w-5 text-center text-sm font-semibold text-muted tabular-nums">{i + 1}</span>
+            <span className={cx('min-w-0 flex-1 truncate text-[15px] font-semibold', isMine(w.entrantId) && 'text-accent')}>{nameOf(w.entrantId)}</span>
             {onAdmit && (
-              <Button size="sm" variant="ghost" loading={busy === `in:${w.entrantId}`} icon={<UserCheck className="size-4" />} onClick={() => onAdmit(w.entrantId)}>
+              <Button variant="soft" className="h-10 rounded-full" loading={busy === `in:${w.entrantId}`} icon={<UserCheck className="size-4" />} onClick={() => onAdmit(w.entrantId)}>
                 Meter
               </Button>
             )}
             {onDrop && (
               <Button
-                size="sm"
                 variant="ghost"
+                className="size-11 rounded-full text-faint"
                 loading={busy === `out:${w.entrantId}`}
                 icon={<UserMinus className="size-4" />}
                 aria-label={`Sacar a ${nameOf(w.entrantId)} de la espera`}
@@ -363,47 +370,41 @@ function JoinModal({
   };
 
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title={`Me apunto: ${event.name || 'Torneo'}`}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!ready} icon={<UserPlus className="size-4" />} onClick={() => void submit()}>
-            {chosen && chosen.view.free === 0 ? 'A la lista de espera' : 'Me apunto'}
-          </Button>
-        </>
-      }
+      subtitle="Si está llena, quedas en la espera"
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={!ready} onSave={() => void submit()} label={chosen && chosen.view.free === 0 ? 'A la lista de espera' : 'Me apunto'} />}
     >
       <div className="flex flex-col gap-4">
         {lists.length > 1 && (
           <div className="flex flex-col gap-2" role="radiogroup" aria-label="Categoría">
-            <p className="text-sm font-semibold">Categoría</p>
+            <p className="text-[15px] font-semibold">Categoría</p>
             {lists.map((l) => (
-              <label key={l.category ?? '-'} className={cx('flex min-h-12 items-center gap-3 rounded-xl border px-3', category === l.category ? 'border-accent bg-accent-soft/60' : 'border-line')}>
+              <label key={l.category ?? '-'} className={cx('flex min-h-14 items-center gap-3 rounded-2xl px-4', category === l.category ? 'bg-accent-soft text-accent' : 'bg-surface-2')}>
                 <input type="radio" name="categoria" className="size-5 accent-[var(--accent)]" checked={category === l.category} onChange={() => setCategory(l.category)} />
-                <span className="min-w-0 flex-1 text-sm font-medium">{l.name}</span>
-                <span className="text-xs text-muted">{l.view.free > 0 ? `${l.view.free} ${l.view.free === 1 ? 'cupo' : 'cupos'}` : 'llena: espera'}</span>
+                <span className="min-w-0 flex-1 text-[15px] font-semibold">{l.name}</span>
+                <span className="text-[13px] text-muted">{l.view.free > 0 ? `${l.view.free} ${l.view.free === 1 ? 'cupo' : 'cupos'}` : 'llena: espera'}</span>
               </label>
             ))}
           </div>
         )}
         {pairs && (
           <div className="flex flex-col gap-2" role="radiogroup" aria-label="Pareja">
-            <p className="text-sm font-semibold">¿Con quién juegas?</p>
+            <p className="text-[15px] font-semibold">¿Con quién juegas?</p>
             {myTeams.map((t) => (
-              <label key={t} className={cx('flex min-h-12 items-center gap-3 rounded-xl border px-3', choice === t ? 'border-accent bg-accent-soft/60' : 'border-line')}>
+              <label key={t} className={cx('flex min-h-14 items-center gap-3 rounded-2xl px-4', choice === t ? 'bg-accent-soft' : 'bg-surface-2')}>
                 <input type="radio" name="pareja" className="size-5 accent-[var(--accent)]" checked={choice === t} onChange={() => setChoice(t)} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{names.entrantName(t)}</span>
-                  <span className="block truncate text-xs text-muted">Mi pareja</span>
+                  <span className={cx('block truncate text-[15px] font-semibold', choice === t && 'text-accent')}>{names.entrantName(t)}</span>
+                  <span className="block truncate text-[13px] text-muted">Mi pareja</span>
                 </span>
               </label>
             ))}
-            <label className={cx('flex min-h-12 items-center gap-3 rounded-xl border px-3', choice === 'otro' ? 'border-accent bg-accent-soft/60' : 'border-line')}>
+            <label className={cx('flex min-h-14 items-center gap-3 rounded-2xl px-4', choice === 'otro' ? 'bg-accent-soft text-accent' : 'bg-surface-2')}>
               <input type="radio" name="pareja" className="size-5 accent-[var(--accent)]" checked={choice === 'otro'} onChange={() => setChoice('otro')} />
-              <span className="text-sm font-medium">{myTeams.length ? 'Con otro compañero' : 'Elijo a mi compañero'}</span>
+              <span className="text-[15px] font-semibold">{myTeams.length ? 'Con otro compañero' : 'Elijo a mi compañero'}</span>
             </label>
             {choice === 'otro' && (
               <PickList
@@ -415,8 +416,7 @@ function JoinModal({
             )}
           </div>
         )}
-        <p className="text-xs text-muted">Si la lista está llena, quedas en la espera y entras solo cuando se libere un cupo (te llega un aviso).</p>
       </div>
-    </Modal>
+    </Sheet>
   );
 }

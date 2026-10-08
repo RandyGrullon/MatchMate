@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Ban, CalendarClock, CircleSlash, Pause, Trash2, UserRoundCog } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Ban, CalendarClock, Check, CircleSlash, Pause, PencilLine, Trash2, UserRoundCog } from 'lucide-react';
 import {
   deleteMatch,
+  hasResult,
   postponeMatch,
   rescheduleMatch,
   setMatchPlayers,
@@ -13,7 +14,9 @@ import { useLeagueCtx } from '../../../../lib/league';
 import type { Side } from '../../../../sports/types';
 import { useBusy } from '../../../../components/busy';
 import { saveErrorMessage, useFeedback } from '../../../../components/feedback';
-import { Button, Field, Input, Modal, Select } from '../../../../components/ui';
+import { EventMenu, MoreButton, type MenuItem } from '../../../../components/event/EventHeader';
+import { Button, Field, Input, Segmented, Select, Sheet, cx } from '../../../../components/ui';
+import type { RacketMenuItem } from '../frame';
 import { walkoverScore } from '../court/adapters';
 import { isPointsMatch } from '../logic/results';
 import { localParts, todayIn, zonedIso } from '../logic/time';
@@ -25,15 +28,29 @@ type Dialog = null | 'walkover' | 'postpone' | 'reschedule' | 'players';
 type Pending = 'dialog' | 'void' | 'delete';
 
 /**
- * Lo que el admin hace con un partido: W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), anular, quién jugó
- * (suplente) y borrar. Los resultados (anotar, corregir, decidir un reclamo) están en la pantalla del partido.
+ * «•••» del partido (rediseño: lo del admin ya no es una fila de botones): W.O., aplazar, reprogramar (fecha, hora y
+ * cancha o mesa), quién jugó (suplente), corregir el resultado, anular y borrar; y lo de todos que pase la pantalla
+ * (`extra`: compartir, historial). Cada cosa abre su hoja. Sin nada que mostrar, no sale el botón.
  */
-export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: () => void }) {
-  const { lid, league } = useLeagueCtx();
+export function MatchAdmin({
+  match: m,
+  onDeleted,
+  onCorrect,
+  extra = [],
+}: {
+  match: Match;
+  onDeleted: () => void;
+  /** Corregir el resultado (la hoja «solo resultado» de la pantalla del partido). */
+  onCorrect?: () => void;
+  /** Lo de todos: compartir el resultado, el historial. */
+  extra?: readonly RacketMenuItem[];
+}) {
+  const { lid, league, isAdmin } = useLeagueCtx();
   const { sport, ext } = useRacket();
   const w = courtWords(ext);
   const { toast, confirm } = useFeedback();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [menu, setMenu] = useState(false);
   const pending = useBusy<Pending>();
   const busy = pending.isBusy('dialog');
   // Mientras se anula o se borra no se abre un diálogo (su Guardar no haría nada).
@@ -55,42 +72,59 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
     });
 
   const doVoid = async () => {
+    setMenu(false);
     if (!(await confirm({ title: '¿Anular el partido?', message: 'No cuenta para la tabla ni las estadísticas. Se puede deshacer corrigiendo el resultado.', confirmText: 'Anular', danger: true }))) return;
     await act(() => voidMatch(lid, m.id), 'Partido anulado', 'void');
   };
   const doDelete = async () => {
+    setMenu(false);
     if (!(await confirm({ title: '¿Borrar el partido?', message: 'Se borra con su resultado e historial. No se puede deshacer.', confirmText: 'Borrar', danger: true }))) return;
     if (await act(() => deleteMatch(lid, m.id), 'Partido borrado', 'delete')) onDeleted();
   };
+  const openDialog = (d: Dialog) => {
+    setMenu(false);
+    setDialog(d);
+  };
+
+  const items: MenuItem[] = [
+    ...(isAdmin && open && !points ? [{ key: 'wo', icon: CircleSlash, label: 'W.O.', hint: 'Quién no se presentó', onClick: () => openDialog('walkover') }] : []),
+    ...(isAdmin && (m.status === 'scheduled' || m.status === 'suspended')
+      ? [{ key: 'aplazar', icon: Pause, label: 'Aplazar', hint: 'Queda sin fecha hasta reprogramarlo', onClick: () => openDialog('postpone') }]
+      : []),
+    ...(isAdmin && (m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended')
+      ? [{ key: 'fecha', icon: CalendarClock, label: m.scheduledAt ? 'Reprogramar' : `Poner fecha y ${w.one}`, hint: `Fecha, hora y ${w.one}`, onClick: () => openDialog('reschedule') }]
+      : []),
+    ...(isAdmin ? [{ key: 'quien', icon: UserRoundCog, label: 'Quién juega', hint: 'Suplentes', onClick: () => openDialog('players') }] : []),
+    ...(isAdmin && onCorrect && (hasResult(m) || m.status === 'void') && m.status !== 'disputed'
+      ? [
+          {
+            key: 'corregir',
+            icon: PencilLine,
+            label: 'Corregir el resultado',
+            hint: 'Queda confirmado',
+            onClick: () => {
+              setMenu(false);
+              onCorrect();
+            },
+          },
+        ]
+      : []),
+    ...extra.map(({ keep, ...it }) => ({
+      ...it,
+      onClick: () => {
+        if (!keep) setMenu(false);
+        it.onClick();
+      },
+    })),
+    ...(isAdmin && m.status !== 'void' ? [{ key: 'anular', icon: Ban, label: 'Anular', hint: 'No cuenta para la tabla', onClick: () => void doVoid(), busy: pending.isBusy('void') }] : []),
+    ...(isAdmin ? [{ key: 'borrar', icon: Trash2, label: 'Borrar el partido', onClick: () => void doDelete(), busy: pending.isBusy('delete'), danger: true }] : []),
+  ];
+  if (!items.length) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {open && !points && (
-        <Button size="sm" icon={<CircleSlash className="size-4" />} disabled={waiting} onClick={() => setDialog('walkover')}>
-          W.O.
-        </Button>
-      )}
-      {(m.status === 'scheduled' || m.status === 'suspended') && (
-        <Button size="sm" icon={<Pause className="size-4" />} disabled={waiting} onClick={() => setDialog('postpone')}>
-          Aplazar
-        </Button>
-      )}
-      {(m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended') && (
-        <Button size="sm" icon={<CalendarClock className="size-4" />} disabled={waiting} onClick={() => setDialog('reschedule')}>
-          {m.scheduledAt ? 'Reprogramar' : `Poner fecha y ${w.one}`}
-        </Button>
-      )}
-      <Button size="sm" icon={<UserRoundCog className="size-4" />} disabled={waiting} onClick={() => setDialog('players')}>
-        Quién juega
-      </Button>
-      {m.status !== 'void' && (
-        <Button size="sm" variant="ghost" icon={<Ban className="size-4" />} onClick={() => void doVoid()} loading={pending.isBusy('void')} disabled={waiting}>
-          Anular
-        </Button>
-      )}
-      <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void doDelete()} loading={pending.isBusy('delete')} disabled={waiting}>
-        Borrar
-      </Button>
+    <>
+      <MoreButton onClick={() => !waiting && setMenu(true)} />
+      <EventMenu open={menu} onClose={() => setMenu(false)} title="Partido" items={items} />
 
       <WalkoverDialog
         open={dialog === 'walkover'}
@@ -120,6 +154,18 @@ export function MatchAdmin({ match: m, onDeleted }: { match: Match; onDeleted: (
         onSave={(iso, court, note) => act(() => rescheduleMatch(lid, m.id, iso, { court, note }), 'Partido reprogramado')}
       />
       <PlayersDialog open={dialog === 'players'} match={m} busy={busy} onClose={() => setDialog(null)} onSave={(side, ids) => act(() => setMatchPlayers(lid, m.id, side, ids.map((playerId) => ({ playerId }))), 'Jugadores guardados')} />
+    </>
+  );
+}
+
+/** El pie de las hojas del partido: Cancelar y lo que guarda, del mismo tamaño. */
+function SheetFooter({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="flex gap-2.5">
+      <Button variant="quiet" size="lg" className="flex-1" onClick={onClose}>
+        Cancelar
+      </Button>
+      {children}
     </div>
   );
 }
@@ -131,32 +177,32 @@ function WalkoverDialog({ open, match, busy, onClose, onSave }: { open: boolean;
     if (open) setNote('');
   }, [open]);
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="W.O.: ¿quién no se presentó?"
+      subtitle="El que vino gana 6-0 6-0; el que faltó suma 0"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSave(absent, note)}>
+        <SheetFooter onClose={onClose}>
+          <Button variant="primary" size="lg" className="flex-1" loading={busy} onClick={() => onSave(absent, note)}>
             Anotar W.O.
           </Button>
-        </>
+        </SheetFooter>
       }
     >
       <div className="flex flex-col gap-3">
-        {([1, 2, 0] as const).map((a) => (
-          <label key={a} className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-            <input type="radio" name="wo" checked={absent === a} onChange={() => setAbsent(a)} className="size-5 accent-[var(--accent)]" />
-            <span className="text-sm font-medium">{a === 0 ? 'No vino ninguno de los dos' : `No vino ${match.sides[a - 1].label}`}</span>
-          </label>
-        ))}
-        <p className="text-xs text-muted">El que vino gana 6-0 6-0 y el que faltó suma 0 puntos en la tabla.</p>
+        <div role="radiogroup" aria-label="Quién no vino" className="flex flex-col gap-2">
+          {([1, 2, 0] as const).map((a) => (
+            <OptionRow key={a} on={absent === a} onPick={() => setAbsent(a)}>
+              {a === 0 ? 'No vino ninguno de los dos' : `No vino ${match.sides[a - 1].label}`}
+            </OptionRow>
+          ))}
+        </div>
         <Field label="Nota (opcional)">
           <Input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="No llegaron a la hora" />
         </Field>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -182,23 +228,22 @@ function NoteDialog({
     if (open) setNote('');
   }, [open]);
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title={title}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} onClick={() => onSave(note)}>
+        <SheetFooter onClose={onClose}>
+          <Button variant="primary" size="lg" className="flex-1" loading={busy} onClick={() => onSave(note)}>
             Guardar
           </Button>
-        </>
+        </SheetFooter>
       }
     >
       <Field label="Motivo (opcional)" hint={hint}>
         <Input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder={placeholder} />
       </Field>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -234,17 +279,16 @@ function RescheduleDialog({
   }, [open, match.scheduledAt, match.court, tz]);
   const iso = zonedIso(date, time, tz);
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title={`Fecha, hora y ${w.one}`}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!iso} onClick={() => iso && onSave(iso, court.trim(), note)}>
+        <SheetFooter onClose={onClose}>
+          <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={!iso} onClick={() => iso && onSave(iso, court.trim(), note)}>
             Guardar
           </Button>
-        </>
+        </SheetFooter>
       }
     >
       <div className="grid grid-cols-2 gap-3">
@@ -261,7 +305,7 @@ function RescheduleDialog({
           <Input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Se pasó por lluvia" />
         </Field>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -282,30 +326,31 @@ function PlayersDialog({ open, match, busy, onClose, onSave }: { open: boolean; 
     return [...names.players].sort((a, b) => Number(first.has(b.id)) - Number(first.has(a.id)) || a.name.localeCompare(b.name, 'es'));
   }, [names.players, roster, picked]);
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Quién juega"
+      subtitle={size === 2 ? 'Con suplente, la pareja suma igual' : undefined}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!picked.length} onClick={() => onSave(side, picked)}>
+        <SheetFooter onClose={onClose}>
+          <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={!picked.length} onClick={() => onSave(side, picked)}>
             Guardar
           </Button>
-        </>
+        </SheetFooter>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label="Lado">
-          <Select value={side} onChange={(e) => setSide(Number(e.target.value) as Side)}>
-            <option value={1}>{match.sides[0].label}</option>
-            <option value={2}>{match.sides[1].label}</option>
-          </Select>
-        </Field>
-        <p className="text-xs text-muted">
-          Elige {size === 2 ? 'los dos que juegan' : 'quién juega'}. Si falta alguien de la pareja, pon al suplente: la pareja suma en la tabla y las
-          estadísticas van a quien jugó.
-        </p>
+        <Segmented
+          full
+          label="Lado"
+          options={[
+            { key: '1', label: <span className="truncate">{match.sides[0].label}</span> },
+            { key: '2', label: <span className="truncate">{match.sides[1].label}</span> },
+          ]}
+          value={side === 1 ? '1' : '2'}
+          onChange={(k) => setSide(k === '1' ? 1 : 2)}
+        />
+        <p className="text-[13px] text-muted">Elige {size === 2 ? 'los dos que juegan' : 'quién juega'}. Las estadísticas van a quien jugó.</p>
         {[0, 1].slice(0, size).map((i) => (
           <Field key={i} label={size === 2 ? `Jugador ${i + 1}` : 'Jugador'}>
             <Select
@@ -327,6 +372,28 @@ function PlayersDialog({ open, match, busy, onClose, onSave }: { open: boolean; 
           </Field>
         ))}
       </div>
-    </Modal>
+    </Sheet>
+  );
+}
+
+/** Una opción de una lista para elegir una sola (W.O.: quién no vino). */
+function OptionRow({ on, onPick, children }: { on: boolean; onPick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={onPick}
+      className={cx(
+        'flex min-h-14 w-full items-center gap-3 rounded-2xl px-4 text-left text-[15px] font-semibold transition active:scale-[0.99]',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        on ? 'bg-accent-soft text-accent' : 'bg-surface-2',
+      )}
+    >
+      <span aria-hidden="true" className={cx('grid size-6 shrink-0 place-items-center rounded-full', on ? 'bg-accent text-accent-fg' : 'shadow-[inset_0_0_0_1.5px_var(--faint)]')}>
+        {on && <Check className="size-4" strokeWidth={3} />}
+      </span>
+      <span className="min-w-0 flex-1">{children}</span>
+    </button>
   );
 }

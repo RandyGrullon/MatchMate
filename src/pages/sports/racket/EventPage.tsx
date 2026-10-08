@@ -7,10 +7,13 @@ import { isNightType } from './logic/night';
 import { NightPage } from './night/NightPage';
 import { TourneyPage } from './tourney/TourneyPage';
 import { useRacket } from './sport';
+import { EventBackProvider } from './frame';
 
 /**
  * Un evento de raqueta (/l/:lid/e/:eventId): la noche de americano o mexicano, la liga de parejas o el torneo; o
- * lo que el deporte agrega (`ext.eventPage`: liga por cajas, escalera, round robin social).
+ * lo que el deporte agrega (`ext.eventPage`: liga por cajas, escalera, round robin social). Abierto desde su link vuelve
+ * a la liga («‹ Pádel de los jueves»); puesto en el inicio (un torneo sin liga con un solo evento, `eventId`) no tiene
+ * a dónde volver.
  */
 export default function RacketEventPage({ eventId: fixed }: { eventId?: string }) {
   const params = useParams();
@@ -31,8 +34,9 @@ export default function RacketEventPage({ eventId: fixed }: { eventId?: string }
   }
   const e = ev.data;
   const Custom = ext.eventPage?.(e);
-  if (Custom) return <Custom event={e} />;
-  if (isNightType(e.type)) return <NightPage event={e} />;
-  if (e.type === 'torneo') return <TourneyPage event={e} />;
-  return <LeaguePage event={e} />;
+  return (
+    <EventBackProvider embedded={!!fixed}>
+      {Custom ? <Custom event={e} /> : isNightType(e.type) ? <NightPage event={e} /> : e.type === 'torneo' ? <TourneyPage event={e} /> : <LeaguePage event={e} />}
+    </EventBackProvider>
+  );
 }

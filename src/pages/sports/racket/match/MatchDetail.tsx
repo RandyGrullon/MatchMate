@@ -1,14 +1,30 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { ArrowLeft, Gavel, History, Keyboard, PencilLine, Play, Undo2 } from 'lucide-react';
+import { Gavel, History, Keyboard, Play, Share2, Trophy, Undo2 } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth';
 import { useLeagueMembers } from '../../../../lib/data';
 import { hasResult, isOpen, resolveDispute, sideOf, useMatch, type Match } from '../../../../lib/data/matches';
+import type { Side } from '../../../../sports/types';
 import { savePointsResult, useWithPendingPoints } from '../../../../lib/data/racket';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
-import { ConfirmResultBanner, MatchCard, ResultEntryModal, ShareResultCard, pointsResultParser, racketResultParser, type ParsedResult } from '../../../../components/match';
-import { Button, Card, Empty, LoadError, PageSkeleton } from '../../../../components/ui';
+import {
+  ConfirmResultBanner,
+  ResultEntryModal,
+  ShareResultCard,
+  pointsResultParser,
+  racketResultParser,
+  roundLabel,
+  scoreColumns,
+  sideName,
+  statusInfo,
+  whenText,
+  type ParsedResult,
+} from '../../../../components/match';
+import { MatchStatus } from '../../../../components/match/MatchCard';
+import { TuTag } from '../../../../components/ranking/parts';
+import { useIsPro } from '../../../../components/mode';
+import { Button, Card, Empty, ListRow, LoadError, PageSkeleton, RowIcon, Sheet, cx } from '../../../../components/ui';
 import { appOrigin } from '../bits';
 import { PointsCourt } from '../court/PointsCourt';
 import { SetsCourt } from '../court/SetsCourt';
@@ -18,6 +34,7 @@ import { isPointsMatch } from '../logic/results';
 import { rulesText } from '../logic/rulesText';
 import { useNames } from '../names';
 import { courtWords, useRacket } from '../sport';
+import { BackBar, HideShellBar } from '../frame';
 import { historyLines } from './history';
 import { MatchAdmin } from './MatchAdmin';
 
@@ -55,10 +72,28 @@ export function useMySide() {
 }
 
 /**
- * Un partido: marcador y estado, confirmar o reclamar (el rival), anotar en la cancha o «solo resultado»,
- * lo del admin (W.O., aplazar, reprogramar, corregir, decidir el reclamo, suplente, anular) y el historial.
+ * Un partido (rediseño «Calma y foco»): «‹ Americano del jueves» arriba (vuelve a donde estaba) con «•••»; el título
+ * («Ronda 1 · Cancha 2»), el marcador grande, confirmar o reclamar (el rival) y UN botón: «Anotar en la cancha» (con
+ * «Solo el resultado» debajo, en gris). Lo del admin (W.O., aplazar, reprogramar, suplente, corregir, anular, borrar),
+ * compartir y el historial van en «•••»; decidir un reclamo, en su tarjeta. `shellBar`: la pantalla de abajo trae la
+ * barra de la liga (Partidos, Mis partidos): esta la reemplaza.
  */
-export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: string; eventId?: string | null; title?: string; onBack: () => void }) {
+export function MatchDetail({
+  matchId,
+  eventId,
+  title,
+  onBack,
+  backLabel,
+  shellBar,
+}: {
+  matchId: string;
+  eventId?: string | null;
+  title?: string;
+  onBack: () => void;
+  /** Lo que dice «‹ …» (por defecto el título del evento o «Partidos»). */
+  backLabel?: string;
+  shellBar?: boolean;
+}) {
   const { lid, isAdmin, member, league, base } = useLeagueCtx();
   const { sport, ext } = useRacket();
   const w = courtWords(ext);
@@ -71,17 +106,24 @@ export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: stri
   const mySideOf = useMySide();
   const members = useLeagueMembers(lid);
   const [entry, setEntry] = useState<null | 'finish' | 'correct' | 'resolve'>(null);
+  const [sheet, setSheet] = useState<null | 'compartir' | 'historial'>(null);
   const [busy, setBusy] = useState(false);
+  const pro = useIsPro();
+  const back = backLabel ?? title ?? 'Partidos';
 
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) return <PageSkeleton />;
   if (!m) {
     return (
-      <Empty title="Este partido ya no existe">
-        <button type="button" className="text-accent" onClick={onBack}>
-          Volver
-        </button>
-      </Empty>
+      <div className="flex flex-col px-2">
+        {shellBar && <HideShellBar />}
+        <BackBar label={back} onBack={onBack} />
+        <Empty title="Este partido ya no existe">
+          <button type="button" className="text-accent" onClick={onBack}>
+            Volver
+          </button>
+        </Empty>
+      </div>
     );
   }
 
@@ -125,79 +167,105 @@ export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: stri
   };
 
   const url = `${appOrigin()}${eventId ? `${base}/e/${eventId}` : `${base}/juegos`}?partido=${m.id}`;
+  const status = statusInfo(m);
+  const heading = [m.stage || roundLabel(m.round, points ? 'Ronda' : 'Jornada'), m.court].filter(Boolean).join(' · ') || (points ? 'Partido de la noche' : 'Partido');
+  const when = whenText(m.scheduledAt, league.tz, true);
+  const shared = hasResult(m);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" onClick={onBack} icon={<ArrowLeft className="size-5" />} aria-label="Volver" />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold">{title ?? (points ? 'Partido de la noche' : 'Partido')}</h1>
-          {!points && <p className="truncate text-xs text-muted">{rulesText(rules)}</p>}
-        </div>
-      </div>
+    <div className="flex flex-col px-2">
+      {shellBar && <HideShellBar />}
+      <BackBar label={back} onBack={onBack} right={<MatchAdmin match={m} onDeleted={onBack} onCorrect={() => setEntry('correct')} />} />
+      <h1 className={pro ? 'mt-0.5 text-title-pro' : 'mt-1 text-title'}>{heading}</h1>
+      {(m.status !== 'scheduled' || when) && (
+        <p className={cx('flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-muted', pro ? 'mt-1' : 'mt-1.5')}>
+          {m.status !== 'scheduled' && <MatchStatus label={status.label} tone={status.tone} live={status.live} className="text-meta" />}
+          {m.status !== 'scheduled' && when && <span aria-hidden="true">·</span>}
+          {when && <span>{when}</span>}
+        </p>
+      )}
 
-      <MatchCard match={m} mySide={mySide} roundWord={points ? 'Ronda' : 'Jornada'} tz={league.tz} />
+      <Scoreboard match={m} mySide={mySide} rules={points ? null : rulesText(rules)} className="mt-[22px]" />
 
-      <ConfirmResultBanner lid={lid} match={m} mySide={mySide} isAdmin={isAdmin} />
+      <ConfirmResultBanner lid={lid} match={m} mySide={mySide} isAdmin={isAdmin} className="mt-3.5" />
 
       {open && canScore && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button variant="primary" className="h-14 text-base" icon={<Play className="size-5" />} onClick={() => param.openCourt(m.id)}>
+        <div className="mt-[22px] flex flex-col gap-2.5">
+          <Button variant="primary" size={pro ? 'lg' : 'xl'} className="w-full" icon={<Play className="size-5" />} onClick={() => param.openCourt(m.id)}>
             {m.status === 'live' ? `Seguir anotando en la ${w.one}` : m.status === 'suspended' ? `Retomar en la ${w.one}` : `Anotar en la ${w.one}`}
           </Button>
-          <Button className="h-14 text-base" icon={<Keyboard className="size-5" />} onClick={() => setEntry('finish')}>
+          <Button variant="quiet" size="lg" className="w-full" icon={<Keyboard className="size-5" />} onClick={() => setEntry('finish')}>
             {points ? 'Poner el marcador' : 'Solo el resultado'}
           </Button>
         </div>
       )}
 
-      {isAdmin && (hasResult(m) || m.status === 'void') && (
-        <div className="flex flex-wrap gap-2">
-          {m.status === 'disputed' ? (
-            <>
-              <Button variant="primary" icon={<Gavel className="size-4" />} onClick={() => setEntry('resolve')}>
-                Decidir el reclamo
-              </Button>
-              <Button icon={<Undo2 className="size-4" />} loading={busy} onClick={() => void keepProposed()}>
-                Dejar lo anotado
-              </Button>
-            </>
-          ) : (
-            <Button icon={<PencilLine className="size-4" />} onClick={() => setEntry('correct')}>
-              Corregir el resultado
+      {isAdmin && m.status === 'disputed' && (
+        <Card className="mt-3.5 px-[18px] pt-4 pb-[18px]">
+          <p className="inline-flex items-center gap-2 text-sm font-[650] text-danger">
+            <Gavel aria-hidden="true" className="size-4" />
+            En disputa
+          </p>
+          <p className="mt-2 text-body">{m.disputeNote ? `«${m.disputeNote}»` : 'El rival dice que el resultado no es así.'}</p>
+          <div className="mt-4 flex gap-2.5">
+            <Button variant="quiet" size="lg" className="flex-1" icon={<Undo2 className="size-4" />} loading={busy} onClick={() => void keepProposed()}>
+              Dejar lo anotado
             </Button>
-          )}
-        </div>
-      )}
-
-      {isAdmin && (
-        <Card className="flex flex-col gap-2 p-4">
-          <p className="text-xs font-semibold text-muted">Admin</p>
-          <MatchAdmin match={m} onDeleted={onBack} />
+            <Button variant="primary" size="lg" className="flex-1" onClick={() => setEntry('resolve')}>
+              Decidir el reclamo
+            </Button>
+          </div>
         </Card>
       )}
 
-      {hasResult(m) && <ShareResultCard match={m} title={title ?? league.name} roundWord={points ? 'Ronda' : 'Jornada'} url={url} />}
-
-      {history.length > 0 && (
-        <details className="rounded-2xl border border-line bg-surface px-4 py-3">
-          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
-            <History className="size-4" /> Historial ({history.length})
-          </summary>
-          <ul className="mt-2 flex flex-col gap-2">
-            {history.map((h, i) => (
-              <li key={i} className="text-sm">
-                <span className="font-medium">{h.text}</span>
-                <span className="block text-xs text-muted">
-                  {new Date(h.at).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short', timeZone: league.tz || undefined })}
-                  {h.who ? ` · ${h.who}` : ''}
-                  {h.note ? ` · ${h.note}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
+      {(shared || history.length > 0) && (
+        <Card className="mt-[30px] overflow-hidden">
+          {shared && (
+            <ListRow
+              leading={
+                <RowIcon>
+                  <Share2 className="size-5" />
+                </RowIcon>
+              }
+              title="Compartir el resultado"
+              subtitle="Imagen o texto para WhatsApp"
+              onClick={() => setSheet('compartir')}
+              dense={pro}
+            />
+          )}
+          {history.length > 0 && (
+            <ListRow
+              leading={
+                <RowIcon>
+                  <History className="size-5" />
+                </RowIcon>
+              }
+              title={`Historial (${history.length})`}
+              subtitle={history[0].text}
+              onClick={() => setSheet('historial')}
+              dense={pro}
+            />
+          )}
+        </Card>
       )}
+
+      <Sheet open={sheet === 'compartir'} onClose={() => setSheet(null)} title="Compartir el resultado" subtitle={heading}>
+        {sheet === 'compartir' && <ShareResultCard match={m} title={title ?? league.name} roundWord={points ? 'Ronda' : 'Jornada'} url={url} className="shadow-none!" />}
+      </Sheet>
+      <Sheet open={sheet === 'historial'} onClose={() => setSheet(null)} title="Historial" subtitle={heading}>
+        <ul className="-mx-1 flex flex-col">
+          {history.map((h, i) => (
+            <li key={i} className={cx('px-1 py-3', i > 0 && 'border-t border-line')}>
+              <p className="text-[15px] font-semibold">{h.text}</p>
+              <p className="mt-0.5 text-[13px] text-muted">
+                {new Date(h.at).toLocaleString('es-DO', { dateStyle: 'medium', timeStyle: 'short', timeZone: league.tz || undefined })}
+                {h.who ? ` · ${h.who}` : ''}
+                {h.note ? ` · ${h.note}` : ''}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Sheet>
 
       {entry && (
         <ResultEntryModal
@@ -221,5 +289,53 @@ export function MatchDetail({ matchId, eventId, title, onBack }: { matchId: stri
         />
       )}
     </div>
+  );
+}
+
+/**
+ * El marcador grande del partido: los dos lados con su marcador por set (o el total) en números de 30 px; el ganador en
+ * negrita con copa y el lado propio con «Tú».
+ */
+function Scoreboard({ match: m, mySide, rules, className }: { match: Match; mySide: Side | null; rules: string | null; className?: string }) {
+  const cols = scoreColumns(m.score);
+  const walkover = m.status === 'walkover';
+  return (
+    <Card className={cx('px-[18px] pt-3 pb-4', className)}>
+      {m.sides.map((s, i) => {
+        const won = m.winner === s.side;
+        const mine = mySide === s.side;
+        const absent = walkover && (m.walkoverSide === s.side || m.walkoverSide === 0);
+        return (
+          <div key={s.side} className={cx('flex min-h-14 items-center gap-2.5', i > 0 && 'border-t border-line')}>
+            <span className="min-w-0 flex-1">
+              <span className={cx('flex min-w-0 items-center gap-1.5 text-[17px]', won ? 'font-bold' : m.winner ? 'font-medium text-muted' : 'font-semibold')}>
+                <span className="truncate">{sideName(s)}</span>
+                {mine && <TuTag small />}
+              </span>
+              {absent && <span className="block text-[13px] text-muted">No vino</span>}
+            </span>
+            {won && <Trophy className="size-5 shrink-0 text-gold" aria-label="Ganó" />}
+            <span className="flex shrink-0 gap-3">
+              {cols.length ? (
+                cols.map((c, j) => {
+                  const v = i === 0 ? c.a : c.b;
+                  const other = i === 0 ? c.b : c.a;
+                  return (
+                    <span key={j} className={cx('num w-8 text-right text-[30px] leading-none', v > other ? 'font-bold text-fg' : 'font-medium text-faint')}>
+                      {v}
+                      {c.tb && v < other && <sup className="text-xs">{c.tb}</sup>}
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="num w-8 text-right text-[30px] leading-none font-medium text-faint">–</span>
+              )}
+            </span>
+          </div>
+        );
+      })}
+      {/* Las reglas del partido, chicas, debajo del marcador. */}
+      {rules && <p className="mt-1 border-t border-line pt-3 text-[13px] text-muted">{rules}</p>}
+    </Card>
   );
 }

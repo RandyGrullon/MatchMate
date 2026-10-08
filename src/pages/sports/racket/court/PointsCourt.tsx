@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Timer } from 'lucide-react';
-import { CourtLayout, TwoHalves } from '../../../../court';
+import { CourtLayout, CourtNote, TwoHalves } from '../../../../court';
 import type { Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import { serveInfo, type PointsConfig } from '../../../../sports/formats';
@@ -75,34 +75,36 @@ export function PointsCourt({ match, onExit, isAdmin, userId, title }: { match: 
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         {points.mode === 'total' ? (
-          <p className="text-lg font-bold">
-            A {points.target} <span className="font-medium text-muted">· {court.over ? 'terminó' : `faltan ${left}`}</span>
+          <p className="text-[19px] font-[650] tracking-[-0.01em]">
+            A <span className="num">{points.target}</span> <span className="font-medium text-muted">· {court.over ? 'terminó' : `faltan ${left}`}</span>
           </p>
         ) : (
-          <p className={cx('flex items-center gap-1.5 text-lg font-bold tabular-nums', timeUp && 'text-danger')}>
+          <p className={cx('num flex items-center gap-1.5 text-[19px] font-[650]', timeUp && 'text-danger')}>
             <Timer className="size-5" />
             {mmss(elapsed)} <span className="font-medium text-muted">de {points.minutes}:00</span>
           </p>
         )}
-        <Button size="sm" variant="ghost" icon={<ArrowLeftRight className="size-4" />} onClick={() => setSwap(!swap)} aria-label="Cambiar de lado en la pantalla">
+        <Button variant="quiet" className="h-11 rounded-full px-4" icon={<ArrowLeftRight className="size-4" />} onClick={() => setSwap(!swap)} aria-label="Cambiar de lado en la pantalla">
           Lados
         </Button>
       </div>
       {serve && !court.over && (
-        <p className={cx('rounded-xl px-3 py-2 text-sm', serve.changed ? 'bg-warn-soft font-semibold text-warn' : 'bg-surface-2')} role="status">
-          {serve.changed ? 'Cambio de saque: ' : 'Saca: '}
-          <b>{names[serve.side - 1]}</b>
-        </p>
+        <CourtNote tone={serve.changed ? 'accent' : 'neutral'}>
+          <span>
+            {serve.changed ? 'Cambio de saque: ' : 'Saca: '}
+            <b>{names[serve.side - 1]}</b>
+          </span>
+        </CourtNote>
       )}
       {timeUp && !court.over && (
-        <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm font-semibold text-danger" role="alert">
+        <CourtNote tone="danger" role="alert">
           ¡Tiempo! Toca «Terminar» para guardar el marcador.
-        </p>
+        </CourtNote>
       )}
       {court.over && (
-        <p className="rounded-xl bg-ok-soft px-3 py-2 text-sm font-semibold text-ok" role="status">
+        <CourtNote tone="accent">
           {winner ? `Ganan ${names[winner - 1]} ${Math.max(a, b)}-${Math.min(a, b)}` : `Empate ${a}-${b}`}. Toca «Terminar».
-        </p>
+        </CourtNote>
       )}
     </div>
   );

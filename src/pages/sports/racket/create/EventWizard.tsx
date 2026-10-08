@@ -4,8 +4,8 @@ import { ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { createRacketEvent, type RacketEvent } from '../../../../lib/data/racket';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
-import { Button, Field, Input, Modal, cx } from '../../../../components/ui';
-import { EventIcon, PickList, Stepper, eventTypeInfo } from '../bits';
+import { Button, Card, Field, Input, ListRow, RowIcon, Sheet, cx } from '../../../../components/ui';
+import { EventIcon, PickList, Stepper, ToggleRow, eventTypeInfo } from '../bits';
 import { parseLeagueConfig, leagueConfigJson } from '../logic/league';
 import { NIGHT_MAX_PLAYERS, newNightConfig, nightConfigJson, parseNightConfig, suggestRounds, type NightConfig, type NightFormat } from '../logic/night';
 import { signupCap, type SignupSettings } from '../logic/signup';
@@ -170,7 +170,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
   if (custom) {
     const Form = custom.Form;
     return (
-      <Modal open={open} onClose={onClose} wide title={custom.title}>
+      <Sheet open={open} onClose={onClose} title={custom.title}>
         <Form
           last={lastNight}
           onBack={() => setCustom(null)}
@@ -179,81 +179,79 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
             navigate(`${base}/e/${id}`);
           }}
         />
-      </Modal>
+      </Sheet>
     );
   }
 
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      wide
       title={step === 0 ? 'Nuevo' : title}
+      subtitle={step === 0 ? '¿Qué vas a organizar?' : `Paso ${step} de ${lastStep}`}
       footer={
-        step === 0 ? (
-          <Button onClick={onClose}>Cancelar</Button>
-        ) : (
-          <>
-            <Button icon={<ChevronLeft className="size-4" />} onClick={() => setStep(step - 1)}>
+        step === 0 ? undefined : (
+          <div className="flex gap-2.5">
+            <Button variant="quiet" size="lg" className="flex-1" icon={<ChevronLeft className="size-4" />} onClick={() => setStep(step - 1)}>
               Atrás
             </Button>
             {step < lastStep ? (
-              <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)} icon={<ChevronRight className="size-4" />}>
+              <Button variant="primary" size="lg" className="flex-1" disabled={!canNext} onClick={() => setStep(step + 1)} icon={<ChevronRight className="size-4" />}>
                 Siguiente
               </Button>
             ) : (
-              <Button variant="primary" loading={busy} disabled={isNight && !enoughPlayers} onClick={() => void create()}>
+              <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={isNight && !enoughPlayers} onClick={() => void create()}>
                 Crear
               </Button>
             )}
-          </>
+          </div>
         )
       }
     >
       {step === 0 && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3 pb-1">
           {canRepeat && lastNight && (
-            <button
-              type="button"
-              onClick={() => pick(lastNight.type === 'mexicano' ? 'mexicano' : 'americano', lastNight)}
-              className="flex items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft/50 p-3 text-left transition active:scale-[0.98]"
-            >
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-fg">
-                <Copy className="size-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">Repetir la última noche</span>
-                <span className="block truncate text-sm text-muted">
-                  {lastNight.name || eventTypeInfo(lastNight.type).label}: mismos jugadores, canchas y puntos
-                </span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 opacity-60" />
-            </button>
+            <Card soft className="overflow-hidden">
+              <ListRow
+                leading={
+                  <RowIcon tone="accent">
+                    <Copy className="size-5" />
+                  </RowIcon>
+                }
+                title="Repetir la última noche"
+                subtitle={`${lastNight.name || eventTypeInfo(lastNight.type).label}: mismos jugadores, canchas y puntos`}
+                onClick={() => pick(lastNight.type === 'mexicano' ? 'mexicano' : 'americano', lastNight)}
+              />
+            </Card>
           )}
-          {templates.map((t) => (
-            <button key={t.k} type="button" onClick={() => pick(t.k)} className="flex items-center gap-3 rounded-2xl border border-line p-3 text-left transition hover:bg-surface-2 active:scale-[0.98]">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                <EventIcon type={t.k} className="size-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{t.title}</span>
-                <span className="block text-sm text-muted">{t.text}</span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 opacity-60" />
-            </button>
-          ))}
-          {extra.map((t) => (
-            <button key={t.k} type="button" onClick={() => setCustom(t)} className="flex items-center gap-3 rounded-2xl border border-line p-3 text-left transition hover:bg-surface-2 active:scale-[0.98]">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                <t.icon className="size-5" aria-hidden="true" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-semibold">{t.title}</span>
-                <span className="block text-sm text-muted">{t.text}</span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 opacity-60" />
-            </button>
-          ))}
+          <Card className="overflow-hidden">
+            {templates.map((t) => (
+              <ListRow
+                key={t.k}
+                leading={
+                  <RowIcon tone="accent">
+                    <EventIcon type={t.k} className="size-5" />
+                  </RowIcon>
+                }
+                title={t.title}
+                subtitle={t.text}
+                onClick={() => pick(t.k)}
+              />
+            ))}
+            {extra.map((t) => (
+              <ListRow
+                key={t.k}
+                leading={
+                  <RowIcon tone="accent">
+                    <t.icon className="size-5" aria-hidden="true" />
+                  </RowIcon>
+                }
+                title={t.title}
+                subtitle={t.text}
+                onClick={() => setCustom(t)}
+              />
+            ))}
+          </Card>
         </div>
       )}
 
@@ -271,12 +269,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
             <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder={defaultName(kind, date, doubles)} />
           </Field>
           {isNight && <NightFields value={night} onChange={setNight} parts={['courts', 'points']} />}
-          {kind === 'liga' && (
-            <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-              <input type="checkbox" checked={double} onChange={(e) => setDouble(e.target.checked)} className="size-5 accent-[var(--accent)]" />
-              <span className="text-sm font-medium">Ida y vuelta (cada {side[0]} juega dos veces contra cada rival)</span>
-            </label>
-          )}
+          {kind === 'liga' && <ToggleRow checked={double} onChange={setDouble} label="Ida y vuelta" hint={`Cada ${side[0]} juega dos veces contra cada rival`} />}
           {kind === 'torneo' && (
             <Stepper label="Categorías (A, B, C…)" value={cats} min={1} max={CATEGORY_IDS.length} onChange={setCats} />
           )}
@@ -293,11 +286,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
             maxCap={NIGHT_MAX_PLAYERS}
             tz={league.tz}
           />
-          <p className="text-sm text-muted">
-            {signup?.open
-              ? 'Los que se apunten entran solos a la lista. Si ya sabes de alguien (o no tiene la app), agrégalo aquí.'
-              : '¿Quién juega esta noche? Si alguien llega tarde o se va, lo cambias antes de la ronda siguiente.'}
-          </p>
+          <p className="text-meta text-muted">{signup?.open ? 'Los que se apunten entran solos. Agrega aquí a quien ya sabes.' : '¿Quién juega esta noche?'}</p>
           <NightPlayers
             value={night.players}
             levels={levels}
@@ -310,16 +299,12 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
 
       {step === 3 && isNight && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm">
-            <b>{night.players.length}</b> jugadores · <b>{night.courts.length}</b> {night.courts.length === 1 ? 'cancha' : 'canchas'} · <b>{night.rounds}</b> rondas ·{' '}
-            {night.points.mode === 'total' ? `a ${night.points.target} puntos` : `${night.points.minutes} minutos`}
+          <p className="text-body">
+            <b className="num">{night.players.length}</b> jugadores · <b className="num">{night.courts.length}</b> {night.courts.length === 1 ? 'cancha' : 'canchas'} ·{' '}
+            <b className="num">{night.rounds}</b> rondas · {night.points.mode === 'total' ? `a ${night.points.target} puntos` : `${night.points.minutes} minutos`}
           </p>
           <NightFields value={night} onChange={setNight} parts={['rounds']} expected={expected} />
-          <p className="text-xs text-muted">
-            {signup?.open
-              ? 'Después de crearla, comparte el link para que se apunten. Cuando estén todos, tocas «Empezar ronda 1» (ahí se cierra la inscripción).'
-              : 'Después de crearla, en la noche tocas «Empezar ronda 1» y a cada quien le llega su cancha.'}
-          </p>
+          <p className="text-[13px] text-muted">{signup?.open ? 'Luego comparte el link para que se apunten.' : 'Luego, en la noche, tocas «Empezar ronda 1».'}</p>
         </div>
       )}
 
@@ -329,12 +314,10 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
             <SignupFields value={signup} onChange={changeSignup} unit={side} perCategory={cats > 1} defaultCap={8} tz={league.tz} />
           )}
           {kind === 'torneo' && cats > 1 ? (
-            <p className="rounded-xl bg-surface-2 px-3 py-3 text-sm">Las {side[1]} de cada categoría se eligen en el torneo, categoría por categoría.</p>
+            <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-fg-2">Las {side[1]} de cada categoría se eligen en el torneo.</p>
           ) : (
             <>
-              <p className="text-sm text-muted">
-                ¿Qué {side[1]} juegan? {doubles && 'Las parejas se arman en Admin › Parejas y niveles.'} Lo puedes cambiar después, antes de armar el calendario.
-              </p>
+              <p className="text-meta text-muted">¿Qué {side[1]} juegan? Lo puedes cambiar después.</p>
               <PickList
                 items={entrantItems}
                 selected={new Set(pairs)}
@@ -353,13 +336,13 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
                   )
                 }
               />
-              <p className={cx('text-sm', pairs.length < 2 ? 'text-warn' : 'text-muted')}>
+              <p className={cx('text-sm font-semibold', pairs.length < 2 ? 'text-danger' : 'text-muted')}>
                 {pairs.length} {pairs.length === 1 ? side[0] : side[1]}
               </p>
             </>
           )}
         </div>
       )}
-    </Modal>
+    </Sheet>
   );
 }

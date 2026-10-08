@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { ArrowDown, ArrowUp, Boxes, CalendarCheck2, Download, History, RefreshCw, Settings2, Trash2, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Boxes, CalendarCheck2, FileSpreadsheet, History, RefreshCw, Settings2, Trash2, Users } from 'lucide-react';
 import { deleteEvent } from '../../../lib/data';
 import { useMatches, type Match } from '../../../lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../lib/data/racket';
@@ -11,15 +11,18 @@ import type { StandingRow } from '../../../sports/types';
 import { useBusy } from '../../../components/busy';
 import { useFeedback, saveErrorMessage } from '../../../components/feedback';
 import { MatchCard, StandingsTable, type StandingsColumn } from '../../../components/match';
-import { Badge, Button, Card, Empty, ListSkeleton, Modal, Tabs, cx } from '../../../components/ui';
-import { BackLink } from '../../../components/BackLink';
-import { PickList, Section, racketColumns } from '../racket/bits';
+import { useIsPro } from '../../../components/mode';
+import { NoticeSlot } from '../../../components/NoticeSlot';
+import { Badge, Button, Card, Empty, ListRow, ListSkeleton, RowIcon, Segmented, SectionHeader, Sheet, cx } from '../../../components/ui';
+import { FinePrint, PickList, choiceClass, racketColumns } from '../racket/bits';
+import { ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../racket/frame';
 import { levelText, useLevels } from '../racket/levels';
 import { exportCompetitionExcel } from '../racket/excel';
 import { forLabel, seasonPlayerTable, setsLabel } from '../racket/logic/results';
 import { tiebreakText } from '../racket/logic/tiebreaks';
 import { todayIn } from '../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../racket/match/MatchDetail';
+import { SaveFooter } from '../racket/night/parts';
 import { useNames } from '../racket/names';
 import { courtWords, useRacket } from '../racket/sport';
 import { BoxRulesFields } from './BoxForm';
@@ -48,10 +51,12 @@ type Tab = 'cajas' | 'historial' | 'participantes';
 type Pending = 'primero' | 'rehacer' | 'cerrar' | 'config';
 
 /**
- * Liga por cajas: el mes abierto con la tabla y los partidos de cada caja (mi caja primero), quién sube y quién
- * baja si el mes cerrara hoy, el historial de los meses y los participantes. El admin arma el primer mes, cierra
- * el mes (una sola llamada: anula lo no jugado, guarda subidas y bajadas y abre el siguiente con sus partidos),
- * rehace el mes si nadie empezó y cambia participantes y reglas.
+ * Liga por cajas (rediseño «Calma y foco»): «‹ Tenis del sábado» con «•••», el título y «● Octubre 2026 · 8 jugadores ·
+ * suben 2 y bajan 2». Arriba, cómo va el mes (partidos jugados con su barra y cuándo se cierra; quien organiza, en Pro,
+ * lo cierra desde ahí: anula lo no jugado, guarda subidas y bajadas y abre el siguiente con sus partidos). Debajo las
+ * cajas (la mía primero) con su tabla, quién sube y quién baja si el mes cerrara hoy, y sus partidos. Lite: los meses
+ * cerrados y los participantes en filas; Pro: Cajas · Meses · Jugadores. Rehacer el mes, participantes, reglas, Excel y
+ * borrar van en «•••».
  */
 export function BoxPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
@@ -73,9 +78,18 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   // El Excel va aparte: mientras se arma no detiene lo demás.
   const exporting = useBusy();
   const [editing, setEditing] = useState<null | 'cerrar' | 'participantes' | 'reglas'>(null);
+  const [sheet, setSheet] = useState<'historial' | 'participantes' | null>(null);
   const { levels } = useLevels();
+  const pro = useIsPro();
+  const back = useEventBack();
   const title = event.name || 'Liga por cajas';
   const mine = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
+  const proItem = useOrganizePro(isAdmin, {
+    id: `raqueta-cajas-pro:${event.id}`,
+    title: 'Organizas las cajas',
+    text: 'El mes se arma y se cierra en Pro',
+    menu: month && !month.closed ? 'Cerrar el mes' : 'Armar el mes',
+  });
 
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={title} onBack={param.close} />;
 
@@ -83,6 +97,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   const setTab = (t: Tab) => setSearch({ ver: t }, { replace: true });
   const matchRules = { ...leagueRules, match: { ...((leagueRules.match as Record<string, unknown> | undefined) ?? {}), doubles: cfg.doubles } };
   const started = month ? monthMatches(matches, month.n).some((m) => m.status !== 'scheduled' || m.seq > 0) : false;
+  const organize = isAdmin && pro;
 
   const openFirst = () =>
     pending.run('primero', async () => {
@@ -177,108 +192,130 @@ export function BoxPage({ event }: { event: RacketEvent }) {
   const progress = month ? monthProgress(month, matches, tables, cfg.rules, now) : null;
   const myBox = month ? month.boxes.findIndex((b) => b.some((id) => mine.includes(id))) : -1;
   const order = month ? [...month.boxes.keys()].sort((a, b) => (a === myBox ? -1 : b === myBox ? 1 : a - b)) : [];
+  const unit = cfg.doubles ? 'parejas' : 'jugadores';
+  const meta = [`${cfg.entrants.length} ${unit}`, `suben ${cfg.rules.up} y bajan ${cfg.rules.down}`, pro ? `cajas de ${cfg.rules.min} a ${cfg.rules.max}` : null].filter(Boolean).join(' · ');
+  const menu: RacketMenuItem[] = [
+    ...(proItem ? [proItem] : []),
+    ...(isAdmin && month ? [{ key: 'excel', icon: FileSpreadsheet, label: 'Excel', hint: 'Las cajas y los partidos del mes', onClick: () => void excel(month), busy: exporting.isBusy(), keep: true }] : []),
+    ...(organize && month && !month.closed && !started
+      ? [{ key: 'rehacer', icon: RefreshCw, label: 'Rehacer el mes', hint: 'Nadie ha jugado todavía', onClick: () => void redoMonth(), busy: pending.isBusy('rehacer') }]
+      : []),
+    ...(isAdmin
+      ? [
+          { key: 'participantes', icon: Users, label: 'Participantes', hint: 'Entran y salen al cerrar el mes', onClick: () => setEditing('participantes') },
+          { key: 'reglas', icon: Settings2, label: 'Reglas de las cajas', hint: 'Tamaños, subidas y bajadas', onClick: () => setEditing('reglas') },
+          { key: 'borrar', icon: Trash2, label: 'Borrar la liga por cajas', onClick: () => void remove(), danger: true },
+        ]
+      : []),
+  ];
+
+  const boxesView =
+    q.loading && !matches.length ? (
+      <ListSkeleton rows={3} />
+    ) : (
+      month && (
+        <div className="flex flex-col gap-[30px]">
+          {order.map((b) => (
+            <BoxCard key={b} b={b} month={month} rows={tables[b] ?? []} matches={matches} preview={preview} mine={mine} onOpen={param.open} last={b === month.boxes.length - 1} minToStay={cfg.rules.minToStay} />
+          ))}
+          <FinePrint>{tiebreakText(sport)} ↑ sube y ↓ baja si el mes cerrara hoy. Un resultado por confirmar cuenta a las 48 h.</FinePrint>
+        </div>
+      )
+    );
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
-        {league.kind !== 'torneo' && <BackLink fallback={base} className="mt-1" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
-            <Badge tone="accent">{cfg.doubles ? 'Cajas de parejas' : 'Liga por cajas'}</Badge>
-            {month && !month.closed && <Badge tone="ok">{month.label || `Mes ${month.n}`}</Badge>}
-          </div>
-          <p className="text-sm text-muted">
-            {cfg.entrants.length} {cfg.doubles ? 'parejas' : 'jugadores'} · cajas de {cfg.rules.min} a {cfg.rules.max} · suben {cfg.rules.up} y bajan {cfg.rules.down} · mínimo {cfg.rules.minToStay}{' '}
-            partidos para salvarse
-          </p>
-        </div>
-      </div>
-
-      {isAdmin && (
-        <div className="flex flex-wrap gap-2">
-          {month && !month.closed && (
-            <Button size="sm" variant="primary" icon={<CalendarCheck2 className="size-4" />} onClick={() => setEditing('cerrar')}>
-              Cerrar el mes
-            </Button>
-          )}
-          {month && !month.closed && !started && (
-            <Button size="sm" icon={<RefreshCw className="size-4" />} loading={pending.isBusy('rehacer')} disabled={busy} onClick={() => void redoMonth()}>
-              Rehacer el mes
-            </Button>
-          )}
-          <Button size="sm" icon={<Users className="size-4" />} onClick={() => setEditing('participantes')}>
-            Participantes
-          </Button>
-          <Button size="sm" icon={<Settings2 className="size-4" />} onClick={() => setEditing('reglas')}>
-            Reglas
-          </Button>
-          {month && (
-            <Button size="sm" icon={<Download className="size-4" />} loading={exporting.isBusy()} onClick={() => void excel(month)}>
-              Excel
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
-            Borrar
-          </Button>
-        </div>
-      )}
+    <div className="flex flex-col px-2">
+      <ScreenHead back={back} title={title} status={month && !month.closed ? { text: month.label || `Mes ${month.n}`, live: true } : null} meta={meta} menu={menu} />
 
       {!month ? (
-        isAdmin ? (
-          <Card className="flex flex-col gap-3 p-4">
-            <p className="font-semibold">Armar el primer mes</p>
-            <p className="text-sm text-muted">
-              {cfg.entrants.length} {cfg.doubles ? 'parejas' : 'jugadores'}. Las cajas salen por nivel y cada caja juega todos contra todos.
-            </p>
-            <Button variant="primary" className="h-12 text-base" loading={pending.isBusy('primero')} disabled={cfg.entrants.length < 2 || busy} onClick={() => void openFirst()}>
-              Armar el mes
-            </Button>
-          </Card>
-        ) : (
-          <Empty icon={<Boxes className="size-8" />} title="Todavía no empieza">
-            Cuando el admin arme el primer mes, aquí sale tu caja y tus partidos.
-          </Empty>
-        )
+        <div className="mt-[22px]">
+          {organize ? (
+            <Card className="px-5 pt-[18px] pb-5">
+              <p className="text-card-title-pro">Armar el primer mes</p>
+              <p className="mt-1.5 text-meta text-fg-2">
+                {cfg.entrants.length} {unit}. Las cajas salen por nivel y cada caja juega todos contra todos.
+              </p>
+              <Button variant="primary" size="xl" className="mt-4 w-full" loading={pending.isBusy('primero')} disabled={cfg.entrants.length < 2 || busy} onClick={() => void openFirst()}>
+                Armar el mes
+              </Button>
+            </Card>
+          ) : (
+            <Empty icon={<Boxes className="size-8" />} title="Todavía no empieza">
+              Cuando se arme el primer mes, aquí sale tu caja y tus partidos.
+            </Empty>
+          )}
+        </div>
       ) : (
         <>
           {progress && !month.closed && (
-            <Card className="flex flex-col gap-1 px-4 py-3">
-              <p className="text-sm">
-                <b>{month.label || `Mes ${month.n}`}</b>: {progress.done} de {progress.total} partidos jugados
-                {month.end ? ` · se cierra el ${month.end.split('-').reverse().slice(0, 2).join('/')}` : ''}.
-              </p>
-              <p className="text-xs text-muted">Pónganse de acuerdo para jugar dentro del mes. Quien juegue menos de {cfg.rules.minToStay} partidos baja.</p>
-            </Card>
+            <MonthCard month={month} done={progress.done} total={progress.total} minToStay={cfg.rules.minToStay} onClose={organize ? () => setEditing('cerrar') : undefined} className="mt-[22px]" />
           )}
-          <Tabs
-            items={[
-              { key: 'cajas' as Tab, label: 'Cajas', icon: <Boxes className="size-4" /> },
-              { key: 'historial' as Tab, label: 'Meses', icon: <History className="size-4" /> },
-              { key: 'participantes' as Tab, label: cfg.doubles ? 'Parejas' : 'Jugadores', icon: <Users className="size-4" /> },
-            ]}
-            active={tab}
-            onChange={setTab}
-          />
-          <div key={tab} className="animate-fade-up flex flex-col gap-4">
-            {tab === 'cajas' &&
-              (q.loading && !matches.length ? (
-                <ListSkeleton rows={3} />
-              ) : (
-                <>
-                  {order.map((b) => (
-                    <BoxCard key={b} b={b} month={month} rows={tables[b] ?? []} matches={matches} preview={preview} mine={mine} onOpen={param.open} last={b === month.boxes.length - 1} minToStay={cfg.rules.minToStay} />
-                  ))}
-                  <p className="px-1 text-xs text-muted">
-                    {tiebreakText(sport)} ↑ sube y ↓ baja si el mes cerrara hoy. Un resultado por confirmar cuenta a las 48 h.
-                  </p>
-                </>
-              ))}
-            {tab === 'historial' && <MonthsHistory cfg={cfg} />}
-            {tab === 'participantes' && <Participants cfg={cfg} month={month} />}
-          </div>
+          {pro ? (
+            <>
+              <Segmented
+                full
+                label="Qué ver de las cajas"
+                className="mt-[22px]"
+                options={[
+                  { key: 'cajas' as Tab, label: 'Cajas', icon: <Boxes aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+                  { key: 'historial' as Tab, label: 'Meses', icon: <History aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+                  { key: 'participantes' as Tab, label: cfg.doubles ? 'Parejas' : 'Jugadores', icon: <Users aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+                ]}
+                value={tab}
+                onChange={setTab}
+              />
+              <div key={tab} className="animate-fade-up mt-[22px] flex flex-col gap-4">
+                {tab === 'cajas' && boxesView}
+                {tab === 'historial' && <MonthsHistory cfg={cfg} />}
+                {tab === 'participantes' && <Participants cfg={cfg} month={month} />}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mt-[30px]">{boxesView}</div>
+              <Card className="mt-[30px] overflow-hidden">
+                <ListRow
+                  leading={
+                    <RowIcon>
+                      <History className="size-5" />
+                    </RowIcon>
+                  }
+                  title="Meses anteriores"
+                  subtitle="Quién subió y quién bajó"
+                  onClick={() => setSheet('historial')}
+                />
+                <ListRow
+                  leading={
+                    <RowIcon>
+                      <Users className="size-5" />
+                    </RowIcon>
+                  }
+                  title={`${cfg.doubles ? 'Parejas' : 'Jugadores'} (${cfg.entrants.length})`}
+                  subtitle="Su nivel y su caja"
+                  onClick={() => setSheet('participantes')}
+                />
+              </Card>
+            </>
+          )}
         </>
       )}
+
+      <NoticeSlot className="mt-4" />
+
+      <Sheet open={sheet === 'historial'} onClose={() => setSheet(null)} title="Meses anteriores" subtitle={title}>
+        {sheet === 'historial' && (
+          <div className="pb-1">
+            <MonthsHistory cfg={cfg} />
+          </div>
+        )}
+      </Sheet>
+      <Sheet open={sheet === 'participantes'} onClose={() => setSheet(null)} title={cfg.doubles ? 'Parejas' : 'Jugadores'} subtitle={title}>
+        {sheet === 'participantes' && month && (
+          <div className="pb-1">
+            <Participants cfg={cfg} month={month} />
+          </div>
+        )}
+      </Sheet>
 
       {editing === 'cerrar' && month && preview && (
         <CloseModal month={month} preview={preview} pending={(progress?.total ?? 0) - (progress?.done ?? 0)} busy={pending.isBusy('cerrar')} disabled={busy} onClose={() => setEditing(null)} onConfirm={() => void closeAndOpen(preview)} />
@@ -286,6 +323,30 @@ export function BoxPage({ event }: { event: RacketEvent }) {
       {editing === 'participantes' && <ParticipantsModal cfg={cfg} busy={pending.isBusy('config')} disabled={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Participantes guardados')} />}
       {editing === 'reglas' && <RulesModal cfg={cfg} busy={pending.isBusy('config')} disabled={busy} onClose={() => setEditing(null)} onSave={(c) => void saveConfig(c, 'Reglas guardadas')} />}
     </div>
+  );
+}
+
+/** Cómo va el mes: «Octubre 2026 · 1 de 12 partidos jugados» con su barra, cuándo se cierra y (quien organiza) «Cerrar el mes». */
+function MonthCard({ month, done, total, minToStay, onClose, className }: { month: BoxMonth; done: number; total: number; minToStay: number; onClose?: () => void; className?: string }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <Card soft className={cx('px-5 pt-[18px] pb-5', className)}>
+      <p className="text-sm font-semibold text-accent">{month.label || `Mes ${month.n}`}</p>
+      <p className="mt-1 text-card-title-pro">
+        <span className="num">{done}</span> de <span className="num">{total}</span> partidos jugados
+      </p>
+      <div aria-hidden="true" className="mt-3 h-2 overflow-hidden rounded bg-accent/16">
+        <div className="h-full rounded bg-accent" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-2.5 text-[13.5px] text-fg-2">
+        {month.end ? `Se cierra el ${month.end.split('-').reverse().slice(0, 2).join('/')} · ` : ''}con menos de {minToStay} partidos se baja
+      </p>
+      {onClose && (
+        <Button variant="primary" size="lg" className="mt-4 w-full" icon={<CalendarCheck2 className="size-5" />} onClick={onClose}>
+          Cerrar el mes
+        </Button>
+      )}
+    </Card>
   );
 }
 
@@ -313,43 +374,50 @@ function BoxCard({
 }) {
   const { league } = useLeagueCtx();
   const { sport } = useRacket();
+  const pro = useIsPro();
   const names = useNames();
   const mySideOf = useMySide();
   const now = useNow(60_000).getTime();
   const list = monthMatches(matches, month.n).filter((m) => m.stage === boxName(b));
   const moveOf = new Map((preview?.moves ?? []).map((m) => [m.id, m] as const));
   const isMine = month.boxes[b].some((id) => mine.includes(id));
+  // Lite: PJ, G y P; Pro: también la diferencia de sets o juegos y la de juegos o puntos (en la computadora: en el
+  // teléfono no caben con la flecha de sube o baja y el nombre se cortaría).
+  const base = racketColumns(sport)
+    .filter((c) => c.key !== 'for' && c.key !== 'against' && (pro || ['played', 'won', 'lost'].includes(c.key)))
+    .map((c) => (c.key === 'sets' || c.key === 'diff' ? { ...c, wide: true } : c));
   const columns: StandingsColumn[] = [
-    ...racketColumns(sport).filter((c) => c.key !== 'for' && c.key !== 'against'),
+    ...base,
     {
       key: 'mv',
       label: '',
       title: 'Si el mes cerrara hoy',
       value: (r) => {
         const mv = moveOf.get(r.id);
-        if (mv?.move === 'sube') return <ArrowUp className="inline size-4 text-ok" aria-label="sube" />;
-        if (mv?.move === 'baja') return <ArrowDown className={cx('inline size-4', mv.reason ? 'text-warn' : 'text-danger')} aria-label={mv.reason ? 'baja por pocos partidos' : 'baja'} />;
+        if (mv?.move === 'sube') return <ArrowUp className="inline size-4 text-accent" aria-label="sube" />;
+        if (mv?.move === 'baja') return <ArrowDown className={cx('inline size-4', mv.reason ? 'text-muted' : 'text-danger')} aria-label={mv.reason ? 'baja por pocos partidos' : 'baja'} />;
         return '';
       },
     },
   ];
   return (
-    <Section title={<span className={cx(isMine && 'text-accent')}>{`${boxName(b)}${isMine ? ' · tu caja' : ''}`}</span>}>
+    <section aria-labelledby={`caja-${b}`}>
+      <SectionHeader id={`caja-${b}`} title={<span className={cx(isMine && 'text-accent')}>{`${boxName(b)}${isMine ? ' · tu caja' : ''}`}</span>} />
       <StandingsTable rows={rows} nameOf={names.entrantName} columns={columns} highlight={mine} empty="Sin partidos confirmados todavía." />
-      {!last && rows.some((r) => r.played < minToStay) && (
-        <p className="px-1 text-xs text-warn">Quien no llegue a {minToStay} partidos baja aunque gane.</p>
-      )}
+      {!last && rows.some((r) => r.played < minToStay) && <p className="mx-1 mt-2.5 text-[12.5px] text-muted">Quien no llegue a {minToStay} partidos baja aunque gane.</p>}
       {list.length > 0 && (
-        <details className="rounded-2xl border border-line bg-surface px-3 py-2" open={isMine}>
-          <summary className="cursor-pointer py-1 text-sm font-medium">Partidos de la caja ({list.length})</summary>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <details className="group mt-1.5" open={isMine}>
+          <summary className="mx-1 inline-flex min-h-11 cursor-pointer list-none items-center text-meta font-semibold text-accent [&::-webkit-details-marker]:hidden">
+            Partidos de la caja ({list.length})
+          </summary>
+          <div className="mt-1 grid gap-2.5 sm:grid-cols-2">
             {list.map((m) => (
               <MatchCard key={m.id} match={m} mySide={mySideOf(m)} onClick={() => onOpen(m.id)} tz={league.tz} now={now} roundWord="Mes" />
             ))}
           </div>
         </details>
       )}
-    </Section>
+    </section>
   );
 }
 
@@ -364,24 +432,20 @@ function MonthsHistory({ cfg }: { cfg: BoxConfig }) {
         const down = m.moves.filter((x) => x.move === 'baja');
         const fresh = m.moves.filter((x) => x.move === 'nuevo');
         return (
-          <Card key={m.n} className="flex flex-col gap-1 px-4 py-3 text-sm">
-            <p className="font-semibold">{m.label || `Mes ${m.n}`}</p>
+          <Card key={m.n} className="flex flex-col gap-1.5 px-5 py-4 text-[15px]">
+            <p className="text-[17px] font-[650]">{m.label || `Mes ${m.n}`}</p>
             {up.length > 0 && (
               <p>
-                <ArrowUp className="inline size-4 text-ok" /> Subieron: {up.map((x) => `${names.entrantName(x.id)} (${boxName(x.to)})`).join(', ')}
+                <ArrowUp aria-hidden="true" className="inline size-4 text-accent" /> Subieron: {up.map((x) => `${names.entrantName(x.id)} (${boxName(x.to)})`).join(', ')}
               </p>
             )}
             {down.length > 0 && (
               <p>
-                <ArrowDown className="inline size-4 text-danger" /> Bajaron: {down.map((x) => `${names.entrantName(x.id)}${x.reason ? ' (pocos partidos)' : ''}`).join(', ')}
+                <ArrowDown aria-hidden="true" className="inline size-4 text-danger" /> Bajaron: {down.map((x) => `${names.entrantName(x.id)}${x.reason ? ' (pocos partidos)' : ''}`).join(', ')}
               </p>
             )}
             {fresh.length > 0 && <p className="text-muted">Entraron: {fresh.map((x) => names.entrantName(x.id)).join(', ')}</p>}
-            {m.archived ? (
-              <p className="text-muted">De este mes ya no se guarda quién subió y quién bajó.</p>
-            ) : (
-              !m.moves.length && <p className="text-muted">Sin cambios.</p>
-            )}
+            {m.archived ? <p className="text-muted">De este mes ya no se guarda quién subió y quién bajó.</p> : !m.moves.length && <p className="text-muted">Sin cambios.</p>}
           </Card>
         );
       })}
@@ -394,16 +458,18 @@ function Participants({ cfg, month }: { cfg: BoxConfig; month: BoxMonth }) {
   const { levels, scale } = useLevels();
   const boxOf = new Map(month.boxes.flatMap((b, i) => b.map((id) => [id, i] as const)));
   return (
-    <Card className="divide-y divide-line overflow-hidden">
+    <Card className="overflow-hidden">
       {cfg.entrants.map((id) => {
         const lv = entrantLevel(names.entrant(id), levels);
         const b = boxOf.get(id);
         return (
-          <div key={id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="min-w-0 flex-1 truncate font-medium">{names.entrantName(id)}</span>
-            {lv != null && <Badge tone="neutral">{levelText(lv, scale)}</Badge>}
-            <Badge tone={b == null ? 'warn' : 'accent'}>{b == null ? 'Entra el mes que viene' : boxName(b)}</Badge>
-          </div>
+          <ListRow
+            key={id}
+            dense
+            title={names.entrantName(id)}
+            subtitle={lv != null ? levelText(lv, scale) : undefined}
+            trailing={<Badge tone={b == null ? 'neutral' : 'accent'}>{b == null ? 'Entra el mes que viene' : boxName(b)}</Badge>}
+          />
         );
       })}
     </Card>
@@ -431,47 +497,37 @@ function CloseModal({
   const names = useNames();
   const byId = new Map(preview.moves.map((m) => [m.id, m] as const));
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
-      wide
       title={`Cerrar ${month.label || `el mes ${month.n}`}`}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={disabled} onClick={onConfirm}>
-            Cerrar y abrir el mes que sigue
-          </Button>
-        </>
-      }
+      subtitle="Así quedan las cajas del mes que viene"
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={disabled} onSave={onConfirm} label="Cerrar y abrir el que sigue" />}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 pb-1">
         {pending > 0 && (
-          <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+          <p className="rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">
             Quedan {pending} {pending === 1 ? 'partido' : 'partidos'} sin jugar o sin confirmar: los que no han empezado quedan anulados.
           </p>
         )}
-        <p className="text-sm text-muted">Así quedan las cajas del mes que viene (se arman sus partidos solos):</p>
         {preview.boxes.map((box, i) => (
           <Card key={i} className="overflow-hidden">
-            <p className="border-b border-line px-4 py-2 text-sm font-semibold">{boxName(i)}</p>
-            <div className="divide-y divide-line">
-              {box.map((id) => {
-                const mv = byId.get(id);
-                return (
-                  <div key={id} className="flex items-center gap-2 px-4 py-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate">{names.entrantName(id)}</span>
-                    {mv && mv.move !== 'queda' && (
-                      <span className={cx('text-xs font-medium', mv.move === 'sube' ? 'text-ok' : mv.move === 'baja' ? 'text-danger' : 'text-accent')}>{moveText(mv)}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <p className="px-5 pt-3.5 pb-1 text-[15px] font-[650]">{boxName(i)}</p>
+            {box.map((id, j) => {
+              const mv = byId.get(id);
+              return (
+                <div key={id} className={cx('relative flex min-h-11 items-center gap-2 px-5 py-2 text-[15px]', j > 0 && "before:absolute before:top-0 before:right-0 before:left-5 before:h-px before:bg-line before:content-['']")}>
+                  <span className="min-w-0 flex-1 truncate font-medium">{names.entrantName(id)}</span>
+                  {mv && mv.move !== 'queda' && (
+                    <span className={cx('text-[13px] font-semibold', mv.move === 'baja' ? 'text-danger' : 'text-accent')}>{moveText(mv)}</span>
+                  )}
+                </div>
+              );
+            })}
           </Card>
         ))}
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -482,24 +538,17 @@ function ParticipantsModal({ cfg, busy, disabled, onClose, onSave }: { cfg: BoxC
     ? names.teams.map((t) => ({ id: t.id, name: t.name, sub: t.roster.map((r) => names.nameOf(r.playerId)).join(' / ') }))
     : names.players.map((p) => ({ id: p.id, name: p.name }));
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title="Participantes"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={picked.length < 2 || disabled} onClick={() => onSave({ ...cfg, entrants: picked })}>
-            Guardar
-          </Button>
-        </>
-      }
+      subtitle="Los nuevos entran en la última caja al cerrar el mes"
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={picked.length < 2 || disabled} onSave={() => onSave({ ...cfg, entrants: picked })} />}
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">Los nuevos entran en la última caja al cerrar el mes; quien sale, deja su caja al cerrar el mes.</p>
+      <div className="pb-1">
         <PickList items={items} selected={new Set(picked)} onToggle={(id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])} />
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -508,39 +557,29 @@ function RulesModal({ cfg, busy, disabled, onClose, onSave }: { cfg: BoxConfig; 
   const [rules, setRules] = useState(cfg.rules);
   const [points, setPoints] = useState(cfg.points);
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title="Reglas de las cajas"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={disabled} onClick={() => onSave({ ...cfg, rules, points })}>
-            Guardar
-          </Button>
-        </>
-      }
+      subtitle="Valen desde el próximo cierre de mes"
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={disabled} onSave={() => onSave({ ...cfg, rules, points })} />}
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-5 pb-1">
         <BoxRulesFields value={rules} onChange={setRules} />
         {/* Pickleball y ping pong traen sus propios puntos de tabla. */}
         {!isGameSport(sport) && (
-          <div className="grid grid-cols-2 gap-2">
-            {(['standard', '2-0'] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={points === k}
-                onClick={() => setPoints(k)}
-                className={cx('min-h-12 rounded-xl border-2 px-3 text-sm font-semibold', points === k ? 'border-accent bg-accent-soft text-accent' : 'border-line')}
-              >
-                {k === 'standard' ? 'Ganar 3, perder 1' : 'Ganar 2, perder 0'}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-muted">Puntos de la tabla</span>
+            <div className="flex flex-wrap gap-2">
+              {(['standard', '2-0'] as const).map((k) => (
+                <button key={k} type="button" aria-pressed={points === k} onClick={() => setPoints(k)} className={choiceClass(points === k)}>
+                  {k === 'standard' ? 'Ganar 3, perder 1' : 'Ganar 2, perder 0'}
+                </button>
+              ))}
+            </div>
           </div>
         )}
-        <p className="text-xs text-muted">Valen desde el próximo cierre de mes.</p>
       </div>
-    </Modal>
+    </Sheet>
   );
 }

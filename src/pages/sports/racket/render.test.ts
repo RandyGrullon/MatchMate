@@ -1,11 +1,12 @@
 /**
  * Humo de las pantallas de raqueta (con el pádel): se dibujan en el servidor (renderToString, sin navegador) con
- * datos en la caché, para el admin, un jugador y un visitante. Atrapa errores al dibujar y textos que faltan.
+ * datos en la caché, para el admin, un jugador y un visitante, en Pro (lo de organizar a la vista) y en Lite (rediseño
+ * «Calma y foco»: lo de organizar va con «Usar Pro»). Atrapa errores al dibujar y textos que faltan.
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match } from '../../../lib/data/matches';
@@ -19,6 +20,17 @@ import screens from '../padel/screens';
 import { EventWizard } from './create/EventWizard';
 import { RacketProvider } from './sport';
 import { mkMatch, pts, sets } from './logic/testMatch';
+
+// El modo de la app: Pro por defecto (las pruebas de quien organiza); las de Lite lo cambian.
+const mode = vi.hoisted(() => ({ pro: true }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+  useMode: () => ({ mode: mode.pro ? 'pro' : 'lite', isPro: mode.pro, setMode: async () => 'local', suggestedPro: false }),
+}));
+afterEach(() => {
+  mode.pro = true;
+});
 
 const L = 'L1';
 const league: League = {
@@ -213,12 +225,36 @@ describe('pantallas del pádel', () => {
     expect(canchas).toContain('Siguiente ronda (2 de 7)');
     expect(canchas).toContain('Descansan: Nora');
     expect(canchas).toContain('A 24 puntos');
-    const tabla = text(eventRoute(`/l/${L}/e/N1?ver=tabla`));
+    const tablaHtml = eventRoute(`/l/${L}/e/N1?ver=tabla`);
+    const tabla = text(tablaHtml);
     expect(tabla).toContain('Ana');
     expect(tabla).toContain('Orden: puntos');
-    expect(tabla).toContain('WhatsApp');
+    // Compartir la tabla, el reporte, los ajustes y borrar: en «•••» (ya no una fila de botones).
+    expect(tablaHtml).toContain('aria-label="Más opciones"');
+    expect(tabla).not.toContain('Terminar la noche Anotadores');
     expect(text(eventRoute(`/l/${L}/e/N1?ver=rondas`))).toContain('Rosa / Pedro');
+    // Los jugadores ya no son una pestaña: su fila abre la hoja (y el link viejo `?ver=jugadores` también).
+    expect(canchas).toContain('Jugadores (9)');
     expect(text(eventRoute(`/l/${L}/e/N1?ver=jugadores`))).toContain('Nivel 4.5');
+  });
+
+  it('la noche en Lite: la ronda, «Cómo van todos» y las filas; quien organiza arma las rondas en Pro', () => {
+    mode.pro = false;
+    const t = text(eventRoute(`/l/${L}/e/N1`));
+    expect(t).toContain('Ronda 1 de 7');
+    expect(t).toContain('Cómo van todos');
+    expect(t).toContain('Jugadores (9)');
+    expect(t).not.toContain('Siguiente ronda');
+    // Sin el segmentado de Pro.
+    expect(t).not.toContain('Canchas Tabla Rondas');
+    // El jugador sigue anotando su partido en Lite.
+    const ana = text(eventRoute(`/l/${L}/e/N1`, ANA));
+    expect(ana).toContain('Ronda 1: te toca');
+    expect(ana).toContain('Ver resultado');
+    // Juan juega ahora (en vivo): su botón es anotar, y en su tarjeta de la ronda, «Anotar» y «Marcador».
+    const juan = text(eventRoute(`/l/${L}/e/N1`, { ...ANA, myPlayerId: 'p5' }));
+    expect(juan).toContain('Anotar en la cancha');
+    expect(juan).toContain('Marcador');
   });
 
   it('la noche para un jugador: su cancha con compañero y rivales; sin botones del organizador', () => {
@@ -241,12 +277,26 @@ describe('pantallas del pádel', () => {
     expect(j).toContain('Por confirmar');
     const tabla = text(eventRoute(`/l/${L}/e/G1?ver=tabla`));
     expect(tabla).toContain('Ana / Luis');
+    expect(tabla).toContain('Cómo se desempata');
     expect(tabla).toContain('Desempates');
-    expect(text(eventRoute(`/l/${L}/e/G1?ver=parejas`, ANA))).toContain('Tu pareja');
+    // Tu pareja, con «Tú».
+    expect(text(eventRoute(`/l/${L}/e/G1?ver=parejas`, ANA))).toMatch(/Ana \/ Luis Tú/);
     const nueva = text(eventRoute(`/l/${L}/e/G2`));
     expect(nueva).toContain('¿Quiénes juegan?');
     expect(nueva).toContain('Elige al menos 2 parejas');
     expect(text(eventRoute(`/l/${L}/e/G2`, GUEST))).toContain('El calendario todavía no está');
+  });
+
+  it('la liga de parejas en Lite: tu próximo partido, la tabla corta y las jornadas; sin calendario, a esperar', () => {
+    mode.pro = false;
+    const juan = text(eventRoute(`/l/${L}/e/G1`, { ...ANA, myPlayerId: 'p5' }));
+    expect(juan).toContain('Tu próximo partido');
+    expect(juan).toContain('Tabla');
+    expect(juan).toContain('Jornadas');
+    expect(juan).toContain('Parejas (4)');
+    expect(juan).not.toContain('Cómo se desempata');
+    // El admin en Lite no arma el calendario aquí (está en Pro).
+    expect(text(eventRoute(`/l/${L}/e/G2`))).toContain('El calendario todavía no está');
   });
 
   it('la liga lista para armar: jornadas previstas y el botón', () => {
@@ -293,8 +343,21 @@ describe('pantallas del pádel', () => {
     const toConfirm = text(render(h(screens.Feed!), `/l/${L}/juegos?partido=g3`, rosa));
     expect(toConfirm).toContain('Confirmar');
     expect(toConfirm).toContain('Historial');
-    const admin = text(render(h(screens.Feed!), `/l/${L}/juegos?partido=g3`));
-    expect(admin).toContain('Corregir el resultado');
+    // Lo del admin (corregir, W.O., aplazar, anular, borrar) va en «•••»; compartir e historial, en filas.
+    const adminHtml = render(h(screens.Feed!), `/l/${L}/juegos?partido=g3`);
+    expect(adminHtml).toContain('aria-label="Más opciones"');
+    expect(text(adminHtml)).toContain('Compartir el resultado');
+    expect(text(adminHtml)).not.toContain('W.O.');
+    // Quien no organiza no tiene «•••» en un partido por jugar.
+    expect(render(h(screens.Feed!), `/l/${L}/juegos?partido=g2`, juan)).not.toContain('aria-label="Más opciones"');
+  });
+
+  it('el partido: el título con la ronda y la cancha, el marcador grande y «Tú» en tu lado', () => {
+    const t = text(render(h(screens.Feed!), `/l/${L}/juegos?partido=g3`, ANA));
+    expect(t).toContain('Jornada 2');
+    expect(t).toMatch(/Ana \/ Luis Tú/);
+    // Quien lo anotó espera al rival.
+    expect(t).toContain('Esperando al rival');
   });
 
   it('tabla de la temporada, perfil y el admin', () => {
@@ -305,6 +368,13 @@ describe('pantallas del pádel', () => {
     expect(perfil).toContain('Mis partidos');
     expect(perfil).toContain('Con cada compañero');
     expect(perfil).toContain('Contra cada rival');
+    // Lite: los dos números grandes y los partidos; sin los récords con cada uno.
+    mode.pro = false;
+    const lite = text(render(h(screens.MyProfile!), `/l/${L}/perfil`, ANA));
+    expect(lite).toContain('partidos jugados');
+    expect(lite).toContain('de victorias');
+    expect(lite).not.toContain('Con cada compañero');
+    mode.pro = true;
     const player = text(render(h(Routes, null, h(Route, { path: '/l/:lid/j/:playerId', element: h(screens.Player!) })), `/l/${L}/j/p2`));
     expect(player).toContain('Luis');
     const admin = text(render(h(screens.adminTabs![0].Component)));

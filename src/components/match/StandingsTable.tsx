@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import type { StandingRow } from '../../sports/types';
-import { Card, Empty, Position, cx } from '../ui';
+import { Card, Empty, cx } from '../ui';
 
 export interface StandingsColumn {
   key: string;
@@ -31,9 +31,11 @@ export function defaultColumns(opts: { draws?: boolean; forLabel?: string; again
 }
 
 /**
- * Tabla de posiciones (StandingRow[] de src/sports/formats o src/sports/team). La columna Pts va al final. Si un
- * puesto lo decidió un desempate («dif. de sets», «enfrentamiento directo»), sale una «i»: en la computadora se
- * ve al pasar el ratón y en el teléfono al tocarla.
+ * Tabla de posiciones (StandingRow[] de src/sports/formats o src/sports/team), tranquila como la Tabla del boliche: el
+ * puesto en gris (sin medallas), el nombre (se corta con «…» para que la tabla quepa en un teléfono de 360 px), los
+ * números en gris y la columna Pts al final, más grande. Tu fila (`highlight`), en acento suave. Si un puesto lo decidió
+ * un desempate («dif. de sets», «enfrentamiento directo»), sale una «i»: en la computadora se ve al pasar el ratón y en
+ * el teléfono al tocarla.
  */
 export function StandingsTable({
   rows,
@@ -61,69 +63,85 @@ export function StandingsTable({
   const [shown, setShown] = useState<string | null>(null);
   if (!rows.length) return <Empty title="Sin tabla todavía">{empty}</Empty>;
   return (
-    <Card className={cx('overflow-x-auto', className)}>
-      <table className="w-full text-sm">
-        <thead className="text-xs text-muted">
-          <tr className="border-b border-line">
-            <th className="w-10 px-3 py-2 text-left font-medium">#</th>
-            <th className="px-2 py-2 text-left font-medium">Nombre</th>
-            {columns.map((c) => (
-              <th key={c.key} title={c.title} className={cx('px-2 py-2 text-right font-medium', c.wide && 'hidden sm:table-cell')}>
-                {c.label}
+    <Card className={cx('overflow-hidden', className)}>
+      <div className="no-scrollbar overflow-x-auto overscroll-x-contain">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="text-[11px] font-bold tracking-[0.05em] text-muted uppercase">
+              <th scope="col" className="w-10 py-3 pr-2.5 pl-4 text-left font-bold">
+                #
               </th>
-            ))}
-            <th className="px-3 py-2 text-right font-medium" title="Puntos de la tabla">
-              {pointsLabel}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const why = r.decidedBy && !primary.includes(r.decidedBy) ? r.decidedBy : null;
-            return (
-              <tr
-                key={r.id}
-                onClick={onRow ? () => onRow(r.id) : undefined}
-                className={cx(
-                  'border-b border-line align-top last:border-0',
-                  onRow && 'cursor-pointer transition hover:bg-surface-2/70',
-                  highlight.includes(r.id) && 'bg-accent-soft/50',
-                )}
-              >
-                <td className="px-3 py-2.5">
-                  <Position pos={r.rank} />
-                </td>
-                <td className="px-2 py-2.5">
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium">{nameOf(r.id)}</span>
-                    {why && (
-                      <button
-                        type="button"
-                        title={`Desempate: ${why}`}
-                        aria-label={`Desempate: ${why}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShown(shown === r.id ? null : r.id);
-                        }}
-                        className="inline-flex size-6 items-center justify-center rounded-full text-muted hover:text-accent"
-                      >
-                        <Info className="size-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {why && shown === r.id && <div className="text-xs text-muted">Desempate: {why}</div>}
-                </td>
-                {columns.map((c) => (
-                  <td key={c.key} className={cx('px-2 py-2.5 text-right text-muted tabular-nums', c.wide && 'hidden sm:table-cell')}>
-                    {c.value(r)}
+              <th scope="col" className="py-3 pr-2 text-left font-bold">
+                Nombre
+              </th>
+              {columns.map((c) => (
+                <th key={c.key} scope="col" title={c.title} className={cx('px-1.5 py-3 text-right font-bold whitespace-nowrap', c.wide && 'hidden sm:table-cell')}>
+                  {c.label ? <abbr title={c.title} className="no-underline">{c.label}</abbr> : <span className="sr-only">{c.title}</span>}
+                </th>
+              ))}
+              <th scope="col" className="py-3 pr-4 pl-2 text-right font-bold" title="Puntos de la tabla">
+                {pointsLabel}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const why = r.decidedBy && !primary.includes(r.decidedBy) ? r.decidedBy : null;
+              const me = highlight.includes(r.id);
+              const prevMe = i > 0 && highlight.includes(rows[i - 1].id);
+              return (
+                <tr
+                  key={r.id}
+                  onClick={onRow ? () => onRow(r.id) : undefined}
+                  className={cx('align-middle', i > 0 && !me && !prevMe && 'border-t border-line', me && 'bg-accent-soft', onRow && 'cursor-pointer transition active:bg-surface-2')}
+                >
+                  <td className="py-3 pr-2.5 pl-4 text-[15px] font-semibold whitespace-nowrap text-muted tabular-nums">{r.rank}</td>
+                  <td className="w-full max-w-0 py-2.5 pr-2">
+                    <div className="flex min-w-0 items-center gap-0.5">
+                      {onRow ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRow(r.id);
+                          }}
+                          className="min-w-0 truncate text-left text-[15px] font-semibold outline-none focus-visible:underline"
+                        >
+                          {nameOf(r.id)}
+                        </button>
+                      ) : (
+                        <span className="min-w-0 truncate text-[15px] font-semibold">{nameOf(r.id)}</span>
+                      )}
+                      {why && (
+                        <button
+                          type="button"
+                          title={`Desempate: ${why}`}
+                          aria-label={`Desempate: ${why}`}
+                          aria-expanded={shown === r.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShown(shown === r.id ? null : r.id);
+                          }}
+                          className="relative -my-2 inline-grid size-7 shrink-0 place-items-center rounded-full text-faint after:absolute after:-inset-1.5 after:content-[''] hover:text-accent"
+                        >
+                          <Info className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {why && shown === r.id && <div className="text-xs text-muted">Desempate: {why}</div>}
                   </td>
-                ))}
-                <td className="px-3 py-2.5 text-right text-base font-bold tabular-nums">{r.points}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  {columns.map((c) => (
+                    <td key={c.key} className={cx('px-1.5 text-right text-[15px] whitespace-nowrap text-fg-2 tabular-nums', c.wide && 'hidden sm:table-cell')}>
+                      {c.value(r)}
+                    </td>
+                  ))}
+                  <td className="num pr-4 pl-2 text-right text-lg font-bold">{r.points}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }

@@ -6,7 +6,7 @@ import { updateRacketEvent, type RacketEvent } from '../../../../lib/data/racket
 import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { Button, Card, Field, Input, Select } from '../../../../components/ui';
-import { PickList, Stepper } from '../bits';
+import { PickList, Stepper, ToggleRow } from '../bits';
 import { buildLeagueSchedule, clashText, leagueConfigJson, type PairsLeagueConfig } from '../logic/league';
 import { localParts, timeLabel } from '../logic/time';
 import { useNames } from '../names';
@@ -62,8 +62,8 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="flex flex-col gap-3 p-4">
-        <p className="font-semibold">1. ¿Quiénes juegan?</p>
+      <Card className="flex flex-col gap-3.5 px-5 pt-[18px] pb-5">
+        <p className="text-[17px] font-[650] tracking-[-0.01em]">1. ¿Quiénes juegan?</p>
         <PickList
           items={items}
           selected={new Set(draft.pairs)}
@@ -82,18 +82,15 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
           }
         />
         {incomplete.length > 0 && (
-          <p className="text-sm text-warn">
-            {incomplete.map(names.entrantName).join(', ')}: la pareja no tiene dos jugadores (las estadísticas van a quien juega).
+          <p className="text-[13px] font-semibold text-danger">
+            {incomplete.map(names.entrantName).join(', ')}: la pareja no tiene dos jugadores.
           </p>
         )}
       </Card>
 
-      <Card className="flex flex-col gap-4 p-4">
-        <p className="font-semibold">2. Fechas, {w.many} y horas</p>
-        <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-          <input type="checkbox" checked={draft.double} onChange={(e) => set({ double: e.target.checked })} className="size-5 accent-[var(--accent)]" />
-          <span className="text-sm font-medium">Ida y vuelta</span>
-        </label>
+      <Card className="flex flex-col gap-4 px-5 pt-[18px] pb-5">
+        <p className="text-[17px] font-[650] tracking-[-0.01em]">2. Fechas, {w.many} y horas</p>
+        <ToggleRow checked={draft.double} onChange={(double) => set({ double })} label="Ida y vuelta" hint={`Cada ${side[0]} juega dos veces contra cada rival`} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Jornada 1">
             <Input type="date" value={draft.startDate} onChange={(e) => set({ startDate: e.target.value })} />
@@ -106,11 +103,11 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
             {draft.courts.map((c, i) => (
               <div key={i} className="flex gap-1">
                 <Input value={c} maxLength={40} aria-label={`${w.One} ${i + 1}`} onChange={(e) => set({ courts: draft.courts.map((x, j) => (j === i ? e.target.value : x)) })} />
-                <Button variant="ghost" icon={<X className="size-4" />} aria-label={`Quitar ${w.one}`} onClick={() => set({ courts: draft.courts.filter((_, j) => j !== i) })} />
+                <Button variant="ghost" className="size-11 shrink-0 rounded-full text-faint" icon={<X className="size-4" />} aria-label={`Quitar ${w.one}`} onClick={() => set({ courts: draft.courts.filter((_, j) => j !== i) })} />
               </div>
             ))}
           </div>
-          <Button size="sm" className="self-start" icon={<Plus className="size-4" />} onClick={() => set({ courts: [...draft.courts, `${w.One} ${draft.courts.length + 1}`] })}>
+          <Button variant="soft" className="h-11 self-start rounded-full" icon={<Plus className="size-4" />} onClick={() => set({ courts: [...draft.courts, `${w.One} ${draft.courts.length + 1}`] })}>
             {w.One}
           </Button>
         </div>
@@ -120,13 +117,13 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
             {draft.times.map((t, i) => (
               <div key={i} className="flex gap-1">
                 <Input type="time" value={t} aria-label={`Hora ${i + 1}`} onChange={(e) => set({ times: draft.times.map((x, j) => (j === i ? e.target.value : x)) })} />
-                <Button variant="ghost" icon={<X className="size-4" />} aria-label="Quitar hora" onClick={() => set({ times: draft.times.filter((_, j) => j !== i) })} />
+                <Button variant="ghost" className="size-11 shrink-0 rounded-full text-faint" icon={<X className="size-4" />} aria-label="Quitar hora" onClick={() => set({ times: draft.times.filter((_, j) => j !== i) })} />
               </div>
             ))}
           </div>
           <Button
-            size="sm"
-            className="self-start"
+            variant="soft"
+            className="h-11 self-start rounded-full"
             icon={<Plus className="size-4" />}
             onClick={() => {
               const last = draft.times.at(-1) ?? '19:00';
@@ -152,18 +149,18 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <p className="font-semibold">3. Así queda</p>
+      <Card className="flex flex-col gap-3 px-5 pt-[18px] pb-5">
+        <p className="text-[17px] font-[650] tracking-[-0.01em]">3. Así queda</p>
         {draft.pairs.length < 2 ? (
           <p className="text-sm text-muted">Elige al menos 2 {side[1]}.</p>
         ) : (
           <>
-            <p className="text-sm">
-              <b>{plan.jornadas}</b> jornadas · <b>{plan.drafts.length}</b> partidos
+            <p className="text-body">
+              <b className="num">{plan.jornadas}</b> jornadas · <b className="num">{plan.drafts.length}</b> partidos
               {draft.pairs.length % 2 === 1 && ` · descansa ${doubles ? 'una pareja' : 'uno'} por jornada`}
             </p>
             {firstDates.length > 0 && (
-              <ul className="text-sm text-muted">
+              <ul className="text-meta text-muted">
                 {firstDates.map((f) => (
                   <li key={f.round}>
                     Jornada {f.round}: {f.date ?? 'sin fecha'}
@@ -174,13 +171,13 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
               </ul>
             )}
             {plan.unassigned > 0 && (
-              <p className="flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+              <p className="flex items-start gap-2 rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 {plan.unassigned} {plan.unassigned === 1 ? 'partido no cabe' : 'partidos no caben'} en las {w.many} y horas: {plan.unassigned === 1 ? 'queda' : 'quedan'} sin hora. Agrega una {w.one} o una hora.
               </p>
             )}
             {plan.clashes.length > 0 && (
-              <div className="flex flex-col gap-1 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
+              <div className="flex flex-col gap-1 rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">
                 <p className="flex items-center gap-2 font-semibold">
                   <AlertTriangle className="size-4" /> Choques ({plan.clashes.length})
                 </p>
@@ -197,7 +194,7 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
                 })}
               </div>
             )}
-            <Button variant="primary" className="h-12 text-base" icon={<CalendarPlus className="size-5" />} loading={busy} disabled={draft.pairs.length < 2} onClick={() => void create()}>
+            <Button variant="primary" size="xl" className="mt-1 w-full" icon={<CalendarPlus className="size-5" />} loading={busy} disabled={draft.pairs.length < 2} onClick={() => void create()}>
               Crear el calendario
             </Button>
           </>

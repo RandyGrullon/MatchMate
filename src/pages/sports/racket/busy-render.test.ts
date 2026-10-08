@@ -1,6 +1,7 @@
 /**
- * La ruedita de las plantillas de reglas (admin › parejas y el «Cambiar» de la cancha de pádel, tenis, pickleball y
- * ping pong): solo la que se está guardando gira y las demás esperan.
+ * La ruedita de las plantillas de reglas (organizar › parejas y el «Cambiar» de la cancha de pádel, tenis, pickleball y
+ * ping pong): solo la que se está guardando gira y las demás esperan. Son opciones de una lista (la puesta, marcada y
+ * con su ✓), ya no botones apilados.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -22,6 +23,9 @@ describe('PresetButtons', () => {
     expect(spins(html)).toBe(0);
     expect(disabled(html)).toBe(0);
     expect(html).toContain('Con ventaja');
+    // La puesta está marcada (y solo esa).
+    expect(html.split('aria-checked="true"').length - 1).toBe(1);
+    expect(html.indexOf('aria-checked="true"')).toBeLessThan(html.indexOf('Punto de oro'));
   });
 
   it('guardando una: gira solo esa y las demás esperan', () => {
@@ -29,7 +33,8 @@ describe('PresetButtons', () => {
     expect(spins(html)).toBe(1);
     expect(disabled(html)).toBe(PRESETS.length);
     // La ruedita va dentro del botón de «Con ventaja».
-    const b = html.slice(html.lastIndexOf('<button', html.indexOf('Con ventaja')), html.indexOf('Con ventaja'));
+    const at = html.indexOf('Con ventaja');
+    const b = html.slice(html.lastIndexOf('<button', at), html.indexOf('</button>', at));
     expect(b).toContain('animate-spin');
   });
 });

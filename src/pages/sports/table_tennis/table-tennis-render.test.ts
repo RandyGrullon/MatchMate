@@ -7,7 +7,7 @@
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match } from '../../../lib/data/matches';
@@ -26,6 +26,17 @@ import { mkMatch, sets } from '../racket/logic/testMatch';
 import { RacketProvider } from '../racket/sport';
 import { TTSetup } from './court/TableTennisCourt';
 import screens, { TABLE_TENNIS_EXT, tableTennisEntry } from './screens';
+
+// El modo de la app: Pro por defecto (lo de organizar a la vista); las pruebas de Lite lo cambian.
+const mode = vi.hoisted(() => ({ pro: true }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+  useMode: () => ({ mode: mode.pro ? 'pro' : 'lite', isPro: mode.pro, setMode: async () => 'local', suggestedPro: false }),
+}));
+afterEach(() => {
+  mode.pro = true;
+});
 
 const L = 'LPP';
 const league: League = {
@@ -179,18 +190,22 @@ describe('liga', () => {
 
 describe('el partido', () => {
   it('«Anotar en la mesa», «Poner fecha y mesa» y «solo el resultado» juego por juego', () => {
-    const t = text(eventRoute(`/l/${L}/e/G1?partido=g3`));
+    const html = eventRoute(`/l/${L}/e/G1?partido=g3`);
+    const t = text(html);
     expect(t).toContain('Anotar en la mesa');
-    expect(t).toContain('Poner fecha y mesa');
+    // «Poner fecha y mesa» (y lo demás del admin) va en «•••» del partido.
+    expect(html).toContain('aria-label="Más opciones"');
     expect(t).toContain('Solo el resultado');
     expect(t).toContain('Individual · al mejor de 7 juegos a 11');
     expect(t).not.toContain('cancha');
   });
 
   it('la mesa: deshacer punto, retiro y las reglas del partido', () => {
-    const t = text(eventRoute(`/l/${L}/e/G1?partido=g3&cancha=1`));
+    const html = eventRoute(`/l/${L}/e/G1?partido=g3&cancha=1`);
+    const t = text(html);
     expect(t).toContain('Deshacer punto');
-    expect(t).toContain('Retiro');
+    // El retiro, en «•••» de la mesa (ya no un segundo botón con bandera junto a «Terminar»).
+    expect(html).toContain('aria-label="Más opciones"');
     expect(t).toContain('al mejor de 7 juegos a 11');
   });
 

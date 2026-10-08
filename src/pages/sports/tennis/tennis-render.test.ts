@@ -5,7 +5,7 @@
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match } from '../../../lib/data/matches';
@@ -21,6 +21,17 @@ import { mkMatch, sets } from '../racket/logic/testMatch';
 import { RacketProvider } from '../racket/sport';
 import { ladderKeys } from '../racket-formats/data';
 import screens, { TENNIS_EXT } from './screens';
+
+// El modo de la app: Pro por defecto (lo de organizar a la vista); las pruebas de Lite lo cambian.
+const mode = vi.hoisted(() => ({ pro: true }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+  useMode: () => ({ mode: mode.pro ? 'pro' : 'lite', isPro: mode.pro, setMode: async () => 'local', suggestedPro: false }),
+}));
+afterEach(() => {
+  mode.pro = true;
+});
 
 const L = 'LT';
 const league: League = {
@@ -240,9 +251,17 @@ describe('liga por cajas', () => {
   });
 
   it('el admin: cerrar el mes, participantes y reglas; los meses anteriores', () => {
-    const t = text(eventRoute(`/l/${L}/e/B1`));
+    const html = eventRoute(`/l/${L}/e/B1`);
+    const t = text(html);
+    // Cerrar el mes, en la tarjeta del mes; participantes, reglas, Excel y borrar, en «•••».
     expect(t).toContain('Cerrar el mes');
-    expect(t).toContain('Participantes');
+    expect(html).toContain('aria-label="Más opciones"');
+    // En Lite, el mes y las cajas; cerrar el mes va con «Usar Pro» y los meses y jugadores son filas.
+    mode.pro = false;
+    const lite = text(eventRoute(`/l/${L}/e/B1`));
+    expect(lite).not.toContain('Cerrar el mes');
+    expect(lite).toContain('Meses anteriores');
+    mode.pro = true;
     const meses = text(eventRoute(`/l/${L}/e/B1?ver=historial`));
     expect(meses).toContain('Septiembre 2026');
     expect(meses).toContain('Subieron: Juan (Caja 1)');
@@ -292,7 +311,8 @@ describe('escalera', () => {
     expect(t).toContain('Juan (4.º) retó a Luis (2.º)');
     expect(t).toContain('Para aceptar: en 2 días');
     expect(t).toContain('Rosa ganó y sube al 1.º');
-    expect(t).toContain('Ordenar y agregar');
+    // Ordenar, agregar y las reglas van en «•••».
+    expect(eventRoute(`/l/${L}/e/X1`)).toContain('aria-label="Más opciones"');
   });
 
   it('un jugador: su puesto y a quién puede retar (hasta 3 arriba, sin los que están en reto)', () => {

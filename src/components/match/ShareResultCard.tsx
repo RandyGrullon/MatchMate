@@ -61,21 +61,22 @@ export function ShareResultCard({
   const card = () => resultShare(match, { title: title || ctx?.league.name || 'Resultado', roundWord, tz: ctx?.league.tz, url, sideExtra });
 
   return (
-    <Card className={cx('flex flex-col gap-3 p-4', className)}>
-      <pre className="whitespace-pre-wrap font-sans text-sm">{text}</pre>
-      <div className="grid grid-cols-2 gap-2">
-        <ShareButton card={card} url={url} variant="primary" size="md" label="Compartir imagen" className="col-span-2 h-11" />
+    <Card className={cx('flex flex-col gap-3.5 px-[18px] pt-4 pb-[18px]', className)}>
+      <pre className="rounded-2xl bg-surface-2 px-4 py-3 font-sans text-[15px] leading-[1.45] whitespace-pre-wrap">{text}</pre>
+      <ShareButton card={card} url={url} variant="primary" size="md" label="Compartir imagen" className="h-12 w-full rounded-[15px] text-base font-semibold" />
+      <div className="grid grid-cols-2 gap-2.5">
         <a
           href={whatsappShareUrl(text)}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ok px-4 text-sm font-medium text-bg hover:brightness-110 active:scale-[0.97]"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-[15px] bg-surface-2 px-4 text-[15px] font-semibold text-fg transition active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           <MessageCircle className="size-5" />
           WhatsApp
         </a>
         <Button
-          className="h-11"
+          variant="quiet"
+          size="lg"
           loading={busy}
           onClick={() => void share()}
           icon={canShare ? <Share2 className="size-5" /> : <Copy className="size-5" />}

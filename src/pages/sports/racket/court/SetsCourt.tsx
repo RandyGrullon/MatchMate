@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, Flag, Repeat2, Settings2 } from 'lucide-react';
-import { CourtLayout, TwoHalves, useCourt } from '../../../../court';
-import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
+import { ArrowLeftRight, Repeat2 } from 'lucide-react';
+import { CourtLayout, CourtNote, TwoHalves, useCourt } from '../../../../court';
+import type { Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import { isGameSport, toLive, type MatchSetup, type Pair, type Player, type RacketEvent, type RacketSport, type RacketState } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
-import { useBusy } from '../../../../components/busy';
-import { useAction } from '../../../../components/feedback';
-import { Badge, Button, Modal, cx } from '../../../../components/ui';
-import { PresetButtons } from '../bits';
+import { Button, Sheet } from '../../../../components/ui';
 import { presetOf, presetsOf, rulesText } from '../logic/rulesText';
 import { useNames } from '../names';
 import { engineRules, racketAdapter } from './adapters';
+import { Pill, PlayerPick, RetireSheet, RulesBox, SetupChoice, SetupScreen, StartButton, retireItem } from './parts';
 
 /**
  * La cancha de un partido a sets (pádel, tenis, pickleball; el ping pong tiene la suya, TableTennisCourt, y esta
@@ -64,22 +62,20 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {live.done.map((x, i) => (
-            <Badge key={i} tone="neutral" className="text-sm tabular-nums">
-              {x}
-            </Badge>
+            <Pill key={i}>{x}</Pill>
           ))}
           {!court.over && (
-            <span className="text-2xl font-black tabular-nums">
+            <span className="num text-[28px] leading-none font-bold">
               {live.now[0]}-{live.now[1]}
-              <span className="ml-1 text-xs font-medium text-muted">{pickle ? 'puntos' : 'juegos'}</span>
+              <span className="ml-1.5 text-[13px] font-medium tracking-normal text-muted">{pickle ? 'puntos' : 'juegos'}</span>
             </span>
           )}
         </div>
-        {live.label && <Badge tone={sets?.decidingPoint ? 'warn' : 'accent'}>{live.label}</Badge>}
+        {live.label && <Pill tone="accent">{live.label}</Pill>}
       </div>
       {!court.over && (
-        <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2">
-          <p className="min-w-0 flex-1 text-sm" role="status">
+        <div className="flex min-h-11 items-center gap-2 rounded-2xl bg-surface-2 py-1.5 pr-1.5 pl-4">
+          <p className="min-w-0 flex-1 text-[15px]" role="status">
             {pickle && live.call ? (
               <>
                 Canto: <b className="tabular-nums">{live.call}</b> · saca {labels[live.server - 1]}
@@ -94,21 +90,21 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
           </p>
           {/* Aquí y no en la barra de abajo: con «Orden» ahí, «Terminar» se salía de la pantalla en un teléfono. */}
           {canOrder && (
-            <Button size="sm" className="shrink-0" onClick={() => setOrdering(true)} icon={<Repeat2 className="size-4" />} aria-label="Orden de saque" disabled={court.readOnly}>
+            <Button variant="soft" className="h-11 shrink-0 rounded-xl" onClick={() => setOrdering(true)} icon={<Repeat2 className="size-4" />} aria-label="Orden de saque" disabled={court.readOnly}>
               Orden
             </Button>
           )}
         </div>
       )}
       {live.changeEnds && !court.over && (
-        <p className="flex items-center gap-2 rounded-xl bg-warn-soft px-3 py-2 text-base font-bold text-warn" role="alert">
+        <CourtNote tone="accent" role="alert">
           <ArrowLeftRight className="size-5" /> Cambio de lado
-        </p>
+        </CourtNote>
       )}
       {court.over && (
-        <p className="rounded-xl bg-ok-soft px-3 py-2 text-sm font-semibold text-ok" role="status">
+        <CourtNote tone="accent">
           {winner ? `Ganan ${labels[winner - 1]}: ${court.summary}` : court.summary}. Toca «Terminar» para enviar.
-        </p>
+        </CourtNote>
       )}
     </div>
   );
@@ -133,81 +129,38 @@ export function SetsCourt({ match, sport, onExit, isAdmin, userId }: { match: Ma
         undoLabel="Deshacer punto"
         finishSummary={winner ? `${court.summary} · Ganan ${labels[winner - 1]}` : court.summary}
         onFinished={() => onExit()}
-        actions={
-          <Button className="h-14" onClick={() => setRetiring(true)} icon={<Flag className="size-5" />} disabled={court.readOnly || court.over} aria-label="Retiro">
-            <span className="hidden sm:inline">Retiro</span>
-          </Button>
-        }
+        more={court.readOnly || court.over ? [] : [retireItem(() => setRetiring(true))]}
       >
         <TwoHalves swap={live?.leftSide === 2} disabled={court.readOnly || court.over || !s} a={half(0)} b={half(1)} />
       </CourtLayout>
 
-      <Modal open={retiring} onClose={() => setRetiring(false)} title="¿Quién se retira?">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">Gana el otro lado. Se guarda el marcador de ahora y, para la tabla, se completa el set a favor del ganador.</p>
+      <RetireSheet
+        open={retiring}
+        onClose={() => setRetiring(false)}
+        labels={labels}
+        note="Se guarda el marcador; para la tabla, el set se completa a favor del ganador"
+        onRetire={(side) => {
+          court.apply({ type: 'retire', side });
+          setRetiring(false);
+        }}
+      />
+
+      <Sheet open={ordering} onClose={() => setOrdering(false)} title="Orden de saque en este set">
+        <div className="flex flex-col gap-5 pb-1">
           {([1, 2] as const).map((side) => (
-            <Button
+            <PlayerPick
               key={side}
-              className="h-12 justify-start"
-              onClick={() => {
-                court.apply({ type: 'retire', side });
-                setRetiring(false);
+              label={`${labels[side - 1]}: ¿quién saca primero?`}
+              names={[people[side - 1]?.[0] ?? 'Jugador 1', people[side - 1]?.[1] ?? 'Jugador 2']}
+              onPick={(p) => {
+                const err = court.apply({ type: 'order', side, player: p });
+                if (!err) setOrdering(false);
               }}
-            >
-              Se retira {labels[side - 1]}
-            </Button>
+            />
           ))}
         </div>
-      </Modal>
-
-      <Modal open={ordering} onClose={() => setOrdering(false)} title="Orden de saque en este set">
-        <div className="flex flex-col gap-4">
-          {([1, 2] as const).map((side) => (
-            <div key={side} className="flex flex-col gap-2">
-              <p className="text-sm font-medium">{labels[side - 1]}: ¿quién saca primero?</p>
-              <div className="grid grid-cols-2 gap-2">
-                {([0, 1] as const).map((p) => (
-                  <Button
-                    key={p}
-                    className="h-12"
-                    onClick={() => {
-                      const err = court.apply({ type: 'order', side, player: p });
-                      if (!err) setOrdering(false);
-                    }}
-                  >
-                    {people[side - 1]?.[p] ?? `Jugador ${p + 1}`}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Modal>
+      </Sheet>
     </>
-  );
-}
-
-function Choice<T extends string | number>({ label, options, value, onChange }: { label: string; options: { value: T; text: string }[]; value: T; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-semibold">{label}</p>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((o) => (
-          <button
-            key={String(o.value)}
-            type="button"
-            aria-pressed={value === o.value}
-            onClick={() => onChange(o.value)}
-            className={cx(
-              'min-h-14 rounded-2xl border-2 px-3 py-2 text-left text-base font-semibold transition active:scale-[0.98]',
-              value === o.value ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface',
-            )}
-          >
-            <span className="line-clamp-2">{o.text}</span>
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -230,31 +183,17 @@ function SetupForm({
   isAdmin: boolean;
   onStart: (s: MatchSetup) => void;
 }) {
-  const { lid } = useLeagueCtx();
-  const run = useAction();
-  const saving = useBusy();
   const [first, setFirst] = useState<Side>(1);
   const [fp, setFp] = useState<Pair<Player>>([0, 0]);
   const [left, setLeft] = useState<Side>(1);
-  const [changing, setChanging] = useState(false);
   const pickle = isGameSport(sport);
   const current = presetOf(sport, engineRules(sport, match.rules));
   const canChange = isAdmin && match.status === 'scheduled' && match.seq === 0;
 
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col gap-5 overflow-y-auto pb-4">
-      <div className="flex items-start gap-2 rounded-2xl bg-surface-2 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-muted">Reglas de este partido</p>
-          <p className="text-sm font-semibold">{rulesLine}</p>
-        </div>
-        {canChange && (
-          <Button size="sm" variant="ghost" icon={<Settings2 className="size-4" />} onClick={() => setChanging(true)}>
-            Cambiar
-          </Button>
-        )}
-      </div>
-      <Choice
+    <SetupScreen>
+      <RulesBox line={rulesLine} match={match} canChange={canChange} presets={presetsOf(sport)} current={current?.id} />
+      <SetupChoice
         label="¿Quién saca primero?"
         value={first}
         onChange={setFirst}
@@ -266,7 +205,7 @@ function SetupForm({
       {doubles &&
         ([0, 1] as const).map((i) =>
           (people[i]?.length ?? 0) >= 2 ? (
-            <Choice
+            <SetupChoice
               key={i}
               label={pickle ? `${labels[i]}: ¿quién empieza a la derecha?` : `${labels[i]}: ¿quién saca primero?`}
               value={fp[i]}
@@ -278,7 +217,7 @@ function SetupForm({
             />
           ) : null,
         )}
-      <Choice
+      <SetupChoice
         label="¿Quién empieza a tu izquierda?"
         value={left}
         onChange={setLeft}
@@ -287,23 +226,7 @@ function SetupForm({
           { value: 2, text: labels[1] },
         ]}
       />
-      <Button variant="primary" className="h-14 text-base" onClick={() => onStart({ firstServer: first, firstPlayer: fp, leftSide: left })}>
-        Empezar el partido
-      </Button>
-      <Modal open={changing} onClose={() => setChanging(false)} title="Reglas de este partido">
-        <PresetButtons
-          presets={presetsOf(sport)}
-          current={current?.id}
-          pending={saving.busy}
-          className="min-h-12"
-          onPick={(p) =>
-            void saving.run(p.id, async () => {
-              await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
-              setChanging(false);
-            })
-          }
-        />
-      </Modal>
-    </div>
+      <StartButton onClick={() => onStart({ firstServer: first, firstPlayer: fp, leftSide: left })} />
+    </SetupScreen>
   );
 }

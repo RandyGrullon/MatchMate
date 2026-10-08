@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
-import { CloudOff, Lock, RefreshCw, ShieldAlert, UserRound } from 'lucide-react';
-import { Button, Modal, cx } from '../components/ui';
+import { useEffect, useState, type ReactNode } from 'react';
+import { CloudOff, Loader2, Lock, RefreshCw, ShieldAlert, UserRound } from 'lucide-react';
+import { Button, Sheet, cx } from '../components/ui';
 import type { MatchStatus } from '../lib/data/matches';
 import type { LeaseState } from './machine';
 
@@ -39,6 +39,14 @@ export function LeaseBanner({
 }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Pidiendo el turno: si tarda (señal lenta), una línea lo dice; los botones esperan apagados mientras tanto.
+  const [slow, setSlow] = useState(false);
+  const checking = lease.kind === 'checking';
+  useEffect(() => {
+    if (!checking) return setSlow(false);
+    const t = setTimeout(() => setSlow(true), 1500);
+    return () => clearTimeout(t);
+  }, [checking]);
   const claim = async (force: boolean) => {
     if (!onClaim || busy) return;
     setBusy(true);
@@ -51,18 +59,25 @@ export function LeaseBanner({
   };
 
   let body: ReactNode = null;
-  let tone: 'warn' | 'danger' | 'neutral' = 'neutral';
-  if (lease.kind === 'offline') {
-    tone = 'warn';
+  let tone: 'danger' | 'neutral' = 'neutral';
+  if (checking && slow) {
     body = (
       <>
-        <CloudOff className="size-5 shrink-0" />
+        <Loader2 className="size-5 shrink-0 animate-spin text-muted" />
+        <span className="flex-1">Preparando la cancha…</span>
+      </>
+    );
+  } else if (lease.kind === 'offline') {
+    // Sin señal se sigue anotando: es un aviso tranquilo (el ámbar queda para «por confirmar»).
+    body = (
+      <>
+        <CloudOff className="size-5 shrink-0 text-muted" />
         <span className="flex-1">
           Sin señal: sigue anotando. Todo queda en el teléfono y se envía solo al volver
           {unsent > 0 ? ` (${unsent} sin enviar)` : ''}.
         </span>
         {onClaim && (
-          <Button size="sm" variant="ghost" icon={<RefreshCw className="size-4" />} loading={busy} onClick={() => void claim(false)} aria-label="Probar otra vez" />
+          <Button size="md" variant="ghost" className="size-11 rounded-full" icon={<RefreshCw className="size-4" />} loading={busy} onClick={() => void claim(false)} aria-label="Probar otra vez" />
         )}
       </>
     );
@@ -76,7 +91,7 @@ export function LeaseBanner({
           {lease.expired ? ' Su teléfono no publica hace rato.' : ''} {isAdmin ? '' : 'Pídele al admin que te dé el control.'}
         </span>
         {isAdmin && onClaim && (
-          <Button size="sm" variant="danger" onClick={() => setConfirm(true)}>
+          <Button size="md" variant="danger" className="shrink-0 rounded-full" onClick={() => setConfirm(true)}>
             Tomar el control
           </Button>
         )}
@@ -104,7 +119,7 @@ export function LeaseBanner({
         <Lock className="size-5 shrink-0" />
         <span className="flex-1">{CLOSED[lease.status]}</span>
         {lease.status === 'suspended' && onClaim && (
-          <Button size="sm" variant="secondary" loading={busy} onClick={() => void claim(false)}>
+          <Button size="md" variant="soft" className="shrink-0 rounded-full" loading={busy} onClick={() => void claim(false)}>
             Retomar
           </Button>
         )}
@@ -115,7 +130,7 @@ export function LeaseBanner({
   return (
     <>
       {conflict && (
-        <div role="status" className={cx('flex items-center gap-2 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn', className)}>
+        <div role="status" className={cx('flex items-center gap-2.5 rounded-2xl bg-surface-2 px-4 py-2.5 text-sm text-fg', className)}>
           <ShieldAlert className="size-5 shrink-0" />
           Se siguió con el marcador del otro teléfono. Tu lista quedó guardada aparte en este teléfono.
         </div>
@@ -124,8 +139,7 @@ export function LeaseBanner({
         <div
           role="status"
           className={cx(
-            'flex items-center gap-2 rounded-xl px-3 py-2 text-sm',
-            tone === 'warn' && 'bg-warn-soft text-warn',
+            'flex min-h-11 items-center gap-2.5 rounded-2xl py-1.5 pr-1.5 pl-4 text-sm',
             tone === 'danger' && 'bg-danger-soft text-danger',
             tone === 'neutral' && 'bg-surface-2 text-fg',
             className,
@@ -134,24 +148,26 @@ export function LeaseBanner({
           {body}
         </div>
       )}
-      <Modal
+      <Sheet
         open={confirm}
         onClose={() => setConfirm(false)}
         title="¿Tomar el control?"
         footer={
-          <>
-            <Button onClick={() => setConfirm(false)}>Cancelar</Button>
-            <Button variant="danger" loading={busy} onClick={() => void claim(true)}>
+          <div className="flex gap-2.5">
+            <Button variant="quiet" size="lg" className="flex-1" onClick={() => setConfirm(false)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" size="lg" className="flex-1" loading={busy} onClick={() => void claim(true)}>
               Sí, anoto yo
             </Button>
-          </>
+          </div>
         }
       >
-        <p className="text-sm">
+        <p className="text-[15px]">
           {lease.kind === 'other' && lease.scorerName ? `${lease.scorerName} deja de anotar.` : 'El otro teléfono deja de anotar.'} Su lista se queda
           guardada en su teléfono y el partido sigue desde lo último que publicó.
         </p>
-      </Modal>
+      </Sheet>
     </>
   );
 }

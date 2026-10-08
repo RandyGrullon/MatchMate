@@ -7,18 +7,19 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { BusyIcon, useBusy } from '../../../../components/busy';
 import { useAction, useFeedback } from '../../../../components/feedback';
 import { useQuickMinor } from '../../../../components/players/GuardianFields';
-import { Badge, Button, Card, Empty, Field, Input, Modal, Select } from '../../../../components/ui';
+import { Badge, Button, Card, Empty, Field, Input, Select, Sheet, sectionLinkClass } from '../../../../components/ui';
 import { PresetButtons, Section } from '../bits';
+import { SaveFooter } from '../night/parts';
 import { presetOf, presetsOf, rulesText } from '../logic/rulesText';
 import { formatLevel, parseLevelInput, setLevel, useLevels } from '../levels';
 import { useNames } from '../names';
 import { useRacket } from '../sport';
 
 /**
- * Admin › Parejas y niveles: las reglas del partido de la liga, las parejas de la temporada (id estable: la tabla
- * es de la pareja; las estadísticas, de quien juega) y el nivel de cada jugador en la escala del deporte
- * (pádel Playtomic 0–7, tenis NTRP, pickleball DUPR, ping pong 1–10: ronda 1 del mexicano, cajas del primer mes y
- * siembra).
+ * Organizar › Parejas y niveles (rediseño «Calma y foco»: secciones con su título, filas sin bordes y hojas desde abajo):
+ * las reglas del partido de la liga, las parejas de la temporada (id estable: la tabla es de la pareja; las
+ * estadísticas, de quien juega) y el nivel de cada jugador en la escala del deporte (pádel Playtomic 0–7, tenis NTRP,
+ * pickleball DUPR, ping pong 1–10: ronda 1 del mexicano, cajas del primer mes y siembra).
  */
 export default function PairsAdmin() {
   const { sport, rules, doubles } = useRacket();
@@ -27,11 +28,11 @@ export default function PairsAdmin() {
   const saving = useBusy();
   const current = presetOf(sport, rules);
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-[30px]">
       <Section title="Reglas del partido">
-        <Card className="flex flex-col gap-3 p-4">
-          <p className="text-sm">
-            Ahora: <b>{rulesText(rules)}</b>
+        <Card className="flex flex-col gap-3 px-5 pt-[18px] pb-5">
+          <p className="text-[15px] text-fg-2">
+            Ahora: <b className="text-fg">{rulesText(rules)}</b>
           </p>
           <PresetButtons
             presets={presetsOf(sport)}
@@ -40,7 +41,7 @@ export default function PairsAdmin() {
             className="min-h-11"
             onPick={(p) => void saving.run(p.id, () => run(() => saveLeagueMatchRules(lid, p.rules as unknown as Record<string, unknown>), 'Reglas guardadas'))}
           />
-          <p className="text-xs text-muted">Valen para los partidos nuevos. Los que ya están creados se quedan con sus reglas (el admin las cambia antes de empezar cada uno).</p>
+          <p className="text-[13px] text-muted">Valen para los partidos nuevos.</p>
         </Card>
       </Section>
       {/* Pádel siempre es de dobles; en tenis, pickleball y ping pong, aunque las reglas sean de individual, las cajas y
@@ -65,24 +66,25 @@ function PairsSection() {
     <Section
       title={`Parejas (${names.teams.length})`}
       action={
-        <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+        <button type="button" onClick={() => setEditing('new')} className={sectionLinkClass} aria-haspopup="dialog">
+          <Plus aria-hidden="true" className="size-[18px]" strokeWidth={2.4} />
           Pareja
-        </Button>
+        </button>
       }
     >
       {names.teams.length ? (
-        <Card className="divide-y divide-line overflow-hidden">
+        <Card className="overflow-hidden">
           {names.teams.map((t) => (
-            <div key={t.id} className="flex items-center gap-2 px-4 py-2.5">
+            <div key={t.id} className="mm-row relative flex min-h-16 items-center gap-1 py-2 pr-2 pl-5">
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{t.name}</span>
-                <span className="block truncate text-xs text-muted">{t.roster.map((r) => names.nameOf(r.playerId)).join(' / ') || 'Sin jugadores'}</span>
+                <span className="block truncate text-[15px] font-semibold">{t.name}</span>
+                <span className="block truncate text-[13px] text-muted">{t.roster.map((r) => names.nameOf(r.playerId)).join(' / ') || 'Sin jugadores'}</span>
               </span>
-              {t.roster.length !== 2 && <Badge tone="warn">{t.roster.length} jugadores</Badge>}
-              <Button size="sm" variant="ghost" icon={<Pencil className="size-4" />} aria-label={`Editar ${t.name}`} onClick={() => setEditing(t)} />
+              {t.roster.length !== 2 && <Badge tone="danger">{t.roster.length} jugadores</Badge>}
+              <Button variant="ghost" className="size-11 rounded-full" icon={<Pencil className="size-4" />} aria-label={`Editar ${t.name}`} onClick={() => setEditing(t)} />
               <Button
-                size="sm"
                 variant="ghost"
+                className="size-11 rounded-full text-faint"
                 icon={<Trash2 className="size-4" />}
                 aria-label={`Borrar ${t.name}`}
                 loading={deleting.isBusy(t.id)}
@@ -96,9 +98,9 @@ function PairsSection() {
           ))}
         </Card>
       ) : (
-        <Empty title="Todavía no hay parejas">Para la liga de parejas y los torneos, arma las parejas aquí. El americano y el mexicano no las necesitan.</Empty>
+        <Empty title="Todavía no hay parejas">Para la liga de parejas y los torneos. El americano no las necesita.</Empty>
       )}
-      {free > 0 && names.teams.length > 0 && <p className="px-1 text-xs text-muted">{free} jugadores sin pareja.</p>}
+      {free > 0 && names.teams.length > 0 && <p className="mx-1 text-[13px] text-muted">{free} jugadores sin pareja.</p>}
       {editing && <PairEditor team={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </Section>
   );
@@ -148,28 +150,21 @@ function PairEditor({ team, onClose }: { team: SeasonTeam | null; onClose: () =>
   );
 
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
       title={team ? `Editar ${team.name}` : 'Nueva pareja'}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!a || !b || !(name.trim() || auto)} onClick={() => void save()}>
-            Guardar
-          </Button>
-        </>
-      }
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={!a || !b || !(name.trim() || auto)} onSave={() => void save()} />}
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 pb-1">
         {select(a, setA, b, 'Jugador 1 (drive)')}
         {select(b, setB, a, 'Jugador 2 (revés)')}
         <Field label="Nombre de la pareja" hint="Si lo dejas vacío: los dos nombres.">
           <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={auto || 'Ana / Luis'} />
         </Field>
-        <p className="text-xs text-muted">Si un día falta alguien, en el partido se pone al suplente («Quién juega»): la pareja suma y las estadísticas van a quien jugó.</p>
+        <p className="text-[13px] text-muted">Si un día falta alguien, en el partido se pone al suplente («Quién juega»).</p>
       </div>
-    </Modal>
+    </Sheet>
   );
 }
 
@@ -217,11 +212,11 @@ function LevelsSection() {
         }}
       >
         <Input value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} placeholder="Agregar jugador" aria-label="Nombre del jugador nuevo" />
-        <Button type="submit" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!newName.trim()} aria-label="Agregar jugador" />
+        <Button type="submit" variant="soft" className="size-10 shrink-0 rounded-xl" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!newName.trim()} aria-label="Agregar jugador" />
       </form>
       {minor.fields}
       {names.players.length ? (
-        <Card className="divide-y divide-line overflow-hidden">
+        <Card className="overflow-hidden">
           {names.players.map((p) => (
             <LevelRow
               key={p.id}
@@ -237,7 +232,7 @@ function LevelsSection() {
       ) : (
         <Empty title="Sin jugadores" />
       )}
-      <p className="px-1 text-xs text-muted">{scale.hint}</p>
+      <p className="mx-1 text-[13px] text-muted">{scale.hint}</p>
     </Section>
   );
 }
@@ -261,21 +256,24 @@ function LevelRow({
   const saving = useBusy();
   const busy = saving.isBusy();
   return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+    <div className="mm-row relative flex min-h-14 items-center gap-3 py-2 pr-4 pl-5">
+      <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{name}</span>
       <BusyIcon busy={busy} className="size-4 shrink-0 text-muted" />
-      <Input
-        className="w-20 text-center"
-        inputMode="decimal"
-        aria-label={label}
-        aria-busy={busy || undefined}
-        disabled={busy}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={() => void saving.run('nivel', onSave)}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
+      {/* El campo en su caja de 80 px (el Input trae w-full). */}
+      <div className="w-20 shrink-0">
+        <Input
+          className="num text-center"
+          inputMode="decimal"
+          aria-label={label}
+          aria-busy={busy || undefined}
+          disabled={busy}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={() => void saving.run('nivel', onSave)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+      </div>
     </div>
   );
 }

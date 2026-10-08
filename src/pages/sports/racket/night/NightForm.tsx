@@ -7,7 +7,7 @@ import { useBusy } from '../../../../components/busy';
 import { useAction } from '../../../../components/feedback';
 import { useQuickMinor } from '../../../../components/players/GuardianFields';
 import { Button, Field, Input, Select, cx } from '../../../../components/ui';
-import { PickList, Stepper } from '../bits';
+import { PickList, Stepper, choiceClass } from '../bits';
 import { NIGHT_MAX_COURTS, NIGHT_MAX_PLAYERS, NIGHT_TARGETS, REST_LABELS, nightInfo, suggestRounds, type NightConfig } from '../logic/night';
 import { levelScale, levelText } from '../levels';
 import { useNames } from '../names';
@@ -68,10 +68,7 @@ export function NightFields({
               type="button"
               aria-pressed={c.points.mode === 'total' && c.points.target === t}
               onClick={() => onChange({ ...c, points: { ...c.points, mode: 'total', target: t, minutes: undefined } })}
-              className={cx(
-                'h-11 min-w-16 rounded-xl border-2 px-3 font-semibold tabular-nums transition active:scale-95',
-                c.points.mode === 'total' && c.points.target === t ? 'border-accent bg-accent-soft text-accent' : 'border-line',
-              )}
+              className={cx(choiceClass(c.points.mode === 'total' && c.points.target === t), 'num')}
             >
               A {t}
             </button>
@@ -80,7 +77,7 @@ export function NightFields({
             type="button"
             aria-pressed={c.points.mode === 'time'}
             onClick={() => onChange({ ...c, points: { ...c.points, mode: 'time', minutes: c.points.minutes ?? 15, target: undefined } })}
-            className={cx('h-11 rounded-xl border-2 px-3 font-semibold transition active:scale-95', c.points.mode === 'time' ? 'border-accent bg-accent-soft text-accent' : 'border-line')}
+            className={choiceClass(c.points.mode === 'time')}
           >
             Por tiempo
           </button>
@@ -91,7 +88,7 @@ export function NightFields({
       </div>
       )}
       {show('rounds') && (
-      <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm">
+      <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-fg-2">
         {info.tooFew ? (
           'Hacen falta al menos 4 jugadores.'
         ) : (
@@ -102,7 +99,7 @@ export function NightFields({
             {c.format === 'americano' && info.roundsForAll > 0 && ` Para jugar con todos harían falta ${info.roundsForAll} rondas.`}
             {info.resting > 0 && info.equalRests.length > 0 && ` Con ${info.equalRests.slice(0, 3).join(', ')} rondas todos descansan igual.`}{' '}
             {count > c.players.length && `Contando con ${count} jugadores. `}
-            <button type="button" className="font-medium text-accent" onClick={() => onChange({ ...c, rounds: suggestRounds(c.format, count, c.courts.length) })}>
+            <button type="button" className="font-semibold text-accent" onClick={() => onChange({ ...c, rounds: suggestRounds(c.format, count, c.courts.length) })}>
               Usar las recomendadas
             </button>
           </>
@@ -163,11 +160,11 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold">
-          {value.length} {value.length === 1 ? 'jugador' : 'jugadores'}
+        <p className="text-[15px] font-semibold">
+          <span className="num">{value.length}</span> {value.length === 1 ? 'jugador' : 'jugadores'}
         </p>
         {value.length > 0 && (
-          <button type="button" className="text-sm text-muted hover:text-fg" onClick={() => onChange([])}>
+          <button type="button" className="-my-3 inline-flex min-h-11 items-center text-meta font-semibold text-muted hover:text-fg" onClick={() => onChange([])}>
             Quitar a todos
           </button>
         )}
@@ -180,7 +177,7 @@ export function NightPlayers({ value, onChange, levels }: { value: string[]; onC
         }}
       >
         <Input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Agregar a alguien nuevo" aria-label="Nombre del jugador nuevo" />
-        <Button type="submit" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!name.trim()} aria-label="Agregar jugador" />
+        <Button type="submit" variant="soft" className="size-10 shrink-0 rounded-xl" icon={<UserPlus className="size-4" />} loading={adding.isBusy()} disabled={!name.trim()} aria-label="Agregar jugador" />
       </form>
       {minor.fields}
       <PickList

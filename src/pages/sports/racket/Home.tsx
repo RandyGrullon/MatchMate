@@ -101,7 +101,7 @@ export default function RacketHome() {
   const link = (id: string) => `${base}/juegos?partido=${id}`;
 
   const matchList = (list: typeof matches) => (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2.5 sm:grid-cols-2">
       {list.map((m) => (
         <MatchCard key={m.id} match={m} mySide={mySideOf(m)} to={m.eventId ? `${base}/e/${m.eventId}?partido=${m.id}` : link(m.id)} tz={league.tz} now={now} roundWord={isPointsMatch(m) ? 'Ronda' : 'Jornada'} />
       ))}

@@ -6,7 +6,7 @@
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../../../lib/data/client';
 import { keys } from '../../../lib/data/keys';
 import { matchKeys, type Match } from '../../../lib/data/matches';
@@ -21,6 +21,17 @@ import { levelKeys } from '../racket/levels';
 import { pts, sets } from '../racket/logic/testMatch';
 import { RacketProvider } from '../racket/sport';
 import screens, { PICKLEBALL_EXT } from './screens';
+
+// El modo de la app: Pro por defecto (lo de organizar a la vista); las pruebas de Lite lo cambian.
+const mode = vi.hoisted(() => ({ pro: true }));
+vi.mock('../../../lib/useMode', async (orig) => ({
+  ...(await orig<typeof import('../../../lib/useMode')>()),
+  useIsPro: () => mode.pro,
+  useMode: () => ({ mode: mode.pro ? 'pro' : 'lite', isPro: mode.pro, setMode: async () => 'local', suggestedPro: false }),
+}));
+afterEach(() => {
+  mode.pro = true;
+});
 
 const L = 'LP';
 const league: League = {
@@ -217,12 +228,21 @@ describe('pantallas de pickleball', () => {
 describe('round robin social', () => {
   it('canchas de la ronda (a 11), siguiente ronda y quién descansa', () => {
     const t = text(eventRoute(`/l/${L}/e/R1`));
-    expect(t).toContain('Round robin mixto');
+    // Mixto: en la fila de los jugadores (la línea de arriba dice la ronda y el juego).
+    expect(t).toContain('· mixto');
     expect(t).toContain('Ronda 1 de 7');
     expect(t).toContain('Juego a 11, ganando por 2, conteo tradicional');
     expect(t).toContain('Cancha 2');
     expect(t).toContain('Siguiente ronda (2 de 7)');
     expect(t).toContain('Descansan: Nora');
+  });
+
+  it('en Lite: la ronda y «Cómo van todos»; armar la siguiente ronda está en Pro', () => {
+    mode.pro = false;
+    const t = text(eventRoute(`/l/${L}/e/R1`));
+    expect(t).toContain('Ronda 1 de 7');
+    expect(t).not.toContain('Siguiente ronda');
+    expect(t).toContain('Jugadores (9)');
   });
 
   it('un jugador: su cancha con compañero y rivales', () => {
@@ -233,10 +253,12 @@ describe('round robin social', () => {
   });
 
   it('tabla por partidos ganados y dif. de puntos; rondas; jugadores con su grupo y DUPR', () => {
-    const tabla = text(eventRoute(`/l/${L}/e/R1?ver=tabla`));
-    expect(tabla).toContain('Orden: partidos ganados → diferencia de puntos → puntos a favor');
+    const tablaHtml = eventRoute(`/l/${L}/e/R1?ver=tabla`);
+    const tabla = text(tablaHtml);
+    expect(tabla).toContain('Orden: partidos ganados, diferencia y puntos a favor');
     expect(tabla).toContain('Ana');
-    expect(tabla).toContain('WhatsApp');
+    // Compartir la tabla por WhatsApp está en «•••».
+    expect(tablaHtml).toContain('aria-label="Más opciones"');
     expect(text(eventRoute(`/l/${L}/e/R1?ver=rondas`))).toContain('Rosa / Pedro');
     const jug = text(eventRoute(`/l/${L}/e/R1?ver=jugadores`));
     expect(jug).toContain('Grupo A');
@@ -244,10 +266,12 @@ describe('round robin social', () => {
   });
 
   it('el juego en la cancha de pickleball y «solo el resultado» del juego', () => {
-    const court = text(eventRoute(`/l/${L}/e/R1?partido=r2&cancha=1`));
+    const courtHtml = eventRoute(`/l/${L}/e/R1?partido=r2&cancha=1`);
+    const court = text(courtHtml);
     expect(court).toContain('Deshacer');
     expect(court).toContain('Terminar');
-    expect(court).toContain('Retiro');
+    // El retiro y suspender, en «•••» de la cancha.
+    expect(courtHtml).toContain('aria-label="Más opciones"');
     const detail = text(eventRoute(`/l/${L}/e/R1?partido=r2`));
     expect(detail).toContain('Seguir anotando en la cancha');
     expect(detail).toContain('Poner el marcador');
@@ -274,9 +298,10 @@ describe('tabla, perfil y partidos', () => {
   });
 
   it('un partido de la liga en la cancha de pickleball', () => {
-    const t = text(render(h(screens.Feed!), `/l/${L}/juegos?partido=g4&cancha=1`));
+    const html = render(h(screens.Feed!), `/l/${L}/juegos?partido=g4&cancha=1`);
+    const t = text(html);
     expect(t).toContain('Deshacer');
-    expect(t).toContain('Retiro');
+    expect(html).toContain('aria-label="Más opciones"');
     expect(t).toContain('al mejor de 3 juegos a 11');
     const detail = text(render(h(screens.Feed!), `/l/${L}/juegos?partido=g4`));
     expect(detail).toContain('Solo el resultado');

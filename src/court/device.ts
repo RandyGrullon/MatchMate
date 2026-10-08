@@ -163,10 +163,12 @@ export function courtVars(sun: boolean): Record<string, string> {
       colorScheme: 'light',
     };
   }
+  // Rediseño «Calma y foco»: un solo color. El lado 1 en el del deporte y el 2 en tinta (gris oscuro en claro y gris
+  // claro en oscuro, con su letra al revés): se distinguen sin otro color (el ámbar queda para «por confirmar»).
   return {
     '--court-a': 'var(--accent)',
     '--court-a-fg': 'var(--accent-fg)',
-    '--court-b': 'var(--warn)',
+    '--court-b': 'var(--fg-2)',
     '--court-b-fg': 'var(--bg)',
   };
 }

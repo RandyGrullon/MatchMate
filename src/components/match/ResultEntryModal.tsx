@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { adminCorrectResult, finishMatch, resolveDispute, type Match } from '../../lib/data/matches';
 import { useFeedback, saveErrorMessage } from '../feedback';
-import { Button, Field, Input, Modal } from '../ui';
+import { Button, Field, Input, Sheet } from '../ui';
 import { flipScoreText, sideName } from './format';
 import { tryParse, type ParsedResult, type ResultParser } from './parsers';
 
 /**
- * Modo «solo resultado»: escribir el marcador en 10 segundos («6-4 3-6 10-7», «78-72», «2-1») con el lector
+ * Modo «solo resultado» (una hoja desde abajo): escribir el marcador en 10 segundos («6-4 3-6 10-7», «78-72», «2-1») con el lector
  * del deporte (parsers.ts). Muestra enseguida quién gana, o el error en palabras sencillas.
  *
  * `mode`:
@@ -82,34 +82,33 @@ export function ResultEntryModal({
     }
   };
 
+  const heading = title ?? (mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo');
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
-      title={title ?? (mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo')}
+      title={heading}
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={!parsed?.ok} onClick={() => void submit()} icon={<CheckCircle2 className="size-5" />}>
-            Guardar
-          </Button>
-        </>
+        <Button variant="primary" size="xl" className="w-full" loading={busy} disabled={!parsed?.ok} onClick={() => void submit()} icon={<Check className="size-5" strokeWidth={2.6} />}>
+          Guardar
+        </Button>
       }
     >
       <form
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-3.5"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
         }}
       >
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center text-sm font-medium">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center text-[15px] font-semibold">
           <span className="truncate">{sideName(m.sides[0])}</span>
-          <span className="text-muted">vs.</span>
+          <span className="text-[13px] font-medium text-muted">vs.</span>
           <span className="truncate">{sideName(m.sides[1])}</span>
         </div>
-        <Field label="Marcador (el de la izquierda primero)" hint={hint}>
-          <Input
+        <label className="flex flex-col gap-1.5">
+          <span className="sr-only">Marcador</span>
+          <input
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -117,18 +116,22 @@ export function ResultEntryModal({
             inputMode="text"
             autoComplete="off"
             enterKeyHint="done"
-            className="h-12 text-center text-xl font-semibold tabular-nums tracking-wide"
+            className="num h-16 w-full rounded-2xl bg-surface-2 px-3 text-center text-[26px] font-[650] tracking-wide text-fg placeholder:text-faint focus:ring-2 focus:ring-accent/40 focus:outline-none"
             aria-invalid={parsed?.ok === false}
+            aria-describedby="marcador-ayuda"
           />
-        </Field>
+          <span id="marcador-ayuda" className="text-center text-[13px] text-muted">
+            El de la izquierda primero{hint ? <> · {hint}</> : null}
+          </span>
+        </label>
         {examples.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap justify-center gap-2">
             {examples.map((x) => (
               <button
                 key={x}
                 type="button"
                 onClick={() => setText(x)}
-                className="rounded-full bg-surface-2 px-3 py-1.5 text-sm tabular-nums text-muted hover:text-fg active:scale-95"
+                className="num inline-flex h-10 items-center rounded-full bg-surface-2 px-4 text-[15px] font-semibold text-fg-2 transition active:scale-95 focus-visible:outline-2 focus-visible:outline-accent"
               >
                 {x}
               </button>
@@ -136,16 +139,16 @@ export function ResultEntryModal({
           </div>
         )}
         {parsed && !parsed.ok && (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-center text-sm text-danger">
             {parsed.error}
           </p>
         )}
         {parsed?.ok && (
-          <p role="status" className="rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">
+          <p role="status" className="rounded-2xl bg-accent-soft px-4 py-3 text-center text-[15px] text-accent">
             {winnerName ? (
               <>
                 Gana <b>{winnerName}</b>{' '}
-                <span className="tabular-nums">
+                <span className="num font-[650]">
                   {parsed.value.winner === 2 && typeof parsed.value.score.text === 'string' ? flipScoreText(parsed.value.score.text) : parsed.value.score.text}
                 </span>
               </>
@@ -160,6 +163,6 @@ export function ResultEntryModal({
           </Field>
         )}
       </form>
-    </Modal>
+    </Sheet>
   );
 }

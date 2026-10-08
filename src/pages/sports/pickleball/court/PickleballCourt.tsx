@@ -1,18 +1,16 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, CircleDot, Flag, Settings2 } from 'lucide-react';
-import { CourtLayout, TwoHalves } from '../../../../court';
-import { updateMatchSchedule, type Match } from '../../../../lib/data/matches';
+import { ArrowLeftRight, CircleDot } from 'lucide-react';
+import { CourtLayout, CourtNote, TwoHalves } from '../../../../court';
+import type { Match } from '../../../../lib/data/matches';
 import { useLeagueCtx } from '../../../../lib/league';
 import { resolveRules, type MatchSetup, type Pair, type PickleballEvent, type PickleballRules, type PickleballState, type Player } from '../../../../sports/racket';
 import type { Side } from '../../../../sports/types';
-import { useBusy } from '../../../../components/busy';
-import { useAction } from '../../../../components/feedback';
-import { Badge, Button, Modal, cx } from '../../../../components/ui';
+import { cx } from '../../../../components/ui';
 import { engineRules } from '../../racket/court/adapters';
 import { useAdapterCourt } from '../../racket/court/useAdapterCourt';
 import { pointsDeps } from '../../racket/court/usePointsCourt';
 import { isPointsMatch } from '../../racket/logic/results';
-import { PresetButtons } from '../../racket/bits';
+import { Pill, RetireSheet, RulesBox, SetupChoice, SetupNote, SetupScreen, StartButton, retireItem } from '../../racket/court/parts';
 import { presetOf, presetsOf, rulesText } from '../../racket/logic/rulesText';
 import { useNames } from '../../racket/names';
 import type { RacketCourtProps } from '../../racket/sport';
@@ -76,29 +74,25 @@ export function PickleballCourt({ match, isAdmin, userId, onExit }: RacketCourtP
 
   const header = v && (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {rules.bestOf > 1 && !v.over && <Badge tone="accent">{`Juego ${v.gameNo} de ${rules.bestOf}${v.deciding ? ' · decisivo' : ''}`}</Badge>}
-        {v.done.map((x, i) => (
-          <Badge key={i} tone="neutral" className="text-sm tabular-nums">
-            {x}
-          </Badge>
-        ))}
-      </div>
-      {!v.over && <CallBoard v={v} labels={labels} doubles={rules.doubles} />}
-      {v.firstServe && !v.over && (
-        <p className="rounded-xl bg-accent-soft px-3 py-2 text-sm font-medium text-accent" role="status">
-          Primer saque del juego: la pareja que saca tiene un solo sacador (0-0-2).
-        </p>
+      {(rules.bestOf > 1 || v.done.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
+          {rules.bestOf > 1 && !v.over && <Pill tone="accent">{`Juego ${v.gameNo} de ${rules.bestOf}${v.deciding ? ' · decisivo' : ''}`}</Pill>}
+          {v.done.map((x, i) => (
+            <Pill key={i}>{x}</Pill>
+          ))}
+        </div>
       )}
+      {!v.over && <CallBoard v={v} labels={labels} doubles={rules.doubles} />}
+      {v.firstServe && !v.over && <CourtNote tone="accent">Primer saque del juego: un solo sacador (0-0-2).</CourtNote>}
       {v.switchNow && !v.over && (
-        <p className="flex items-center gap-2 rounded-xl bg-warn-soft px-3 py-2 text-base font-bold text-warn" role="alert">
+        <CourtNote tone="accent" role="alert">
           <ArrowLeftRight className="size-5" /> Cambio de lado
-        </p>
+        </CourtNote>
       )}
       {court.over && (
-        <p className="rounded-xl bg-ok-soft px-3 py-2 text-sm font-semibold text-ok" role="status">
+        <CourtNote tone="accent">
           {winner ? `Ganan ${labels[winner - 1]}: ${court.summary}` : court.summary}. Toca «Terminar» para enviar.
-        </p>
+        </CourtNote>
       )}
     </div>
   );
@@ -152,11 +146,7 @@ export function PickleballCourt({ match, isAdmin, userId, onExit }: RacketCourtP
         undoLabel="Deshacer"
         finishSummary={winner ? `${court.summary} · Ganan ${labels[winner - 1]}` : court.summary}
         onFinished={() => onExit()}
-        actions={
-          <Button className="h-14" onClick={() => setRetiring(true)} icon={<Flag className="size-5" />} disabled={court.readOnly || court.over} aria-label="Retiro">
-            <span className="hidden sm:inline">Retiro</span>
-          </Button>
-        }
+        more={court.readOnly || court.over ? [] : [retireItem(() => setRetiring(true))]}
       >
         <div className="flex h-full min-h-0 flex-col gap-2">
           {v && rules.doubles && !v.over && <Positions v={v} leftSide={s?.leftSide ?? 1} />}
@@ -164,23 +154,16 @@ export function PickleballCourt({ match, isAdmin, userId, onExit }: RacketCourtP
         </div>
       </CourtLayout>
 
-      <Modal open={retiring} onClose={() => setRetiring(false)} title="¿Quién se retira?">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">Gana el otro lado. Se guarda el marcador de ahora.</p>
-          {([1, 2] as const).map((side) => (
-            <Button
-              key={side}
-              className="h-12 justify-start"
-              onClick={() => {
-                court.apply({ type: 'retire', side });
-                setRetiring(false);
-              }}
-            >
-              Se retira {labels[side - 1]}
-            </Button>
-          ))}
-        </div>
-      </Modal>
+      <RetireSheet
+        open={retiring}
+        onClose={() => setRetiring(false)}
+        labels={labels}
+        note="Gana el otro lado; se guarda el marcador de ahora"
+        onRetire={(side) => {
+          court.apply({ type: 'retire', side });
+          setRetiring(false);
+        }}
+      />
     </>
   );
 }
@@ -189,19 +172,19 @@ export function PickleballCourt({ match, isAdmin, userId, onExit }: RacketCourtP
 function CallBoard({ v, labels, doubles }: { v: PickleView; labels: readonly [string, string]; doubles: boolean }) {
   const [a, b, n] = v.parts;
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-3 py-2">
-      <div className="flex items-baseline gap-2 font-black tabular-nums leading-none" aria-label={`Canto ${v.call}`} role="status">
-        <span className="text-5xl sm:text-6xl">{a}</span>
-        <span className="text-3xl text-muted">-</span>
-        <span className="text-5xl sm:text-6xl">{b}</span>
+    <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-2.5">
+      <div className="num flex items-baseline gap-2 leading-none font-bold" aria-label={`Canto ${v.call}`} role="status">
+        <span className="text-[44px] sm:text-6xl">{a}</span>
+        <span className="text-3xl text-faint">-</span>
+        <span className="text-[44px] sm:text-6xl">{b}</span>
         {n !== null && (
           <>
-            <span className="text-3xl text-muted">-</span>
-            <span className="text-5xl text-accent sm:text-6xl">{n}</span>
+            <span className="text-3xl text-faint">-</span>
+            <span className="text-[44px] text-accent sm:text-6xl">{n}</span>
           </>
         )}
       </div>
-      <div className="min-w-0 flex-1 text-sm leading-tight">
+      <div className="min-w-0 flex-1 text-[15px] leading-tight">
         <p className="truncate">
           Saca <b>{v.serverName}</b>
           {doubles ? ` (${labels[v.serving - 1]})` : ''}
@@ -221,7 +204,7 @@ function Positions({ v, leftSide }: { v: PickleView; leftSide: Side }) {
   return (
     <div className="grid grid-cols-2 gap-2 text-sm">
       {order.map((sp) => (
-        <div key={sp.side} className={cx('rounded-xl border px-3 py-1.5', sp.serving ? 'border-accent bg-accent-soft/60' : 'border-line bg-surface')}>
+        <div key={sp.side} className={cx('rounded-2xl px-3.5 py-2', sp.serving ? 'bg-accent-soft' : 'bg-surface-2')}>
           <p className="truncate text-xs font-semibold text-muted">{sp.label}</p>
           {(['right', 'left'] as const).map((k) => {
             const name = k === 'right' ? sp.right : sp.left;
@@ -236,30 +219,6 @@ function Positions({ v, leftSide }: { v: PickleView; leftSide: Side }) {
           })}
         </div>
       ))}
-    </div>
-  );
-}
-
-function Choice<T extends string | number>({ label, options, value, onChange }: { label: string; options: { value: T; text: string }[]; value: T; onChange: (v: T) => void }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-semibold">{label}</p>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((o) => (
-          <button
-            key={String(o.value)}
-            type="button"
-            aria-pressed={value === o.value}
-            onClick={() => onChange(o.value)}
-            className={cx(
-              'min-h-14 rounded-2xl border-2 px-3 py-2 text-left text-base font-semibold transition active:scale-[0.98]',
-              value === o.value ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface',
-            )}
-          >
-            <span className="line-clamp-2">{o.text}</span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -283,42 +242,14 @@ function PickleSetup({
   canChange: boolean;
   onStart: (s: MatchSetup) => void;
 }) {
-  const { lid } = useLeagueCtx();
-  const run = useAction();
-  const saving = useBusy();
   const [first, setFirst] = useState<Side>(1);
   const [fp, setFp] = useState<Pair<Player>>([0, 0]);
   const [left, setLeft] = useState<Side>(1);
-  const [changing, setChanging] = useState(false);
   const current = presetOf('pickleball', rules);
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col gap-5 overflow-y-auto pb-4">
-      <div className="flex items-start gap-2 rounded-2xl bg-surface-2 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-muted">Reglas de este partido</p>
-          <p className="text-sm font-semibold">{rulesText(rules)}</p>
-        </div>
-        {canChange && (
-          <Button size="sm" variant="ghost" icon={<Settings2 className="size-4" />} onClick={() => setChanging(true)}>
-            Cambiar
-          </Button>
-        )}
-      </div>
-      <Modal open={changing} onClose={() => setChanging(false)} title="Reglas de este partido">
-        <PresetButtons
-          presets={presetsOf('pickleball')}
-          current={current?.id}
-          pending={saving.busy}
-          className="min-h-12"
-          onPick={(p) =>
-            void saving.run(p.id, async () => {
-              await run(() => updateMatchSchedule(lid, match.id, { rules: { ...(match.rules ?? {}), match: p.rules } }), 'Reglas cambiadas');
-              setChanging(false);
-            })
-          }
-        />
-      </Modal>
-      <Choice
+    <SetupScreen>
+      <RulesBox line={rulesText(rules)} match={match} canChange={canChange} presets={presetsOf('pickleball')} current={current?.id} />
+      <SetupChoice
         label="¿Quién saca primero?"
         value={first}
         onChange={setFirst}
@@ -330,7 +261,7 @@ function PickleSetup({
       {rules.doubles &&
         ([0, 1] as const).map((i) =>
           (people[i]?.length ?? 0) >= 2 ? (
-            <Choice
+            <SetupChoice
               key={i}
               label={`${labels[i]}: ¿quién empieza a la derecha?`}
               value={fp[i]}
@@ -342,7 +273,7 @@ function PickleSetup({
             />
           ) : null,
         )}
-      <Choice
+      <SetupChoice
         label="¿Quién empieza a tu izquierda?"
         value={left}
         onChange={setLeft}
@@ -351,12 +282,8 @@ function PickleSetup({
           { value: 2, text: labels[1] },
         ]}
       />
-      {rules.doubles && rules.scoring === 'sideout' && (
-        <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">El juego empieza en 0-0-2: la pareja que saca primero tiene un solo sacador, el de la derecha.</p>
-      )}
-      <Button variant="primary" className="h-14 text-base" onClick={() => onStart({ firstServer: first, firstPlayer: fp, leftSide: left })}>
-        Empezar el partido
-      </Button>
-    </div>
+      {rules.doubles && rules.scoring === 'sideout' && <SetupNote>El juego empieza en 0-0-2: la pareja que saca primero tiene un solo sacador, el de la derecha.</SetupNote>}
+      <StartButton onClick={() => onStart({ firstServer: first, firstPlayer: fp, leftSide: left })} />
+    </SetupScreen>
   );
 }

@@ -39,7 +39,7 @@ export function groupSchedule(matches: readonly Match[], by: 'round' | 'date', o
 }
 
 /**
- * Calendario de partidos por ronda o jornada (o por día), con una tarjeta por partido. `renderMatch` cambia la
+ * Calendario de partidos por ronda o jornada (o por día): el título de cada una («Jornada 3») y una tarjeta por partido. `renderMatch` cambia la
  * tarjeta; `linkOf` le da link a cada una.
  */
 export function ScheduleList({
@@ -67,14 +67,16 @@ export function ScheduleList({
   if (!matches.length) return <Empty icon={<CalendarDays className="size-8" />} title="Sin partidos">{empty}</Empty>;
   const groups = groupSchedule(matches, groupBy, { roundWord, tz });
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {groups.map((g) => (
-        <section key={g.key} className="flex flex-col gap-2">
-          <h3 className="px-1 text-sm font-semibold capitalize text-muted">{g.title}</h3>
-          <div className="grid gap-2 sm:grid-cols-2">
+        <section key={g.key} className="flex flex-col gap-2.5">
+          <h3 className="mx-1 text-[17px] font-[650] tracking-[-0.01em] first-letter:uppercase">{g.title}</h3>
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {g.matches.map((m) =>
               renderMatch ? (
-                <div key={m.id}>{renderMatch(m)}</div>
+                <div key={m.id} className="min-w-0">
+                  {renderMatch(m)}
+                </div>
               ) : (
                 <MatchCard key={m.id} match={m} to={linkOf?.(m)} mySide={mySide?.(m) ?? null} roundWord={roundWord} tz={tz} now={now} />
               ),

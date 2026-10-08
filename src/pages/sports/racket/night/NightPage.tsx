@@ -1,37 +1,21 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import {
-  CheckCircle2,
-  ClipboardList,
-  Flag,
-  Keyboard,
-  LayoutGrid,
-  ListOrdered,
-  Lock,
-  LockOpen,
-  MessageCircle,
-  Play,
-  RefreshCw,
-  Rows3,
-  Settings2,
-  SkipForward,
-  Trash2,
-  Trophy,
-  Users,
-} from 'lucide-react';
+import { ClipboardList, ClipboardPen, FileDown, Flag, LayoutGrid, Lock, LockOpen, RefreshCw, Rows3, Settings2, Share2, SkipForward, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent } from '../../../../lib/data';
-import { useMatches, type Match } from '../../../../lib/data/matches';
-import { saveNightRound, savePointsResult, updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
+import { useMatches } from '../../../../lib/data/matches';
+import { saveNightRound, updateRacketEvent, useWithPendingPoints, type RacketEvent } from '../../../../lib/data/racket';
 import { formatDateLong } from '../../../../lib/format';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { racketNightComp } from '../../../../prizes/sports';
 import { useBusy } from '../../../../components/busy';
+import type { Match } from '../../../../lib/data/matches';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
-import { MatchCard, ResultEntryModal, StandingsTable, pointsResultParser, whatsappShareUrl, type StandingsColumn } from '../../../../components/match';
-import { ScorersButton } from '../../../../components/scorers/ScorersButton';
-import { Badge, Button, Card, Empty, ListSkeleton, Modal, Position, Tabs, cx } from '../../../../components/ui';
-import { BackLink } from '../../../../components/BackLink';
+import { StandingsTable, pointsResultParser, type StandingsColumn } from '../../../../components/match';
+import { eventDay } from '../../../../components/event/EventHeader';
+import { useIsPro } from '../../../../components/mode';
+import { NoticeSlot } from '../../../../components/NoticeSlot';
+import { Button, Card, Empty, ListRow, ListSkeleton, RowIcon, Segmented, SectionHeader, Sheet } from '../../../../components/ui';
 import { ReportButton } from '../../../../components/tournamentReport/ReportButton';
 import {
   NIGHT_MAX_PLAYERS,
@@ -47,24 +31,27 @@ import {
   redoNightRound,
   roundDrafts,
   type NightConfig,
-  type NightRound,
   type NextRound,
 } from '../logic/night';
-import { timeLabel } from '../logic/time';
+import { timeLabel, todayIn } from '../logic/time';
 import { levelText, useLevels } from '../levels';
-import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
+import { MatchDetail, useMatchParam } from '../match/MatchDetail';
 import { useNames } from '../names';
 import { useRacket } from '../sport';
 import { NightPrizes } from './NightPrizes';
-import { appOrigin, eventTypeInfo } from '../bits';
+import { RankRows, appOrigin, eventTypeInfo } from '../bits';
+import { ReportSheet, ScorersSheet, ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../frame';
 import type { SignupSettings } from '../logic/signup';
 import { SignupSettingsModal } from '../signup/SignupFields';
 import { SignupPanel } from '../signup/SignupPanel';
 import { NightFields, NightPlayers } from './NightForm';
+import { FirstRound, MyCourt, PlayersList, Podium, RestCard, RoundCourts, RoundList, SaveFooter, ShareBox } from './parts';
 
 type Tab = 'canchas' | 'tabla' | 'rondas' | 'jugadores';
 /** Lo que se está guardando: la ruedita va en ese botón y los demás esperan. */
 type Pending = 'ronda' | 'rehacer' | 'cerrar' | 'cerrar-fin' | 'abrir' | 'ajustes' | 'jugadores' | 'inscripcion';
+/** Las hojas de la pantalla: compartir la tabla, el reporte, los anotadores, las rondas y los jugadores. */
+type SheetKey = 'compartir' | 'reporte' | 'anotadores' | 'rondas' | 'jugadores';
 
 /** Cupo más grande de la inscripción de la noche (lo que se puede elegir a mano). */
 const NIGHT_SIGNUP_MAX = NIGHT_MAX_PLAYERS;
@@ -79,11 +66,15 @@ const TABLE_COLUMNS: StandingsColumn[] = [
 ];
 
 /**
- * La noche de Americano o Mexicano. Jugadores: su cancha de la ronda (con compañero y rivales) y la tabla en
- * vivo. Organizador: la ronda actual de cada cancha, poner el marcador con dos números si no se anotó en vivo,
- * la siguiente ronda al instante, rehacer una ronda que no empezó, jugadores que llegan o se van, cerrar la
- * noche, compartir la tabla por WhatsApp y el Excel. Antes de empezar, la inscripción «Me apunto» (cupo, fecha
- * límite y lista de espera) si el admin la abrió; el admin sigue agregando a mano.
+ * La noche de Americano o Mexicano (rediseño «Calma y foco»): «‹ Pádel de los jueves» con «•••», el título y «● Ronda 1
+ * de 7 · Jueves 7 oct · 7:00 pm · A 24 puntos».
+ * - Jugador (Lite y Pro): arriba su cancha de la ronda («Te toca · Cancha 2 · con Ana contra Luis / Pedro») con UN
+ *   botón, «Anotar en la cancha». En Lite, debajo, la ronda de ahora, «Cómo van todos» (la tabla corta) y las filas
+ *   «Rondas anteriores» y «Jugadores». En Pro, Canchas · Tabla · Rondas en un segmentado, con la tabla completa.
+ * - Organizador (en Pro): la ronda actual de cada cancha con «Anotar» y «Marcador», la siguiente ronda al instante,
+ *   rehacer una ronda que no empezó y terminar la noche. Ajustes, jugadores, inscripción, anotadores, el reporte,
+ *   compartir y borrar van en «•••». En Lite, lo de organizar se esconde con un aviso «Usar Pro».
+ * Antes de empezar, la inscripción «Me apunto» (cupo, fecha límite y lista de espera) si el admin la abrió.
  */
 export function NightPage({ event }: { event: RacketEvent }) {
   const { lid, base, isAdmin, league, myPlayerId } = useLeagueCtx();
@@ -102,7 +93,18 @@ export function NightPage({ event }: { event: RacketEvent }) {
   const pending = useBusy<Pending>();
   const busy = pending.isBusy();
   const [editing, setEditing] = useState<null | 'ajustes' | 'jugadores' | 'inscripcion'>(null);
+  const [sheet, setSheet] = useState<SheetKey | null>(null);
+  const pro = useIsPro();
+  const back = useEventBack();
+  const { levels, scale } = useLevels();
   const title = event.name || eventTypeInfo(event.type).label;
+  // Lite, quien organiza: armar las rondas y poner marcadores está en Pro (el aviso de la pantalla y «•••»).
+  const proItem = useOrganizePro(isAdmin && !cfg.closed, {
+    id: `raqueta-noche-pro:${event.id}`,
+    title: 'Organizas esta noche',
+    text: 'Las rondas se arman en Pro',
+    menu: 'Rondas y marcadores',
+  });
 
   if (param.id) return <MatchDetail matchId={param.id} eventId={event.id} title={title} onBack={param.close} />;
 
@@ -110,8 +112,11 @@ export function NightPage({ event }: { event: RacketEvent }) {
   const finished = cfg.closed || (!!current && current.round >= cfg.rounds && current.done);
   // Como la base: la noche empezó al publicar una ronda o al cerrarse (ya nadie se apunta ni sube de la espera).
   const started = !!current || cfg.round > 0 || cfg.closed;
+  // Las herramientas del organizador en la pantalla (en Lite van con «Usar Pro»).
+  const organize = isAdmin && pro;
   const requested = search.get('ver') as Tab | null;
-  const tab: Tab = requested ?? (current ? 'canchas' : isAdmin ? 'canchas' : 'jugadores');
+  // Pro: Canchas · Tabla · Rondas (los jugadores, en su fila; un link viejo `?ver=jugadores` abre su hoja).
+  const tab: Exclude<Tab, 'jugadores'> = requested === 'tabla' || requested === 'rondas' ? requested : 'canchas';
   const setTab = (t: Tab) => setSearch({ ver: t }, { replace: true });
 
   const saveConfig = (next: NightConfig, ok: string, key: Pending) =>
@@ -204,68 +209,119 @@ export function NightPage({ event }: { event: RacketEvent }) {
 
   const mine = current?.matches.find((m) => [...m.side1, ...m.side2].includes(myPlayerId ?? '')) ?? null;
   const resting = !!myPlayerId && !!current?.rests.includes(myPlayerId);
+  const today = todayIn(league.tz);
+  const meta = [eventDay(event.date, today, pro), event.startTime ? timeLabel(event.startTime) : null, pointsLabel(cfg.points)]
+    .filter(Boolean)
+    .join(' · ');
+  const played = table.filter((r) => r.played > 0 || r.points > 0);
+  const open = (k: SheetKey) => setSheet(k);
+  const first = nextNightRound(cfg, []);
+  // El marcador de un partido de la ronda: los puntos de cada lado (con lo que suman, si es a un total).
+  const pointsEntry = (m: Match) => {
+    const pts = parsePoints((m.rules as Record<string, unknown> | undefined)?.points);
+    return { parser: pointsResultParser(pts), placeholder: '14-10', hint: pts.mode === 'total' ? `suman ${pts.target}` : undefined };
+  };
 
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
-        {league.kind !== 'torneo' && <BackLink fallback={base} className="mt-1" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-bold tracking-tight">{title}</h1>
-            <Badge tone="accent">{eventTypeInfo(cfg.format).label}</Badge>
-            {finished ? (
-              <Badge tone="ok">
-                <CheckCircle2 className="size-3" /> Terminada
-              </Badge>
-            ) : current ? (
-              <Badge tone="ok">
-                <span className="live-dot" /> Ronda {current.round} de {cfg.rounds}
-              </Badge>
-            ) : null}
-          </div>
-          <p className="text-sm text-muted first-letter:uppercase">
-            {formatDateLong(event.date)}
-            {event.startTime ? ` · ${timeLabel(event.startTime)}` : ''} · {pointsLabel(cfg.points)} · {cfg.players.length} jugadores · {cfg.courts.length}{' '}
-            {cfg.courts.length === 1 ? 'cancha' : 'canchas'}
-          </p>
-        </div>
-        <ReportButton {...report} />
-      </div>
+  const menu: RacketMenuItem[] = [
+    { key: 'compartir', icon: Share2, label: 'Compartir la tabla', hint: 'Por WhatsApp o copiada', onClick: () => open('compartir') },
+    { key: 'reporte', icon: FileDown, label: 'Reporte de la noche', hint: 'PDF para WhatsApp o imprimir, o Excel', onClick: () => open('reporte') },
+    ...(proItem ? [proItem] : []),
+    ...(isAdmin
+      ? [
+          { key: 'ajustes', icon: Settings2, label: 'Ajustes de la noche', hint: 'Canchas, puntos, rondas y descansos', onClick: () => setEditing('ajustes') },
+          { key: 'jugadores', icon: Users, label: 'Jugadores', hint: 'Quién llega tarde o se va', onClick: () => setEditing('jugadores') },
+          ...(!started ? [{ key: 'inscripcion', icon: ClipboardList, label: 'Inscripción', hint: 'Me apunto, cupo y lista de espera', onClick: () => setEditing('inscripcion') }] : []),
+          ...(cfg.closed
+            ? [{ key: 'abrir', icon: LockOpen, label: 'Volver a abrir la noche', onClick: () => void closeNight(false, 'abrir'), busy: pending.isBusy('abrir') }]
+            : current
+              ? [{ key: 'cerrar', icon: Lock, label: 'Terminar la noche', hint: 'Queda la tabla final', onClick: () => void closeNight(true, 'cerrar'), busy: pending.isBusy('cerrar') }]
+              : []),
+          { key: 'anotadores', icon: ClipboardPen, label: 'Anotadores', hint: 'Quién anota esta noche', onClick: () => open('anotadores') },
+          { key: 'borrar', icon: Trash2, label: 'Borrar la noche', onClick: () => void remove(), danger: true },
+        ]
+      : []),
+  ];
 
-      {isAdmin && (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" icon={<Settings2 className="size-4" />} onClick={() => setEditing('ajustes')}>
-            Ajustes
-          </Button>
-          <Button size="sm" icon={<Users className="size-4" />} onClick={() => setEditing('jugadores')}>
-            Jugadores
-          </Button>
-          {!started && (
-            <Button size="sm" icon={<ClipboardList className="size-4" />} onClick={() => setEditing('inscripcion')}>
-              Inscripción
-            </Button>
-          )}
-          {cfg.closed ? (
-            <Button size="sm" icon={<LockOpen className="size-4" />} onClick={() => void closeNight(false, 'abrir')} loading={pending.isBusy('abrir')} disabled={busy}>
-              Volver a abrir
-            </Button>
-          ) : (
-            current && (
-              <Button size="sm" icon={<Lock className="size-4" />} onClick={() => void closeNight(true, 'cerrar')} loading={pending.isBusy('cerrar')} disabled={busy}>
+  // Las canchas de la ronda de ahora (o, antes de empezar, la ronda 1 para el organizador o el aviso para los demás).
+  const courts =
+    q.loading && !matches.length ? (
+      <ListSkeleton rows={2} />
+    ) : !current ? (
+      <FirstRound
+        organize={organize}
+        summary={`${cfg.players.length} jugadores en ${cfg.courts.length} ${cfg.courts.length === 1 ? 'cancha' : 'canchas'} · ${cfg.rounds} rondas · ${
+          cfg.format === 'mexicano' ? (cfg.firstRound === 'level' ? 'la 1 por nivel' : 'la 1 al azar') : 'sin repetir compañero'
+        }`}
+        problem={first.ok ? null : first.reason}
+        note={cfg.signup?.open ? 'Al empezar la ronda 1 se cierra la inscripción.' : null}
+        busy={pending.isBusy('ronda')}
+        onStart={() => void nextRound()}
+        onPlayers={() => setEditing('jugadores')}
+      />
+    ) : (
+      <div className="flex flex-col gap-4">
+        {finished && <Podium table={table} nameOf={names.nameOf} value={(r) => fmtPoints(r.points)} onShare={() => open('compartir')} />}
+        <RoundCourts round={current} organize={organize} entry={pointsEntry} onOpen={param.open} onScore={param.openCourt} />
+        {organize && !cfg.closed && (
+          <div className="flex flex-col gap-2.5">
+            {current.round < cfg.rounds && (
+              <Button variant="primary" size="lg" className="w-full" loading={pending.isBusy('ronda')} disabled={busy} icon={<SkipForward className="size-5" />} onClick={() => void nextRound()}>
+                Siguiente ronda ({current.round + 1} de {cfg.rounds})
+              </Button>
+            )}
+            {current.round >= cfg.rounds && current.done && (
+              <Button variant="primary" size="lg" className="w-full" loading={pending.isBusy('cerrar-fin')} disabled={busy} icon={<Flag className="size-5" />} onClick={() => void closeNight(true, 'cerrar-fin')}>
                 Terminar la noche
               </Button>
-            )
-          )}
-          <ScorersButton
-            labeled
-            target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
-            participants={cfg.players}
-          />
-          <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
-            Borrar
-          </Button>
-        </div>
+            )}
+            {!current.started && (
+              <Button variant="quiet" size="lg" className="w-full" loading={pending.isBusy('rehacer')} disabled={busy} icon={<RefreshCw className="size-4" />} onClick={() => void redo()}>
+                Rehacer la ronda
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+
+  // Las filas de abajo: lo que se mira de vez en cuando (en hojas).
+  const rows = (
+    <Card className="overflow-hidden">
+      {!pro && rounds.length > 1 && (
+        <ListRow
+          leading={
+            <RowIcon>
+              <Rows3 className="size-5" />
+            </RowIcon>
+          }
+          title="Rondas anteriores"
+          subtitle={`${rounds.length - 1} ${rounds.length - 1 === 1 ? 'ronda' : 'rondas'}`}
+          onClick={() => open('rondas')}
+        />
       )}
+      <ListRow
+        leading={
+          <RowIcon>
+            <Users className="size-5" />
+          </RowIcon>
+        }
+        title={`Jugadores (${cfg.players.length})`}
+        subtitle={`${cfg.courts.length} ${cfg.courts.length === 1 ? 'cancha' : 'canchas'} · ${cfg.rounds} rondas`}
+        onClick={() => open('jugadores')}
+        dense={pro}
+      />
+    </Card>
+  );
+
+  return (
+    <div className="flex flex-col px-2">
+      <ScreenHead
+        back={back}
+        title={title}
+        status={finished ? { text: 'Terminada' } : current ? { text: `Ronda ${current.round} de ${cfg.rounds}`, live: true } : { text: eventTypeInfo(cfg.format).label }}
+        meta={meta}
+        menu={menu}
+      />
 
       {cfg.signup && !started && (
         <SignupPanel
@@ -274,91 +330,145 @@ export function NightPage({ event }: { event: RacketEvent }) {
           lists={[{ category: null, name: null, listed: cfg.players }]}
           started={started}
           onEdit={isAdmin ? () => setEditing('inscripcion') : undefined}
+          className="mt-[22px]"
         />
       )}
 
-      {mine && !finished && (
-        <MyCourt match={mine.match} partner={mine.side1.includes(myPlayerId!) ? mine.side1 : mine.side2} round={current!.round} onOpen={() => param.open(mine.id)} onScore={() => param.openCourt(mine.id)} />
+      {mine && !finished && <MyCourt match={mine.match} round={current!.round} onOpen={() => param.open(mine.id)} onScore={() => param.openCourt(mine.id)} className="mt-[22px]" />}
+      {resting && !finished && <RestCard round={current!.round} text="Sumas lo que dicen las reglas de la noche." className="mt-[22px]" />}
+
+      {/* Terminada la noche, el admin tiene el reporte a la mano (para todos está en «•••»). */}
+      {organize && finished && rounds.length > 0 && <ReportButton {...report} look="card" className="mt-[22px]" />}
+
+      {pro ? (
+        <>
+          <Segmented
+            full
+            label="Qué ver de la noche"
+            className="mt-[22px]"
+            options={[
+              { key: 'canchas' as const, label: 'Canchas', icon: <LayoutGrid aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+              { key: 'tabla' as const, label: 'Tabla', icon: <Trophy aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+              { key: 'rondas' as const, label: 'Rondas', icon: <Rows3 aria-hidden="true" className="size-4 max-[359px]:hidden" /> },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
+          <div key={tab} className="animate-fade-up mt-4 flex flex-col gap-4">
+            {tab === 'canchas' && courts}
+            {tab === 'tabla' && (
+              <>
+                <StandingsTable
+                  rows={played}
+                  nameOf={names.nameOf}
+                  columns={TABLE_COLUMNS}
+                  highlight={myPlayerId ? [myPlayerId] : []}
+                  primary={['puntos']}
+                  empty="Cuando termine el primer partido, sale la tabla."
+                />
+                <p className="mx-1 text-[12.5px] leading-[1.4] text-muted">
+                  Orden: puntos, partidos ganados y diferencia.{cfg.rest !== 'none' && ' Quien descansa suma según las reglas.'}
+                </p>
+              </>
+            )}
+            {tab === 'rondas' && (rounds.length ? rounds.slice().reverse().map((r) => <RoundList key={r.round} round={r} onOpen={param.open} />) : <Empty title="Todavía no hay rondas" />)}
+          </div>
+          <div className="mt-[30px]">{rows}</div>
+        </>
+      ) : (
+        <>
+          <div className="mt-[30px]">{courts}</div>
+          {played.length > 0 && (
+            <section className="mt-[30px]" aria-labelledby="noche-todos">
+              <SectionHeader id="noche-todos" title="Cómo van todos" />
+              <RankRows
+                rows={played}
+                nameOf={names.nameOf}
+                value={(id) => fmtPoints(played.find((r) => r.id === id)?.points ?? 0)}
+                sub={(id) => {
+                  const r = played.find((x) => x.id === id);
+                  return r ? `${r.played} ${r.played === 1 ? 'partido' : 'partidos'} · ${r.won} G` : null;
+                }}
+                highlight={myPlayerId ? [myPlayerId] : []}
+              />
+              <p className="mx-1 mt-2.5 text-[12.5px] leading-[1.4] text-muted">Puntos de cada uno · se actualiza al terminar cada partido</p>
+            </section>
+          )}
+          <div className="mt-[30px]">{rows}</div>
+        </>
       )}
-      {resting && !finished && (
-        <Card className="flex items-center gap-3 border-accent/40 bg-accent-soft/40 px-4 py-3">
-          <Rows3 className="size-6 shrink-0 text-accent" />
-          <p className="text-sm">
-            <b>Ronda {current!.round}: descansas.</b> Suma lo que dicen las reglas de la noche.
-          </p>
-        </Card>
-      )}
 
-      {/* Terminada la noche, el admin tiene el reporte a la mano (para todos está el botón de arriba). */}
-      {isAdmin && finished && rounds.length > 0 && <ReportButton {...report} look="card" />}
-
-      <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
-
-      <Tabs
-        items={[
-          { key: 'canchas' as Tab, label: 'Canchas', icon: <LayoutGrid className="size-4" /> },
-          { key: 'tabla' as Tab, label: 'Tabla', icon: <ListOrdered className="size-4" /> },
-          { key: 'rondas' as Tab, label: 'Rondas', icon: <Rows3 className="size-4" /> },
-          { key: 'jugadores' as Tab, label: 'Jugadores', icon: <Users className="size-4" /> },
-        ]}
-        active={tab}
-        onChange={setTab}
-      />
-
-      <div key={tab} className="animate-fade-up flex flex-col gap-4">
-        {tab === 'canchas' &&
-          (q.loading && !matches.length ? (
-            <ListSkeleton rows={2} />
-          ) : !current ? (
-            <FirstRound cfg={cfg} busy={pending.isBusy('ronda')} onStart={() => void nextRound()} onPlayers={() => setEditing('jugadores')} />
-          ) : (
-            <>
-              {finished && <Podium table={table} nameOf={names.nameOf} share={share} />}
-              <RoundCourts round={current} onOpen={param.open} onScore={param.openCourt} />
-              {isAdmin && !cfg.closed && (
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  {current.round < cfg.rounds && (
-                    <Button variant="primary" className="h-12 flex-1 text-base" loading={pending.isBusy('ronda')} disabled={busy} icon={<SkipForward className="size-5" />} onClick={() => void nextRound()}>
-                      Siguiente ronda ({current.round + 1} de {cfg.rounds})
-                    </Button>
-                  )}
-                  {current.round >= cfg.rounds && current.done && (
-                    <Button variant="primary" className="h-12 flex-1 text-base" loading={pending.isBusy('cerrar-fin')} disabled={busy} icon={<Flag className="size-5" />} onClick={() => void closeNight(true, 'cerrar-fin')}>
-                      Terminar la noche
-                    </Button>
-                  )}
-                  {!current.started && (
-                    <Button className="h-12" loading={pending.isBusy('rehacer')} disabled={busy} icon={<RefreshCw className="size-4" />} onClick={() => void redo()}>
-                      Rehacer la ronda
-                    </Button>
-                  )}
-                </div>
-              )}
-            </>
-          ))}
-
-        {tab === 'tabla' && (
-          <>
-            <StandingsTable
-              rows={table.filter((r) => r.played > 0 || r.points > 0)}
-              nameOf={names.nameOf}
-              columns={TABLE_COLUMNS}
-              highlight={myPlayerId ? [myPlayerId] : []}
-              primary={['puntos']}
-              empty="Cuando termine el primer partido, sale la tabla."
-            />
-            <p className="px-1 text-xs text-muted">
-              Orden: puntos → partidos ganados → diferencia de puntos. Se actualiza al terminar cada partido.
-              {cfg.rest !== 'none' && ' Quien descansa suma según las reglas de la noche.'}
-            </p>
-            <ShareBox text={share} />
-          </>
-        )}
-
-        {tab === 'rondas' && (rounds.length ? rounds.slice().reverse().map((r) => <RoundList key={r.round} round={r} onOpen={param.open} />) : <Empty title="Todavía no hay rondas" />)}
-
-        {tab === 'jugadores' && <PlayersTab cfg={cfg} table={table} onEdit={isAdmin ? () => setEditing('jugadores') : undefined} />}
+      {/* El único aviso de la pantalla, al final (como en la práctica del boliche). */}
+      {/* Los premios de la noche, al final (se eligen y se entregan; no son de todos los días). */}
+      <div className="mt-[30px] empty:hidden">
+        <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
       </div>
+
+      <NoticeSlot className="mt-4" />
+
+      <Sheet open={sheet === 'compartir'} onClose={() => setSheet(null)} title="Compartir la tabla" subtitle={title}>
+        {sheet === 'compartir' && <ShareBox text={share} />}
+      </Sheet>
+      <Sheet open={sheet === 'rondas'} onClose={() => setSheet(null)} title="Rondas" subtitle={title}>
+        <div className="flex flex-col gap-3 pb-1">
+          {rounds
+            .slice()
+            .reverse()
+            .map((r) => (
+              <RoundList
+                key={r.round}
+                round={r}
+                onOpen={(id) => {
+                  setSheet(null);
+                  param.open(id);
+                }}
+              />
+            ))}
+        </div>
+      </Sheet>
+      <Sheet
+        open={sheet === 'jugadores' || requested === 'jugadores'}
+        onClose={() => {
+          setSheet(null);
+          if (requested === 'jugadores') setTab('canchas');
+        }}
+        title={`Jugadores (${cfg.players.length})`}
+        subtitle={title}
+        footer={
+          isAdmin ? (
+            <Button
+              variant="quiet"
+              size="lg"
+              className="w-full"
+              icon={<Users className="size-4" />}
+              onClick={() => {
+                setSheet(null);
+                setEditing('jugadores');
+              }}
+            >
+              Cambiar jugadores
+            </Button>
+          ) : undefined
+        }
+      >
+        <PlayersList
+          ids={cfg.players}
+          sub={(id) => (levels[id] != null ? levelText(levels[id], scale) : null)}
+          value={(id) => {
+            const r = table.find((x) => x.id === id);
+            return r ? `${fmtPoints(r.points)} pts` : null;
+          }}
+        />
+      </Sheet>
+      {sheet === 'reporte' && <ReportSheet open onClose={() => setSheet(null)} report={report.report} comp={report.comp ?? null} />}
+      {sheet === 'anotadores' && (
+        <ScorersSheet
+          open
+          onClose={() => setSheet(null)}
+          target={{ scope: 'evento', refId: event.id, title: event.name || (league.kind === 'torneo' ? league.name : title) }}
+          participants={cfg.players}
+        />
+      )}
 
       <SettingsModal open={editing === 'ajustes'} cfg={cfg} busy={pending.isBusy('ajustes')} disabled={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Guardado', 'ajustes')) && setEditing(null)} />
       <PlayersModal open={editing === 'jugadores'} cfg={cfg} busy={pending.isBusy('jugadores')} disabled={busy} onClose={() => setEditing(null)} onSave={async (c) => (await saveConfig(c, 'Jugadores guardados', 'jugadores')) && setEditing(null)} />
@@ -379,254 +489,6 @@ export function NightPage({ event }: { event: RacketEvent }) {
         />
       )}
     </div>
-  );
-}
-
-/** «Te toca: Cancha 2 · con Ana contra Luis / Pedro». */
-function MyCourt({ match, partner, round, onOpen, onScore }: { match: Match; partner: string[]; round: number; onOpen: () => void; onScore: () => void }) {
-  const names = useNames();
-  const { myPlayerId } = useLeagueCtx();
-  const mateIds = partner.filter((p) => p !== myPlayerId);
-  const rival = match.sides.find((s) => !s.players.some((p) => p.playerId === myPlayerId));
-  const open = match.status === 'scheduled' || match.status === 'live' || match.status === 'suspended';
-  return (
-    <Card className="flex flex-col gap-3 border-accent/50 bg-accent-soft/40 p-4">
-      <div>
-        <p className="text-xs font-semibold text-accent">Ronda {round}: te toca</p>
-        <p className="text-2xl font-black">{match.court || 'Cancha'}</p>
-        <p className="text-sm">
-          {mateIds.length ? `Con ${mateIds.map(names.nameOf).join(' y ')} ` : ''}contra <b>{rival?.label ?? 'el rival'}</b>
-        </p>
-      </div>
-      <div className="flex gap-2">
-        {open && (
-          <Button variant="primary" className="h-12 flex-1 text-base" icon={<Play className="size-5" />} onClick={onScore}>
-            Anotar en la cancha
-          </Button>
-        )}
-        <Button className="h-12" onClick={onOpen}>
-          {open ? 'Ver' : 'Ver resultado'}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function FirstRound({ cfg, busy, onStart, onPlayers }: { cfg: NightConfig; busy: boolean; onStart: () => void; onPlayers: () => void }) {
-  const { isAdmin } = useLeagueCtx();
-  const next = nextNightRound(cfg, []);
-  if (!isAdmin) {
-    return (
-      <Empty icon={<LayoutGrid className="size-8" />} title="Todavía no empieza">
-        Cuando el organizador arme la ronda 1, aquí sale tu cancha (y te llega un aviso).
-      </Empty>
-    );
-  }
-  return (
-    <Card className="flex flex-col gap-3 p-4">
-      <p className="font-semibold">Todo listo para la ronda 1</p>
-      <p className="text-sm text-muted">
-        {cfg.players.length} jugadores en {cfg.courts.length} {cfg.courts.length === 1 ? 'cancha' : 'canchas'}, {pointsLabel(cfg.points).toLowerCase()},{' '}
-        {cfg.rounds} rondas. {cfg.format === 'mexicano' ? (cfg.firstRound === 'level' ? 'La ronda 1 va por nivel.' : 'La ronda 1 va al azar.') : 'Las parejas rotan sin repetir compañero.'}
-      </p>
-      {!next.ok && <p className="text-sm text-warn">{next.reason}</p>}
-      {cfg.signup?.open && <p className="text-sm text-muted">Al empezar la ronda 1 se cierra la inscripción y la lista de espera ya no sube sola.</p>}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button variant="primary" className="h-12 flex-1 text-base" icon={<Play className="size-5" />} loading={busy} disabled={!next.ok} onClick={onStart}>
-          Empezar ronda 1
-        </Button>
-        <Button className="h-12" icon={<Users className="size-4" />} onClick={onPlayers}>
-          Jugadores
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-/** La ronda actual: una tarjeta por cancha con su marcador; tocarla abre el partido. */
-function RoundCourts({ round, onOpen, onScore }: { round: NightRound; onOpen: (id: string) => void; onScore: (id: string) => void }) {
-  const { lid, league, isAdmin, member } = useLeagueCtx();
-  const names = useNames();
-  const mySideOf = useMySide();
-  const [typing, setTyping] = useState<Match | null>(null);
-  const points = typing ? parsePoints((typing.rules as Record<string, unknown> | undefined)?.points) : null;
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-sm font-semibold text-muted">Ronda {round.round}</h2>
-        <span className="text-xs text-muted">{round.pending ? `${round.pending} en juego` : 'Todas terminadas'}</span>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {round.matches.map((m) => {
-          const open = m.match.status === 'scheduled' || m.match.status === 'live' || m.match.status === 'suspended';
-          const canScore = isAdmin || !!member?.scorer || mySideOf(m.match) !== null;
-          return (
-            <MatchCard
-              key={m.id}
-              match={m.match}
-              mySide={mySideOf(m.match)}
-              onClick={() => onOpen(m.id)}
-              tz={league.tz}
-              footer={
-                open && canScore ? (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="primary" className="h-10 flex-1" icon={<Play className="size-4" />} onClick={() => onScore(m.id)}>
-                      Anotar
-                    </Button>
-                    <Button size="sm" className="h-10 flex-1" icon={<Keyboard className="size-4" />} onClick={() => setTyping(m.match)}>
-                      Marcador
-                    </Button>
-                  </div>
-                ) : undefined
-              }
-            />
-          );
-        })}
-      </div>
-      {round.rests.length > 0 && (
-        <p className="px-1 text-sm text-muted">
-          Descansan: <span className="font-medium text-fg">{round.rests.map(names.nameOf).join(', ')}</span>
-        </p>
-      )}
-      {typing && points && (
-        <ResultEntryModal
-          open
-          onClose={() => setTyping(null)}
-          lid={lid}
-          match={typing}
-          parser={pointsResultParser(points)}
-          title={`Marcador de ${typing.court || 'la cancha'}`}
-          placeholder="14-10"
-          hint={points.mode === 'total' ? `Los puntos de cada lado: suman ${points.target}.` : 'Los puntos de cada lado.'}
-          onSubmit={async (r) => {
-            const sides = r.score.sides ?? [0, 0];
-            const out = await savePointsResult(lid, typing.id, [sides[0], sides[1]]);
-            if (out && !out.ok) throw new Error('Otro teléfono va más adelante con este partido.');
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function RoundList({ round, onOpen }: { round: NightRound; onOpen: (id: string) => void }) {
-  const names = useNames();
-  const pair = (ids: string[]) => ids.map(names.nameOf).join(' / ');
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b border-line px-4 py-2 text-sm font-semibold">
-        <span>Ronda {round.round}</span>
-        {!round.done && <Badge tone="ok">En juego</Badge>}
-      </div>
-      <div className="divide-y divide-line">
-        {round.matches.map((m) => (
-          <button key={m.id} type="button" onClick={() => onOpen(m.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-surface-2">
-            <span className="w-20 shrink-0 truncate text-xs text-muted">{m.court}</span>
-            <span className="min-w-0 flex-1">
-              <span className={cx('block truncate', m.score1 != null && m.score1 > m.score2! && 'font-semibold')}>{pair(m.side1)}</span>
-              <span className={cx('block truncate', m.score2 != null && m.score2 > m.score1! && 'font-semibold')}>{pair(m.side2)}</span>
-            </span>
-            <span className="flex flex-col text-right font-bold tabular-nums">
-              <span>{m.score1 ?? '–'}</span>
-              <span>{m.score2 ?? '–'}</span>
-            </span>
-          </button>
-        ))}
-      </div>
-      {round.rests.length > 0 && <p className="border-t border-line px-4 py-2 text-xs text-muted">Descansan: {round.rests.map(names.nameOf).join(', ')}</p>}
-    </Card>
-  );
-}
-
-function Podium({ table, nameOf, share }: { table: ReturnType<typeof nightTable>; nameOf: (id: string) => string; share: string }) {
-  const top = table.filter((r) => r.played > 0).slice(0, 3);
-  if (!top.length) return null;
-  return (
-    <Card className="flex flex-col gap-3 p-4">
-      <p className="flex items-center gap-2 font-semibold">
-        <Trophy className="size-5 text-gold" /> Tabla final
-      </p>
-      <div className="flex flex-col gap-2">
-        {top.map((r) => (
-          <div key={r.id} className="flex items-center gap-3">
-            <Position pos={r.rank} />
-            <span className="flex-1 truncate font-medium">{nameOf(r.id)}</span>
-            <span className="font-bold tabular-nums">{fmtPoints(r.points)}</span>
-          </div>
-        ))}
-      </div>
-      <a
-        href={whatsappShareUrl(share)}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-ok px-4 text-sm font-medium text-bg hover:brightness-110 active:scale-[0.97]"
-      >
-        <MessageCircle className="size-5" /> Compartir por WhatsApp
-      </a>
-    </Card>
-  );
-}
-
-function ShareBox({ text }: { text: string }) {
-  const { toast } = useFeedback();
-  const copying = useBusy();
-  return (
-    <div className="flex flex-wrap gap-2">
-      <a
-        href={whatsappShareUrl(text)}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-ok px-4 text-sm font-medium text-bg hover:brightness-110 active:scale-[0.97]"
-      >
-        <MessageCircle className="size-5" /> WhatsApp
-      </a>
-      <Button
-        className="h-11 flex-1"
-        loading={copying.isBusy()}
-        onClick={() =>
-          void copying.run('copiar', () =>
-            navigator.clipboard
-              .writeText(text)
-              .then(() => toast('Tabla copiada'))
-              .catch(() => toast('No se pudo copiar', 'error')),
-          )
-        }
-      >
-        Copiar la tabla
-      </Button>
-    </div>
-  );
-}
-
-function PlayersTab({ cfg, table, onEdit }: { cfg: NightConfig; table: ReturnType<typeof nightTable>; onEdit?: () => void }) {
-  const names = useNames();
-  const { levels, scale } = useLevels();
-  const byId = new Map(table.map((r) => [r.id, r] as const));
-  const list: ReactNode = cfg.players.length ? (
-    <Card className="divide-y divide-line overflow-hidden">
-      {cfg.players.map((id) => {
-        const r = byId.get(id);
-        return (
-          <div key={id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="min-w-0 flex-1 truncate font-medium">{names.nameOf(id)}</span>
-            {levels[id] != null && <Badge tone="neutral">{levelText(levels[id], scale)}</Badge>}
-            <span className="text-sm text-muted tabular-nums">{r ? `${fmtPoints(r.points)} pts` : ''}</span>
-          </div>
-        );
-      })}
-    </Card>
-  ) : (
-    <Empty title="Sin jugadores" />
-  );
-  return (
-    <>
-      {list}
-      {onEdit && (
-        <Button className="h-11" icon={<Users className="size-4" />} onClick={onEdit}>
-          Cambiar jugadores
-        </Button>
-      )}
-    </>
   );
 }
 
@@ -654,29 +516,22 @@ function SettingsModal({
   }
   const changedPlan = draft.courts.length !== cfg.courts.length || draft.rounds !== cfg.rounds;
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Ajustes de la noche"
+      subtitle="Valen desde la ronda que sigue"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button
-            variant="primary"
-            loading={busy}
-            disabled={disabled}
-            onClick={() => onSave(changedPlan ? { ...draft, courts: draft.courts.map((c, i) => c.trim() || `Cancha ${i + 1}`), plan: undefined, planPlayers: undefined, planFrom: undefined } : draft)}
-          >
-            Guardar
-          </Button>
-        </>
+        <SaveFooter
+          onClose={onClose}
+          busy={busy}
+          disabled={disabled}
+          onSave={() => onSave(changedPlan ? { ...draft, courts: draft.courts.map((c, i) => c.trim() || `Cancha ${i + 1}`), plan: undefined, planPlayers: undefined, planFrom: undefined } : draft)}
+        />
       }
     >
-      <div className="flex flex-col gap-3">
-        <NightFields value={draft} onChange={setDraft} />
-        <p className="text-xs text-muted">Los cambios valen desde la ronda que sigue. Los partidos ya creados se quedan como están.</p>
-      </div>
-    </Modal>
+      <NightFields value={draft} onChange={setDraft} />
+    </Sheet>
   );
 }
 
@@ -708,32 +563,25 @@ function PlayersModal({
     }
   }
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Jugadores de la noche"
+      subtitle="Los cambios valen desde la ronda que sigue"
       footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button
-            variant="primary"
-            loading={busy}
-            disabled={disabled || (players.length < 4 && !cfg.signup)}
-            onClick={() => {
-              const lv = { ...cfg.levels };
-              for (const p of players) if (levels[p] != null) lv[p] = levels[p];
-              onSave({ ...cfg, players, levels: lv, ...(cfg.signup ? { signup: { ...cfg.signup, rev } } : {}) });
-            }}
-          >
-            Guardar
-          </Button>
-        </>
+        <SaveFooter
+          onClose={onClose}
+          busy={busy}
+          disabled={disabled || (players.length < 4 && !cfg.signup)}
+          onSave={() => {
+            const lv = { ...cfg.levels };
+            for (const p of players) if (levels[p] != null) lv[p] = levels[p];
+            onSave({ ...cfg, players, levels: lv, ...(cfg.signup ? { signup: { ...cfg.signup, rev } } : {}) });
+          }}
+        />
       }
     >
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">Quien llega tarde o se va: los cambios valen desde la ronda que sigue.</p>
-        <NightPlayers value={players} onChange={setPlayers} levels={levels} />
-      </div>
-    </Modal>
+      <NightPlayers value={players} onChange={setPlayers} levels={levels} />
+    </Sheet>
   );
 }

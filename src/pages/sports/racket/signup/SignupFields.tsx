@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { Button, Field, Input, Modal } from '../../../../components/ui';
-import { Stepper } from '../bits';
+import { Button, Field, Input, Sheet } from '../../../../components/ui';
+import { Stepper, ToggleRow } from '../bits';
+import { SaveFooter } from '../night/parts';
 import { SIGNUP_MAX, SIGNUP_MIN_CAP, clampCap, newSignup, type SignupSettings } from '../logic/signup';
 import { localParts, zonedIso } from '../logic/time';
 
@@ -45,19 +46,10 @@ export function SignupFields({
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex min-h-12 items-start gap-3 rounded-xl border border-line px-3 py-2.5">
-        <input type="checkbox" checked={on} onChange={(e) => toggle(e.target.checked)} className="mt-0.5 size-5 shrink-0 accent-[var(--accent)]" />
-        <span className="min-w-0">
-          <span className="block text-sm font-medium">Que se apunten en la app («Me apunto»)</span>
-          <span className="block text-xs text-muted">
-            Con cupo, fecha límite y lista de espera: si alguien se baja, entra solo el primero que espera y le llega un aviso. Tú puedes seguir
-            agregando a mano.
-          </span>
-        </span>
-      </label>
-      {value && !on && <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm text-muted">La inscripción queda cerrada: nadie más se puede apuntar. La lista de espera se conserva.</p>}
+      <ToggleRow checked={on} onChange={toggle} label="Que se apunten en la app («Me apunto»)" hint="Con cupo, fecha límite y lista de espera que sube sola" />
+      {value && !on && <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-fg-2">Cerrada: nadie más se puede apuntar. La lista de espera se conserva.</p>}
       {on && value && (
-        <div className="flex flex-col gap-3 rounded-xl bg-surface-2 p-3">
+        <div className="flex flex-col gap-3 rounded-2xl bg-surface-2 p-4">
           <div className="flex flex-wrap items-end gap-3">
             {value.cap != null ? (
               <Stepper
@@ -86,16 +78,16 @@ export function SignupFields({
             <Field label="Se cierra (opcional)">
               <Input type="date" value={deadline?.date ?? ''} onChange={(e) => setDeadline(e.target.value, deadline?.time ?? '18:00')} aria-label="Fecha límite" />
             </Field>
-            <Input type="time" value={deadline?.time ?? ''} disabled={!deadline} onChange={(e) => deadline && setDeadline(deadline.date, e.target.value)} aria-label="Hora límite" className="w-28" />
+            <div className="w-28">
+              <Input type="time" value={deadline?.time ?? ''} disabled={!deadline} onChange={(e) => deadline && setDeadline(deadline.date, e.target.value)} aria-label="Hora límite" />
+            </div>
             {deadline ? (
-              <Button variant="ghost" icon={<X className="size-4" />} aria-label="Quitar la fecha límite" onClick={() => setDeadline('', '')} />
+              <Button variant="ghost" className="size-11 rounded-full text-faint" icon={<X className="size-4" />} aria-label="Quitar la fecha límite" onClick={() => setDeadline('', '')} />
             ) : (
               <span className="w-11" aria-hidden="true" />
             )}
           </div>
-          <p className="text-xs text-muted">
-            Sin fecha límite, se pueden apuntar hasta que empiece{perCategory ? ' (cuando armes los grupos o el cuadro)' : ' (la ronda 1)'}.
-          </p>
+          <p className="text-[13px] text-muted">Sin fecha límite, hasta que empiece{perCategory ? ' (al armar grupos o cuadro)' : ' (la ronda 1)'}.</p>
         </div>
       )}
     </div>
@@ -134,20 +126,15 @@ export function SignupSettingsModal({
   }
   const unchanged = JSON.stringify(draft) === JSON.stringify(value);
   return (
-    <Modal
+    <Sheet
       open={open}
       onClose={onClose}
       title="Inscripción"
-      footer={
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" loading={busy} disabled={disabled || unchanged || (!value && !draft?.open)} onClick={() => onSave(draft)}>
-            Guardar
-          </Button>
-        </>
-      }
+      footer={<SaveFooter onClose={onClose} busy={!!busy} disabled={disabled || unchanged || (!value && !draft?.open)} onSave={() => onSave(draft)} />}
     >
-      <SignupFields value={draft} onChange={setDraft} {...fields} />
-    </Modal>
+      <div className="pb-1">
+        <SignupFields value={draft} onChange={setDraft} {...fields} />
+      </div>
+    </Sheet>
   );
 }

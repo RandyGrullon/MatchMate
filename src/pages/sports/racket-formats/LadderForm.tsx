@@ -5,7 +5,7 @@ import { createRacketEvent } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../components/feedback';
 import { Button, Field, Input, cx } from '../../../components/ui';
-import { PickList, Stepper } from '../racket/bits';
+import { PickList, Stepper, ToggleRow } from '../racket/bits';
 import { levelText, useLevels } from '../racket/levels';
 import { todayIn } from '../racket/logic/time';
 import { useNames } from '../racket/names';
@@ -24,13 +24,8 @@ export function LadderFields({ value, onChange }: { value: LadderConfig; onChang
         <Stepper label="Días para aceptar" value={value.acceptDays} min={1} max={14} onChange={(acceptDays) => onChange({ ...value, acceptDays })} />
         <Stepper label="Días para jugar" value={value.playDays} min={1} max={30} onChange={(playDays) => onChange({ ...value, playDays })} />
       </div>
-      <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-        <input type="checkbox" checked={value.open} onChange={(e) => onChange({ ...value, open: e.target.checked })} className="size-5 accent-[var(--accent)]" />
-        <span className="text-sm font-medium">Abierta: cualquiera de la liga entra solo (abajo del todo)</span>
-      </label>
-      <p className="text-xs text-muted">
-        Si el retado no acepta a tiempo, o no se juega a tiempo, gana el retador por W.O. El que gana toma el puesto del otro y los del medio bajan uno.
-      </p>
+      <ToggleRow checked={value.open} onChange={(open) => onChange({ ...value, open })} label="Abierta" hint="Cualquiera de la liga entra solo, abajo del todo" />
+      <p className="text-[13px] text-muted">Sin aceptar o jugar a tiempo, gana el retador por W.O.</p>
     </div>
   );
 }
@@ -117,14 +112,14 @@ export function LadderForm({ onDone, onBack }: WizardFormProps) {
           )
         }
       />
-      <p className={cx('text-sm', picked.length < 2 && !cfg.open ? 'text-warn' : 'text-muted')}>
+      <p className={cx('text-sm font-semibold', picked.length < 2 && !cfg.open ? 'text-danger' : 'text-muted')}>
         {picked.length} {cfg.doubles ? (picked.length === 1 ? 'pareja' : 'parejas') : picked.length === 1 ? 'jugador' : 'jugadores'}
       </p>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-3">
-        <Button icon={<ChevronLeft className="size-4" />} onClick={onBack}>
+      <div className="sticky bottom-0 -mx-5 flex gap-2.5 bg-surface px-5 pt-3 pb-1">
+        <Button variant="quiet" size="lg" className="flex-1" icon={<ChevronLeft className="size-4" />} onClick={onBack}>
           Atrás
         </Button>
-        <Button variant="primary" loading={busy} disabled={picked.length < 2 && !cfg.open} onClick={() => void create()}>
+        <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={picked.length < 2 && !cfg.open} onClick={() => void create()}>
           Crear la escalera
         </Button>
       </div>

@@ -22,7 +22,8 @@ const GUARD_MS = 280;
 
 /**
  * Dos mitades gigantes, una por lado: se toca el lado que ganó el punto (o que hizo el gol). `swap` pone el lado
- * 2 a la izquierda (cambio de lado en la cancha). Funcionan con el pulgar, en vertical y en horizontal.
+ * 2 a la izquierda (cambio de lado en la cancha). Funcionan con el pulgar, en vertical y en horizontal. El lado 1 va en
+ * el color del deporte y el 2 en tinta (device.ts, courtVars), con el número grande en el centro.
  */
 export function TwoHalves({ a, b, swap, disabled, className }: { a: HalfProps; b: HalfProps; swap?: boolean; disabled?: boolean; className?: string }) {
   const [left, right] = swap ? [b, a] : [a, b];
@@ -52,14 +53,14 @@ function Half({ label, big, sub, onTap, ariaLabel, disabled, color, which }: Hal
       }}
       style={{ ...style, touchAction: 'manipulation' }}
       className={cx(
-        'flex min-h-32 flex-col items-center justify-center gap-1 rounded-3xl px-3 py-4 text-center transition select-none',
-        'border-2 border-black/10 shadow-sm active:scale-[0.98] active:brightness-90 disabled:opacity-40',
+        'flex min-h-32 flex-col items-center justify-center gap-2 rounded-[28px] px-3 py-4 text-center transition select-none',
+        'active:scale-[0.98] active:brightness-90 disabled:opacity-40',
         'focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-fg',
       )}
     >
-      <span className="line-clamp-2 text-lg font-semibold leading-tight sm:text-xl">{label}</span>
-      {big !== undefined && <span className="text-6xl font-black tabular-nums leading-none sm:text-7xl">{big}</span>}
-      {sub !== undefined && <span className="text-base font-semibold opacity-90">{sub}</span>}
+      <span className="line-clamp-2 text-lg leading-tight font-semibold tracking-[-0.01em] sm:text-xl">{label}</span>
+      {big !== undefined && <span className="num text-[76px] leading-none font-bold sm:text-[96px]">{big}</span>}
+      {sub !== undefined && <span className="min-h-6 text-base font-semibold opacity-90">{sub}</span>}
     </button>
   );
 }

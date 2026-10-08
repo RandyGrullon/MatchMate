@@ -1,8 +1,8 @@
 /**
- * La barra de abajo del modo cancha (Deshacer, los botones del deporte y Terminar) tiene que caber en un teléfono de
- * 375 px. En dobles, al empezar cada set, el «Orden de saque» iba ahí como un cuarto botón y «Terminar» se salía de
- * la pantalla: ahora va junto a «Saca …», arriba. Se dibuja en el servidor con el controlador de la cancha simulado
- * (el de verdad arranca en un efecto).
+ * La barra de abajo del modo cancha (Deshacer y Terminar, grandes) tiene que caber en un teléfono de 375 px. En dobles,
+ * al empezar cada set, el «Orden de saque» iba ahí como un cuarto botón y «Terminar» se salía de la pantalla: ahora va
+ * junto a «Saca …», arriba. El retiro (que antes era un segundo botón con bandera junto a «Terminar») está en «•••»,
+ * arriba. Se dibuja en el servidor con el controlador de la cancha simulado (el de verdad arranca en un efecto).
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -65,18 +65,20 @@ function render(events: RacketEvent[]) {
 }
 
 describe('modo cancha a sets: la barra de abajo cabe en el teléfono', () => {
-  it('al empezar el set (dobles): «Orden de saque» va arriba, junto a quién saca; abajo solo Deshacer, Retiro y Terminar', () => {
+  it('al empezar el set (dobles): «Orden de saque» va arriba, junto a quién saca; abajo solo Deshacer y Terminar', () => {
     const { top, bar } = render([]);
     expect(top).toContain('aria-label="Orden de saque"');
     expect(bar).not.toContain('Orden de saque');
-    expect(bar).toContain('aria-label="Retiro"');
+    expect(bar).not.toContain('Retiro');
     expect(bar).toContain('Terminar');
-    expect(bar.match(/<button/g)).toHaveLength(3);
+    expect(bar.match(/<button/g)).toHaveLength(2);
+    // El retiro y suspender, en «•••» de arriba.
+    expect(top).toContain('aria-label="Más opciones"');
   });
 
   it('empezado el juego ya no se ofrece cambiar el orden', () => {
     const { top, bar } = render([{ type: 'point', side: 1 }]);
     expect(top).not.toContain('Orden de saque');
-    expect(bar.match(/<button/g)).toHaveLength(3);
+    expect(bar.match(/<button/g)).toHaveLength(2);
   });
 });

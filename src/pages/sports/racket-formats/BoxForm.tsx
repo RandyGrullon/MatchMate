@@ -4,7 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import { createRacketEvent } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../components/feedback';
-import { Button, Field, Input, cx } from '../../../components/ui';
+import { Button, Field, Input, Segmented, cx } from '../../../components/ui';
 import { PickList, Stepper } from '../racket/bits';
 import { levelText, useLevels } from '../racket/levels';
 import { todayIn } from '../racket/logic/time';
@@ -16,16 +16,17 @@ import { DEFAULT_BOX_RULES, boxConfigJson, entrantLevel, firstBoxes, monthDrafts
 /** Individual o dobles (el pádel siempre en dobles). */
 export function ModalityPick({ value, onChange, sport }: { value: boolean; onChange: (doubles: boolean) => void; sport: string }) {
   if (sport === 'padel') return null;
-  const pill = (on: boolean) => cx('min-h-12 rounded-xl border-2 px-3 text-sm font-semibold transition active:scale-95', on ? 'border-accent bg-accent-soft text-accent' : 'border-line');
   return (
-    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Modalidad">
-      <button type="button" aria-pressed={!value} className={pill(!value)} onClick={() => onChange(false)}>
-        Individual
-      </button>
-      <button type="button" aria-pressed={value} className={pill(value)} onClick={() => onChange(true)}>
-        Dobles (parejas)
-      </button>
-    </div>
+    <Segmented
+      full
+      label="Modalidad"
+      options={[
+        { key: 'individual', label: 'Individual' },
+        { key: 'dobles', label: 'Dobles (parejas)' },
+      ]}
+      value={value ? 'dobles' : 'individual'}
+      onChange={(k) => onChange(k === 'dobles')}
+    />
   );
 }
 
@@ -132,16 +133,16 @@ export function BoxForm({ onDone, onBack }: WizardFormProps) {
           )
         }
       />
-      <p className={cx('rounded-xl px-3 py-2 text-sm', picked.length < 2 ? 'bg-warn-soft text-warn' : 'bg-surface-2')}>
+      <p className={cx('rounded-2xl px-4 py-3 text-sm', picked.length < 2 ? 'bg-danger-soft text-danger' : 'bg-surface-2 text-fg-2')}>
         {picked.length < 2
           ? 'Elige al menos 2.'
           : `${picked.length} ${doubles ? 'parejas' : 'jugadores'}: ${sizes.length} ${sizes.length === 1 ? 'caja' : 'cajas'} (${sizes.join(', ')}). El mes: ${monthLabel(today)}.`}
       </p>
-      <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-3">
-        <Button icon={<ChevronLeft className="size-4" />} onClick={onBack}>
+      <div className="sticky bottom-0 -mx-5 flex gap-2.5 bg-surface px-5 pt-3 pb-1">
+        <Button variant="quiet" size="lg" className="flex-1" icon={<ChevronLeft className="size-4" />} onClick={onBack}>
           Atrás
         </Button>
-        <Button variant="primary" loading={busy} disabled={picked.length < 2 || sizes.some((n) => n < 2)} onClick={() => void create()}>
+        <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={picked.length < 2 || sizes.some((n) => n < 2)} onClick={() => void create()}>
           Crear y armar el mes
         </Button>
       </div>

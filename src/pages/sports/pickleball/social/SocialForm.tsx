@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { createRacketEvent } from '../../../../lib/data/racket';
 import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
-import { Button, Field, Input, cx } from '../../../../components/ui';
-import { Stepper } from '../../racket/bits';
+import { Button, Field, Input } from '../../../../components/ui';
+import { Stepper, ToggleRow, choiceClass } from '../../racket/bits';
 import { useLevels } from '../../racket/levels';
 import { nightInfo, suggestRounds } from '../../racket/logic/night';
 import { todayIn } from '../../racket/logic/time';
@@ -21,8 +21,7 @@ const weekday = (date: string) => {
 
 /** El juego de cada partido: a 11, 15 o 21, ganando por 2 o por 1, conteo tradicional o por rally. */
 export function GameFields({ value, onChange }: { value: GameRules; onChange: (g: GameRules) => void }) {
-  const pill = (on: boolean) =>
-    cx('h-11 min-w-16 rounded-xl border-2 px-3 font-semibold transition active:scale-95', on ? 'border-accent bg-accent-soft text-accent' : 'border-line');
+  const pill = choiceClass;
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1.5">
@@ -62,10 +61,7 @@ export function MixedGroups({ players, value, onChange }: { players: string[]; v
   const nA = players.filter((p) => a.has(p)).length;
   return (
     <div className="flex flex-col gap-2">
-      <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-        <input type="checkbox" checked={on} onChange={(e) => onChange(e.target.checked ? [] : null)} className="size-5 accent-[var(--accent)]" />
-        <span className="text-sm font-medium">Mixto: cada pareja con uno de cada grupo</span>
-      </label>
+      <ToggleRow checked={on} onChange={(v) => onChange(v ? [] : null)} label="Mixto" hint="Cada pareja con uno de cada grupo" />
       {on && (
         <>
           <p className="text-xs text-muted">
@@ -78,7 +74,7 @@ export function MixedGroups({ players, value, onChange }: { players: string[]; v
                 type="button"
                 aria-pressed={a.has(p)}
                 onClick={() => onChange(a.has(p) ? (value ?? []).filter((x) => x !== p) : [...(value ?? []), p])}
-                className={cx('h-10 rounded-full border-2 px-3 text-sm font-medium transition active:scale-95', a.has(p) ? 'border-accent bg-accent-soft text-accent' : 'border-line')}
+                className={choiceClass(a.has(p))}
               >
                 {a.has(p) ? 'A · ' : 'B · '}
                 {names.nameOf(p)}
@@ -175,7 +171,7 @@ export function SocialForm({ onDone, onBack, last }: WizardFormProps) {
             <b>{cfg.players.length}</b> jugadores · <b>{cfg.courts.length}</b> {cfg.courts.length === 1 ? 'cancha' : 'canchas'} · {gameText(cfg.game).toLowerCase()}
           </p>
           <Stepper label="Rondas" value={cfg.rounds} min={1} max={30} onChange={(rounds) => setCfg({ ...cfg, rounds })} />
-          <p className="rounded-xl bg-surface-2 px-3 py-2 text-sm">
+          <p className="rounded-2xl bg-surface-2 px-4 py-3 text-sm text-fg-2">
             {info.tooFew ? (
               'Hacen falta al menos 4 jugadores.'
             ) : (
@@ -191,16 +187,16 @@ export function SocialForm({ onDone, onBack, last }: WizardFormProps) {
           <p className="text-xs text-muted">Después de crearlo, tocas «Empezar ronda 1» y a cada quien le llega su cancha.</p>
         </>
       )}
-      <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-3">
-        <Button icon={<ChevronLeft className="size-4" />} onClick={() => (step === 1 ? onBack() : setStep(step - 1))}>
+      <div className="sticky bottom-0 -mx-5 flex gap-2.5 bg-surface px-5 pt-3 pb-1">
+        <Button variant="quiet" size="lg" className="flex-1" icon={<ChevronLeft className="size-4" />} onClick={() => (step === 1 ? onBack() : setStep(step - 1))}>
           Atrás
         </Button>
         {step < 3 ? (
-          <Button variant="primary" disabled={step === 2 && (cfg.players.length < 4 || !mixedOk)} icon={<ChevronRight className="size-4" />} onClick={() => setStep(step + 1)}>
+          <Button variant="primary" size="lg" className="flex-1" disabled={step === 2 && (cfg.players.length < 4 || !mixedOk)} icon={<ChevronRight className="size-4" />} onClick={() => setStep(step + 1)}>
             Siguiente
           </Button>
         ) : (
-          <Button variant="primary" loading={busy} disabled={cfg.players.length < 4 || !mixedOk} onClick={() => void create()}>
+          <Button variant="primary" size="lg" className="flex-1" loading={busy} disabled={cfg.players.length < 4 || !mixedOk} onClick={() => void create()}>
             Crear
           </Button>
         )}
