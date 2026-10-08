@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Check, LogOut, ShieldCheck, UserX } from 'lucide-react';
+import { Check, LogOut, UserX } from 'lucide-react';
 import { authErrorMessage, confirmAdult, logout, takeAdultPending, useAuth } from '../lib/auth';
 import { LEGAL_PATHS, PRIVACY_PATH, TERMS_PATH } from '../pages/legal/legal';
+import { BusyIcon } from './busy';
+import { AuthHead, AuthScreen, ErrorNote } from './cuenta/kit';
 import { useFeedback } from './feedback';
-import { Logo } from './Logo';
 import { Button, Card, Loading } from './ui';
 
 const loadDeleteDialog = () => import('../pages/legal/DeleteAccountDialog');
@@ -82,62 +83,65 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
   if (busy === 'auto') return <Loading label="Guardando…" />;
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <Logo className="size-12" />
-          <h1 className="text-2xl font-bold tracking-tight">{step === 'ask' ? 'Antes de seguir' : 'MatchMate es para adultos'}</h1>
-        </div>
-        <Card className="flex flex-col gap-4 p-5">
-          {step === 'ask' ? (
-            <>
-              <div className="flex gap-3">
-                <ShieldCheck className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden="true" />
-                <p className="text-sm">
-                  Las cuentas de MatchMate son solo para mayores de 18 años. Los menores juegan sin cuenta, en ligas que lleva un adulto.{' '}
-                  <b>¿Tienes 18 años o más?</b>
-                </p>
-              </div>
-              {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-              <Button variant="primary" onClick={yes} loading={busy === 'si'} disabled={!!busy} icon={<Check className="size-4" />} className="h-11">
+    // Pantalla suelta (sin la barra de abajo), como Entrar: el título, la pregunta en una tarjeta y un solo botón fuerte.
+    <AuthScreen>
+      {step === 'ask' ? (
+        <>
+          <AuthHead title="Antes de seguir" subtitle="Las cuentas de MatchMate son solo para mayores de 18 años." />
+          <Card className="mt-6 flex flex-col gap-5 p-5">
+            <div>
+              <p className="text-card-title-pro">¿Tienes 18 años o más?</p>
+              <p className="mt-1.5 text-meta text-fg-2">Los menores juegan sin cuenta, en ligas que lleva un adulto.</p>
+            </div>
+            {error && <ErrorNote>{error}</ErrorNote>}
+            <div className="flex flex-col gap-2.5">
+              <Button variant="primary" size="xl" onClick={yes} loading={busy === 'si'} disabled={!!busy} icon={<Check className="size-5" />} className="w-full">
                 Sí, tengo 18 años o más
               </Button>
-              <Button onClick={() => setStep('minor')} disabled={!!busy} className="h-11">
+              <Button variant="quiet" size="xl" onClick={() => setStep('minor')} disabled={!!busy} className="w-full">
                 No, soy menor de 18
               </Button>
-              <p className="text-center text-xs text-muted">
-                Al seguir aceptas los{' '}
-                <Link to={TERMS_PATH} className="font-medium text-accent underline underline-offset-2">
-                  Términos de uso
-                </Link>{' '}
-                y la{' '}
-                <Link to={PRIVACY_PATH} className="font-medium text-accent underline underline-offset-2">
-                  Política de privacidad
-                </Link>
-                .
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm">
-                Lo sentimos: para tener cuenta hay que tener 18 años o más. Para jugar, pídele al organizador de tu liga que te anote como jugador
-                sin cuenta, con el permiso de tu mamá, tu papá o tu tutor.
-              </p>
-              <p className="text-sm text-muted">Puedes salir de esta cuenta, o borrarla para que no quede nada tuyo.</p>
-              {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-              <Button variant="primary" onClick={signOut} loading={busy === 'salir'} disabled={!!busy} icon={<LogOut className="size-4" />} className="h-11">
-                Salir de la cuenta
-              </Button>
-              <Button variant="ghost" onClick={openDelete} loading={busy === 'borrar'} disabled={!!busy} icon={<UserX className="size-4" />} className="h-11 text-danger">
-                Borrar esta cuenta
-              </Button>
-              <button type="button" onClick={() => setStep('ask')} className="min-h-11 text-sm font-medium text-accent">
-                Me equivoqué: tengo 18 años o más
-              </button>
-            </>
-          )}
-        </Card>
-      </div>
+            </div>
+          </Card>
+          <p className="mx-2 mt-4 text-center text-[13px] leading-snug text-muted">
+            Al seguir aceptas los{' '}
+            <Link to={TERMS_PATH} className="font-medium text-accent underline underline-offset-2">
+              Términos de uso
+            </Link>{' '}
+            y la{' '}
+            <Link to={PRIVACY_PATH} className="font-medium text-accent underline underline-offset-2">
+              Política de privacidad
+            </Link>
+            .
+          </p>
+        </>
+      ) : (
+        <>
+          <AuthHead title="MatchMate es para adultos" subtitle="Para tener cuenta hay que tener 18 años o más." />
+          <Card className="mt-6 flex flex-col gap-5 p-5">
+            <p className="text-meta text-fg-2">
+              Para jugar, pídele al organizador de tu liga que te anote como jugador sin cuenta, con el permiso de tu mamá, tu papá o tu tutor.
+            </p>
+            {error && <ErrorNote>{error}</ErrorNote>}
+            <Button variant="primary" size="xl" onClick={signOut} loading={busy === 'salir'} disabled={!!busy} icon={<LogOut className="size-5" />} className="w-full">
+              Salir de la cuenta
+            </Button>
+            <button
+              type="button"
+              onClick={openDelete}
+              disabled={!!busy}
+              aria-busy={busy === 'borrar' || undefined}
+              className="-my-1 inline-flex min-h-11 items-center justify-center gap-2 self-center px-3 text-meta font-semibold text-danger transition active:opacity-70 disabled:opacity-60"
+            >
+              <BusyIcon busy={busy === 'borrar'} icon={<UserX className="size-[18px]" aria-hidden="true" />} className="size-[18px]" />
+              Borrar esta cuenta
+            </button>
+          </Card>
+          <button type="button" onClick={() => setStep('ask')} className="mt-3 min-h-11 self-center px-3 text-meta font-semibold text-accent">
+            Me equivoqué: tengo 18 años o más
+          </button>
+        </>
+      )}
       {deleting && (
         <Suspense fallback={null}>
           <DeleteAccountDialog
@@ -150,6 +154,6 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
           />
         </Suspense>
       )}
-    </div>
+    </AuthScreen>
   );
 }

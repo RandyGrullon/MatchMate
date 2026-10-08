@@ -1,9 +1,9 @@
 import { useEffect, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router';
-import { FilePenLine } from 'lucide-react';
-import { BackLink } from '../../components/BackLink';
+import { useLocation, useNavigate } from 'react-router';
+import { FilePenLine, ScrollText, ShieldCheck } from 'lucide-react';
+import { BackBar } from '../../components/cuenta/kit';
 import { AppShell } from '../../components/Shell';
-import { Card, cx } from '../../components/ui';
+import { Card, ListRow, RowIcon, cx } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import type { LegalDocKey } from '../../lib/legal';
 import { LEGAL_CONTACT, LEGAL_DOCS, LEGAL_DRAFT, isPlaceholder, legalDate, PRIVACY_PATH, TERMS_PATH } from './legal';
@@ -49,14 +49,18 @@ export function Sub({ children }: { children: ReactNode }) {
 }
 
 /**
- * Página de un texto legal: título, versión y desde cuándo rige, índice con anclas y las secciones. Se lee sin
- * cuenta (y sin haber dicho «tengo 18 años o más» ni aceptado la versión nueva). El aviso de borrador (falta la
- * revisión de un abogado) solo lo ve el superadmin.
+ * Página de un texto legal, rediseño «Calma y foco»: «‹ Volver» (a la pantalla de antes: Entrar, Configuración, la
+ * pregunta de los términos…; si se entró directo, a Hoy), el ícono y el título, la versión y desde cuándo rige, el índice
+ * con anclas en una tarjeta y las secciones con su título de sección. Se lee sin cuenta (y sin haber dicho «tengo 18 años
+ * o más» ni aceptado la versión nueva). El aviso de borrador (falta la revisión de un abogado) solo lo ve el superadmin.
  */
 export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon: ReactNode; lead: ReactNode; sections: LegalSection[] }) {
-  const { hash } = useLocation();
+  const { hash, key } = useLocation();
+  const navigate = useNavigate();
   const { isSuper } = useAuth();
   const { title, version, effective } = LEGAL_DOCS[doc];
+  // Se llegó con un link de la app: «Volver» regresa a esa pantalla. Directo (un link de afuera): a Hoy.
+  const fromApp = key !== 'default';
 
   // El router no baja solo a la sección del link (#fotos): se hace aquí, cuando ya está dibujada.
   useEffect(() => {
@@ -71,22 +75,28 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
 
   return (
     <AppShell>
-      <article className="flex flex-col gap-5">
-        <header className="flex flex-col gap-3">
-          <div className="flex items-center gap-1">
-            <BackLink fallback="/" className="-ml-2 flex size-11 items-center justify-center p-0" />
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-              <span className="text-accent" aria-hidden="true">
-                {icon}
-              </span>
-              {title}
-            </h1>
-          </div>
-          <p className="text-xs font-medium text-muted">
+      <article className="flex flex-col px-2">
+        <BackBar
+          to="/"
+          label="Volver"
+          replace={!fromApp}
+          onClick={(e) => {
+            if (!fromApp) return;
+            e.preventDefault();
+            navigate(-1);
+          }}
+          className="-mt-2 mb-1"
+        />
+        <header>
+          <span aria-hidden="true" className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+            {icon}
+          </span>
+          <h1 className="mt-4 text-title">{title}</h1>
+          <p className="mt-1.5 text-meta text-muted">
             Versión {legalDate(version)} · vigente desde {legalDate(effective)}
           </p>
           {LEGAL_DRAFT && isSuper && (
-            <div role="note" className="flex gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+            <div role="note" className="mt-4 flex gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-sm text-warn">
               <FilePenLine className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
               <p>
                 <b>Borrador.</b> Pendiente: revisión por un abogado dominicano. Lo marcado en amarillo falta por completar (la lista está
@@ -94,16 +104,16 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
               </p>
             </div>
           )}
-          <div className="text-sm text-muted">{lead}</div>
+          <div className="mt-4 text-body text-fg-2">{lead}</div>
         </header>
 
-        <Card className="p-4">
+        <Card className="mt-6 px-5 pt-4 pb-3">
           <nav aria-label="Contenido">
-            <h2 className="mb-2 text-sm font-semibold">Contenido</h2>
-            <ol className="grid list-decimal gap-x-6 gap-y-0.5 pl-5 text-sm marker:text-muted sm:grid-cols-2">
+            <h2 className="mb-1 text-sm font-[650] text-fg-2">Contenido</h2>
+            <ol className="grid list-decimal gap-x-6 pl-5 text-meta marker:text-faint sm:grid-cols-2">
               {sections.map((s) => (
                 <li key={s.id}>
-                  <a href={`#${s.id}`} className="inline-flex min-h-9 items-center text-accent hover:underline">
+                  <a href={`#${s.id}`} className="inline-flex min-h-11 items-center font-[550] text-accent hover:underline">
                     {s.title}
                   </a>
                 </li>
@@ -113,26 +123,38 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
         </Card>
 
         {sections.map((s, i) => (
-          <section key={s.id} id={s.id} aria-labelledby={`${s.id}-t`} className="scroll-mt-24">
-            <h2 id={`${s.id}-t`} className="mb-2 text-lg font-bold tracking-tight">
+          <section key={s.id} id={s.id} aria-labelledby={`${s.id}-t`} className="mt-[30px] scroll-mt-24">
+            <h2 id={`${s.id}-t`} className="mx-1 mb-3 text-section">
               {i + 1}. {s.title}
             </h2>
-            <div className={cx('flex flex-col gap-2.5 text-[15px] leading-relaxed text-fg/90')}>{s.body}</div>
+            <div className={cx('mx-1 flex flex-col gap-2.5 text-[15.5px] leading-relaxed text-fg')}>{s.body}</div>
           </section>
         ))}
 
-        <footer className="mt-2 flex flex-col gap-2 border-t border-line pt-4 text-sm text-muted">
-          <p>
+        <footer className="mt-[30px]">
+          <p className="mx-1 mb-3 text-meta text-muted">
             ¿Preguntas? Escríbenos a <ContactEmail />.
           </p>
-          <p className="flex flex-wrap gap-x-4">
-            <Link to={PRIVACY_PATH} className="inline-flex min-h-11 items-center font-medium text-accent">
-              Política de privacidad
-            </Link>
-            <Link to={TERMS_PATH} className="inline-flex min-h-11 items-center font-medium text-accent">
-              Términos de uso
-            </Link>
-          </p>
+          <Card className="overflow-hidden">
+            <ListRow
+              leading={
+                <RowIcon>
+                  <ShieldCheck className="size-5" />
+                </RowIcon>
+              }
+              title="Política de privacidad"
+              to={PRIVACY_PATH}
+            />
+            <ListRow
+              leading={
+                <RowIcon>
+                  <ScrollText className="size-5" />
+                </RowIcon>
+              }
+              title="Términos de uso"
+              to={TERMS_PATH}
+            />
+          </Card>
         </footer>
       </article>
     </AppShell>

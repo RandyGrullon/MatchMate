@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
-import { Check, ChevronRight, LogOut, ScrollText, ShieldCheck, UserX } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router';
+import { Check, LogOut, ScrollText, ShieldCheck } from 'lucide-react';
 import { logout, useAuth } from '../lib/auth';
 import { acceptLegalOrSkip, legalErrorMessage } from '../lib/data/legal';
 import { reportClientError } from '../lib/errorReport';
@@ -17,9 +17,9 @@ import {
 } from '../lib/legal';
 import { LEGAL_PATHS, PRIVACY_PATH, TERMS_PATH } from '../pages/legal/legal';
 import { useFeedback } from './feedback';
-import { Logo } from './Logo';
 import { BusyIcon } from './busy';
-import { Button, Card, Loading } from './ui';
+import { AuthHead, AuthScreen, ErrorNote } from './cuenta/kit';
+import { Button, Card, ListRow, Loading, RowIcon } from './ui';
 
 const loadDeleteDialog = () => import('../pages/legal/DeleteAccountDialog');
 const DeleteAccountDialog = lazy(loadDeleteDialog);
@@ -145,67 +145,56 @@ function LegalQuestion({
   if (busy === 'auto') return <Loading label="Guardando…" />;
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <Logo className="size-12" />
-          <h1 className="text-2xl font-bold tracking-tight">{first ? 'Antes de seguir' : 'Actualizamos los términos'}</h1>
-        </div>
-        <Card className="flex flex-col gap-4 p-5">
-          <div className="flex gap-3">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden="true" />
-            <p className="text-sm">
-              {first
-                ? 'Para usar MatchMate tienes que aceptar los Términos de uso y la Política de privacidad. Dicen qué puedes hacer en la app, qué datos guardamos y cómo los cuidamos.'
-                : `Cambiamos ${docsText(pending)}. Esto es lo nuevo:`}
-            </p>
-          </div>
-          {changes.length > 0 && (
-            <ul className="flex list-disc flex-col gap-1.5 pl-9 text-sm marker:text-muted">
-              {changes.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          )}
-          <div className="flex flex-col divide-y divide-line rounded-xl border border-line">
-            {(['terminos', 'privacidad'] as const).map((d) => (
-              <Link
-                key={d}
-                to={DOC_PATH[d]}
-                className="flex min-h-12 items-center gap-3 px-3 py-2 text-sm transition hover:bg-surface-2"
-              >
-                <ScrollText className="size-4 shrink-0 text-muted" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-accent">{LEGAL_DOCS[d].title}</span>
-                  <span className="block text-xs text-muted">Versión {legalDate(LEGAL_DOCS[d].version)}</span>
-                </span>
-                <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
-              </Link>
+    // Pantalla suelta (sin la barra de abajo), como Entrar: qué cambió, los dos textos en filas y «Acepto».
+    <AuthScreen>
+      <AuthHead
+        title={first ? 'Antes de seguir' : 'Actualizamos los términos'}
+        subtitle={first ? 'Para usar MatchMate tienes que aceptar los Términos de uso y la Política de privacidad.' : `Cambiamos ${docsText(pending)}. Esto es lo nuevo:`}
+      />
+      {changes.length > 0 && (
+        <Card className="mt-6 p-5">
+          <ul className="flex list-disc flex-col gap-2 pl-5 text-meta text-fg-2 marker:text-faint">
+            {changes.map((c) => (
+              <li key={c}>{c}</li>
             ))}
-          </div>
-          {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-          <Button variant="primary" onClick={yes} loading={busy === 'si'} disabled={!!busy} icon={<Check className="size-4" />} className="h-11">
-            Acepto
-          </Button>
-          <Button onClick={signOut} loading={busy === 'salir'} disabled={!!busy} icon={<LogOut className="size-4" />} className="h-11">
-            Salir de la cuenta
-          </Button>
-          <p className="text-center text-xs text-muted">
-            Si no estás de acuerdo, puedes salir o{' '}
-            <button
-              type="button"
-              onClick={openDelete}
-              disabled={!!busy}
-              aria-busy={busy === 'borrar' || undefined}
-              className="inline-flex min-h-11 items-center gap-1 font-medium text-danger"
-            >
-              <BusyIcon busy={busy === 'borrar'} icon={<UserX className="size-3.5" aria-hidden="true" />} className="size-3.5" />
-              borrar tu cuenta
-            </button>
-            .
-          </p>
+          </ul>
         </Card>
+      )}
+      <Card className={changes.length ? 'mt-3.5 overflow-hidden' : 'mt-6 overflow-hidden'}>
+        {(['terminos', 'privacidad'] as const).map((d) => (
+          <ListRow
+            key={d}
+            leading={<RowIcon>{d === 'terminos' ? <ScrollText className="size-5" /> : <ShieldCheck className="size-5" />}</RowIcon>}
+            title={LEGAL_DOCS[d].title}
+            subtitle={`Versión ${legalDate(LEGAL_DOCS[d].version)}`}
+            to={DOC_PATH[d]}
+          />
+        ))}
+      </Card>
+      {error && <ErrorNote className="mt-4">{error}</ErrorNote>}
+      <div className="mt-6 flex flex-col gap-2.5">
+        <Button variant="primary" size="xl" onClick={yes} loading={busy === 'si'} disabled={!!busy} icon={<Check className="size-5" />} className="w-full">
+          Acepto
+        </Button>
+        <Button variant="quiet" size="xl" onClick={signOut} loading={busy === 'salir'} disabled={!!busy} icon={<LogOut className="size-5" />} className="w-full">
+          Salir de la cuenta
+        </Button>
       </div>
+      <p className="mx-2 mt-3 text-center text-[13px] leading-snug text-muted">
+        Si no estás de acuerdo, puedes salir o{' '}
+        <button
+          type="button"
+          onClick={openDelete}
+          disabled={!!busy}
+          aria-busy={busy === 'borrar' || undefined}
+          // En línea con el texto (no salta de renglón); se toca en 44 px de alto con su ::after.
+          className="relative inline font-semibold text-danger after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] disabled:opacity-60"
+        >
+          <BusyIcon busy={busy === 'borrar'} className="mr-1 inline size-3.5 align-[-2px]" />
+          borrar tu cuenta
+        </button>
+        .
+      </p>
       {deleting && (
         <Suspense fallback={null}>
           <DeleteAccountDialog
@@ -218,6 +207,6 @@ function LegalQuestion({
           />
         </Suspense>
       )}
-    </div>
+    </AuthScreen>
   );
 }

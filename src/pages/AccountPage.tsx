@@ -1,28 +1,35 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, Check, ChevronLeft, ChevronRight, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil } from 'lucide-react';
+import { AtSign, ChevronLeft, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { rememberLeague, roleLabel } from '../lib/league';
+import { useIsPro } from '../lib/useMode';
 import { AppShell } from '../components/Shell';
 import { AppearanceCard } from '../components/AppearanceCard';
 import { NotificationsCard } from '../components/NotificationsOptIn';
 import { unsubscribePush } from '../lib/push';
 import { useCreateMenu } from '../components/CreateMenu';
-import { Avatar } from '../components/Avatar';
+import { initials } from '../components/Avatar';
+import { BigField, BigInput, ErrorNote } from '../components/cuenta/kit';
 import { useAction, useFeedback } from '../components/feedback';
+import { LeagueTile } from '../components/ligas/LigasRows';
 import { PasswordInput } from '../components/PasswordInput';
 import { atUsername } from '../components/social/socialFormat';
 import { UsernameForm } from '../components/social/UsernameForm';
-import { Badge, Button, Card, Field, Input, ListSkeleton, Loading } from '../components/ui';
+import { Badge, Button, Card, ListRow, ListSkeleton, Loading, RowIcon, SectionHeader, Sheet, cx } from '../components/ui';
 import { AccountDataCard } from './legal/AccountDataCard';
 
 /**
- * Configuración (engrane de arriba): nombre, @usuario, correo, apariencia, mis ligas, tus datos (privacidad,
- * términos, bajar mis datos y borrar la cuenta), superadmin, cerrar sesión y, abajo, Acerca de y Contáctanos.
+ * Configuración (el engranaje de Yo), rediseño «Calma y foco»: «‹ Yo», el título y quién eres (como en Yo); después
+ * filas en tarjetas, sin botones sueltos: tu cuenta (nombre, @usuario y contraseña, cada uno en su hoja), Apariencia
+ * (claro, oscuro o automático y cómo ver la app), Notificaciones, Mis ligas, Tus datos (privacidad, términos, bajar mis
+ * datos y borrar la cuenta), MatchMate (superadmin, Acerca de y Contáctanos) y, al final, Cerrar sesión. En Pro, lo
+ * mismo más denso.
  */
 export default function AccountPage() {
   const auth = useAuth();
+  const pro = useIsPro();
   const create = useCreateMenu();
   const navigate = useNavigate();
   const run = useAction();
@@ -31,8 +38,7 @@ export default function AccountPage() {
   const leaving = useRef(false);
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
-  const [editing, setEditing] = useState(false);
-  const [editingUser, setEditingUser] = useState(false);
+  const [sheet, setSheet] = useState<'nombre' | 'usuario' | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -49,7 +55,7 @@ export default function AccountPage() {
       return true;
     }, 'Nombre guardado');
     setBusy(false);
-    if (ok) setEditing(false);
+    if (ok) setSheet(null);
   }
 
   async function signOut() {
@@ -72,127 +78,200 @@ export default function AccountPage() {
   // Puede faltar en una copia vieja del teléfono hasta que el perfil se vuelve a leer.
   const username = auth.profile?.username ?? '';
   const handle = atUsername(username);
+  const icon = pro ? 'size-[19px]' : 'size-5';
+  const line = [handle, user.email].filter(Boolean).join(' · ');
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col px-2">
         {/* Se llega con el único engranaje, el de Yo: «‹ Yo» vuelve ahí. */}
-        <div>
-          <div className="-mt-2 mb-1 flex min-h-13 items-center">
-            <BackToYo />
-          </div>
-          <h1 className="text-title">Configuración</h1>
+        <div className="-mt-2 mb-1 flex min-h-13 items-center">
+          <BackToYo />
         </div>
-        <Card className="flex flex-col gap-4 p-5">
-          <div className="flex items-center gap-4">
-            <Avatar name={displayName(auth)} className="size-14 text-lg" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="truncate text-xl font-bold tracking-tight">{displayName(auth)}</h2>
-                {auth.isSuper && (
-                  <Badge tone="accent">
-                    <Crown className="size-3" /> Superadmin
-                  </Badge>
-                )}
-              </div>
-              {handle && <p className="truncate text-sm font-medium text-muted">{handle}</p>}
-              <p className="truncate text-sm text-muted">{user.email}</p>
-            </div>
-            {!editing && !needsProfile && (
-              <Button
-                variant="ghost"
-                aria-label="Cambiar nombre"
-                className="max-sm:size-11"
-                icon={<Pencil className="size-4" />}
-                onClick={() => {
-                  setName(displayName(auth));
-                  setEditing(true);
-                }}
-              />
-            )}
+        <h1 className={pro ? 'text-title-pro' : 'text-title'}>Configuración</h1>
+
+        {/* Quién eres, como arriba de Yo. */}
+        <div className={cx('flex items-center', pro ? 'mt-[18px] gap-3.5' : 'mt-5 gap-4')}>
+          <span
+            aria-hidden="true"
+            className={cx('grid shrink-0 place-items-center rounded-full bg-accent font-[650] text-accent-fg', pro ? 'size-[52px] text-lg' : 'size-[60px] text-[21px]')}
+          >
+            {initials(displayName(auth))}
+          </span>
+          <div className="min-w-0">
+            <p className={cx('flex min-w-0 items-center gap-2 font-bold', pro ? 'text-[22px] leading-[1.2] tracking-[-0.02em]' : 'text-[24px] leading-[1.15] tracking-[-0.025em]')}>
+              <span className="truncate">{displayName(auth)}</span>
+              {auth.isSuper && (
+                <Badge tone="accent" className="shrink-0">
+                  <Crown className="size-3" /> Superadmin
+                </Badge>
+              )}
+            </p>
+            {line && <p className="mt-0.5 truncate text-meta text-muted">{line}</p>}
           </div>
-          {(editing || needsProfile) && (
-            <form onSubmit={saveName} className="flex items-end gap-2">
-              <Field label={needsProfile ? 'Completa tu cuenta: ¿cómo te llamas?' : 'Tu nombre'} className="flex-1">
-                <Input required maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
-              </Field>
-              <Button type="submit" variant="primary" loading={busy} icon={<Check className="size-4" />} className="max-sm:h-11">
+        </div>
+
+        {needsProfile && (
+          <Card className="mt-5 p-5">
+            <form onSubmit={saveName} className="flex flex-col gap-4">
+              <BigField label="Completa tu cuenta: ¿cómo te llamas?">
+                <BigInput required maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
+              </BigField>
+              <Button type="submit" variant="primary" size={pro ? 'lg' : 'xl'} loading={busy} className="w-full">
                 Guardar
               </Button>
             </form>
+          </Card>
+        )}
+
+        <Card className="mt-5 overflow-hidden">
+          {!needsProfile && (
+            <ListRow
+              dense={pro}
+              leading={
+                <RowIcon>
+                  <Pencil className={icon} />
+                </RowIcon>
+              }
+              title="Tu nombre"
+              subtitle={displayName(auth)}
+              onClick={() => {
+                setName(displayName(auth));
+                setSheet('nombre');
+              }}
+            />
           )}
-          {!needsProfile &&
-            (editingUser ? (
-              <div className="border-t border-line pt-4">
-                <UsernameForm uid={user.uid} current={username} onDone={() => setEditingUser(false)} />
-              </div>
-            ) : (
-              <Button
-                variant="ghost"
-                className="-ml-2 self-start max-sm:h-11"
-                icon={<AtSign className="size-4" />}
-                onClick={() => setEditingUser(true)}
-              >
-                Cambiar tu usuario
-              </Button>
-            ))}
+          {!needsProfile && (
+            <ListRow
+              dense={pro}
+              leading={
+                <RowIcon>
+                  <AtSign className={icon} />
+                </RowIcon>
+              }
+              title="Tu usuario"
+              subtitle={handle || 'Para que te encuentren'}
+              onClick={() => setSheet('usuario')}
+            />
+          )}
+          <PasswordRow dense={pro} icon={icon} />
         </Card>
 
-        <PasswordCard />
-        <AppearanceCard />
-        <NotificationsCard />
+        <AppearanceCard className="mt-[26px]" />
+        <NotificationsCard className="mt-[26px]" />
 
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-muted">Mis ligas</h2>
+        <section aria-labelledby="cfg-ligas" className="mt-[26px]">
+          <SectionHeader id="cfg-ligas" title="Mis ligas" />
           {memberships.loading || leagues.loading ? (
             <ListSkeleton rows={2} />
-          ) : leagues.data.length === 0 ? (
-            <Card className="p-4 text-sm text-muted">
-              Todavía no estás en ninguna.{' '}
-              <button type="button" onClick={create.openMenu} className="inline-flex min-h-11 items-center font-medium text-accent">
-                Crear o unirme a una liga
-              </button>
-            </Card>
           ) : (
-            <Card className="divide-y divide-line overflow-hidden">
-              {leagues.data.map((l) => {
-                const role = memberships.data.find((m) => m.leagueId === l.id)?.role;
-                return (
-                  <Link key={l.id} to={`/l/${l.id}`} className="flex min-h-12 items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-                    <span className="flex-1 truncate font-medium">{l.name}</span>
-                    {role && <Badge tone={role === 'member' ? 'neutral' : 'accent'}>{roleLabel(role)}</Badge>}
-                    <ChevronRight className="size-4 text-muted" />
-                  </Link>
-                );
-              })}
+            <Card className="overflow-hidden">
+              {leagues.data.length === 0 ? (
+                <ListRow
+                  dense={pro}
+                  leading={
+                    <RowIcon tone="accent">
+                      <Plus className={icon} />
+                    </RowIcon>
+                  }
+                  title="Crear o unirme a una liga"
+                  subtitle="Todavía no estás en ninguna"
+                  onClick={create.openMenu}
+                />
+              ) : (
+                leagues.data.map((l) => {
+                  const role = memberships.data.find((m) => m.leagueId === l.id)?.role;
+                  return (
+                    <ListRow
+                      key={l.id}
+                      dense={pro}
+                      leading={<LeagueTile league={l} dense />}
+                      title={l.name}
+                      subtitle={role ? roleLabel(role) : null}
+                      to={`/l/${l.id}`}
+                    />
+                  );
+                })
+              )}
             </Card>
           )}
         </section>
 
-        <AccountDataCard onDeleting={(d) => (leaving.current = d)} onDeleted={accountDeleted} />
+        <AccountDataCard className="mt-[26px]" onDeleting={(d) => (leaving.current = d)} onDeleted={accountDeleted} />
 
-        {auth.isSuper && (
-          <Link to="/superadmin" className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent-soft/50 px-4 py-3 font-medium text-accent">
-            <Crown className="size-5" />
-            <span className="flex-1">Panel del superadmin</span>
-            <ChevronRight className="size-4" />
-          </Link>
-        )}
+        {/* Lo que sin cuenta está en la barra de abajo (y la consola del dueño de la app). */}
+        <section aria-labelledby="cfg-matchmate" className="mt-[26px]">
+          <SectionHeader id="cfg-matchmate" title="MatchMate" />
+          <Card className="overflow-hidden">
+            {auth.isSuper && (
+              <ListRow
+                dense={pro}
+                leading={
+                  <RowIcon tone="accent">
+                    <Crown className={icon} />
+                  </RowIcon>
+                }
+                title="Panel del superadmin"
+                to="/superadmin"
+              />
+            )}
+            <ListRow
+              dense={pro}
+              leading={
+                <RowIcon>
+                  <Info className={icon} />
+                </RowIcon>
+              }
+              title="Acerca de MatchMate"
+              to="/acerca"
+            />
+            <ListRow
+              dense={pro}
+              leading={
+                <RowIcon>
+                  <MessageCircle className={icon} />
+                </RowIcon>
+              }
+              title="Contáctanos"
+              to="/contacto"
+            />
+          </Card>
+        </section>
 
-        <Button className="self-center text-danger max-sm:h-11" variant="ghost" icon={<LogOut className="size-4" />} onClick={signOut}>
-          Cerrar sesión
-        </Button>
-
-        {/* Lo que sin cuenta está en la barra de abajo. */}
-        <nav aria-label="Sobre MatchMate" className="-mt-2 flex flex-wrap justify-center gap-x-6 border-t border-line pt-2 text-sm">
-          <Link to="/acerca" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-muted hover:text-fg">
-            <Info className="size-4" aria-hidden="true" /> Acerca de MatchMate
-          </Link>
-          <Link to="/contacto" className="inline-flex min-h-11 items-center gap-1.5 font-medium text-muted hover:text-fg">
-            <MessageCircle className="size-4" aria-hidden="true" /> Contáctanos
-          </Link>
-        </nav>
+        <Card className="mt-[26px] overflow-hidden">
+          <button
+            type="button"
+            onClick={signOut}
+            className={cx(
+              'flex w-full items-center justify-center gap-2 text-body font-semibold text-danger transition active:bg-surface-2',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
+              pro ? 'min-h-row-pro' : 'min-h-row',
+            )}
+          >
+            <LogOut aria-hidden="true" className="size-5" /> Cerrar sesión
+          </button>
+        </Card>
       </div>
+
+      <Sheet
+        open={sheet === 'nombre'}
+        onClose={() => setSheet(null)}
+        title="Tu nombre"
+        footer={
+          <Button type="submit" form="cfg-nombre" variant="primary" size="xl" loading={busy} className="w-full">
+            Guardar
+          </Button>
+        }
+      >
+        <form id="cfg-nombre" onSubmit={saveName} className="pt-1">
+          <BigField label="Nombre y apellido" hint="Así te ven en las tablas y en tus ligas.">
+            <BigInput required maxLength={60} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre y apellido" />
+          </BigField>
+        </form>
+      </Sheet>
+      <Sheet open={sheet === 'usuario'} onClose={() => setSheet(null)} title="Tu usuario" subtitle="Con él te encuentran y te invitan">
+        {sheet === 'usuario' && <UsernameForm uid={user.uid} current={username} onDone={() => setSheet(null)} />}
+      </Sheet>
     </AppShell>
   );
 }
@@ -222,21 +301,26 @@ function BackToYo() {
 }
 
 /**
- * Contraseña nueva. Se abre sola al volver del link de «Olvidé mi contraseña» (/cuenta?recuperar=1); las cuentas
- * de Google también pueden ponerse una para entrar con su correo.
+ * La fila «Contraseña» y su hoja para poner una nueva. Se abre sola al volver del link de «Olvidé mi contraseña»
+ * (/cuenta?recuperar=1); las cuentas de Google también pueden ponerse una para entrar con su correo.
  */
-function PasswordCard() {
+function PasswordRow({ dense, icon }: { dense: boolean; icon: string }) {
   const auth = useAuth();
   const { toast } = useFeedback();
   const [params, setParams] = useSearchParams();
   const recovering = auth.recovering || params.get('recuperar') === '1';
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(recovering);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const short = password !== '' && password.length < MIN_PASSWORD;
   const mismatch = password2 !== '' && password !== password2;
+
+  // Llegó del link del correo con la pantalla ya abierta: la hoja se abre igual.
+  useEffect(() => {
+    if (recovering) setOpen(true);
+  }, [recovering]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -261,37 +345,39 @@ function PasswordCard() {
     }
   }
 
-  if (!open && !recovering) {
-    return (
-      <Button className="self-start max-sm:h-11" variant="ghost" icon={<KeyRound className="size-4" />} onClick={() => setOpen(true)}>
-        Cambiar contraseña
-      </Button>
-    );
-  }
   return (
-    <Card className="flex flex-col gap-3 p-5">
-      <h2 className="flex items-center gap-2 font-semibold">
-        <KeyRound className="size-4 text-accent" /> {recovering ? 'Pon tu contraseña nueva' : 'Cambiar contraseña'}
-      </h2>
-      <form onSubmit={save} className="flex flex-col gap-3">
-        <Field label="Contraseña nueva" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined}>
-          <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" invalid={short} autoFocus={recovering} />
-        </Field>
-        <Field label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined}>
-          <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
-        </Field>
-        {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          {!recovering && (
-            <Button onClick={() => setOpen(false)} className="max-sm:h-11">
-              Cancelar
-            </Button>
-          )}
-          <Button type="submit" variant="primary" loading={busy} disabled={short || mismatch || !password2} icon={<Check className="size-4" />} className="max-sm:h-11">
+    <>
+      <ListRow
+        dense={dense}
+        leading={
+          <RowIcon>
+            <KeyRound className={icon} />
+          </RowIcon>
+        }
+        title="Contraseña"
+        subtitle="Cambiarla o ponerte una"
+        onClick={() => setOpen(true)}
+      />
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={recovering ? 'Pon tu contraseña nueva' : 'Cambiar contraseña'}
+        footer={
+          <Button type="submit" form="cfg-contrasena" variant="primary" size="xl" loading={busy} disabled={short || mismatch || !password2} className="w-full">
             Guardar
           </Button>
-        </div>
-      </form>
-    </Card>
+        }
+      >
+        <form id="cfg-contrasena" onSubmit={save} className="flex flex-col gap-5 pt-1">
+          <BigField label="Contraseña nueva" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined} error={short}>
+            <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" invalid={short} autoFocus={recovering} />
+          </BigField>
+          <BigField label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined} error={mismatch}>
+            <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
+          </BigField>
+          {error && <ErrorNote>{error}</ErrorNote>}
+        </form>
+      </Sheet>
+    </>
   );
 }
