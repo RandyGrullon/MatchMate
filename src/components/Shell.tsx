@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { ClipboardList, House, Info, LogIn, MessageCircle, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
+import { ClipboardList, House, Info, LogIn, MessageCircle, MessagesSquare, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { backendMode } from '../lib/backend';
 import { useLeaguesByIds } from '../lib/data/leagues';
@@ -14,6 +14,7 @@ import { Logo } from './Logo';
 import { NoticeSlot } from './NoticeSlot';
 import { NotificationsBell } from './Notifications';
 import { useOrganize } from './OrganizeNav';
+import { SearchButton } from './social/SearchButton';
 import { ModeSheetHost } from './mode/ModeSheetHost';
 import { ModeToast } from './mode/ModeToast';
 import { OutboxIndicator } from './OutboxIndicator';
@@ -99,7 +100,7 @@ export function TopActions() {
 
 /** Secciones de la app (abajo en el celular, arriba en la computadora). */
 export interface SectionDef {
-  key: 'home' | 'leagues' | 'organize' | 'me' | 'contact' | 'about' | 'login';
+  key: 'home' | 'social' | 'leagues' | 'organize' | 'me' | 'contact' | 'about' | 'login';
   to: string;
   label: string;
   icon: LucideIcon;
@@ -110,6 +111,15 @@ const under = (p: string, ...roots: string[]) => roots.some((r) => p === r || p.
 
 // Hoy: el único inicio (y el de cada deporte, /d/:sport, mientras exista); la campana de Hoy lleva a /avisos.
 const HOY: SectionDef = { key: 'home', to: '/', label: 'Hoy', icon: House, match: (p) => p === '/' || under(p, '/d', '/avisos') };
+// Social: el feed de publicaciones, cada publicación (/p/:id), la lupa (/buscar: personas con cuenta y ligas) y el
+// perfil de otra cuenta (/u/:id).
+const SOCIAL: SectionDef = {
+  key: 'social',
+  to: '/social',
+  label: 'Social',
+  icon: MessagesSquare,
+  match: (p) => under(p, '/social', '/p', '/buscar', '/u'),
+};
 // Ligas: tus ligas y torneos, las públicas, y todo lo de adentro de una liga (en Pro, menos su Organizar). Esports
 // (sus juegos, equipos, torneos e IDs de juego) también es de Ligas.
 const LIGAS: SectionDef = {
@@ -127,8 +137,8 @@ const ORGANIZAR: SectionDef = {
   icon: ClipboardList,
   match: (p) => under(p, '/organizar', '/superadmin') || /^\/l\/[^/]+\/admin(\/|$)/.test(p),
 };
-// Yo: tu perfil, tus bolas y juegos sueltos, buscar personas y la configuración (el engranaje de Yo).
-const YO: SectionDef = { key: 'me', to: '/perfil', label: 'Yo', icon: UserRound, match: (p) => under(p, '/perfil', '/cuenta', '/bolas', '/juegos-sueltos', '/buscar') };
+// Yo: tu perfil, tus bolas y juegos sueltos y la configuración (el engranaje de Yo). Buscar es de Social.
+const YO: SectionDef = { key: 'me', to: '/perfil', label: 'Yo', icon: UserRound, match: (p) => under(p, '/perfil', '/cuenta', '/bolas', '/juegos-sueltos') };
 // Sin cuenta: la portada, cómo escribirnos, qué es MatchMate y entrar.
 const INICIO: SectionDef = { key: 'home', to: '/', label: 'Inicio', icon: House, match: (p) => p === '/' || under(p, '/d') };
 const CONTACT: SectionDef = { key: 'contact', to: '/contacto', label: 'Contáctanos', icon: MessageCircle, match: (p) => under(p, '/contacto') };
@@ -136,13 +146,13 @@ const ABOUT: SectionDef = { key: 'about', to: '/acerca', label: 'Acerca de', ico
 const ENTRAR: SectionDef = { key: 'login', to: '/login', label: 'Entrar', icon: LogIn, match: (p) => under(p, '/login') };
 
 /**
- * Las secciones, en orden. Con cuenta: Hoy · Ligas · Yo (Lite) o Hoy · Ligas · Organizar · Yo (Pro). Sin cuenta:
- * Inicio · Contáctanos · Acerca de · Entrar (las ligas públicas se ven desde la portada). Ya no hay botón de crear en
- * la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la campana de Hoy).
+ * Las secciones, en orden. Con cuenta: Hoy · Social · Ligas · Yo (Lite) o Hoy · Social · Ligas · Organizar · Yo (Pro).
+ * Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar (las ligas públicas se ven desde la portada y la lupa). Ya no hay
+ * botón de crear en la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la campana de Hoy).
  */
 export function navSections(signedIn: boolean, pro = false): SectionDef[] {
   if (!signedIn) return [INICIO, CONTACT, ABOUT, ENTRAR];
-  return pro ? [HOY, LIGAS, ORGANIZAR, YO] : [HOY, LIGAS, YO];
+  return pro ? [HOY, SOCIAL, LIGAS, ORGANIZAR, YO] : [HOY, SOCIAL, LIGAS, YO];
 }
 
 /** La sección marcada en esa ruta. Organizar gana a Ligas en el admin de una liga (si está en la barra). */
@@ -221,9 +231,13 @@ function useNavItems() {
 
 const countAria = (label: string, count: number) => (count > 0 ? `${label}: ${count} ${count === 1 ? 'pendiente' : 'pendientes'}` : undefined);
 
-/** Arriba en la computadora: las mismas secciones de la barra de abajo. */
+/**
+ * Arriba en la computadora: las mismas secciones de la barra de abajo. Con cinco (Pro), de 640 a 767 px solo los íconos
+ * (el nombre queda para el lector de pantalla y en el `title`): así caben con el logo, el deporte y la lupa.
+ */
 export function DesktopNav() {
   const { items } = useNavItems();
+  const compact = items.length > 4;
   return (
     <nav className="hidden gap-1 sm:flex" aria-label="Secciones">
       {items.map(({ section: s, to, count, current }) => {
@@ -234,6 +248,7 @@ export function DesktopNav() {
             to={to}
             aria-current={current ? 'page' : undefined}
             aria-label={countAria(s.label, count)}
+            title={compact ? s.label : undefined}
             className={cx(
               'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
               'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
@@ -241,7 +256,7 @@ export function DesktopNav() {
             )}
           >
             <Icon className="size-4" aria-hidden="true" />
-            {s.label}
+            <span className={cx(compact && 'max-md:sr-only')}>{s.label}</span>
             {count > 0 && (
               <span aria-hidden="true" className="rounded-full bg-accent px-1.5 text-[11px] leading-4 font-bold text-accent-fg">
                 {countLabel(count)}
@@ -271,7 +286,8 @@ function BottomLink({ section, to, count, current }: { section: SectionDef; to: 
         current ? 'text-fg' : 'text-muted',
       )}
     >
-      <span className={cx('relative grid h-8 w-15 shrink-0 place-items-center rounded-2xl transition-colors', current && 'bg-accent-soft text-accent')}>
+      {/* 60 px de ancho; en un teléfono angosto con cinco destinos (Pro en 320 px) se achica para no salirse. */}
+      <span className={cx('relative grid h-8 w-15 max-w-full shrink-0 place-items-center rounded-2xl transition-colors', current && 'bg-accent-soft text-accent')}>
         <Icon aria-hidden="true" className="size-[22px]" strokeWidth={current ? 2.2 : 2} />
         {count > 0 && (
           <span
@@ -288,8 +304,9 @@ function BottomLink({ section, to, count, current }: { section: SectionDef; to: 
 }
 
 /**
- * Barra de abajo en el teléfono: Hoy · Ligas · Yo (Lite) o Hoy · Ligas · Organizar · Yo (Pro, con el número de lo
- * pendiente). Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar. Sin botón del centro: crear está en Ligas.
+ * Barra de abajo en el teléfono: Hoy · Social · Ligas · Yo (Lite) o Hoy · Social · Ligas · Organizar · Yo (Pro, con el
+ * número de lo pendiente; los cinco caben en 360 px: 67 px cada uno). Sin cuenta: Inicio · Contáctanos · Acerca de ·
+ * Entrar. Sin botón del centro: crear está en Ligas.
  */
 export function BottomNav() {
   const { items, probes } = useNavItems();
@@ -313,10 +330,11 @@ export function BottomNav() {
 }
 
 /**
- * Marco de toda la app. En el teléfono no hay barra de arriba: cada pantalla trae su título (Hoy con la campana, Yo con
- * el engranaje). Solo sale si hay algo que poner: dentro de una liga (`middle`: su nombre; `subnav`: sus pestañas) o
- * el selector de deporte de quien juega más de uno. En la computadora, arriba la marca y las secciones. Debajo, el
- * lugar del aviso (NoticeSlot) para las pantallas que no ponen el suyo; abajo en el teléfono, la barra de secciones.
+ * Marco de toda la app. En el teléfono no hay barra de arriba: cada pantalla trae su título (Hoy con la lupa y la
+ * campana, Ligas con la lupa, Yo con el engranaje). Solo sale si hay algo que poner: dentro de una liga (`middle`: su
+ * nombre; `subnav`: sus pestañas), y entonces con la lupa. En la computadora, arriba la marca, el selector de deporte de
+ * quien juega más de uno, la lupa (también sin cuenta: busca ligas) y las secciones. Debajo, el lugar del aviso
+ * (NoticeSlot) para las pantallas que no ponen el suyo; abajo en el teléfono, la barra de secciones.
  */
 export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNode; subnav?: ReactNode; children: ReactNode; wide?: boolean }) {
   const location = useLocation();
@@ -373,6 +391,8 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
           )}
           {middle}
           <div className="ml-auto flex items-center gap-2">
+            {/* La lupa (personas con cuenta y ligas), siempre a mano; en el teléfono, cuando esta barra sale. */}
+            <SearchButton flat />
             <DesktopNav />
           </div>
         </header>
@@ -402,7 +422,7 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
   );
 }
 
-/** Pantallas fuera de una liga (Hoy, Ligas, Yo, cuenta, unirse, superadmin). */
+/** Pantallas fuera de una liga (Hoy, Social, Ligas, Yo, cuenta, unirse, superadmin). */
 export function AppShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return <AppFrame wide={wide}>{children}</AppFrame>;
 }

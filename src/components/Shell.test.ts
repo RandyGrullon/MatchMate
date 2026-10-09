@@ -1,8 +1,8 @@
 /**
- * La barra de secciones dibujada sin navegador (renderToString): con cuenta Hoy · Ligas · Yo (Lite) o Hoy · Ligas ·
- * Organizar · Yo (Pro, con el número de lo pendiente); sin cuenta Inicio · Contáctanos · Acerca de · Entrar (que vuelve
- * a la pantalla en que estaba). Sin botón de crear ni pestaña de avisos. Y la barra de arriba: solo dentro de una liga
- * o con el selector de deporte de quien juega más de uno.
+ * La barra de secciones dibujada sin navegador (renderToString): con cuenta Hoy · Social · Ligas · Yo (Lite) o Hoy ·
+ * Social · Ligas · Organizar · Yo (Pro, con el número de lo pendiente); sin cuenta Inicio · Contáctanos · Acerca de ·
+ * Entrar (que vuelve a la pantalla en que estaba). Sin botón de crear ni pestaña de avisos. Y la barra de arriba: en el
+ * teléfono solo dentro de una liga (con la lupa); en la computadora, la lupa antes de las secciones.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -52,13 +52,15 @@ beforeEach(() => {
 });
 
 describe('secciones de la barra', () => {
-  it('con cuenta en Lite: Hoy, Ligas y Yo; en Pro se suma Organizar antes de Yo', () => {
+  it('con cuenta en Lite: Hoy, Social, Ligas y Yo; en Pro se suma Organizar antes de Yo', () => {
     expect(navSections(true).map((s) => [s.label, s.to])).toEqual([
       ['Hoy', '/'],
+      ['Social', '/social'],
       ['Ligas', '/ligas'],
       ['Yo', '/perfil'],
     ]);
-    expect(navSections(true, true).map((s) => s.label)).toEqual(['Hoy', 'Ligas', 'Organizar', 'Yo']);
+    expect(navSections(true, true).map((s) => s.label)).toEqual(['Hoy', 'Social', 'Ligas', 'Organizar', 'Yo']);
+    expect(navSections(true, true).map((s) => s.key)).toEqual(['home', 'social', 'leagues', 'organize', 'me']);
   });
 
   it('sin cuenta: Inicio, Contáctanos, Acerca de y Entrar', () => {
@@ -70,9 +72,11 @@ describe('secciones de la barra', () => {
     ]);
     // Pro no cambia nada sin cuenta.
     expect(navSections(false, true).map((s) => s.label)).not.toContain('Organizar');
+    // Social es solo con cuenta (sin cuenta la lupa sigue arriba en la computadora: busca ligas).
+    expect(navSections(false).map((s) => s.label)).not.toContain('Social');
   });
 
-  it('cada ruta marca su pestaña: Avisos es de Hoy, la liga de Ligas, la cuenta y las bolas de Yo', () => {
+  it('cada ruta marca su pestaña: Avisos es de Hoy, buscar y los perfiles de Social, la liga de Ligas, la cuenta de Yo', () => {
     const lite = navSections(true);
     const at = (p: string) => currentSection(lite, p);
     expect(at('/')).toBe('home');
@@ -82,7 +86,13 @@ describe('secciones de la barra', () => {
     // Esports (el índice, cada juego, equipos, unirse a un equipo e IDs de juego) es de Ligas.
     for (const p of ['/esports', '/esports/valorant', '/esports/equipo/T1', '/esports/unirse/ABCD2345', '/esports/mi-id']) expect(at(p)).toBe('leagues');
     expect(at('/esportsx')).toBeNull();
-    for (const p of ['/perfil', '/cuenta', '/bolas', '/juegos-sueltos', '/buscar']) expect(at(p)).toBe('me');
+    for (const p of ['/perfil', '/cuenta', '/bolas', '/juegos-sueltos']) expect(at(p)).toBe('me');
+    // Social: el feed, una publicación, la lupa y el perfil de otra cuenta (buscar ya no es de Yo).
+    for (const p of ['/social', '/p/P1', '/buscar', '/u/u2']) expect(at(p)).toBe('social');
+    expect(at('/socialx')).toBeNull();
+    expect(at('/buscarx')).toBeNull();
+    // El muro de una liga sigue siendo de Ligas.
+    expect(at('/l/L1/muro')).toBe('leagues');
     expect(at('/acerca')).toBeNull();
     // /ligasx no es /ligas.
     expect(at('/ligasx')).toBeNull();
@@ -101,18 +111,24 @@ describe('secciones de la barra', () => {
 });
 
 describe('la barra de abajo', () => {
-  it('Lite: Hoy · Ligas · Yo con ícono y nombre; sin crear ni avisos; Ligas marcada dentro de una liga', () => {
+  it('Lite: Hoy · Social · Ligas · Yo con ícono y nombre; sin crear ni avisos; Ligas marcada dentro de una liga', () => {
     const out = render(h(BottomNav), '/l/L1/ranking');
     const t = text(out);
-    expect(t).toMatch(/Hoy .*Ligas .*Yo/);
+    expect(t).toMatch(/Hoy .*Social .*Ligas .*Yo/);
     expect(t).not.toContain('Organizar');
     expect(t).not.toContain('Avisos');
     expect(t).not.toContain('CAMPANA');
     expect(out).not.toContain('Crear');
-    expect(out.match(/<a /g)).toHaveLength(3);
-    expect(out.match(/<svg/g)).toHaveLength(3);
+    expect(out.match(/<a /g)).toHaveLength(4);
+    expect(out.match(/<svg/g)).toHaveLength(4);
     expect(currentHref(out)).toBe('/ligas');
+    expect(out).toContain('href="/social"');
     expect(out).toContain('href="/perfil"');
+  });
+
+  it('Social marcada en el feed, una publicación, la lupa y el perfil de otra cuenta', () => {
+    for (const p of ['/social', '/p/P1', '/buscar?q=ana', '/u/u2']) expect(currentHref(render(h(BottomNav), p))).toBe('/social');
+    expect(currentHref(render(h(BottomNav), '/perfil'))).toBe('/perfil');
   });
 
   it('el destino elegido: la pastilla en acento suave detrás del ícono y el nombre en el color del texto', () => {
@@ -131,8 +147,9 @@ describe('la barra de abajo', () => {
     state.organize = { href: '/l/L1/admin', total: 3 };
     const out = render(h(BottomNav), '/l/L1/admin');
     const t = text(out);
-    expect(t).toMatch(/Hoy .*Ligas .*Organizar .*Yo/);
-    expect(out.match(/<a /g)).toHaveLength(4);
+    expect(t).toMatch(/Hoy .*Social .*Ligas .*Organizar .*Yo/);
+    expect(out.match(/<a /g)).toHaveLength(5);
+    expect(out.match(/<svg/g)).toHaveLength(5);
     expect(currentHref(out)).toBe('/l/L1/admin');
     expect(out).toContain('aria-label="Organizar: 3 pendientes"');
     expect(out).toMatch(/<span aria-hidden="true" class="[^"]*bg-accent[^"]*text-accent-fg[^"]*">3<\/span>/);
@@ -147,6 +164,16 @@ describe('la barra de abajo', () => {
     out = render(h(BottomNav), '/');
     expect(out).toContain('>99+<');
     expect(out).toContain('aria-label="Organizar: 120 pendientes"');
+  });
+
+  it('los cinco de Pro caben en 360 px: cada destino se reparte el ancho y la pastilla se achica si hace falta', () => {
+    state.pro = true;
+    const out = render(h(BottomNav), '/');
+    const links = out.match(/<a [^>]*class="[^"]*"/g)!;
+    expect(links).toHaveLength(5);
+    for (const a of links) expect(a).toMatch(/min-w-0 flex-1/);
+    expect(out.match(/h-8 w-15 max-w-full shrink-0/g)).toHaveLength(5);
+    expect(out.match(/max-w-full truncate/g)).toHaveLength(5);
   });
 
   it('sin cuenta: Inicio, Contáctanos, Acerca de y Entrar (vuelve aquí)', () => {
@@ -169,11 +196,20 @@ describe('la barra de abajo', () => {
   });
 
   it('arriba en la computadora: las mismas secciones, sin «Crear»', () => {
-    let t = text(render(h(DesktopNav)));
-    expect(t).toMatch(/Hoy .*Ligas .*Yo/);
+    let out = render(h(DesktopNav));
+    let t = text(out);
+    expect(t).toMatch(/Hoy .*Social .*Ligas .*Yo/);
     expect(t).not.toContain('Crear');
+    // Con cuatro, siempre con su nombre; con cinco (Pro), de 640 a 767 px solo los íconos (el nombre, para el lector).
+    expect(out).not.toContain('max-md:sr-only');
+    state.pro = true;
+    out = render(h(DesktopNav));
+    expect(text(out)).toMatch(/Hoy .*Social .*Ligas .*Organizar .*Yo/);
+    expect(out.match(/<span class="max-md:sr-only">/g)).toHaveLength(5);
+    expect(out).toContain('title="Social"');
+    state.pro = false;
     state.auth = { user: null, loading: false };
-    const out = render(h(DesktopNav), '/contacto');
+    out = render(h(DesktopNav), '/contacto');
     t = text(out);
     expect(t).toMatch(/Inicio .*Contáctanos .*Acerca de .*Entrar/);
     expect(currentHref(out)).toBe('/contacto');
@@ -187,6 +223,17 @@ describe('la barra de arriba y el selector de deporte', () => {
     expect(showSportSwitcher([], null)).toBe(false);
     expect(showSportSwitcher(['bowling', 'padel'], null)).toBe(true);
     expect(showSportSwitcher(['bowling'], 'padel')).toBe(true);
+  });
+
+  it('la lupa arriba en la computadora, antes de las secciones (con cuenta y sin ella)', () => {
+    const headerOf = (html: string) => /<header[^>]*>(.*?)<\/header>/.exec(html)![1];
+    let header = headerOf(render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/ligas'));
+    expect(header).toContain('aria-label="Buscar personas y ligas"');
+    expect(header).toContain('href="/buscar"');
+    expect(header.indexOf('href="/buscar"')).toBeLessThan(header.indexOf('aria-label="Secciones"'));
+    state.auth = { user: null, loading: false };
+    header = headerOf(render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/acerca'));
+    expect(header).toContain('aria-label="Buscar personas y ligas"');
   });
 
   it('una cuenta de un solo deporte: sin selector y sin barra arriba en el teléfono (cada pantalla trae su título)', () => {
@@ -215,6 +262,9 @@ describe('la barra de arriba y el selector de deporte', () => {
     expect(out).toContain('PESTAÑAS');
     expect(out).not.toContain('SELECTOR');
     expect(out).not.toMatch(/class="[^"]*sticky top-0[^"]*max-sm:hidden/);
+    // Con la barra, la lupa también en el teléfono (no se esconde).
+    const lupa = /<a[^>]*aria-label="Buscar personas y ligas"[^>]*>/.exec(out)![0];
+    expect(lupa).not.toContain('hidden');
   });
 });
 

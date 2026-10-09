@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { Bell } from 'lucide-react';
 import { ModeTag } from '../mode';
 import { NOTIFICATIONS_PATH, useNotifications } from '../Notifications';
+import { SearchButton } from '../social/SearchButton';
 import { cx } from '../ui';
 import { todayLabel } from './logic';
 
@@ -31,8 +32,8 @@ export function HomeBell({ className }: { className?: string }) {
 }
 
 /**
- * Arriba de Hoy: la fecha («Miércoles 7 de octubre», con «PRO ▾» en Pro), el saludo grande («Hola, Ana») y la campana.
- * `onModeTag`: qué hace tocar «PRO ▾» (la hoja del modo).
+ * Arriba de Hoy: la fecha («Miércoles 7 de octubre», con «PRO ▾» en Pro), el saludo grande («Hola, Ana») y, a la
+ * derecha, la lupa (buscar personas y ligas) y la campana. `onModeTag`: qué hace tocar «PRO ▾» (la hoja del modo).
  */
 export function HomeHeader({ now, name, onModeTag }: { now: Date; name: string; onModeTag?: () => void }) {
   // Como el diseño (.home-head: 10 px arriba, en el margen de 24 px de la pantalla): la pantalla trae 20 px arriba.
@@ -45,7 +46,10 @@ export function HomeHeader({ now, name, onModeTag }: { now: Date; name: string; 
         </p>
         <h1 className="mt-1 truncate text-title">{name ? `Hola, ${name}` : 'Hola'}</h1>
       </div>
-      <HomeBell />
+      <div className="flex shrink-0 items-center gap-2.5">
+        <SearchButton />
+        <HomeBell />
+      </div>
     </header>
   );
 }

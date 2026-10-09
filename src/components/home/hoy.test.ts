@@ -405,6 +405,12 @@ describe('el encabezado de Hoy', () => {
     expect(render(h(HomeHeader, { now, name: 'Ana' }))).toContain('aria-label="Modo Pro: cambiar cómo ver la app"');
   });
 
+  it('la lupa al lado de la campana (antes que ella): lleva a buscar personas y ligas', () => {
+    const html = render(h(HomeHeader, { now: new Date(2026, 9, 7, 19, 48), name: 'Ana' }));
+    expect(html).toMatch(/<a[^>]*href="\/buscar"[^>]*aria-label="Buscar personas y ligas"|<a[^>]*aria-label="Buscar personas y ligas"[^>]*href="\/buscar"/);
+    expect(html.indexOf('href="/buscar"')).toBeLessThan(html.indexOf('href="/avisos"'));
+  });
+
   it('como el diseño: en el margen de 24 px de la pantalla (sin más) y 10 px arriba', () => {
     const html = render(h(HomeHeader, { now: new Date(2026, 9, 7, 19, 48), name: 'Ana' }));
     expect(html).toMatch(/^<header class="-mt-2\.5 flex items-end justify-between gap-3">/);

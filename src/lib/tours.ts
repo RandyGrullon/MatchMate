@@ -15,7 +15,7 @@ export const HOME_TOUR: TourStep[] = [
   {
     target: 'nav',
     title: 'Bienvenido a MatchMate',
-    body: 'Abajo tienes lo principal: Home (lo tuyo de hoy), Eventos (tus ligas y torneos, y las públicas para unirte), el botón del centro para crear, tus Avisos y tu Perfil (tus juegos, seguidores y likes).',
+    body: 'Abajo tienes lo principal: Hoy (lo tuyo de hoy), Social (lo que publican la gente y las ligas que sigues), Ligas (tus ligas y torneos, y las públicas para unirte) y Yo (tu perfil, tus publicaciones y tus juegos).',
   },
   {
     target: 'deporte',
@@ -51,6 +51,11 @@ export const HOME_TOUR: TourStep[] = [
     target: 'campana',
     title: 'Avisos',
     body: 'Avisos de tus ligas, resultados por confirmar, seguidores nuevos, likes y comentarios… El número rojo son los nuevos.',
+  },
+  {
+    target: 'lupa',
+    title: 'Buscar',
+    body: 'Con la lupa encuentras a otros jugadores por su nombre o @usuario y ligas por su nombre. Síguelos para ver lo que publican.',
   },
   {
     target: 'config',

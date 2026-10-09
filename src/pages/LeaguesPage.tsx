@@ -12,16 +12,17 @@ import { ALL_SPORTS, ligasSport, openLeaguesSubtitle, splitMine, tourneysOf } fr
 import { useActivity, useMyLeagues } from '../components/home/useHomeData';
 import { LeagueListRow, NoLeaguesCard, OpenLeaguesRow, SportFilter, TourneyRow } from '../components/ligas/LigasRows';
 import { OpenLeagues } from '../components/ligas/OpenLeagues';
+import { SearchButton } from '../components/social/SearchButton';
 import { Card, ListSkeleton, LoadError, Loading, SectionHeader, cx } from '../components/ui';
 
 /**
  * Ligas (`/ligas`, la pestaña Ligas; antes «Eventos»), rediseño «Calma y foco»: el título con «Crear o unirme» (la hoja
- * que antes era el botón del centro de la barra), «Tus ligas» (cada una con lo de hoy: «En juego hoy · 6 jugadores»),
- * «Tus torneos» (los sin liga y los de tus ligas que vienen) y «Buscar ligas abiertas» (las públicas de todos los
- * deportes y la agenda pública, en `?ver=abiertas`). El filtro de deporte sale solo si juegas más de uno. Lo de hoy y
- * lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin cuenta: las abiertas. Con el filtro en
- * Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports» lleva a `/esports` (los torneos donde
- * juega salen solos: es miembro de su liga).
+ * que antes era el botón del centro de la barra) y la lupa (buscar personas y ligas), «Tus ligas» (cada una con lo de
+ * hoy: «En juego hoy · 6 jugadores»), «Tus torneos» (los sin liga y los de tus ligas que vienen) y «Buscar ligas
+ * abiertas» (las públicas de todos los deportes y la agenda pública, en `?ver=abiertas`). El filtro de deporte sale
+ * solo si juegas más de uno. Lo de hoy y lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin
+ * cuenta: las abiertas. Con el filtro en Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports»
+ * lleva a `/esports` (los torneos donde juega salen solos: es miembro de su liga).
  */
 export default function LeaguesPage() {
   const auth = useAuth();
@@ -138,16 +139,20 @@ function MyLeagues() {
     <div className="flex flex-col px-2">
       <header className="flex items-center justify-between gap-3">
         <h1 className={pro ? 'text-title-pro' : 'text-title'}>Ligas</h1>
-        {/* Se ve de 40 px (como el diseño) y se toca en 44. */}
-        <button
-          type="button"
-          onClick={create.openMenu}
-          aria-haspopup="dialog"
-          className="relative inline-flex h-10 shrink-0 items-center gap-[7px] rounded-full bg-accent-soft px-4 text-meta font-semibold whitespace-nowrap text-accent transition after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <Plus aria-hidden="true" className="size-[18px]" strokeWidth={2.4} />
-          Crear o unirme
-        </button>
+        <div className="flex shrink-0 items-center gap-2.5">
+          {/* Se ve de 40 px (como el diseño) y se toca en 44. Con menos de 390 px, sin el «+»: así cabe la lupa al lado. */}
+          <button
+            type="button"
+            onClick={create.openMenu}
+            aria-haspopup="dialog"
+            className="relative inline-flex h-10 shrink-0 items-center gap-[7px] rounded-full bg-accent-soft px-4 text-meta font-semibold whitespace-nowrap text-accent transition after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <Plus aria-hidden="true" className="size-[18px] max-[390px]:hidden" strokeWidth={2.4} />
+            Crear o unirme
+          </button>
+          {/* La lupa: personas con cuenta y ligas (como la de Hoy). */}
+          <SearchButton />
+        </div>
       </header>
 
       {/* Solo si juegas más de un deporte: «Todos» y los tuyos. */}

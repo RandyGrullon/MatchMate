@@ -168,6 +168,15 @@ describe('Ligas (Lite)', () => {
     expect(t).not.toContain('Todos');
   });
 
+  it('arriba a la derecha, después de «Crear o unirme», la lupa (buscar personas y ligas)', () => {
+    const html = render();
+    const header = /<header[^>]*>(.*?)<\/header>/.exec(html)![1];
+    expect(header).toContain('aria-label="Buscar personas y ligas"');
+    expect(header.indexOf('Crear o unirme')).toBeLessThan(header.indexOf('href="/buscar"'));
+    // En un teléfono angosto el «+» se va para que quepan los dos.
+    expect(header).toContain('max-[390px]:hidden');
+  });
+
   it('sin torneos no sale «Tus torneos»; si no juega hoy, cuándo es lo próximo', () => {
     world.upcoming = [item({ lid: 'l1', date: '2026-10-13', eventId: 'p2' })];
     world.liveLids = [];
