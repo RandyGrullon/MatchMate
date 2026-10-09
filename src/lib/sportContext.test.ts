@@ -53,15 +53,13 @@ describe('deporte en que estás: guardado', () => {
     setActiveSport('padel');
     expect(getActiveSport()).toBe('padel');
     expect(store.data.get(ACTIVE_SPORT_KEY)).toBe('padel');
-    // La próxima apertura sale con la animación del pádel.
-    expect(store.data.get('mm:sport')).toBe('padel');
+    // La animación de apertura ya no sale del deporte en que estás (sale según dónde abre la app).
+    expect(store.data.has('mm:sport')).toBe(false);
     setActiveSport('padel');
     expect(calls).toBe(1);
     setActiveSport(null);
     expect(getActiveSport()).toBeNull();
     expect(store.data.has(ACTIVE_SPORT_KEY)).toBe(false);
-    // En el Home general la próxima apertura sale con la animación genérica, no con la del último deporte.
-    expect(store.data.has('mm:sport')).toBe(false);
     expect(calls).toBe(2);
     off();
   });

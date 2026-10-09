@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../../index.html?raw';
 import type { SportId } from '../../sports/types';
-import { lastSport, rememberSport, SPORT_KEY } from '../../lib/splash';
+import { LEAGUE_SPORTS_KEY, leagueSportOf, rememberLeagueSport } from '../../lib/splash';
 import { brandColors, contrast, parseHex } from '../../lib/theme';
 import { BRAND, duoFaviconSvg, duoSvg } from './brand';
 import { DURATION, LIVE_SCENES, SCENE_FOR_SPORT, SCENE_ORDER, SCENES, injectSplash, sceneForSport, sceneSvg, splashCss } from './scenes';
@@ -34,7 +34,8 @@ describe('escenas de apertura', () => {
     expect(templates).toEqual([...LIVE_SCENES]);
     expect(LIVE_SCENES).toContain('generic');
     expect(indexHtml).not.toMatch(/bowlingx|bowlinx/i);
-    expect(indexHtml).toContain(`localStorage.getItem('${SPORT_KEY}')`);
+    expect(indexHtml).toContain(`localStorage.getItem('${LEAGUE_SPORTS_KEY}')`);
+    expect(indexHtml).not.toContain("localStorage.getItem('mm:sport')");
   });
 
   it('cada deporte tiene escena; sin deporte, desconocido o apagado: la genérica', () => {
@@ -104,16 +105,71 @@ describe('escenas de apertura', () => {
   });
 });
 
-describe('último deporte usado', () => {
+/** Corre el script de apertura de index.html como al abrir la app en `path`, con ese localStorage. Devuelve la escena. */
+function openAt(path: string, store: Record<string, string> = {}): string | undefined {
+  const block = indexHtml.slice(indexHtml.indexOf('<!-- splash:html'), indexHtml.indexOf('<!-- /splash:html -->'));
+  const code = block.slice(block.indexOf('<script>') + '<script>'.length, block.lastIndexOf('</script>'));
+  const attrs: Record<string, string> = {};
+  const el = {
+    isConnected: true,
+    firstChild: null,
+    remove: () => undefined,
+    classList: { add: () => undefined },
+    insertBefore: () => undefined,
+    setAttribute: (k: string, v: string) => void (attrs[k] = v),
+  };
+  const doc = { getElementById: (id: string) => (id === 'splash' ? el : { content: { cloneNode: () => ({}) } }) };
+  const local = { getItem: (k: string) => store[k] ?? null };
+  const session = { getItem: () => null, setItem: () => undefined };
+  new Function('document', 'localStorage', 'sessionStorage', 'location', 'setTimeout', code)(doc, local, session, { pathname: path }, () => 0);
+  return attrs['data-scene'];
+}
+
+describe('la animación de apertura sale según dónde abre la app', () => {
+  const lid = '01a11db0-27b5-70fc-8a2e-4e062df1f90b';
+  const store = { [LEAGUE_SPORTS_KEY]: JSON.stringify({ [lid]: 'padel' }), 'mm:sport': 'golf' };
+
+  it('en Hoy, Social, Ligas, Yo o una publicación: la de MatchMate, aunque la última liga fuera de otro deporte', () => {
+    for (const path of ['/', '/social', '/ligas', '/perfil', '/buscar', `/p/${lid}`]) expect(openAt(path, store)).toBe('generic');
+  });
+
+  it('dentro de una liga: la de su deporte (si se sabe); si no, la de MatchMate', () => {
+    expect(openAt(`/l/${lid}`, store)).toBe('padel');
+    expect(openAt(`/l/${lid.toUpperCase()}/juegos`, store)).toBe('padel');
+    expect(openAt('/l/00000000-0000-0000-0000-000000000000', store)).toBe('generic');
+    expect(openAt(`/l/${lid}`)).toBe('generic');
+  });
+
+  it('en Esports y en /d/<deporte>: la de ese deporte (el futsal usa la del fútbol); uno desconocido: la de MatchMate', () => {
+    expect(openAt('/esports')).toBe('esports');
+    expect(openAt('/esports/rocket_league')).toBe('esports');
+    expect(openAt('/d/futsal')).toBe('football');
+    expect(openAt('/d/curling')).toBe('generic');
+  });
+
+  it('con lo guardado roto: la de MatchMate', () => {
+    expect(openAt(`/l/${lid}`, { [LEAGUE_SPORTS_KEY]: '{roto' })).toBe('generic');
+    expect(openAt(`/l/${lid}`, { [LEAGUE_SPORTS_KEY]: '"padel"' })).toBe('generic');
+  });
+});
+
+describe('el deporte de cada liga', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('se guarda para la próxima apertura', () => {
+  it('se guarda al entrar (la más reciente al final) y se recuerdan las últimas 40', () => {
     const store = new Map<string, string>();
     vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) });
-    expect(lastSport()).toBeNull();
-    rememberSport('padel');
-    expect(store.get('mm:sport')).toBe('padel');
-    expect(lastSport()).toBe('padel');
+    expect(leagueSportOf('L1')).toBeNull();
+    rememberLeagueSport('L1', 'padel');
+    rememberLeagueSport('L2', 'golf');
+    rememberLeagueSport('l1', 'padel');
+    expect(Object.keys(JSON.parse(store.get(LEAGUE_SPORTS_KEY)!))).toEqual(['l2', 'l1']);
+    expect(leagueSportOf('L1')).toBe('padel');
+    for (let i = 0; i < 45; i++) rememberLeagueSport(`x${i}`, 'tennis');
+    const map = JSON.parse(store.get(LEAGUE_SPORTS_KEY)!) as Record<string, string>;
+    expect(Object.keys(map)).toHaveLength(40);
+    expect(map.l1).toBeUndefined();
+    expect(map.x44).toBe('tennis');
   });
 
   it('sin almacenamiento no rompe nada', () => {
@@ -125,8 +181,8 @@ describe('último deporte usado', () => {
         throw new Error('bloqueado');
       },
     });
-    expect(() => rememberSport('golf')).not.toThrow();
-    expect(lastSport()).toBeNull();
+    expect(() => rememberLeagueSport('L1', 'golf')).not.toThrow();
+    expect(leagueSportOf('L1')).toBeNull();
   });
 });
 

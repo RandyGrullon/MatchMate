@@ -429,7 +429,8 @@
     <div id="splash" class="mm-sp" aria-hidden="true"><div class="word">Match<b>Mate</b></div></div>
     <script>
       // Una vez por sesión (al abrir la app instalada siempre es una sesión nueva); nunca más de 4 s.
-      // La escena es la del último deporte usado (mm:sport); si no hay o no está activa, la genérica.
+      // La escena es la de dónde abre la app: dentro de una liga, la de su deporte (lo recuerda cada liga visitada en
+      // mm:liga-deporte); en /d/<deporte> o en Esports, la de ese deporte; en lo demás (Hoy, Social, Ligas, Yo), la genérica.
       (function () {
         var el = document.getElementById('splash');
         try {
@@ -439,8 +440,13 @@
         var scenes = {"bowling":"bowling","padel":"padel","tennis":"tennis","pickleball":"pickleball","basketball":"basketball","football":"football","futsal":"football","golf":"golf","swimming":"swimming","table_tennis":"table_tennis","esports":"esports"};
         var scene = 'generic';
         try {
-          var sport = localStorage.getItem('mm:sport');
-          if (sport && Object.prototype.hasOwnProperty.call(scenes, sport)) scene = scenes[sport];
+          var parts = location.pathname.split('/'), sport = null;
+          if (parts[1] === 'l' && parts[2] && parts[2].length === 36) {
+            var map = JSON.parse(localStorage.getItem('mm:liga-deporte') || 'null');
+            sport = map && typeof map === 'object' ? map[parts[2].toLowerCase()] : null;
+          } else if (parts[1] === 'd') sport = parts[2] || null;
+          else if (parts[1] === 'esports') sport = 'esports';
+          if (typeof sport === 'string' && Object.prototype.hasOwnProperty.call(scenes, sport)) scene = scenes[sport];
         } catch (e) {}
         var t = document.getElementById('sp-' + scene);
         if (t) el.insertBefore(t.content.cloneNode(true), el.firstChild);

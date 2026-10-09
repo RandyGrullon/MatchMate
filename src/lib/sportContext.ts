@@ -13,7 +13,7 @@ import { useSyncExternalStore } from 'react';
 import { SPORT_IDS, isSportId, leagueSport, sportMeta } from '../sports/registry';
 import type { SportStatus } from '../sports/status';
 import type { SportId } from '../sports/types';
-import { forgetSport, rememberSport } from './splash';
+import { forgetOldSport } from './splash';
 import { THEME_EVENT, applySportAccent } from './theme';
 
 export const ACTIVE_SPORT_KEY = 'mm:deporte';
@@ -72,8 +72,8 @@ export function getActiveSport(): SportId | null {
 }
 
 /**
- * Cambia el deporte en que estás (null o uno desconocido = «Todos los deportes»). Lo guarda en el teléfono, avisa a
- * las pantallas y la próxima vez la app abre con la animación de ese deporte (o la genérica con «Todos»).
+ * Cambia el deporte en que estás (null o uno desconocido = «Todos los deportes»). Lo guarda en el teléfono y avisa a
+ * las pantallas. La animación de apertura no depende de esto: sale según dónde abre la app (src/lib/splash.ts).
  */
 export function setActiveSport(sport: string | null | undefined): void {
   const next = parseActiveSport(sport);
@@ -86,8 +86,6 @@ export function setActiveSport(sport: string | null | undefined): void {
   } catch {
     // sin almacenamiento: vale mientras la app está abierta
   }
-  if (next) rememberSport(next);
-  else forgetSport();
   emit();
 }
 
@@ -121,9 +119,9 @@ export const sportColor = (sport: string | null | undefined): string | null => (
  */
 export function installSportAccent(): () => void {
   if (typeof document === 'undefined' || typeof window === 'undefined') return () => undefined;
-  // La animación de apertura sigue al deporte en que estás: sin deporte (Home general), la genérica. Arregla también
-  // los teléfonos que quedaron con el último deporte guardado de antes.
-  if (!getActiveSport()) forgetSport();
+  // La animación de apertura ya no sale del último deporte usado (sale según dónde abre la app): se borra la clave
+  // vieja de los teléfonos que la tienen.
+  forgetOldSport();
   const apply = () => applySportAccent(sportColor(getActiveSport()));
   apply();
   const off = subscribeActiveSport(apply);

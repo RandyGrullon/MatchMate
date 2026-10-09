@@ -19,7 +19,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { useLeague, useMembership } from '../lib/data';
 import { setActiveSport } from '../lib/sportContext';
-import { rememberSport } from '../lib/splash';
+import { rememberLeagueSport } from '../lib/splash';
 import type { LeagueTabNames } from '../lib/tours';
 import { leagueSport, sportMeta } from '../sports/registry';
 import { dispatchLeague, useSportScreens } from '../sports/screens';
@@ -109,10 +109,10 @@ export default function LeagueShell() {
   const sportId = sport && sport.kind !== 'unknown' ? sport.sport : null;
   useEffect(() => {
     if (!sportId) return;
-    rememberSport(sportId);
+    if (lid) rememberLeagueSport(lid, sportId);
     // Entrar a una liga te pone en su deporte (Home y Eventos pasan a ser de ese deporte; la app toma su color).
     setActiveSport(sportId);
-  }, [sportId]);
+  }, [lid, sportId]);
   const ready = sport?.kind === 'ready';
   const bowling = sportId === 'bowling';
   // Pantallas y nombres de las secciones del deporte (el boliche usa las de siempre).

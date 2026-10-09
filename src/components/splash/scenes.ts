@@ -17,7 +17,7 @@
  * - Los id (clipPath) se escriben `__ID__x` y se cambian por un prefijo único al usarlos.
  */
 import type { SportId } from '../../sports/types';
-import { SPLASH_SEEN_KEY, SPORT_KEY } from '../../lib/splash';
+import { LEAGUE_SPORTS_KEY, SPLASH_SEEN_KEY } from '../../lib/splash';
 import { DUO_HEAD_R, DUO_HEADS, DUO_M, DUO_STROKE } from './brand';
 
 export type SceneId = 'generic' | 'bowling' | 'padel' | 'tennis' | 'pickleball' | 'basketball' | 'football' | 'golf' | 'swimming' | 'table_tennis' | 'esports';
@@ -584,7 +584,8 @@ export function splashBodyBlock(pad = '    '): string {
   for (const [sport, scene] of Object.entries(SCENE_FOR_SPORT)) if (scene !== 'generic' && LIVE_SCENES.includes(scene)) map[sport] = scene;
   const script = [
     '// Una vez por sesión (al abrir la app instalada siempre es una sesión nueva); nunca más de 4 s.',
-    `// La escena es la del último deporte usado (${SPORT_KEY}); si no hay o no está activa, la genérica.`,
+    '// La escena es la de dónde abre la app: dentro de una liga, la de su deporte (lo recuerda cada liga visitada en',
+    `// ${LEAGUE_SPORTS_KEY}); en /d/<deporte> o en Esports, la de ese deporte; en lo demás (Hoy, Social, Ligas, Yo), la genérica.`,
     '(function () {',
     "  var el = document.getElementById('splash');",
     '  try {',
@@ -594,8 +595,13 @@ export function splashBodyBlock(pad = '    '): string {
     `  var scenes = ${JSON.stringify(map)};`,
     "  var scene = 'generic';",
     '  try {',
-    `    var sport = localStorage.getItem('${SPORT_KEY}');`,
-    '    if (sport && Object.prototype.hasOwnProperty.call(scenes, sport)) scene = scenes[sport];',
+    "    var parts = location.pathname.split('/'), sport = null;",
+    "    if (parts[1] === 'l' && parts[2] && parts[2].length === 36) {",
+    `      var map = JSON.parse(localStorage.getItem('${LEAGUE_SPORTS_KEY}') || 'null');`,
+    "      sport = map && typeof map === 'object' ? map[parts[2].toLowerCase()] : null;",
+    "    } else if (parts[1] === 'd') sport = parts[2] || null;",
+    "    else if (parts[1] === 'esports') sport = 'esports';",
+    "    if (typeof sport === 'string' && Object.prototype.hasOwnProperty.call(scenes, sport)) scene = scenes[sport];",
     '  } catch (e) {}',
     "  var t = document.getElementById('sp-' + scene);",
     '  if (t) el.insertBefore(t.content.cloneNode(true), el.firstChild);',
