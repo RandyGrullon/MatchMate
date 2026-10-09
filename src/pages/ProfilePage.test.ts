@@ -1,8 +1,9 @@
 /**
- * Yo (`/perfil`) dibujado sin navegador, como final/6-perfil.png (Lite) y p6-perfil.png (Pro): arriba «Lite | Pro» y un
- * solo engranaje (la cuenta); tu nombre, tu @usuario y tu liga; en Lite tu promedio con cómo vas, los 3 números, Mis
- * bolas, Insignias y las filas Mis juegos y Amigos y seguidores (los seguidores ya no van en la cabecera); en Pro los 6
- * números, la tendencia, tus tiros y las filas. Las partes (`?tab=`) se abren con «‹ Yo».
+ * Yo (`/perfil`) dibujado sin navegador, como final/6-perfil.png (Lite) y p6-perfil.png (Pro): arriba «Lite | Pro», la
+ * lupa y un solo engranaje (la cuenta); tu foto (lleva a cambiarla), tu nombre, tu @usuario, tu liga y tu biografía; en
+ * Lite tu promedio con cómo vas, los 3 números, Mis bolas, Insignias y las filas Mis juegos, Mis publicaciones y Amigos y
+ * seguidores (los seguidores ya no van en la cabecera); en Pro los 6 números, la tendencia, tus tiros y las filas. Las
+ * partes (`?tab=`) se abren con «‹ Yo».
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -10,6 +11,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryClient } from '../lib/data/client';
 import type { PublicProfile } from '../lib/data/follows';
+import { AVATAR_BUCKET, primePublicUrl } from '../lib/publicImages';
 import type { BowlingEvent, Entry, League, Member } from '../lib/types';
 
 const state = vi.hoisted(() => ({
@@ -43,8 +45,13 @@ vi.mock('../lib/useMode', () => ({
   useMode: () => ({ mode: state.pro ? 'pro' : 'lite', isPro: state.pro, setMode: async () => 'saved', suggestedPro: false }),
 }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
+// Las publicaciones se pintan en src/components/posts (con sus propias pruebas): aquí solo dónde van.
+vi.mock('../components/posts/PostList', () => ({
+  PostList: ({ list, empty }: { list: { data: unknown[] }; empty?: ReactNode }) => (list.data.length ? h('div', { 'data-posts': list.data.length }) : (empty ?? null)),
+}));
+vi.mock('../components/posts/Composer', () => ({ ComposerCard: () => h('div', { 'data-composer': '' }, '¿Qué jugaste hoy?') }));
 
-const { default: ProfilePage, identityLine, socialLine, yoPart } = await import('./ProfilePage');
+const { default: ProfilePage, identityLine, postsLine, socialLine, yoPart } = await import('./ProfilePage');
 
 const render = (url = '/perfil') =>
   renderToString(h(MemoryRouter, { initialEntries: [url] }, h(Routes, null, h(Route, { path: '/perfil', element: h(ProfilePage) }))));
@@ -98,6 +105,8 @@ describe('Yo en Lite', () => {
     expect(html).toMatch(/aria-checked="true"[^>]*>.*?Lite<\/button>/);
     expect(html.match(/aria-label="Configuración de la cuenta"/g)).toHaveLength(1);
     expect(html).toContain('href="/cuenta"');
+    // La lupa, al lado del engranaje.
+    expect(html).toContain('aria-label="Buscar personas y ligas"');
     expect(t).toContain('AP Ana Pérez');
     expect(t).toContain('@anaperez · Liga de los martes');
     expect(t).not.toContain('Editar perfil');
@@ -118,9 +127,13 @@ describe('Yo en Lite', () => {
     expect(t).toContain('Mis bolas');
     expect(t).toContain('Agrega tu bola');
     expect(t).toContain('Mis juegos Prácticas, torneos y sueltos');
+    expect(t).toContain('Mis publicaciones Comparte cómo te fue');
     expect(t).toContain('Amigos y seguidores Buscar personas');
-    // Sin seguidores todavía, la fila busca personas.
-    expect(html).toContain('href="/buscar"');
+    // Mis publicaciones va entre Mis juegos y Amigos y seguidores.
+    expect(t.indexOf('Mis juegos Prácticas')).toBeLessThan(t.indexOf('Mis publicaciones'));
+    expect(t.indexOf('Mis publicaciones')).toBeLessThan(t.indexOf('Amigos y seguidores'));
+    // Sin seguidores todavía, la fila busca personas (además de la lupa).
+    expect(html.match(/href="\/buscar"/g)).toHaveLength(2);
     // Lo de Pro no sale.
     expect(t).not.toContain('Tendencia');
     expect(t).not.toContain('Tus tiros');
@@ -131,7 +144,25 @@ describe('Yo en Lite', () => {
     state.profile = pub({ followers: 3, following: 1, likesReceived: 5 });
     const html = render();
     expect(text(html)).toContain('Amigos y seguidores 3 seguidores · 1 siguiendo · 5 me gusta');
-    expect(html).not.toContain('href="/buscar"');
+    // Solo la lupa lleva a buscar.
+    expect(html.match(/href="\/buscar"/g)).toHaveLength(1);
+  });
+
+  it('tu foto (tocarla lleva a cambiarla) y tu biografía debajo del nombre', () => {
+    primePublicUrl(AVATAR_BUCKET, 'u1/foto.webp', 'https://img.test/u1/foto.webp');
+    state.profile = pub({ avatar: 'u1/foto.webp', bio: 'Zurda. Voy por mi primer 300.', posts: 4 });
+    const html = render();
+    const t = text(html);
+    expect(html).toContain('src="https://img.test/u1/foto.webp"');
+    expect(html).toMatch(/<a aria-label="Cambiar tu foto de perfil"[^>]*href="\/cuenta\?foto=1"/);
+    expect(t).toContain('Zurda. Voy por mi primer 300.');
+    expect(t).toContain('Mis publicaciones 4 publicaciones');
+  });
+
+  it('sin foto: tus iniciales, y tocarlas lleva a ponerle una', () => {
+    const html = render();
+    expect(html).toContain('aria-label="Ponerle una foto a tu perfil"');
+    expect(html).not.toContain('<img');
   });
 
   it('solo otros deportes: sin números del boliche, con tus ligas (cada una a sus números)', () => {
@@ -161,8 +192,10 @@ describe('Yo en Pro', () => {
     expect(t).toContain('Anota tus juegos con Teclado');
     expect(t).toContain('Por liga y temporada');
     expect(t).toContain('Mis juegos');
+    expect(t).toContain('Mis publicaciones');
     expect(t).toContain('Insignias');
     expect(t).toContain('Amigos y seguidores');
+    expect(html).toContain('aria-label="Buscar personas y ligas"');
     // Sin bolas, una fila para agregar la primera.
     expect(t).toContain('Mis bolas Agrega tu bola');
     expect(t).not.toContain('Tu promedio');
@@ -176,6 +209,15 @@ describe('las partes de Yo', () => {
     expect(t).toContain('Yo Mis juegos');
     expect(html).toContain('href="/perfil"');
     expect(html).toContain('href="/juegos-sueltos"');
+    expect(t).not.toContain('Tu promedio');
+  });
+
+  it('Mis publicaciones: «‹ Yo», el título, publicar algo y, sin nada todavía, cómo empezar', () => {
+    const html = render('/perfil?tab=publicaciones');
+    const t = text(html);
+    expect(t).toContain('Yo Mis publicaciones');
+    expect(html).toContain('data-composer');
+    expect(t).toContain('Todavía no publicas nada');
     expect(t).not.toContain('Tu promedio');
   });
 
@@ -214,6 +256,11 @@ describe('las cuentas de Yo', () => {
     expect(socialLine({ followers: 1, following: 0, likesReceived: 0 })).toBe('1 seguidor · 0 siguiendo');
     expect(yoPart('insignias')).toBe('insignias');
     expect(yoPart('estadisticas')).toBe('estadisticas');
+    expect(yoPart('publicaciones')).toBe('publicaciones');
     expect(yoPart('otra')).toBeNull();
+    expect(postsLine(0)).toBe('Comparte cómo te fue');
+    expect(postsLine(undefined)).toBe('Comparte cómo te fue');
+    expect(postsLine(1)).toBe('1 publicación');
+    expect(postsLine(12)).toBe('12 publicaciones');
   });
 });

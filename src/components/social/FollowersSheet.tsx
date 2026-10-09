@@ -7,7 +7,7 @@ import { UserLink } from './UserLink';
 import { compactCount } from './socialFormat';
 
 /**
- * Seguidores y seguidos de una cuenta en una hoja con dos pestañas. Cada persona lleva a su perfil (con su
+ * Seguidores y seguidos de una cuenta en una hoja con dos pestañas. Cada persona lleva a su perfil (con su foto y su
  * @usuario) y trae su botón de seguir (menos tú). Por páginas de 30 con «Ver más». Abajo, «Buscar personas» (/buscar).
  */
 export function FollowersSheet({
@@ -90,7 +90,7 @@ function PersonRow({ person, onPick }: { person: FollowPerson; onPick: () => voi
   return (
     <li className="flex items-center gap-2 rounded-xl px-2 py-1.5">
       <div className="min-w-0 flex-1" onClickCapture={onPick}>
-        <UserLink userId={person.id} name={person.name} username={person.username}>
+        <UserLink userId={person.id} name={person.name} username={person.username} photo={person.avatar}>
           {person.isMe ? (
             <span className="block text-xs font-normal text-muted">Tú</span>
           ) : person.followsYou ? (

@@ -32,6 +32,7 @@ import { LeaguePlayerBadges, playerPageId } from './badges/LeagueBadges';
 import { LeaguePlayerMadeBadges } from './badges/maker/LeagueMadeBadges';
 import { LeagueHomeFrame } from './league/LeagueHome';
 import { ROW_ICONS, type LeagueRowDef } from './league/home/LeagueSections';
+import { LeagueHomeActions } from './league/home/LeagueSocialActions';
 import { InvitePill, LeagueBarProvider, LeagueTopBar, ShellBackBar } from './league/home/LeagueTopBar';
 import { OWN_BAR, OWN_BAR_BOWLING, leagueBar } from './league/home/logic';
 import { useLeagueToDo } from './league/home/useLeagueData';
@@ -58,6 +59,7 @@ function tabIcons(sport: string, standalone: boolean): { home: LucideIcon; feed:
 /**
  * Marco de lo que pasa dentro de una liga (rediseño «Calma y foco»: sin pestañas ni encabezado doble). Arriba de cada
  * pantalla, una barra que dice a dónde vuelve (src/components/league/home/LeagueTopBar.tsx): en el inicio «‹ Ligas» con
+ * «Muro» (ligas sin menores), «Seguir» (quien no es miembro, src/components/league/home/LeagueSocialActions.tsx) e
  * «Invitar» (si la cuenta puede: abre la hoja de invitar, src/components/invite); adentro «‹ Liga de los martes» (la
  * práctica, Organizar y la página de un jugador traen la suya). Lo que eran pestañas son secciones y filas del inicio
  * (boliche: src/pages/LeagueHomePage.tsx; los otros deportes: filas debajo de su pantalla, LeagueHomeFrame); las rutas
@@ -143,12 +145,13 @@ export default function LeagueShell() {
   const invite = (
     <InviteSheet league={ctx.league} lid={ctx.lid} isAdmin={ctx.isAdmin} member={!!ctx.member} open={inviting} onClose={() => setInviting(false)} />
   );
-  // «‹ Ligas» arriba del inicio: cambiar de liga es volver a Ligas (ya no hay menú en el nombre).
+  // «‹ Ligas» arriba del inicio: cambiar de liga es volver a Ligas (ya no hay menú en el nombre). A la derecha, lo social
+  // de la liga en todos los deportes («Muro» si no tiene menores y, a quien no es miembro, «Seguir») e «Invitar».
   const homeBar = (withInvite: boolean) => (
     <LeagueTopBar
       to="/ligas"
       label="Ligas"
-      actions={withInvite && canInvite && <InvitePill onClick={() => setInviting(true)} ariaLabel={inviteTitle(ctx.league.kind)} />}
+      actions={<LeagueHomeActions invite={withInvite && canInvite && <InvitePill onClick={() => setInviting(true)} ariaLabel={inviteTitle(ctx.league.kind)} />} />}
     />
   );
 

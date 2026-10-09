@@ -8,8 +8,8 @@ import { atUsername } from './socialFormat';
 export const userPath = (userId: string) => `/u/${encodeURIComponent(userId)}`;
 
 /**
- * Nombre (y foto con las iniciales) de alguien: si tiene cuenta, lleva a su perfil (`/u/:userId`); si no (un jugador
- * que anota el admin, un menor), es solo texto. Dentro de una tarjeta que se toca, el toque del nombre no abre la
+ * Nombre (y su foto de perfil, o sus iniciales) de alguien: si tiene cuenta, lleva a su perfil (`/u/:userId`); si no (un
+ * jugador que anota el admin, un menor), es solo texto. Dentro de una tarjeta que se toca, el toque del nombre no abre la
  * tarjeta.
  */
 export function UserLink({
@@ -17,6 +17,7 @@ export function UserLink({
   name,
   username,
   avatar = true,
+  photo,
   hideName,
   avatarClassName,
   className,
@@ -26,8 +27,10 @@ export function UserLink({
   name: string;
   /** Su @usuario (sin la @), debajo del nombre. */
   username?: string | null;
-  /** Mostrar las iniciales al lado del nombre. */
+  /** Mostrar la cara (foto o iniciales) al lado del nombre. */
   avatar?: boolean;
+  /** Ruta de su foto de perfil en el bucket `avatars` (sin foto, sus iniciales). */
+  photo?: string | null;
   /** Solo las iniciales (con el nombre para lectores de pantalla). */
   hideName?: boolean;
   avatarClassName?: string;
@@ -39,7 +42,7 @@ export function UserLink({
   const handle = atUsername(username);
   const inner = (
     <>
-      {avatar && <Avatar name={shown} className={avatarClassName} />}
+      {avatar && <Avatar name={shown} photo={photo} className={avatarClassName} />}
       {!hideName && (
         <span className="min-w-0">
           <span className={cx('block truncate font-semibold', userId && 'group-hover/user:underline')}>{shown}</span>

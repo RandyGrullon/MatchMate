@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react
 import { AtSign, ChevronLeft, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
+import { usePublicProfile } from '../lib/data/follows';
 import { rememberLeague, roleLabel } from '../lib/league';
 import { useIsPro } from '../lib/useMode';
 import { AppShell } from '../components/Shell';
@@ -10,8 +11,9 @@ import { AppearanceCard } from '../components/AppearanceCard';
 import { NotificationsCard } from '../components/NotificationsOptIn';
 import { unsubscribePush } from '../lib/push';
 import { useCreateMenu } from '../components/CreateMenu';
-import { initials } from '../components/Avatar';
 import { BigField, BigInput, ErrorNote } from '../components/cuenta/kit';
+import { PublicProfileSection } from '../components/cuenta/PublicProfile';
+import { ProfileAvatar } from '../components/profile/ProfileAvatar';
 import { useAction, useFeedback } from '../components/feedback';
 import { LeagueTile } from '../components/ligas/LigasRows';
 import { PasswordInput } from '../components/PasswordInput';
@@ -22,7 +24,8 @@ import { AccountDataCard } from './legal/AccountDataCard';
 
 /**
  * Configuración (el engranaje de Yo), rediseño «Calma y foco»: «‹ Yo», el título y quién eres (como en Yo); después
- * filas en tarjetas, sin botones sueltos: tu cuenta (nombre, @usuario y contraseña, cada uno en su hoja), Apariencia
+ * filas en tarjetas, sin botones sueltos: tu cuenta (nombre, @usuario y contraseña, cada uno en su hoja), Perfil público
+ * (foto, biografía y personas bloqueadas, src/components/cuenta/PublicProfile.tsx), Apariencia
  * (claro, oscuro o automático y cómo ver la app), Notificaciones, Mis ligas, Tus datos (privacidad, términos, bajar mis
  * datos y borrar la cuenta), MatchMate (superadmin, Acerca de y Contáctanos) y, al final, Cerrar sesión. En Pro, lo
  * mismo más denso.
@@ -38,6 +41,8 @@ export default function AccountPage() {
   const leaving = useRef(false);
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
+  // Tu foto y tu biografía (las del perfil público).
+  const me = usePublicProfile(auth.user?.uid);
   const [sheet, setSheet] = useState<'nombre' | 'usuario' | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -92,12 +97,7 @@ export default function AccountPage() {
 
         {/* Quién eres, como arriba de Yo. */}
         <div className={cx('flex items-center', pro ? 'mt-[18px] gap-3.5' : 'mt-5 gap-4')}>
-          <span
-            aria-hidden="true"
-            className={cx('grid shrink-0 place-items-center rounded-full bg-accent font-[650] text-accent-fg', pro ? 'size-[52px] text-lg' : 'size-[60px] text-[21px]')}
-          >
-            {initials(displayName(auth))}
-          </span>
+          <ProfileAvatar name={displayName(auth)} photo={me.data?.avatar} className={pro ? 'size-[52px] text-lg' : 'size-[60px] text-[21px]'} />
           <div className="min-w-0">
             <p className={cx('flex min-w-0 items-center gap-2 font-bold', pro ? 'text-[22px] leading-[1.2] tracking-[-0.02em]' : 'text-[24px] leading-[1.15] tracking-[-0.025em]')}>
               <span className="truncate">{displayName(auth)}</span>
@@ -156,6 +156,8 @@ export default function AccountPage() {
           )}
           <PasswordRow dense={pro} icon={icon} />
         </Card>
+
+        {!needsProfile && <PublicProfileSection className="mt-[26px]" name={displayName(auth)} profile={me.data} dense={pro} icon={icon} />}
 
         <AppearanceCard className="mt-[26px]" />
         <NotificationsCard className="mt-[26px]" />

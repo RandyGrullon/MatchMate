@@ -80,7 +80,7 @@ function Counter({ value, label, onClick, icon }: { value: number; label: string
 }
 
 /**
- * Perfil de una cuenta (el público `/u/:userId` y el tuyo `/perfil`): cabecera con iniciales, nombre, @usuario,
+ * Perfil de una cuenta (el público `/u/:userId` y el tuyo `/perfil`): cabecera con su foto (o iniciales), nombre, @usuario, biografía,
  * deportes y los números Seguidores / Siguiendo / Me gusta (tocar abre la lista), el botón Seguir (no en el tuyo:
  * ahí van `actions`), hasta 3 insignias destacadas y las pestañas «Juegos» (con me gusta y «Ver más»),
  * «Estadísticas» (resumen por deporte) e «Insignias» (la vitrina, src/components/badges; `?tab=insignias`).
@@ -159,10 +159,11 @@ export function ProfileView({
             <ReportButton kind="user" targetId={p.id} ownerId={p.id} />
           </div>
         )}
-        <Avatar name={p.name} className="size-20 text-2xl ring-4 ring-surface" />
+        <Avatar name={p.name} photo={p.avatar} className="size-20 text-2xl ring-4 ring-surface" />
         <div className="flex min-w-0 max-w-full flex-col items-center gap-1">
           <h1 className="max-w-full truncate text-2xl font-bold tracking-tight">{p.name}</h1>
           {handle && <p className="-mt-1 max-w-full truncate text-sm text-muted">{handle}</p>}
+          {p.bio?.trim() && !p.blockedByMe && <p className="max-w-sm break-words text-sm text-fg-2">{p.bio.trim()}</p>}
           <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-muted">
             {p.followsYou && !p.isMe && <Badge>Te sigue</Badge>}
             {since && <span>{since}</span>}

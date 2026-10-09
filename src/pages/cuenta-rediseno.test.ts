@@ -183,9 +183,12 @@ describe('Configuración', () => {
     expect(out).toContain('<h1 class="text-title">Configuración</h1>');
     expect(t).toContain('Ana Pérez');
     expect(t).toContain('@anaperez · ana@correo.com');
-    for (const row of ['Tu nombre', 'Tu usuario', 'Contraseña', 'Cómo ver la app', 'En este teléfono', 'Política de privacidad', 'Descargar mis datos', 'Borrar mi cuenta', 'Acerca de MatchMate', 'Contáctanos', 'Cerrar sesión'])
+    for (const row of ['Tu nombre', 'Tu usuario', 'Contraseña', 'Foto de perfil', 'Tu biografía', 'Personas bloqueadas', 'Cómo ver la app', 'En este teléfono', 'Política de privacidad', 'Descargar mis datos', 'Borrar mi cuenta', 'Acerca de MatchMate', 'Contáctanos', 'Cerrar sesión'])
       expect(t).toContain(row);
-    for (const section of ['Apariencia', 'Notificaciones', 'Mis ligas', 'Tus datos', 'MatchMate']) expect(out).toContain(`class="text-section">${section}</h2>`);
+    for (const section of ['Perfil público', 'Apariencia', 'Notificaciones', 'Mis ligas', 'Tus datos', 'MatchMate']) expect(out).toContain(`class="text-section">${section}</h2>`);
+    // El perfil público va junto a tu cuenta (después de «Tu usuario» y antes de Apariencia).
+    expect(t.indexOf('Tu usuario')).toBeLessThan(t.indexOf('Perfil público'));
+    expect(t.indexOf('Perfil público')).toBeLessThan(t.indexOf('Apariencia'));
     // Mi liga, con mi papel, abre la liga.
     expect(out).toContain('href="/l/l1"');
     expect(t).toContain('Dueño');
@@ -212,6 +215,7 @@ describe('Configuración', () => {
     const t = text(out);
     expect(t).toContain('Completa tu cuenta: ¿cómo te llamas?');
     expect(t).not.toContain('Tu usuario');
+    expect(t).not.toContain('Perfil público');
     expect(primaries(out)).toBe(1);
   });
 

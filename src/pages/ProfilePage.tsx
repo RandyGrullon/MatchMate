@@ -1,24 +1,28 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Award, BarChart3, ChevronLeft, List, LogIn, Settings, UserPlus, Users } from 'lucide-react';
+import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, UserPlus, Users } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { usePublicProfile, type FollowKind, type PublicProfile } from '../lib/data/follows';
+import { useUserPosts } from '../lib/data/posts';
 import { useMySoloSessions } from '../lib/data/solo';
 import { toIsoDate } from '../lib/format';
 import type { League } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { getSport } from '../sports/registry';
-import { initials } from '../components/Avatar';
 import { NoBowlingNumbers, ProfileStats, SportLeagues, splitBySport, useBowlingNumbers, type BowlingNumbersState } from '../components/GlobalStats';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallStatsSection, MyBallsSection, useBallSection } from '../components/balls/BallStats';
 import { ModeSwitch, useIsPro } from '../components/mode';
 import { NoticeSlot } from '../components/NoticeSlot';
+import { ComposerCard } from '../components/posts/Composer';
+import { PostList } from '../components/posts/PostList';
+import { ProfileAvatar } from '../components/profile/ProfileAvatar';
 import { AppShell } from '../components/Shell';
 import { FollowersSheet } from '../components/social/FollowersSheet';
 import { GamesTab, StatsTab } from '../components/social/ProfileView';
-import { atUsername, knownSports } from '../components/social/socialFormat';
+import { SearchButton } from '../components/social/SearchButton';
+import { atUsername, knownSports, plural } from '../components/social/socialFormat';
 import { AverageCard, NumbersGrid, ShotsCard, TrendCard, type NumberItem } from '../components/stats/YoStats';
 import { Card, Empty, ListRow, LoadError, Loading, RowIcon, Skeleton, cx } from '../components/ui';
 
@@ -28,16 +32,24 @@ const BadgesLineText = lazy(() => import('../components/badges/ProfileBadges').t
 const FeaturedSection = lazy(() => import('../components/badges/ProfileBadges').then((m) => ({ default: m.FeaturedSection })));
 const ProfileBadgesTab = lazy(() => import('../components/badges/ProfileBadges'));
 
-/** Las partes de Yo que se abren aparte (`?tab=`): Mis juegos, la vitrina de insignias y «Por liga y temporada». */
-export type YoPart = 'juegos' | 'insignias' | 'estadisticas';
+/**
+ * Las partes de Yo que se abren aparte (`?tab=`): Mis juegos, Mis publicaciones, la vitrina de insignias y «Por liga y
+ * temporada».
+ */
+export type YoPart = 'juegos' | 'publicaciones' | 'insignias' | 'estadisticas';
 
 export const YO_PARTS: Record<YoPart, string> = {
   juegos: 'Mis juegos',
+  publicaciones: 'Mis publicaciones',
   insignias: 'Insignias',
   estadisticas: 'Por liga y temporada',
 };
 
-export const yoPart = (raw: string | null): YoPart | null => (raw === 'juegos' || raw === 'insignias' || raw === 'estadisticas' ? raw : null);
+export const yoPart = (raw: string | null): YoPart | null =>
+  raw === 'juegos' || raw === 'publicaciones' || raw === 'insignias' || raw === 'estadisticas' ? raw : null;
+
+/** Debajo de «Mis publicaciones»: cuántas llevas, o una invitación a la primera. */
+export const postsLine = (posts: number | null | undefined): string => (posts ? plural(posts, 'publicación', 'publicaciones') : 'Comparte cómo te fue');
 
 /** Lo que llevan los links de Yo a sus partes: «‹ Yo» vuelve atrás en vez de abrir Yo otra vez. */
 const YO_STATE = { yo: true } as const;
@@ -61,15 +73,16 @@ export function socialLine(p: Pick<PublicProfile, 'followers' | 'following' | 'l
 }
 
 /**
- * Yo (/perfil), rediseño «Calma y foco» (final/6-perfil.png y p6-perfil.png). Arriba, «Lite | Pro» (cómo ver la app) y
- * un solo engranaje (la cuenta, /cuenta); debajo, tu nombre, tu @usuario y tu liga.
+ * Yo (/perfil), rediseño «Calma y foco» (final/6-perfil.png y p6-perfil.png). Arriba, «Lite | Pro» (cómo ver la app),
+ * la lupa (buscar personas y ligas) y un solo engranaje (la cuenta, /cuenta); debajo, tu foto (tocarla lleva a cambiarla
+ * en /cuenta), tu nombre, tu @usuario, tu liga y tu biografía.
  * - Lite: tu promedio con la gráfica corta y cómo vas, Mejor juego · Mejor serie · Juegos, Mis bolas (con sus juegos),
- *   Insignias (con lo que te falta) y las filas Mis juegos y Amigos y seguidores.
+ *   Insignias (con lo que te falta) y las filas Mis juegos, Mis publicaciones y Amigos y seguidores.
  * - Pro: los 6 números, la tendencia por juego o por mes, tus tiros (y qué pinos te quedan), por bola y las filas Por
- *   liga y temporada, Mis juegos, Insignias y Amigos y seguidores.
+ *   liga y temporada, Mis juegos, Mis publicaciones, Insignias y Amigos y seguidores.
  * Los números del boliche suman todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil); las
- * ligas de otros deportes llevan a sus números. Las partes (`?tab=juegos|insignias|estadisticas`) se abren con «‹ Yo»;
- * el push de una insignia abre `?tab=insignias&insignia=…`.
+ * ligas de otros deportes llevan a sus números. Las partes (`?tab=juegos|publicaciones|insignias|estadisticas`) se
+ * abren con «‹ Yo»; el push de una insignia abre `?tab=insignias&insignia=…`.
  */
 export default function ProfilePage() {
   const auth = useAuth();
@@ -138,6 +151,8 @@ function Yo({ uid }: { uid: string }) {
             <SoloGamesRow />
             <GamesTab userId={uid} sports={sports} isMe name={name} />
           </div>
+        ) : part === 'publicaciones' ? (
+          <MyPosts uid={uid} />
         ) : part === 'insignias' ? (
           <Suspense fallback={<Skeleton className="h-64 rounded-3xl" />}>
             <div className="flex flex-col gap-[26px]">
@@ -182,11 +197,24 @@ function Yo({ uid }: { uid: string }) {
       onClick={() => open('juegos')}
     />
   );
+  const myPosts = (dense: boolean) => (
+    <ListRow
+      dense={dense}
+      leading={
+        <RowIcon>
+          <Newspaper className={dense ? 'size-[19px]' : 'size-5'} />
+        </RowIcon>
+      }
+      title={YO_PARTS.publicaciones}
+      subtitle={postsLine(p?.posts)}
+      onClick={() => open('publicaciones')}
+    />
+  );
 
   return (
     <div className="flex flex-col px-2">
       <YoTop />
-      <Identity name={name} line={line} pro={pro} />
+      <Identity name={name} line={line} bio={p?.bio} photo={p?.avatar} pro={pro} />
       <NoticeSlot className="mt-4" />
 
       {pro ? (
@@ -206,6 +234,7 @@ function Yo({ uid }: { uid: string }) {
               onClick={() => open('estadisticas')}
             />
             {myGames(true)}
+            {myPosts(true)}
             <ListRow
               dense
               leading={
@@ -247,6 +276,7 @@ function Yo({ uid }: { uid: string }) {
           {others.length > 0 && <OtherSports uid={uid} others={others} alone={!showBowling} />}
           <Card className="mt-[26px] overflow-hidden">
             {myGames(false)}
+            {myPosts(false)}
             {friends(false)}
           </Card>
         </>
@@ -266,41 +296,70 @@ function Yo({ uid }: { uid: string }) {
   );
 }
 
-/** Arriba de Yo: «Lite | Pro» (cambia al momento, con «Deshacer» abajo) y el único engranaje (la cuenta). */
+/** Arriba de Yo: «Lite | Pro» (cambia al momento, con «Deshacer» abajo), la lupa y el único engranaje (la cuenta). */
 function YoTop() {
   return (
     <div className="-mt-2.5 flex items-center justify-between gap-3">
       <ModeSwitch className="[&>button]:px-[18px] max-[359px]:[&>button]:px-3" />
-      <Link
-        to="/cuenta"
-        state={YO_STATE}
-        aria-label="Configuración de la cuenta"
-        title="Configuración de la cuenta"
-        className={cx(
-          'card-shadow grid size-11 shrink-0 place-items-center rounded-full bg-surface text-fg-2 transition active:scale-95',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        )}
-      >
-        <Settings aria-hidden="true" className="size-[21px]" />
-      </Link>
+      <div className="flex shrink-0 items-center gap-2.5">
+        <SearchButton />
+        <Link
+          to="/cuenta"
+          state={YO_STATE}
+          aria-label="Configuración de la cuenta"
+          title="Configuración de la cuenta"
+          className={cx(
+            'card-shadow grid size-11 shrink-0 place-items-center rounded-full bg-surface text-fg-2 transition active:scale-95',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+          )}
+        >
+          <Settings aria-hidden="true" className="size-[21px]" />
+        </Link>
+      </div>
     </div>
   );
 }
 
-/** Tus iniciales en el color del deporte, tu nombre y «@usuario · tu liga» (más chico en Pro). */
-function Identity({ name, line, pro }: { name: string; line: string | null; pro: boolean }) {
+/**
+ * Tu foto (o tus iniciales en el color del deporte; tocarla lleva a cambiarla en /cuenta), tu nombre, «@usuario · tu
+ * liga» y tu biografía (más chico en Pro).
+ */
+function Identity({ name, line, bio, photo, pro }: { name: string; line: string | null; bio?: string | null; photo?: string | null; pro: boolean }) {
+  const text = bio?.trim();
   return (
     <div className={cx('flex items-center', pro ? 'mt-[18px] gap-3.5' : 'mt-5 gap-4')}>
-      <span
-        aria-hidden="true"
-        className={cx('grid shrink-0 place-items-center rounded-full bg-accent font-[650] text-accent-fg', pro ? 'size-[52px] text-lg' : 'size-[60px] text-[21px]')}
+      <Link
+        to="/cuenta?foto=1"
+        state={YO_STATE}
+        aria-label={photo ? 'Cambiar tu foto de perfil' : 'Ponerle una foto a tu perfil'}
+        title={photo ? 'Cambiar tu foto' : 'Ponerle una foto'}
+        className="shrink-0 rounded-full transition active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        {initials(name)}
-      </span>
+        <ProfileAvatar name={name} photo={photo} className={pro ? 'size-[52px] text-lg' : 'size-[60px] text-[21px]'} />
+      </Link>
       <div className="min-w-0">
         <h1 className={cx('truncate font-bold', pro ? 'text-[22px] leading-[1.2] tracking-[-0.02em]' : 'text-[26px] leading-[1.15] tracking-[-0.025em]')}>{name}</h1>
         {line && <p className={cx('truncate text-muted', pro ? 'mt-0.5 text-sm' : 'mt-[3px] text-meta')}>{line}</p>}
+        {text && <p className={cx('line-clamp-2 break-words text-fg-2', pro ? 'mt-1 text-sm' : 'mt-1.5 text-meta')}>{text}</p>}
       </div>
+    </div>
+  );
+}
+
+/** Yo › Mis publicaciones: publicar algo (texto o foto) y lo que ya publicaste. */
+function MyPosts({ uid }: { uid: string }) {
+  const posts = useUserPosts(uid);
+  return (
+    <div className="flex flex-col gap-5">
+      <ComposerCard />
+      <PostList
+        list={posts}
+        empty={
+          <Empty icon={<Newspaper className="size-7" aria-hidden="true" />} title="Todavía no publicas nada">
+            Cuenta cómo te fue o sube una foto. Sale en tu perfil y en Social.
+          </Empty>
+        }
+      />
     </div>
   );
 }
