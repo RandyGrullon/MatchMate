@@ -6,6 +6,7 @@ import {
   REPORT_NOTE_MAX,
   REPORT_REASON_LABEL,
   reportErrorText,
+  reportTargetUrl,
   resolveReport,
   type Report,
   type ReportReason,
@@ -34,11 +35,13 @@ export function resolvedText(r: Pick<Report, 'status' | 'handledByName' | 'handl
 
 /**
  * Un reporte en una lista (consola y Admin de la liga): el motivo, qué es y de qué liga, lo reportado a la vista (con
- * link; si se borró, lo dice), la nota, quién reportó (solo `showReporter`: el superadmin), cuántos hay de lo mismo y
- * cómo quedó. `actions`: los botones de abajo (descartar, atender y las herramientas).
+ * link, `reportTargetUrl`: una publicación o el comentario de una lleva a `/p/<id>`; si se borró, lo dice), la nota,
+ * quién reportó (solo `showReporter`: el superadmin), cuántos hay de lo mismo y cómo quedó. `actions`: los botones de
+ * abajo (descartar, atender y las herramientas).
  */
 export function ReportItem({ report: r, showReporter, actions, now = Date.now() }: { report: Report; showReporter?: boolean; actions?: ReactNode; now?: number }) {
   const t = r.target;
+  const url = reportTargetUrl(r);
   const created = Date.parse(r.createdAt);
   const done = resolvedText(r, now);
   return (
@@ -67,9 +70,9 @@ export function ReportItem({ report: r, showReporter, actions, now = Date.now() 
               {t.text && <p className="line-clamp-3 text-sm break-words whitespace-pre-line text-fg/90">{t.text}</p>}
               {r.kind === 'league' && t.userName && <p className="truncate text-xs text-muted">Dueño: {t.userName}</p>}
             </div>
-            {t.url && (
+            {url && (
               <Link
-                to={t.url}
+                to={url}
                 className="-m-1.5 inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-accent transition hover:bg-accent-soft"
                 aria-label={`Ver ${REPORT_KIND_LABEL[r.kind].toLowerCase()}: ${t.title}`}
                 title="Ver"

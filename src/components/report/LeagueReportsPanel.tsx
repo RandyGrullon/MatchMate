@@ -9,10 +9,11 @@ import { ReportItem, ResolveButtons } from './ReportItem';
 const PAGE = 50;
 
 /**
- * Admin › Reportes (sale cuando la liga tiene alguno): los comentarios, avisos y juegos de la liga que alguien
- * reportó, sin saber quién. El admin lo descarta, lo marca como atendido (con lo que hizo) o borra el comentario.
- * Lo suyo (su aviso, su comentario, su juego) ni le sale (list_reports no lo manda): lo ve solo el equipo de
- * MatchMate. Ligas y cuentas reportadas las atiende solo el equipo de MatchMate (consola › Reportes).
+ * Admin › Reportes (sale cuando la liga tiene alguno): los comentarios, avisos, juegos y publicaciones (y sus
+ * comentarios) de la liga que alguien reportó, sin saber quién. El admin lo descarta, lo marca como atendido (con lo
+ * que hizo) o borra el comentario (una publicación se abre con «Ver» y se borra desde su menú). Lo suyo (su aviso, su
+ * comentario, su juego) ni le sale (list_reports no lo manda): lo ve solo el equipo de MatchMate. Ligas y cuentas
+ * reportadas las atiende solo el equipo de MatchMate (consola › Reportes).
  */
 export function LeagueReportsPanel() {
   const { lid } = useLeagueCtx();
@@ -24,7 +25,7 @@ export function LeagueReportsPanel() {
   return (
     <div className="flex flex-col gap-3.5">
       {/* Una línea, no cuatro: quién lo ve y que nadie sabe quién reportó. */}
-      <p className="mx-1 text-meta text-muted">Comentarios, avisos y juegos de tu liga. Nadie sabe quién los reportó.</p>
+      <p className="mx-1 text-meta text-muted">Comentarios, avisos, juegos y publicaciones de tu liga. Nadie sabe quién los reportó.</p>
       <Segmented<Exclude<ReportFilter, 'all'>>
         label="Qué reportes ver"
         full

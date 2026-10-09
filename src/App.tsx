@@ -33,7 +33,10 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SoloGamesPage = lazy(() => import('./pages/SoloGamesPage'));
 const BallsPage = lazy(() => import('./pages/BallsPage'));
 const UserProfilePage = lazy(() => import('./pages/UserProfilePage'));
-const PeopleSearchPage = lazy(() => import('./pages/PeopleSearchPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const SocialPage = lazy(() => import('./pages/SocialPage'));
+const PostPage = lazy(() => import('./pages/PostPage'));
+const LeagueWallPage = lazy(() => import('./pages/LeagueWallPage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
@@ -190,7 +193,9 @@ export default function App() {
                       {/* Mis bolas del boliche (?bola=<id> abre una; ?nueva=1, una nueva). */}
                       <Route path="/bolas" element={<Screen area="bolas" framed><BallsPage /></Screen>} />
                       <Route path="/u/:userId" element={<Screen area="usuario" framed><UserProfilePage /></Screen>} />
-                      <Route path="/buscar" element={<Screen area="buscar" framed><PeopleSearchPage /></Screen>} />
+                      <Route path="/buscar" element={<Screen area="buscar" framed><SearchPage /></Screen>} />
+                      <Route path="/social" element={<Screen area="social" framed><SocialPage /></Screen>} />
+                      <Route path="/p/:postId" element={<Screen area="publicacion" framed><PostPage /></Screen>} />
                       {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}
                       <Route path="/invitacion/:inviteId" element={<Screen area="invitacion" framed><InvitePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
@@ -238,6 +243,8 @@ export default function App() {
                         {/* Playoffs de las ligas de equipos (los otros deportes vuelven al inicio de la liga). */}
                         <Route path="playoffs" element={<Screen area="liga/playoffs"><SportRoute slot="Playoffs" bowling={<Navigate to=".." replace />} /></Screen>} />
                         <Route path="temporadas" element={<Screen area="liga/temporadas"><SeasonsPage /></Screen>} />
+                        {/* El muro de la liga (publicaciones de sus miembros), igual en todos los deportes. */}
+                        <Route path="muro" element={<Screen area="liga/muro"><LeagueWallPage /></Screen>} />
                         <Route path="admin" element={<Screen area="liga/admin"><AdminPage /></Screen>} />
                         <Route path="e/:eventId" element={<Screen area="liga/evento"><EventPage /></Screen>} />
                         <Route path="j/:playerId" element={<Screen area="liga/jugador"><SportRoute slot="Player" bowling={<PlayerRoute />} /></Screen>} />

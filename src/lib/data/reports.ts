@@ -6,7 +6,8 @@ import { tags } from './keys';
 
 /**
  * Reportes de contenido (20260929000900_legal.sql): «esto no debería estar aquí» sobre un comentario, un aviso de
- * liga, un juego, una liga o una cuenta. RPC: report_content (cualquiera con sesión; lo tiene que ver), resolve_report
+ * liga, un juego, una liga, una cuenta y, con la red social (20261009000100_red_social.sql), una publicación o un
+ * comentario de una publicación. RPC: report_content (cualquiera con sesión; lo tiene que ver), resolve_report
  * y list_reports (el superadmin, todo; los admins de una liga, los comentarios, avisos y juegos de su liga que no son
  * suyos, sin saber quién reportó). Un reporte cerrado ya no se decide otra vez ('cerrado'). Nada de esto se guarda en
  * el teléfono (`persist: false`): tiene notas y nombres.
@@ -15,13 +16,13 @@ import { tags } from './keys';
 
 // ---------- Tipos ----------
 
-export type ReportKind = 'comment' | 'league' | 'user' | 'game' | 'announcement';
+export type ReportKind = 'comment' | 'league' | 'user' | 'game' | 'announcement' | 'post' | 'post_comment';
 export type ReportReason = 'spam' | 'ofensivo' | 'acoso' | 'falso' | 'menores' | 'otro';
 export type ReportStatus = 'open' | 'dismissed' | 'actioned';
 /** Filtro de la lista: abiertos, cerrados (descartados y atendidos) o todos. */
 export type ReportFilter = 'open' | 'closed' | 'all';
 
-export const REPORT_KINDS: readonly ReportKind[] = ['comment', 'game', 'announcement', 'league', 'user'];
+export const REPORT_KINDS: readonly ReportKind[] = ['comment', 'game', 'announcement', 'post', 'post_comment', 'league', 'user'];
 
 /** Los motivos, en el orden del selector. */
 export const REPORT_REASONS: readonly { key: ReportReason; label: string; hint: string }[] = [
@@ -44,6 +45,8 @@ export const REPORT_KIND_LABEL: Readonly<Record<ReportKind, string>> = {
   announcement: 'Aviso de liga',
   league: 'Liga',
   user: 'Cuenta',
+  post: 'Publicación',
+  post_comment: 'Comentario de publicación',
 };
 
 /** «este comentario», «esta liga»… (título del modal). */
@@ -53,6 +56,8 @@ export const REPORT_KIND_THIS: Readonly<Record<ReportKind, string>> = {
   announcement: 'este aviso',
   league: 'esta liga',
   user: 'esta cuenta',
+  post: 'esta publicación',
+  post_comment: 'este comentario',
 };
 
 /** Largo máximo de la nota de quien reporta y de quien lo atiende (la base: 500). */
@@ -78,6 +83,8 @@ export interface ReportTarget {
   events?: number;
   /** Solo en una cuenta. */
   blocked?: boolean;
+  /** Solo en un comentario de publicación: la publicación (si la base la manda). */
+  postId?: string;
 }
 
 export interface Report {
@@ -137,6 +144,7 @@ export function toReportTarget(raw: unknown): ReportTarget | null {
     ...(r.members != null ? { members: num(r.members) } : {}),
     ...(r.events != null ? { events: num(r.events) } : {}),
     ...(typeof r.blocked === 'boolean' ? { blocked: r.blocked } : {}),
+    ...(typeof r.postId === 'string' && r.postId ? { postId: r.postId } : {}),
   };
 }
 
@@ -170,6 +178,19 @@ export function toReportPage(raw: unknown): ReportPage {
     open: num(r.open),
     all: num(r.all),
   };
+}
+
+/**
+ * A dónde lleva «Ver» en un reporte: lo que dice la base (`target.url`) o, en una publicación que todavía existe, su
+ * pantalla (`/p/<id>`); un comentario de publicación, a su publicación si la base la manda (`target.postId`). Si no,
+ * no lleva a ningún lado (solo se ve su texto).
+ */
+export function reportTargetUrl(r: Pick<Report, 'kind' | 'targetId' | 'target'>): string | null {
+  if (!r.target) return null;
+  if (r.target.url) return r.target.url;
+  if (r.kind === 'post' && r.targetId) return `/p/${encodeURIComponent(r.targetId)}`;
+  if (r.kind === 'post_comment' && r.target.postId) return `/p/${encodeURIComponent(r.target.postId)}`;
+  return null;
 }
 
 const cleanNote = (note: string | null | undefined) => {

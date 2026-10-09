@@ -12,6 +12,7 @@ import { Landing } from '../components/cuenta/Landing';
 import { EsportsRowCard, useEsportsHome } from '../components/home/EsportsHomeRow';
 import { FollowingSlot } from '../components/home/FollowingSlot';
 import { HomeHeader } from '../components/home/HomeHeader';
+import { SocialSlot } from '../components/home/SocialSlot';
 import { CalendarSheet, ModeSheet, WhereSheet } from '../components/home/HomeSheets';
 import { HomeStats } from '../components/home/HomeStats';
 import { JoinLeagueCard } from '../components/home/JoinLeagueCard';
@@ -190,6 +191,9 @@ function Hoy() {
         {esports.show && <EsportsRowCard title="Esports" subtitle="Tus equipos y torneos" pro={isPro} className="mt-7" />}
 
         <FollowingSlot sport={null} className="mt-7" />
+
+        {/* Lo último que publicó tu gente (2 filas cortas; vacío no sale). */}
+        <SocialSlot className="mt-7" />
 
         {auth.isSuper && (
           <Link

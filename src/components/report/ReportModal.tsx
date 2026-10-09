@@ -10,7 +10,8 @@ import { Button, Sheet, Textarea, cx } from '../ui';
  * La hoja de «Reportar» (rediseño «Calma y foco»: sube desde abajo en el teléfono): el motivo (obligatorio, una fila por
  * motivo), una nota opcional y a quién le llega, con un solo botón «Enviar reporte». Lo revisa el equipo de MatchMate y,
  * si es un comentario, un aviso o un juego de una liga, sus admins (sin saber quién reportó; el admin del que es lo
- * reportado no lo ve). Reportar lo mismo otra vez no crea otro.
+ * reportado no lo ve); una publicación o su comentario, si es de una liga, también. Reportar lo mismo otra vez no crea
+ * otro.
  */
 export default function ReportModal({ kind, targetId, onClose }: { kind: ReportKind; targetId: string; onClose: () => void }) {
   const { toast } = useFeedback();
@@ -19,6 +20,8 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inLeague = kind === 'comment' || kind === 'game' || kind === 'announcement';
+  // Una publicación (o su comentario) puede ser de una liga o no: si es de una liga, la ven también sus admins.
+  const maybeLeague = kind === 'post' || kind === 'post_comment';
 
   async function send() {
     if (!reason || busy) return;
@@ -96,7 +99,8 @@ export default function ReportModal({ kind, targetId, onClose }: { kind: ReportK
         </label>
         {error && <p className="rounded-2xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p>}
         <p className="text-[13px] text-muted">
-          Lo revisa el equipo de MatchMate{inLeague ? ' y los admins de la liga (sin saber quién lo reportó)' : ''}. La persona reportada no sabe
+          Lo revisa el equipo de MatchMate
+          {inLeague ? ' y los admins de la liga (sin saber quién lo reportó)' : maybeLeague ? ' y, si es de una liga, sus admins (sin saber quién lo reportó)' : ''}. La persona reportada no sabe
           que fuiste tú. Mira lo que no se permite en los{' '}
           <Link to={TERMS_PATH} className="font-medium text-accent underline underline-offset-2">
             Términos de uso
