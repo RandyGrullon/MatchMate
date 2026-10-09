@@ -1,6 +1,6 @@
 // Edge Function purge-photos (Deno): borra de Storage lo que ya no se usa: la cola private.storage_purge_queue (fotos
-// del bucket 'scoreboards' y logos del bucket 'logos', cada ruta de su bucket) y las fotos huérfanas (sin fila en
-// photos). Aquí solo se arman las dependencias; la lógica y sus pruebas
+// del bucket 'scoreboards', logos del bucket 'logos' y las fotos de perfil y de publicaciones de 'avatars' y 'posts',
+// cada ruta de su bucket) y las fotos huérfanas (sin fila en photos). Aquí solo se arman las dependencias; la lógica y sus pruebas
 // están en core.ts. Lo que comparte con send-push (secreto, clave secreta, API REST) sale de send-push/core.ts.
 //
 // - Sin verificar JWT: la llama pg_net una vez al día (cron 'mm-limpiar-fotos') con la cabecera x-cron-secret

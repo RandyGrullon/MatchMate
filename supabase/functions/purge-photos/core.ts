@@ -8,14 +8,18 @@
  * 1. exige la cabecera `x-cron-secret` igual al secreto CRON_SECRET (el mismo que está en Vault como 'cron_secret');
  *    la función va con verify_jwt = false;
  * 2. vacía private.storage_purge_queue bucket por bucket (`purge_queue_take` y `purge_queue_done`, solo service_role):
- *    primero 'scoreboards' (fotos borradas, también al borrar un evento o una liga) y después 'logos' (el logo cambiado
- *    o quitado, el de una liga borrada, las reservas sin usar; 20260929001000_sueltos_logos.sql). De cada uno toma
+ *    primero 'scoreboards' (fotos borradas, también al borrar un evento o una liga), después 'logos' (el logo cambiado
+ *    o quitado, el de una liga borrada, las reservas sin usar; 20260929001000_sueltos_logos.sql) y al final los de la
+ *    red social (20261009000100_red_social.sql): 'avatars' (la foto de perfil cambiada o quitada, la de una cuenta
+ *    borrada) y 'posts' (la foto de una publicación borrada, también con su liga o su cuenta). De cada uno toma
  *    hasta 500 rutas, las borra de ESE bucket con la API de Storage (de a 100) y las saca de la cola. Las de un grupo
  *    que Storage no aceptó se quedan: se vuelven a tomar al otro día (a los 10 intentos la base deja de darlas). Las
  *    fotos se piden sin `p_bucket` (la base lo pone en 'scoreboards'): así sirve igual con una base de antes de 001000;
- *    ahí la llamada de los logos falla (se registra) y las fotos se borran igual;
+ *    ahí la llamada de los logos falla (se registra) y las fotos se borran igual (lo mismo con 'avatars' y 'posts' en una
+ *    base de antes de 20261009000100);
  * 3. pide los archivos huérfanos (`storage_orphans`: en 'scoreboards' hace más de 30 días y sin fila en photos) y los
- *    borra. Los logos no tienen huérfanos: cada subida se reserva antes y lo que no se usa entra a la cola.
+ *    borra. Los logos no tienen huérfanos: cada subida se reserva antes y lo que no se usa entra a la cola (las fotos de
+ *    la red social tampoco se buscan como huérfanas: solo entra a la cola lo que la base dejó de usar).
  *
  * El registro va en JSON (una línea por cosa que pasó y el resumen al final), solo con números: nunca rutas ni ids.
  */
@@ -24,8 +28,12 @@
 export const BUCKET = 'scoreboards';
 /** El bucket público de los logos de las ligas (20260929001010_logos_supabase.sql). */
 export const LOGOS_BUCKET = 'logos';
+/** El bucket público de las fotos de perfil (20261009000110_red_social_supabase.sql). */
+export const AVATARS_BUCKET = 'avatars';
+/** El bucket público de las fotos de las publicaciones (20261009000110_red_social_supabase.sql). */
+export const POSTS_BUCKET = 'posts';
 /** Los buckets de la cola, en el orden en que se vacían (la cola dice de cuál es cada ruta). */
-export const PURGE_BUCKETS = [BUCKET, LOGOS_BUCKET] as const;
+export const PURGE_BUCKETS = [BUCKET, LOGOS_BUCKET, AVATARS_BUCKET, POSTS_BUCKET] as const;
 export type PurgeBucket = (typeof PURGE_BUCKETS)[number];
 /** Rutas por llamada, de la cola y de huérfanos (la base da de 1 a 1000). */
 export const TAKE_LIMIT = 500;
@@ -55,12 +63,16 @@ export interface PurgeDeps {
 
 /** Lo que devuelve cada llamada (y lo que va al registro). */
 export interface PurgeCounts {
-  /** Rutas tomadas de la cola (de los dos buckets). */
+  /** Rutas tomadas de la cola (de todos los buckets). */
   queued: number;
   /** De esas, borradas de su bucket (o que ya no estaban) y sacadas de la cola. */
   purged: number;
   /** De las borradas, cuántas eran logos. */
   logos: number;
+  /** De las borradas, cuántas eran fotos de perfil. */
+  avatars: number;
+  /** De las borradas, cuántas eran fotos de publicaciones. */
+  posts: number;
   /** Huérfanos que dio la base. */
   orphans: number;
   /** De esos, borrados del bucket. */
@@ -160,7 +172,7 @@ export async function removeInChunks(
 }
 
 export function emptyPurgeCounts(): PurgeCounts {
-  return { queued: 0, purged: 0, logos: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
+  return { queued: 0, purged: 0, logos: 0, avatars: 0, posts: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
 }
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -226,6 +238,8 @@ export async function handlePurgeRequest(req: Request, deps: PurgeDeps): Promise
             await db.rpc<number>('purge_queue_done', { p_paths: r.removed, ...which });
             counts.purged += r.removed.length;
             if (bucket === LOGOS_BUCKET) counts.logos += r.removed.length;
+            else if (bucket === AVATARS_BUCKET) counts.avatars += r.removed.length;
+            else if (bucket === POSTS_BUCKET) counts.posts += r.removed.length;
           } catch (e) {
             ok = false;
             log('error', 'queue_done', { bucket, removed: r.removed.length, status: statusOf(e) });

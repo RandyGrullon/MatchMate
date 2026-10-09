@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AVATARS_BUCKET,
   BUCKET,
   LOGOS_BUCKET,
+  POSTS_BUCKET,
+  PURGE_BUCKETS,
   REMOVE_CHUNK,
   StorageError,
   TAKE_LIMIT,
@@ -24,6 +27,9 @@ const URL_ = 'https://abc.supabase.co';
 const LEAGUE = '22222222-2222-4222-8222-222222222222';
 const photo = (i: number) => `${LEAGUE}/${String(i).padStart(8, '0')}-3333-4333-8333-333333333333.webp`;
 const logo = (i: number) => `${LEAGUE}/${String(i).padStart(8, '0')}-4444-4444-8444-444444444444.webp`;
+const USER = '55555555-5555-4555-8555-555555555555';
+const avatar = (i: number) => `${USER}/${String(i).padStart(8, '0')}-6666-4666-8666-666666666666.webp`;
+const postPhoto = (i: number) => `${USER}/${String(i).padStart(8, '0')}-7777-4777-8777-777777777777.jpg`;
 
 interface Call {
   method: string;
@@ -34,13 +40,16 @@ interface Call {
 
 /**
  * Supabase de mentira: RPC por /rest/v1/rpc/<fn> y Storage por /storage/v1/object/<bucket>. `queue` es la cola de las
- * fotos (purge_queue_take sin p_bucket) y `logoQueue` la de los logos (p_bucket 'logos'). `rpcStatus` decide la
- * respuesta de cada RPC (`<fn>`, o `<fn>:logos` solo la de los logos) y `storageStatus` la de cada DELETE (por número
- * de llamada, desde 0).
+ * fotos (purge_queue_take sin p_bucket), `logoQueue` la de los logos (p_bucket 'logos'), `avatarQueue` la de las fotos
+ * de perfil ('avatars') y `postQueue` la de las fotos de las publicaciones ('posts'). `rpcStatus` decide la respuesta de
+ * cada RPC (`<fn>`, o `<fn>:<bucket>` solo la de ese bucket) y `storageStatus` la de cada DELETE (por número de llamada,
+ * desde 0).
  */
 function fakeSupabase(opts: {
   queue?: unknown[];
   logoQueue?: unknown[];
+  avatarQueue?: unknown[];
+  postQueue?: unknown[];
   orphans?: unknown[];
   rpcStatus?: Record<string, number>;
   storageStatus?: (n: number, paths: string[]) => number | 'network';
@@ -53,10 +62,11 @@ function fakeSupabase(opts: {
     calls.push({ method: init?.method ?? 'GET', url, headers: { ...(init?.headers as Record<string, string>) }, body });
     if (url.includes('/rest/v1/rpc/')) {
       const fn = url.split('/rest/v1/rpc/')[1];
-      const logos = body?.p_bucket === 'logos';
-      const status = (logos ? opts.rpcStatus?.[`${fn}:logos`] : undefined) ?? opts.rpcStatus?.[fn] ?? 200;
+      const bucket: string | undefined = body?.p_bucket;
+      const status = (bucket ? opts.rpcStatus?.[`${fn}:${bucket}`] : undefined) ?? opts.rpcStatus?.[fn] ?? 200;
       if (status !== 200) return new Response('{"message":"x"}', { status });
-      const take = logos ? opts.logoQueue : opts.queue;
+      const queues: Record<string, unknown[] | undefined> = { logos: opts.logoQueue, avatars: opts.avatarQueue, posts: opts.postQueue };
+      const take = bucket ? queues[bucket] : opts.queue;
       const data = fn === 'purge_queue_take' ? (take ?? []) : fn === 'storage_orphans' ? (opts.orphans ?? []) : fn === 'purge_queue_done' ? body.p_paths.length : null;
       return new Response(JSON.stringify(data), { status: 200 });
     }
@@ -195,10 +205,15 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 250, purged: 250, logos: 0, orphans: 2, orphansRemoved: 2, failed: 0 });
+    expect(await res.json()).toEqual({ queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, orphans: 2, orphansRemoved: 2, failed: 0 });
 
-    // Las fotos sin p_bucket (sirve también con una base de antes de los logos) y después los logos.
-    expect(rpcCalls(calls, 'purge_queue_take').map((c) => c.body)).toEqual([{ p_limit: TAKE_LIMIT }, { p_limit: TAKE_LIMIT, p_bucket: 'logos' }]);
+    // Las fotos sin p_bucket (sirve también con una base de antes de los logos), después los logos y los de la red social.
+    expect(rpcCalls(calls, 'purge_queue_take').map((c) => c.body)).toEqual([
+      { p_limit: TAKE_LIMIT },
+      { p_limit: TAKE_LIMIT, p_bucket: 'logos' },
+      { p_limit: TAKE_LIMIT, p_bucket: 'avatars' },
+      { p_limit: TAKE_LIMIT, p_bucket: 'posts' },
+    ]);
     expect(rpcCalls(calls, 'storage_orphans').map((c) => c.body)).toEqual([{ p_limit: TAKE_LIMIT }]);
     expect(storageCalls(calls).map((c) => (c.body as { prefixes: string[] }).prefixes.length)).toEqual([100, 100, 50, 2]);
     expect(storageCalls(calls).every((c) => c.method === 'DELETE' && c.url.endsWith('/storage/v1/object/scoreboards'))).toBe(true);
@@ -209,7 +224,7 @@ describe('handlePurgeRequest', () => {
     expect(calls.every((c) => c.headers.apikey === 'sb_secret_abc')).toBe(true);
 
     expect(d.lines.map((l) => JSON.parse(l))).toEqual([
-      { fn: 'purge-photos', level: 'info', event: 'summary', queued: 250, purged: 250, logos: 0, orphans: 2, orphansRemoved: 2, failed: 0 },
+      { fn: 'purge-photos', level: 'info', event: 'summary', queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, orphans: 2, orphansRemoved: 2, failed: 0 },
     ]);
     expect(d.lines.join('\n')).not.toContain(LEAGUE);
   });
@@ -220,7 +235,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 150, purged: 50, logos: 0, orphans: 1, orphansRemoved: 0, failed: 101 });
+    expect(await res.json()).toEqual({ queued: 150, purged: 50, logos: 0, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 0, failed: 101 });
     expect(rpcCalls(calls, 'purge_queue_done').map((c) => (c.body as { p_paths: string[] }).p_paths)).toEqual([queue.slice(100).map((q) => q.path)]);
     const lines = d.lines.map((l) => JSON.parse(l));
     expect(lines).toContainEqual({ fn: 'purge-photos', level: 'warn', event: 'storage', bucket: 'scoreboards', failed: 100, statuses: [503] });
@@ -231,7 +246,7 @@ describe('handlePurgeRequest', () => {
   it('si Storage no borró nada, no se llama a purge_queue_done; las rutas raras nunca llegan a Storage', async () => {
     const { fetchFn, calls } = fakeSupabase({ queue: [{ path: '../../otra/cosa' }, { path: '' }], orphans: [{ path: '/raiz.webp' }] });
     const res = await handlePurgeRequest(post(), deps(fetchFn));
-    expect(await res.json()).toEqual({ queued: 2, purged: 0, logos: 0, orphans: 1, orphansRemoved: 0, failed: 3 });
+    expect(await res.json()).toEqual({ queued: 2, purged: 0, logos: 0, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 0, failed: 3 });
     expect(storageCalls(calls)).toEqual([]);
     expect(rpcCalls(calls, 'purge_queue_done')).toEqual([]);
   });
@@ -260,14 +275,8 @@ describe('handlePurgeRequest', () => {
     await handlePurgeRequest(post({ limit: 5000, orphans: false }), deps(fetchFn));
     await handlePurgeRequest(post({ limit: 0.5 }), deps(fetchFn));
     await handlePurgeRequest(new Request('https://x/purge-photos', { method: 'POST', headers: { 'x-cron-secret': SECRET }, body: 'no es json' }), deps(fetchFn));
-    expect(rpcCalls(calls, 'purge_queue_take').map((c) => c.body)).toEqual([
-      { p_limit: 1000 },
-      { p_limit: 1000, p_bucket: 'logos' },
-      { p_limit: 1 },
-      { p_limit: 1, p_bucket: 'logos' },
-      { p_limit: TAKE_LIMIT },
-      { p_limit: TAKE_LIMIT, p_bucket: 'logos' },
-    ]);
+    const each = (p_limit: number) => [{ p_limit }, ...PURGE_BUCKETS.slice(1).map((p_bucket) => ({ p_limit, p_bucket }))];
+    expect(rpcCalls(calls, 'purge_queue_take').map((c) => c.body)).toEqual([...each(1000), ...each(1), ...each(TAKE_LIMIT)]);
     expect(rpcCalls(calls, 'storage_orphans').map((c) => c.body)).toEqual([{ p_limit: 1 }, { p_limit: TAKE_LIMIT }]);
   });
 
@@ -278,7 +287,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 5, purged: 5, logos: 3, orphans: 1, orphansRemoved: 1, failed: 0 });
+    expect(await res.json()).toEqual({ queued: 5, purged: 5, logos: 3, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 1, failed: 0 });
     expect(storageCalls(calls).map((c) => [c.url.split('/storage/v1/object/')[1], (c.body as { prefixes: string[] }).prefixes])).toEqual([
       ['scoreboards', queue.map((q) => q.path)],
       ['logos', logoQueue.map((q) => q.path)],
@@ -289,6 +298,43 @@ describe('handlePurgeRequest', () => {
       { p_paths: logoQueue.map((q) => q.path), p_bucket: 'logos' },
     ]);
     expect(d.lines.join('\n')).not.toContain(LEAGUE);
+  });
+
+  it('las fotos de perfil y de publicaciones se borran de avatars y posts y se marcan hechas con su p_bucket', async () => {
+    const avatarQueue = [{ path: avatar(1) }, { path: avatar(2) }];
+    const postQueue = [{ path: postPhoto(1) }, { path: '../fuera' }];
+    const { fetchFn, calls } = fakeSupabase({ avatarQueue, postQueue });
+    const d = deps(fetchFn);
+    const res = await handlePurgeRequest(post(), d);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ queued: 4, purged: 3, logos: 0, avatars: 2, posts: 1, orphans: 0, orphansRemoved: 0, failed: 1 });
+    expect(storageCalls(calls).map((c) => [c.url.split('/storage/v1/object/')[1], (c.body as { prefixes: string[] }).prefixes])).toEqual([
+      [AVATARS_BUCKET, avatarQueue.map((q) => q.path)],
+      [POSTS_BUCKET, [postPhoto(1)]],
+    ]);
+    expect(rpcCalls(calls, 'purge_queue_done').map((c) => c.body)).toEqual([
+      { p_paths: avatarQueue.map((q) => q.path), p_bucket: 'avatars' },
+      { p_paths: [postPhoto(1)], p_bucket: 'posts' },
+    ]);
+    expect(d.lines.join('\n')).not.toContain(USER);
+  });
+
+  it('con una base de antes de la red social (sin avatars ni posts) fallan solo esas dos llamadas; lo demás se borra igual', async () => {
+    const queue = [{ path: photo(1) }];
+    const logoQueue = [{ path: logo(1) }];
+    const { fetchFn, calls } = fakeSupabase({
+      queue,
+      logoQueue,
+      rpcStatus: { 'purge_queue_take:avatars': 400, 'purge_queue_take:posts': 400 },
+    });
+    const d = deps(fetchFn);
+    const res = await handlePurgeRequest(post(), d);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ queued: 2, purged: 2, logos: 1, avatars: 0, posts: 0 });
+    expect(rpcCalls(calls, 'purge_queue_done').map((c) => c.body)).toEqual([{ p_paths: [photo(1)] }, { p_paths: [logo(1)], p_bucket: 'logos' }]);
+    const lines = d.lines.map((l) => JSON.parse(l));
+    expect(lines).toContainEqual({ fn: 'purge-photos', level: 'error', event: 'take', bucket: 'avatars', status: 400 });
+    expect(lines).toContainEqual({ fn: 'purge-photos', level: 'error', event: 'take', bucket: 'posts', status: 400 });
   });
 
   it('con una base sin logos (antes de 20260929001000) falla solo la llamada de los logos (se registra); las fotos se borran igual', async () => {

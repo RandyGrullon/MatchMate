@@ -293,7 +293,7 @@ describe('buscar personas', () => {
     await follow(w.u.luis, w.u.ana);
     const list = await search(w.u.ana, '');
     expect(list.map((p) => p.username)).toEqual(['extra', 'sofi', 'luis']);
-    expect(list[2]).toEqual({ id: w.u.luis, name: 'luis', username: 'luis', isFollowing: true, followsYou: true, inLeague: false, invited: false });
+    expect(list[2]).toEqual({ id: w.u.luis, name: 'luis', username: 'luis', isFollowing: true, followsYou: true, inLeague: false, invited: false, avatar: null });
     expect(await search(w.u.ana, '@')).toEqual(list);
     expect(await search(w.u.ana, null)).toEqual(list);
     expect(await search(w.u.ana, '', null, 2)).toEqual(list.slice(0, 2));

@@ -105,6 +105,10 @@ const RPC_AUTHENTICATED = [
   'esports_withdraw', 'esports_decide_entry', 'esports_check_in', 'esports_set_seeds', 'esports_form_teams',
   'esports_assign_free_agent', 'esports_create_stage', 'esports_delete_stage', 'esports_sync', 'esports_br_save_game',
   'esports_br_delete_game', 'esports_hub', 'esports_my_entries',
+  // Red social: publicaciones, comentarios, me gusta, el feed, seguir y buscar ligas, biografía, foto y bloquear.
+  'create_post', 'delete_post', 'set_post_like', 'post_detail', 'post_comments', 'add_post_comment', 'delete_post_comment',
+  'social_feed', 'user_posts', 'league_posts', 'league_social', 'follow_league', 'unfollow_league', 'followed_leagues',
+  'search_leagues', 'set_bio', 'set_avatar', 'block_user', 'unblock_user', 'my_blocked_users',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
