@@ -125,7 +125,10 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           'Liga pública: cualquiera con el link ve los nombres de los jugadores, los resultados y las tablas. Nunca tu correo.',
           'Liga privada: solo sus miembros.',
           'Tu perfil (nombre, deportes, seguidores y juegos) lo ven las cuentas que comparten una liga contigo o que te siguen, y cualquier cuenta si juegas en una liga pública. Solo salen los juegos de ligas que esa persona puede ver, nunca los de ligas con menores.',
-          'Los admins de tu liga ven los datos de los jugadores de esa liga, aprueban resultados, pueden sacar a alguien y borrar comentarios.',
+          'Tus publicaciones las ve quien elijas al publicar: todas las cuentas, solo tus seguidores o solo los miembros de la liga donde publicas. Los comentarios y me gusta de una publicación los ve quien puede ver esa publicación.',
+          'Tu foto de perfil, tu biografía y tu @usuario los ven las cuentas que entran a tu perfil o te encuentran con la lupa.',
+          'Si bloqueas a alguien, deja de ver tu perfil y tus publicaciones, dejan de seguirse y no te encuentra al buscar.',
+          'Los admins de tu liga ven los datos de los jugadores de esa liga, aprueban resultados, pueden sacar a alguien y borrar comentarios y publicaciones del muro de la liga.',
           'Tu correo lo ves tú y el equipo de MatchMate (el superadmin), que puede ver cuentas y ligas para dar soporte y cuidar la app. Lo que hace desde su consola queda anotado.',
           'Las ligas con menores siempre son privadas.',
         ]}
@@ -139,7 +142,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       <Bullets
         items={[
           'Si reportas algo (un comentario, un aviso, un juego, una liga o una cuenta), guardamos qué reportaste, el motivo, tu nota y cuándo.',
-          'Lo revisa el equipo de MatchMate. Si es un comentario, un aviso o un juego de una liga, también los admins de esa liga, pero sin saber quién lo reportó (si lo reportado es de un admin, ese admin no lo ve). La persona reportada tampoco sabe quién fue.',
+          'Lo revisa el equipo de MatchMate. Si es un comentario, un aviso, un juego o una publicación de una liga, también los admins de esa liga, pero sin saber quién lo reportó (si lo reportado es de un admin, ese admin no lo ve). La persona reportada tampoco sabe quién fue.',
           'Queda anotado qué se hizo (descartado o atendido), quién y una nota. Si lo reportado no cumple los Términos, se puede borrar o bloquear la cuenta.',
           'Si borras tu cuenta, tus reportes quedan sin tu nombre, para que la revisión siga.',
         ]}
@@ -194,6 +197,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           'Por eso: toma la foto solo a la pantalla del marcador. Sin caras, sin personas y sin nada personal.',
           'La lectura solo propone los números: un admin los revisa antes de que cuenten.',
           'Si subes un logo o una imagen de tu liga o equipo, donde la app lo permita, se ve junto a la liga igual que su nombre. Es una imagen pública: la puede ver cualquiera que tenga el link, aunque no tenga cuenta. Usa solo imágenes tuyas o con permiso, sin personas ni datos personales.',
+          'Tu foto de perfil y las fotos de tus publicaciones también se guardan como imágenes públicas: en la app solo salen a quien puede ver tu perfil o esa publicación, pero quien tenga el link de la imagen la puede abrir. Sube solo fotos tuyas o con permiso de quien sale en ellas.',
           'En las ligas con menores no se suben fotos.',
           'Las fotos se quedan mientras exista la liga. El admin puede borrar las viejas cuando quiera, y se borran si se borra la liga.',
         ]}
@@ -242,7 +246,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       <Bullets
         items={[
           'Tu cuenta, hasta que la borres.',
-          'Al borrarla se borran al momento tu perfil, tu correo, tus ligas, comentarios, reacciones, seguidores, avisos, los días de uso, la aceptación de los términos y los errores que mandó tu teléfono.',
+          'Al borrarla se borran al momento tu perfil, tu correo, tus ligas, publicaciones, comentarios, reacciones, seguidores, bloqueos, avisos, los días de uso, la aceptación de los términos y los errores que mandó tu teléfono. Tu foto de perfil y las fotos de tus publicaciones se borran de Storage en el día.',
           'Tus resultados se quedan en la liga, a nombre de tu jugador pero ya sin tu cuenta: son parte de las tablas y la historia de esa liga. Si quieres que se borren o se cambie el nombre, pídeselo al admin de la liga o escríbenos.',
           'Tus reportes se quedan sin tu nombre. Lo que anota la consola del equipo se queda, también sin tu nombre ni tu correo.',
           'Los errores de la app se borran a los 30 días.',

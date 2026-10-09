@@ -81,7 +81,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
           items={[
             'Anotar resultados falsos o hacer trampa.',
             'Molestar, amenazar, insultar o discriminar a otros.',
-            'Nombres, comentarios, avisos o imágenes ofensivos, sexuales o ilegales.',
+            'Nombres, publicaciones, comentarios, avisos o imágenes ofensivos, sexuales o ilegales.',
             'Publicar datos de otras personas (teléfono, dirección, fotos) sin su permiso, o cualquier cosa sobre un menor fuera de lo que pide su liga.',
             'Usar la app para mandar publicidad que nadie pidió.',
             'Entrar donde no te toca, usar la cuenta de otro, intentar romper la app o abusar de ella con programas.',
@@ -130,7 +130,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
         <Bullets
           items={[
             'Si ves algo que no cumple estas reglas (un comentario, un aviso, un juego, una liga o una cuenta), toca la bandera («Reportar») que tiene al lado.',
-            'Lo revisa el equipo de MatchMate y, si es un comentario, un aviso o un juego de una liga, también sus admins (menos el admin del que es lo reportado). No le decimos a nadie quién lo reportó.',
+            'Lo revisa el equipo de MatchMate y, si es un comentario, un aviso, un juego o una publicación de una liga, también sus admins (menos el admin del que es lo reportado). No le decimos a nadie quién lo reportó.',
             'Podemos descartar el reporte, borrar lo reportado, bloquear la cuenta o borrar la liga. Reportar a propósito algo que cumple las reglas también es abuso.',
           ]}
         />
