@@ -73,6 +73,11 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'submission') return invalidate(tags.feeds);
     // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
     if (msg.event === 'follow' || msg.event === 'like') return invalidate('people:notices', `people:${id}`, tags.feeds);
+    // Me gusta o comentario en una publicación mía (src/lib/data/posts.ts): la campana y esa publicación.
+    if (msg.event === 'post_like' || msg.event === 'post_comment') {
+      const post = (msg.payload as { postId?: unknown } | null)?.postId;
+      return invalidate('people:notices', ...(typeof post === 'string' ? [`posts:p:${post}`] : []));
+    }
     if (msg.event === 'claims') return invalidate('claims:me', tags.members, tags.feeds);
     // Me invitaron, o una que mandé se aceptó, rechazó o retiró (aceptar también cambia mis membresías).
     if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds);

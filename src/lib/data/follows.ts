@@ -61,6 +61,14 @@ export interface PublicProfile {
   /** Él sigue a la cuenta que mira. */
   followsYou: boolean;
   isMe: boolean;
+  /** Biografía (≤ 160; falta en una copia vieja del teléfono hasta que se vuelve a leer). */
+  bio?: string | null;
+  /** Ruta de su foto en el bucket `avatars` (src/lib/publicImages.ts). */
+  avatar?: string | null;
+  /** Publicaciones suyas que la cuenta que mira puede ver. */
+  posts?: number;
+  /** La cuenta que mira lo bloqueó. */
+  blockedByMe?: boolean;
 }
 
 /** Una cuenta en la lista de seguidores o seguidos. `at` = cuándo empezó a seguir (ISO, sirve de cursor). */
@@ -73,6 +81,8 @@ export interface FollowPerson {
   isFollowing: boolean;
   followsYou: boolean;
   isMe: boolean;
+  /** Ruta de su foto en el bucket `avatars`. */
+  avatar?: string | null;
 }
 
 export interface FollowResult {
@@ -320,8 +330,9 @@ export async function setFollowing(target: string, follow: boolean): Promise<Fol
     patchProfile(target, (p) => ({ ...p, isFollowing: res.following, followers: res.followers }));
     return res;
   } finally {
-    // Lo de las dos cuentas (listas, números), los juegos de quienes sigo y la búsqueda (a quién sigo).
-    invalidate(peopleTags.user(target), peopleTags.user(me), peopleTags.feed, peopleTags.search);
+    // Lo de las dos cuentas (listas, números), los juegos de quienes sigo, la búsqueda (a quién sigo) y las
+    // publicaciones de Siguiendo (postTags.feed de ./posts: ese archivo importa este).
+    invalidate(peopleTags.user(target), peopleTags.user(me), peopleTags.feed, peopleTags.search, 'posts:feed');
   }
 }
 
@@ -346,7 +357,9 @@ export type SocialNoticeRow =
       leagueName: string | null;
       sport: string | null;
       url: string;
-    };
+    }
+  | { kind: 'post_like'; at: string; userId: string; name: string; postId: string }
+  | { kind: 'post_comment'; at: string; userId: string; name: string; postId: string; text: string };
 
 /** Aviso social listo para la campana (la misma forma que `GenericNotice` de src/lib/notifications.ts). */
 export interface SocialNotice {
@@ -357,7 +370,7 @@ export interface SocialNotice {
   url: string;
   /** ISO. */
   at: string;
-  icon: 'follow' | 'like';
+  icon: 'follow' | 'like' | 'comment';
   lid: string | null;
   sport: string | null;
 }
@@ -374,13 +387,34 @@ export function peopleText(names: readonly string[]): string {
 }
 
 /**
- * Los avisos de la campana: uno por cada cuenta que empezó a seguir («ana te empezó a seguir») y uno por juego con
- * todos sus me gusta («A ana y 2 más les gustó tu partido»). El id cambia con el me gusta más nuevo: uno nuevo en
- * el mismo juego vuelve a salir como nuevo. Más nuevos primero.
+ * Los avisos de la campana: uno por cada cuenta que empezó a seguir («ana te empezó a seguir»), uno por juego con
+ * todos sus me gusta («A ana y 2 más les gustó tu partido»), uno por publicación con sus me gusta («A ana le gustó tu
+ * publicación») y uno por publicación con sus comentarios («ana comentó tu publicación», con el último). El id cambia
+ * con el más nuevo: uno nuevo en el mismo juego o publicación vuelve a salir como nuevo. Más nuevos primero.
  */
 export function buildSocialNotices(rows: readonly SocialNoticeRow[] | null | undefined): SocialNotice[] {
   const out: SocialNotice[] = [];
   const likes = new Map<string, { row: Extract<SocialNoticeRow, { kind: 'like' }>; names: string[]; users: Set<string>; at: string }>();
+  // Me gusta y comentarios de cada publicación: los nombres (el más nuevo primero) y lo último que dijeron.
+  type PostGroup = { postId: string; names: string[]; users: Set<string>; at: string; text: string };
+  const postLikes = new Map<string, PostGroup>();
+  const postComments = new Map<string, PostGroup>();
+  const addTo = (groups: Map<string, PostGroup>, postId: string, userId: string, name: string, at: string, text = '') => {
+    const g = groups.get(postId);
+    if (!g) groups.set(postId, { postId, names: [name], users: new Set([userId]), at, text });
+    else {
+      const newer = Date.parse(at) > Date.parse(g.at);
+      if (!g.users.has(userId)) {
+        g.users.add(userId);
+        if (newer) g.names.unshift(name);
+        else g.names.push(name);
+      }
+      if (newer) {
+        g.at = at;
+        g.text = text;
+      }
+    }
+  };
   for (const r of rows ?? []) {
     if (!r || typeof r.at !== 'string' || !r.userId) continue;
     if (r.kind === 'follow') {
@@ -395,6 +429,10 @@ export function buildSocialNotices(rows: readonly SocialNoticeRow[] | null | und
         lid: null,
         sport: null,
       });
+    } else if (r.kind === 'post_like' && r.postId) {
+      addTo(postLikes, r.postId, r.userId, cleanName(r.name), r.at);
+    } else if (r.kind === 'post_comment' && r.postId) {
+      addTo(postComments, r.postId, r.userId, cleanName(r.name), r.at, typeof r.text === 'string' ? r.text.trim() : '');
     } else if (r.kind === 'like' && r.id) {
       const k = `${r.gameKind}:${r.id}:${r.playerId ?? ''}`;
       const g = likes.get(k);
@@ -422,6 +460,33 @@ export function buildSocialNotices(rows: readonly SocialNoticeRow[] | null | und
       icon: 'like',
       lid: g.row.leagueId || null,
       sport: g.row.sport ?? null,
+    });
+  }
+  for (const g of postLikes.values()) {
+    const many = g.names.length > 1;
+    out.push({
+      id: `megusta:post:${g.postId}:${Date.parse(g.at)}`,
+      kind: 'social',
+      title: `A ${peopleText(g.names)} ${many ? 'les' : 'le'} gustó tu publicación`,
+      body: 'Toca para verla.',
+      url: `/p/${g.postId}`,
+      at: g.at,
+      icon: 'like',
+      lid: null,
+      sport: null,
+    });
+  }
+  for (const g of postComments.values()) {
+    out.push({
+      id: `comentario:post:${g.postId}:${Date.parse(g.at)}`,
+      kind: 'social',
+      title: `${peopleText(g.names)} ${g.names.length > 1 ? 'comentaron' : 'comentó'} tu publicación`,
+      body: g.text ? `«${g.text.length > 80 ? `${g.text.slice(0, 79)}…` : g.text}»` : 'Toca para verla.',
+      url: `/p/${g.postId}`,
+      at: g.at,
+      icon: 'comment',
+      lid: null,
+      sport: null,
     });
   }
   return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || (a.id < b.id ? 1 : -1));

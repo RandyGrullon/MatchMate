@@ -114,7 +114,7 @@ describe('@usuario (capa de datos)', () => {
 describe('buscar personas (capa de datos)', () => {
   it('por @usuario y por nombre; con la liga dice quién ya está', async () => {
     const hits = await fetchPeople('@beto', lid);
-    expect(hits).toEqual([{ id: beto, name: 'Beto Gómez', username: 'betogomez', isFollowing: false, followsYou: false, inLeague: false, invited: false }]);
+    expect(hits).toEqual([{ id: beto, name: 'Beto Gómez', username: 'betogomez', isFollowing: false, followsYou: false, inLeague: false, invited: false, avatar: null }]);
     expect((await fetchPeople('dueña', lid)).map((h) => [h.id, h.inLeague])).toEqual([[rosa, true]]);
     // Nunca yo.
     expect(await fetchPeople('ana.p')).toEqual([]);

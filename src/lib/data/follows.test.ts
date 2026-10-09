@@ -115,3 +115,52 @@ describe('listas por páginas', () => {
     ]);
   });
 });
+
+describe('avisos de publicaciones', () => {
+  const postLike = (userId: string, name: string, at: string, postId = 'P1'): SocialNoticeRow => ({ kind: 'post_like', at, userId, name, postId });
+  const postComment = (userId: string, name: string, at: string, text: string, postId = 'P1'): SocialNoticeRow => ({
+    kind: 'post_comment',
+    at,
+    userId,
+    name,
+    postId,
+    text,
+  });
+
+  it('me gusta: uno por publicación con todos los nombres, el más nuevo primero, y lleva a la publicación', () => {
+    const notices = buildSocialNotices([
+      postLike('u-ana', 'ana', '2026-10-09T09:00:00.000Z'),
+      postLike('u-luis', 'luis', '2026-10-09T11:00:00.000Z'),
+      postLike('u-ana', 'ana', '2026-10-09T08:00:00.000Z'),
+    ]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      id: `megusta:post:P1:${Date.parse('2026-10-09T11:00:00.000Z')}`,
+      title: 'A luis y ana les gustó tu publicación',
+      url: '/p/P1',
+      icon: 'like',
+      at: '2026-10-09T11:00:00.000Z',
+    });
+  });
+
+  it('comentarios: uno por publicación con el último comentario (recortado) y su ícono', () => {
+    const long = 'x'.repeat(100);
+    const [n] = buildSocialNotices([
+      postComment('u-ana', 'ana', '2026-10-09T09:00:00.000Z', 'primero'),
+      postComment('u-sofi', 'sofi', '2026-10-09T10:00:00.000Z', long),
+    ]);
+    expect(n).toMatchObject({ title: 'sofi y ana comentaron tu publicación', url: '/p/P1', icon: 'comment' });
+    expect(n!.body).toBe(`«${'x'.repeat(79)}…»`);
+    const [one] = buildSocialNotices([postComment('u-ana', 'ana', '2026-10-09T09:00:00.000Z', ' ¡Qué juego! ')]);
+    expect(one).toMatchObject({ title: 'ana comentó tu publicación', body: '«¡Qué juego!»' });
+  });
+
+  it('se mezclan con los otros avisos, los más nuevos primero', () => {
+    const notices = buildSocialNotices([
+      follow('u-ana', 'ana', '2026-10-09T08:00:00.000Z'),
+      postComment('u-luis', 'luis', '2026-10-09T12:00:00.000Z', 'bien'),
+      postLike('u-sofi', 'sofi', '2026-10-09T10:00:00.000Z', 'P2'),
+    ]);
+    expect(notices.map((n) => n.icon)).toEqual(['comment', 'like', 'follow']);
+  });
+});

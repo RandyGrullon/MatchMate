@@ -121,6 +121,8 @@ export interface PersonHit {
   inLeague: boolean;
   /** Ya tiene una invitación pendiente a esa liga (false sin liga). */
   invited: boolean;
+  /** Ruta de su foto en el bucket `avatars` (falta en una copia vieja hasta que se vuelve a leer). */
+  avatar?: string | null;
 }
 
 /** Lo que la base mira de la búsqueda. */
@@ -150,6 +152,7 @@ const toHit = (r: Partial<PersonHit>): PersonHit => ({
   followsYou: r.followsYou === true,
   inLeague: r.inLeague === true,
   invited: r.invited === true,
+  avatar: typeof r.avatar === 'string' && r.avatar ? r.avatar : null,
 });
 
 /**
