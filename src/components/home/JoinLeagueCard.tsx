@@ -2,17 +2,17 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { QrCode, Search, Target, Ticket, Users } from 'lucide-react';
 import { Button, Card, ListRow, RowIcon, cx } from '../ui';
-import { QrHelpSheet } from './HomeSheets';
+import { preloadQrScanner, useQrScanner } from '../scanner';
 
 /**
  * Hoy de una cuenta nueva (sin ligas): «Únete a tu liga» con el código que te mandó quien organiza (lleva a
- * /unirse/<código>) y «o escanea el QR»; debajo, «o también»: crear tu liga, anotar un juego suelto o buscar ligas
- * abiertas. `onCreate` = null si la cuenta no puede crear ligas todavía.
+ * /unirse/<código>) y «o escanea el QR» (abre el lector de la app); debajo, «o también»: crear tu liga, anotar un
+ * juego suelto o buscar ligas abiertas. `onCreate` = null si la cuenta no puede crear ligas todavía.
  */
 export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) {
   const navigate = useNavigate();
   const [code, setCode] = useState('');
-  const [qr, setQr] = useState(false);
+  const scanner = useQrScanner();
   function submit(e: FormEvent) {
     e.preventDefault();
     const c = code.trim().toUpperCase();
@@ -52,7 +52,8 @@ export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) 
           </form>
           <button
             type="button"
-            onClick={() => setQr(true)}
+            onClick={scanner.open}
+            onPointerDown={preloadQrScanner}
             className="mt-0.5 flex h-12 w-full items-center justify-center gap-[7px] text-meta font-semibold text-accent transition active:opacity-70"
           >
             <QrCode aria-hidden="true" className="size-[18px]" /> o escanea el QR
@@ -97,7 +98,7 @@ export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) 
           to="/ligas?ver=abiertas"
         />
       </Card>
-      <QrHelpSheet open={qr} onClose={() => setQr(false)} />
+      {scanner.element}
     </>
   );
 }

@@ -89,29 +89,6 @@ export function WhereSheet({ open, onClose, recent, today }: { open: boolean; on
   );
 }
 
-/**
- * «o escanea el QR»: el QR de la invitación es un link, así que se abre con la cámara del teléfono (la app no lee
- * códigos). La hoja lo explica en dos líneas.
- */
-export function QrHelpSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Escanea el QR"
-      footer={
-        <Button variant="primary" size="xl" className="w-full" onClick={onClose}>
-          Entendido
-        </Button>
-      }
-    >
-      <p className="text-body text-fg-2">
-        Abre la cámara del teléfono y apunta al QR que te mostró quien organiza. Se abre la invitación y entras a la liga con un toque.
-      </p>
-    </Sheet>
-  );
-}
-
 /** Qué trae cada modo (las tarjetas de la hoja). */
 export const MODE_CARDS: Record<UiMode, { label: string; tagline: string; items: readonly string[]; icon: LucideIcon }> = {
   lite: { label: 'Lite', tagline: 'Lo esencial', items: ['Anotar rápido', 'Tu promedio', 'Tus ligas y fechas'], icon: Leaf },

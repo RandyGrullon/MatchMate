@@ -3,8 +3,8 @@ import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Target, Ticket, Trophy, 
 import type { League, Member } from '../../lib/types';
 import { leagueSport, sportsOf } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
-import { QrHelpSheet } from '../home/HomeSheets';
 import { useMyLeagues } from '../home/useHomeData';
+import { preloadQrScanner, useQrScanner } from '../scanner';
 import { MODAL_OPENED, cx, keyboardInset } from '../ui';
 import { CreateStyles } from './styles';
 
@@ -152,7 +152,7 @@ export function SoloOption({ onClick }: { onClick: () => void }) {
 
 /**
  * «Unirme con un código» (lo más común: te lo pasa quien organiza): el código y «Unirme» (lleva a /unirse/<código>), y
- * «o escanea el QR» (se abre con la cámara del teléfono: la hoja lo explica).
+ * «o escanea el QR» (abre el lector de QR de la app).
  */
 export function JoinCodeBox({ onJoin, onQr }: { onJoin: (code: string) => void; onQr: () => void }) {
   const [code, setCode] = useState('');
@@ -194,6 +194,7 @@ export function JoinCodeBox({ onJoin, onQr }: { onJoin: (code: string) => void; 
       <button
         type="button"
         onClick={onQr}
+        onPointerDown={preloadQrScanner}
         className="flex h-11 w-full items-center justify-center gap-[7px] text-[14.5px] font-semibold text-accent transition active:opacity-70"
       >
         <QrCode aria-hidden="true" className="size-[17px]" /> o escanea el QR
@@ -226,20 +227,22 @@ export function CreateSheet({
   onSolo: () => void;
 }) {
   const [pick, setPick] = useState<Pick | null>(null);
-  const [qr, setQr] = useState(false);
+  // El lector va dentro de la hoja (encima de ella); al abrir lo leído, la ruta cambia y CreateMenu cierra la hoja.
+  const scanner = useQrScanner();
+  const closeScanner = scanner.close;
   useEffect(() => {
     if (!open) {
       setPick(null);
-      setQr(false);
+      closeScanner();
     }
-  }, [open]);
+  }, [open, closeScanner]);
   return (
     <>
       <CreateStyles />
       <FloatingSheet open={open} onClose={onClose} labelledBy="crear-titulo">
         {/* Se monta al abrirla: las ligas de la cuenta se leen cuando hace falta. */}
-        <CreateSheetBody pick={pick} setPick={setPick} onClose={onClose} onJoin={onJoin} onCreate={onCreate} onEvent={onEvent} onSolo={onSolo} onQr={() => setQr(true)} />
-        <QrHelpSheet open={qr} onClose={() => setQr(false)} />
+        <CreateSheetBody pick={pick} setPick={setPick} onClose={onClose} onJoin={onJoin} onCreate={onCreate} onEvent={onEvent} onSolo={onSolo} onQr={scanner.open} />
+        {scanner.element}
       </FloatingSheet>
     </>
   );
