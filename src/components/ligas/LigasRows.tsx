@@ -1,14 +1,11 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { LogIn, Search, Ticket } from 'lucide-react';
-import type { CalendarItem } from '../../lib/calendar';
-import { usePlayers } from '../../lib/data';
-import { roleLabel } from '../../lib/league';
-import type { League, Member } from '../../lib/types';
+import type { League } from '../../lib/types';
 import { leagueSport, sportMeta } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { SportMark } from '../SportMark';
-import { leagueLine, rowLineText, tourneyLine, type RowLine, type TourneyItem } from '../eventos/logic';
+import { rowLineText, tourneyLine, type RowLine, type TourneyItem } from '../eventos/logic';
 import { LeagueLogo } from '../home/LeagueCard';
 import { sportTint } from '../home/SportTint';
 import { Card, ListRow, RowIcon, cx } from '../ui';
@@ -38,7 +35,7 @@ export function LineText({ line }: { line: RowLine }) {
 }
 
 /** El color de un deporte en una pieza chica (la fila de una liga de otro deporte): la clase y su <style> (va al <head>). */
-function useTint(sport: string) {
+export function useTint(sport: string) {
   const t = sportTint(sport);
   const style = t.css ? (
     <style href={t.className} precedence="default">
@@ -59,55 +56,6 @@ export function LeagueTile({ league, dense }: { league: Pick<League, 'id' | 'spo
     <LeagueLogo path={league.logoPath} className={dense ? 'size-10 rounded-xl' : 'size-12 rounded-[15px]'}>
       <SportMark sport={leagueSport(league)} game={league.game} size={size} torneo={league.kind === 'torneo'} />
     </LeagueLogo>
-  );
-}
-
-/**
- * Una de mis ligas: su cuadro, el nombre y «En juego hoy · 6 jugadores» (o cuándo es lo próximo). En Pro, más densa y
- * con mi papel («Dueño», «Admin»). Toda la fila abre la liga.
- */
-export function LeagueListRow({
-  league,
-  live,
-  next,
-  today,
-  role,
-  pro,
-}: {
-  league: League;
-  live: boolean;
-  next?: CalendarItem | null;
-  today: string;
-  role?: Member['role'];
-  pro?: boolean;
-}) {
-  const players = usePlayers(league.id);
-  const sport = leagueSport(league);
-  const tint = useTint(sport);
-  const line = leagueLine({
-    live,
-    next,
-    today,
-    schedule: league.schedule,
-    people: players.loading ? null : players.data.length,
-    sport,
-    extra: pro && role && role !== 'member' ? [roleLabel(role)] : [],
-  });
-  return (
-    <ListRow
-      className={cx(!pro && 'min-h-[76px]!', tint.className)}
-      dense={pro}
-      leading={<LeagueTile league={league} dense={pro} />}
-      title={league.name}
-      subtitle={
-        <>
-          {tint.style}
-          <LineText line={line} />
-        </>
-      }
-      to={`/l/${league.id}`}
-      ariaLabel={`${league.name}: ${rowLineText(line)}`}
-    />
   );
 }
 

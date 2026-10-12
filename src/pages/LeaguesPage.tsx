@@ -3,30 +3,33 @@ import { Link, useSearchParams } from 'react-router';
 import { Plus, Shield } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useMySquads } from '../lib/data/squads';
+import { useLiveNow } from '../lib/data/streams';
 import { inSport, useActiveSport } from '../lib/sportContext';
 import { useIsPro } from '../lib/useMode';
 import { sportsOf } from '../sports/registry';
 import { useCreateMenu } from '../components/CreateMenu';
 import { EsportsRowCard, useEsportsPresence } from '../components/home/EsportsHomeRow';
 import { AppShell } from '../components/Shell';
-import { ALL_SPORTS, ligasSport, openLeaguesSubtitle, splitMine, tourneysOf } from '../components/eventos/logic';
+import { ALL_SPORTS, ligasSport, openLeaguesSubtitle, splitMine, tourneysOf, type TourneyItem } from '../components/eventos/logic';
 import { useActivity, useMyLeagues } from '../components/home/useHomeData';
-import { LeagueListRow, NoLeaguesCard, OpenLeaguesRow, SportFilter, TourneyRow } from '../components/ligas/LigasRows';
+import { LeagueCardsSkeleton, LigasSummary, MyLeagueCard, SquadCards, TourneyCard, TourneyStrip } from '../components/ligas/LigasCards';
+import { NoLeaguesCard, OpenLeaguesRow, SportFilter } from '../components/ligas/LigasRows';
+import { ligasSummary, soonest } from '../components/ligas/logic';
 import { OpenLeagues } from '../components/ligas/OpenLeagues';
 import { SearchButton } from '../components/social/SearchButton';
-import { mySquadLine } from '../components/squads/logic';
-import { SquadRow } from '../components/squads/SquadBits';
-import { Card, ListRow, ListSkeleton, LoadError, Loading, RowIcon, SectionHeader, cx, sectionLinkClass } from '../components/ui';
+import { Card, ListRow, LoadError, Loading, RowIcon, SectionHeader, cx, sectionLinkClass } from '../components/ui';
 
 /**
  * Ligas (`/ligas`, la pestaña Ligas; antes «Eventos»), rediseño «Calma y foco»: el título con «Crear o unirme» (la hoja
- * que antes era el botón del centro de la barra) y la lupa (buscar personas y ligas), «Tus ligas» (cada una con lo de
- * hoy: «En juego hoy · 6 jugadores»), «Tus torneos» (los sin liga y los de tus ligas que vienen) y «Buscar ligas
- * abiertas» (las públicas de todos los deportes y la agenda pública, en `?ver=abiertas`). «Tus equipos» (los de fuera
- * de una liga: hasta 3, con «Ver todos» → /equipos) o, sin ninguno, la fila «Equipos» para crear uno. El filtro de
- * deporte sale solo si juegas más de uno. Lo de hoy y lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se
- * repite. Sin cuenta: las abiertas. Con el filtro en Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports»
- * lleva a `/esports` (los torneos donde juega salen solos: es miembro de su liga).
+ * que antes era el botón del centro de la barra) y la lupa (buscar personas y ligas), debajo el resumen («3 ligas · 1 en
+ * vivo · Próximo: hoy 7:30 pm»), «Tus ligas» (cada una en su tarjeta, en el color de su deporte: lo próximo, «EN VIVO»,
+ * los jugadores y, en el boliche, tu lugar y tu promedio), «Tus torneos» (tarjetas que se deslizan de lado: los sin liga
+ * y los de tus ligas que vienen) y «Buscar ligas abiertas» (las públicas de todos los deportes y la agenda pública, en
+ * `?ver=abiertas`). «Tus equipos» (los de fuera de una liga, cada uno en su color: hasta 3, con «Ver todos» →
+ * /equipos) o, sin ninguno, la fila «Equipos» para crear uno. El filtro de deporte sale solo si juegas más de uno (y
+ * filtra todo). Lo de hoy y lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin cuenta: las
+ * abiertas. Con el filtro en Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports» lleva a
+ * `/esports` (los torneos donde juega salen solos: es miembro de su liga).
  */
 export default function LeaguesPage() {
   const auth = useAuth();
@@ -54,18 +57,31 @@ function MyLeagues() {
   const act = useActivity(leagues, mine.uid);
   const { ligas } = splitMine(leagues, act.nextOf);
   const tourneys = useMemo(() => tourneysOf(leagues, act.upcoming, act.today), [leagues, act.upcoming, act.today]);
+  // Las transmisiones activas de mis ligas (la misma lectura que «En vivo» de Hoy): la liga sale «EN VIVO».
+  const streams = useLiveNow().data;
 
-  // En juego ahora (ya es la hora, no «empieza pronto»): las ligas y los eventos; y cuántos inscritos tiene cada evento.
+  // En juego ahora (ya es la hora, no «empieza pronto»): las ligas (o su transmisión) y los eventos; y cuántos inscritos
+  // tiene cada evento.
   const { liveLeagues, liveEvents, entrants } = useMemo(() => {
     const started = act.games.filter((g) => !g.info.startsSoon);
     return {
-      liveLeagues: new Set([...started.map((g) => g.feed.lid), ...act.liveItems.map((m) => m.league.id)]),
+      liveLeagues: new Set([...started.map((g) => g.feed.lid), ...act.liveItems.map((m) => m.league.id), ...streams.map((s) => s.leagueId)]),
       liveEvents: new Set(started.map((g) => g.event.id)),
       entrants: new Map(act.feeds.flatMap((f) => f.events.map((e) => [e.id, e.playerCount] as const))),
     };
-  }, [act.games, act.liveItems, act.feeds]);
+  }, [act.games, act.liveItems, act.feeds, streams]);
+  const feedOf = (lid: string) => act.feeds.find((f) => f.lid === lid);
   const logoOf = (lid: string) => leagues.find((l) => l.id === lid)?.logoPath ?? null;
+  const tourneyLive = (t: TourneyItem) => (!!t.eventId && liveEvents.has(t.eventId)) || (t.standalone && liveLeagues.has(t.lid));
   const ligasCount = leagues.filter((l) => l.kind !== 'torneo').length;
+  // Arriba: «3 ligas · 1 en vivo · Próximo: hoy 7:30 pm» (solo lo que hay).
+  const summary = ligasSummary({
+    ligas: ligas.length,
+    torneos: tourneys.length,
+    live: ligas.filter((l) => liveLeagues.has(l.id)).length + tourneys.filter(tourneyLive).length,
+    next: soonest(leagues.flatMap((l) => act.nextOf.get(l.id) ?? [])),
+    today: act.today,
+  });
   // Esports: con el filtro en Esports, o sin filtro y la cuenta en esports (sus ligas, el deporte activo, sus equipos).
   const activeSport = useActiveSport();
   const esports = useEsportsPresence(mine.uid, activeSport);
@@ -88,6 +104,8 @@ function MyLeagues() {
 
   // Lo que va abajo (Equipos, esports, ligas abiertas) se separa más si arriba hay listas.
   const rowsGap = mine.all.length || mine.loading || squadMode === 'list' ? 'mt-[30px]' : 'mt-5';
+  // Las tarjetas entran una tras otra; en Pro, más juntas y, desde 640 px, en dos columnas.
+  const grid = cx('stagger grid', pro ? 'gap-3 sm:grid-cols-2' : 'gap-3.5');
 
   let body;
   if (mine.error && !mine.all.length) body = <LoadError error={mine.error} />;
@@ -95,7 +113,7 @@ function MyLeagues() {
     body = (
       <section className="mt-[26px]">
         <SectionHeader title="Tus ligas" />
-        <ListSkeleton rows={2} />
+        <LeagueCardsSkeleton pro={pro} />
       </section>
     );
   else if (!mine.all.length)
@@ -110,38 +128,44 @@ function MyLeagues() {
         {ligas.length > 0 && (
           <section aria-labelledby="tus-ligas" className="mt-[26px]">
             <SectionHeader id="tus-ligas" title="Tus ligas" />
-            <Card className="overflow-hidden">
-              {ligas.map((l) => (
-                <LeagueListRow
-                  key={l.id}
-                  league={l}
-                  live={liveLeagues.has(l.id)}
-                  next={act.nextOf.get(l.id)}
-                  today={act.today}
-                  role={mine.roleOf(l.id)}
-                  pro={pro}
-                />
-              ))}
-            </Card>
+            <div className={grid}>
+              {ligas.map((l, i) => {
+                const feed = feedOf(l.id);
+                return (
+                  <MyLeagueCard
+                    key={l.id}
+                    index={i}
+                    league={l}
+                    live={liveLeagues.has(l.id)}
+                    next={act.nextOf.get(l.id)}
+                    today={act.today}
+                    role={mine.roleOf(l.id)}
+                    playerId={feed?.playerId}
+                    pending={feed?.isAdmin ? feed.pending.length : 0}
+                    pro={pro}
+                  />
+                );
+              })}
+            </div>
           </section>
         )}
         {tourneys.length > 0 && (
           <section aria-labelledby="tus-torneos" className={ligas.length ? 'mt-[30px]' : 'mt-[26px]'}>
             <SectionHeader id="tus-torneos" title="Tus torneos" />
-            <Card className="overflow-hidden">
+            <TourneyStrip pro={pro}>
               {tourneys.map((t) => (
-                <TourneyRow
+                <TourneyCard
                   key={t.key}
                   t={t}
                   logoPath={logoOf(t.lid)}
-                  live={!!t.eventId && liveEvents.has(t.eventId)}
+                  live={tourneyLive(t)}
                   entrants={t.eventId ? entrants.get(t.eventId) : null}
                   today={act.today}
                   showLeague={ligasCount > 1}
                   pro={pro}
                 />
               ))}
-            </Card>
+            </TourneyStrip>
           </section>
         )}
       </>
@@ -166,6 +190,8 @@ function MyLeagues() {
           <SearchButton />
         </div>
       </header>
+      {/* De un vistazo: cuántas, cuántas en vivo y lo próximo. */}
+      <LigasSummary parts={summary} className="mt-1.5" />
 
       {/* Solo si juegas más de un deporte: «Todos» y los tuyos. */}
       {mySports.length > 1 && <SportFilter sports={mySports} value={sport} onChange={setSport} className="mt-5" />}
@@ -183,11 +209,7 @@ function MyLeagues() {
               </Link>
             }
           />
-          <Card className="overflow-hidden">
-            {squadList.slice(0, 3).map((s) => (
-              <SquadRow key={s.id} squad={s} dense={pro} subtitle={mySquadLine(s)} />
-            ))}
-          </Card>
+          <SquadCards squads={squadList.slice(0, 3)} pro={pro} />
         </section>
       )}
 
