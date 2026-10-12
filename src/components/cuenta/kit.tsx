@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { ChevronDown, ChevronLeft } from 'lucide-react';
 import { Logo } from '../Logo';
 import { cx } from '../ui';
+import { PullToRefresh } from '../PullToRefresh';
 
 /**
  * Piezas del rediseño para las pantallas de la cuenta (Entrar, las preguntas de 18 años y de los términos,
@@ -151,6 +152,7 @@ export function BackBar({
 export function AuthScreen({ top, children }: { top?: ReactNode; children: ReactNode }) {
   return (
     <div className="min-h-dvh bg-bg px-6 pt-[env(safe-area-inset-top)] pb-[calc(2rem+env(safe-area-inset-bottom))] sm:py-10">
+      <PullToRefresh />
       <div className="animate-fade-up mx-auto flex w-full max-w-md flex-col">
         {top ?? <div aria-hidden="true" className="h-[52px]" />}
         {children}

@@ -208,10 +208,12 @@ html {
   text-size-adjust: 100%;
 }
 
-/* Deslizar de lado más allá del borde no navega (atrás/adelante del navegador). */
+/* Deslizar de lado más allá del borde no navega (atrás/adelante del navegador). Hacia abajo arriba de todo, el
+   navegador no recarga la página entera: actualiza la app con su propio «desliza para actualizar» (PullToRefresh). */
 html,
 body {
   overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
 }
 
 body {

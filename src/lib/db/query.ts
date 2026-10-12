@@ -98,6 +98,11 @@ export interface QueryClient {
   invalidate(tag: string): void;
   invalidateKey(key: string): void;
   invalidateAll(): void;
+  /**
+   * Deslizar para actualizar: invalida todo y vuelve a pedir lo que está en pantalla, sin quitar lo que se ve
+   * (stale-while-revalidate). Termina cuando eso llegó (o falló), o a los `timeoutMs` (8 s) como mucho.
+   */
+  refreshActive(opts?: { timeoutMs?: number }): Promise<void>;
   /** Etiquetas de un mensaje de tiempo real (payload.tags y/o el mapa por evento), ya invalidadas. */
   invalidateFromMessage(msg: RealtimeMessage, map?: MessageTagMap): string[];
   messageInvalidator(map?: MessageTagMap): (msg: RealtimeMessage) => void;
@@ -387,6 +392,8 @@ const DEFAULT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const RETRY_DELAYS_MS = [1_000, 4_000];
 /** Lo que nadie mira hace rato se suelta de la memoria (sigue guardado en el teléfono). */
 const GC_MS = 10 * 60_000;
+/** Deslizar para actualizar no espera más que esto (con mala señal, lo que falte llega solo después). */
+const REFRESH_TIMEOUT_MS = 8_000;
 
 const sameState = (a: QueryState<unknown>, b: QueryState<unknown>) =>
   a.data === b.data && a.loading === b.loading && a.error === b.error && a.fromCache === b.fromCache;
@@ -640,6 +647,28 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     }
   }
 
+  /** Espera a que la entrada termine de pedir, incluida la repetición que empieza al terminar (refetchAfter). */
+  async function settled(e: Entry): Promise<void> {
+    for (let i = 0; e.promise && i < 3; i++) await e.promise.catch(() => {});
+  }
+
+  function refreshActive(opts: { timeoutMs?: number } = {}): Promise<void> {
+    if (disposed) return Promise.resolve();
+    const active: Entry[] = [];
+    for (const e of entries.values()) {
+      if (e.observers.size) {
+        e.retries = 0; // a pedido de la persona: vuelve a tener sus reintentos
+        active.push(e);
+      }
+      invalidateEntry(e); // en pantalla se pide ya (o al terminar la que está en vuelo); lo demás, al volver a abrirse
+    }
+    if (!active.length) return Promise.resolve();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cap = new Promise<void>((resolve) => (timer = setTimeout(resolve, opts.timeoutMs ?? REFRESH_TIMEOUT_MS)));
+    const done = Promise.all(active.map(settled)).then(() => undefined);
+    return Promise.race([done, cap]).finally(() => clearTimeout(timer));
+  }
+
   async function hydrate(): Promise<void> {
     const gen = generation;
     const user = currentUser;
@@ -810,6 +839,7 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     invalidateAll() {
       for (const e of entries.values()) invalidateEntry(e);
     },
+    refreshActive,
     invalidateFromMessage,
     messageInvalidator: (map?: MessageTagMap) => (msg: RealtimeMessage) => void invalidateFromMessage(msg, map),
     onWindowFocus: onFocus,
