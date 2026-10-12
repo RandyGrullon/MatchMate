@@ -1,7 +1,7 @@
 /**
  * Rediseño «Calma y foco» de las pantallas de la cuenta, dibujadas sin navegador (renderToString): Entrar (y crear
- * cuenta, y olvidé mi contraseña), la portada sin cuenta, Configuración (Lite y Pro) y las piezas comunes (campo grande,
- * «‹ Inicio», el link con forma de botón).
+ * cuenta, y olvidé mi contraseña), la portada sin cuenta, Configuración (Lite y Pro, con la fila «Organizar» para quien
+ * organiza y el superadmin) y las piezas comunes (campo grande, «‹ Inicio», el link con forma de botón).
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   publics: [] as unknown[],
   leagues: [] as unknown[],
   memberships: [] as unknown[],
+  pending: 0,
 }));
 
 vi.mock('../lib/auth', async (orig) => {
@@ -51,6 +52,8 @@ vi.mock('../lib/data', async (orig) => {
 vi.mock('../lib/db/outbox', () => ({ pendingByUser: async () => ({}) }));
 vi.mock('../components/home/useHomeData', () => ({ useJoin: () => ({ joining: null, join: () => undefined, modal: null }) }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
+// Lo que espera en las ligas que organiza (el número de la fila «Organizar»; se cuenta en src/components/OrganizeNav).
+vi.mock('../components/OrganizeNav', () => ({ useOrganize: () => ({ href: '/organizar', total: state.pending, probes: null }) }));
 
 const { default: LoginPage } = await import('./LoginPage');
 const { default: AccountPage } = await import('./AccountPage');
@@ -78,6 +81,7 @@ beforeEach(() => {
   state.publics = [];
   state.leagues = [];
   state.memberships = [];
+  state.pending = 0;
 });
 
 describe('Entrar', () => {
@@ -207,6 +211,57 @@ describe('Configuración', () => {
     expect(text(out)).toContain('Crear o unirme a una liga');
     expect(out).toContain('href="/superadmin"');
     expect(text(out)).toContain('Superadmin');
+  });
+
+  it('quien organiza una liga: «Organizar» (ya no está en la barra de abajo) en MatchMate, antes de Acerca de', () => {
+    state.auth = SIGNED_IN;
+    state.leagues = [league];
+    state.memberships = [{ leagueId: 'l1', role: 'admin' }];
+    const out = render(h(AccountPage), '/cuenta');
+    const t = text(out);
+    expect(t).toContain('Organizar Tus ligas, pendientes y ajustes');
+    expect(out).toContain('href="/organizar"');
+    expect(out.indexOf('>MatchMate</h2>')).toBeLessThan(out.indexOf('href="/organizar"'));
+    expect(t.indexOf('Organizar Tus ligas')).toBeLessThan(t.indexOf('Acerca de MatchMate'));
+    // Sin nada pendiente, sin número.
+    expect(out).not.toContain('aria-label="Organizar:');
+  });
+
+  it('el superadmin: «Organizar» justo debajo del «Panel del superadmin» (aunque no organice ninguna liga)', () => {
+    state.auth = { ...SIGNED_IN, isSuper: true };
+    const out = render(h(AccountPage), '/cuenta');
+    const t = text(out);
+    expect(out).toContain('href="/organizar"');
+    expect(t).toMatch(/Panel del superadmin Organizar Tus ligas, pendientes y ajustes Acerca de MatchMate/);
+    expect(out.indexOf('href="/superadmin"')).toBeLessThan(out.indexOf('href="/organizar"'));
+  });
+
+  it('con cosas por hacer, «Organizar» lleva su número (globo y etiqueta para el lector de pantalla)', () => {
+    state.auth = SIGNED_IN;
+    state.leagues = [league];
+    state.memberships = [{ leagueId: 'l1', role: 'owner' }];
+    state.pending = 3;
+    let out = render(h(AccountPage), '/cuenta');
+    expect(out).toMatch(/<a aria-label="Organizar: 3 pendientes"[^>]*href="\/organizar"|<a [^>]*href="\/organizar"[^>]*aria-label="Organizar: 3 pendientes"/);
+    expect(out).toMatch(/<span aria-hidden="true" class="[^"]*bg-accent[^"]*">3<\/span>/);
+    state.pending = 1;
+    expect(render(h(AccountPage), '/cuenta')).toContain('aria-label="Organizar: 1 pendiente"');
+    state.pending = 120;
+    out = render(h(AccountPage), '/cuenta');
+    expect(out).toContain('>99+</span>');
+  });
+
+  it('quien solo juega (miembro) no ve «Organizar»', () => {
+    state.auth = SIGNED_IN;
+    state.leagues = [league];
+    state.memberships = [{ leagueId: 'l1', role: 'member' }];
+    const out = render(h(AccountPage), '/cuenta');
+    expect(text(out)).not.toContain('Organizar');
+    expect(out).not.toContain('href="/organizar"');
+    // Sin cuenta de dueño ni de admin tampoco: sin ligas.
+    state.memberships = [];
+    state.leagues = [];
+    expect(render(h(AccountPage), '/cuenta')).not.toContain('href="/organizar"');
   });
 
   it('cuenta sin perfil: «¿cómo te llamas?» con su botón (el único fuerte), sin las filas de nombre y usuario', () => {

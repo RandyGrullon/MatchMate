@@ -20,7 +20,7 @@ describe('Organizar: qué ligas y a dónde', () => {
     expect(leagueOfPath('/ligas')).toBeNull();
   });
 
-  it('la pestaña: dentro de una liga que organiza, directo a su Organizar; si no, a /organizar', () => {
+  it('a dónde lleva Organizar: dentro de una liga que organiza, directo a su Organizar; si no, a /organizar', () => {
     expect(organizeHref('/l/L1/ranking', ['L1', 'L2'])).toBe('/l/L1/admin');
     expect(organizeHref('/l/L3', ['L1'])).toBe('/organizar');
     expect(organizeHref('/', ['L1'])).toBe('/organizar');

@@ -1,19 +1,16 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { ClipboardList, House, Info, LogIn, MessageCircle, MessagesSquare, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
+import { House, Info, LogIn, MessageCircle, MessagesSquare, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { backendMode } from '../lib/backend';
 import { useLeaguesByIds } from '../lib/data/leagues';
 import { useMyMemberships } from '../lib/data/members';
-import { countLabel } from '../lib/organize';
 import { setActiveSport, useActiveSport } from '../lib/sportContext';
-import { useIsPro } from '../lib/useMode';
 import { sportsOf } from '../sports/registry';
 import type { SportId } from '../sports/types';
 import { Logo } from './Logo';
 import { NoticeSlot } from './NoticeSlot';
 import { NotificationsBell } from './Notifications';
-import { useOrganize } from './OrganizeNav';
 import { SearchButton } from './social/SearchButton';
 import { ModeSheetHost } from './mode/ModeSheetHost';
 import { ModeToast } from './mode/ModeToast';
@@ -21,6 +18,7 @@ import { OutboxIndicator } from './OutboxIndicator';
 import { SportChip } from './SportSwitcher';
 import { SportTint, sportTint } from './home/SportTint';
 import { TopLoader, cx } from './ui';
+import { PullToRefresh } from './PullToRefresh';
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -100,7 +98,7 @@ export function TopActions() {
 
 /** Secciones de la app (abajo en el celular, arriba en la computadora). */
 export interface SectionDef {
-  key: 'home' | 'social' | 'leagues' | 'organize' | 'me' | 'contact' | 'about' | 'login';
+  key: 'home' | 'social' | 'leagues' | 'me' | 'contact' | 'about' | 'login';
   to: string;
   label: string;
   icon: LucideIcon;
@@ -120,7 +118,7 @@ const SOCIAL: SectionDef = {
   icon: MessagesSquare,
   match: (p) => under(p, '/social', '/p', '/buscar', '/u'),
 };
-// Ligas: tus ligas y torneos, las públicas, tus equipos (/equipos) y todo lo de adentro de una liga (en Pro, menos su
+// Ligas: tus ligas y torneos, las públicas, tus equipos (/equipos) y todo lo de adentro de una liga (menos su
 // Organizar). Esports (sus juegos, equipos, torneos e IDs de juego) también es de Ligas.
 const LIGAS: SectionDef = {
   key: 'leagues',
@@ -129,16 +127,18 @@ const LIGAS: SectionDef = {
   icon: Trophy,
   match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports', '/equipos'),
 };
-// Organizar (solo Pro): lo del admin de cada liga y la consola del dueño de la app.
-const ORGANIZAR: SectionDef = {
-  key: 'organize',
-  to: '/organizar',
-  label: 'Organizar',
-  icon: ClipboardList,
-  match: (p) => under(p, '/organizar', '/superadmin') || /^\/l\/[^/]+\/admin(\/|$)/.test(p),
+// El Organizar de una liga (`/l/:lid/admin`): es de Yo, como Organizar, aunque la ruta esté dentro de la liga.
+const leagueAdmin = (p: string) => /^\/l\/[^/]+\/admin(\/|$)/.test(p);
+// Yo: tu perfil, tus bolas y juegos sueltos y la configuración (el engranaje de Yo). Desde la configuración se llega a
+// Organizar (`/organizar` y el de cada liga) y a la consola del dueño de la app (`/superadmin`): también son de Yo.
+// Buscar es de Social.
+const YO: SectionDef = {
+  key: 'me',
+  to: '/perfil',
+  label: 'Yo',
+  icon: UserRound,
+  match: (p) => under(p, '/perfil', '/cuenta', '/bolas', '/juegos-sueltos', '/organizar', '/superadmin') || leagueAdmin(p),
 };
-// Yo: tu perfil, tus bolas y juegos sueltos y la configuración (el engranaje de Yo). Buscar es de Social.
-const YO: SectionDef = { key: 'me', to: '/perfil', label: 'Yo', icon: UserRound, match: (p) => under(p, '/perfil', '/cuenta', '/bolas', '/juegos-sueltos') };
 // Sin cuenta: la portada, cómo escribirnos, qué es MatchMate y entrar.
 const INICIO: SectionDef = { key: 'home', to: '/', label: 'Inicio', icon: House, match: (p) => p === '/' || under(p, '/d') };
 const CONTACT: SectionDef = { key: 'contact', to: '/contacto', label: 'Contáctanos', icon: MessageCircle, match: (p) => under(p, '/contacto') };
@@ -146,19 +146,19 @@ const ABOUT: SectionDef = { key: 'about', to: '/acerca', label: 'Acerca de', ico
 const ENTRAR: SectionDef = { key: 'login', to: '/login', label: 'Entrar', icon: LogIn, match: (p) => under(p, '/login') };
 
 /**
- * Las secciones, en orden. Con cuenta: Hoy · Social · Ligas · Yo (Lite) o Hoy · Social · Ligas · Organizar · Yo (Pro).
- * Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar (las ligas públicas se ven desde la portada y la lupa). Ya no hay
- * botón de crear en la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la campana de Hoy).
+ * Las secciones, en orden. Con cuenta (Lite y Pro): Hoy · Social · Ligas · Yo; Organizar ya no va en la barra (está en
+ * Yo › Configuración). Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar (las ligas públicas se ven desde la portada
+ * y la lupa). Tampoco hay botón de crear en la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la
+ * campana de Hoy).
  */
-export function navSections(signedIn: boolean, pro = false): SectionDef[] {
-  if (!signedIn) return [INICIO, CONTACT, ABOUT, ENTRAR];
-  return pro ? [HOY, SOCIAL, LIGAS, ORGANIZAR, YO] : [HOY, SOCIAL, LIGAS, YO];
+export function navSections(signedIn: boolean): SectionDef[] {
+  return signedIn ? [HOY, SOCIAL, LIGAS, YO] : [INICIO, CONTACT, ABOUT, ENTRAR];
 }
 
-/** La sección marcada en esa ruta. Organizar gana a Ligas en el admin de una liga (si está en la barra). */
+/** La sección marcada en esa ruta. Yo gana a Ligas en el Organizar de una liga (`/l/:lid/admin`). */
 export function currentSection(sections: readonly SectionDef[], pathname: string): SectionDef['key'] | null {
-  const org = sections.find((s) => s.key === 'organize');
-  if (org?.match(pathname)) return org.key;
+  const me = sections.find((s) => s.key === 'me');
+  if (me?.match(pathname)) return me.key;
   return sections.find((s) => s.match(pathname))?.key ?? null;
 }
 
@@ -202,9 +202,7 @@ function useSportBar(): { switcher: boolean; own: string | null } {
 /** Las secciones de quien usa la app. Mientras se lee la sesión guardada se quedan las de con cuenta (no parpadean). */
 function useSections() {
   const { user, loading } = useAuth();
-  const signedIn = !!user || loading;
-  const pro = useIsPro();
-  return navSections(signedIn, signedIn && pro);
+  return navSections(!!user || loading);
 }
 
 /** «Entrar» con la pantalla actual como `next`: al entrar (o crear la cuenta) vuelve aquí. */
@@ -213,42 +211,27 @@ function useLoginLink() {
   return `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 }
 
-/** A dónde lleva cada sección y su número (solo Organizar tiene uno). */
+/** A dónde lleva cada sección y si es la de la pantalla. */
 function useNavItems() {
   const sections = useSections();
   const { pathname } = useLocation();
   const login = useLoginLink();
-  const organize = useOrganize(sections.some((s) => s.key === 'organize'));
   const current = currentSection(sections, pathname);
-  const items = sections.map((s) => ({
-    section: s,
-    to: s.key === 'organize' ? organize.href : s.key === 'login' ? login : s.to,
-    count: s.key === 'organize' ? organize.total : 0,
-    current: current === s.key,
-  }));
-  return { items, probes: organize.probes };
+  return sections.map((s) => ({ section: s, to: s.key === 'login' ? login : s.to, current: current === s.key }));
 }
 
-const countAria = (label: string, count: number) => (count > 0 ? `${label}: ${count} ${count === 1 ? 'pendiente' : 'pendientes'}` : undefined);
-
-/**
- * Arriba en la computadora: las mismas secciones de la barra de abajo. Con cinco (Pro), de 640 a 767 px solo los íconos
- * (el nombre queda para el lector de pantalla y en el `title`): así caben con el logo, el deporte y la lupa.
- */
+/** Arriba en la computadora: las mismas secciones de la barra de abajo, con su ícono y su nombre. */
 export function DesktopNav() {
-  const { items } = useNavItems();
-  const compact = items.length > 4;
+  const items = useNavItems();
   return (
     <nav className="hidden gap-1 sm:flex" aria-label="Secciones">
-      {items.map(({ section: s, to, count, current }) => {
+      {items.map(({ section: s, to, current }) => {
         const Icon = s.icon;
         return (
           <Link
             key={s.key}
             to={to}
             aria-current={current ? 'page' : undefined}
-            aria-label={countAria(s.label, count)}
-            title={compact ? s.label : undefined}
             className={cx(
               'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
               'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
@@ -256,12 +239,7 @@ export function DesktopNav() {
             )}
           >
             <Icon className="size-4" aria-hidden="true" />
-            <span className={cx(compact && 'max-md:sr-only')}>{s.label}</span>
-            {count > 0 && (
-              <span aria-hidden="true" className="rounded-full bg-accent px-1.5 text-[11px] leading-4 font-bold text-accent-fg">
-                {countLabel(count)}
-              </span>
-            )}
+            <span>{s.label}</span>
           </Link>
         );
       })}
@@ -271,32 +249,23 @@ export function DesktopNav() {
 
 /**
  * Un destino de la barra de abajo: ícono y nombre, siempre. El elegido lleva una pastilla en acento suave detrás del
- * ícono (60 × 32) y el nombre en el color del texto; el número (Organizar) va en un globo del color del deporte.
+ * ícono (60 × 32) y el nombre en el color del texto.
  */
-function BottomLink({ section, to, count, current }: { section: SectionDef; to: string; count: number; current: boolean }) {
+function BottomLink({ section, to, current }: { section: SectionDef; to: string; current: boolean }) {
   const Icon = section.icon;
   return (
     <Link
       to={to}
       aria-current={current ? 'page' : undefined}
-      aria-label={countAria(section.label, count)}
       className={cx(
         'flex min-h-15 min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl text-xs font-semibold transition-colors active:opacity-70',
         'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent',
         current ? 'text-fg' : 'text-muted',
       )}
     >
-      {/* 60 px de ancho; en un teléfono angosto con cinco destinos (Pro en 320 px) se achica para no salirse. */}
-      <span className={cx('relative grid h-8 w-15 max-w-full shrink-0 place-items-center rounded-2xl transition-colors', current && 'bg-accent-soft text-accent')}>
+      {/* 60 px de ancho; en un teléfono muy angosto se achica para no salirse. */}
+      <span className={cx('grid h-8 w-15 max-w-full shrink-0 place-items-center rounded-2xl transition-colors', current && 'bg-accent-soft text-accent')}>
         <Icon aria-hidden="true" className="size-[22px]" strokeWidth={current ? 2.2 : 2} />
-        {count > 0 && (
-          <span
-            aria-hidden="true"
-            className="absolute -top-[3px] right-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full border-2 border-surface bg-accent px-[5px] text-[11px] leading-none font-bold text-accent-fg"
-          >
-            {countLabel(count)}
-          </span>
-        )}
       </span>
       <span className="max-w-full truncate leading-4">{section.label}</span>
     </Link>
@@ -304,12 +273,11 @@ function BottomLink({ section, to, count, current }: { section: SectionDef; to: 
 }
 
 /**
- * Barra de abajo en el teléfono: Hoy · Social · Ligas · Yo (Lite) o Hoy · Social · Ligas · Organizar · Yo (Pro, con el
- * número de lo pendiente; los cinco caben en 360 px: 67 px cada uno). Sin cuenta: Inicio · Contáctanos · Acerca de ·
- * Entrar. Sin botón del centro: crear está en Ligas.
+ * Barra de abajo en el teléfono: Hoy · Social · Ligas · Yo (en Lite y en Pro; Organizar está en Yo › Configuración).
+ * Sin cuenta: Inicio · Contáctanos · Acerca de · Entrar. Sin botón del centro: crear está en Ligas.
  */
 export function BottomNav() {
-  const { items, probes } = useNavItems();
+  const items = useNavItems();
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/[0.93] backdrop-blur-lg sm:hidden" aria-label="Secciones">
       {/* En el teléfono no siempre hay barra arriba: la marca de la copia local (solo desarrollo) va sobre esta. */}
@@ -320,11 +288,10 @@ export function BottomNav() {
       )}
       {/* Con la barrita del iPhone abajo, los nombres quedan justo encima de ella (como en el diseño: 86 px en total). */}
       <div className="mx-auto flex max-w-lg px-3 pt-2 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)-1rem))]">
-        {items.map(({ section, to, count, current }) => (
-          <BottomLink key={section.key} section={section} to={to} count={count} current={current} />
+        {items.map(({ section, to, current }) => (
+          <BottomLink key={section.key} section={section} to={to} current={current} />
         ))}
       </div>
-      {probes}
     </nav>
   );
 }
@@ -354,6 +321,8 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
     <div
       className={cx(tint.className, 'min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8', !mobileHeader && 'max-sm:pt-[env(safe-area-inset-top)]')}
     >
+      {/* Deslizar hacia abajo arriba de todo vuelve a leer lo de la pantalla (en todas las pantallas de la app). */}
+      <PullToRefresh />
       {tint.css && (
         <style href={tint.className} precedence="default">
           {tint.css}

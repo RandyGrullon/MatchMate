@@ -63,7 +63,7 @@ function tabIcons(sport: string, standalone: boolean): { home: LucideIcon; feed:
  * «Invitar» (si la cuenta puede: abre la hoja de invitar, src/components/invite); adentro «‹ Liga de los martes» (la
  * práctica, Organizar y la página de un jugador traen la suya). Lo que eran pestañas son secciones y filas del inicio
  * (boliche: src/pages/LeagueHomePage.tsx; los otros deportes: filas debajo de su pantalla, LeagueHomeFrame); las rutas
- * siguen iguales. Abajo, la barra de la app (Hoy · Ligas · Yo, y Organizar en Pro). Dentro de la liga todo toma el
+ * siguen iguales. Abajo, la barra de la app (Hoy · Social · Ligas · Yo). Dentro de la liga todo toma el
  * color de su deporte (el boliche, el de la app).
  *
  * Es uno de los dos puntos de desvío por deporte (el otro es EventPage): el boliche ve sus pantallas de

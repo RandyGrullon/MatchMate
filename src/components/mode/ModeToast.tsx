@@ -5,7 +5,7 @@ import { useMode } from '../../lib/useMode';
 import { cx } from '../ui';
 
 /**
- * El aviso de abajo al cambiar de modo: «Modo Pro activado · Ahora ves Organizar y todos tus números · Deshacer». Se
+ * El aviso de abajo al cambiar de modo: «Modo Pro activado · Ahora ves todos tus números y el detalle · Deshacer». Se
  * anuncia desde donde se cambia (Yo, la hoja del modo, «Probar Pro») y lo dibuja ModeToast (en el marco de la app), así
  * sigue a la vista aunque la pantalla cambie. «Deshacer» vuelve al modo de antes.
  */
@@ -30,7 +30,7 @@ const subscribe = (f: () => void) => {
 
 /** Lo que dice el aviso de cada modo. */
 export const MODE_TOAST_COPY: Record<UiMode, { title: string; text: string }> = {
-  pro: { title: 'Modo Pro activado', text: 'Ahora ves Organizar y todos tus números' },
+  pro: { title: 'Modo Pro activado', text: 'Ahora ves todos tus números y el detalle' },
   lite: { title: 'Modo Lite activado', text: 'Ves lo esencial. Pro sigue en Yo' },
 };
 

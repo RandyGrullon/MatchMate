@@ -1,8 +1,8 @@
 /**
- * La barra de secciones dibujada sin navegador (renderToString): con cuenta Hoy · Social · Ligas · Yo (Lite) o Hoy ·
- * Social · Ligas · Organizar · Yo (Pro, con el número de lo pendiente); sin cuenta Inicio · Contáctanos · Acerca de ·
- * Entrar (que vuelve a la pantalla en que estaba). Sin botón de crear ni pestaña de avisos. Y la barra de arriba: en el
- * teléfono solo dentro de una liga (con la lupa); en la computadora, la lupa antes de las secciones.
+ * La barra de secciones dibujada sin navegador (renderToString): con cuenta Hoy · Social · Ligas · Yo (en Lite y en Pro:
+ * Organizar ya no va en la barra, está en Yo › Configuración); sin cuenta Inicio · Contáctanos · Acerca de · Entrar (que
+ * vuelve a la pantalla en que estaba). Sin botón de crear ni pestaña de avisos. Y la barra de arriba: en el teléfono
+ * solo dentro de una liga (con la lupa); en la computadora, la lupa antes de las secciones.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -12,7 +12,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   auth: { user: { uid: 'u1' } as { uid: string } | null, loading: false },
   pro: false,
-  organize: { href: '/organizar', total: 0 },
   leagues: [] as { id: string; sport: string }[],
   active: null as string | null,
 }));
@@ -26,7 +25,6 @@ vi.mock('../lib/useMode', () => ({
 vi.mock('../lib/data/members', () => ({ useMyMemberships: () => ({ data: state.leagues.map((l) => ({ leagueId: l.id })), loading: false, error: null }) }));
 vi.mock('../lib/data/leagues', () => ({ useLeaguesByIds: () => ({ data: state.leagues, loading: false, error: null }) }));
 vi.mock('../lib/sportContext', () => ({ useActiveSport: () => state.active, setActiveSport: () => undefined }));
-vi.mock('./OrganizeNav', () => ({ useOrganize: (on: boolean) => ({ href: state.organize.href, total: on ? state.organize.total : 0, probes: null }) }));
 vi.mock('./Notifications', () => ({ NotificationsBell: () => h('span', null, 'CAMPANA') }));
 vi.mock('./NoticeSlot', () => ({ NoticeSlot: () => h('div', { 'data-slot': '' }) }));
 vi.mock('./SportSwitcher', () => ({ SportChip: () => h('span', null, 'SELECTOR') }));
@@ -46,21 +44,19 @@ const currentHref = (html: string) => /<a[^>]*aria-current="page"[^>]*href="([^"
 beforeEach(() => {
   state.auth = { user: { uid: 'u1' }, loading: false };
   state.pro = false;
-  state.organize = { href: '/organizar', total: 0 };
   state.leagues = [{ id: 'L1', sport: 'bowling' }];
   state.active = null;
 });
 
 describe('secciones de la barra', () => {
-  it('con cuenta en Lite: Hoy, Social, Ligas y Yo; en Pro se suma Organizar antes de Yo', () => {
+  it('con cuenta: Hoy, Social, Ligas y Yo (Organizar ya no va en la barra: está en Yo › Configuración)', () => {
     expect(navSections(true).map((s) => [s.label, s.to])).toEqual([
       ['Hoy', '/'],
       ['Social', '/social'],
       ['Ligas', '/ligas'],
       ['Yo', '/perfil'],
     ]);
-    expect(navSections(true, true).map((s) => s.label)).toEqual(['Hoy', 'Social', 'Ligas', 'Organizar', 'Yo']);
-    expect(navSections(true, true).map((s) => s.key)).toEqual(['home', 'social', 'leagues', 'organize', 'me']);
+    expect(navSections(true).map((s) => s.key)).toEqual(['home', 'social', 'leagues', 'me']);
   });
 
   it('sin cuenta: Inicio, Contáctanos, Acerca de y Entrar', () => {
@@ -70,8 +66,6 @@ describe('secciones de la barra', () => {
       ['Acerca de', '/acerca'],
       ['Entrar', '/login'],
     ]);
-    // Pro no cambia nada sin cuenta.
-    expect(navSections(false, true).map((s) => s.label)).not.toContain('Organizar');
     // Social es solo con cuenta (sin cuenta la lupa sigue arriba en la computadora: busca ligas).
     expect(navSections(false).map((s) => s.label)).not.toContain('Social');
   });
@@ -98,15 +92,17 @@ describe('secciones de la barra', () => {
     expect(at('/ligasx')).toBeNull();
   });
 
-  it('el admin de una liga es de Ligas en Lite y de Organizar en Pro (y la consola también)', () => {
-    expect(currentSection(navSections(true), '/l/L1/admin')).toBe('leagues');
-    const pro = navSections(true, true);
-    expect(currentSection(pro, '/l/L1/admin')).toBe('organize');
-    expect(currentSection(pro, '/l/L1/admin?tab=aprobar'.split('?')[0])).toBe('organize');
-    expect(currentSection(pro, '/organizar')).toBe('organize');
-    expect(currentSection(pro, '/superadmin/errores')).toBe('organize');
-    // El resto de la liga sigue siendo Ligas.
-    expect(currentSection(pro, '/l/L1/e/E1')).toBe('leagues');
+  it('Organizar, el Organizar de una liga y la consola son de Yo (se llega desde la Configuración)', () => {
+    const at = (p: string) => currentSection(navSections(true), p);
+    expect(at('/l/L1/admin')).toBe('me');
+    expect(at('/l/L1/admin/')).toBe('me');
+    expect(at('/organizar')).toBe('me');
+    expect(at('/superadmin')).toBe('me');
+    expect(at('/superadmin/errores')).toBe('me');
+    // El resto de la liga sigue siendo Ligas (también lo que empieza con «admin» sin serlo).
+    expect(at('/l/L1/e/E1')).toBe('leagues');
+    expect(at('/l/L1/adminx')).toBe('leagues');
+    expect(at('/organizarx')).toBeNull();
   });
 });
 
@@ -142,38 +138,29 @@ describe('la barra de abajo', () => {
     expect(off).not.toContain('bg-accent-soft');
   });
 
-  it('Pro: Organizar con el número de lo pendiente (globo y etiqueta para el lector de pantalla)', () => {
+  it('Pro: las mismas cuatro, sin Organizar ni número; en el Organizar de una liga y en la consola, Yo marcada', () => {
     state.pro = true;
-    state.organize = { href: '/l/L1/admin', total: 3 };
-    const out = render(h(BottomNav), '/l/L1/admin');
-    const t = text(out);
-    expect(t).toMatch(/Hoy .*Social .*Ligas .*Organizar .*Yo/);
-    expect(out.match(/<a /g)).toHaveLength(5);
-    expect(out.match(/<svg/g)).toHaveLength(5);
-    expect(currentHref(out)).toBe('/l/L1/admin');
-    expect(out).toContain('aria-label="Organizar: 3 pendientes"');
-    expect(out).toMatch(/<span aria-hidden="true" class="[^"]*bg-accent[^"]*text-accent-fg[^"]*">3<\/span>/);
+    for (const p of ['/', '/l/L1/admin', '/organizar', '/superadmin']) {
+      const out = render(h(BottomNav), p);
+      const t = text(out);
+      expect(t).toMatch(/Hoy .*Social .*Ligas .*Yo/);
+      expect(t).not.toContain('Organizar');
+      expect(out).not.toContain('pendiente');
+      expect(out).not.toContain('href="/organizar"');
+      expect(out.match(/<a /g)).toHaveLength(4);
+      expect(out.match(/<svg/g)).toHaveLength(4);
+      if (p !== '/') expect(currentHref(out)).toBe('/perfil');
+    }
   });
 
-  it('Pro sin nada pendiente: Organizar sin globo; más de 99 dice 99+', () => {
-    state.pro = true;
-    let out = render(h(BottomNav), '/');
-    expect(out).not.toContain('pendiente');
-    expect(out).toContain('href="/organizar"');
-    state.organize = { href: '/organizar', total: 120 };
-    out = render(h(BottomNav), '/');
-    expect(out).toContain('>99+<');
-    expect(out).toContain('aria-label="Organizar: 120 pendientes"');
-  });
-
-  it('los cinco de Pro caben en 360 px: cada destino se reparte el ancho y la pastilla se achica si hace falta', () => {
+  it('los cuatro caben en 360 px: cada destino se reparte el ancho y la pastilla se achica si hace falta', () => {
     state.pro = true;
     const out = render(h(BottomNav), '/');
     const links = out.match(/<a [^>]*class="[^"]*"/g)!;
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(4);
     for (const a of links) expect(a).toMatch(/min-w-0 flex-1/);
-    expect(out.match(/h-8 w-15 max-w-full shrink-0/g)).toHaveLength(5);
-    expect(out.match(/max-w-full truncate/g)).toHaveLength(5);
+    expect(out.match(/h-8 w-15 max-w-full shrink-0/g)).toHaveLength(4);
+    expect(out.match(/max-w-full truncate/g)).toHaveLength(4);
   });
 
   it('sin cuenta: Inicio, Contáctanos, Acerca de y Entrar (vuelve aquí)', () => {
@@ -200,13 +187,15 @@ describe('la barra de abajo', () => {
     let t = text(out);
     expect(t).toMatch(/Hoy .*Social .*Ligas .*Yo/);
     expect(t).not.toContain('Crear');
-    // Con cuatro, siempre con su nombre; con cinco (Pro), de 640 a 767 px solo los íconos (el nombre, para el lector).
+    // Siempre con su nombre (también en Pro: son cuatro, sin Organizar).
     expect(out).not.toContain('max-md:sr-only');
     state.pro = true;
-    out = render(h(DesktopNav));
-    expect(text(out)).toMatch(/Hoy .*Social .*Ligas .*Organizar .*Yo/);
-    expect(out.match(/<span class="max-md:sr-only">/g)).toHaveLength(5);
-    expect(out).toContain('title="Social"');
+    out = render(h(DesktopNav), '/organizar');
+    expect(text(out)).toMatch(/Hoy .*Social .*Ligas .*Yo/);
+    expect(text(out)).not.toContain('Organizar');
+    expect(out).not.toContain('max-md:sr-only');
+    expect(out.match(/<a /g)).toHaveLength(4);
+    expect(currentHref(out)).toBe('/perfil');
     state.pro = false;
     state.auth = { user: null, loading: false };
     out = render(h(DesktopNav), '/contacto');
@@ -303,7 +292,7 @@ describe('«Modo Pro activado · Deshacer»', () => {
   it('sale abajo al cambiar de modo (en cualquier pantalla) y se quita', () => {
     announceMode('lite', 'pro');
     const out = text(render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/perfil'));
-    expect(out).toContain('Modo Pro activado Ahora ves Organizar y todos tus números Deshacer');
+    expect(out).toContain('Modo Pro activado Ahora ves todos tus números y el detalle Deshacer');
     hideModeToast();
     expect(text(render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/perfil'))).not.toContain('Modo Pro activado');
     // Al mismo modo no se anuncia nada.

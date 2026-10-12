@@ -1,8 +1,8 @@
 /**
  * Organizar (`/organizar`) dibujado sin navegador: el título, la ficha de la liga (la pedida con `?liga=`, la última
  * que se miró o la primera), lo de esa liga («Por hacer» y «La liga», de mentira aquí: están en
- * src/components/organizer/hub.test.ts), «Esto es de Pro · Usar Pro» en Lite, sin ligas cómo crear una, y el
- * superadmin con su consola.
+ * src/components/organizer/hub.test.ts), igual en Lite que en Pro (se llega desde Yo › Configuración), sin ligas cómo
+ * crear una, y el superadmin con su consola.
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -114,11 +114,12 @@ describe('Organizar', () => {
     expect(text(render())).toContain('[Por hacer y La liga de Liga de los martes]');
   });
 
-  it('en Lite se abre igual, con «Esto es de Pro · Usar Pro»', () => {
+  it('en Lite, lo mismo que en Pro: Organizar es de quien organiza, sin «Esto es de Pro» ni «Usar Pro»', () => {
     state.pro = false;
     const t = text(render());
-    expect(t).toContain('Esto es de Pro');
-    expect(t).toContain('Usar Pro');
+    expect(t).not.toContain('Esto es de Pro');
+    expect(t).not.toContain('Usar Pro');
+    expect(t).not.toContain('barra de abajo');
     expect(t).toContain('[Por hacer y La liga de Liga de los martes]');
   });
 

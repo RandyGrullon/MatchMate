@@ -63,12 +63,13 @@ describe('SectionHeader', () => {
     const html = inRouter(
       h(SectionHeader, {
         title: 'Consola',
-        back: { to: '/organizar', label: 'Organizar' },
+        back: { to: '/cuenta', label: 'Configuración' },
         actions: h(Pill, { onClick: () => {}, label: 'Bajar en CSV', children: 'CSV' }),
         menu: [{ key: 'x', icon: Trash2, label: 'Borrar todos', onClick: () => {}, danger: true }],
       }),
     );
-    expect(html).toContain('href="/organizar"');
+    expect(html).toContain('href="/cuenta"');
+    expect(html).toContain('<span class="truncate">Configuración</span>');
     expect(html).toContain('aria-label="Bajar en CSV"');
     expect(html).toContain('aria-label="Más opciones"');
     expect(html).toContain('aria-haspopup="dialog"');

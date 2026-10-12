@@ -1,6 +1,6 @@
 /**
- * El número de la pestaña «Organizar» dibujado sin navegador: la suma de lo pendiente en las ligas que organiza (solo
- * las de dueña o admin), nada en Lite, y a dónde lleva.
+ * El número de «Organizar» (la fila de Yo › Configuración; ya no va en la barra de abajo) dibujado sin navegador: la
+ * suma de lo pendiente en las ligas que organiza (solo las de dueña o admin), nada apagado (sin cuenta), y a dónde lleva.
  */
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -61,7 +61,7 @@ describe('el número de Organizar', () => {
     expect(run(true, '/l/L3/e/E1').href).toBe('/l/L3/admin');
   });
 
-  it('apagado (Lite): ni número ni pide las ligas', () => {
+  it('apagado (sin cuenta): ni número ni pide las ligas', () => {
     setPendingCountForTests('L1', 4);
     const o = run(false);
     expect(o.total).toBe(0);

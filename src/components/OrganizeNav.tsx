@@ -7,15 +7,16 @@ import { organizeHref, organizedLeagueIds } from '../lib/organize';
 import { useNotifications } from './Notifications';
 
 /**
- * El número de la pestaña «Organizar» (solo en Pro): todo lo que espera por ti en las ligas que organizas (juegos por
- * aprobar, reclamos, resultados vencidos, listas de espera, de league_pending, más las notas nuevas del buzón). Es el
- * mismo número que la fila «Organizas esta liga» de la Liga (useLeagueToDo) y lo que lista «Por hacer» en Hoy.
+ * El número de la fila «Organizar» de Yo › Configuración (ya no va en la barra de abajo; en Lite y en Pro): todo lo que
+ * espera por ti en las ligas que organizas (juegos por aprobar, reclamos, resultados vencidos, listas de espera, de
+ * league_pending, más las notas nuevas del buzón). Es el mismo número que la fila «Organizas esta liga» de la Liga
+ * (useLeagueToDo) y lo que lista «Por hacer» en Hoy.
  *
  * Cada liga se cuenta con su propio componente (los hooks no van en un ciclo) y lo cuenta en una copia compartida: así
- * la barra, que se vuelve a montar en cada pantalla, sale con el número de una vez, sin parpadear.
+ * la fila, al volver a la pantalla, sale con el número de una vez, sin parpadear.
  */
 
-/** Más ligas que esto no se cuentan en la barra (quien organiza tantas las ve todas en Organizar). */
+/** Más ligas que esto no se cuentan en la fila (quien organiza tantas las ve todas en Organizar). */
 export const MAX_COUNTED = 8;
 
 const counts = new Map<string, number>();
@@ -60,9 +61,9 @@ function PendingProbe({ lid }: { lid: string }) {
 }
 
 /**
- * La pestaña «Organizar»: a dónde lleva (dentro de una liga que organizas, a su Organizar; si no, a /organizar), cuántas
- * cosas esperan y los contadores que hay que montar (`probes`, en cualquier parte de la barra). Apagado (Lite o sin
- * cuenta) no pide nada.
+ * «Organizar»: a dónde lleva (dentro de una liga que organizas, a su Organizar; si no, a /organizar), cuántas cosas
+ * esperan y los contadores que hay que montar (`probes`, en cualquier parte de la pantalla que muestra el número).
+ * Apagado (sin cuenta) no pide nada.
  */
 export function useOrganize(enabled: boolean): { href: string; total: number; probes: ReactNode } {
   const { user } = useAuth();

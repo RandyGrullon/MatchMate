@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, ChevronLeft, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
+import { AtSign, ChevronLeft, ClipboardList, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { usePublicProfile } from '../lib/data/follows';
 import { rememberLeague, roleLabel } from '../lib/league';
+import { countLabel, organizedLeagueIds } from '../lib/organize';
 import { useIsPro } from '../lib/useMode';
+import { useOrganize } from '../components/OrganizeNav';
 import { AppShell } from '../components/Shell';
 import { AppearanceCard } from '../components/AppearanceCard';
 import { NotificationsCard } from '../components/NotificationsOptIn';
@@ -27,8 +29,8 @@ import { AccountDataCard } from './legal/AccountDataCard';
  * filas en tarjetas, sin botones sueltos: tu cuenta (nombre, @usuario y contraseña, cada uno en su hoja), Perfil público
  * (foto, biografía y personas bloqueadas, src/components/cuenta/PublicProfile.tsx), Apariencia
  * (claro, oscuro o automático y cómo ver la app), Notificaciones, Mis ligas, Tus datos (privacidad, términos, bajar mis
- * datos y borrar la cuenta), MatchMate (superadmin, Acerca de y Contáctanos) y, al final, Cerrar sesión. En Pro, lo
- * mismo más denso.
+ * datos y borrar la cuenta), MatchMate (el panel del superadmin; Organizar, con lo que espera, para quien organiza alguna
+ * liga y para el superadmin; Acerca de y Contáctanos) y, al final, Cerrar sesión. En Pro, lo mismo más denso.
  */
 export default function AccountPage() {
   const auth = useAuth();
@@ -41,6 +43,8 @@ export default function AccountPage() {
   const leaving = useRef(false);
   const memberships = useMyMemberships(auth.user?.uid);
   const leagues = useLeaguesByIds(memberships.data.map((m) => m.leagueId));
+  // Organizar (ya no va en la barra de abajo): lo que espera en las ligas que organizas y sus contadores.
+  const organize = useOrganize(!!auth.user);
   // Tu foto y tu biografía (las del perfil público).
   const me = usePublicProfile(auth.user?.uid);
   const [sheet, setSheet] = useState<'nombre' | 'usuario' | null>(null);
@@ -85,6 +89,9 @@ export default function AccountPage() {
   const handle = atUsername(username);
   const icon = pro ? 'size-[19px]' : 'size-5';
   const line = [handle, user.email].filter(Boolean).join(' · ');
+  // Organizar sale a quien organiza alguna liga (dueño o admin) y al superadmin.
+  const organizes = auth.isSuper || organizedLeagueIds(memberships.data).length > 0;
+  const pending = organize.total;
 
   return (
     <AppShell>
@@ -201,7 +208,7 @@ export default function AccountPage() {
 
         <AccountDataCard className="mt-[26px]" onDeleting={(d) => (leaving.current = d)} onDeleted={accountDeleted} />
 
-        {/* Lo que sin cuenta está en la barra de abajo (y la consola del dueño de la app). */}
+        {/* La consola del dueño de la app, Organizar (antes en la barra de abajo) y lo que sin cuenta está en esa barra. */}
         <section aria-labelledby="cfg-matchmate" className="mt-[26px]">
           <SectionHeader id="cfg-matchmate" title="MatchMate" />
           <Card className="overflow-hidden">
@@ -217,6 +224,32 @@ export default function AccountPage() {
                 to="/superadmin"
               />
             )}
+            {organizes && (
+              <ListRow
+                dense={pro}
+                leading={
+                  <RowIcon>
+                    <ClipboardList className={icon} />
+                  </RowIcon>
+                }
+                title="Organizar"
+                subtitle="Tus ligas, pendientes y ajustes"
+                to={organize.href}
+                ariaLabel={pending > 0 ? `Organizar: ${pending} ${pending === 1 ? 'pendiente' : 'pendientes'}` : undefined}
+                trailing={
+                  pending > 0 ? (
+                    <span
+                      aria-hidden="true"
+                      className="num grid h-[26px] min-w-[26px] place-items-center rounded-full bg-accent px-2 text-[13px] font-bold tracking-normal text-accent-fg"
+                    >
+                      {countLabel(pending)}
+                    </span>
+                  ) : undefined
+                }
+              />
+            )}
+            {/* Cuentan lo que espera en cada liga que organizas (no dibujan nada). */}
+            {organize.probes}
             <ListRow
               dense={pro}
               leading={

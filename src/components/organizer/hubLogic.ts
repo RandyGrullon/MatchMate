@@ -1,5 +1,5 @@
 /**
- * Lo que no es pantalla de Organizar (Pro): las filas de «Por hacer» (solo lo que tiene algo) y de «La liga» (lo que se
+ * Lo que no es pantalla de Organizar: las filas de «Por hacer» (solo lo que tiene algo) y de «La liga» (lo que se
  * configura, las 9 pestañas de antes agrupadas), sus líneas en palabras, el título de cada pantalla de
  * `/l/:lid/admin?tab=…` y qué liga se muestra. Funciones puras, con pruebas en hubLogic.test.ts. La pantalla está en
  * Hub.tsx y src/pages/OrganizePage.tsx.

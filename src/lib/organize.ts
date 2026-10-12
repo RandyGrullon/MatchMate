@@ -1,9 +1,10 @@
 import type { Member } from './types';
 
 /**
- * «Organizar» (la cuarta pestaña de la barra, solo en Pro): las ligas que la cuenta organiza y a dónde lleva. Aquí va
- * lo que no es pantalla (se prueba sin navegador); la pestaña está en src/components/Shell.tsx, su número en
- * src/components/OrganizeNav.tsx y la pantalla `/organizar` en src/pages/OrganizePage.tsx.
+ * «Organizar» (una fila de Yo › Configuración para quien organiza alguna liga y para el superadmin, en Lite y en Pro;
+ * ya no va en la barra de abajo): las ligas que la cuenta organiza y a dónde lleva. Aquí va lo que no es pantalla (se
+ * prueba sin navegador); la fila está en src/pages/AccountPage.tsx, su número en src/components/OrganizeNav.tsx y la
+ * pantalla `/organizar` en src/pages/OrganizePage.tsx.
  */
 
 /** Las ligas y torneos que la cuenta organiza (dueña o admin), en el orden de sus membresías y sin repetir. */
@@ -20,8 +21,8 @@ export function leagueOfPath(pathname: string): string | null {
 }
 
 /**
- * A dónde lleva la pestaña «Organizar»: estando dentro de una liga que organizas, directo a su Organizar
- * (`/l/:lid/admin`); si no, a `/organizar`, que va a tu única liga o te deja elegir.
+ * A dónde lleva «Organizar»: estando dentro de una liga que organizas, directo a su Organizar (`/l/:lid/admin`); si
+ * no, a `/organizar`, que va a tu única liga o te deja elegir.
  */
 export function organizeHref(pathname: string, organized: readonly string[]): string {
   const lid = leagueOfPath(pathname);

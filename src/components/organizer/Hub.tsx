@@ -150,7 +150,7 @@ export function useToDo(): { items: ToDoItem[]; loading: boolean; error: Error |
 /**
  * Cuántas cosas esperan en una liga que organizas, lo mismo que suman los globos de su «Por hacer» (league_pending, el
  * buzón, los reportes abiertos y las insignias por confirmar), sin leer los envíos uno por uno: sirve para varias ligas
- * a la vez (la hoja de ligas y el número de la pestaña «Organizar»).
+ * a la vez (la hoja de ligas y el número de la fila «Organizar» de Yo › Configuración).
  */
 export function useToDoCount(lid: string | null | undefined): number {
   return useToDoSummary(lid).count;

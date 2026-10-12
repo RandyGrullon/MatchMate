@@ -9,7 +9,13 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackProvider } from '../../components/feedback';
 
 type Mode = 'data' | 'loading' | 'error' | 'empty';
-const state = vi.hoisted(() => ({ mode: 'data' as Mode, super: true, pro: false }));
+const state = vi.hoisted(() => ({ mode: 'data' as Mode, super: true, pro: false, organizes: false }));
+
+// Las ligas de la cuenta: «‹ Organizar» (si organiza alguna) o «‹ Configuración» arriba de la consola.
+vi.mock('../../lib/data/members', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/data/members')>()),
+  useMyMemberships: () => ({ data: state.organizes ? [{ leagueId: 'l1', role: 'owner' }] : [{ leagueId: 'l2', role: 'member' }], loading: false, error: null }),
+}));
 
 vi.mock('../../lib/data/admin', async (importOriginal) => {
   // Lo demás del módulo (tipos, límites, touchSeenDaily…) queda como es; solo se cambian lecturas y acciones.
@@ -151,6 +157,7 @@ beforeEach(() => {
   state.mode = 'data';
   state.super = true;
   state.pro = false;
+  state.organizes = false;
 });
 
 const text = (html: string) =>
@@ -222,10 +229,16 @@ describe('consola del superadmin', () => {
     expect(out).toContain('Cómo va la app hoy');
   });
 
-  it('el marco: «‹ Hoy» en Lite y «‹ Organizar» en Pro; en cada sección, «‹ Consola», actualizar y su título', () => {
-    expect(html('/superadmin')).toMatch(/href="\/"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Hoy<\/span>/);
-    state.pro = true;
-    expect(html('/superadmin')).toMatch(/href="\/organizar"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Organizar<\/span>/);
+  it('el marco: «‹ Organizar» si organiza alguna liga y si no «‹ Configuración» (en Lite y en Pro); en cada sección, «‹ Consola», actualizar y su título', () => {
+    for (const pro of [false, true]) {
+      state.pro = pro;
+      state.organizes = false;
+      expect(html('/superadmin')).toMatch(/href="\/cuenta"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Configuración<\/span>/);
+      state.organizes = true;
+      const raw = html('/superadmin');
+      expect(raw).toMatch(/href="\/organizar"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Organizar<\/span>/);
+      expect(raw).not.toMatch(/<span class="truncate">Hoy<\/span>/);
+    }
     state.pro = false;
     const raw = html('/superadmin/sistema');
     expect(raw).toMatch(/href="\/superadmin"[^>]*>(?:<svg[^>]*>.*?<\/svg>)?<span class="truncate">Consola<\/span>/);

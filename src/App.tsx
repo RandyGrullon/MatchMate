@@ -207,7 +207,7 @@ export default function App() {
                       <Route path="/invitacion/:inviteId" element={<Screen area="invitacion" framed><InvitePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
                       <Route path="/ligas" element={<Screen area="ligas" framed><LeaguesPage /></Screen>} />
-                      {/* Organizar (la pestaña de Pro): tu única liga directo a su Organizar; con varias, eliges. */}
+                      {/* Organizar (desde Yo › Configuración): tu única liga directo a su Organizar; con varias, eliges. */}
                       <Route path="/organizar" element={<Screen area="organizar" framed><OrganizePage /></Screen>} />
                       {/* «¿Dónde juego esta semana?»: lo abierto en las ligas públicas (con y sin cuenta). */}
                       <Route path="/agenda" element={<Screen area="agenda" framed><AgendaPage /></Screen>} />

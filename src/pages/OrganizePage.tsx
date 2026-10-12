@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Crown, Plus, Zap } from 'lucide-react';
+import { Crown, Plus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { LeagueContext } from '../lib/league';
 import { organizedLeagueIds } from '../lib/organize';
@@ -9,8 +9,7 @@ import { leagueSport } from '../sports/registry';
 import { useCreateMenu } from '../components/CreateMenu';
 import { useMyLeagues } from '../components/home/useHomeData';
 import { SportTheme } from '../components/league/SportTheme';
-import { useIsPro, useSwitchMode } from '../components/mode';
-import { NoticeRow, NoticeSlot } from '../components/NoticeSlot';
+import { NoticeSlot } from '../components/NoticeSlot';
 import { OrganizeHub, useOrganizerCtx } from '../components/organizer/Hub';
 import { organizeUrl, pickOrganizeLeague } from '../components/organizer/hubLogic';
 import { LeaguePickerChip, LeaguePickerSheet } from '../components/organizer/LeaguePicker';
@@ -40,10 +39,10 @@ function rememberLeague(uid: string, lid: string) {
 }
 
 /**
- * Organizar (`/organizar`, la pestaña de Pro; `?liga=` elige la liga): el título, la ficha de la liga (toca para elegir
- * otra de las que organizas), «Por hacer» (solo lo que tiene algo, con su número) y «La liga» (cada fila a su pantalla
- * de `/l/:lid/admin?tab=…`). `/l/:lid/admin` sin pantalla viene aquí. Sin ligas que organizar, cómo crear una; el
- * dueño de la app, además, su consola. En Lite se abre igual (un aviso o un link), con «Esto es de Pro · Usar Pro».
+ * Organizar (`/organizar`, desde Yo › Configuración, en Lite y en Pro; `?liga=` elige la liga): el título, la ficha de
+ * la liga (toca para elegir otra de las que organizas), «Por hacer» (solo lo que tiene algo, con su número) y «La liga»
+ * (cada fila a su pantalla de `/l/:lid/admin?tab=…`). `/l/:lid/admin` sin pantalla viene aquí. Sin ligas que
+ * organizar, cómo crear una; el dueño de la app, además, su consola.
  */
 export default function OrganizePage() {
   const auth = useAuth();
@@ -120,7 +119,6 @@ export default function OrganizePage() {
 /** Lo de una liga: su ficha (con la hoja para cambiar), «Por hacer» y «La liga», en el color de su deporte. */
 function OrganizeLeague({ lid, leagues, onCreate }: { lid: string; leagues: readonly League[]; onCreate: () => void }) {
   const navigate = useNavigate();
-  const isPro = useIsPro();
   const { ctx, loading, error } = useOrganizerCtx(lid);
   const [picking, setPicking] = useState(false);
   const league = ctx?.league ?? leagues.find((l) => l.id === lid) ?? null;
@@ -128,7 +126,6 @@ function OrganizeLeague({ lid, leagues, onCreate }: { lid: string; leagues: read
   return (
     <SportTheme sport={league ? leagueSport(league) : null} className="flex flex-col">
       <LeaguePickerChip league={league} onOpen={() => setPicking(true)} className="mt-1.5" />
-      {!isPro && <ProLine />}
       {error && !ctx ? (
         <div className="mt-7">
           <LoadError error={error} />
@@ -155,24 +152,5 @@ function OrganizeLeague({ lid, leagues, onCreate }: { lid: string; leagues: read
         onCreate={onCreate}
       />
     </SportTheme>
-  );
-}
-
-/** En Lite (se llegó por un aviso o un link): la pantalla se abre igual, con una línea para pasar a Pro. */
-function ProLine() {
-  const switchMode = useSwitchMode();
-  return (
-    <NoticeRow
-      className="mt-4"
-      notice={{
-        id: 'organizar-pro',
-        kind: 'pro',
-        icon: <Zap className="size-[18px]" />,
-        title: 'Esto es de Pro',
-        text: 'Con Pro, Organizar va en la barra de abajo',
-        action: { label: 'Usar Pro', onClick: () => switchMode('pro') },
-        dismissible: false,
-      }}
-    />
   );
 }

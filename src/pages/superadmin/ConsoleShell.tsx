@@ -5,9 +5,11 @@ import { Logo } from '../../components/Logo';
 import { BottomNav, DesktopNav, OfflineBar } from '../../components/Shell';
 import { Card, ListRow, RowIcon, TopLoader, cx } from '../../components/ui';
 import { displayName, useAuth } from '../../lib/auth';
-import { useIsPro } from '../../lib/useMode';
+import { useMyMemberships } from '../../lib/data/members';
+import { organizedLeagueIds } from '../../lib/organize';
 import { Count } from './bits';
 import { SECTIONS, sectionPath, type SectionKey } from './sections';
+import { PullToRefresh } from '../../components/PullToRefresh';
 
 /** Cuántas cosas esperan en cada sección (avisos del Resumen, reportes abiertos, reportes de insignias). */
 export type ConsoleBadges = Partial<Record<SectionKey, number>>;
@@ -17,16 +19,21 @@ const BadgesContext = createContext<ConsoleBadges>({});
 /** Los números de las secciones (el menú de la izquierda y la lista de la consola en el teléfono). */
 export const useConsoleBadges = () => useContext(BadgesContext);
 
-/** A dónde vuelve la consola: Organizar en Pro (la consola es parte de esa pestaña) y Hoy en Lite. */
+/**
+ * A dónde vuelve la consola (se llega desde Yo › Configuración o desde Organizar): a Organizar si la cuenta organiza
+ * alguna liga; si no, a la Configuración.
+ */
 export function useConsoleBack(): { to: string; label: string } {
-  return useIsPro() ? { to: '/organizar', label: 'Organizar' } : { to: '/', label: 'Hoy' };
+  const { user } = useAuth();
+  const memberships = useMyMemberships(user?.uid);
+  return organizedLeagueIds(memberships.data).length ? { to: '/organizar', label: 'Organizar' } : { to: '/cuenta', label: 'Configuración' };
 }
 
 const avisos = (n: number) => `${n} ${n === 1 ? 'aviso' : 'avisos'}`;
 
 /**
  * Marco de la consola del dueño de la app, como el resto de la app: en el teléfono sin barra de arriba (cada pantalla
- * trae «‹ Consola» y su título) y con la barra de abajo (Hoy · Ligas · Organizar · Yo); en la computadora, arriba el
+ * trae «‹ Consola» y su título) y con la barra de abajo (Hoy · Social · Ligas · Yo); en la computadora, arriba el
  * logo y las secciones de la app, y a la izquierda el menú de la consola (≥ 1024 px). En el teléfono, las secciones
  * son una lista en el Resumen (SectionList). Más ancho que el resto (hasta ~1240 px) para que quepan las tablas.
  */
@@ -35,6 +42,7 @@ export function ConsoleShell({ section, badges, children }: { section: SectionKe
   return (
     <BadgesContext.Provider value={badges ?? {}}>
       <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] max-sm:pt-[env(safe-area-inset-top)] sm:pb-10">
+        <PullToRefresh />
         <div className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur max-sm:hidden">
           <header className="mx-auto flex h-14 max-w-[1240px] items-center gap-2 px-4">
             <Link to="/" className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="MatchMate: Hoy" title="Hoy">
