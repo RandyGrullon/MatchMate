@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ClipboardPen, FileDown, Flag, Lock, LockOpen, Settings2, Share2, Signature, Trash2, Trophy, Users } from 'lucide-react';
+import { ClipboardPen, FileDown, Flag, Lock, LockOpen, Newspaper, Settings2, Share2, Signature, Trash2, Trophy, Users } from 'lucide-react';
 import { deleteEvent, useEvent, useEvents, usePlayers } from '../../../lib/data';
 import { closeGolfRound, pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournament, useGolfTournaments, type GolfCardDoc } from '../../../lib/data/golf';
 import { sentOrQueued, useOutboxSnapshot } from '../../../lib/data/client';
@@ -14,6 +14,8 @@ import { LiveWatchPill } from '../../../components/live/LiveParts';
 import { useStartLive } from '../../../components/live/useStartLive';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { useIsPro, useSwitchMode } from '../../../components/mode';
+import { PublishGameSheet } from '../../../components/posts/ShareToSocial';
+import { golfPostText, leagueShareTarget } from '../../../components/posts/shareGame';
 import { shareLink } from '../../../components/share';
 import { ReportButton } from '../../../components/tournamentReport/ReportButton';
 import { golfComp } from '../../../prizes/sports';
@@ -62,6 +64,8 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const [editing, setEditing] = useState(false);
   const [menu, setMenu] = useState(false);
   const [signing, setSigning] = useState<GolfCardDoc | null>(null);
+  // «Publicar en Social» (tu tarjeta como publicación).
+  const [publishing, setPublishing] = useState(false);
   const event = useEvent(lid, eventId);
   const golf = useGolfEvent(lid, eventId);
   const players = usePlayers(lid);
@@ -204,9 +208,28 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
       setMenu(false);
     });
 
+  // Tu tarjeta como publicación: miembro de una liga sin menores, con la tarjeta terminada, firmada o la ronda cerrada.
+  const shareTarget = leagueShareTarget({ lid, league, member });
+  const myGross = myCard ? myCard.strokes.reduce<number>((n, s) => n + (s ?? 0), 0) : 0;
+  const canPublish = !!shareTarget && !!round && !!myCard && holesDone(myCard) > 0 && (round.closed || myCard.signed || isComplete(myCard));
+
   const closeMenu = () => setMenu(false);
   const menuItems: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir', hint: 'Manda el link de la ronda', onClick: share, busy: sharing.isBusy() },
+    ...(canPublish
+      ? [
+          {
+            key: 'publicar',
+            icon: Newspaper,
+            label: 'Publicar en Social',
+            hint: 'Tu tarjeta, con lo que quieras contar',
+            onClick: () => {
+              closeMenu();
+              setPublishing(true);
+            },
+          },
+        ]
+      : []),
     ...(live.item ? [live.item] : []),
     ...(report
       ? [
@@ -396,6 +419,27 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
       )}
 
       <EventMenu open={menu} onClose={closeMenu} title={title} items={menuItems} />
+      {canPublish && (
+        <PublishGameSheet
+          open={publishing}
+          onClose={() => setPublishing(false)}
+          league={shareTarget}
+          game={{ kind: 'golf', id: myCard.id, playerId: myCard.playerId }}
+          text={golfPostText(myGross, round.courseName)}
+          preview={
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{title}</p>
+                <p className="mt-0.5 truncate text-xs text-muted">{[round.courseName, `${holesDone(myCard)} hoyos`].filter(Boolean).join(' · ')}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-2xl leading-tight font-bold tabular-nums">{myCard.dq ? 'DQ' : myGross}</div>
+                <div className="text-[11px] text-muted">Golpes</div>
+              </div>
+            </div>
+          }
+        />
+      )}
       {live.sheet}
       <MenuSheets
         open={sheet.open}

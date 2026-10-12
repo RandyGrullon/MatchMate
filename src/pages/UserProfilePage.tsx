@@ -7,6 +7,7 @@ import { peopleTags, usePublicProfile, type FollowKind } from '../lib/data/follo
 import { useUserPosts } from '../lib/data/posts';
 import { AppShell } from '../components/Shell';
 import { useIsPro } from '../components/mode';
+import { PlayerPlaces } from '../components/places/PlayerPlaces';
 import { PostList } from '../components/posts/PostList';
 import { BlockedCard, ProfileMoreMenu } from '../components/profile/BlockControls';
 import { ProfileAvatar } from '../components/profile/ProfileAvatar';
@@ -41,7 +42,8 @@ export function profileLine(p: { username?: string | null; sports?: readonly str
  * Perfil público de una cuenta (`/u/:userId`), rediseño «Calma y foco» (como Yo): «‹ Atrás» con «Reportar esta cuenta»
  * y «•••» (Bloquear) a la derecha; su foto (o sus iniciales), su nombre y «@usuario · sus deportes · desde cuándo» (y
  * «Te sigue»), su biografía, sus insignias destacadas, un solo botón Seguir; Publicaciones · Seguidores · Siguiendo ·
- * Me gusta en una tarjeta (tocar abre la lista o la parte) y «Publicaciones | Juegos | Estadísticas | Insignias»
+ * Me gusta en una tarjeta (tocar abre la lista o la parte), «Dónde juega» (sus ligas y torneos por deporte, sus equipos y
+ * sus equipos de esports: cada uno a su perfil en ese lugar) y «Publicaciones | Juegos | Estadísticas | Insignias»
  * (`?tab=`; sin nada, Publicaciones). Si la bloqueaste, en vez de todo eso «Bloqueaste a …» con «Desbloquear». Lo que
  * se ve lo decide la base: solo ligas que puedes ver y nunca las de menores; si esa cuenta te bloqueó (o ya no existe),
  * «No encontramos este perfil». Tu propio perfil va a `/perfil`.
@@ -219,7 +221,7 @@ function PublicProfile({ userId }: { userId: string }) {
               )}
             >
               <b className="num text-[23px] leading-[1.15] font-[650]">{compactCount(c.value)}</b>
-              <span className="truncate text-[11px] font-[550] text-muted min-[390px]:text-xs">{c.label}</span>
+              <span className="text-[11px] leading-tight font-[550] break-words hyphens-auto text-muted min-[390px]:text-xs">{c.label}</span>
             </button>
           ))}
         </div>
@@ -229,7 +231,10 @@ function PublicProfile({ userId }: { userId: string }) {
         <BlockedCard person={p} className="mt-[26px]" />
       ) : (
         <>
-          <div className="mt-[26px]">
+          {/* Dónde juega: sus ligas y torneos por deporte, sus equipos y sus equipos de esports (cada uno a su perfil ahí). */}
+          <PlayerPlaces uid={p.id} name={p.name} dense={pro} className="mt-[26px]" />
+
+          <div className="mt-[30px]">
             <Tabs<ProfileTab>
               items={[
                 { key: 'publicaciones', label: 'Publicaciones' },

@@ -30,6 +30,7 @@ import { AppFrame, AppShell } from './Shell';
 import { Empty, Loading, PageSkeleton } from './ui';
 import { LeaguePlayerBadges, playerPageId } from './badges/LeagueBadges';
 import { LeaguePlayerMadeBadges } from './badges/maker/LeagueMadeBadges';
+import { PlayerAccountLink } from './places/PlayerAccountLink';
 import { LeagueHomeFrame } from './league/LeagueHome';
 import { ROW_ICONS, type LeagueRowDef } from './league/home/LeagueSections';
 import { LeagueHomeActions } from './league/home/LeagueSocialActions';
@@ -222,7 +223,8 @@ export default function LeagueShell() {
       ];
   const bar = leagueBar(pathname, base, bowling ? OWN_BAR_BOWLING : OWN_BAR);
   const home = bar === 'home';
-  // Página de un jugador (del boliche o de un deporte que la tiene): sus insignias van al final.
+  // Página de un jugador (del boliche o de un deporte que la tiene): «Ver su perfil» (si tiene cuenta) y sus insignias
+  // van al final.
   const badgesOf = bowling || screens?.Player ? playerPageId(pathname, base) : null;
 
   return (
@@ -239,6 +241,8 @@ export default function LeagueShell() {
             ) : badgesOf ? (
               <>
                 <Outlet />
+                {/* Del perfil en la liga al perfil de la app (todas sus ligas, equipos y publicaciones). */}
+                <PlayerAccountLink key={`cuenta-${badgesOf}`} playerId={badgesOf} className={bowling ? undefined : 'mx-2'} />
                 <LeaguePlayerBadges key={badgesOf} playerId={badgesOf} />
                 <LeaguePlayerMadeBadges key={`creador-${badgesOf}`} playerId={badgesOf} />
               </>

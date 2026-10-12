@@ -1,8 +1,8 @@
 /**
  * El perfil de otra cuenta (/u/:id) dibujado sin navegador (renderToString): sin cuenta, cargando, no encontrado y el
  * perfil (rediseño: «‹ Atrás» con Reportar y «•••» (Bloquear), su foto o iniciales, nombre y «@usuario · deportes ·
- * desde», su biografía, un solo Seguir, los 4 números en una tarjeta y «Publicaciones | Juegos | Estadísticas |
- * Insignias»), y bloqueada: «Bloqueaste a …» con «Desbloquear» en vez de sus publicaciones y sus juegos.
+ * desde», su biografía, un solo Seguir, los 4 números en una tarjeta, «Dónde juega» y «Publicaciones | Juegos |
+ * Estadísticas | Insignias»), y bloqueada: «Bloqueaste a …» con «Desbloquear» en vez de sus publicaciones y sus juegos.
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   auth: { user: { uid: 'u1' } as { uid: string } | null, loading: false },
   profile: { data: null as unknown, loading: false, error: null as Error | null },
   pro: false,
+  places: null as unknown,
 }));
 
 vi.mock('../lib/auth', () => ({ useAuth: () => state.auth }));
@@ -31,6 +32,11 @@ vi.mock('../lib/data/follows', async (orig) => ({
 // Las publicaciones se pintan en src/components/posts (con sus propias pruebas): aquí solo dónde van.
 vi.mock('../components/posts/PostList', () => ({
   PostList: ({ list, empty }: { list: { data: unknown[] }; empty?: ReactNode }) => (list.data.length ? h('div', { 'data-posts': list.data.length }) : (empty ?? null)),
+}));
+// «Dónde juega» se pinta en src/components/places (con sus propias pruebas): aquí, dónde va y que no sale bloqueada.
+vi.mock('../lib/data/places', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/places')>()),
+  usePlayerPlaces: () => ({ data: state.places, loading: false, error: null }),
 }));
 vi.mock('../lib/data/profileGames', async (orig) => ({
   ...(await orig<typeof import('../lib/data/profileGames')>()),
@@ -71,6 +77,34 @@ beforeEach(() => {
   state.auth = { user: { uid: 'u1' }, loading: false };
   state.profile = { data: profile(), loading: false, error: null };
   state.pro = false;
+  state.places = {
+    leagues: [
+      {
+        leagueId: 'L1',
+        name: 'Liga de los martes',
+        kind: 'liga',
+        sport: 'bowling',
+        game: null,
+        logo: null,
+        visibility: 'public',
+        playerId: 'p7',
+        summary: { kind: 'bowling', games: 24, average: 182, high: 245 },
+      },
+      {
+        leagueId: 'L2',
+        name: 'Pádel del Club',
+        kind: 'torneo',
+        sport: 'padel',
+        game: null,
+        logo: null,
+        visibility: 'public',
+        playerId: 'p8',
+        summary: { kind: 'matches', played: 4, won: 3, drawn: 0, lost: 1 },
+      },
+    ],
+    squads: [{ id: 'S1', sport: 'football', name: 'Los Tigres', tag: 'TGR', logo: null, color: null, city: null, recruiting: false, members: 9, followers: 0, role: 'member' }],
+    esportsTeams: [{ id: 'E1', game: 'valorant', name: 'Radiantes', tag: 'RAD', logo: null, role: 'captain' }],
+  };
 });
 
 describe('perfil de otra cuenta', () => {
@@ -137,6 +171,31 @@ describe('perfil de otra cuenta', () => {
     // Reportar y «•••» siguen arriba.
     expect(out).toContain('aria-label="Reportar esta cuenta"');
     expect(out).toContain('aria-label="Más opciones"');
+  });
+
+  it('«Dónde juega» antes de las partes: por deporte, sus equipos y sus equipos de esports, cada uno a su perfil ahí', () => {
+    const out = render();
+    const t = text(out);
+    expect(t).toContain('Dónde juega');
+    expect(t).toContain('Boliche Liga de los martes Liga · Promedio 182 · 24 juegos');
+    expect(t).toContain('Pádel Pádel del Club Torneo · 3 G · 1 P');
+    expect(t).toContain('Los Tigres [TGR] Fútbol');
+    expect(t).toContain('Equipos de esports');
+    expect(t).toContain('Radiantes [RAD] VALORANT · Capitán');
+    expect(out).toContain('href="/l/L1/j/p7"');
+    expect(out).toContain('href="/l/L2/j/p8"');
+    expect(out).toContain('href="/equipos/S1?jugador=u2"');
+    expect(out).toContain('href="/esports/equipo/E1"');
+    // Arriba de «Publicaciones | Juegos | …», a la vista sin buscarlo.
+    expect(t.indexOf('Dónde juega')).toBeGreaterThan(t.indexOf('5 Me gusta'));
+    expect(t.indexOf('Dónde juega')).toBeLessThan(t.indexOf('Publicaciones Juegos Estadísticas Insignias'));
+  });
+
+  it('«Dónde juega» sin nada que puedas ver lo dice; bloqueada no sale', () => {
+    state.places = { leagues: [], squads: [], esportsTeams: [] };
+    expect(text(render())).toContain('Admin todavía no juega en ligas o equipos que puedas ver.');
+    state.profile = { data: profile({ blockedByMe: true }), loading: false, error: null };
+    expect(text(render())).not.toContain('Dónde juega');
   });
 
   it('no encontrado y cargando', () => {

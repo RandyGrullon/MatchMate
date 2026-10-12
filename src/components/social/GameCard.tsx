@@ -1,12 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ChevronRight, Flame, Flag, Medal, Timer } from 'lucide-react';
+import { ChevronRight, EyeOff, Flame, Flag, Medal, Timer } from 'lucide-react';
 import { toIsoDate } from '../../lib/format';
 import { gameSummary, type ProfileGame } from '../../lib/data/profileGames';
 import { formatSwimTime } from '../../sports/swimming/time';
 import { STROKE_LABEL } from '../../sports/swimming/events';
 import type { GameMark } from '../../lib/bowlingSeason';
 import { MarkIcon, MarksLine, markedChip } from '../event/GameMarks';
+import { GameShareButton } from '../posts/ShareToSocial';
 import { Badge, Card, cx } from '../ui';
 import { ReportButton } from '../report/ReportButton';
 import { LikeButton } from './LikeButton';
@@ -18,7 +19,8 @@ const strokeText = (s: string) => (STROKE_LABEL as Record<string, string>)[s] ??
 
 /**
  * Tarjeta de un juego para el perfil y el inicio (de cualquier deporte): quién (si `showUser`), el deporte, la liga
- * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo), el me gusta y «Reportar» (no en los tuyos).
+ * y el evento, el resultado a su manera (pinos, marcador, golpes, tiempo), el me gusta, «Compartir en Social» (si
+ * puedes publicarlo: miembro de su liga, o tu juego suelto) y «Reportar» (no en los tuyos).
  * Tocar «Ver» abre el juego en su liga. Un juego suelto (sin liga) lleva la bolera en vez de la liga, «Ver» solo para
  * su dueño y no se reporta como juego (no es de una liga: se reporta la cuenta desde su perfil).
  */
@@ -70,6 +72,7 @@ export function GameCard({
       <div className="-mx-2 flex items-center justify-between border-t border-line pt-1">
         <LikeButton game={game} />
         <div className="flex items-center">
+          <GameShareButton game={game} preview={<GameEmbed game={game} today={today} link={false} showUser={showUser} />} />
           {game.kind !== 'solo' && <ReportButton kind="game" targetId={game.id} ownerId={game.userId} />}
           {game.url && (
             <Link
@@ -83,6 +86,72 @@ export function GameCard({
         </div>
       </div>
     </Card>
+  );
+}
+
+const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
+
+/**
+ * El juego dentro de una publicación (y en la hoja para compartirlo): el deporte, dónde y cuándo (y quién lo jugó, con
+ * `showUser`) y el resultado a su manera, sin me gusta ni «Reportar». Tocarlo abre el juego en su liga (`link` y si
+ * tiene ruta: un juego suelto solo la tiene para su dueño).
+ */
+export function GameEmbed({
+  game,
+  today,
+  link = true,
+  showUser,
+  className,
+}: {
+  game: ProfileGame;
+  today?: string;
+  link?: boolean;
+  showUser?: boolean;
+  className?: string;
+}) {
+  const date = gameDateLabel(game.eventDate, today ?? toIsoDate(new Date()));
+  const where = (game.kind === 'solo' ? [game.detail.title || 'Juego suelto', game.detail.venue] : [game.leagueName, game.eventName])
+    .filter((s) => s && s.trim())
+    .join(' · ');
+  const title = showUser ? game.userName : where || 'Juego';
+  const sub = showUser ? where : null;
+  const inner = (
+    <>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{title}</p>
+          {sub && <p className="truncate text-xs text-muted">{sub}</p>}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <SportBadge sport={game.sport} />
+          {date && <span className="text-[11px] text-muted first-letter:uppercase">{date}</span>}
+        </div>
+      </div>
+      <GameBody game={game} />
+    </>
+  );
+  const box = cx('flex flex-col gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 text-fg', className);
+  if (link && game.url) {
+    return (
+      <Link to={game.url} data-game-embed="" title="Ver el juego" className={cx(box, 'transition hover:bg-surface-2/50 active:scale-[0.99]', focusRing)}>
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div data-game-embed="" className={box}>
+      {inner}
+    </div>
+  );
+}
+
+/** Una publicación con un juego que quien mira no puede ver (se borró, es de una liga que no ve o lo bloquearon). */
+export function GameUnavailable({ className }: { className?: string }) {
+  return (
+    <p data-game-embed="no" className={cx('flex items-center gap-2.5 rounded-2xl border border-dashed border-line px-3.5 py-3 text-sm text-muted', className)}>
+      <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+      Juego no disponible
+    </p>
   );
 }
 

@@ -1,8 +1,17 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Globe, ImagePlus, Lock, SendHorizontal, Users, X } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { usePublicProfile } from '../../lib/data/follows';
-import { POST_TEXT_MAX, VISIBILITY_LABEL, createPost, postProblem, socialErrorText, type Post, type PostVisibility } from '../../lib/data/posts';
+import {
+  POST_TEXT_MAX,
+  VISIBILITY_LABEL,
+  createPost,
+  postProblem,
+  socialErrorText,
+  type Post,
+  type PostVisibility,
+  type SharedGame,
+} from '../../lib/data/posts';
 import { compressImage, type CompressedImage } from '../../lib/image';
 import { leagueSport } from '../../sports/registry';
 import { Avatar } from '../Avatar';
@@ -30,8 +39,34 @@ export const SQUAD_AUDIENCE_HINT = 'La ve cualquiera y sale a quien sigue el equ
 /** Dónde se guarda lo que se escribía (por cuenta y por lugar: el feed, el muro de una liga o el de un equipo). */
 export const draftKey = (uid: string | null | undefined, leagueId: string | null | undefined) => (uid ? `mm:publicar:${uid}:${leagueId ?? 'feed'}` : null);
 
-/** El lugar del borrador: el equipo (`equipo:<id>`), la liga o el feed. */
-const draftPlace = (league: { id: string } | null | undefined, squad: { id: string } | null | undefined) => (squad ? `equipo:${squad.id}` : league?.id);
+/** El lugar del borrador: el juego que se comparte (`juego:<tipo>:<id>`), el equipo (`equipo:<id>`), la liga o el feed. */
+const draftPlace = (league: { id: string } | null | undefined, squad: { id: string } | null | undefined, game?: SharedGame | null) =>
+  game ? `juego:${game.kind}:${game.id}` : squad ? `equipo:${squad.id}` : league?.id;
+
+/** Al compartir un juego que ya no se puede (se borró, ya no lo ves o cambió): lo que dice la hoja. */
+export const GAME_GONE = 'Ese juego ya no se puede compartir.';
+
+const gameGone = (e: unknown) => {
+  const code = e && typeof e === 'object' ? (e as { code?: unknown }).code : undefined;
+  const kind = e && typeof e === 'object' ? (e as { kind?: unknown }).kind : undefined;
+  return code === 'no_existe' || code === 'invalido' || kind === 'not_found';
+};
+
+/**
+ * Lo que hace «Publicar» (sin React, así se prueba): en el muro de un equipo, siempre para todos; si no, en la liga
+ * elegida (o la del juego) o en el perfil, con el juego que se comparte si lleva.
+ */
+export function sendComposer(o: {
+  text: string;
+  photo: CompressedImage | null;
+  squad: ComposerSquad | null;
+  target: ComposerTarget | null;
+  audience: PostVisibility;
+  game?: SharedGame | null;
+}): Promise<Post> {
+  if (o.squad) return createPost({ text: o.text, photo: o.photo, squadId: o.squad.id, leagueId: null, visibility: 'public' });
+  return createPost({ text: o.text, photo: o.photo, leagueId: o.target?.id ?? null, visibility: o.audience, ...(o.game ? { game: o.game } : {}) });
+}
 
 /** Elige una foto y la deja lista para subir (comprimida). */
 function usePhotoInput(onPicked: (img: CompressedImage) => void, onError: (text: string) => void) {
@@ -167,6 +202,10 @@ function ComposerSheet({
  * «Seguidores»; en una liga, «Todos» (si la liga es pública) o «Solo la liga»; en el muro de un equipo
  * (`fixedSquad`), siempre «Todos». Lo escrito queda guardado en el teléfono si cierras la hoja. «Publicar» gira mientras
  * sale y no se toca dos veces.
+ *
+ * Con `game` (compartir un partido o un juego, docs/perfiles-equipos-esports.md §2): «Publicar en Social», el juego
+ * arriba (`attachment`), la liga del juego fija (`fixedLeague`; sin liga en un juego suelto) y un texto sugerido
+ * (`suggestedText`) que se puede cambiar o borrar: con juego no hace falta texto ni foto.
  */
 export function ComposerForm({
   uid,
@@ -175,6 +214,9 @@ export function ComposerForm({
   leagues,
   initialPhoto = null,
   initialText,
+  game = null,
+  attachment,
+  suggestedText,
   onClose,
   onPosted,
 }: {
@@ -187,13 +229,20 @@ export function ComposerForm({
   initialPhoto?: CompressedImage | null;
   /** Para probarla (si no, el borrador guardado). */
   initialText?: string;
+  /** El partido o juego que se comparte. */
+  game?: SharedGame | null;
+  /** Cómo se ve el juego en la hoja (arriba del texto). */
+  attachment?: ReactNode;
+  /** El texto de entrada si no hay borrador («¡Ganamos 6-4 6-3! 🎾»). */
+  suggestedText?: string;
   onClose: () => void;
   onPosted?: (post: Post) => void;
 }) {
   const { toast } = useFeedback();
-  const squad = fixedSquad;
-  const key = draftKey(uid, draftPlace(fixedLeague, squad));
-  const [text, setTextState] = useState(() => initialText ?? readDraft(key));
+  // Un juego va a su liga (o al perfil): nunca al muro de un equipo.
+  const squad = game ? null : fixedSquad;
+  const key = draftKey(uid, draftPlace(fixedLeague, squad, game));
+  const [text, setTextState] = useState(() => initialText ?? (readDraft(key) || suggestedText || ''));
   const [photo, setPhoto] = useState<CompressedImage | null>(initialPhoto);
   const [targetId, setTargetId] = useState<string | null>(fixedLeague?.id ?? null);
   // En el muro de un equipo no hay liga: la publicación es para todos.
@@ -221,7 +270,7 @@ export function ComposerForm({
     if (error) setError(null);
   };
 
-  const problem = postProblem({ text, photo, leagueId: target?.id ?? null, visibility: audience });
+  const problem = postProblem({ text, photo, leagueId: target?.id ?? null, visibility: audience, game });
   // «Escribe algo o agrega una foto» no se dice: el botón apagado ya lo dice. Lo demás (muy largo), sí.
   const shownProblem = problem && (text.trim() || photo) ? problem : null;
   const near = text.length >= POST_TEXT_MAX - COUNTER_FROM;
@@ -235,16 +284,14 @@ export function ComposerForm({
     setSending(true);
     setError(null);
     try {
-      const post = await createPost(
-        squad ? { text, photo, squadId: squad.id, leagueId: null, visibility: 'public' } : { text, photo, leagueId: target?.id ?? null, visibility: audience },
-      );
+      const post = await sendComposer({ text, photo, squad, target, audience, game });
       saveDraft(key, '');
       toast('Publicado');
       onPosted?.(post);
       onClose();
     } catch (e) {
       console.error(e);
-      setError(socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
+      setError(game && gameGone(e) ? GAME_GONE : socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
     } finally {
       inFlight.current = false;
       setSending(false);
@@ -255,7 +302,7 @@ export function ComposerForm({
     <Sheet
       open
       onClose={onClose}
-      title={squad ? 'Publicar en el equipo' : fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
+      title={game ? 'Publicar en Social' : squad ? 'Publicar en el equipo' : fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
       subtitle={squad?.name ?? fixedLeague?.name}
       footer={
         <Button
@@ -302,6 +349,12 @@ export function ComposerForm({
             </span>
           )}
         </div>
+
+        {game && attachment && (
+          <div data-attachment="" role="group" aria-label="El juego que compartes">
+            {attachment}
+          </div>
+        )}
 
         {photo ? (
           <div className="relative self-start">

@@ -12,11 +12,12 @@ import { toIsoDate } from '../lib/format';
 import type { League } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { getSport } from '../sports/registry';
-import { NoBowlingNumbers, ProfileStats, SportLeagues, splitBySport, useBowlingNumbers, type BowlingNumbersState } from '../components/GlobalStats';
+import { NoBowlingNumbers, ProfileStats, splitBySport, useBowlingNumbers, type BowlingNumbersState } from '../components/GlobalStats';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallStatsSection, MyBallsSection, useBallSection } from '../components/balls/BallStats';
 import { ModeSwitch, useIsPro } from '../components/mode';
 import { NoticeSlot } from '../components/NoticeSlot';
+import { PlayerPlaces } from '../components/places/PlayerPlaces';
 import { ComposerCard } from '../components/posts/Composer';
 import { PostList } from '../components/posts/PostList';
 import { ProfileAvatar } from '../components/profile/ProfileAvatar';
@@ -80,15 +81,16 @@ export function socialLine(p: Pick<PublicProfile, 'followers' | 'following' | 'l
  * la lupa (buscar personas y ligas) y un solo engranaje (la cuenta, /cuenta); debajo, tu foto (tocarla lleva a cambiarla
  * en /cuenta), tu nombre, tu @usuario, tu liga y tu biografía.
  * - Lite: tu promedio con la gráfica corta y cómo vas, Mejor juego · Mejor serie · Juegos, Mis bolas (con sus juegos),
- *   Insignias (con lo que te falta) y las filas Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos y
+ *   Insignias (con lo que te falta), Dónde juego y las filas Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis
+ *   equipos y Amigos y seguidores.
+ * - Pro: los 6 números, la tendencia por juego o por mes, tus tiros (y qué pinos te quedan), por bola, Dónde juego y
+ *   las filas Por liga y temporada, Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos, Insignias y
  *   Amigos y seguidores.
- * - Pro: los 6 números, la tendencia por juego o por mes, tus tiros (y qué pinos te quedan), por bola y las filas Por
- *   liga y temporada, Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos, Insignias y Amigos y
- *   seguidores.
  * «Anotar un juego suelto» (boliche sin liga ni torneo) solo está aquí, en Yo (no en Hoy ni en «Crear o unirme»); sale
  * a quien ve los números del boliche.
- * Los números del boliche suman todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil); las
- * ligas de otros deportes llevan a sus números. Las partes (`?tab=juegos|publicaciones|insignias|estadisticas`) se
+ * Los números del boliche suman todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil);
+ * «Dónde juego» (src/components/places) es la única lista de tus ligas, torneos y equipos de todos los deportes, cada uno
+ * a tu perfil ahí. Las partes (`?tab=juegos|publicaciones|insignias|estadisticas`) se
  * abren con «‹ Yo»; el push de una insignia abre `?tab=insignias&insignia=…`.
  */
 export default function ProfilePage() {
@@ -260,8 +262,9 @@ function Yo({ uid }: { uid: string }) {
         <>
           {showBowling && <ProNumbers state={state} today={today} />}
           {showBowling && <BallStatsSection className="mt-3.5" />}
-          {others.length > 0 && <OtherSports uid={uid} others={others} alone={!showBowling} />}
-          <Card className="mt-3.5 overflow-hidden">
+          <WherePlay uid={uid} alone={others.length > 0 && !showBowling} pro />
+          {/* Después de «Dónde juego» (con su título), un respiro de sección antes de las filas. */}
+          <Card className="mt-[26px] overflow-hidden">
             <ListRow
               dense
               leading={
@@ -314,7 +317,7 @@ function Yo({ uid }: { uid: string }) {
           <Suspense fallback={<Skeleton className="mt-[26px] h-[196px] rounded-3xl" />}>
             <BadgesPreview userId={uid} sports={sports} className="mt-[26px]" />
           </Suspense>
-          {others.length > 0 && <OtherSports uid={uid} others={others} alone={!showBowling} />}
+          <WherePlay uid={uid} alone={others.length > 0 && !showBowling} pro={false} />
           <Card className="mt-[26px] overflow-hidden">
             {myGames(false)}
             {soloEntry(false)}
@@ -448,11 +451,14 @@ function ProNumbers({ state, today }: { state: BowlingNumbersState; today: strin
   );
 }
 
-/** Las ligas de otros deportes (cada una a sus números) y, si no juegas boliche, tu resumen de esos deportes. */
-function OtherSports({ uid, others, alone }: { uid: string; others: Parameters<typeof SportLeagues>[0]['leagues']; alone: boolean }) {
+/**
+ * «Dónde juego»: una sola lista con todas tus ligas y torneos (por deporte), tus equipos y tus equipos de esports, cada
+ * uno a tu perfil ahí; y, si no juegas boliche (`alone`), tu resumen de los otros deportes.
+ */
+function WherePlay({ uid, alone, pro }: { uid: string; alone: boolean; pro: boolean }) {
   return (
     <div className="mt-[26px] flex flex-col gap-3.5">
-      <SportLeagues leagues={others} alone={alone} />
+      <PlayerPlaces uid={uid} isMe dense={pro} />
       {alone && <StatsTab userId={uid} skipBowling isMe />}
     </div>
   );

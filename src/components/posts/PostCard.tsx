@@ -2,11 +2,13 @@ import type { CSSProperties, MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { CircleHelp, Lock, MessageCircle, Share2, Users } from 'lucide-react';
 import { deletePost, type Post } from '../../lib/data/posts';
+import { toIsoDate } from '../../lib/format';
 import { relativeTime } from '../../lib/notifications';
 import { useNow } from '../../lib/useNow';
 import { sportMeta } from '../../sports/registry';
 import { Avatar } from '../Avatar';
 import { useFeedback } from '../feedback';
+import { GameEmbed, GameUnavailable } from '../social/GameCard';
 import { atUsername, compactCount } from '../social/socialFormat';
 import { SquadChip } from '../squads/SquadBits';
 import { userPath } from '../social/UserLink';
@@ -27,8 +29,8 @@ const actionClass = cx(
  * Una publicación (rediseño «Calma y foco»): quién la escribió (foto, nombre, @usuario y hace cuánto; tocar la hora
  * abre la publicación), la liga con el color de su deporte (salvo `hideLeague`, en el muro de la liga), el equipo en su
  * color si es del muro de un equipo (salvo `hideSquad`, en ese muro), a quién le sale
- * si no es para todos, el texto (con sus saltos de línea y los links) y la foto (con su hueco reservado; tocarla la
- * abre en grande). Abajo: me gusta, comentarios y compartir. «⋯»: reportar y bloquear (si no es tuya) y borrar (si
+ * si no es para todos, el texto (con sus saltos de línea y los links), el partido o juego compartido (tocarlo lo abre;
+ * si quien mira no lo puede ver, «Juego no disponible») y la foto (con su hueco reservado; tocarla la abre en grande). Abajo: me gusta, comentarios y compartir. «⋯»: reportar y bloquear (si no es tuya) y borrar (si
  * puedes). Tocar el texto abre la publicación con sus comentarios.
  *
  * `detail`: es la de su pantalla (el texto va entero y no se abre otra vez). `onComment`: qué hace «Comentar» (ahí, ir
@@ -128,6 +130,18 @@ export function PostCard({
             </Link>
           )}
         </div>
+      )}
+
+      {post.game ? (
+        <div className="mt-3 px-4">
+          <GameEmbed game={post.game} today={toIsoDate(now)} showUser={post.game.userId !== author.id} />
+        </div>
+      ) : (
+        post.hasGame && (
+          <div className="mt-3 px-4">
+            <GameUnavailable />
+          </div>
+        )
       )}
 
       {post.photo && (

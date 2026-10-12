@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ClipboardPen, FileDown, FileSpreadsheet, ListOrdered, Megaphone, Settings, Share2, Trash2, Zap } from 'lucide-react';
+import { ClipboardPen, FileDown, FileSpreadsheet, ListOrdered, Megaphone, Newspaper, Settings, Share2, Trash2, Zap } from 'lucide-react';
 import {
   deleteEvent,
   useCommentsOfEvents,
@@ -42,6 +42,9 @@ import { useStartLive } from '../components/live/useStartLive';
 import { EventTheme } from '../components/event/eventTheme';
 import { boardRows } from '../components/event/board';
 import { PostSocial } from '../components/social/Social';
+import { ScoreChips } from '../components/social/GameCard';
+import { PublishGameSheet } from '../components/posts/ShareToSocial';
+import { bowlingPostText, leagueShareTarget } from '../components/posts/shareGame';
 import { MyGamesPanel } from '../components/event/MyGamesPanel';
 import { EventBadges } from '../components/badges/LeagueBadges';
 import { EventPrizes } from '../components/event/EventPrizes';
@@ -120,6 +123,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<'resultados' | 'anotadores' | 'reporte' | null>(null);
+  // «Publicar en Social» (tus juegos de este evento como publicación).
+  const [publishing, setPublishing] = useState(false);
   // Tu juego a medias, abierto desde tu fila de la Planilla (Pro): sigue en la hoja de «Tus juegos».
   const [mineRequest, setMineRequest] = useState<{ game: number; at: number } | null>(null);
   const isPro = useIsPro();
@@ -274,8 +279,27 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
     partial: (playerId, _entry, game) => (playerId === myPlayerId && myPlace ? partialGame(readGameDraft(gameKey(myPlace, game))) : null),
   });
 
+  // Tus juegos de este evento como publicación: si eres miembro de una liga sin menores y ya anotaste alguno.
+  const shareTarget = leagueShareTarget(ctx);
+  const myScores = mine ? mine.scores.filter((s): s is number => s != null) : [];
+  const canPublish = !!shareTarget && !!mine && myScores.length > 0;
+
   const menuItems: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir', hint: 'Manda el link del evento', onClick: share, busy: sharing.isBusy() },
+    ...(canPublish
+      ? [
+          {
+            key: 'publicar',
+            icon: Newspaper,
+            label: 'Publicar en Social',
+            hint: 'Tus juegos, con lo que quieras contar',
+            onClick: () => {
+              setMenu(false);
+              setPublishing(true);
+            },
+          },
+        ]
+      : []),
     ...(streaming.item ? [streaming.item] : []),
     ...(!pro
       ? [
@@ -542,6 +566,23 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       <NoticeSlot className="mt-4" />
 
       <EventMenu open={menu} onClose={() => setMenu(false)} title={title} items={menuItems} />
+      {canPublish && (
+        <PublishGameSheet
+          open={publishing}
+          onClose={() => setPublishing(false)}
+          league={shareTarget}
+          game={{ kind: 'bowling', id: mine.id, playerId: mine.playerId }}
+          text={bowlingPostText(mine.scores)}
+          preview={
+            <div className="flex flex-col gap-2 rounded-2xl border border-line bg-surface px-3.5 py-3">
+              <p className="truncate text-sm font-semibold">{title}</p>
+              <div className="flex flex-wrap gap-1.5">
+                <ScoreChips scores={myScores} />
+              </div>
+            </div>
+          }
+        />
+      )}
       {streaming.sheet}
       <Sheet open={sheet === 'resultados'} onClose={() => setSheet(null)} title={isTorneo ? 'Clasificación' : 'Resultados'} subtitle={title}>
         {sheet === 'resultados' && <StandingsTab {...props} readOnly onOpen={setDetail} />}

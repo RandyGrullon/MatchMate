@@ -136,6 +136,7 @@ export function MatchDetail({ tl, matchId, table, onTable, onBack }: { tl: TeamL
             roundWord="Jornada"
             url={url}
             sideExtra={(s) => ({ dot: tl.teamOf(m.sides.find((x) => x.side === s)?.teamId ?? null)?.color ?? null })}
+            mySide={rosterSide(m, tl.allTeams.data, tl.myPlayerId)}
             className="shadow-none!"
           />
         )}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowLeftRight, Crown, LogIn, LogOut, Pencil, Trash2, UserMinus, UserPlus, Users } from 'lucide-react';
+import { ArrowLeftRight, Crown, LogIn, LogOut, Pencil, Trash2, UserMinus, UserPlus, UserRound, Users } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import {
   deleteTeam,
@@ -35,8 +35,9 @@ import { defaultRankKey, memberActions, membersText, roleChip, rosterSummary, so
 /**
  * Un equipo de esports (`/esports/equipo/:teamId`, §12.4): «‹ {juego}», el logo grande, el nombre, el tag, el juego y
  * la descripción; el capitán tiene «Invitar» (la hoja con el código, el QR y el link; `?invitar=1` la abre, como al
- * crear el equipo). Los miembros con su ID y su rango (el capitán toca uno para hacerlo suplente o titular, pasarle la
- * capitanía o sacarlo), los torneos del equipo y el menú «•••»: el capitán edita o borra el equipo; un miembro sale.
+ * crear el equipo). Los miembros con su ID y su rango (tocar uno abre su perfil; el capitán, una hoja con «Ver perfil»
+ * y hacerlo suplente o titular, pasarle la capitanía o sacarlo), los torneos del equipo y el menú «•••»: el capitán edita
+ * o borra el equipo; un miembro sale.
  */
 export default function TeamPage() {
   const { teamId = '' } = useParams();
@@ -234,6 +235,8 @@ function MemberRow({
       leading={<Avatar name={member.displayName} className="size-10 text-sm" />}
       title={me ? `${member.displayName} (tú)` : member.displayName}
       ariaLabel={onOpen ? `${member.displayName}: opciones` : undefined}
+      // Sin opciones del capitán, tocar la fila abre su perfil (el tuyo, Yo); con opciones, la hoja trae «Ver perfil».
+      to={onOpen ? undefined : memberProfilePath(member.userId, me)}
       subtitle={
         <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="break-all">{record?.idDisplay ?? 'Sin ID de juego'}</span>
@@ -346,6 +349,7 @@ function MemberSheet({
   onClose: () => void;
 }) {
   const { toast, confirm } = useFeedback();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState<string | null>(null);
   const m = member;
   const actions = m ? memberActions(viewer, m, uid) : [];
@@ -365,9 +369,24 @@ function MemberSheet({
     }
   }
 
+  // Primero su perfil de la app (todo lo suyo); después lo del capitán.
+  const profile: MenuItem[] = m
+    ? [
+        {
+          key: 'perfil',
+          icon: UserRound,
+          label: 'Ver perfil',
+          hint: 'Sus ligas, equipos y publicaciones',
+          onClick: () => {
+            onClose();
+            navigate(memberProfilePath(m.userId, m.userId === uid));
+          },
+        },
+      ]
+    : [];
   const items: MenuItem[] = !m
     ? []
-    : actions.map((k): MenuItem => {
+    : [...profile, ...actions.map((k): MenuItem => {
         if (k === 'toggle_sub') {
           const to = m.role === 'sub' ? 'member' : 'sub';
           return {
@@ -407,7 +426,10 @@ function MemberSheet({
               danger: true,
             }),
         };
-      });
+      })];
 
   return <EventMenu open={!!m && items.length > 0} onClose={onClose} title={m?.displayName ?? ''} items={items} />;
 }
+
+/** El perfil de la app de un miembro (el tuyo es Yo). */
+const memberProfilePath = (userId: string, me: boolean) => (me ? '/perfil' : `/u/${encodeURIComponent(userId)}`);

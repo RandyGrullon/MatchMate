@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   pro: false,
   squads: [] as { id: string; name: string }[],
   esportsTeams: [] as { id: string; name: string }[],
+  places: null as unknown,
 }));
 
 vi.mock('../lib/auth', async (orig) => ({
@@ -50,6 +51,11 @@ vi.mock('../lib/data/squads', async (orig) => ({
 vi.mock('../lib/data/esports', async (orig) => ({
   ...(await orig<typeof import('../lib/data/esports')>()),
   useMyEsportsTeams: () => ({ data: state.esportsTeams, loading: false, error: null }),
+}));
+// «Dónde juego» (src/components/places, con sus propias pruebas): aquí, que sale con tus lugares.
+vi.mock('../lib/data/places', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/places')>()),
+  usePlayerPlaces: () => ({ data: state.places, loading: false, error: null }),
 }));
 vi.mock('../lib/useMode', () => ({
   useIsPro: () => state.pro,
@@ -98,6 +104,23 @@ beforeEach(() => {
   state.pro = false;
   state.squads = [];
   state.esportsTeams = [];
+  state.places = {
+    leagues: [
+      {
+        leagueId: 'bol',
+        name: 'Liga de los martes',
+        kind: 'liga',
+        sport: 'bowling',
+        game: null,
+        logo: null,
+        visibility: 'private',
+        playerId: 'p1',
+        summary: { kind: 'bowling', games: 8, average: 194.75, high: 214 },
+      },
+    ],
+    squads: [],
+    esportsTeams: [],
+  };
   // Los de final/6-perfil.png: 199 176 192 | 199 181 214 | 187 210.
   queryClient.setQueryData('across:bol:p1', [
     {
@@ -178,15 +201,67 @@ describe('Yo en Lite', () => {
     expect(html).not.toContain('<img');
   });
 
-  it('solo otros deportes: sin números del boliche, con tus ligas (cada una a sus números)', () => {
+  it('solo otros deportes: sin números del boliche, con «Dónde juego» (cada liga a tu perfil ahí)', () => {
     state.members = [member('pad', null)];
     state.leagues = [league('pad', 'Pádel Club', 'padel')];
+    state.places = {
+      leagues: [
+        {
+          leagueId: 'pad',
+          name: 'Pádel Club',
+          kind: 'liga',
+          sport: 'padel',
+          game: null,
+          logo: null,
+          visibility: 'private',
+          playerId: 'p9',
+          summary: { kind: 'matches', played: 4, won: 3, drawn: 0, lost: 1 },
+        },
+      ],
+      squads: [],
+      esportsTeams: [],
+    };
     const html = render();
     const t = text(html);
     expect(t).not.toContain('Tu promedio');
     expect(t).not.toContain('Mis bolas');
-    expect(t).toContain('Mis ligas');
-    expect(html).toContain('href="/l/pad/perfil"');
+    expect(t).toContain('Dónde juego');
+    expect(t).toContain('Pádel Club Liga · 3 G · 1 P');
+    expect(html).toContain('href="/l/pad/j/p9"');
+    // Ya no hay otra lista de «Mis ligas».
+    expect(t).not.toContain('Mis ligas');
+  });
+
+  it('«Dónde juego»: una sola lista con todas tus ligas (también el boliche) y tus equipos, en Lite y en Pro', () => {
+    state.places = {
+      leagues: [
+        {
+          leagueId: 'bol',
+          name: 'Liga de los martes',
+          kind: 'liga',
+          sport: 'bowling',
+          game: null,
+          logo: null,
+          visibility: 'private',
+          playerId: 'p1',
+          summary: { kind: 'bowling', games: 8, average: 194.75, high: 214 },
+        },
+      ],
+      squads: [{ id: 's1', sport: 'football', name: 'Los Tigres', tag: 'TGR', logo: null, color: null, city: null, recruiting: false, members: 9, followers: 0, role: 'captain' }],
+      esportsTeams: [],
+    };
+    for (const pro of [false, true]) {
+      state.pro = pro;
+      const html = render();
+      const t = text(html);
+      expect(html.match(/Dónde juego/g)).toHaveLength(1);
+      expect(t).toContain('Liga de los martes Liga · Promedio 195 · 8 juegos');
+      expect(html).toContain('href="/l/bol/j/p1"');
+      expect(t).toContain('Los Tigres [TGR] Fútbol · Capitán');
+      expect(html).toContain('href="/equipos/s1?jugador=u1"');
+      // Antes de las filas de Yo.
+      expect(t.indexOf('Dónde juego')).toBeLessThan(t.indexOf('Mis juegos'));
+    }
   });
 });
 

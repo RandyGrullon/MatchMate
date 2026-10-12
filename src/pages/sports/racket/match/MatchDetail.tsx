@@ -253,7 +253,7 @@ export function MatchDetail({
       )}
 
       <Sheet open={sheet === 'compartir'} onClose={() => setSheet(null)} title="Compartir el resultado" subtitle={heading}>
-        {sheet === 'compartir' && <ShareResultCard match={m} title={title ?? league.name} roundWord={points ? 'Ronda' : 'Jornada'} url={url} className="shadow-none!" />}
+        {sheet === 'compartir' && <ShareResultCard match={m} title={title ?? league.name} roundWord={points ? 'Ronda' : 'Jornada'} url={url} mySide={mySide} className="shadow-none!" />}
       </Sheet>
       <Sheet open={sheet === 'historial'} onClose={() => setSheet(null)} title="Historial" subtitle={heading}>
         <ul className="-mx-1 flex flex-col">

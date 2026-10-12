@@ -1,4 +1,5 @@
 import type { Post, PostVisibility } from '../../lib/data/posts';
+import { gameSummary } from '../../lib/data/profileGames';
 import { shareOrigin } from '../../lib/origin';
 
 /**
@@ -121,7 +122,10 @@ export function audienceHint(v: PostVisibility, inLeague: boolean): string {
 /** Cuántos caracteres faltan para el tope a partir de los que se muestra el contador. */
 export const COUNTER_FROM = 100;
 
-/** Lo de la fila corta de Hoy: la primera línea, o «📷 Foto» si es solo una foto. */
-export function postSnippet(p: Pick<Post, 'text' | 'photo'>): string {
-  return firstLine(p.text) || (p.photo ? '📷 Foto' : '');
+/**
+ * Lo de la fila corta de Hoy: la primera línea, o «📷 Foto» si es solo una foto, o el resumen del juego si es solo un
+ * juego («Ganó 6-4 6-3 vs Luis / Juan»; «Juego compartido» si quien mira no lo ve).
+ */
+export function postSnippet(p: Pick<Post, 'text' | 'photo'> & Partial<Pick<Post, 'game' | 'hasGame'>>): string {
+  return firstLine(p.text) || (p.photo ? '📷 Foto' : p.game ? gameSummary(p.game) : p.hasGame ? 'Juego compartido' : '');
 }
