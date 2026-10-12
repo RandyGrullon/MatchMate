@@ -179,7 +179,8 @@ les llega el correo de confirmación (mira en *Spam*) y al tocar el enlace entra
   `bowlinx-12368`, el de BowlingX).
 - [ ] *Google Auth Platform* (antes *OAuth consent screen*) › *Get started*: nombre **MatchMate**, tu correo de
   soporte, público **External**, tu correo de contacto.
-  - *Branding* › *Authorized domains*: `matchmate.grullonb.com`, `REF_PROD.supabase.co` y `REF_STAGING.supabase.co`.
+  - *Branding* › *Authorized domains*: `grullonb.com` (Google pide el dominio principal, no `matchmate.grullonb.com`),
+    `REF_PROD.supabase.co` y `REF_STAGING.supabase.co`. *Application home page*: `https://matchmate.grullonb.com`.
   - *Branding* › *Application privacy policy link*: `https://matchmate.grullonb.com/privacidad` y *Application terms of
     service link*: `https://matchmate.grullonb.com/terminos` (Google los pide para verificar la app).
   - *Audience* › **Publish app** (si se queda en *Testing*, solo entran los correos de prueba).
