@@ -11,6 +11,7 @@ import { pendingNotice } from '../organizer/Pending';
 import { SuspendTodayCard } from '../organizer/SuspendDay';
 import { ReportButton } from '../report/ReportButton';
 import { ChampionsSection } from '../season/ChampionsSection';
+import { LiveBanner } from '../live/LiveBanner';
 import { SuggestionBox } from '../SuggestionBox';
 import { cx } from '../ui';
 import { LeagueNotices } from './Announce';
@@ -79,10 +80,10 @@ export function LeagueHomeBottom({ className }: { className?: string }) {
  * pestañas ni portada, «‹ Ligas» e «Invitar» arriba (LeagueShell), el ícono y el nombre completo de la liga, y sus
  * secciones (Partidos, Tabla, Playoffs, Mi equipo… y en Pro «Organizas esta liga») como filas debajo de la pantalla
  * del deporte (`sections`).
- * - arriba: el ícono y el nombre con cuándo y dónde juegan (LeagueIdent), el aviso del admin y el reclamo; para quien
- *   mira una liga pública sin ser miembro, «Unirme» con los datos de la liga y «¿Quién eres?» (en esports no: se entra
- *   al inscribirse y la acción del torneo es «Inscribirme», docs/esports.md D5); en Pro, a quien organiza,
- *   «Suspender» si hoy hay juego (src/components/organizer);
+ * - arriba: el ícono y el nombre con cuándo y dónde juegan (LeagueIdent), el aviso del admin y el reclamo, lo que está
+ *   «EN VIVO» (src/components/live, solo si hay); para quien mira una liga pública sin ser miembro, «Unirme» con los
+ *   datos de la liga y «¿Quién eres?» (en esports no: se entra al inscribirse y la acción del torneo es «Inscribirme»,
+ *   docs/esports.md D5); en Pro, a quien organiza, «Suspender» si hoy hay juego (src/components/organizer);
  * - abajo: las secciones (con el buzón de sugerencias para los jugadores), el aviso de la pantalla (NoticeSlot),
  *   premios, campeones e insignias, y para los miembros los datos de la liga (lugar, horario, WhatsApp).
  */
@@ -96,6 +97,7 @@ export function LeagueHomeFrame({ sections, pro, children }: { sections: readonl
     <div className="flex flex-col px-2">
       <LeagueIdent className="mt-1" />
       <LeagueHomeTop className="mt-[22px]" />
+      <LiveBanner key={`envivo-${lid}`} lid={lid} className="mt-[22px]" />
       {pro && isAdmin && (
         <div className="mt-3.5 empty:hidden">
           <SuspendTodayCard key={`suspender-${lid}`} />

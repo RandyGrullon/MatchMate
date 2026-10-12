@@ -47,6 +47,9 @@ import { ScreenHeader, useOwnTabs } from '../components/organizer/Hub';
 import { adminScreenTitle, organizeUrl } from '../components/organizer/hubLogic';
 import { SuspendDayRow } from '../components/organizer/SuspendDay';
 import { BadgesSettingsCard } from '../components/badges/BadgesSettings';
+import { LiveSettingsCard } from '../components/live/LiveSettingsCard';
+import { canEnterLeagues } from '../components/squads/logic';
+import { SquadRequestsPanel } from '../components/squads/SquadRequestsPanel';
 import { BadgeMakersCard } from '../components/badges/maker/MakerSettings';
 import { badgeMakersOf, canMakeBadges, setMemberBadgeMaker } from '../lib/data/leagueBadges';
 import { leavesOnRemove, removeConfirm } from '../components/scorers/logic';
@@ -131,7 +134,11 @@ export default function AdminPage() {
       <Suspense fallback={<TopLoader />}>
         <div key={tab} className="animate-fade-up">
           {ownTab ? (
-            <ownTab.Component />
+            <div className="flex flex-col gap-[26px]">
+              {/* Equipos que piden entrar a la liga (src/components/squads): arriba de los equipos de la liga. */}
+              {ownTab.key === 'equipos' && canEnterLeagues(leagueSport(league)) && <SquadRequestsPanel lid={lid} />}
+              <ownTab.Component />
+            </div>
           ) : tab === 'jugadores' ? (
             <PlayersPage />
           ) : tab === 'miembros' ? (
@@ -425,8 +432,9 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
 }
 
 /**
- * Ajustes de la liga: los datos (se editan en un modal; ahí va la foto del marcador), el logo, la invitación y, al final,
- * el respaldo, las fotos viejas y borrar la liga (en su hoja). Avisar e Insignias tienen su propia fila en Organizar.
+ * Ajustes de la liga: los datos (se editan en un modal; ahí va la foto del marcador), el logo, las transmisiones en vivo,
+ * la invitación y, al final, el respaldo, las fotos viejas y borrar la liga (en su hoja). Avisar e Insignias tienen su
+ * propia fila en Organizar.
  */
 function SettingsPanel() {
   const { league, isOwner } = useLeagueCtx();
@@ -512,6 +520,9 @@ function SettingsPanel() {
       </Card>
 
       <LogoCard />
+
+      {/* Transmisiones en vivo: los admins y anotadores ponen el link de un partido (src/components/live). */}
+      <LiveSettingsCard lid={league.id} />
 
       <InviteCard league={league} />
 

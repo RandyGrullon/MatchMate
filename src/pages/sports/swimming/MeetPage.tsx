@@ -20,6 +20,8 @@ import { ReportButton } from '../../../components/tournamentReport/ReportButton'
 import { swimComp } from '../../../prizes/sports';
 import { useBusy } from '../../../components/busy';
 import { EventMenu, EventTopBar, MoreButton, eventDay, type MenuItem } from '../../../components/event/EventHeader';
+import { LiveWatchPill } from '../../../components/live/LiveParts';
+import { useStartLive } from '../../../components/live/useStartLive';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { useIsPro } from '../../../components/mode';
 import { Card, Empty, LoadError, PageSkeleton, Segmented, Sheet, Tabs, cx } from '../../../components/ui';
@@ -89,6 +91,8 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
   const clubById = useMemo(() => clubMap(clubs.data), [clubs.data]);
 
   const meet = meets.data.find((m) => m.id === meetId) ?? null;
+  // En vivo (src/components/live): «Transmitir en vivo» en «•••» y, con el encuentro en vivo, «Ver en vivo» bajo el título.
+  const live = useStartLive({ eventId: meetId ?? null, title: meet ? meetTitle(meet) : null, onPick: () => setMenu(false) });
   const error = meets.error ?? events.error ?? entries.error ?? players.error;
   if (error) return <LoadError error={error} />;
   if (meets.loading || (meet && events.loading)) return <PageSkeleton />;
@@ -172,6 +176,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
     setTab(k);
   };
   const menuItems: MenuItem[] = [
+    ...(live.item ? [live.item] : []),
     {
       key: 'reporte',
       icon: FileDown,
@@ -273,6 +278,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
           <EventTopBar back={standalone ? null : { label: league.name, fallback: base }} right={more} />
           <h1 className={isPro ? 'mt-0.5 text-title-pro' : 'mt-1 text-title'}>{meetTitle(meet)}</h1>
           {metaLine}
+          <LiveWatchPill lid={lid} eventId={meet.id} className={isPro ? 'mt-2.5' : 'mt-3'} />
         </>
       )}
 
@@ -309,6 +315,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
       </div>
 
       <EventMenu open={menu} onClose={closeMenu} title={meetTitle(meet)} items={menuItems} />
+      {live.sheet}
       <Sheet open={pointsOpen} onClose={() => setPointsOpen(false)} title="Puntos por club" subtitle={meetTitle(meet)}>
         {pointsOpen && <ScoresPanel data={data} />}
       </Sheet>

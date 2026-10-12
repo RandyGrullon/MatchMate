@@ -7,6 +7,7 @@ import { ResultEntryModal, type ResultParser } from '../../../components/match';
 import { BusyIcon, useBusy } from '../../../components/busy';
 import { EventMenu, MoreButton, type MenuItem } from '../../../components/event/EventHeader';
 import { useAction, useFeedback } from '../../../components/feedback';
+import { useStartLive } from '../../../components/live/useStartLive';
 import { Badge, Button, Card, Field, Input, Sheet, cx } from '../../../components/ui';
 import { scorerCandidates, type ScorerCandidate } from './logic';
 import { isIsoDate, localTime, matchClashes, zonedIso } from './schedule';
@@ -46,9 +47,10 @@ export function adminMenuEntries(
 
 /**
  * «•••» de un partido de equipos (rediseño «Calma y foco»: lo del admin ya no es una tarjeta llena de botones). Para
- * todos, lo que pase la pantalla (`extra`: compartir el resultado, el acta completa); para el admin, el anotador de
- * mesa designado, reprogramar, aplazar, W.O. (con el marcador del deporte), poner o corregir el resultado, decidir un
- * reclamo, corregir el acta (`extraAdmin`, el fútbol), anular y, al final y en rojo, borrar. Cada cosa abre su hoja.
+ * los admins y anotadores con la liga en vivo activada, «Transmitir en vivo» (src/components/live); para todos, lo que
+ * pase la pantalla (`extra`: compartir el resultado, el acta completa); para el admin, el anotador de mesa designado,
+ * reprogramar, aplazar, W.O. (con el marcador del deporte), poner o corregir el resultado, decidir un reclamo, corregir
+ * el acta (`extraAdmin`, el fútbol), anular y, al final y en rojo, borrar. Cada cosa abre su hoja.
  * Sin nada que mostrar, no sale el botón.
  */
 export function MatchMenu({
@@ -84,6 +86,7 @@ export function MatchMenu({
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<'anotador' | 'reprogramar' | 'wo' | 'corregir' | 'resolver' | null>(null);
   const official = tl.officialOf(m.id);
+  const live = useStartLive({ matchId: m.id, title });
   const name = (side: 1 | 2) => tl.teamOf(m.sides[side - 1].teamId)?.name ?? m.sides[side - 1].label;
   const pick = (s: typeof sheet) => {
     setMenu(false);
@@ -153,13 +156,15 @@ export function MatchMenu({
     : [];
   // Lo del deporte para el admin (corregir el acta) va antes de anular y borrar.
   const tail = adminItems.filter((it) => it.key === 'anular' || it.key === 'borrar');
-  const items: MenuItem[] = [...withClose(extra), ...adminItems.filter((it) => !tail.includes(it)), ...(admin ? withClose(extraAdmin) : []), ...tail];
-  if (!items.length) return null;
+  const items: MenuItem[] = [...withClose(live.item ? [live.item] : []), ...withClose(extra), ...adminItems.filter((it) => !tail.includes(it)), ...(admin ? withClose(extraAdmin) : []), ...tail];
+  // La hoja de «Transmitir en vivo» sigue abierta aunque la opción se vaya al empezar («Ya estás en vivo»).
+  if (!items.length) return <>{live.sheet}</>;
 
   return (
     <>
       <MoreButton onClick={() => setMenu(true)} />
       <EventMenu open={menu} onClose={() => setMenu(false)} title={title} items={items} />
+      {live.sheet}
       {admin && (
         <>
           <OfficialSheet tl={tl} match={m} open={sheet === 'anotador'} onClose={() => setSheet(null)} />

@@ -15,6 +15,8 @@ import type { Side } from '../../../../sports/types';
 import { useBusy } from '../../../../components/busy';
 import { saveErrorMessage, useFeedback } from '../../../../components/feedback';
 import { EventMenu, MoreButton, type MenuItem } from '../../../../components/event/EventHeader';
+import { useStartLive } from '../../../../components/live/useStartLive';
+import { sideName } from '../../../../components/match';
 import { Button, Field, Input, Segmented, Select, Sheet, cx } from '../../../../components/ui';
 import type { RacketMenuItem } from '../frame';
 import { walkoverScore } from '../court/adapters';
@@ -28,9 +30,10 @@ type Dialog = null | 'walkover' | 'postpone' | 'reschedule' | 'players';
 type Pending = 'dialog' | 'void' | 'delete';
 
 /**
- * «•••» del partido (rediseño: lo del admin ya no es una fila de botones): W.O., aplazar, reprogramar (fecha, hora y
- * cancha o mesa), quién jugó (suplente), corregir el resultado, anular y borrar; y lo de todos que pase la pantalla
- * (`extra`: compartir, historial). Cada cosa abre su hoja. Sin nada que mostrar, no sale el botón.
+ * «•••» del partido (rediseño: lo del admin ya no es una fila de botones): «Transmitir en vivo» (admins y anotadores,
+ * con la liga en vivo activada: src/components/live), W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), quién
+ * jugó (suplente), corregir el resultado, anular y borrar; y lo de todos que pase la pantalla (`extra`: compartir,
+ * historial). Cada cosa abre su hoja. Sin nada que mostrar, no sale el botón.
  */
 export function MatchAdmin({
   match: m,
@@ -57,6 +60,7 @@ export function MatchAdmin({
   const waiting = pending.isBusy();
   const points = isPointsMatch(m);
   const open = m.status === 'scheduled' || m.status === 'live' || m.status === 'suspended' || m.status === 'postponed';
+  const live = useStartLive({ matchId: m.id, title: `${sideName(m.sides[0])} vs. ${sideName(m.sides[1])}`, onPick: () => setMenu(false) });
 
   const act = (fn: () => Promise<unknown>, ok: string, key: Pending = 'dialog') =>
     pending.run(key, async () => {
@@ -87,6 +91,7 @@ export function MatchAdmin({
   };
 
   const items: MenuItem[] = [
+    ...(live.item ? [live.item] : []),
     ...(isAdmin && open && !points ? [{ key: 'wo', icon: CircleSlash, label: 'W.O.', hint: 'Quién no se presentó', onClick: () => openDialog('walkover') }] : []),
     ...(isAdmin && (m.status === 'scheduled' || m.status === 'suspended')
       ? [{ key: 'aplazar', icon: Pause, label: 'Aplazar', hint: 'Queda sin fecha hasta reprogramarlo', onClick: () => openDialog('postpone') }]
@@ -119,12 +124,14 @@ export function MatchAdmin({
     ...(isAdmin && m.status !== 'void' ? [{ key: 'anular', icon: Ban, label: 'Anular', hint: 'No cuenta para la tabla', onClick: () => void doVoid(), busy: pending.isBusy('void') }] : []),
     ...(isAdmin ? [{ key: 'borrar', icon: Trash2, label: 'Borrar el partido', onClick: () => void doDelete(), busy: pending.isBusy('delete'), danger: true }] : []),
   ];
-  if (!items.length) return null;
+  // La hoja de «Transmitir en vivo» sigue abierta aunque la opción se vaya al empezar («Ya estás en vivo»).
+  if (!items.length) return <>{live.sheet}</>;
 
   return (
     <>
       <MoreButton onClick={() => !waiting && setMenu(true)} />
       <EventMenu open={menu} onClose={() => setMenu(false)} title="Partido" items={items} />
+      {live.sheet}
 
       <WalkoverDialog
         open={dialog === 'walkover'}

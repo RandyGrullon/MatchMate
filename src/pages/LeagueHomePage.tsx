@@ -15,6 +15,7 @@ import { LeagueIdent, LeagueRows, NextDates, NowCard, ROW_ICONS, TableTop, type 
 import { nextDates, pastLine, peopleLine, tableTop } from '../components/league/home/logic';
 import { useLeagueFeed, useLeagueToDo, useSeasonTable } from '../components/league/home/useLeagueData';
 import { LeagueHomeBottom, LeagueHomeTop, useLeagueHomeNotices } from '../components/league/LeagueHome';
+import { LiveBanner } from '../components/live/LiveBanner';
 import { useJoinFlow } from '../components/league/WhoAreYou';
 import { useMode } from '../components/mode';
 import { NoticeSlot } from '../components/NoticeSlot';
@@ -43,6 +44,7 @@ function TournamentHome() {
   return (
     <div className="flex flex-col gap-5">
       <LeagueHomeTop />
+      <LiveBanner key={`envivo-${lid}`} lid={lid} />
       <EventPage eventId={ev.id} />
       <NoticeSlot />
       <LeagueHomeBottom />
@@ -124,6 +126,8 @@ function LeagueScreen() {
       <LeagueIdent className="mt-1" />
 
       <LeagueHomeTop className="mt-[22px]" />
+      {/* Lo que está «EN VIVO» en la liga (solo si hay). */}
+      <LiveBanner key={`envivo-${lid}`} lid={lid} className="mt-[22px]" />
       {observer && <JoinBanner className="mt-[22px]" />}
 
       {data.error && !data.events.length ? (

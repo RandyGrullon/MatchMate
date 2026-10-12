@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ClipboardList, Share2 } from 'lucide-react';
 import { hasResult, useMatch, type Match } from '../../../lib/data/matches';
+import { LiveWatchPill } from '../../../components/live/LiveParts';
 import { ConfirmResultBanner, ShareResultCard } from '../../../components/match';
 import { useIsPro } from '../../../components/mode';
 import { Button, Card, Empty, ListRow, Loading, RowIcon, SectionHeader, Sheet } from '../../../components/ui';
@@ -75,6 +76,9 @@ export function MatchDetail({ tl, matchId, table, onTable, onBack }: { tl: TeamL
           />
         }
       />
+
+      {/* Si el partido se está transmitiendo: «Ver en vivo». */}
+      <LiveWatchPill lid={tl.lid} matchId={m.id} className={pro ? 'mt-2.5' : 'mt-3'} />
 
       <Scoreboard tl={tl} match={m} mySide={rosterSide(m, tl.allTeams.data, tl.myPlayerId)} className="mt-[22px]" />
       {live && <LiveStrip match={m} names={names} className="mt-3 px-1" />}

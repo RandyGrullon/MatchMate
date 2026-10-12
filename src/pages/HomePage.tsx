@@ -22,6 +22,7 @@ import { SportTint } from '../components/home/SportTint';
 import { IdleCard, NextUpCard, QuietLink, TodayCard } from '../components/home/TodayCard';
 import { UpNext, canRsvp } from '../components/home/UpNext';
 import { useActivity, useMyLeagues, type Activity } from '../components/home/useHomeData';
+import { LiveNowStreams } from '../components/live/LiveNowStreams';
 import { useHomeNotices } from '../components/home/useHomeNotices';
 import { LiveMatchesCard, NextMatchCard } from '../components/LiveNowMatches';
 import { useMode } from '../components/mode';
@@ -38,6 +39,7 @@ import type { LeagueFeed } from '../lib/data';
  *   con «Voy»); tu promedio y tu lugar (abre la Tabla); «Lo que viene» con «Voy» en línea y el Calendario en una hoja.
  * - Pro: lo mismo más denso, con «Planilla», «Por hacer», «En vivo» y «Esta semana» (y la etiqueta «PRO ▾»).
  * - Cuenta nueva: «Únete a tu liga» con el código (y el QR), crear tu liga, un juego suelto o buscar ligas abiertas.
+ * Debajo de lo de hoy, «En vivo ahora» si tus ligas (o las que sigues) están transmitiendo (src/components/live).
  * Un solo aviso por pantalla (NoticeSlot). Tus ligas están en Ligas; los deportes, en Ligas › Buscar ligas abiertas.
  * Esports: con el deporte activo en esports o si la cuenta tiene equipos o inscripciones, la fila «Esports» (a
  * `/esports`); y el aviso de un ID de juego tuyo que pasó a otra cuenta (alguien entró con esa cuenta de Epic, Steam
@@ -160,6 +162,9 @@ function Hoy() {
         <HomeHeader now={act.now} name={first} onModeTag={() => setSheet('modo')} />
 
         <div className="mt-[18px]">{today}</div>
+
+        {/* Las transmisiones en vivo de tus ligas y de las que sigues (sin nada, no sale). */}
+        <LiveNowStreams className="mt-3.5" />
 
         {/* El único aviso de la pantalla, a la vista: justo debajo de lo de hoy. */}
         <NoticeSlot className="mt-3.5" />

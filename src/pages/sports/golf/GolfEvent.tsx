@@ -10,6 +10,8 @@ import { formatTime } from '../../../lib/schedule';
 import { useNow } from '../../../lib/useNow';
 import { useBusy } from '../../../components/busy';
 import { EventMenu, EventTopBar, LiveWhen, MoreButton, eventDay, type MenuItem } from '../../../components/event/EventHeader';
+import { LiveWatchPill } from '../../../components/live/LiveParts';
+import { useStartLive } from '../../../components/live/useStartLive';
 import { saveErrorMessage, useAction, useFeedback } from '../../../components/feedback';
 import { useIsPro, useSwitchMode } from '../../../components/mode';
 import { shareLink } from '../../../components/share';
@@ -71,6 +73,12 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const today = toIsoDate(useNow());
   // La firma pendiente en la cola cambia lo que se ofrece (se vuelve a dibujar cuando la cola cambia).
   useOutboxSnapshot();
+  // En vivo (src/components/live): «Transmitir en vivo» en «•••» y, con la ronda en vivo, «Ver en vivo» bajo el título.
+  const live = useStartLive({
+    eventId: eventId ?? null,
+    title: event.data ? eventLabel({ type: event.data.type, name: event.data.name, date: event.data.date }, 'golf') : null,
+    onPick: () => setMenu(false),
+  });
 
   // Lo anotado en este teléfono se ve en todas las partes aunque no haya llegado al servidor.
   const cards = useMemo(() => golf.data.cards.map((c) => mergeCard(c, log)), [golf.data.cards, log]);
@@ -198,6 +206,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
   const closeMenu = () => setMenu(false);
   const menuItems: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir', hint: 'Manda el link de la ronda', onClick: share, busy: sharing.isBusy() },
+    ...(live.item ? [live.item] : []),
     ...(report
       ? [
           {
@@ -323,6 +332,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
           {eyebrow && <div className="mt-1">{eyebrow}</div>}
           <h1 className={isPro ? 'mt-0.5 text-title-pro' : 'mt-1 text-title'}>{title}</h1>
           {metaLine}
+          <LiveWatchPill lid={lid} eventId={eventId} className={isPro ? 'mt-2.5' : 'mt-3'} />
         </>
       )}
 
@@ -385,6 +395,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
       )}
 
       <EventMenu open={menu} onClose={closeMenu} title={title} items={menuItems} />
+      {live.sheet}
       <MenuSheets
         open={sheet.open}
         onClose={sheet.close}

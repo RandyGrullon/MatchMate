@@ -31,6 +31,8 @@ import { TeamLogo } from '../../../../components/esports/bits';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { EventMenu, MoreButton, type MenuItem } from '../../../../components/event/EventHeader';
+import { LiveWatchPill } from '../../../../components/live/LiveParts';
+import { useStartLive } from '../../../../components/live/useStartLive';
 import { ConfirmResultBanner, sideName, statusInfo, whenText } from '../../../../components/match';
 import { MatchStatus } from '../../../../components/match/MatchCard';
 import { useIsPro } from '../../../../components/mode';
@@ -51,7 +53,8 @@ type EditMode = 'finish' | 'correct' | 'resolve';
  * juego: el capitán de un lado, el admin o un anotador, mientras la serie siga abierta. El error del motor sale en vivo
  * debajo de cada mapa; hasta 3 capturas de la pantalla final; «Enviar resultado» (o «Guardar resultado» si lo anota el
  * admin: queda confirmado) con el resumen («Gana Tigres 2-1»). Quien organiza: corregir, W.O., cambiar la hora, anular
- * y decidir un reclamo («Dejar el propuesto» o «Corregir»).
+ * y decidir un reclamo («Dejar el propuesto» o «Corregir»). Los admins y anotadores (con la liga en vivo activada):
+ * «Transmitir en vivo» en «•••»; con la serie en vivo, «Ver en vivo» para todos (src/components/live).
  */
 export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: string; onBack: () => void; backLabel: string; shellBar?: boolean }) {
   const { lid, isAdmin, member, league } = useLeagueCtx();
@@ -65,6 +68,7 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
   const busy = useBusy<'dejar' | 'anular'>();
   const { toast, confirm } = useFeedback();
   const entryOf = useMemo(() => entryBySideTeam(entries.data), [entries.data]);
+  const live = useStartLive({ matchId, title: m ? `${sideName(m.sides[0])} vs. ${sideName(m.sides[1])}` : null, onPick: () => setSheet(null) });
 
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) return <PageSkeleton />;
@@ -133,14 +137,17 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
     setSheet(null);
     setEdit('correct');
   };
-  const menu: MenuItem[] = organizer
-    ? [
-        ...(hasResult(m) ? [{ key: 'corregir', icon: Pencil, label: 'Corregir resultado', hint: 'Queda confirmado', onClick: correct }] : []),
-        ...(isOpen(m) && known ? [{ key: 'wo', icon: UserX, label: 'W.O.', hint: 'Quién no vino', onClick: () => setSheet('wo') }] : []),
-        ...(isOpen(m) || m.status === 'postponed' ? [{ key: 'hora', icon: CalendarClock, label: 'Cambiar hora', onClick: () => setSheet('hora') }] : []),
-        ...(m.status !== 'void' ? [{ key: 'anular', icon: XCircle, label: 'Anular la serie', onClick: () => void doVoid(), danger: true, busy: busy.isBusy('anular') }] : []),
-      ]
-    : [];
+  const menu: MenuItem[] = [
+    ...(live.item ? [live.item] : []),
+    ...(organizer
+      ? [
+          ...(hasResult(m) ? [{ key: 'corregir', icon: Pencil, label: 'Corregir resultado', hint: 'Queda confirmado', onClick: correct }] : []),
+          ...(isOpen(m) && known ? [{ key: 'wo', icon: UserX, label: 'W.O.', hint: 'Quién no vino', onClick: () => setSheet('wo') }] : []),
+          ...(isOpen(m) || m.status === 'postponed' ? [{ key: 'hora', icon: CalendarClock, label: 'Cambiar hora', onClick: () => setSheet('hora') }] : []),
+          ...(m.status !== 'void' ? [{ key: 'anular', icon: XCircle, label: 'Anular la serie', onClick: () => void doVoid(), danger: true, busy: busy.isBusy('anular') }] : []),
+        ]
+      : []),
+  ];
 
   return (
     <div className="flex flex-col px-2">
@@ -158,6 +165,8 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
           </>
         )}
       </p>
+      {/* Si la serie se está transmitiendo: «Ver en vivo». */}
+      <LiveWatchPill lid={lid} matchId={m.id} className={pro ? 'mt-2.5' : 'mt-3'} />
 
       <SeriesBoard match={m} rules={rules} names={names} mySide={mySide} entryFor={entryFor} className="mt-[22px]" />
 
@@ -204,6 +213,7 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
       {(parseSeriesScore(m.score)?.proof?.length ?? 0) > 0 && <ProofStrip ids={parseSeriesScore(m.score)!.proof!} className="mt-[26px]" />}
 
       <EventMenu open={sheet === 'menu'} onClose={() => setSheet(null)} title={heading} items={menu} />
+      {live.sheet}
       <WalkoverSheet open={sheet === 'wo'} onClose={() => setSheet(null)} match={m} rules={rules} names={names} />
       <RescheduleSheet open={sheet === 'hora'} onClose={() => setSheet(null)} match={m} tz={league.tz} game={rules.game} />
     </div>

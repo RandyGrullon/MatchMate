@@ -37,6 +37,8 @@ import { GamesTab } from '../components/event/GamesTab';
 import { ApprovalCard } from '../components/event/ApprovalCard';
 import { EventBoard } from '../components/event/EventBoard';
 import { EventMenu, EventTopBar, ExcelButton, LaneChip, LiveWhen, MoreButton, eventMeta, type MenuItem } from '../components/event/EventHeader';
+import { LiveWatchPill } from '../components/live/LiveParts';
+import { useStartLive } from '../components/live/useStartLive';
 import { EventTheme } from '../components/event/eventTheme';
 import { boardRows } from '../components/event/board';
 import { PostSocial } from '../components/social/Social';
@@ -91,6 +93,8 @@ export default function EventPage(props: { eventId?: string }) {
  *   tabla en vivo y donde se anota; arriba, «Por aprobar» con la foto y Rechazar / Aprobar. Quien no organiza ni anota ve
  *   la Planilla sin herramientas y su «Tus juegos» compacta.
  * Lite solo oculta: un link de Pro (`?tab=juegos`) abre lo de Pro igual, con «Esto es de Pro · Usar Pro».
+ * En vivo (src/components/live): «Transmitir en vivo» en «•••» para los admins (con la liga en vivo activada) y, con el
+ * evento en vivo, «Ver en vivo» debajo del título (en el inicio de un torneo sin liga ya sale arriba, en la franja).
  */
 function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const params0 = useParams();
@@ -138,6 +142,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const now = useNow();
   // Tu juego a medias en la hoja de anotar: «jugando el 3» en «Cómo van todos».
   useMemoryTick();
+  const streaming = useStartLive({ eventId, title: event.data ? eventLabel(event.data) : null, onPick: () => setMenu(false) });
 
   // Lite, quien organiza: lo que espera por él aquí, en el único aviso de la pantalla («2 juegos por aprobar · Usar Pro»).
   const pendingSubs = eventSubs.data.filter((s) => s.status === 'pendiente');
@@ -270,6 +275,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   const menuItems: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir', hint: 'Manda el link del evento', onClick: share, busy: sharing.isBusy() },
+    ...(streaming.item ? [streaming.item] : []),
     ...(!pro
       ? [
           {
@@ -463,6 +469,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         )}
         <span className="min-w-0">{eventMeta(ev, league, today, pro)}</span>
       </p>
+      {!fixed && <LiveWatchPill lid={lid} eventId={ev.id} className={pro ? 'mt-2.5' : 'mt-3'} />}
 
       {/* Su pista, cuando el admin ya las publicó (el evento de hoy o uno que viene); en Pro, quien organiza la ve en Pistas. */}
       {myPlayerId && upcoming && !(pro && canScore) && <LaneChip lid={lid} eventId={ev.id} playerId={myPlayerId} className="mt-3.5" />}
@@ -534,6 +541,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       <NoticeSlot className="mt-4" />
 
       <EventMenu open={menu} onClose={() => setMenu(false)} title={title} items={menuItems} />
+      {streaming.sheet}
       <Sheet open={sheet === 'resultados'} onClose={() => setSheet(null)} title={isTorneo ? 'Clasificación' : 'Resultados'} subtitle={title}>
         {sheet === 'resultados' && <StandingsTab {...props} readOnly onOpen={setDetail} />}
       </Sheet>

@@ -22,6 +22,7 @@ import {
   type ParsedResult,
 } from '../../../../components/match';
 import { MatchStatus } from '../../../../components/match/MatchCard';
+import { LiveWatchPill } from '../../../../components/live/LiveParts';
 import { TuTag } from '../../../../components/ranking/parts';
 import { useIsPro } from '../../../../components/mode';
 import { Button, Card, Empty, ListRow, LoadError, PageSkeleton, RowIcon, Sheet, cx } from '../../../../components/ui';
@@ -184,6 +185,8 @@ export function MatchDetail({
           {when && <span>{when}</span>}
         </p>
       )}
+      {/* Si el partido se está transmitiendo: «Ver en vivo». */}
+      <LiveWatchPill lid={lid} matchId={m.id} className={pro ? 'mt-2.5' : 'mt-3'} />
 
       <Scoreboard match={m} mySide={mySide} rules={points ? null : rulesText(rules)} className="mt-[22px]" />
 
