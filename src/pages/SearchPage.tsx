@@ -1,26 +1,29 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
-import { History, Search, SearchX, Trophy, Users, X } from 'lucide-react';
+import { History, Search, SearchX, Shield, Trophy, Users, X } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { invalidate } from '../lib/data/client';
 import { peopleTags } from '../lib/data/follows';
 import { leagueSocialTags, useFollowedLeagues, useLeagueSearch } from '../lib/data/leagueSocial';
 import { usePublicLeagues } from '../lib/data/leagues';
 import { peopleQuery, PEOPLE_QUERY_MAX, PEOPLE_QUERY_MIN, usePeople, type PersonHit } from '../lib/data/people';
+import { squadTags, useFollowedSquads, useMySquads, useSquadSearch, type SquadLite } from '../lib/data/squads';
 import { ScreenTitle, ScreenTop, SignInCard } from '../components/screens/ScreenBits';
 import { useRecentSearches } from '../components/search/recentSearches';
 import { fromPublicLeague, LeagueResultRow, PersonRow, Quiet, type LeagueResult } from '../components/search/SearchRows';
 import { AppShell } from '../components/Shell';
+import { SquadResultRow } from '../components/squads/SquadResultRow';
 import { Card, ListSkeleton, Loading, LoadError, SectionHeader, Segmented, cx, sectionLinkClass, type SegmentedOption } from '../components/ui';
 
-/** Qué se ve (`?ver=`): de todo (hasta 5 de cada uno), solo personas o solo ligas. */
-export type SearchView = 'todo' | 'personas' | 'ligas';
-export const searchView = (v: string | null): SearchView => (v === 'personas' || v === 'ligas' ? v : 'todo');
+/** Qué se ve (`?ver=`): de todo (hasta 5 de cada uno), solo personas, solo ligas o solo equipos. */
+export type SearchView = 'todo' | 'personas' | 'ligas' | 'equipos';
+export const searchView = (v: string | null): SearchView => (v === 'personas' || v === 'ligas' || v === 'equipos' ? v : 'todo');
 
 const VIEWS: readonly SegmentedOption<SearchView>[] = [
   { key: 'todo', label: 'Todo' },
   { key: 'personas', label: 'Personas' },
   { key: 'ligas', label: 'Ligas' },
+  { key: 'equipos', label: 'Equipos' },
 ];
 
 /** En «Todo», cuántas de cada una; las demás, con «Ver todas». */
@@ -97,12 +100,14 @@ function PartBody<T>({
 const Line = ({ children }: { children: ReactNode }) => <p className="mx-1 text-meta text-muted">{children}</p>;
 
 /**
- * La lupa (/buscar), rediseño «Calma y foco»: «‹ Social», «Buscar», la caja grande («Personas o ligas») y Todo ·
- * Personas · Ligas (`?ver=`). Personas = cuentas con sesión (search_people: nombre o @usuario), cada una con su foto,
- * «@usuario · Te sigue» y Seguir; ligas = las tuyas y las públicas (search_leagues: nombre o lugar), con su logo, «Liga ·
- * Deporte · lugar · N miembros» y «Tu liga» o Seguir. En «Todo», hasta 5 de cada una con «Ver todas». Con la caja vacía:
- * las búsquedas recientes (en el teléfono), las personas que sigues y las ligas que sigues. Sin cuenta: las ligas
- * públicas (public_leagues_feed) y, para personas, entrar.
+ * La lupa (/buscar), rediseño «Calma y foco»: «‹ Social», «Buscar», la caja grande («Personas, ligas o equipos») y Todo ·
+ * Personas · Ligas · Equipos (`?ver=`). Personas = cuentas con sesión (search_people: nombre o @usuario), cada una con
+ * su foto, «@usuario · Te sigue» y Seguir; ligas = las tuyas y las públicas (search_leagues: nombre o lugar), con su
+ * logo, «Liga · Deporte · lugar · N miembros» y «Tu liga» o Seguir; equipos (search_squads: nombre, tag o ciudad) con su
+ * logo, «Equipo · Deporte · ciudad · N miembros» y «Tu equipo» o Seguir. En «Todo», hasta 5 de cada una con «Ver
+ * todas» (los equipos, solo si hay). Con la caja vacía: las búsquedas recientes (en el teléfono), las personas, las
+ * ligas y los equipos que sigues. Sin cuenta: las ligas públicas (public_leagues_feed) y, para personas y equipos,
+ * entrar.
  */
 export default function SearchPage() {
   const auth = useAuth();
@@ -121,6 +126,8 @@ export default function SearchPage() {
   // Con @ es un usuario: en «Todo» solo personas (en «Ligas» se busca sin la @).
   const leagueText = raw.replace(/^@+/, '');
   const leaguesShown = !(todo && raw.startsWith('@'));
+  // Los equipos, igual que las ligas (sin la @; con @ en «Todo» solo personas).
+  const squadsShown = leaguesShown && (todo || view === 'equipos');
 
   const people = usePeople(query);
   const leagueSearch = useLeagueSearch(leagueText, signedIn && leaguesShown);
@@ -133,6 +140,11 @@ export default function SearchPage() {
     enabled: !signedIn && leaguesShown && (publicText === '' || publicText.length >= MIN_LETTERS),
   });
   const publicRows = useMemo(() => publics.data.map(fromPublicLeague), [publics.data]);
+  const squadSearch = useSquadSearch(leagueText, null, signedIn && squadsShown);
+  const followedSquads = useFollowedSquads();
+  const mySquads = useMySquads();
+  const mySquadIds = useMemo(() => new Set(mySquads.data.map((s) => s.id)), [mySquads.data]);
+  const followedSquadIds = useMemo(() => new Set(followedSquads.data.map((s) => s.id)), [followedSquads.data]);
 
   const inUrl = params.get('q') ?? '';
   useEffect(() => {
@@ -190,9 +202,10 @@ export default function SearchPage() {
   const quoted = `«${raw}»`;
   const max = todo ? TODO_MAX : undefined;
   const rows = todo ? 3 : 4;
-  const seeAll = (to: SearchView, what: string) => (
-    <button type="button" onClick={() => setView(to)} aria-label={`Ver todas las ${what}`} className={sectionLinkClass}>
-      Ver todas
+  // «Ver todas las personas», «Ver todos los equipos».
+  const seeAll = (to: SearchView, what: string, masculine = false) => (
+    <button type="button" onClick={() => setView(to)} aria-label={masculine ? `Ver todos los ${what}` : `Ver todas las ${what}`} className={sectionLinkClass}>
+      {masculine ? 'Ver todos' : 'Ver todas'}
     </button>
   );
 
@@ -284,10 +297,63 @@ export default function SearchPage() {
     </section>
   );
 
+  // ---------- Equipos ----------
+  const squadsPart: Part<SquadLite> = q
+    ? { data: squadSearch.data, loading: squadSearch.loading, error: squadSearch.error, settled: squadSearch.settled }
+    : { data: followedSquads.data, loading: followedSquads.loading, error: followedSquads.error, settled: true };
+  const squadsHeader = todo || !q;
+  // En «Todo» los equipos salen solo si hay alguno (no se repite otro vacío).
+  const squadsInTodo = squadsShown && squadsPart.data.length > 0;
+  const squadsSection = (
+    <section aria-labelledby={squadsHeader ? 'buscar-equipos' : undefined}>
+      {squadsHeader && (
+        <SectionHeader
+          id="buscar-equipos"
+          title={q ? 'Equipos' : 'Equipos que sigues'}
+          action={todo && squadsPart.data.length > TODO_MAX ? seeAll('equipos', 'equipos', true) : undefined}
+        />
+      )}
+      <PartBody
+        part={squadsPart}
+        max={max}
+        rows={rows}
+        onRetry={() => invalidate(q ? squadTags.search : squadTags.followed)}
+        keyOf={(s) => s.id}
+        row={(s) => <SquadResultRow squad={s} mine={mySquadIds.has(s.id)} following={followedSquadIds.has(s.id)} />}
+        empty={
+          !q ? (
+            <Quiet icon={<Shield />} title="Aún no sigues ningún equipo">
+              Búscalos por su nombre, su tag o su ciudad. Sus publicaciones salen en Social.
+            </Quiet>
+          ) : (
+            <Quiet icon={<SearchX />} title={`No encontramos equipos con ${quoted}`}>
+              Busca por el nombre, el tag (como TGR) o la ciudad.
+            </Quiet>
+          )
+        }
+      />
+    </section>
+  );
+  const squadsSignIn = (
+    <SignInCard
+      icon={<Shield />}
+      title="Entra para buscar equipos"
+      text="Encuentra equipos por su nombre, su tag o su ciudad y síguelos."
+      next={encodeURIComponent(location.pathname + location.search)}
+    />
+  );
+
   let body: ReactNode;
   if (tooShort) {
     body = <Line>{`Escribe al menos ${MIN_LETTERS} letras para buscar.`}</Line>;
-  } else if (todo && signedIn && searched && nothingIn(peoplePart) && (!leaguesShown || nothingIn(leaguesPart))) {
+  } else if (
+    todo &&
+    signedIn &&
+    searched &&
+    nothingIn(peoplePart) &&
+    (!leaguesShown || nothingIn(leaguesPart)) &&
+    (!squadsShown || nothingIn(squadsPart))
+  ) {
     body = (
       <Quiet icon={<SearchX />} title={`No encontramos nada con ${quoted}`}>
         Revisa cómo se escribe, o busca a alguien por su @usuario y una liga por su lugar.
@@ -297,6 +363,8 @@ export default function SearchPage() {
     body =
       view === 'personas' ? (
         signIn
+      ) : view === 'equipos' ? (
+        squadsSignIn
       ) : (
         <>
           {leaguesShown && leaguesSection}
@@ -309,10 +377,13 @@ export default function SearchPage() {
         peopleSection
       ) : view === 'ligas' ? (
         leaguesSection
+      ) : view === 'equipos' ? (
+        squadsSection
       ) : (
         <>
           {peopleSection}
           {leaguesShown && leaguesSection}
+          {squadsInTodo && squadsSection}
         </>
       );
   }
@@ -324,14 +395,14 @@ export default function SearchPage() {
         <ScreenTitle title="Buscar" />
         <form role="search" onSubmit={submit} className="mt-5">
           <label className="relative block">
-            <span className="sr-only">Buscar personas o ligas</span>
+            <span className="sr-only">Buscar personas, ligas o equipos</span>
             <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted" />
             <input
               ref={inputRef}
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value.slice(0, PEOPLE_QUERY_MAX))}
-              placeholder="Personas o ligas"
+              placeholder="Personas, ligas o equipos"
               enterKeyHint="search"
               autoFocus
               autoCapitalize="none"
@@ -354,7 +425,8 @@ export default function SearchPage() {
             )}
           </label>
         </form>
-        <Segmented options={VIEWS} value={view} onChange={setView} label="Qué buscar" full className="mt-3" />
+        {/* Cuatro opciones: en un teléfono angosto cada una toma el ancho de su palabra (así «Personas» no se sale). */}
+        <Segmented options={VIEWS} value={view} onChange={setView} label="Qué buscar" full className="mt-3 max-[400px]:[&>button]:flex-auto max-[400px]:[&>button]:px-1.5" />
         <div className="mt-[26px] flex flex-col gap-[30px]" onClickCapture={rememberQuery}>
           {!raw && recent.list.length > 0 && <RecentChips list={recent.list} onPick={pick} onClear={recent.clear} />}
           {body}

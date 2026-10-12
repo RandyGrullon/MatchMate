@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   leagues: [] as League[],
   profile: null as PublicProfile | null,
   pro: false,
+  squads: [] as { id: string; name: string }[],
+  esportsTeams: [] as { id: string; name: string }[],
 }));
 
 vi.mock('../lib/auth', async (orig) => ({
@@ -39,6 +41,14 @@ vi.mock('../lib/data/follows', async (orig) => ({
 vi.mock('../lib/data/solo', async (orig) => ({
   ...(await orig<typeof import('../lib/data/solo')>()),
   useMySoloSessions: () => ({ data: [], loading: false, error: null }),
+}));
+vi.mock('../lib/data/squads', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/squads')>()),
+  useMySquads: () => ({ data: state.squads, loading: false, error: null }),
+}));
+vi.mock('../lib/data/esports', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/esports')>()),
+  useMyEsportsTeams: () => ({ data: state.esportsTeams, loading: false, error: null }),
 }));
 vi.mock('../lib/useMode', () => ({
   useIsPro: () => state.pro,
@@ -85,6 +95,8 @@ beforeEach(() => {
   state.leagues = [league('bol', 'Liga de los martes')];
   state.profile = pub();
   state.pro = false;
+  state.squads = [];
+  state.esportsTeams = [];
   // Los de final/6-perfil.png: 199 176 192 | 199 181 214 | 187 210.
   queryClient.setQueryData('across:bol:p1', [
     {
@@ -199,6 +211,25 @@ describe('Yo en Pro', () => {
     // Sin bolas, una fila para agregar la primera.
     expect(t).toContain('Mis bolas Agrega tu bola');
     expect(t).not.toContain('Tu promedio');
+  });
+});
+
+describe('Mis equipos', () => {
+  it('en Lite y en Pro: la fila lleva a /equipos y dice cuáles (o cómo empezar)', () => {
+    let html = render();
+    expect(text(html)).toContain('Mis equipos Crea tu equipo o únete a uno');
+    expect(html).toContain('href="/equipos"');
+    expect(text(html).indexOf('Mis publicaciones')).toBeLessThan(text(html).indexOf('Mis equipos'));
+    expect(text(html).indexOf('Mis equipos')).toBeLessThan(text(html).indexOf('Amigos y seguidores'));
+    state.squads = [{ id: 's1', name: 'Los Tigres' }];
+    expect(text(render())).toContain('Mis equipos Los Tigres');
+    state.esportsTeams = [{ id: 'e1', name: 'Radiantes' }];
+    expect(text(render())).toContain('Mis equipos Los Tigres y Radiantes');
+    state.pro = true;
+    state.squads = [{ id: 's1', name: 'Los Tigres' }, { id: 's2', name: 'Halcones' }];
+    html = render();
+    expect(text(html)).toContain('Mis equipos 3 equipos');
+    expect(html).toContain('href="/equipos"');
   });
 });
 

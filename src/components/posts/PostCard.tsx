@@ -8,6 +8,7 @@ import { sportMeta } from '../../sports/registry';
 import { Avatar } from '../Avatar';
 import { useFeedback } from '../feedback';
 import { atUsername, compactCount } from '../social/socialFormat';
+import { SquadChip } from '../squads/SquadBits';
 import { userPath } from '../social/UserLink';
 import { cx } from '../ui';
 import { ContentMenu } from './PostMenu';
@@ -24,7 +25,8 @@ const actionClass = cx(
 
 /**
  * Una publicación (rediseño «Calma y foco»): quién la escribió (foto, nombre, @usuario y hace cuánto; tocar la hora
- * abre la publicación), la liga con el color de su deporte (salvo `hideLeague`, en el muro de la liga), a quién le sale
+ * abre la publicación), la liga con el color de su deporte (salvo `hideLeague`, en el muro de la liga), el equipo en su
+ * color si es del muro de un equipo (salvo `hideSquad`, en ese muro), a quién le sale
  * si no es para todos, el texto (con sus saltos de línea y los links) y la foto (con su hueco reservado; tocarla la
  * abre en grande). Abajo: me gusta, comentarios y compartir. «⋯»: reportar y bloquear (si no es tuya) y borrar (si
  * puedes). Tocar el texto abre la publicación con sus comentarios.
@@ -35,12 +37,15 @@ const actionClass = cx(
 export function PostCard({
   post,
   hideLeague,
+  hideSquad,
   detail,
   onComment,
   onGone,
 }: {
   post: Post;
   hideLeague?: boolean;
+  /** En el muro del equipo no se repite el equipo. */
+  hideSquad?: boolean;
   detail?: boolean;
   onComment?: () => void;
   onGone?: () => void;
@@ -112,6 +117,7 @@ export function PostCard({
       </header>
 
       {post.league && !hideLeague && <LeagueChip league={post.league} className="mx-4 mt-2" />}
+      {post.squad && !hideSquad && <SquadChip squad={post.squad} className="mx-4 mt-2" />}
 
       {post.text && (
         <div onClick={detail ? undefined : openFromText} className={cx('mt-2.5 px-4', !detail && 'cursor-pointer')}>

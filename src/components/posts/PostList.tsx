@@ -30,9 +30,10 @@ export function PostCardsSkeleton({ rows = 3 }: { rows?: number }) {
 /**
  * Publicaciones por páginas (feed, perfil o muro de la liga): cargando (formas grises), error con «Reintentar», vacía
  * (`empty`) y las tarjetas. Al llegar cerca del final pide la página siguiente sola (y queda «Ver más» por si acaso);
- * si esa falla, lo dice y se puede volver a tocar. `hideLeague`: en el muro de una liga no se repite la liga.
+ * si esa falla, lo dice y se puede volver a tocar. `hideLeague`: en el muro de una liga no se repite la liga (y
+ * `hideSquad`, en el de un equipo, el equipo).
  */
-export function PostList({ list, empty, hideLeague }: { list: Paged<Post>; empty?: ReactNode; hideLeague?: boolean }) {
+export function PostList({ list, empty, hideLeague, hideSquad }: { list: Paged<Post>; empty?: ReactNode; hideLeague?: boolean; hideSquad?: boolean }) {
   const end = useRef<HTMLDivElement>(null);
   const { hasMore, loadingMore, moreError, loadMore } = list;
   const auto = hasMore && !loadingMore && !moreError;
@@ -55,7 +56,7 @@ export function PostList({ list, empty, hideLeague }: { list: Paged<Post>; empty
   return (
     <div className="flex flex-col gap-3.5">
       {list.data.map((p) => (
-        <PostCard key={p.id} post={p} hideLeague={hideLeague} />
+        <PostCard key={p.id} post={p} hideLeague={hideLeague} hideSquad={hideSquad} />
       ))}
       <div ref={end} aria-hidden="true" />
       {moreError && (

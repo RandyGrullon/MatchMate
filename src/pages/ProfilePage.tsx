@@ -1,11 +1,13 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, UserPlus, Users } from 'lucide-react';
+import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, Shield, UserPlus, Users } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
+import { useMyEsportsTeams } from '../lib/data/esports';
 import { usePublicProfile, type FollowKind, type PublicProfile } from '../lib/data/follows';
 import { useUserPosts } from '../lib/data/posts';
 import { useMySoloSessions } from '../lib/data/solo';
+import { useMySquads } from '../lib/data/squads';
 import { toIsoDate } from '../lib/format';
 import type { League } from '../lib/types';
 import { useNow } from '../lib/useNow';
@@ -23,6 +25,7 @@ import { FollowersSheet } from '../components/social/FollowersSheet';
 import { GamesTab, StatsTab } from '../components/social/ProfileView';
 import { SearchButton } from '../components/social/SearchButton';
 import { atUsername, knownSports, plural } from '../components/social/socialFormat';
+import { myTeamsLine } from '../components/squads/logic';
 import { AverageCard, NumbersGrid, ShotsCard, TrendCard, type NumberItem } from '../components/stats/YoStats';
 import { Card, Empty, ListRow, LoadError, Loading, RowIcon, Skeleton, cx } from '../components/ui';
 
@@ -77,9 +80,9 @@ export function socialLine(p: Pick<PublicProfile, 'followers' | 'following' | 'l
  * la lupa (buscar personas y ligas) y un solo engranaje (la cuenta, /cuenta); debajo, tu foto (tocarla lleva a cambiarla
  * en /cuenta), tu nombre, tu @usuario, tu liga y tu biografía.
  * - Lite: tu promedio con la gráfica corta y cómo vas, Mejor juego · Mejor serie · Juegos, Mis bolas (con sus juegos),
- *   Insignias (con lo que te falta) y las filas Mis juegos, Mis publicaciones y Amigos y seguidores.
+ *   Insignias (con lo que te falta) y las filas Mis juegos, Mis publicaciones, Mis equipos y Amigos y seguidores.
  * - Pro: los 6 números, la tendencia por juego o por mes, tus tiros (y qué pinos te quedan), por bola y las filas Por
- *   liga y temporada, Mis juegos, Mis publicaciones, Insignias y Amigos y seguidores.
+ *   liga y temporada, Mis juegos, Mis publicaciones, Mis equipos, Insignias y Amigos y seguidores.
  * Los números del boliche suman todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil); las
  * ligas de otros deportes llevan a sus números. Las partes (`?tab=juegos|publicaciones|insignias|estadisticas`) se
  * abren con «‹ Yo»; el push de una insignia abre `?tab=insignias&insignia=…`.
@@ -129,6 +132,9 @@ function Yo({ uid }: { uid: string }) {
   const solo = useMySoloSessions();
   const numbers = useBowlingNumbers(bowling, leagues.data, solo.data, solo.loading);
   const balls = useBallSection();
+  const squads = useMySquads();
+  const esportsTeams = useMyEsportsTeams(uid);
+  const teamNames = useMemo(() => [...squads.data.map((s) => s.name), ...esportsTeams.data.map((t) => t.name)], [squads.data, esportsTeams.data]);
   const today = toIsoDate(useNow());
   const [sheet, setSheet] = useState<FollowKind | null>(null);
 
@@ -210,6 +216,20 @@ function Yo({ uid }: { uid: string }) {
       onClick={() => open('publicaciones')}
     />
   );
+  // Tus equipos (los de fuera de una liga y los de esports): a /equipos.
+  const myTeams = (dense: boolean) => (
+    <ListRow
+      dense={dense}
+      leading={
+        <RowIcon>
+          <Shield className={dense ? 'size-[19px]' : 'size-5'} />
+        </RowIcon>
+      }
+      title="Mis equipos"
+      subtitle={myTeamsLine(teamNames)}
+      to="/equipos"
+    />
+  );
 
   return (
     <div className="flex flex-col px-2">
@@ -235,6 +255,7 @@ function Yo({ uid }: { uid: string }) {
             />
             {myGames(true)}
             {myPosts(true)}
+            {myTeams(true)}
             <ListRow
               dense
               leading={
@@ -277,6 +298,7 @@ function Yo({ uid }: { uid: string }) {
           <Card className="mt-[26px] overflow-hidden">
             {myGames(false)}
             {myPosts(false)}
+            {myTeams(false)}
             {friends(false)}
           </Card>
         </>

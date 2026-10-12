@@ -16,10 +16,22 @@ import { readDraft, saveDraft, useAutoGrow } from './useAutoGrow';
 /** La liga donde se publica (muro de la liga). */
 export type ComposerLeague = ComposerTarget;
 
+/** El equipo donde se publica (su muro: siempre para todos, sale a quien sigue el equipo). */
+export interface ComposerSquad {
+  id: string;
+  name: string;
+}
+
 const AUDIENCE_ICON: Record<PostVisibility, typeof Globe> = { public: Globe, followers: Users, league: Lock };
 
-/** Dónde se guarda lo que se escribía (por cuenta y por lugar: el feed o el muro de una liga). */
+/** Debajo de «¿Quién la ve?» en el muro de un equipo. */
+export const SQUAD_AUDIENCE_HINT = 'La ve cualquiera y sale a quien sigue el equipo.';
+
+/** Dónde se guarda lo que se escribía (por cuenta y por lugar: el feed, el muro de una liga o el de un equipo). */
 export const draftKey = (uid: string | null | undefined, leagueId: string | null | undefined) => (uid ? `mm:publicar:${uid}:${leagueId ?? 'feed'}` : null);
+
+/** El lugar del borrador: el equipo (`equipo:<id>`), la liga o el feed. */
+const draftPlace = (league: { id: string } | null | undefined, squad: { id: string } | null | undefined) => (squad ? `equipo:${squad.id}` : league?.id);
 
 /** Elige una foto y la deja lista para subir (comprimida). */
 function usePhotoInput(onPicked: (img: CompressedImage) => void, onError: (text: string) => void) {
@@ -45,10 +57,20 @@ function usePhotoInput(onPicked: (img: CompressedImage) => void, onError: (text:
 
 /**
  * La tarjeta «¿Qué jugaste hoy?» con tu foto: tocarla abre la hoja para publicar; el botón de la foto elige una y abre
- * la hoja con ella. Con `league`, publica en esa liga (el muro); si no, en tu perfil o en una de tus ligas. Sin cuenta
- * no sale.
+ * la hoja con ella. Con `league`, publica en esa liga (el muro); con `squad`, en el muro de ese equipo (sus miembros);
+ * si no, en tu perfil o en una de tus ligas. Sin cuenta no sale.
  */
-export function ComposerCard({ league, onPosted, placeholder }: { league?: ComposerLeague | null; onPosted?: (post: Post) => void; placeholder?: string }) {
+export function ComposerCard({
+  league,
+  squad,
+  onPosted,
+  placeholder,
+}: {
+  league?: ComposerLeague | null;
+  squad?: ComposerSquad | null;
+  onPosted?: (post: Post) => void;
+  placeholder?: string;
+}) {
   const auth = useAuth();
   const uid = auth.user?.uid;
   const { toast } = useFeedback();
@@ -65,7 +87,7 @@ export function ComposerCard({ league, onPosted, placeholder }: { league?: Compo
     (text) => toast(text, 'error'),
   );
   if (!uid) return null;
-  const draft = readDraft(draftKey(uid, league?.id));
+  const draft = readDraft(draftKey(uid, draftPlace(league, squad)));
   const name = me.data?.name ?? auth.profile?.name ?? 'Tú';
   const hint = placeholder ?? '¿Qué jugaste hoy?';
 
@@ -104,7 +126,7 @@ export function ComposerCard({ league, onPosted, placeholder }: { league?: Compo
           <BusyIcon busy={picker.picking} icon={<ImagePlus className="size-[22px]" aria-hidden="true" />} className="size-[22px]" />
         </button>
       </Card>
-      {open && <ComposerSheet uid={uid} league={league ?? null} initialPhoto={photo} onClose={close} onPosted={onPosted} />}
+      {open && <ComposerSheet uid={uid} league={squad ? null : (league ?? null)} squad={squad ?? null} initialPhoto={photo} onClose={close} onPosted={onPosted} />}
     </>
   );
 }
@@ -113,12 +135,14 @@ export function ComposerCard({ league, onPosted, placeholder }: { league?: Compo
 function ComposerSheet({
   uid,
   league,
+  squad,
   initialPhoto,
   onClose,
   onPosted,
 }: {
   uid: string;
   league: ComposerLeague | null;
+  squad: ComposerSquad | null;
   initialPhoto: CompressedImage | null;
   onClose: () => void;
   onPosted?: (post: Post) => void;
@@ -126,26 +150,28 @@ function ComposerSheet({
   const mine = useMyLeagues(null);
   const leagues = useMemo<ComposerTarget[]>(
     () =>
-      league
+      league || squad
         ? []
         : mine.all
             .filter((l) => !l.hasMinors)
             .map((l) => ({ id: l.id, name: l.name, sport: leagueSport(l), visibility: l.visibility }))
             .sort((a, b) => a.name.localeCompare(b.name, 'es')),
-    [league, mine.all],
+    [league, squad, mine.all],
   );
-  return <ComposerForm uid={uid} fixedLeague={league} leagues={leagues} initialPhoto={initialPhoto} onClose={onClose} onPosted={onPosted} />;
+  return <ComposerForm uid={uid} fixedLeague={league} fixedSquad={squad} leagues={leagues} initialPhoto={initialPhoto} onClose={onClose} onPosted={onPosted} />;
 }
 
 /**
  * La hoja para publicar: el texto (crece con lo que escribes; el contador sale cerca del tope), una foto (con su vista
  * y «Quitar»), dónde (tu perfil o una de tus ligas, si no viene una fija) y a quién le sale: en tu perfil, «Todos» o
- * «Seguidores»; en una liga, «Todos» (si la liga es pública) o «Solo la liga». Lo escrito queda guardado en el teléfono
- * si cierras la hoja. «Publicar» gira mientras sale y no se toca dos veces.
+ * «Seguidores»; en una liga, «Todos» (si la liga es pública) o «Solo la liga»; en el muro de un equipo
+ * (`fixedSquad`), siempre «Todos». Lo escrito queda guardado en el teléfono si cierras la hoja. «Publicar» gira mientras
+ * sale y no se toca dos veces.
  */
 export function ComposerForm({
   uid,
   fixedLeague,
+  fixedSquad = null,
   leagues,
   initialPhoto = null,
   initialText,
@@ -154,6 +180,8 @@ export function ComposerForm({
 }: {
   uid: string;
   fixedLeague: ComposerTarget | null;
+  /** El muro de un equipo (entonces no hay liga ni «Publicar en»). */
+  fixedSquad?: ComposerSquad | null;
   /** Tus ligas para «Publicar en» (sin liga fija). */
   leagues: readonly ComposerTarget[];
   initialPhoto?: CompressedImage | null;
@@ -163,12 +191,14 @@ export function ComposerForm({
   onPosted?: (post: Post) => void;
 }) {
   const { toast } = useFeedback();
-  const key = draftKey(uid, fixedLeague?.id);
+  const squad = fixedSquad;
+  const key = draftKey(uid, draftPlace(fixedLeague, squad));
   const [text, setTextState] = useState(() => initialText ?? readDraft(key));
   const [photo, setPhoto] = useState<CompressedImage | null>(initialPhoto);
   const [targetId, setTargetId] = useState<string | null>(fixedLeague?.id ?? null);
-  const target = fixedLeague ?? leagues.find((l) => l.id === targetId) ?? null;
-  const options = audienceOptions(target);
+  // En el muro de un equipo no hay liga: la publicación es para todos.
+  const target = squad ? null : (fixedLeague ?? leagues.find((l) => l.id === targetId) ?? null);
+  const options: PostVisibility[] = squad ? ['public'] : audienceOptions(target);
   const [chosen, setChosen] = useState<PostVisibility>(() => defaultAudience(target));
   // Si cambia dónde y lo elegido ya no vale ahí, la de entrada de ese lugar.
   const audience = options.includes(chosen) ? chosen : defaultAudience(target);
@@ -197,6 +227,7 @@ export function ComposerForm({
   const near = text.length >= POST_TEXT_MAX - COUNTER_FROM;
   const over = text.length > POST_TEXT_MAX;
   const canSend = !problem && !sending && !picker.picking;
+  const AudienceIcon = AUDIENCE_ICON[audience];
 
   async function submit() {
     if (!canSend || inFlight.current) return;
@@ -204,7 +235,9 @@ export function ComposerForm({
     setSending(true);
     setError(null);
     try {
-      const post = await createPost({ text, photo, leagueId: target?.id ?? null, visibility: audience });
+      const post = await createPost(
+        squad ? { text, photo, squadId: squad.id, leagueId: null, visibility: 'public' } : { text, photo, leagueId: target?.id ?? null, visibility: audience },
+      );
       saveDraft(key, '');
       toast('Publicado');
       onPosted?.(post);
@@ -222,8 +255,8 @@ export function ComposerForm({
     <Sheet
       open
       onClose={onClose}
-      title={fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
-      subtitle={fixedLeague?.name}
+      title={squad ? 'Publicar en el equipo' : fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
+      subtitle={squad?.name ?? fixedLeague?.name}
       footer={
         <Button
           variant="primary"
@@ -297,7 +330,7 @@ export function ComposerForm({
           </div>
         )}
 
-        {!fixedLeague && leagues.length > 0 && (
+        {!fixedLeague && !squad && leagues.length > 0 && (
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">Publicar en</span>
             <Select value={targetId ?? ''} onChange={(e) => setTargetId(e.target.value || null)} className="h-11">
@@ -326,10 +359,10 @@ export function ComposerForm({
             />
           ) : (
             <p className="inline-flex items-center gap-1.5 self-start rounded-[14px] bg-surface-2 px-4 py-2 text-meta font-semibold">
-              <Lock className="size-4 text-accent" aria-hidden="true" /> {VISIBILITY_LABEL[audience]}
+              <AudienceIcon className="size-4 text-accent" aria-hidden="true" /> {VISIBILITY_LABEL[audience]}
             </p>
           )}
-          <p className="text-[13px] text-muted">{audienceHint(audience, !!target)}</p>
+          <p className="text-[13px] text-muted">{squad ? SQUAD_AUDIENCE_HINT : audienceHint(audience, !!target)}</p>
         </div>
 
         {(error || shownProblem) && (

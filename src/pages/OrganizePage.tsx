@@ -14,6 +14,8 @@ import { NoticeRow, NoticeSlot } from '../components/NoticeSlot';
 import { OrganizeHub, useOrganizerCtx } from '../components/organizer/Hub';
 import { organizeUrl, pickOrganizeLeague } from '../components/organizer/hubLogic';
 import { LeaguePickerChip, LeaguePickerSheet } from '../components/organizer/LeaguePicker';
+import { canEnterLeagues } from '../components/squads/logic';
+import { SquadRequestsPanel } from '../components/squads/SquadRequestsPanel';
 import { AppShell } from '../components/Shell';
 import { Button, Card, ListRow, ListSkeleton, Loading, LoadError, RowIcon } from '../components/ui';
 
@@ -139,6 +141,8 @@ function OrganizeLeague({ lid, leagues, onCreate }: { lid: string; leagues: read
         </div>
       ) : (
         <LeagueContext.Provider value={ctx}>
+          {/* Equipos que piden entrar (fútbol, futsal, baloncesto): el aviso del teléfono trae aquí. Sin pendientes no sale. */}
+          {canEnterLeagues(leagueSport(ctx.league)) && <SquadRequestsPanel lid={ctx.lid} className="mt-6" />}
           <OrganizeHub />
         </LeagueContext.Provider>
       )}

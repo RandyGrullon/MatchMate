@@ -113,6 +113,15 @@ describe('la hoja «¿Qué quieres hacer?»', () => {
     expect(text(sheet())).not.toContain('Un juego suelto');
   });
 
+  it('«Un equipo» (competitivo, con o sin liga) cuando la hoja sabe crear equipos, antes del juego suelto', () => {
+    const t = text(render(h(CreateSheet, { open: true, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onSolo: noop, onTeam: noop })));
+    expect(t).toContain('Un equipo');
+    expect(t).toContain('Competitivo, con o sin liga');
+    expect(t.indexOf('Un torneo')).toBeLessThan(t.indexOf('Un equipo'));
+    expect(t.indexOf('Un equipo')).toBeLessThan(t.indexOf('Un juego suelto'));
+    expect(text(sheet())).not.toContain('Un equipo');
+  });
+
   it('cerrada no dibuja nada adentro', () => {
     const t = text(render(h(CreateSheet, { open: false, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onSolo: noop })));
     expect(t).not.toContain('Unirme con un código');

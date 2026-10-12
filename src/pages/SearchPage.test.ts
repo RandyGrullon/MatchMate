@@ -1,8 +1,8 @@
 /**
- * La lupa (/buscar) dibujada sin navegador (renderToString) con resultados de mentira: Todo · Personas · Ligas (`?ver=`),
- * con la caja vacía (a quién sigues, qué ligas sigues y las búsquedas recientes), una búsqueda con y sin resultados
- * (hasta 5 de cada una en «Todo», con «Ver todas»), una sola letra, cargando, el error y sin cuenta (las ligas públicas
- * y, para personas, entrar).
+ * La lupa (/buscar) dibujada sin navegador (renderToString) con resultados de mentira: Todo · Personas · Ligas ·
+ * Equipos (`?ver=`), con la caja vacía (a quién sigues, qué ligas y equipos sigues y las búsquedas recientes), una
+ * búsqueda con y sin resultados (hasta 5 de cada una en «Todo», con «Ver todas»), una sola letra, cargando, el error y
+ * sin cuenta (las ligas públicas y, para personas y equipos, entrar).
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeagueHit, LeagueSearch } from '../lib/data/leagueSocial';
 import type { PublicLeague } from '../lib/data/leagues';
 import type { PeopleLive, PersonHit } from '../lib/data/people';
+import type { MySquad, SquadLite, SquadSearch } from '../lib/data/squads';
 import { AVATAR_BUCKET, primePublicUrl } from '../lib/publicImages';
 import { FeedbackProvider } from '../components/feedback';
 import { pushRecent, readRecent, recentKey, RECENT_MAX, writeRecent } from '../components/search/recentSearches';
@@ -24,6 +25,10 @@ const state = vi.hoisted(() => ({
   leagues: {} as Partial<LeagueSearch>,
   followed: {} as Partial<LiveList<LeagueHit>>,
   publics: {} as Partial<LiveList<PublicLeague>>,
+  squads: {} as Partial<SquadSearch>,
+  followedSquads: [] as SquadLite[],
+  mySquads: [] as MySquad[],
+  askedSquads: [] as { query: string; enabled: boolean }[],
   askedPeople: [] as string[],
   askedLeagues: [] as { query: string; enabled: boolean }[],
   askedPublic: [] as { query?: string; enabled?: boolean }[],
@@ -51,6 +56,15 @@ vi.mock('../lib/data/leagues', async (importOriginal) => ({
     state.askedPublic.push(q);
     return { data: [], loading: false, error: null, ...(q.enabled === false ? {} : state.publics) };
   },
+}));
+vi.mock('../lib/data/squads', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/data/squads')>()),
+  useSquadSearch: (query: string, _sport: string | null = null, enabled = true) => {
+    state.askedSquads.push({ query, enabled });
+    return { data: [], loading: false, error: null, settled: true, ...(enabled ? state.squads : {}) };
+  },
+  useFollowedSquads: () => ({ data: state.followedSquads, loading: false, error: null }),
+  useMySquads: () => ({ data: state.mySquads, loading: false, error: null }),
 }));
 vi.mock('../components/Shell', () => ({ AppShell: ({ children }: { children: ReactNode }) => children }));
 
@@ -124,6 +138,10 @@ beforeEach(() => {
   state.leagues = {};
   state.followed = {};
   state.publics = {};
+  state.squads = {};
+  state.followedSquads = [];
+  state.mySquads = [];
+  state.askedSquads = [];
   state.askedPeople = [];
   state.askedLeagues = [];
   state.askedPublic = [];
@@ -132,18 +150,18 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('la lupa con la caja vacía', () => {
-  it('«‹ Social», «Buscar», la caja, Todo · Personas · Ligas; las personas y las ligas que sigues', () => {
+  it('«‹ Social», «Buscar», la caja, Todo · Personas · Ligas · Equipos; las personas y las ligas que sigues', () => {
     state.people = { data: [hit('a', { isFollowing: true, followsYou: true }), hit('b', { isFollowing: true })] };
     state.followed = { data: [lhit('L1', { isFollowing: true })] };
     const out = render();
     const t = text(out);
     expect(t).toContain('Social');
     expect(out).toContain('<h1 class="text-title break-words">Buscar</h1>');
-    expect(out).toContain('placeholder="Personas o ligas"');
+    expect(out).toContain('placeholder="Personas, ligas o equipos"');
     expect(out).toContain('autofocus=""');
     expect(out).toContain('role="search"');
-    expect(out.match(/role="radio"/g)).toHaveLength(3);
-    expect(t).toMatch(/Todo .*Personas .*Ligas/);
+    expect(out.match(/role="radio"/g)).toHaveLength(4);
+    expect(t).toMatch(/Todo .*Personas .*Ligas .*Equipos/);
     expect(checked(out)).toBe('Todo');
     // Personas que sigues: la fila con su @usuario y «Te sigue», Seguir al lado.
     expect(out).toContain('class="text-section">Personas que sigues');
@@ -159,6 +177,8 @@ describe('la lupa con la caja vacía', () => {
     expect(rowsOf(out)).toBe(3);
     expect(state.askedPeople).toContain('');
     expect(t).not.toContain('Búsquedas recientes');
+    // Sin equipos que siga, en «Todo» no sale otro vacío.
+    expect(t).not.toContain('Equipos que sigues');
   });
 
   it('sin seguir a nadie ni a ninguna liga todavía', () => {
@@ -344,6 +364,92 @@ describe('sin cuenta', () => {
     expect(text(out)).toContain('Entra para buscar personas');
     expect(text(out)).not.toContain('Pública P1');
     expect(out).toContain('href="/login?next=%2Fbuscar%3Fver%3Dpersonas"');
+  });
+});
+
+const squad = (id: string, extra: Partial<SquadLite> = {}): SquadLite => ({
+  id,
+  sport: 'football',
+  name: `Tigres ${id}`,
+  tag: 'TGR',
+  logo: null,
+  color: null,
+  city: 'Santiago',
+  recruiting: false,
+  members: 12,
+  followers: 3,
+  ...extra,
+});
+
+describe('equipos', () => {
+  it('«Equipos» (?ver=equipos): cada uno con su línea, «Tu equipo» si es tuyo y Seguir / Siguiendo', () => {
+    state.squads = { data: [squad('S1', { recruiting: true }), squad('S2'), squad('S3', { city: null, members: 1 })] };
+    state.mySquads = [{ ...squad('S2'), role: 'captain' }];
+    state.followedSquads = [squad('S3')];
+    state.people = { data: [hit('a')] };
+    const out = render('/buscar?q=tig&ver=equipos');
+    const t = text(out);
+    expect(checked(out)).toBe('Equipos');
+    expect(state.askedSquads).toContainEqual({ query: 'tig', enabled: true });
+    expect(rowsOf(out)).toBe(3);
+    expect(t).toContain('Tigres S1 [TGR]');
+    expect(t).toContain('Equipo · Fútbol · Santiago · 12 miembros · Busca jugadores');
+    expect(t).toContain('Equipo · Fútbol · 1 miembro');
+    expect(out).toContain('href="/equipos/S1"');
+    expect(out).toContain('aria-label="Seguir Tigres S1"');
+    expect(t).toContain('Tu equipo');
+    expect(out).not.toContain('Seguir Tigres S2');
+    expect(out).toContain('aria-label="Dejar de seguir Tigres S3"');
+    // Nada de personas en este filtro.
+    expect(t).not.toContain('Persona a');
+  });
+
+  it('«Todo»: hasta 5 equipos después de las ligas, con «Ver todos»; sin equipos, no sale la sección', () => {
+    state.people = { data: [hit('a')] };
+    state.leagues = { data: [lhit('L1')] };
+    state.squads = { data: ['1', '2', '3', '4', '5', '6', '7'].map((id) => squad(id)) };
+    const out = render('/buscar?q=tig');
+    const t = text(out);
+    expect(out).toContain('class="text-section">Equipos');
+    expect(t.indexOf('Liga L1')).toBeLessThan(t.indexOf('Tigres 1'));
+    expect(t).toContain('Tigres 5');
+    expect(t).not.toContain('Tigres 6');
+    expect(out).toContain('aria-label="Ver todos los equipos"');
+    expect(out).toContain('>Ver todos<');
+    state.squads = {};
+    const none = render('/buscar?q=tig');
+    expect(none).not.toContain('class="text-section">Equipos');
+    expect(text(none)).toContain('Persona a');
+  });
+
+  it('nada de nada (tampoco equipos) en «Todo»; en «Equipos», su vacío', () => {
+    expect(text(render('/buscar?q=zz'))).toContain('No encontramos nada con «zz»');
+    const t = text(render('/buscar?q=zz&ver=equipos'));
+    expect(t).toContain('No encontramos equipos con «zz»');
+    expect(t).toContain('Busca por el nombre, el tag (como TGR) o la ciudad.');
+  });
+
+  it('con la caja vacía: los equipos que sigues (también en «Todo» si hay); sin ninguno, cómo empezar', () => {
+    state.followedSquads = [squad('S9')];
+    const all = text(render());
+    expect(all).toContain('Equipos que sigues');
+    expect(all).toContain('Tigres S9');
+    const only = render('/buscar?ver=equipos');
+    expect(text(only)).toContain('Equipos que sigues');
+    expect(only).toContain('aria-label="Dejar de seguir Tigres S9"');
+    state.followedSquads = [];
+    expect(text(render('/buscar?ver=equipos'))).toContain('Aún no sigues ningún equipo');
+  });
+
+  it('con @ en «Todo» no busca equipos; sin cuenta, «Equipos» pide entrar', () => {
+    render('/buscar?q=%40tig');
+    expect(state.askedSquads.every((a) => !a.enabled)).toBe(true);
+    state.auth = { user: null, loading: false };
+    state.askedSquads = [];
+    const out = render('/buscar?ver=equipos');
+    expect(text(out)).toContain('Entra para buscar equipos');
+    expect(out).toContain('href="/login?next=%2Fbuscar%3Fver%3Dequipos"');
+    expect(state.askedSquads.every((a) => !a.enabled)).toBe(true);
   });
 });
 

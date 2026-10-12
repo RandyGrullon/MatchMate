@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Target, Ticket, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Shield, Target, Ticket, Trophy, Users, X } from 'lucide-react';
 import type { League, Member } from '../../lib/types';
 import { leagueSport, sportsOf } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
@@ -208,8 +208,8 @@ type Pick = 'practica' | 'torneo';
 /**
  * La hoja «¿Qué quieres hacer?» de Ligas › «Crear o unirme» (antes el botón «+» del centro de la barra): primero
  * unirse con un código o el QR, y debajo crear una liga, un torneo (en una liga que organizas o sin liga), una
- * práctica (en una liga de boliche que organizas) o anotar un juego suelto. Si hay que elegir la liga, la misma hoja
- * pregunta «¿En qué liga?».
+ * práctica (en una liga de boliche que organizas), un equipo (competitivo, con o sin liga: `onTeam`) o anotar un juego
+ * suelto. Si hay que elegir la liga, la misma hoja pregunta «¿En qué liga?».
  */
 export function CreateSheet({
   open,
@@ -218,6 +218,7 @@ export function CreateSheet({
   onCreate,
   onEvent,
   onSolo,
+  onTeam,
 }: {
   open: boolean;
   onClose: () => void;
@@ -225,6 +226,8 @@ export function CreateSheet({
   onCreate: (kind: 'liga' | 'torneo') => void;
   onEvent: (org: OrganizedLeague, type: 'practica' | 'torneo') => void;
   onSolo: () => void;
+  /** Crear un equipo (Equipos › «Crear equipo»). */
+  onTeam?: () => void;
 }) {
   const [pick, setPick] = useState<Pick | null>(null);
   // El lector va dentro de la hoja (encima de ella); al abrir lo leído, la ruta cambia y CreateMenu cierra la hoja.
@@ -241,7 +244,17 @@ export function CreateSheet({
       <CreateStyles />
       <FloatingSheet open={open} onClose={onClose} labelledBy="crear-titulo">
         {/* Se monta al abrirla: las ligas de la cuenta se leen cuando hace falta. */}
-        <CreateSheetBody pick={pick} setPick={setPick} onClose={onClose} onJoin={onJoin} onCreate={onCreate} onEvent={onEvent} onSolo={onSolo} onQr={scanner.open} />
+        <CreateSheetBody
+          pick={pick}
+          setPick={setPick}
+          onClose={onClose}
+          onJoin={onJoin}
+          onCreate={onCreate}
+          onEvent={onEvent}
+          onSolo={onSolo}
+          onTeam={onTeam}
+          onQr={scanner.open}
+        />
         {scanner.element}
       </FloatingSheet>
     </>
@@ -256,6 +269,7 @@ function CreateSheetBody({
   onCreate,
   onEvent,
   onSolo,
+  onTeam,
   onQr,
 }: {
   pick: Pick | null;
@@ -265,6 +279,7 @@ function CreateSheetBody({
   onCreate: (kind: 'liga' | 'torneo') => void;
   onEvent: (org: OrganizedLeague, type: 'practica' | 'torneo') => void;
   onSolo: () => void;
+  onTeam?: () => void;
   onQr: () => void;
 }) {
   const mine = useMyLeagues(null);
@@ -320,6 +335,7 @@ function CreateSheetBody({
             onClick={practica}
           />
         )}
+        {onTeam && <OptionRow icon={<Shield className="size-[21px]" />} title="Un equipo" text="Competitivo, con o sin liga" onClick={onTeam} />}
         {soloOk && <SoloOption onClick={onSolo} />}
       </div>
     </>

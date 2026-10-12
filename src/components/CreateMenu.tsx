@@ -44,7 +44,8 @@ export function organizedCtx({ league, member }: OrganizedLeague): LeagueCtx {
 /**
  * La hoja «Crear o unirme» (ya no es el botón del centro de la barra: se abre desde Ligas): primero unirse con un
  * código o el QR, que es lo más común, y debajo crear una liga o un torneo (el asistente de pasos, CreateWizard), una
- * práctica o un torneo en una liga que organizas (el formulario de siempre, EventFormModal) o anotar un juego suelto.
+ * práctica o un torneo en una liga que organizas (el formulario de siempre, EventFormModal), un equipo (Equipos con
+ * «Crear equipo» abierto) o anotar un juego suelto.
  * Va una sola vez en la raíz de la app (no dentro de una pantalla: un modal ahí se trababa al girar el teléfono). Si
  * estás en un deporte (y lo puedes crear), el asistente lo trae marcado.
  */
@@ -89,6 +90,12 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
     navigate('/juegos-sueltos?nuevo=1');
   }
 
+  // Un equipo: la hoja «Crear equipo» se abre en Equipos (con el deporte en que estás marcado).
+  function team() {
+    setOpen(false);
+    navigate('/equipos?crear=1');
+  }
+
   function join(code: string) {
     setOpen(false);
     navigate(`/unirse/${encodeURIComponent(code)}`);
@@ -102,7 +109,7 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <CreateSheet open={open} onClose={close} onJoin={join} onCreate={(kind) => startCreate(kind)} onEvent={event} onSolo={solo} />
+      <CreateSheet open={open} onClose={close} onJoin={join} onCreate={(kind) => startCreate(kind)} onEvent={event} onSolo={solo} onTeam={team} />
       {/* Se monta al abrirlo: el estado de los deportes y las ligas se consultan solo cuando hace falta. */}
       {creating && (
         <CreateWizard

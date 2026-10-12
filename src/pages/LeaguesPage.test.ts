@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarItem } from '../lib/calendar';
 import type { PublicLeague } from '../lib/data/leagues';
+import type { MySquad } from '../lib/data/squads';
 import type { League } from '../lib/types';
 
 const TODAY = '2026-10-07';
@@ -23,6 +24,7 @@ const world = vi.hoisted(() => ({
   feeds: [] as { lid: string; events: { id: string; playerCount: number }[] }[],
   publics: [] as PublicLeague[],
   players: 6,
+  squads: [] as MySquad[],
 }));
 
 vi.mock('../lib/auth', async (orig) => ({
@@ -76,6 +78,10 @@ vi.mock('../lib/data/leagues', async (orig) => ({
     loading: false,
     error: null,
   }),
+}));
+vi.mock('../lib/data/squads', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/squads')>()),
+  useMySquads: () => ({ data: world.squads, loading: false, error: null }),
 }));
 vi.mock('../components/CreateMenu', () => ({ useCreateMenu: () => ({ openMenu: () => undefined, startCreate: () => undefined }) }));
 vi.mock('../components/home/LeagueCard', () => ({ LeagueLogo: ({ children }: { children: ReactNode }) => children }));
@@ -146,6 +152,7 @@ beforeEach(() => {
   world.feeds = [{ lid: 'l1', events: [{ id: 'copa', playerCount: 6 }] }];
   world.publics = [];
   world.players = 6;
+  world.squads = [];
 });
 
 describe('Ligas (Lite)', () => {
@@ -231,6 +238,61 @@ describe('Ligas (Lite)', () => {
     expect(text(render('/ligas?deporte=esports'))).toContain('Torneos de esports');
     // Con el filtro en otro deporte, no.
     expect(text(render('/ligas?deporte=bowling'))).not.toContain('Torneos de esports');
+  });
+});
+
+describe('Ligas: equipos', () => {
+  const squad = (id: string, name: string, extra: Partial<MySquad> = {}): MySquad => ({
+    id,
+    sport: 'football',
+    name,
+    tag: 'TGR',
+    logo: null,
+    color: null,
+    city: null,
+    recruiting: false,
+    members: 12,
+    followers: 0,
+    role: 'member',
+    ...extra,
+  });
+
+  it('sin equipos: la fila «Equipos» (a /equipos) antes de «Buscar ligas abiertas»', () => {
+    const html = render();
+    const t = text(html);
+    expect(t).toContain('Equipos Crea tu equipo competitivo, con o sin liga');
+    expect(html).toContain('href="/equipos"');
+    expect(t.indexOf('Tus torneos')).toBeLessThan(t.indexOf('Crea tu equipo'));
+    expect(t.indexOf('Crea tu equipo')).toBeLessThan(t.indexOf('Buscar ligas abiertas'));
+    expect(t).not.toContain('Tus equipos');
+  });
+
+  it('con equipos: «Tus equipos» (hasta 3, con mi papel) y «Ver todos»', () => {
+    world.squads = [
+      squad('s1', 'Los Tigres', { role: 'captain' }),
+      squad('s2', 'Halcones', { sport: 'basketball', members: 1 }),
+      squad('s3', 'Leones'),
+      squad('s4', 'Pumas'),
+    ];
+    const html = render();
+    const t = text(html);
+    expect(t).toContain('Tus equipos');
+    expect(t).toContain('Los Tigres [TGR]');
+    expect(t).toContain('Fútbol · 12 miembros · Capitán');
+    expect(t).toContain('Baloncesto · 1 miembro');
+    expect(t).not.toContain('Pumas');
+    expect(html).toContain('href="/equipos/s1"');
+    expect(html).toMatch(/href="\/equipos"[^>]*>Ver todos/);
+    expect(t).not.toContain('Crea tu equipo');
+    expect(t.indexOf('Tus ligas')).toBeLessThan(t.indexOf('Tus equipos'));
+  });
+
+  it('el filtro de deporte también filtra los equipos', () => {
+    world.leagues = [league('l1', 'Liga de los martes'), league('l2', 'Pádel Naco', { sport: 'padel' })];
+    world.squads = [squad('s1', 'Los Tigres')];
+    const t = text(render('/ligas?deporte=padel'));
+    expect(t).not.toContain('Los Tigres');
+    expect(t).not.toContain('Crea tu equipo');
   });
 });
 

@@ -28,7 +28,7 @@ const { audienceHint, audienceOptions, defaultAudience, firstLine, isLongText, l
   await import('./postFormat');
 const { PostCard } = await import('./PostCard');
 const { PostList } = await import('./PostList');
-const { ComposerCard, ComposerForm, draftKey } = await import('./Composer');
+const { ComposerCard, ComposerForm, SQUAD_AUDIENCE_HINT, draftKey } = await import('./Composer');
 const { contentMenuKeys, shortName } = await import('./PostMenu');
 const { CommentList } = await import('./Comments');
 
@@ -286,6 +286,54 @@ describe('publicar', () => {
     expect(draftKey('u1', null)).toBe('mm:publicar:u1:feed');
     expect(draftKey('u1', 'L1')).toBe('mm:publicar:u1:L1');
     expect(draftKey(null, 'L1')).toBeNull();
+  });
+});
+
+describe('equipos', () => {
+  const tigres = { id: 'S1', sport: 'football', name: 'Los Tigres', tag: 'TGR', logo: null, color: '#dc2626', city: null, recruiting: false, members: 5, followers: 2 };
+
+  it('PostCard: el chip del equipo (su tag y su nombre) lleva a su página; en su muro no se repite', () => {
+    const html = render(h(PostCard, { post: post({ squad: tigres }) }));
+    expect(html).toContain('href="/equipos/S1"');
+    expect(html).toContain('data-squad-chip');
+    expect(text(html)).toContain('TGR Los Tigres');
+    // En el color del equipo.
+    expect(html).toContain('#dc2626');
+    const wall = render(h(PostCard, { post: post({ squad: tigres }), hideSquad: true }));
+    expect(wall).not.toContain('href="/equipos/S1"');
+    // Sin equipo (o de una copia vieja sin el campo), nada.
+    expect(render(h(PostCard, { post: post() }))).not.toContain('data-squad-chip');
+    const list = render(h(PostList, { list: paged<Post>({ data: [post({ squad: tigres })] }), hideSquad: true }));
+    expect(list).not.toContain('data-squad-chip');
+  });
+
+  it('publicar en el muro del equipo: su nombre, siempre «Todos» y sin «Publicar en»', () => {
+    const html = render(
+      h(ComposerForm, {
+        uid: 'u-me',
+        onClose: () => undefined,
+        fixedLeague: null,
+        fixedSquad: { id: 'S1', name: 'Los Tigres' },
+        leagues: [{ id: 'L1', name: 'Pádel del Club', sport: 'padel', visibility: 'public' }],
+        initialText: '¡Ganamos el clásico!',
+      }),
+    );
+    const t = text(html);
+    expect(t).toContain('Publicar en el equipo');
+    expect(t).toContain('Los Tigres');
+    expect(t).toContain('Todos');
+    expect(t).toContain(SQUAD_AUDIENCE_HINT);
+    expect(t).not.toContain('Publicar en Mi perfil');
+    expect(t).not.toContain('Pádel del Club');
+    expect(t).not.toContain('Seguidores');
+    expect(t).not.toContain('Solo la liga');
+    expect(html).not.toContain('role="radiogroup"');
+  });
+
+  it('la tarjeta del muro del equipo: su texto de entrada; sin cuenta no sale', () => {
+    expect(text(render(h(ComposerCard, { squad: { id: 'S1', name: 'Los Tigres' }, placeholder: '¿Qué cuenta el equipo?' })))).toContain('¿Qué cuenta el equipo?');
+    state.auth = { user: null, profile: { name: '' }, loading: false };
+    expect(text(render(h(ComposerCard, { squad: { id: 'S1', name: 'Los Tigres' }, placeholder: '¿Qué cuenta el equipo?' })))).not.toContain('¿Qué cuenta el equipo?');
   });
 });
 

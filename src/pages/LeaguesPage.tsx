@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { useSearchParams } from 'react-router';
-import { Plus } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router';
+import { Plus, Shield } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { useMySquads } from '../lib/data/squads';
 import { inSport, useActiveSport } from '../lib/sportContext';
 import { useIsPro } from '../lib/useMode';
 import { sportsOf } from '../sports/registry';
@@ -13,15 +14,18 @@ import { useActivity, useMyLeagues } from '../components/home/useHomeData';
 import { LeagueListRow, NoLeaguesCard, OpenLeaguesRow, SportFilter, TourneyRow } from '../components/ligas/LigasRows';
 import { OpenLeagues } from '../components/ligas/OpenLeagues';
 import { SearchButton } from '../components/social/SearchButton';
-import { Card, ListSkeleton, LoadError, Loading, SectionHeader, cx } from '../components/ui';
+import { mySquadLine } from '../components/squads/logic';
+import { SquadRow } from '../components/squads/SquadBits';
+import { Card, ListRow, ListSkeleton, LoadError, Loading, RowIcon, SectionHeader, cx, sectionLinkClass } from '../components/ui';
 
 /**
  * Ligas (`/ligas`, la pestaña Ligas; antes «Eventos»), rediseño «Calma y foco»: el título con «Crear o unirme» (la hoja
  * que antes era el botón del centro de la barra) y la lupa (buscar personas y ligas), «Tus ligas» (cada una con lo de
  * hoy: «En juego hoy · 6 jugadores»), «Tus torneos» (los sin liga y los de tus ligas que vienen) y «Buscar ligas
- * abiertas» (las públicas de todos los deportes y la agenda pública, en `?ver=abiertas`). El filtro de deporte sale
- * solo si juegas más de uno. Lo de hoy y lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se repite. Sin
- * cuenta: las abiertas. Con el filtro en Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports»
+ * abiertas» (las públicas de todos los deportes y la agenda pública, en `?ver=abiertas`). «Tus equipos» (los de fuera
+ * de una liga: hasta 3, con «Ver todos» → /equipos) o, sin ninguno, la fila «Equipos» para crear uno. El filtro de
+ * deporte sale solo si juegas más de uno. Lo de hoy y lo que viene (con «Voy») está en Hoy y su Calendario; aquí no se
+ * repite. Sin cuenta: las abiertas. Con el filtro en Esports (o sin filtro y la cuenta en esports), la fila «Torneos de esports»
  * lleva a `/esports` (los torneos donde juega salen solos: es miembro de su liga).
  */
 export default function LeaguesPage() {
@@ -66,6 +70,11 @@ function MyLeagues() {
   const activeSport = useActiveSport();
   const esports = useEsportsPresence(mine.uid, activeSport);
   const showEsports = sport === 'esports' || (!sport && (mySports.includes('esports') || esports.show));
+  // Tus equipos (fuera de una liga), con el mismo filtro de deporte. Sin ninguno, la fila para crear uno.
+  const squads = useMySquads();
+  const squadList = useMemo(() => (sport ? squads.data.filter((s) => s.sport === sport) : squads.data), [squads.data, sport]);
+  const squadMode: 'list' | 'row' | null =
+    squadList.length > 0 ? 'list' : squads.loading || squads.data.length > 0 || sport === 'esports' ? null : 'row';
 
   const setSport = (s: string | null) =>
     setParams(
@@ -76,6 +85,9 @@ function MyLeagues() {
       },
       { replace: true },
     );
+
+  // Lo que va abajo (Equipos, esports, ligas abiertas) se separa más si arriba hay listas.
+  const rowsGap = mine.all.length || mine.loading || squadMode === 'list' ? 'mt-[30px]' : 'mt-5';
 
   let body;
   if (mine.error && !mine.all.length) body = <LoadError error={mine.error} />;
@@ -160,16 +172,52 @@ function MyLeagues() {
 
       {body}
 
+      {squadMode === 'list' && (
+        <section aria-labelledby="tus-equipos" className="mt-[30px]">
+          <SectionHeader
+            id="tus-equipos"
+            title="Tus equipos"
+            action={
+              <Link to="/equipos" className={sectionLinkClass}>
+                Ver todos
+              </Link>
+            }
+          />
+          <Card className="overflow-hidden">
+            {squadList.slice(0, 3).map((s) => (
+              <SquadRow key={s.id} squad={s} dense={pro} subtitle={mySquadLine(s)} />
+            ))}
+          </Card>
+        </section>
+      )}
+
+      {squadMode === 'row' && (
+        <Card className={cx('overflow-hidden', rowsGap)}>
+          <ListRow
+            dense={pro}
+            leading={
+              <RowIcon tone="accent">
+                <Shield className="size-5" />
+              </RowIcon>
+            }
+            title="Equipos"
+            subtitle="Crea tu equipo competitivo, con o sin liga"
+            to="/equipos"
+          />
+        </Card>
+      )}
+
       {showEsports && (
         <EsportsRowCard
           title="Torneos de esports"
           subtitle="Torneos y equipos por juego"
           game={esports.game}
           pro={pro}
-          className={mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5'} />
+          className={squadMode === 'row' ? 'mt-3.5' : rowsGap}
+        />
       )}
 
-      <div className={cx(showEsports ? 'mt-3.5' : mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5')}>
+      <div className={cx(showEsports || squadMode === 'row' ? 'mt-3.5' : rowsGap)}>
         <OpenLeaguesRow subtitle={openLeaguesSubtitle(mySports)} pro={pro} />
       </div>
     </div>
