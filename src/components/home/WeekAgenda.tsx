@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { CalendarDays, ChevronLeft, ChevronRight, Repeat, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Repeat } from 'lucide-react';
 import { upcomingCalendar, weekStart, type CalendarItem, type CalendarMatch } from '../../lib/calendar';
 import { setRsvp, type LeagueFeed } from '../../lib/data';
 import { parseDate, toIsoDate } from '../../lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '../../lib/schedule';
 import type { League } from '../../lib/types';
-import { SportBadge, SportIcon } from '../../pages/sports/SportBits';
+import { SportBadge } from '../../pages/sports/SportBits';
 import { useAction } from '../feedback';
+import { SportMark } from '../SportMark';
 import { Badge, Card, cx } from '../ui';
 import { RsvpButton } from './RsvpButton';
-import { SportTint } from './SportTint';
 
 /** Semanas hacia adelante que se pueden ver. */
 const MAX_WEEKS = 8;
@@ -147,7 +147,10 @@ export function WeekAgenda({
   );
 }
 
-/** Un evento o un partido de la semana (también en Próximos eventos de Eventos). */
+/**
+ * Un evento o un partido de la semana (también en Próximos eventos de Eventos), con su deporte (o su juego) y, si es
+ * torneo, el trofeo chico en la esquina.
+ */
 export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; showSport?: boolean; onGoing?: (going: boolean) => Promise<unknown> }) {
   const match = item.kind === 'match';
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
@@ -156,22 +159,8 @@ export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; sh
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-2">
       <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">
-        <SportTint sport={item.sport} className="shrink-0">
-          <span
-            className={cx(
-              'flex size-9 items-center justify-center rounded-xl',
-              match ? 'bg-ok-soft text-ok' : item.type === 'torneo' ? 'bg-warn-soft text-warn' : 'bg-accent-soft text-accent',
-            )}
-          >
-            {item.type === 'torneo' ? (
-              <Trophy className="size-4" />
-            ) : match || item.sport !== 'bowling' ? (
-              <SportIcon sport={item.sport} className="size-4" />
-            ) : (
-              <CalendarDays className="size-4" />
-            )}
-          </span>
-        </SportTint>
+        {/* Siempre el deporte (o el juego) en su color; el torneo, con el trofeo chico en la esquina. */}
+        <SportMark sport={item.sport} game={item.game} size="sm" torneo={item.type === 'torneo'} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">
             {item.name}

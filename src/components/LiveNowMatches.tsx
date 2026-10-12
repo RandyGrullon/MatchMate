@@ -4,6 +4,7 @@ import { startsInText, type NextMatchInfo } from '../lib/calendar';
 import type { Match } from '../lib/data/matches';
 import type { LiveMatchItem } from '../lib/live';
 import { SportIcon } from '../pages/sports/SportBits';
+import { SportMark } from './SportMark';
 import { Badge, Card, cx } from './ui';
 
 /**
@@ -53,9 +54,8 @@ function LiveMatchRow({ item }: { item: LiveMatchItem<Match> }) {
       aria-label={`${item.title}${score ? `, ${score}` : ''}, ${league.name}${mine ? ', tu partido' : ''}`}
       className={cx('flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2', mine && 'bg-accent-soft/40')}
     >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-ok-soft text-ok">
-        <SportIcon sport={sport} className="size-4" />
-      </span>
+      {/* El deporte (o el juego) en su color, con el punto verde de «en vivo» en la esquina. */}
+      <SportMark sport={sport} game={league.game} size="sm" live />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">
           {sideLabel(m, 1)} <span className="font-normal text-muted">vs.</span> {sideLabel(m, 2)}

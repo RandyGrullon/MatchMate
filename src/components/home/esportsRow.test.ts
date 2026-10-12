@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import type { IdMove } from '../../lib/data/esportsIds';
 import { sportHomeTarget } from '../../pages/SportHomePage';
 import * as row from './EsportsHomeRow';
-import { EsportsRowCard, esportsIdMoveNotice, showsEsportsRow } from './EsportsHomeRow';
+import { EsportsRowCard, esportsIdMoveNotice, onlyGame, showsEsportsRow } from './EsportsHomeRow';
 
 const move = (patch: Partial<IdMove>): IdMove => ({
   id: 'm1',
@@ -40,6 +40,17 @@ describe('la fila de esports', () => {
     expect(out).toContain('min-h-row ');
     // En Pro, la fila densa.
     expect(renderToString(h(MemoryRouter, null, h(EsportsRowCard, { title: 'Torneos de esports', subtitle: 'x', pro: true })))).toContain('min-h-row-pro');
+  });
+
+  it('si todo lo tuyo es de un solo juego, la fila lleva su monograma; si son varios (o ninguno), el control', () => {
+    expect(onlyGame(['valorant', 'valorant'])).toBe('valorant');
+    expect(onlyGame(['valorant', 'fortnite'])).toBeNull();
+    expect(onlyGame([])).toBeNull();
+    expect(onlyGame(['tetris', null, undefined, 'lol'])).toBe('lol');
+    const out = renderToString(h(MemoryRouter, null, h(EsportsRowCard, { title: 'Esports', subtitle: 'Tus equipos y torneos', game: 'valorant' })));
+    expect(out).toContain('>VAL</text>');
+    expect(out).toContain('aria-label="VALORANT"');
+    expect(out).not.toContain('lucide-gamepad');
   });
 });
 

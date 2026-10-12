@@ -11,6 +11,7 @@ import { nextGameLabel, sheetPath, useNextGame, type GameCell, type NextGame, ty
 import { initials } from '../Avatar';
 import { BusyIcon, useBusy } from '../busy';
 import { boardRows, type BoardRow } from '../event/board';
+import { SportCorner, SportMark } from '../SportMark';
 import { Card, DateBlock, GameTile, Skeleton, cx } from '../ui';
 import { socialLine, todayTitle, weekdayLabel } from './logic';
 import { SportTint } from './SportTint';
@@ -149,10 +150,10 @@ function useMyLaneNumber(lid: string, eventId: string | null, playerId: string |
 // ---------- La tarjeta de hoy (evento en juego) ----------
 
 /**
- * La práctica o el torneo que se juega hoy, una sola vez: título, liga · bolera, tus juegos en grande (el que dejaste a
- * medias se ve como «A medias»), UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1», «Enviar mis juegos») y
- * la línea social «6 jugando · Pedro va primero ›» (lleva a la práctica). En Pro, más densa: J1 J2 J3 Serie, «Seguir
- * juego 3» y «Planilla» (si anotas el evento) al lado; «Cómo van todos» va abajo en «En vivo».
+ * La práctica o el torneo que se juega hoy, una sola vez: el boliche al lado del título, liga · bolera, tus juegos en
+ * grande (el que dejaste a medias se ve como «A medias»), UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1»,
+ * «Enviar mis juegos») y la línea social «6 jugando · Pedro va primero ›» (lleva a la práctica). En Pro, más densa: J1
+ * J2 J3 Serie, «Seguir juego 3» y «Planilla» (si anotas el evento) al lado; «Cómo van todos» va abajo en «En vivo».
  */
 export function TodayCard({ game, today, pro }: { game: LiveGame; today: string; pro: boolean }) {
   const { feed, league, event, info } = game;
@@ -187,9 +188,15 @@ export function TodayCard({ game, today, pro }: { game: LiveGame; today: string;
               whenWhere && <span className="shrink-0 text-sm font-[550] text-muted">{whenWhere}</span>
             )}
           </div>
-          <h2 className={cx('truncate', pro ? 'mt-2 text-card-title-pro' : 'mt-2.5 text-card-title')}>{title}</h2>
-          {!pro && meta && <p className="mt-1.5 truncate text-meta text-muted">{meta}</p>}
-          {pro && lane != null && <p className="mt-1 text-sm font-[550] text-muted">Pista {lane}</p>}
+          {/* El boliche al lado del título (como el cuadro de una fila): de qué deporte es lo que se juega. */}
+          <div className={cx('flex items-center', pro ? 'mt-2.5 gap-3' : 'mt-3 gap-3.5')}>
+            <SportMark sport="bowling" size={pro ? 'md' : 'lg'} />
+            <div className="min-w-0 flex-1">
+              <h2 className={cx('truncate', pro ? 'text-card-title-pro' : 'text-card-title')}>{title}</h2>
+              {!pro && meta && <p className="mt-1 truncate text-meta text-muted">{meta}</p>}
+              {pro && lane != null && <p className="mt-0.5 text-sm font-[550] text-muted">Pista {lane}</p>}
+            </div>
+          </div>
 
           <div className={pro ? 'my-3.5' : 'mt-[18px] mb-4'}>
             {!mine || mine.loading ? (
@@ -287,10 +294,10 @@ function leaderText(text: string): ReactNode {
 // ---------- Día sin juego ----------
 
 /**
- * Hoy no hay nada en juego: lo próximo (práctica, torneo o evento) con su fecha (OCT / 13) y «Voy» como botón principal
- * si es una práctica del boliche que se puede confirmar (ya confirmada: «Vas ✓», que se toca para quitarlo). Debajo, el
- * link discreto para anotar igual (un juego suelto, o «¿Dónde jugaste?» si jugaste ayer o hoy en una liga). Si el evento
- * es hoy más tarde, «Hoy juegas».
+ * Hoy no hay nada en juego: lo próximo (práctica, torneo o evento) con su fecha (OCT / 13, con el deporte o el juego en la
+ * esquina) y «Voy» como botón principal si es una práctica del boliche que se puede confirmar (ya confirmada: «Vas ✓»,
+ * que se toca para quitarlo). Debajo, el link discreto para anotar igual (un juego suelto, o «¿Dónde jugaste?» si jugaste
+ * ayer o hoy en una liga). Si el evento es hoy más tarde, «Hoy juegas».
  */
 export function NextUpCard({
   item,
@@ -322,7 +329,10 @@ export function NextUpCard({
             to={item.href}
             className="mt-4 flex items-center gap-3.5 rounded-tile bg-surface-2 p-3.5 transition active:opacity-80 focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <DateBlock date={item.date} raised />
+            {/* El deporte (o el juego) en la esquina de la fecha, como en «Lo que viene». */}
+            <SportCorner sport={item.sport} game={item.game} on="surface-2">
+              <DateBlock date={item.date} raised />
+            </SportCorner>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-body font-[650]">{item.type === 'torneo' && !isToday ? `${item.name} · ${line}` : line}</span>
               <span className="mt-0.5 block truncate text-sm text-muted">{item.leagueName}</span>

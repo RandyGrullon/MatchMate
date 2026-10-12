@@ -1,13 +1,16 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ClipboardCheck, Inbox, Trophy } from 'lucide-react';
+import { ClipboardCheck, Inbox } from 'lucide-react';
 import { upcomingCalendar, weekStart, type CalendarMatch } from '../../lib/calendar';
 import { usePlayers, type LeagueFeed } from '../../lib/data';
 import { parseDate, toIsoDate } from '../../lib/format';
 import type { LiveGame } from '../../lib/live';
 import type { League, Submission } from '../../lib/types';
 import { useNextGame } from '../../lib/useNextGame';
+import { leagueSport, sportsOf } from '../../sports/registry';
 import { initials } from '../Avatar';
 import type { BoardRow } from '../event/board';
+import { SportCorner, SportMark } from '../SportMark';
 import { Card, ListRow, RowIcon, SectionHeader, cx, sectionLinkClass } from '../ui';
 import { namesLine } from './logic';
 import { useLiveTable } from './TodayCard';
@@ -67,12 +70,19 @@ export function toDoOf(feeds: readonly LeagueFeed[], today: string): ToDo[] {
 
 /**
  * Pro · «Por hacer»: lo que espera al organizador en sus ligas, en una lista con contadores (aprobar juegos, torneos sin
- * equipos, buzón). «Organizar» lleva al admin de la liga. Nada si no hay nada pendiente.
+ * equipos con el deporte de su liga, buzón; con ligas de varios deportes, cada tarea con el suyo en la esquina).
+ * «Organizar» lleva al admin de la liga. Nada si no hay nada pendiente.
  */
 export function ToDoSection({ todo, leagues, className }: { todo: readonly ToDo[]; leagues: readonly League[]; className?: string }) {
   if (!todo.length) return null;
   const many = todo.length > 1;
   const nameOf = (lid: string) => leagues.find((l) => l.id === lid)?.name ?? 'la liga';
+  // Con ligas de más de un deporte, también aprobar y el buzón dicen de qué deporte son (en la esquina del ícono).
+  const manySports = sportsOf(leagues).length > 1;
+  const sportOf = (lid: string): ToDoSport => {
+    const l = leagues.find((x) => x.id === lid);
+    return { sport: l ? leagueSport(l) : 'bowling', game: l?.game ?? null, corner: manySports };
+  };
   return (
     <section aria-labelledby="por-hacer" className={className}>
       <SectionHeader
@@ -86,26 +96,40 @@ export function ToDoSection({ todo, leagues, className }: { todo: readonly ToDo[
       />
       <Card className="overflow-hidden">
         {todo.map((t) => (
-          <ToDoRows key={t.lid} todo={t} league={many ? nameOf(t.lid) : null} />
+          <ToDoRows key={t.lid} todo={t} league={many ? nameOf(t.lid) : null} sport={sportOf(t.lid)} />
         ))}
       </Card>
     </section>
   );
 }
 
-function ToDoRows({ todo, league }: { todo: ToDo; league: string | null }) {
+/** El deporte de la liga de una tarea: el torneo lo lleva siempre; aprobar y el buzón, en la esquina si `corner`. */
+interface ToDoSport {
+  sport: string;
+  game: string | null;
+  corner: boolean;
+}
+
+/** El ícono de una tarea con el deporte en su esquina (solo si la cuenta tiene ligas de más de un deporte). */
+function TaskIcon({ sport, children }: { sport: ToDoSport; children: ReactNode }) {
+  if (!sport.corner) return children;
+  return (
+    <SportCorner sport={sport.sport} game={sport.game}>
+      {children}
+    </SportCorner>
+  );
+}
+
+function ToDoRows({ todo, league, sport }: { todo: ToDo; league: string | null; sport: ToDoSport }) {
   return (
     <>
-      {todo.approvals > 0 && <ApproveRow lid={todo.lid} pending={todo.pending} league={league} />}
+      {todo.approvals > 0 && <ApproveRow lid={todo.lid} pending={todo.pending} league={league} sport={sport} />}
       {todo.teams.map((t) => (
         <ListRow
           key={t.id}
           dense
-          leading={
-            <RowIcon>
-              <Trophy className="size-5" />
-            </RowIcon>
-          }
+          // El torneo con su deporte (y el trofeo chico), como en «Tus torneos».
+          leading={<SportMark sport={sport.sport} game={sport.game} torneo />}
           title={t.name}
           subtitle={['Faltan los equipos', shortDay(t.date), league].filter(Boolean).join(' · ')}
           to={`/l/${todo.lid}/e/${t.id}?tab=equipos`}
@@ -115,9 +139,11 @@ function ToDoRows({ todo, league }: { todo: ToDo; league: string | null }) {
         <ListRow
           dense
           leading={
-            <RowIcon>
-              <Inbox className="size-5" />
-            </RowIcon>
+            <TaskIcon sport={sport}>
+              <RowIcon>
+                <Inbox className="size-5" />
+              </RowIcon>
+            </TaskIcon>
           }
           title={league ? `Buzón · ${league}` : 'Buzón de la liga'}
           subtitle={todo.suggestions === 1 ? '1 sugerencia nueva' : `${todo.suggestions} sugerencias nuevas`}
@@ -131,7 +157,7 @@ function ToDoRows({ todo, league }: { todo: ToDo; league: string | null }) {
 }
 
 /** «Aprobar juegos · Sofía y Carmen · con foto» con el contador (lee los nombres de los jugadores de esa liga). */
-function ApproveRow({ lid, pending, league }: { lid: string; pending: readonly Submission[]; league: string | null }) {
+function ApproveRow({ lid, pending, league, sport }: { lid: string; pending: readonly Submission[]; league: string | null; sport: ToDoSport }) {
   const players = usePlayers(lid);
   const count = pending.length;
   const names = pending.map((s) => players.data.find((p) => p.id === s.playerId)?.name ?? '');
@@ -141,9 +167,11 @@ function ApproveRow({ lid, pending, league }: { lid: string; pending: readonly S
     <ListRow
       dense
       leading={
-        <RowIcon tone="warn">
-          <ClipboardCheck className="size-5" />
-        </RowIcon>
+        <TaskIcon sport={sport}>
+          <RowIcon tone="warn">
+            <ClipboardCheck className="size-5" />
+          </RowIcon>
+        </TaskIcon>
       }
       title="Aprobar juegos"
       subtitle={sub}

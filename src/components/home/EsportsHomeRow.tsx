@@ -1,12 +1,12 @@
 import { createElement } from 'react';
-import { Gamepad2, ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { useMyEsportsEntries, useMyEsportsTeams } from '../../lib/data/esports';
 import { seenIdMove, useMyIdMoves, type IdMove } from '../../lib/data/esportsIds';
-import { LINK_PROVIDER_NAME, gameMeta } from '../../sports/esports';
+import { LINK_PROVIDER_NAME, gameMeta, isGameId, type GameId } from '../../sports/esports';
 import type { SportId } from '../../sports/types';
-import { EsportsTint } from '../esports/bits';
 import { useNotice, type Notice } from '../NoticeSlot';
-import { Card, ListRow, RowIcon, cx } from '../ui';
+import { SportMark } from '../SportMark';
+import { Card, ListRow, cx } from '../ui';
 
 /**
  * Esports en Hoy y en Ligas (docs/esports.md §11.2): la fila que lleva a `/esports` («Tus equipos y torneos», «Torneos
@@ -50,36 +50,55 @@ export function useEsportsIdMoveNotice(uid: string | null | undefined): void {
   useNotice(esportsIdMoveNotice(moves.data));
 }
 
-/** ¿Juega esports esta cuenta? (sus equipos o inscripciones; las mismas lecturas que la pantalla de esports). */
-export function useEsportsPresence(uid: string | null | undefined, active: SportId | null): { show: boolean; loading: boolean } {
+/** El juego de todo lo de esports de la cuenta si es uno solo (sus equipos e inscripciones); null si son varios o ninguno. */
+export function onlyGame(games: readonly (string | null | undefined)[]): GameId | null {
+  const set = new Set(games.filter(isGameId));
+  return set.size === 1 ? [...set][0] : null;
+}
+
+/**
+ * ¿Juega esports esta cuenta? (sus equipos o inscripciones; las mismas lecturas que la pantalla de esports). `game`: si
+ * todo es de un solo juego, ese (la fila lleva su monograma).
+ */
+export function useEsportsPresence(uid: string | null | undefined, active: SportId | null): { show: boolean; loading: boolean; game: GameId | null } {
   const teams = useMyEsportsTeams(uid);
   const entries = useMyEsportsEntries(uid);
   return {
     show: !!uid && showsEsportsRow({ active, teams: teams.data.length, entries: entries.data.length }),
     loading: teams.loading || entries.loading,
+    game: onlyGame([...teams.data.map((t) => t.game), ...entries.data.map((e) => e.game)]),
   };
 }
 
-/** Lo de esports en Hoy: si va la fila, y el aviso de un ID que pasó a otra cuenta (lo propone al NoticeSlot de la pantalla). */
-export function useEsportsHome(uid: string | null | undefined, active: SportId | null): { show: boolean } {
+/** Lo de esports en Hoy: si va la fila (y su juego, si es uno solo), y el aviso de un ID que pasó a otra cuenta (al NoticeSlot). */
+export function useEsportsHome(uid: string | null | undefined, active: SportId | null): { show: boolean; game: GameId | null } {
   const presence = useEsportsPresence(uid, active);
   useEsportsIdMoveNotice(uid);
-  return { show: presence.show };
+  return { show: presence.show, game: presence.game };
 }
 
-/** La fila que lleva a Esports (`/esports`), en su tarjeta, con el control en el violeta del deporte. */
-export function EsportsRowCard({ title, subtitle, pro, className }: { title: string; subtitle: string; pro?: boolean; className?: string }) {
+/**
+ * La fila que lleva a Esports (`/esports`), en su tarjeta, en el violeta del deporte: el monograma del juego si todo lo
+ * tuyo es de uno solo (`game`); si no, el control.
+ */
+export function EsportsRowCard({
+  title,
+  subtitle,
+  game,
+  pro,
+  className,
+}: {
+  title: string;
+  subtitle: string;
+  game?: GameId | null;
+  pro?: boolean;
+  className?: string;
+}) {
   return (
     <Card className={cx('overflow-hidden', className)}>
       <ListRow
         dense={pro}
-        leading={
-          <EsportsTint>
-            <RowIcon tone="accent">
-              <Gamepad2 className="size-5" />
-            </RowIcon>
-          </EsportsTint>
-        }
+        leading={<SportMark sport="esports" game={game} label={game ? undefined : null} />}
         title={title}
         subtitle={subtitle}
         to="/esports"

@@ -18,6 +18,8 @@ export interface CalendarItem {
   leagueName: string;
   /** Deporte de la liga: el «voy» y las prácticas según el horario son solo del boliche. */
   sport: string;
+  /** Esports: el juego de la liga (su monograma en la fila). Sin valor en los demás deportes. */
+  game?: string | null;
   /** Tipo del evento tal como está en la base: 'practica' | 'torneo' (boliche), 'americano', 'ronda', 'encuentro'… ('partido' en los partidos). */
   type: string;
   name: string;
@@ -142,6 +144,9 @@ export function matchDetail(m: Pick<Match, 'round' | 'stage' | 'court'>, sport: 
   return [m.stage.trim() || (m.round != null ? `${word} ${m.round}` : ''), m.court.trim()].filter(Boolean).join(' · ');
 }
 
+/** `{ game }` si la liga es de esports con su juego (nada en las demás: los días quedan como siempre). */
+const gameOf = (league: Pick<League, 'game'>): { game?: string } => (league.game ? { game: league.game } : {});
+
 /** Estados de un partido que salen en el calendario: lo que se va a jugar o se está jugando. */
 const CALENDAR_STATUSES: readonly MatchStatus[] = ['scheduled', 'live', 'suspended'];
 
@@ -164,6 +169,7 @@ function matchItems(matches: readonly CalendarMatch[], leagues: readonly League[
       lid: league.id,
       leagueName: league.name,
       sport,
+      ...gameOf(league),
       type: 'partido',
       name: matchTitle(m, m.mySide),
       time: minutesLabel(at.minutes),
@@ -202,7 +208,7 @@ export function upcomingCalendar(
     const league = leagues.find((l) => l.id === feed.lid);
     if (!league) continue;
     const sport = leagueSport(league);
-    const base = { kind: 'event' as const, lid: feed.lid, leagueName: league.name, playerId: feed.playerId, sport, matchId: null };
+    const base = { kind: 'event' as const, lid: feed.lid, leagueName: league.name, playerId: feed.playerId, sport, ...gameOf(league), matchId: null };
     const eventHref = (id: string) => `/l/${feed.lid}/e/${id}`;
     const inRange = feed.events.filter((e) => e.date >= from && e.date < to);
     if (sport !== 'bowling') {

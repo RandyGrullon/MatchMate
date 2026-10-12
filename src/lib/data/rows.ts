@@ -48,8 +48,27 @@ export interface LeagueRow {
   badges_auto?: string;
   /** 20260929001120_insignias_creador.sql. */
   badge_makers?: string;
+  /** Reglas de la liga (jsonb). En esports, `{ game }`: el juego de la liga o del torneo suelto. */
+  rules?: unknown;
   created_at: string;
 }
+
+/**
+ * El juego de una liga de esports (`rules.game`, el id del catálogo); null en los demás deportes o si no hay. Aquí no se
+ * mira el catálogo (src/sports/esports/catalog.ts): este archivo entra en el motor de insignias para Deno y el catálogo
+ * lo agrandaría. Las pantallas solo muestran un juego que esté en el catálogo (SportMark, `isGameId`).
+ */
+export function leagueGame(r: Pick<LeagueRow, 'sport' | 'rules'>): string | null {
+  if (r.sport !== 'esports' || typeof r.rules !== 'object' || r.rules === null) return null;
+  const game = (r.rules as { game?: unknown }).game;
+  return typeof game === 'string' && /^[a-z0-9_]{1,40}$/.test(game) ? game : null;
+}
+
+/** `{ game }` en una liga de esports con su juego; nada en las demás (quedan igual que antes). */
+const gameField = (r: Pick<LeagueRow, 'sport' | 'rules'>): { game?: string } => {
+  const game = leagueGame(r);
+  return game ? { game } : {};
+};
 
 export interface MembershipRow {
   league_id: string;
@@ -199,6 +218,7 @@ export const toLeague = (r: LeagueRow): Wire<League> => ({
   contactPhone: r.contact_phone ?? '',
   requirePhoto: r.require_photo,
   sport: r.sport,
+  ...gameField(r),
   hasMinors: r.has_minors,
   tz: r.tz,
   logoPath: r.logo_path ?? null,

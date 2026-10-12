@@ -161,7 +161,12 @@ function MyLeagues() {
       {body}
 
       {showEsports && (
-        <EsportsRowCard title="Torneos de esports" subtitle="Torneos y equipos por juego" pro={pro} className={mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5'} />
+        <EsportsRowCard
+          title="Torneos de esports"
+          subtitle="Torneos y equipos por juego"
+          game={esports.game}
+          pro={pro}
+          className={mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5'} />
       )}
 
       <div className={cx(showEsports ? 'mt-3.5' : mine.all.length || mine.loading ? 'mt-[30px]' : 'mt-5')}>

@@ -37,12 +37,27 @@ export const monoFontSize = (mono: string): number => (mono.length <= 2 ? 21 : m
 /**
  * El juego como un monograma en su color («VAL», «CS2», «RL»…), sin logos de marcas (D16): 24, 32 o 48 px. Las letras
  * son blancas (el catálogo garantiza 4.5:1 con cada color) y el lector de pantalla dice el nombre del juego.
+ * `box`: otro tamaño y esquinas en vez de los tres de siempre (el cuadro del deporte de una fila, SportMark);
+ * `decorative`: sin nombre para el lector de pantalla (ya lo dice lo que lo envuelve).
  */
-export function GameMark({ game, size = 'md', className }: { game: GameId; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+export function GameMark({
+  game,
+  size = 'md',
+  box,
+  decorative,
+  className,
+}: {
+  game: GameId;
+  size?: 'sm' | 'md' | 'lg';
+  box?: string;
+  decorative?: boolean;
+  className?: string;
+}) {
   const meta = gameMeta(game);
   const mono = meta?.mono ?? '?';
+  const a11y = decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': meta?.name ?? 'Juego' };
   return (
-    <svg viewBox="0 0 48 48" role="img" aria-label={meta?.name ?? 'Juego'} className={cx('block shrink-0 overflow-hidden', MARK_BOX[size], className)}>
+    <svg viewBox="0 0 48 48" {...a11y} className={cx('block shrink-0 overflow-hidden', box ?? MARK_BOX[size], className)}>
       <rect width="48" height="48" rx={MARK_RADIUS} fill={meta?.color ?? 'currentColor'} className={meta ? undefined : 'text-faint'} />
       <text
         x="24"

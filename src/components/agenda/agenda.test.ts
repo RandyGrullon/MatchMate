@@ -143,6 +143,10 @@ describe('agenda: pantallas', () => {
     expect(t).toContain('Me apunto');
     expect(out).toContain(`href="${item().url}"`);
     expect(out).toContain('aria-label="Me apunto a');
+    // El deporte siempre en la esquina de la fecha (antes solo si la lista traía varios).
+    expect(out).toContain('lucide-circle-dot');
+    expect(out).toContain('role="img" aria-label="Boliche"');
+    expect(render(h(AgendaRow, { item: item({ sport: 'golf' }), today: '2026-10-01', onJoin: () => undefined }))).toContain('lucide-land-plot');
   });
 
   it('ya apuntado: dice cómo quedó en vez del botón', () => {

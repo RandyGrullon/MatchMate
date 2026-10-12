@@ -188,7 +188,7 @@ function Hoy() {
           </>
         )}
 
-        {esports.show && <EsportsRowCard title="Esports" subtitle="Tus equipos y torneos" pro={isPro} className="mt-7" />}
+        {esports.show && <EsportsRowCard title="Esports" subtitle="Tus equipos y torneos" game={esports.game} pro={isPro} className="mt-7" />}
 
         <FollowingSlot sport={null} className="mt-7" />
 

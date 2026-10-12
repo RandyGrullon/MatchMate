@@ -45,6 +45,11 @@ export interface League {
   requirePhoto: boolean;
   /** Deporte (fijo después de crear). Sin valor = boliche. */
   sport?: string;
+  /**
+   * Esports: el juego de la liga o del torneo suelto (`leagues.rules.game`, un juego del catálogo). Sin valor en los
+   * demás deportes y en las listas que no lo traen (las ligas públicas): ahí sale el control de esports.
+   */
+  game?: string | null;
   /** Liga con menores: siempre privada, sin fotos ni social. */
   hasMinors?: boolean;
   /** Zona horaria de la liga (IANA). */

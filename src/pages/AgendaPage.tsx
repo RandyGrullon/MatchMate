@@ -27,6 +27,7 @@ import { useActivity, useMyLeagues } from '../components/home/useHomeData';
 import { WeekAgenda } from '../components/home/WeekAgenda';
 import { useJoinFlow } from '../components/league/WhoAreYou';
 import { useIsPro } from '../components/mode';
+import { SportCorner } from '../components/SportMark';
 import { FilterChips, type ChipItem } from '../components/notifications/FilterChips';
 import { ScreenTitle, ScreenTop } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
@@ -222,7 +223,6 @@ export default function AgendaPage() {
               item={item}
               today={today}
               dense={pro}
-              showSport={sports.length > 1 && !sport}
               busy={busy === item.eventId || flow.busy === item.leagueId}
               joined={joined[item.eventId] ?? null}
               onJoin={() => void join(item)}
@@ -272,14 +272,13 @@ function MyWeeks({ leagues, uid }: { leagues: Parameters<typeof useActivity>[0];
 }
 
 /**
- * Una fecha abierta: el bloque de la fecha (OCT / 13), qué es, «Sábado · 7:00 pm · la liga · cuántos lugares», y «Me
- * apunto» al lado (o cómo quedó: «Vas», «En espera»…). Toda la fila abre el evento.
+ * Una fecha abierta: el bloque de la fecha (OCT / 13) con el deporte en su esquina, qué es, «Sábado · 7:00 pm · la liga
+ * · cuántos lugares», y «Me apunto» al lado (o cómo quedó: «Vas», «En espera»…). Toda la fila abre el evento.
  */
 export function AgendaRow({
   item,
   today,
   dense,
-  showSport,
   busy,
   joined,
   onJoin,
@@ -287,8 +286,6 @@ export function AgendaRow({
   item: AgendaItem;
   today: string;
   dense?: boolean;
-  /** La lista trae varios deportes: el ícono de cada uno. */
-  showSport?: boolean;
   busy?: boolean;
   /** Se acaba de apuntar aquí: cómo quedó («Vas», «En espera»…). */
   joined?: string | null;
@@ -302,15 +299,10 @@ export function AgendaRow({
       to={item.url}
       ariaLabel={`${title}, ${item.leagueName}`}
       leading={
-        // El deporte de cada fecha, en una esquina del bloque, cuando la lista trae varios.
-        <span className="relative shrink-0">
+        // El deporte de cada fecha, en una esquina del bloque (como en «Lo que viene» de Hoy).
+        <SportCorner sport={item.sport}>
           <DateBlock date={item.date} />
-          {showSport && (
-            <span aria-hidden="true" className="absolute -right-1.5 -bottom-1.5 grid size-6 place-items-center rounded-lg bg-surface text-accent shadow-sm">
-              <SportIcon sport={item.sport} className="size-3.5" />
-            </span>
-          )}
-        </span>
+        </SportCorner>
       }
       // En 360 px el botón deja poco ancho: el nombre baja a dos líneas en vez de cortarse en «Práctica d…».
       title={<span className="line-clamp-2 whitespace-normal">{title}</span>}

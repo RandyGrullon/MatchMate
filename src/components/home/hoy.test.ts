@@ -107,6 +107,9 @@ const text = (html: string) =>
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ');
 
+/** Lo que dice el lector de pantalla de cada marca de deporte (SportMark), en orden. */
+const sportLabels = (html: string) => [...html.matchAll(/role="img" aria-label="([^"]+)"/g)].map((m) => m[1]);
+
 const TODAY = '2026-10-07';
 const at = (ms: number) => ({ toMillis: () => ms });
 const league: League = {
@@ -182,6 +185,15 @@ describe('la tarjeta de hoy (Lite)', () => {
     expect(out).toContain('Juego 1 187');
     expect(out).toContain('Juego 2 210');
     expect(out).toContain('Juego 3 A medias');
+  });
+
+  it('el boliche al lado del título: de qué deporte es lo que se juega (48 px en Lite, 40 en Pro)', () => {
+    const lite = render(h(TodayCard, { game: game(), today: TODAY, pro: false }));
+    expect(lite).toContain('lucide-circle-dot');
+    expect(lite).toContain('mm-tint-bowling');
+    expect(lite).toContain('size-12 rounded-[15px]');
+    expect(sportLabels(lite)).toEqual(['Boliche']);
+    expect(render(h(TodayCard, { game: game(), today: TODAY, pro: true }))).toMatch(/aria-label="Boliche"[^>]*><span class="[^"]*size-10 rounded-xl"/);
   });
 
   it('si el evento cae otro día que el de la liga, la hora es la del evento', () => {
@@ -295,6 +307,22 @@ describe('día sin juego', () => {
     expect(out).toContain('ANOTAR');
   });
 
+  it('el deporte en la esquina de la fecha (sobre gris): boliche, pádel o el juego de esports', () => {
+    const html = render(h(NextUpCard, { item: next, today: '2026-10-08', rsvp: null, anotar: null }));
+    expect(html).toContain('lucide-circle-dot');
+    expect(html).toContain('ring-surface-2');
+    expect(sportLabels(html)).toEqual(['Boliche']);
+    const padel = render(h(NextUpCard, { item: { ...next, sport: 'padel', type: 'americano', name: 'Americano' }, today: '2026-10-08', rsvp: null, anotar: null }));
+    expect(padel).toContain('lucide-grid-2x2');
+    expect(padel).toContain('mm-tint-padel');
+    expect(sportLabels(padel)).toEqual(['Pádel']);
+    const val = render(
+      h(NextUpCard, { item: { ...next, sport: 'esports', game: 'valorant', type: 'torneo', name: 'Copa VAL' }, today: '2026-10-08', rsvp: null, anotar: null }),
+    );
+    expect(val).toContain('>VAL</text>');
+    expect(sportLabels(val)).toEqual(['VALORANT']);
+  });
+
   it('con las pistas publicadas, su pista', () => {
     world.lanes = [{ eventId: 'E2', playerId: 'p-ana', lane: 4, position: 2, publishedAt: '2026-10-12T20:00:00Z' }];
     expect(text(render(h(NextUpCard, { item: next, today: '2026-10-08', rsvp: null, anotar: null })))).toContain('Martes · 7:30 pm · Pista 4');
@@ -374,6 +402,21 @@ describe('Lo que viene', () => {
     // Solo 3: el resto, en el Calendario.
     expect(out).not.toContain('27 de octubre');
     expect(html).toContain('href="/l/L1/e/E3"');
+  });
+
+  it('cada fecha con su deporte (o su juego) en la esquina del bloque, en el color de ese deporte', () => {
+    const items = [
+      base,
+      { ...base, key: 'k2', sport: 'tennis', type: 'partido', kind: 'match' as const, name: 'vs. Luis', eventId: null, matchId: 'm1', href: '/l/L2/juegos?partido=m1' },
+      { ...base, key: 'k3', sport: 'esports', game: 'rocket_league', type: 'torneo', name: 'Copa RL', eventId: 'E9', href: '/l/L9/e/E9' },
+    ];
+    const html = render(h(UpNext, { items, today: TODAY, onCalendar: () => undefined }));
+    expect(sportLabels(html)).toEqual(['Boliche', 'Tenis', 'Rocket League']);
+    expect(html).toContain('lucide-circle-dot');
+    expect(html).toContain('lucide-tennis-ball');
+    expect(html).toContain('>RL</text>');
+    // El mes del bloque también va en el color del deporte de esa fila.
+    expect(html).toMatch(/<span class="relative inline-flex shrink-0 mm-tint-tennis"><time/);
   });
 
   it('un torneo al que ya dijiste «Voy»: «Sábado · ya te inscribiste»', () => {
@@ -470,6 +513,23 @@ describe('«Voy» y «Vas ✓» del Calendario', () => {
     const voy = render(h(AgendaRow, { item: { ...row, going: false }, onGoing: async () => undefined }));
     expect(voy).toContain('bg-accent-soft text-accent');
   });
+
+  it('cada fila con su deporte (también las prácticas del boliche); el torneo con el trofeo chico; esports con su juego', () => {
+    const practica = render(h(AgendaRow, { item: row }));
+    expect(practica).toContain('lucide-circle-dot');
+    expect(practica).not.toContain('lucide-calendar-days');
+    expect(sportLabels(practica)).toEqual(['Boliche']);
+    const copa = render(h(AgendaRow, { item: { ...row, type: 'torneo', name: 'Copa de octubre' } }));
+    expect(copa).toContain('lucide-circle-dot');
+    expect(copa).toContain('lucide-trophy');
+    expect(sportLabels(copa)).toEqual(['Torneo de boliche']);
+    const partido = render(h(AgendaRow, { item: { ...row, kind: 'match', sport: 'basketball', type: 'partido', name: 'vs. Tigres', eventId: null } }));
+    expect(partido).toContain('lucide-basketball');
+    expect(partido).toContain('mm-tint-basketball');
+    const val = render(h(AgendaRow, { item: { ...row, sport: 'esports', game: 'valorant', type: 'torneo', name: 'Copa VAL' } }));
+    expect(val).toContain('>VAL</text>');
+    expect(sportLabels(val)).toEqual(['Torneo de VALORANT']);
+  });
 });
 
 describe('lo que se juega en la Liga (LiveActions) dice lo mismo que Hoy', () => {
@@ -545,6 +605,20 @@ describe('Pro: Por hacer, En vivo y Esta semana', () => {
     expect(html).toContain('href="/l/L1/admin?tab=buzon"');
     // Nada pendiente: no sale.
     expect(text(render(h(ToDoSection, { todo: [], leagues: [league] })))).not.toContain('Por hacer');
+  });
+
+  it('«Por hacer»: el torneo sin equipos con el deporte de su liga y el trofeo; con ligas de varios deportes, cada tarea con el suyo', () => {
+    const copa: BowlingEvent = { ...practice, id: 'T1', type: 'torneo', name: 'Copa de octubre', date: '2026-10-24', teamSize: 4 };
+    const todo = toDoOf([feed({ isAdmin: true, pending: [sub('p-sofia', 'f')], suggestions: [{ id: 'n1', text: 'Más café', read: false }], events: [copa] })], TODAY);
+    const one = render(h(ToDoSection, { todo, leagues: [league] }));
+    expect(one).toContain('lucide-trophy');
+    expect(one).toContain('lucide-circle-dot');
+    // Solo boliche: aprobar y el buzón sin esquina (ya se sabe el deporte).
+    expect(sportLabels(one)).toEqual(['Torneo de boliche']);
+    const padel: League = { ...league, id: 'L2', name: 'Pádel del club', sport: 'padel' };
+    const many = render(h(ToDoSection, { todo, leagues: [league, padel] }));
+    expect(sportLabels(many)).toEqual(['Boliche', 'Torneo de boliche', 'Boliche']);
+    expect(many).toMatch(/bg-warn-soft text-warn[^>]*><svg[^>]*lucide-clipboard-check/);
   });
 
   it('«En vivo»: los 3 primeros y tú, con tus juegos y lo que llevas del que va a medias', () => {

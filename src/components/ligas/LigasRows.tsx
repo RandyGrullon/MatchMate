@@ -1,12 +1,13 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { LogIn, Search, Ticket, Trophy } from 'lucide-react';
+import { LogIn, Search, Ticket } from 'lucide-react';
 import type { CalendarItem } from '../../lib/calendar';
 import { usePlayers } from '../../lib/data';
 import { roleLabel } from '../../lib/league';
 import type { League, Member } from '../../lib/types';
 import { leagueSport, sportMeta } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
+import { SportMark } from '../SportMark';
 import { leagueLine, rowLineText, tourneyLine, type RowLine, type TourneyItem } from '../eventos/logic';
 import { LeagueLogo } from '../home/LeagueCard';
 import { sportTint } from '../home/SportTint';
@@ -48,20 +49,15 @@ function useTint(sport: string) {
 }
 
 /**
- * El cuadro de la liga al principio de la fila: su logo si tiene; si no, el ícono del deporte en acento suave (una liga)
- * o el trofeo en gris (un torneo). 48 px en Lite y 40 en Pro.
+ * El cuadro de la liga al principio de la fila: su logo si tiene; si no, el ícono del deporte en su acento suave (en
+ * esports, el monograma del juego si se sabe) y, si es un torneo, con el trofeo chico en la esquina: un torneo también
+ * dice de qué deporte es. 48 px en Lite y 40 en Pro.
  */
-export function LeagueTile({ league, dense }: { league: Pick<League, 'id' | 'sport' | 'kind' | 'logoPath'>; dense?: boolean }) {
-  const sport = leagueSport(league);
-  const tint = useTint(sport);
-  const box = dense ? 'size-10 rounded-xl' : 'size-12 rounded-[15px]';
-  const torneo = league.kind === 'torneo';
+export function LeagueTile({ league, dense }: { league: Pick<League, 'id' | 'sport' | 'kind' | 'logoPath' | 'game'>; dense?: boolean }) {
+  const size = dense ? 'md' : 'lg';
   return (
-    <LeagueLogo path={league.logoPath} className={box}>
-      <RowIcon tone={torneo ? 'neutral' : 'accent'} className={cx(box, tint.className)}>
-        {tint.style}
-        {torneo ? <Trophy className={dense ? 'size-5' : 'size-[22px]'} /> : <SportIcon sport={sport} className={dense ? 'size-5' : 'size-6'} />}
-      </RowIcon>
+    <LeagueLogo path={league.logoPath} className={dense ? 'size-10 rounded-xl' : 'size-12 rounded-[15px]'}>
+      <SportMark sport={leagueSport(league)} game={league.game} size={size} torneo={league.kind === 'torneo'} />
     </LeagueLogo>
   );
 }
@@ -115,7 +111,7 @@ export function LeagueListRow({
   );
 }
 
-/** Un torneo: el trofeo, el nombre y «Sábado 24 oct · 6 inscritos». Abre el torneo. */
+/** Un torneo: su deporte con el trofeo chico (o su logo), el nombre y «Sábado 24 oct · 6 inscritos». Abre el torneo. */
 export function TourneyRow({
   t,
   logoPath,
@@ -139,7 +135,7 @@ export function TourneyRow({
     <ListRow
       className={cx(!pro && 'min-h-[76px]!', tint.className)}
       dense={pro}
-      leading={<LeagueTile league={{ id: t.lid, sport: t.sport, kind: 'torneo', logoPath: t.standalone ? logoPath : null }} dense={pro} />}
+      leading={<LeagueTile league={{ id: t.lid, sport: t.sport, game: t.game, kind: 'torneo', logoPath: t.standalone ? logoPath : null }} dense={pro} />}
       title={t.name}
       subtitle={
         <>

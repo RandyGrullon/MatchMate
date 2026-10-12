@@ -6,10 +6,10 @@ import { roleLabel } from '../../lib/league';
 import { useLogo } from '../../lib/logos';
 import type { League, Member } from '../../lib/types';
 import { leagueSport, sportMeta } from '../../sports/registry';
-import { SportBadge, SportIcon } from '../../pages/sports/SportBits';
+import { SportBadge } from '../../pages/sports/SportBits';
+import { SportMark } from '../SportMark';
 import { Badge, Card, cx } from '../ui';
 import { whenLabel } from './logic';
-import { SportTint } from './SportTint';
 
 /** Dónde y cuándo juegan: «Club Naco · Martes · 7:00 pm». */
 export function LeagueMeta({ league, className }: { league: Pick<League, 'venue' | 'schedule'>; className?: string }) {
@@ -55,25 +55,31 @@ const ICON_BOX = {
 } as const;
 const ICON_GLYPH = { sm: 'size-4', md: 'size-5', lg: 'size-5', xl: 'size-8' } as const;
 
+/** El tamaño de la marca del deporte (para el trofeo de la esquina) en cada tamaño del cuadrito. */
+const MARK_SIZE = { sm: 'sm', md: 'md', lg: 'lg', xl: 'lg' } as const;
+
 /**
- * El cuadrito de la liga: su logo si tiene; si no, en el color de su deporte, el trofeo si es torneo o el ícono
- * del deporte.
+ * El cuadrito de la liga: su logo si tiene; si no, en el color de su deporte, el ícono del deporte (o el monograma del
+ * juego en esports), y si es torneo, con el trofeo chico en la esquina.
  */
 export function LeagueIcon({
   league,
   size = 'md',
 }: {
-  league: Pick<League, 'id' | 'sport' | 'kind' | 'logoPath'>;
+  league: Pick<League, 'id' | 'sport' | 'kind' | 'logoPath' | 'game'>;
   size?: keyof typeof ICON_BOX;
 }) {
-  const sport = leagueSport(league);
   return (
     <LeagueLogo path={league.logoPath} className={ICON_BOX[size]}>
-      <SportTint sport={sport} className="shrink-0">
-        <span className={cx('flex items-center justify-center bg-accent-soft text-accent', ICON_BOX[size])} aria-hidden="true">
-          {league.kind === 'torneo' ? <Trophy className={ICON_GLYPH[size]} /> : <SportIcon sport={sport} className={ICON_GLYPH[size]} />}
-        </span>
-      </SportTint>
+      <SportMark
+        sport={leagueSport(league)}
+        game={league.game}
+        torneo={league.kind === 'torneo'}
+        size={MARK_SIZE[size]}
+        box={ICON_BOX[size]}
+        glyph={ICON_GLYPH[size]}
+        label={null}
+      />
     </LeagueLogo>
   );
 }

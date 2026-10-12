@@ -135,6 +135,8 @@ export interface TourneyItem {
   lid: string;
   leagueName: string;
   sport: string;
+  /** Esports: el juego de su liga (el monograma de la fila). */
+  game?: string | null;
   /** Torneo sin liga (la fila es la «liga» del torneo). */
   standalone: boolean;
   /** Su día (YYYY-MM-DD) y hora, si se saben. */
@@ -145,7 +147,7 @@ export interface TourneyItem {
   going: boolean;
 }
 
-type TourneyLeague = { id: string; name: string; kind?: string | null; sport?: string | null };
+type TourneyLeague = { id: string; name: string; kind?: string | null; sport?: string | null; game?: string | null };
 
 /**
  * «Tus torneos»: los torneos sin liga en que estoy y los torneos que vienen en mis ligas (antes la Copa de la liga
@@ -165,6 +167,7 @@ export function tourneysOf(leagues: readonly TourneyLeague[], upcoming: readonly
       lid: l.id,
       leagueName: l.name,
       sport: l.sport || 'bowling',
+      ...(l.game ? { game: l.game } : {}),
       standalone: true,
       date: it?.date ?? null,
       time: it?.time ?? null,
@@ -182,6 +185,7 @@ export function tourneysOf(leagues: readonly TourneyLeague[], upcoming: readonly
       lid: it.lid,
       leagueName: it.leagueName,
       sport: it.sport,
+      ...(it.game ? { game: it.game } : {}),
       standalone: false,
       date: it.date,
       time: it.time,

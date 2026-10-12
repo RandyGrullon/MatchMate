@@ -168,6 +168,18 @@ describe('Ligas (Lite)', () => {
     expect(t).not.toContain('Todos');
   });
 
+  it('cada liga y cada torneo dice su deporte: su ícono en su color (el torneo, con el trofeo chico)', () => {
+    world.leagues = [league('l1', 'Liga de los martes'), league('l2', 'Pádel del club', { sport: 'padel' })];
+    world.roles = { l1: 'owner', l2: 'member' };
+    const html = render();
+    expect(html).toContain('role="img" aria-label="Boliche"');
+    expect(html).toContain('role="img" aria-label="Pádel"');
+    expect(html).toContain('mm-tint-padel');
+    // «Copa de octubre» (un torneo de la liga de boliche): el boliche con el trofeo, no solo el trofeo.
+    expect(html).toContain('role="img" aria-label="Torneo de boliche"');
+    expect(html).toMatch(/aria-label="Torneo de boliche"[^>]*>(?:(?!<\/a>).)*lucide-circle-dot(?:(?!<\/a>).)*lucide-trophy/);
+  });
+
   it('arriba a la derecha, después de «Crear o unirme», la lupa (buscar personas y ligas)', () => {
     const html = render();
     const header = /<header[^>]*>(.*?)<\/header>/.exec(html)![1];

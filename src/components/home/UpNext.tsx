@@ -1,4 +1,5 @@
 import type { CalendarItem } from '../../lib/calendar';
+import { SportCorner } from '../SportMark';
 import { Badge, Card, DateBlock, ListRow, SectionHeader, sectionLinkClass } from '../ui';
 import { LiveDot } from './TodayCard';
 import { upNextSubtitle } from './logic';
@@ -11,8 +12,9 @@ export const UP_NEXT_SHOWN = 3;
 export const canRsvp = (it: CalendarItem) => it.kind === 'event' && it.sport === 'bowling' && it.type === 'practica' && !!it.eventId && !!it.playerId;
 
 /**
- * «Lo que viene»: las próximas fechas (sin la que ya sale arriba en la tarjeta de hoy), con el mes y el día (OCT / 13),
- * el día de la semana y la hora, y «Voy» en línea en las prácticas. «Calendario» abre la semana completa.
+ * «Lo que viene»: las próximas fechas (sin la que ya sale arriba en la tarjeta de hoy), con el mes y el día (OCT / 13)
+ * y el deporte (o el juego) en su esquina, el día de la semana y la hora, y «Voy» en línea en las prácticas.
+ * «Calendario» abre la semana completa.
  */
 export function UpNext({
   items,
@@ -47,7 +49,11 @@ export function UpNext({
           {shown.map((it) => (
             <ListRow
               key={it.key}
-              leading={<DateBlock date={it.date} />}
+              leading={
+                <SportCorner sport={it.sport} game={it.game}>
+                  <DateBlock date={it.date} />
+                </SportCorner>
+              }
               title={it.name}
               subtitle={upNextSubtitle(it, today, showLeague)}
               to={it.href}

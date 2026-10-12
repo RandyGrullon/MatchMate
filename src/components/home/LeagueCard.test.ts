@@ -1,7 +1,7 @@
 /**
  * El cuadrito de una liga (LeagueIcon) y su fila (LeagueRow) dibujados sin navegador (renderToString): con logo,
  * la imagen (sin texto alternativo: el nombre ya está al lado); mientras llega su URL, un cuadro vacío del mismo
- * tamaño; sin logo, el ícono del deporte o el trofeo, como siempre.
+ * tamaño; sin logo, el ícono del deporte (en un torneo, con el trofeo chico en la esquina).
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -66,9 +66,13 @@ describe('cuadrito de la liga', () => {
     expect(render(h(LeagueIcon, { league: league(), size: 'xl' }))).toContain('size-16 rounded-2xl');
   });
 
-  it('un torneo sin logo sigue con su trofeo', () => {
+  it('un torneo sin logo: el ícono de su deporte con el trofeo chico (también dice de qué deporte es)', () => {
     const html = render(h(LeagueIcon, { league: league({ kind: 'torneo' }) }));
     expect(html).toContain('lucide-trophy');
+    expect(html).toContain('lucide-circle-dot');
+    expect(render(h(LeagueIcon, { league: league({ kind: 'torneo', sport: 'padel' }), size: 'xl' }))).toMatch(/lucide-grid-2x2[^"]*size-8/);
+    // Una liga de esports con su juego: el monograma.
+    expect(render(h(LeagueIcon, { league: league({ sport: 'esports', game: 'valorant' }) }))).toContain('>VAL</text>');
   });
 
   it('LeagueLogo: sin ruta, lo de adentro (o nada)', () => {
