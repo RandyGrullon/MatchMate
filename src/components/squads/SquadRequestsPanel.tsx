@@ -44,7 +44,7 @@ function RequestRow({ lid, request: r, onReject }: { lid: string; request: Squad
   async function accept() {
     const ok = await confirm({
       title: `¿Aceptar a ${r.squad.name}?`,
-      message: `Se crea el equipo en la liga y sus ${countWord(r.squad.members, 'miembro entra', 'miembros entran')} como jugadores. Quien ya está en otro equipo de la temporada se queda donde está.`,
+      message: `Se crea el equipo en la liga y ${r.squad.members === 1 ? 'su único miembro entra como jugador' : `sus ${countWord(r.squad.members, 'miembro', 'miembros')} entran como jugadores`}. Quien ya está en otro equipo de la temporada se queda donde está.`,
       confirmText: 'Aceptar equipo',
     });
     if (!ok) return;

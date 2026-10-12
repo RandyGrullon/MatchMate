@@ -59,7 +59,7 @@ function LeagueBody({ squad, onDone }: { squad: SquadPage; onDone: () => void })
   async function ask(l: Pickable) {
     const ok = await confirm({
       title: `¿Pedir entrar a ${l.name}?`,
-      message: `Los admins de la liga deciden. Si aceptan, el equipo entra con sus ${countWord(squad.members, 'miembro', 'miembros')}.`,
+      message: `Los admins de la liga deciden. Si aceptan, el equipo entra ${squad.members === 1 ? 'con su único miembro' : `con sus ${countWord(squad.members, 'miembro', 'miembros')}`}.`,
       confirmText: 'Pedir entrar',
     });
     if (!ok) return;

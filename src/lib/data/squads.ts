@@ -429,7 +429,8 @@ export async function decideSquadRequest(lid: string, requestId: string, approve
   try {
     return await rpc<SquadDecision>('decide_squad_request', { p_request: requestId, p_approve: approve, p_note: note?.trim() || null });
   } finally {
-    invalidate(squadTags.requests(lid), tags.league(lid), tags.members, `seasons:${lid}`);
+    // También la página del equipo (sus ligas y su estado) y mis equipos: el admin puede ser del mismo equipo.
+    invalidate(squadTags.all, squadTags.requests(lid), tags.league(lid), tags.members, `seasons:${lid}`);
   }
 }
 
