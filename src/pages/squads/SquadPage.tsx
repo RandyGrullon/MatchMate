@@ -1,69 +1,41 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Crown, ImageUp, LogOut, Newspaper, Pencil, Send, Shield, Trash2, Trophy, UserPlus, Users } from 'lucide-react';
+import { ImageUp, LogOut, Newspaper, Pencil, Shield, Swords, Trash2, Trophy, UserPlus, Users } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useSquadPosts } from '../../lib/data/posts';
-import {
-  deleteSquad,
-  leaveSquad,
-  recordText,
-  squadErrorText,
-  syncSquadRoster,
-  useSquad,
-  withdrawSquadRequest,
-  type SquadLeague,
-  type SquadMember,
-  type SquadPage as SquadData,
-} from '../../lib/data/squads';
+import { deleteSquad, leaveSquad, squadErrorText, useMySquadInvites, useSquad, type SquadMember, type SquadPage as SquadData } from '../../lib/data/squads';
 import { useIsPro } from '../../lib/useMode';
-import { sportMeta } from '../../sports/registry';
-import { Avatar } from '../../components/Avatar';
 import { useBusy } from '../../components/busy';
 import { EventMenu, MoreButton, type MenuItem } from '../../components/event/EventHeader';
 import { useFeedback } from '../../components/feedback';
 import { LeagueTopBar } from '../../components/league/home/LeagueTopBar';
-import { LeagueTile } from '../../components/ligas/LigasRows';
 import { ComposerCard } from '../../components/posts/Composer';
 import { PostList } from '../../components/posts/PostList';
 import { DeadInvite } from '../../components/screens/InviteBits';
 import { SignInCard, linkButton } from '../../components/screens/ScreenBits';
 import { Quiet } from '../../components/search/SearchRows';
 import { AppShell } from '../../components/Shell';
-import { userPath } from '../../components/social/UserLink';
-import {
-  LEAGUE_STATUS_TEXT,
-  SQUAD_TABS,
-  canEnterLeagues,
-  leaguesSoonText,
-  memberLine,
-  requestErrorText,
-  shownLeagues,
-  sortRoster,
-  squadMenu,
-  squadTab,
-  squadViewer,
-  syncErrorText,
-  syncText,
-  type SquadMenuKey,
-  type SquadTab,
-  type SquadViewer,
-} from '../../components/squads/logic';
-import { LeagueStatusBadge, RowWithActions, SquadLogo, SquadTint } from '../../components/squads/SquadBits';
+import { SQUAD_TABS, squadMenu, squadTab, squadViewer, type SquadMenuKey, type SquadTab, type SquadViewer } from '../../components/squads/logic';
+import { SquadTint } from '../../components/squads/SquadBits';
 import { SquadFollowButton } from '../../components/squads/SquadFollowButton';
-import { Badge, Button, Card, ListRow, ListSkeleton, LoadError, Loading, PageSkeleton, SectionHeader, Segmented, cx } from '../../components/ui';
-import { SportIcon } from '../sports/SportBits';
+import { SquadCounters, SquadFollowersSheet, SquadHeader } from '../../components/squads/SquadHeader';
+import { SquadInviteBanner } from '../../components/squads/SquadInviteBanner';
+import { SquadGamesTab, SquadRosterTab, SquadStatsTab, SquadTournamentsTab } from '../../components/squads/SquadTabs';
+import { Button, LoadError, Loading, PageSkeleton, Tabs } from '../../components/ui';
 import { EditSquadSheet, SquadLogoSheet } from './EditSquadSheet';
 import { SquadInviteSheet } from './SquadInviteSheet';
 import { SquadLeagueSheet } from './SquadLeagueSheet';
 import { SquadMemberSheet } from './SquadMemberSheet';
 
 /**
- * Un equipo (`/equipos/:squadId`): arriba, en su color, el logo (o el tag en un círculo), el nombre, el tag, el
- * deporte, la ciudad, «Busca jugadores» y miembros · seguidores · récord. Quien no es miembro lo sigue; el capitán
- * invita (la hoja con el código, el link, el QR y compartir; `?invitar=1` la abre, como al crear el equipo). «•••»:
- * editar, logo, salir y borrar (el capitán) o salir (un miembro). Pestañas (`?tab=`): Plantilla (el capitán toca a
- * alguien para su posición y número, la capitanía o sacarlo), Muro (publican los miembros) y Ligas (inscribirlo en una
- * liga de su deporte: fútbol, futsal o baloncesto). Sin cuenta: lo de arriba y entrar para ver la plantilla.
+ * Un equipo (`/equipos/:squadId`) como un perfil (docs/perfiles-equipos-esports.md §3): arriba, en su color, el logo (o
+ * el tag en un círculo), el nombre, «[TAG] · deporte · ciudad», «Busca jugadores» y la descripción; el capitán invita
+ * (la hoja con la búsqueda de personas, las invitaciones pendientes y el código, el link y el QR; `?invitar=1` la abre,
+ * como al crear el equipo) y quien no es miembro lo sigue (con una invitación pendiente, Aceptar · Rechazar). Debajo,
+ * Publicaciones · Seguidores · Me gusta · Miembros y el récord, y las pestañas (`?tab=`): Publicaciones (el muro;
+ * publican los miembros), Juegos, Torneos, Estadísticas (el récord, las ligas por temporada y «Inscribir en una liga»)
+ * y Plantilla (`?jugador=<id>`: la tarjeta de esa persona arriba; así enlaza el perfil global). «•••»: editar, logo,
+ * salir y borrar (el capitán) o salir (un miembro). Sin cuenta: lo de arriba, los seguidores y entrar para lo demás.
  */
 export default function SquadPage() {
   const { squadId = '' } = useParams();
@@ -93,12 +65,17 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
   const data = useSquad(id);
   const squad = data.data;
   const viewer = squadViewer(squad);
-  const tab = squadTab(params.get('tab'));
+  // Una invitación pendiente a este equipo (el push lleva aquí): Aceptar · Rechazar en lugar de Seguir.
+  const myInvites = useMySquadInvites();
+  const invite = uid && viewer === 'none' ? myInvites.data.find((i) => i.squad.id === id) : undefined;
+  const jugador = params.get('jugador');
+  const tab = squadTab(params.get('tab'), jugador);
   const [menu, setMenu] = useState(false);
-  const [sheet, setSheet] = useState<'edit' | 'logo' | 'liga' | null>(null);
+  const [sheet, setSheet] = useState<'edit' | 'logo' | 'liga' | 'seguidores' | null>(null);
   const [picked, setPicked] = useState<SquadMember | null>(null);
   const inviting = params.get('invitar') === '1' && viewer === 'captain';
   const createdCode = (location.state as { inviteCode?: string } | null)?.inviteCode ?? null;
+  const next = encodeURIComponent(location.pathname + location.search);
 
   const setParam = (key: string, value: string | null) =>
     setParams(
@@ -110,6 +87,8 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
       },
       { replace: true },
     );
+  // La pestaña de entrada no va en el link (con `?jugador=` la de entrada es Plantilla).
+  const setTab = (t: SquadTab) => setParam('tab', t === squadTab(null, jugador) ? null : t);
 
   if (data.loading && !squad) {
     return (
@@ -146,51 +125,53 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
   }
 
   const menuKeys = squadMenu(viewer, squad.members);
+  const signIn = (icon: ReactNode, title: string, text: string) => <SignInCard icon={icon} title={title} text={text} next={next} />;
+
+  let content: ReactNode;
+  if (tab === 'publicaciones') {
+    content = uid ? <Wall squad={squad} viewer={viewer} /> : signIn(<Newspaper />, 'Entra para ver sus publicaciones', 'Con tu cuenta ves su muro, lo comentas y te enteras de sus partidos.');
+  } else if (tab === 'juegos') {
+    content = uid ? <SquadGamesTab squadId={squad.id} pro={pro} /> : signIn(<Swords />, 'Entra para ver sus partidos', 'Con tu cuenta ves sus partidos en cada liga, con el resultado.');
+  } else if (tab === 'torneos') {
+    content = uid ? <SquadTournamentsTab squadId={squad.id} pro={pro} /> : signIn(<Trophy />, 'Entra para ver sus partidos', 'Con tu cuenta ves los torneos que jugó y cómo le fue.');
+  } else if (tab === 'estadisticas') {
+    content = uid ? (
+      <SquadStatsTab squad={squad} viewer={viewer} pro={pro} onRequest={() => setSheet('liga')} />
+    ) : (
+      signIn(<Trophy />, 'Entra para ver sus partidos', 'Con tu cuenta ves su récord por liga y por temporada.')
+    );
+  } else {
+    content = uid ? (
+      <SquadRosterTab squad={squad} viewer={viewer} pro={pro} highlight={jugador} onPick={setPicked} />
+    ) : (
+      signIn(<Users />, 'Entra para ver la plantilla', 'Con tu cuenta ves quiénes juegan, con su posición y su número.')
+    );
+  }
 
   return (
     <SquadTint color={squad.color} sport={squad.sport}>
       <div className="flex flex-col px-2">
         <TopBar actions={menuKeys.length > 0 && <MoreButton onClick={() => setMenu(true)} />} />
-        <SquadHero squad={squad} pro={pro} />
+        <SquadHeader squad={squad} pro={pro} />
 
-        {viewer === 'captain' ? (
-          <Button variant="primary" size={pro ? 'lg' : 'xl'} className="mt-5 w-full" icon={<UserPlus className="size-5" />} onClick={() => setParam('invitar', '1')}>
+        {invite ? (
+          <SquadInviteBanner invite={invite} squadName={squad.name} />
+        ) : viewer === 'captain' ? (
+          <Button variant="primary" size={pro ? 'lg' : 'xl'} className="mt-3.5 w-full" icon={<UserPlus className="size-5" />} onClick={() => setParam('invitar', '1')}>
             Invitar
           </Button>
         ) : viewer === 'none' ? (
-          <SquadFollowButton squadId={squad.id} name={squad.name} following={squad.isFollowing} className="mt-5 h-12! w-full text-base" />
+          <SquadFollowButton squadId={squad.id} name={squad.name} following={squad.isFollowing} className="mt-3.5 h-12! w-full text-base" />
         ) : null}
 
-        {!uid ? (
-          <SignInCard
-            className="mt-6"
-            icon={<Users />}
-            title="Entra para ver la plantilla"
-            text="Con tu cuenta ves quiénes juegan, su muro y en qué ligas está el equipo."
-            next={encodeURIComponent(location.pathname + location.search)}
-          />
-        ) : (
-          <>
-            <Segmented<SquadTab>
-              options={SQUAD_TABS}
-              value={tab}
-              onChange={(t) => setParam('tab', t === 'plantilla' ? null : t)}
-              label="Qué ver del equipo"
-              full
-              className="mt-6"
-            />
-            <div className="mt-5">
-              {tab === 'plantilla' ? (
-                <Roster squad={squad} viewer={viewer} pro={pro} onPick={setPicked} />
-              ) : tab === 'muro' ? (
-                <Wall squad={squad} viewer={viewer} />
-              ) : (
-                <Leagues squad={squad} viewer={viewer} pro={pro} onRequest={() => setSheet('liga')} />
-              )}
-            </div>
-          </>
-        )}
+        <SquadCounters squad={squad} onTab={setTab} onFollowers={() => setSheet('seguidores')} />
 
+        <div className="mt-[26px]">
+          <Tabs<SquadTab> items={[...SQUAD_TABS]} active={tab} onChange={setTab} />
+        </div>
+        <div className="mt-5">{content}</div>
+
+        <SquadFollowersSheet squad={squad} open={sheet === 'seguidores'} onClose={() => setSheet(null)} />
         <SquadMenu
           open={menu}
           onClose={() => setMenu(false)}
@@ -215,81 +196,7 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
   );
 }
 
-/** Lo de arriba, en el color del equipo. */
-function SquadHero({ squad, pro }: { squad: SquadData; pro: boolean }) {
-  const meta = sportMeta(squad.sport);
-  const record = recordText(squad.record);
-  return (
-    <header className="mt-1 flex flex-col items-center rounded-[28px] bg-accent-soft px-5 pt-7 pb-5 text-center">
-      <SquadLogo squad={squad} className="size-24" />
-      <h1 className={cx(pro ? 'text-title-pro' : 'text-title', 'mt-4 max-w-full break-words')}>{squad.name}</h1>
-      <p className="mt-0.5 text-body font-semibold tracking-[0.08em] text-fg-2">[{squad.tag}]</p>
-      <p className="mt-1.5 inline-flex flex-wrap items-center justify-center gap-x-1.5 text-meta">
-        <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
-          <SportIcon sport={squad.sport} className="size-4" />
-          {meta?.label ?? 'Otro deporte'}
-        </span>
-        {squad.city && <span className="text-fg-2">· {squad.city}</span>}
-      </p>
-      {squad.recruiting && (
-        <Badge tone="accent" className="mt-2.5 bg-surface!">
-          Busca jugadores
-        </Badge>
-      )}
-      {squad.description && <p className="mt-2.5 max-w-md text-body break-words whitespace-pre-line text-fg-2">{squad.description}</p>}
-      <ul aria-label="Números del equipo" className="mt-5 grid w-full max-w-sm grid-cols-3 divide-x divide-line rounded-2xl bg-surface py-3">
-        <Counter value={squad.members.toLocaleString('es-DO')} label={squad.members === 1 ? 'miembro' : 'miembros'} />
-        <Counter value={squad.followers.toLocaleString('es-DO')} label={squad.followers === 1 ? 'seguidor' : 'seguidores'} />
-        <Counter value={record || '—'} label="récord" small={!!record} />
-      </ul>
-    </header>
-  );
-}
-
-/** Un número de arriba: grande, y qué es debajo («3 miembros»). */
-function Counter({ value, label, small }: { value: string; label: string; small?: boolean }) {
-  return (
-    <li className="flex min-w-0 flex-col items-center px-1">
-      <b className={cx('num max-w-full truncate', small ? 'text-[15px] leading-7' : 'text-xl')}>{value}</b> <span className="text-xs text-muted">{label}</span>
-    </li>
-  );
-}
-
-// ---------- Plantilla ----------
-
-function Roster({ squad, viewer, pro, onPick }: { squad: SquadData; viewer: SquadViewer; pro: boolean; onPick: (m: SquadMember) => void }) {
-  const roster = useMemo(() => sortRoster(squad.roster), [squad.roster]);
-  if (!roster.length) return <ListSkeleton rows={Math.min(5, Math.max(1, squad.members))} />;
-  return (
-    <section aria-label="Plantilla">
-      {viewer === 'captain' && <p className="mx-1 mb-3 text-meta text-muted">Toca a alguien para su posición y número, pasarle la capitanía o sacarlo.</p>}
-      <Card className="overflow-hidden">
-        {roster.map((m) => (
-          <ListRow
-            key={m.id}
-            dense={pro}
-            me={m.isMe}
-            leading={<Avatar name={m.name} photo={m.avatar} className="size-10 text-sm" />}
-            title={m.isMe ? `${m.name} (tú)` : m.name}
-            subtitle={memberLine(m) || undefined}
-            trailing={
-              m.role === 'captain' ? (
-                <Badge tone="accent">
-                  <Crown aria-hidden="true" className="size-3" />
-                  Capitán
-                </Badge>
-              ) : undefined
-            }
-            chevron={viewer === 'captain' ? true : undefined}
-            {...(viewer === 'captain' ? { onClick: () => onPick(m), ariaLabel: `${m.name}: opciones` } : { to: userPath(m.id) })}
-          />
-        ))}
-      </Card>
-    </section>
-  );
-}
-
-// ---------- Muro ----------
+// ---------- Publicaciones ----------
 
 function Wall({ squad, viewer }: { squad: SquadData; viewer: SquadViewer }) {
   const posts = useSquadPosts(squad.id);
@@ -307,93 +214,6 @@ function Wall({ squad, viewer }: { squad: SquadData; viewer: SquadViewer }) {
         }
       />
     </div>
-  );
-}
-
-// ---------- Ligas ----------
-
-function Leagues({ squad, viewer, pro, onRequest }: { squad: SquadData; viewer: SquadViewer; pro: boolean; onRequest: () => void }) {
-  const { toast, confirm } = useFeedback();
-  const act = useBusy<string>();
-  const leagues = useMemo(() => shownLeagues(squad.leagues), [squad.leagues]);
-  const captain = viewer === 'captain';
-
-  if (!canEnterLeagues(squad.sport)) {
-    return (
-      <Quiet icon={<Trophy />} title="Ligas">
-        {leaguesSoonText(squad.sport)}
-      </Quiet>
-    );
-  }
-
-  async function withdraw(l: SquadLeague) {
-    const ok = await confirm({ title: `¿Retirar la solicitud a ${l.name}?`, message: 'Puedes volver a pedir cuando quieras.', confirmText: 'Retirar', danger: true });
-    if (!ok) return;
-    await act.run(l.requestId, async () => {
-      try {
-        await withdrawSquadRequest(squad.id, l);
-        toast('Solicitud retirada');
-      } catch (e) {
-        console.error(e);
-        toast(requestErrorText(e), 'error');
-      }
-    });
-  }
-
-  async function sync(l: SquadLeague) {
-    await act.run(l.requestId, async () => {
-      try {
-        toast(syncText(await syncSquadRoster(squad.id, l.leagueId)));
-      } catch (e) {
-        console.error(e);
-        toast(syncErrorText(e), 'error');
-      }
-    });
-  }
-
-  return (
-    <section aria-labelledby="ligas-del-equipo" className="flex flex-col">
-      <SectionHeader id="ligas-del-equipo" title="Ligas del equipo" />
-      {leagues.length ? (
-        <Card className="overflow-hidden">
-          {leagues.map((l) => (
-            <RowWithActions
-              key={l.requestId}
-              row={
-                <ListRow
-                  dense={pro}
-                  to={`/l/${l.leagueId}`}
-                  leading={<LeagueTile league={{ id: l.leagueId, sport: l.sport, kind: 'liga', logoPath: l.logo }} dense />}
-                  title={l.name}
-                  subtitle={recordText(l.record) || (l.status === 'approved' ? 'Sin partidos todavía' : LEAGUE_STATUS_TEXT[l.status])}
-                  trailing={<LeagueStatusBadge status={l.status} />}
-                />
-              }
-              actions={
-                captain && l.status === 'pending' ? (
-                  <Button variant="quiet" className="h-11 sm:h-9" loading={act.isBusy(l.requestId)} disabled={act.isBusy()} onClick={() => void withdraw(l)}>
-                    Retirar solicitud
-                  </Button>
-                ) : captain && l.status === 'approved' ? (
-                  <Button variant="quiet" className="h-11 sm:h-9" loading={act.isBusy(l.requestId)} disabled={act.isBusy()} icon={<UserPlus className="size-4" />} onClick={() => void sync(l)}>
-                    Pasar miembros nuevos
-                  </Button>
-                ) : undefined
-              }
-            />
-          ))}
-        </Card>
-      ) : (
-        <Quiet icon={<Trophy />} title="Todavía no juega en ninguna liga">
-          {captain ? `Inscríbelo en una liga de ${sportMeta(squad.sport)?.lower ?? 'su deporte'}: los admins de la liga deciden.` : 'Cuando el capitán lo inscriba en una liga, sale aquí.'}
-        </Quiet>
-      )}
-      {captain && (
-        <Button variant="soft" size={pro ? 'lg' : 'xl'} className="mt-4 w-full" icon={<Send className="size-5" />} onClick={onRequest}>
-          Inscribir en una liga
-        </Button>
-      )}
-    </section>
   );
 }
 
@@ -464,7 +284,7 @@ function SquadMenu({
         label: 'Salir del equipo',
         hint: 'Primero pásale la capitanía a alguien',
         danger: true,
-        onClick: () => toast('Primero pásale la capitanía a alguien: toca su nombre en la plantilla.', 'error'),
+        onClick: () => toast('Primero pásale la capitanía a alguien: en la plantilla, toca «•••» en su fila.', 'error'),
       };
     return {
       key: k,

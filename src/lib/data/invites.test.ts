@@ -157,7 +157,7 @@ describe('tiempo real de invitaciones', () => {
   };
 
   it("'invites' en user: mis invitaciones, la búsqueda, mis membresías y la campana", () => {
-    expect(invalidated('user:u1', 'invites')).toEqual(['invites:me', 'people:search', 'members', 'feeds']);
+    expect(invalidated('user:u1', 'invites')).toEqual(['invites:me', 'people:search', 'members', 'feeds', 'squads:invites:mine']);
   });
 
   it("'invites' en league: las de esa liga y la búsqueda", () => {

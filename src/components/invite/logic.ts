@@ -19,11 +19,17 @@ export function canInviteTo(league: Pick<League, 'visibility'>, isAdmin: boolean
 
 // ---------- Personas ----------
 
-/** Por qué no se puede elegir a alguien: ya está en la liga o ya tiene una invitación pendiente. */
+/**
+ * A dónde se invita: una liga, un torneo o un equipo (`squad`, la hoja de invitar al equipo: src/pages/squads). Con un
+ * equipo, la búsqueda trae `inSquad` en vez de `inLeague` (src/lib/data/people.ts).
+ */
+export type InviteTarget = LeagueKind | 'squad';
+
+/** Por qué no se puede elegir a alguien: ya está en la liga (o el equipo) o ya tiene una invitación pendiente. */
 export type PersonState = 'member' | 'invited' | null;
 
-export function personState(hit: Pick<PersonHit, 'inLeague' | 'invited'>): PersonState {
-  return hit.inLeague ? 'member' : hit.invited ? 'invited' : null;
+export function personState(hit: Pick<PersonHit, 'inLeague' | 'invited' | 'inSquad'>): PersonState {
+  return hit.inLeague || hit.inSquad ? 'member' : hit.invited ? 'invited' : null;
 }
 
 export const PERSON_STATE_TEXT: Record<Exclude<PersonState, null>, string> = {
@@ -31,13 +37,14 @@ export const PERSON_STATE_TEXT: Record<Exclude<PersonState, null>, string> = {
   invited: 'Invitado',
 };
 
-/** La marca de la tarjeta: «En la liga» o, en un torneo, «En el torneo»; «Invitado». */
-export function personStateText(state: Exclude<PersonState, null>, kind: LeagueKind = 'liga'): string {
+/** La marca de la tarjeta: «En la liga» o, en un torneo, «En el torneo» (en un equipo, «Ya está»); «Invitado». */
+export function personStateText(state: Exclude<PersonState, null>, kind: InviteTarget = 'liga'): string {
+  if (state === 'member' && kind === 'squad') return 'Ya está';
   return state === 'member' && kind === 'torneo' ? 'En el torneo' : PERSON_STATE_TEXT[state];
 }
 
-/** «la liga» o «el torneo». */
-export const leagueNounOf = (kind: LeagueKind | null | undefined) => (kind === 'torneo' ? 'el torneo' : 'la liga');
+/** «la liga», «el torneo» o «el equipo». */
+export const leagueNounOf = (kind: InviteTarget | null | undefined) => (kind === 'torneo' ? 'el torneo' : kind === 'squad' ? 'el equipo' : 'la liga');
 
 /** El título de la hoja y del botón que la abre: «Invitar a la liga» o «Invitar al torneo». */
 export const inviteTitle = (kind: LeagueKind | null | undefined) => (kind === 'torneo' ? 'Invitar al torneo' : 'Invitar a la liga');
@@ -45,8 +52,8 @@ export const inviteTitle = (kind: LeagueKind | null | undefined) => (kind === 't
 /** @usuario con la arroba (null si todavía no llegó: perfiles guardados de antes). */
 export const handleOf = (username: string | null | undefined) => (username ? `@${username}` : null);
 
-/** Lo que lee el lector de pantalla en cada tarjeta: «Ana Pérez, @ana, ya está en la liga» (o «en el torneo»). */
-export function personLabel(hit: PersonHit, kind: LeagueKind = 'liga'): string {
+/** Lo que lee el lector de pantalla en cada tarjeta: «Ana Pérez, @ana, ya está en la liga» (o «en el torneo», «en el equipo»). */
+export function personLabel(hit: PersonHit, kind: InviteTarget = 'liga'): string {
   const state = personState(hit);
   const parts = [hit.name || handleOf(hit.username) || 'Sin nombre'];
   const handle = handleOf(hit.username);

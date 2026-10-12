@@ -82,7 +82,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     }
     if (msg.event === 'claims') return invalidate('claims:me', tags.members, tags.feeds);
     // Me invitaron, o una que mandé se aceptó, rechazó o retiró (aceptar también cambia mis membresías).
-    if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds);
+    // También las invitaciones a equipos (squadInviteTags.mine de ./squads): la tarjeta de Avisos y la página del equipo.
+    if (msg.event === 'invites') return invalidate(tags.myInvites, 'people:search', tags.members, tags.feeds, 'squads:invites:mine');
     // Me nombraron o me quitaron de anotador, o entré con un link para anotar: mis membresías (y esa liga).
     if (msg.event === 'scorers') {
       const league = (msg.payload as { league_id?: unknown } | null)?.league_id;

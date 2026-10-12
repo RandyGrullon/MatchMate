@@ -12,6 +12,7 @@ import {
   inviteLink,
   inviteShareText,
   inviteTitle,
+  leagueNounOf,
   peopleView,
   personLabel,
   personState,
@@ -74,6 +75,22 @@ describe('las personas', () => {
     expect(personLabel(hit('a', { name: 'Ana', username: 'ana', inLeague: true }), 'torneo')).toBe('Ana, @ana, ya está en el torneo');
     expect(inviteTitle('liga')).toBe('Invitar a la liga');
     expect(inviteTitle('torneo')).toBe('Invitar al torneo');
+  });
+
+  it('en un equipo: los miembros (inSquad) salen «Ya está» y no se eligen; «Invitado» igual que en una liga', () => {
+    expect(personState(hit('a', { inSquad: true }))).toBe('member');
+    expect(personState(hit('a', { inSquad: true, invited: true }))).toBe('member');
+    expect(personState(hit('a', { inSquad: false, invited: true }))).toBe('invited');
+    expect(personState(hit('a', { inSquad: false }))).toBeNull();
+    expect(personStateText('member', 'squad')).toBe('Ya está');
+    expect(personStateText('invited', 'squad')).toBe('Invitado');
+    expect(leagueNounOf('squad')).toBe('el equipo');
+    expect(personLabel(hit('a', { name: 'Ana', username: 'ana', inSquad: true }), 'squad')).toBe('Ana, @ana, ya está en el equipo');
+    const none: ReadonlyMap<string, PersonHit> = new Map();
+    expect(toggleSelected(none, hit('a', { inSquad: true }))).toBe(none);
+    // El tope del equipo (lo que le cabe) también vale aquí.
+    const one = toggleSelected(none, hit('a'), 1);
+    expect(toggleSelected(one, hit('b'), 1)).toBe(one);
   });
 
   it('después de enviar: salen quienes ya quedaron invitados o en la liga; se quedan a los que no les llegó', () => {

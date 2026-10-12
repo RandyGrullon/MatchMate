@@ -4,7 +4,7 @@ import { INVITE_MAX, inviteErrorText, inviteResultSummary, sendInvites } from '.
 import { getInviteCode, renewInviteCode } from '../../lib/data/leagues';
 import { usePeople, type PersonHit } from '../../lib/data/people';
 import { useTopic } from '../../lib/data/topics';
-import type { League, LeagueKind } from '../../lib/types';
+import type { League } from '../../lib/types';
 import { Avatar } from '../Avatar';
 import { BusyIcon, useBusy } from '../busy';
 import { useFeedback } from '../feedback';
@@ -27,6 +27,7 @@ import {
   sendTone,
   toggleSelected,
   type InviteLink,
+  type InviteTarget,
   type PeopleView,
 } from './logic';
 import { shareOrigin } from '../../lib/origin';
@@ -164,34 +165,7 @@ function InviteSheetOpen({
         buscador queda arriba, a la vista.
       */}
       <div className="min-h-[55dvh] sm:min-h-80">
-        <div className="sticky top-0 z-10 -mx-5 bg-surface px-5 pb-3">
-          <label className="relative block">
-            <span className="sr-only">Buscar personas</span>
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-            <Input
-              type="search"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Busca por nombre o @usuario"
-              className="h-11 pr-11 pl-9"
-              enterKeyHint="search"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              maxLength={60}
-            />
-            {input && (
-              <button
-                type="button"
-                onClick={() => setInput('')}
-                aria-label="Borrar búsqueda"
-                className="absolute top-1/2 right-0 flex size-11 -translate-y-1/2 items-center justify-center text-muted hover:text-fg"
-              >
-                <X className="size-4" />
-              </button>
-            )}
-          </label>
-        </div>
+        <PeopleSearch value={input} onChange={setInput} />
 
         <PeopleList
           view={view}
@@ -205,6 +179,40 @@ function InviteSheetOpen({
         />
       </div>
     </Sheet>
+  );
+}
+
+/** El buscador de personas (nombre o @usuario), fijo arriba de la hoja mientras se baja por la lista. */
+export function PeopleSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="sticky top-0 z-10 -mx-5 bg-surface px-5 pb-3">
+      <label className="relative block">
+        <span className="sr-only">Buscar personas</span>
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+        <Input
+          type="search"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Busca por nombre o @usuario"
+          className="h-11 pr-11 pl-9 [&::-webkit-search-cancel-button]:hidden"
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          maxLength={60}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label="Borrar búsqueda"
+            className="absolute top-1/2 right-0 flex size-11 -translate-y-1/2 items-center justify-center text-muted hover:text-fg"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </label>
+    </div>
   );
 }
 
@@ -228,8 +236,8 @@ export function PeopleList({
   error?: Error | null;
   selected: ReadonlyMap<string, PersonHit>;
   onToggle: (hit: PersonHit) => void;
-  /** Liga o torneo («En la liga» / «En el torneo»). */
-  kind?: LeagueKind;
+  /** Liga, torneo o equipo («En la liga» / «En el torneo» / «Ya está»). */
+  kind?: InviteTarget;
 }) {
   const grid = (
     <ul className={cx('grid grid-cols-4 gap-2 sm:grid-cols-5', !settled && 'opacity-70 transition-opacity')} aria-busy={!settled}>
@@ -274,7 +282,7 @@ export function PeopleList({
  * los deportes del selector). Quien ya está en la liga o ya tiene invitación sale con eso y no se puede elegir; si
  * pasó a estarlo mientras estaba elegida (otro la invitó, llegó el tiempo real), se puede soltar.
  */
-export function PersonTile({ hit, selected, onToggle, kind = 'liga' }: { hit: PersonHit; selected: boolean; onToggle: () => void; kind?: LeagueKind }) {
+export function PersonTile({ hit, selected, onToggle, kind = 'liga' }: { hit: PersonHit; selected: boolean; onToggle: () => void; kind?: InviteTarget }) {
   const state = personState(hit);
   const handle = handleOf(hit.username);
   const locked = !!state && !selected;
@@ -291,7 +299,7 @@ export function PersonTile({ hit, selected, onToggle, kind = 'liga' }: { hit: Pe
         locked ? 'cursor-default' : 'hover:bg-surface-2 active:scale-[0.97]',
       )}
     >
-      <Avatar name={hit.name || hit.username} className={cx('size-14 text-lg', state && 'opacity-50')} />
+      <Avatar name={hit.name || hit.username} photo={hit.avatar} className={cx('size-14 text-lg', state && 'opacity-50')} />
       <span className="line-clamp-1 w-full text-xs font-medium break-all">{hit.name || handle}</span>
       {state ? (
         <span className="w-full truncate text-[11px] font-medium text-accent">{personStateText(state, kind)}</span>

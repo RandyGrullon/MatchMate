@@ -1,7 +1,8 @@
 /**
  * Las piezas de Equipos sin navegador: lo puro (textos, quién hace qué, pestañas, unirse, avisos de aceptar y pasar
- * miembros), el logo y el color del equipo, Seguir / Siguiendo y el panel de los admins con los equipos que piden entrar
- * a la liga (Aceptar · Rechazar; sin pendientes no se ve).
+ * miembros; el equipo como perfil: partidos, ligas por temporada, torneos, invitar y responder), el logo y el color del
+ * equipo, Seguir / Siguiendo y el panel de los admins con los equipos que piden entrar a la liga (Aceptar · Rechazar;
+ * sin pendientes no se ve).
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -10,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BLOCKED_MESSAGE } from '../../lib/backend/errors';
 import { BackendError } from '../../lib/backend/types';
 import type { Live } from '../../lib/data/client';
-import type { SquadLeague, SquadLite, SquadMember, SquadRequest } from '../../lib/data/squads';
+import type { SquadInviteStatus, SquadLeague, SquadLite, SquadMember, SquadRequest } from '../../lib/data/squads';
 import { FeedbackProvider } from '../feedback';
 
 const state = vi.hoisted(() => ({
@@ -128,11 +129,19 @@ describe('textos', () => {
 
 describe('quién hace qué', () => {
   it('las pestañas (?tab=) y quién mira', () => {
-    expect(logic.squadTab(null)).toBe('plantilla');
-    expect(logic.squadTab('muro')).toBe('muro');
-    expect(logic.squadTab('ligas')).toBe('ligas');
-    expect(logic.squadTab('otra')).toBe('plantilla');
-    expect(logic.SQUAD_TABS.map((t) => t.label)).toEqual(['Plantilla', 'Muro', 'Ligas']);
+    expect(logic.squadTab(null)).toBe('publicaciones');
+    expect(logic.squadTab('juegos')).toBe('juegos');
+    expect(logic.squadTab('torneos')).toBe('torneos');
+    expect(logic.squadTab('estadisticas')).toBe('estadisticas');
+    expect(logic.squadTab('plantilla')).toBe('plantilla');
+    expect(logic.squadTab('otra')).toBe('publicaciones');
+    // Los links de antes: el muro es Publicaciones y las ligas están en Estadísticas.
+    expect(logic.squadTab('muro')).toBe('publicaciones');
+    expect(logic.squadTab('ligas')).toBe('estadisticas');
+    // ?jugador= (el «perfil en equipo» del perfil global) abre la Plantilla si no pide otra.
+    expect(logic.squadTab(null, 'u2')).toBe('plantilla');
+    expect(logic.squadTab('juegos', 'u2')).toBe('juegos');
+    expect(logic.SQUAD_TABS.map((t) => t.label)).toEqual(['Publicaciones', 'Juegos', 'Torneos', 'Estadísticas', 'Plantilla']);
     expect(logic.squadViewer({ isMember: true, myRole: 'captain' })).toBe('captain');
     expect(logic.squadViewer({ isMember: true, myRole: 'member' })).toBe('member');
     expect(logic.squadViewer({ isMember: false, myRole: null })).toBe('none');
@@ -212,6 +221,97 @@ describe('ligas', () => {
     // Una cuenta bloqueada ve su aviso, no «Solo el capitán…».
     const blocked = new BackendError(BLOCKED_MESSAGE, 'permission', 'bloqueada');
     for (const f of [logic.requestErrorText, logic.adminErrorText, logic.memberErrorText, logic.syncErrorText, squadErrorText]) expect(f(blocked)).toBe(BLOCKED_MESSAGE);
+  });
+});
+
+describe('el equipo como perfil', () => {
+  const rec = (won: number, drawn: number, lost: number) => ({ played: won + drawn + lost, won, drawn, lost });
+
+  it('la tarjeta del jugador y el resumen del récord', () => {
+    expect(logic.memberCardLine(member('a', { jersey: 10, position: 'Portero', role: 'captain' }))).toBe('#10 · Portero · Capitán');
+    expect(logic.memberCardLine(member('a', { jersey: 0 }))).toBe('#0 · Miembro');
+    expect(logic.memberCardLine(member('a'))).toBe('Miembro');
+    expect(logic.recordSummary(rec(5, 0, 2))).toBe('7 partidos · 71 % ganados');
+    expect(logic.recordSummary(rec(1, 0, 0))).toBe('1 partido · 100 % ganados');
+    expect(logic.recordSummary(rec(0, 0, 0))).toBe('');
+    expect(logic.recordSummary(null)).toBe('');
+    expect(logic.recordOrNone(rec(3, 1, 0))).toBe('3 G · 1 E · 0 P');
+    expect(logic.recordOrNone(rec(0, 0, 0))).toBe('Sin partidos todavía');
+  });
+
+  it('un partido: el equipo primero (también el marcador), la liga y la jornada, y G / E / P', () => {
+    expect(logic.mineFirstScore('1-3', 2)).toBe('3-1');
+    expect(logic.mineFirstScore('1-3', 1)).toBe('1-3');
+    expect(logic.mineFirstScore('4-6 6-3', 2)).toBe('6-4 3-6');
+    expect(logic.mineFirstScore('W.O.', 2)).toBe('W.O.');
+    expect(logic.mineFirstScore(null, 1)).toBeNull();
+    expect(logic.mineFirstScore('  ', 1)).toBeNull();
+    expect(logic.squadGameTitle({ mine: 'Tigres', opponent: 'Leones' })).toBe('Tigres vs Leones');
+    expect(logic.squadGameTitle({ mine: 'Tigres', opponent: null })).toBe('Tigres vs Rival por definir');
+    expect(logic.squadGameMeta({ leagueName: 'Liga Norte', stage: null, round: '3', walkover: false })).toBe('Liga Norte · Jornada 3');
+    expect(logic.squadGameMeta({ leagueName: 'Liga Norte', stage: 'Final', round: '3', walkover: true })).toBe('Liga Norte · Final · W.O.');
+    expect(logic.squadGameMeta({ leagueName: 'Liga Norte', stage: null, round: null, walkover: false })).toBe('Liga Norte');
+    expect(Object.fromEntries(Object.entries(logic.RESULT_MARK).map(([k, v]) => [k, v.short]))).toEqual({ win: 'G', draw: 'E', loss: 'P' });
+  });
+
+  it('las ligas de Estadísticas: las solicitudes con los números por temporada, y las que solo están en los números', () => {
+    const stats = [
+      {
+        leagueId: 'b',
+        name: 'Liga b',
+        kind: 'liga' as const,
+        sport: 'football',
+        logo: null,
+        record: rec(3, 1, 0),
+        seasons: [{ seasonId: 's2', name: 'Apertura 2026', record: rec(2, 1, 0) }],
+      },
+      { leagueId: 'z', name: 'Liga Vieja', kind: 'liga' as const, sport: 'football', logo: null, record: rec(1, 0, 1), seasons: [] },
+    ];
+    const rows = logic.squadLeagueRows([sl('c', 'rejected'), sl('a', 'pending'), sl('w', 'withdrawn'), sl('b', 'approved')], stats);
+    expect(rows.map((r) => [r.leagueId, r.status])).toEqual([
+      ['b', 'approved'],
+      ['a', 'pending'],
+      ['c', 'rejected'],
+      ['z', null],
+    ]);
+    expect(rows[0]!.record).toEqual(rec(3, 1, 0));
+    expect(rows[0]!.seasons.map((s) => s.name)).toEqual(['Apertura 2026']);
+    expect(rows[1]!.seasons).toEqual([]);
+    // Sin los números todavía: las solicitudes con su récord.
+    expect(logic.squadLeagueRows([sl('b', 'approved', { record: rec(1, 0, 0) })], null)[0]!.record).toEqual(rec(1, 0, 0));
+  });
+
+  it('los torneos: a su evento (o a la liga) con la fecha y el récord', () => {
+    expect(logic.tournamentPath({ leagueId: 'L1', eventId: 'E1' })).toBe('/l/L1/e/E1');
+    expect(logic.tournamentPath({ leagueId: 'L1', eventId: null })).toBe('/l/L1');
+    expect(logic.tournamentLine({ date: '2026-10-12', record: rec(3, 0, 1) })).toMatch(/^12 .*2026 · 3 G · 1 P$/);
+    expect(logic.tournamentLine({ date: null, record: rec(0, 0, 0) })).toBe('Sin partidos todavía');
+  });
+
+  it('invitar: cuánto cabe y el aviso después de enviar', () => {
+    expect(logic.squadRoom(12)).toBe(28);
+    expect(logic.squadRoom(40)).toBe(0);
+    expect(logic.squadRoom(45)).toBe(0);
+    const r = (...s: SquadInviteStatus[]) => s.map((status, i) => ({ userId: `u${i}`, status }));
+    expect(logic.squadInviteSummary(r('sent', 'sent', 'sent', 'member'))).toBe('Enviamos 3 invitaciones · 1 ya estaba');
+    expect(logic.squadInviteSummary(r('sent', 'pending', 'pending', 'unavailable', 'full', 'rate_limited'))).toBe(
+      'Enviamos 1 invitación · 2 ya tenían invitación · 1 no se puede invitar · 1 no cupo (el equipo llegó a 40) · 1 pasó el límite de hoy',
+    );
+    expect(logic.squadInviteSummary(r('member', 'member'))).toBe('No se envió ninguna invitación · 2 ya estaban');
+    expect(logic.squadInviteSummary(r('sent'))).toBe('Invitación enviada');
+    expect(logic.squadInviteSummary(r('member'))).toBe('Ya está en el equipo');
+    expect(logic.squadInviteSummary(r('full'))).toBe('El equipo ya tiene 40 miembros');
+    expect(logic.squadInviteSummary([])).toBe('No se envió ninguna invitación');
+  });
+
+  it('responder una invitación: los avisos y los errores', () => {
+    expect(logic.squadKindLabel('football')).toBe('Equipo de fútbol de campo');
+    expect(logic.squadRespondedText(true, 'Los Tigres')).toBe('Te uniste a Los Tigres');
+    expect(logic.squadRespondedText(false, 'Los Tigres')).toBe('Rechazaste la invitación');
+    expect(logic.squadInviteErrorText(new BackendError('no_existe', 'not_found'))).toBe('Esa invitación ya no está disponible.');
+    expect(logic.squadInviteErrorText(new BackendError('cupo_lleno', 'validation'))).toBe('Ese equipo ya tiene 40 miembros.');
+    expect(logic.squadInviteErrorText(new BackendError('limite', 'validation'))).toBe('Llegaste al máximo de equipos. Sal de uno para entrar a otro.');
+    expect(logic.squadInviteErrorText(new BackendError(BLOCKED_MESSAGE, 'permission', 'bloqueada'))).toBe(BLOCKED_MESSAGE);
   });
 });
 

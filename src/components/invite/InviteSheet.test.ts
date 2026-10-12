@@ -32,7 +32,7 @@ vi.mock('../../lib/data/leagues', async (orig) => ({
 }));
 vi.mock('../feedback', () => ({ useFeedback: () => ({ toast: () => undefined }) }));
 
-const { InviteSheet, PeopleList, PersonTile, SendBar, ShareRow } = await import('./InviteSheet');
+const { InviteSheet, PeopleList, PeopleSearch, PersonTile, SendBar, ShareRow } = await import('./InviteSheet');
 
 const league = (extra: Partial<League> = {}) =>
   ({ id: 'l1', name: 'Liga de los martes', kind: 'liga', visibility: 'public', sport: 'padel', ...extra }) as League;
@@ -188,6 +188,27 @@ describe('las tarjetas', () => {
     const out = text(sheet({ league: league({ kind: 'torneo' }) }));
     expect(out).toContain('En el torneo');
     expect(out).not.toContain('En la liga');
+  });
+
+  it('en un equipo: «Ya está» para los miembros (inSquad) e «Invitado»; los demás se eligen', () => {
+    const member = renderToString(h(PersonTile, { hit: hit('b', 'Beto', { inSquad: true }), selected: false, onToggle: () => undefined, kind: 'squad' }));
+    expect(text(member)).toContain('Ya está');
+    expect(member).toContain('disabled=""');
+    expect(member).toContain('aria-label="Beto, @beto, ya está en el equipo"');
+    const invited = renderToString(h(PersonTile, { hit: hit('c', 'Carla', { invited: true }), selected: false, onToggle: () => undefined, kind: 'squad' }));
+    expect(text(invited)).toContain('Invitado');
+    expect(invited).toContain('disabled=""');
+    const free = renderToString(h(PersonTile, { hit: hit('a', 'Ana', { inSquad: false }), selected: false, onToggle: () => undefined, kind: 'squad' }));
+    expect(free).not.toContain('disabled=""');
+    expect(free).toContain('aria-pressed="false"');
+    expect(text(free)).toContain('@ana');
+  });
+
+  it('el buscador (también lo usa la hoja del equipo): borrar sale solo con algo escrito', () => {
+    const empty = renderToString(h(PeopleSearch, { value: '', onChange: () => undefined }));
+    expect(empty).toContain('placeholder="Busca por nombre o @usuario"');
+    expect(empty).not.toContain('Borrar búsqueda');
+    expect(renderToString(h(PeopleSearch, { value: 'an', onChange: () => undefined }))).toContain('aria-label="Borrar búsqueda"');
   });
 });
 

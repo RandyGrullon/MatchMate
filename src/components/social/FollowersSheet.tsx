@@ -86,7 +86,8 @@ function FollowPeople({ userId, kind, onPick }: { userId: string; kind: FollowKi
   );
 }
 
-function PersonRow({ person, onPick }: { person: FollowPerson; onPick: () => void }) {
+/** Una persona de la lista: su foto, nombre y @usuario (llevan a su perfil) y Seguir (menos tú). También la usan los seguidores de un equipo. */
+export function PersonRow({ person, onPick }: { person: FollowPerson; onPick: () => void }) {
   return (
     <li className="flex items-center gap-2 rounded-xl px-2 py-1.5">
       <div className="min-w-0 flex-1" onClickCapture={onPick}>

@@ -3,8 +3,22 @@
  * qué, las pestañas, el estado de la pantalla de unirse y lo que dicen los avisos. Sin React ni backend: lo prueban
  * squads.test.ts y las pantallas lo usan tal cual.
  */
-import type { MySquad, SquadDecision, SquadLeague, SquadLite, SquadMember, SquadPage, SquadRequestStatus, SquadRole } from '../../lib/data/squads';
-import { squadErrorText } from '../../lib/data/squads';
+import type {
+  MySquad,
+  SquadDecision,
+  SquadGame,
+  SquadInviteStatus,
+  SquadLeague,
+  SquadLite,
+  SquadMember,
+  SquadPage,
+  SquadRecord,
+  SquadRequestStatus,
+  SquadRole,
+  SquadStats,
+} from '../../lib/data/squads';
+import { SQUAD_MEMBERS_MAX, recordText, squadErrorText } from '../../lib/data/squads';
+import { formatDate } from '../../lib/format';
 import { BLOCKED_MESSAGE, isBlockedError } from '../../lib/backend/errors';
 import { sportMeta } from '../../sports/registry';
 import { SPORT_FAMILY, type SportId } from '../../sports/types';
@@ -68,13 +82,26 @@ export function myTeamsLine(names: readonly string[]): string {
 
 // ---------- La página del equipo ----------
 
-export type SquadTab = 'plantilla' | 'muro' | 'ligas';
+export type SquadTab = 'publicaciones' | 'juegos' | 'torneos' | 'estadisticas' | 'plantilla';
 export const SQUAD_TABS: readonly { key: SquadTab; label: string }[] = [
+  { key: 'publicaciones', label: 'Publicaciones' },
+  { key: 'juegos', label: 'Juegos' },
+  { key: 'torneos', label: 'Torneos' },
+  { key: 'estadisticas', label: 'Estadísticas' },
   { key: 'plantilla', label: 'Plantilla' },
-  { key: 'muro', label: 'Muro' },
-  { key: 'ligas', label: 'Ligas' },
 ];
-export const squadTab = (raw: string | null): SquadTab => (raw === 'muro' || raw === 'ligas' ? raw : 'plantilla');
+
+/**
+ * `?tab=` → la pestaña. Los links de antes siguen sirviendo: «muro» es Publicaciones y «ligas», Estadísticas (ahí están
+ * las ligas del equipo). Sin nada, Publicaciones; con `?jugador=` (el «perfil en equipo» del perfil global), Plantilla.
+ */
+export function squadTab(raw: string | null, jugador?: string | null): SquadTab {
+  if (raw === 'muro') return 'publicaciones';
+  if (raw === 'ligas') return 'estadisticas';
+  const known = SQUAD_TABS.find((t) => t.key === raw);
+  if (known) return known.key;
+  return jugador ? 'plantilla' : 'publicaciones';
+}
 
 export type SquadViewer = 'captain' | 'member' | 'none';
 export const squadViewer = (s: Pick<SquadPage, 'isMember' | 'myRole'> | null | undefined): SquadViewer =>
@@ -266,4 +293,151 @@ export function defaultSquadSport(creatable: readonly string[], ...wanted: (stri
   const ok = creatable.filter((s) => s !== 'esports');
   for (const w of wanted) if (w && ok.includes(w)) return w;
   return ok[0] ?? null;
+}
+
+// ---------- El equipo como perfil (docs/perfiles-equipos-esports.md §3) ----------
+
+/** «#10 · Portero · Capitán»: lo de la tarjeta de un jugador en el equipo (`?jugador=`). */
+export function memberCardLine(m: Pick<SquadMember, 'jersey' | 'position' | 'role'>): string {
+  return [m.jersey != null ? `#${m.jersey}` : null, m.position?.trim() || null, ROLE_LABEL[m.role]].filter(Boolean).join(' · ');
+}
+
+/** «7 partidos · 71 % ganados» (vacío sin partidos). */
+export function recordSummary(r: SquadRecord | null | undefined): string {
+  if (!r || !r.played) return '';
+  return `${countWord(r.played, 'partido', 'partidos')} · ${Math.round((r.won / r.played) * 100)} % ganados`;
+}
+
+export type GameResult = NonNullable<SquadGame['result']>;
+
+/** La marca de cada partido: G (verde), E (gris) o P (rojo), con lo que lee el lector de pantalla. */
+export const RESULT_MARK: Record<GameResult, { short: string; label: string; tone: 'ok' | 'neutral' | 'danger' }> = {
+  win: { short: 'G', label: 'Ganó', tone: 'ok' },
+  draw: { short: 'E', label: 'Empató', tone: 'neutral' },
+  loss: { short: 'P', label: 'Perdió', tone: 'danger' },
+};
+
+/**
+ * El marcador con el equipo primero. La base lo manda como lado 1 - lado 2: del lado 2, cada par se da vuelta
+ * («1-3» → «3-1», «4-6 6-3» → «6-4 3-6»). Lo que no son números («W.O.») queda igual.
+ */
+export function mineFirstScore(score: string | null | undefined, side: 1 | 2): string | null {
+  const s = score?.trim();
+  if (!s) return null;
+  return side === 2 ? s.replace(/(\d+)(\s*[-–:]\s*)(\d+)/g, '$3$2$1') : s;
+}
+
+/** «Tigres vs Leones» (el equipo primero). */
+export const squadGameTitle = (g: Pick<SquadGame, 'mine' | 'opponent'>) => `${g.mine?.trim() || 'Mi equipo'} vs ${g.opponent?.trim() || 'Rival por definir'}`;
+
+/** «Liga Norte · Jornada 3 · W.O.»: la liga, la fase (o la jornada) y si fue por W.O. */
+export function squadGameMeta(g: Pick<SquadGame, 'leagueName' | 'stage' | 'round' | 'walkover'>): string {
+  const r = g.round?.trim();
+  const round = r ? (/^\d+$/.test(r) ? `Jornada ${r}` : r) : null;
+  return [g.leagueName?.trim() || null, g.stage?.trim() || round, g.walkover ? 'W.O.' : null].filter(Boolean).join(' · ');
+}
+
+/** Una liga del equipo en Estadísticas: la solicitud (si la hay) y sus números por temporada. */
+export interface SquadLeagueRow {
+  leagueId: string;
+  name: string;
+  sport: string;
+  logo: string | null;
+  kind: 'liga' | 'torneo';
+  /** null: no hay solicitud a la vista (está en la liga por los números). */
+  status: SquadRequestStatus | null;
+  requestId: string | null;
+  record: SquadRecord;
+  seasons: SquadStats['leagues'][number]['seasons'];
+}
+
+/**
+ * Las ligas de Estadísticas: las solicitudes del equipo (aceptadas, pendientes y rechazadas, como `shownLeagues`) con el
+ * récord y las temporadas de `squad_stats` (si llegó), y al final las ligas de los números que no tienen solicitud a la
+ * vista.
+ */
+export function squadLeagueRows(requests: readonly SquadLeague[], stats: SquadStats['leagues'] | null | undefined): SquadLeagueRow[] {
+  const byId = new Map((stats ?? []).map((l) => [l.leagueId, l]));
+  const rows: SquadLeagueRow[] = shownLeagues(requests).map((r) => {
+    const st = byId.get(r.leagueId);
+    return {
+      leagueId: r.leagueId,
+      name: r.name,
+      sport: r.sport,
+      logo: r.logo,
+      kind: st?.kind ?? 'liga',
+      status: r.status,
+      requestId: r.requestId,
+      record: st?.record ?? r.record,
+      seasons: st?.seasons ?? [],
+    };
+  });
+  const seen = new Set(rows.map((r) => r.leagueId));
+  for (const l of stats ?? []) {
+    if (seen.has(l.leagueId)) continue;
+    rows.push({ leagueId: l.leagueId, name: l.name, sport: l.sport, logo: l.logo, kind: l.kind, status: null, requestId: null, record: l.record, seasons: l.seasons });
+  }
+  return rows;
+}
+
+/** «3 G · 1 P» o, sin partidos, «Sin partidos todavía». */
+export const recordOrNone = (r: SquadRecord | null | undefined) => recordText(r) || 'Sin partidos todavía';
+
+export type SquadTournament = SquadStats['tournaments'][number];
+
+/** El torneo: su evento en la liga (`/l/<liga>/e/<evento>`) o, si no tiene, la liga. */
+export const tournamentPath = (t: Pick<SquadTournament, 'leagueId' | 'eventId'>) => (t.eventId ? `/l/${t.leagueId}/e/${t.eventId}` : `/l/${t.leagueId}`);
+
+/** «12 oct 2026 · 3 G · 1 P» (sin fecha, solo el récord). */
+export function tournamentLine(t: Pick<SquadTournament, 'date' | 'record'>): string {
+  const date = t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? formatDate(t.date) : null;
+  return [date, recordOrNone(t.record)].filter(Boolean).join(' · ');
+}
+
+// ---------- Invitar dentro de la app ----------
+
+/** Cuántos caben todavía en el equipo (hasta 40). */
+export const squadRoom = (members: number) => Math.max(0, SQUAD_MEMBERS_MAX - members);
+
+const INVITE_ONE: Record<SquadInviteStatus, string> = {
+  sent: 'Invitación enviada',
+  member: 'Ya está en el equipo',
+  pending: 'Ya tenía invitación',
+  unavailable: 'No se puede invitar a esa persona',
+  full: `El equipo ya tiene ${SQUAD_MEMBERS_MAX} miembros`,
+  rate_limited: 'Llegaste al límite de invitaciones de hoy. Prueba mañana.',
+};
+
+const INVITE_SOME: Record<Exclude<SquadInviteStatus, 'sent'>, (n: number) => string> = {
+  member: (n) => `${num(n)} ya ${n === 1 ? 'estaba' : 'estaban'}`,
+  pending: (n) => `${num(n)} ya ${n === 1 ? 'tenía' : 'tenían'} invitación`,
+  unavailable: (n) => `${num(n)} no se ${n === 1 ? 'puede' : 'pueden'} invitar`,
+  full: (n) => `${num(n)} no ${n === 1 ? 'cupo' : 'cupieron'} (el equipo llegó a ${SQUAD_MEMBERS_MAX})`,
+  rate_limited: (n) => `${num(n)} ${n === 1 ? 'pasó' : 'pasaron'} el límite de hoy`,
+};
+
+/** El aviso después de invitar: «Enviamos 3 invitaciones · 1 ya estaba»; con una sola persona, cómo le fue. */
+export function squadInviteSummary(results: readonly { status: SquadInviteStatus }[]): string {
+  if (results.length === 1) return INVITE_ONE[results[0]!.status] ?? 'No se envió la invitación.';
+  const count = (s: SquadInviteStatus) => results.filter((r) => r.status === s).length;
+  const sent = count('sent');
+  const parts = [sent ? `Enviamos ${countWord(sent, 'invitación', 'invitaciones')}` : 'No se envió ninguna invitación'];
+  for (const s of ['member', 'pending', 'unavailable', 'full', 'rate_limited'] as const) {
+    const n = count(s);
+    if (n) parts.push(INVITE_SOME[s](n));
+  }
+  return parts.join(' · ');
+}
+
+/** «Equipo de fútbol de campo» (la tarjeta de Invitaciones de Avisos). */
+export const squadKindLabel = (sport: string) => `Equipo de ${sportMeta(sport)?.lower ?? 'otro deporte'}`;
+
+/** El aviso al responder una invitación a un equipo. */
+export const squadRespondedText = (accepted: boolean, name: string) => (accepted ? `Te uniste a ${name.trim() || 'el equipo'}` : 'Rechazaste la invitación');
+
+/** El error al responder (aceptar o rechazar) o retirar una invitación a un equipo. */
+export function squadInviteErrorText(e: unknown): string {
+  if (isBlockedError(e)) return BLOCKED_MESSAGE;
+  if (kindOf(e) === 'not_found' || codeOf(e) === 'cerrado') return 'Esa invitación ya no está disponible.';
+  return squadErrorText(e);
 }

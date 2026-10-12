@@ -1,7 +1,7 @@
 /**
  * Página de avisos dibujada sin navegador (renderToString) con avisos de mentira: sin cuenta, cargando, vacía, con
  * error, los filtros por tipo y por deporte (también el deporte en el que está la app), lo sin leer y la tarjeta de
- * invitaciones a ligas.
+ * invitaciones a ligas y a equipos.
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeagueFeed } from '../lib/data';
 import type { LeagueInvite } from '../lib/data/invites';
+import type { MySquadInvite, SquadLite } from '../lib/data/squads';
 import type { Notice } from '../lib/notifications';
 import type { League } from '../lib/types';
 import { FeedbackProvider } from '../components/feedback';
@@ -18,6 +19,7 @@ const state = vi.hoisted(() => ({
   current: null as string | null,
   notices: {} as Record<string, unknown>,
   invites: [] as LeagueInvite[],
+  squadInvites: [] as MySquadInvite[],
   askedInvites: [] as (string | null | undefined)[],
 }));
 
@@ -34,6 +36,11 @@ vi.mock('../lib/data/invites', () => ({
   },
   respondInvite: vi.fn(),
   respondErrorText: () => 'No se pudo responder la invitación. Prueba otra vez.',
+}));
+vi.mock('../lib/data/squads', async (orig) => ({
+  ...(await orig<typeof import('../lib/data/squads')>()),
+  useMySquadInvites: () => ({ data: state.squadInvites, loading: false, error: null }),
+  respondSquadInvite: vi.fn(),
 }));
 
 const { default: NotificationsPage } = await import('./NotificationsPage');
@@ -104,6 +111,7 @@ beforeEach(() => {
   state.auth = { user: { uid: 'u1' }, loading: false };
   state.current = null;
   state.invites = [];
+  state.squadInvites = [];
   state.askedInvites = [];
   setNotices();
 });
@@ -262,5 +270,58 @@ describe('invitaciones en la página de avisos', () => {
     const t = text(render());
     expect(t).toContain('Invitaciones');
     expect(t).toContain('No tienes avisos');
+  });
+});
+
+describe('invitaciones a equipos en la página de avisos', () => {
+  const squad = (id: string, extra: Partial<SquadLite> = {}): SquadLite => ({
+    id,
+    sport: 'football',
+    name: `Equipo ${id}`,
+    tag: 'TGR',
+    logo: null,
+    color: null,
+    city: null,
+    recruiting: false,
+    members: 8,
+    followers: 2,
+    ...extra,
+  });
+  const squadInvite = (id: string, extra: Partial<MySquadInvite> = {}): MySquadInvite => ({
+    id,
+    squad: squad(`S-${id}`),
+    invitedBy: { id: 'u9', name: 'Bruno Díaz', username: 'bruno' },
+    createdAt: new Date(now - HOUR).toISOString(),
+    ...extra,
+  });
+
+  it('solo invitaciones a equipos: sale la tarjeta con el logo, el nombre, quién invitó, Aceptar / Rechazar y «Ver»', () => {
+    state.squadInvites = [squadInvite('a', { squad: squad('S1', { name: 'Los Tigres' }) }), squadInvite('b', { invitedBy: { id: 'u8', name: 'Eva', username: null } })];
+    const out = render();
+    const t = text(out);
+    expect(t).toContain('Invitaciones');
+    expect(out).toMatch(/Invitaciones <span[^>]*>2<\/span>/);
+    expect(t).toContain('Los Tigres [TGR]');
+    expect(t).toContain('Bruno Díaz (@bruno) te invitó · Equipo de fútbol de campo');
+    expect(t).toContain('Eva te invitó · Equipo de fútbol de campo');
+    expect(t).toContain('hace 1 h');
+    expect(out).toContain('>TGR</text>');
+    expect(out).toContain('href="/equipos/S1"');
+    expect(out).toContain('aria-label="Ver el equipo Los Tigres"');
+    expect(out).toContain('aria-label="Aceptar la invitación a Los Tigres"');
+    expect(out).toContain('aria-label="Rechazar la invitación a Equipo S-b"');
+    expect(out.match(/>Aceptar</g)).toHaveLength(2);
+    expect(t.indexOf('Invitaciones')).toBeLessThan(t.indexOf('Aviso partido'));
+  });
+
+  it('con las de ligas: todas juntas, la más nueva primero', () => {
+    state.invites = [invite('vieja', { createdAt: new Date(now - 5 * HOUR).toISOString() })];
+    state.squadInvites = [squadInvite('nueva', { squad: squad('S1', { name: 'Los Tigres' }) })];
+    const out = render();
+    const t = text(out);
+    expect(out).toMatch(/Invitaciones <span[^>]*>2<\/span>/);
+    expect(t.indexOf('Los Tigres')).toBeLessThan(t.indexOf('Liga vieja'));
+    expect(out).toContain('href="/invitacion/vieja"');
+    for (const link of out.match(/<a [^>]*>.*?<\/a>/g) ?? []) expect(link).not.toContain('<button');
   });
 });
