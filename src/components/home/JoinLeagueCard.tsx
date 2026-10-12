@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { QrCode, Search, Target, Ticket, Users } from 'lucide-react';
+import { QrCode, Search, Ticket, Users } from 'lucide-react';
 import { Button, Card, ListRow, RowIcon, cx } from '../ui';
 import { preloadQrScanner, useQrScanner } from '../scanner';
 
 /**
  * Hoy de una cuenta nueva (sin ligas): «Únete a tu liga» con el código que te mandó quien organiza (lleva a
- * /unirse/<código>) y «o escanea el QR» (abre el lector de la app); debajo, «o también»: crear tu liga, anotar un
- * juego suelto o buscar ligas abiertas. `onCreate` = null si la cuenta no puede crear ligas todavía.
+ * /unirse/<código>) y «o escanea el QR» (abre el lector de la app); debajo, «o también»: crear tu liga o buscar ligas
+ * abiertas (un juego suelto se anota desde Yo). `onCreate` = null si la cuenta no puede crear ligas todavía.
  */
 export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) {
   const navigate = useNavigate();
@@ -77,16 +77,6 @@ export function JoinLeagueCard({ onCreate }: { onCreate: (() => void) | null }) 
             onClick={onCreate}
           />
         )}
-        <ListRow
-          leading={
-            <RowIcon>
-              <Target className="size-5" />
-            </RowIcon>
-          }
-          title="Anotar un juego suelto"
-          subtitle="Solo para ti, sin liga"
-          to="/juegos-sueltos?nuevo=1"
-        />
         <ListRow
           leading={
             <RowIcon>

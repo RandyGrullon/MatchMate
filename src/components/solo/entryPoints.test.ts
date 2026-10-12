@@ -1,16 +1,14 @@
 /**
- * Por dónde se llega a los juegos sueltos y cómo se ven afuera, dibujado sin navegador (renderToString): la tarjeta
- * del perfil y del inicio (kind 'solo'), «Juego suelto» en la portada del boliche y la opción de la hoja «Crear o
- * unirme».
+ * Cómo se ven los juegos sueltos afuera, dibujado sin navegador (renderToString): la tarjeta del perfil y del inicio
+ * (kind 'solo'). Anotar uno se hace solo desde Yo (src/pages/ProfilePage.test.ts); Hoy, «Únete a tu liga» y la hoja
+ * «Crear o unirme» ya no lo ofrecen (src/components/home/hoy.test.ts y src/components/create/create.test.ts).
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { gameSummary, type ProfileGame } from '../../lib/data/profileGames';
-import { SoloOption } from '../CreateMenu';
 import { FeedbackProvider } from '../feedback';
-import { SportHero } from '../home/SportHero';
 import { GameCard } from '../social/GameCard';
 
 const render = (el: ReactElement) => renderToString(h(MemoryRouter, null, h(FeedbackProvider, null, el)));
@@ -70,25 +68,5 @@ describe('tarjeta de un juego suelto', () => {
     expect(t).toContain('Pinos');
     expect(gameSummary(g)).toBe('150 pinos');
     expect(gameSummary(solo())).toBe('Serie 580 · alto 210');
-  });
-});
-
-describe('entradas', () => {
-  const hero = (sport: 'bowling' | 'padel', canCreate = true, signedIn = true) =>
-    render(h(SportHero, { sport, status: 'open', mine: 0, publicCount: 0, signedIn, canCreate, onCreate: () => undefined }));
-
-  it('la portada del boliche trae «Juego suelto» (también sin cuenta o sin poder crear); la de pádel no', () => {
-    for (const out of [hero('bowling'), hero('bowling', false), hero('bowling', true, false)]) {
-      expect(out).toContain('href="/juegos-sueltos?nuevo=1"');
-      expect(text(out)).toContain('Juego suelto');
-    }
-    expect(hero('padel')).not.toContain('juegos-sueltos');
-    expect(text(hero('bowling'))).toContain('Crear liga de boliche');
-  });
-
-  it('la hoja «Crear o unirme»: «Un juego suelto»', () => {
-    const t = text(render(h(SoloOption, { onClick: () => undefined })));
-    expect(t).toContain('Un juego suelto');
-    expect(t).toContain('Solo para ti, sin liga');
   });
 });

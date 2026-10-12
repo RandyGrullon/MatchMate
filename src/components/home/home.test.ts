@@ -7,7 +7,6 @@ import { initialSport } from '../LeagueFormModal';
 import { FollowingSlot } from './FollowingSlot';
 import { LeagueRow } from './LeagueCard';
 import { MyLeaguesBody, NoLeaguesYet } from './MyLeagues';
-import { SportHero, heroCountsLabel } from './SportHero';
 import { sportTileNote } from './SportPickerRow';
 
 const render = (node: ReactNode) => renderToString(h(MemoryRouter, null, node));
@@ -16,35 +15,6 @@ const text = (html: string) =>
     .replace(/<[^>]+>/g, ' ')
     .replace(/&#x27;/g, "'")
     .replace(/\s+/g, ' ');
-
-describe('Home del deporte: portada', () => {
-  it('cuenta mis ligas y las públicas', () => {
-    expect(heroCountsLabel(0, 0)).toBe('Ninguna liga tuya todavía');
-    expect(heroCountsLabel(1, 0)).toBe('1 liga tuya');
-    expect(heroCountsLabel(2, 1)).toBe('2 ligas tuyas · 1 pública');
-    expect(heroCountsLabel(0, 5)).toBe('Ninguna liga tuya todavía · 5 públicas');
-  });
-
-  it('dice en qué deporte estás y ofrece crear una liga de ese deporte', () => {
-    const html = text(
-      render(h(SportHero, { sport: 'padel', status: 'open', mine: 2, publicCount: 3, signedIn: true, canCreate: true, onCreate: () => undefined })),
-    );
-    expect(html).toContain('Estás en');
-    expect(html).toContain('Pádel');
-    expect(html).toContain('Crear liga de pádel');
-    expect(html).toContain('2 ligas tuyas · 3 públicas');
-    expect(html).toContain('Ver todos los deportes');
-  });
-
-  it('si todavía no se puede crear de ese deporte, lo explica en vez del botón', () => {
-    const html = text(
-      render(h(SportHero, { sport: 'golf', status: 'beta', mine: 0, publicCount: 0, signedIn: true, canCreate: false, onCreate: () => undefined })),
-    );
-    expect(html).not.toContain('Crear liga de');
-    expect(html).toContain('se abre pronto');
-    expect(html).toContain('En prueba');
-  });
-});
 
 describe('Home: piezas', () => {
   it('la nota de cada deporte en la fila de deportes', () => {

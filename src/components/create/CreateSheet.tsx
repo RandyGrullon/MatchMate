@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
-import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Shield, Target, Ticket, Trophy, Users, X } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Shield, Ticket, Trophy, Users, X } from 'lucide-react';
 import type { League, Member } from '../../lib/types';
-import { leagueSport, sportsOf } from '../../sports/registry';
+import { leagueSport } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { useMyLeagues } from '../home/useHomeData';
 import { preloadQrScanner, useQrScanner } from '../scanner';
@@ -14,8 +14,8 @@ export interface OrganizedLeague {
   member: Member;
 }
 
-/** Lo que la hoja necesita saber de la cuenta: las ligas de boliche que organiza y si juega boliche (juego suelto). */
-export function createChoices(leagues: readonly League[], memberships: readonly Member[]): { organized: OrganizedLeague[]; soloOk: boolean } {
+/** Lo que la hoja necesita saber de la cuenta: las ligas de boliche que organiza (ahí puede crear una práctica). */
+export function createChoices(leagues: readonly League[], memberships: readonly Member[]): { organized: OrganizedLeague[] } {
   const organized: OrganizedLeague[] = [];
   for (const league of leagues) {
     const member = memberships.find((m) => m.leagueId === league.id);
@@ -24,9 +24,7 @@ export function createChoices(leagues: readonly League[], memberships: readonly 
     organized.push({ league, member });
   }
   organized.sort((a, b) => a.league.name.localeCompare(b.league.name, 'es', { sensitivity: 'base' }));
-  // El juego suelto es de boliche: sale si juega boliche o si todavía no está en ninguna liga.
-  const soloOk = !leagues.length || sportsOf(leagues).includes('bowling');
-  return { organized, soloOk };
+  return { organized };
 }
 
 /** Separación entre la hoja y la barra de abajo (y el borde de la pantalla). */
@@ -145,11 +143,6 @@ export function OptionRow({ icon, title, text, onClick }: { icon: ReactNode; tit
 const optionList =
   "flex flex-col [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:top-0 [&>*+*]:before:right-0 [&>*+*]:before:left-[60px] [&>*+*]:before:h-px [&>*+*]:before:bg-line [&>*+*]:before:content-['']";
 
-/** «Un juego suelto»: boliche fuera de una liga o un torneo, solo para ti. */
-export function SoloOption({ onClick }: { onClick: () => void }) {
-  return <OptionRow icon={<Target className="size-[21px]" />} title="Un juego suelto" text="Solo para ti, sin liga" onClick={onClick} />;
-}
-
 /**
  * «Unirme con un código» (lo más común: te lo pasa quien organiza): el código y «Unirme» (lleva a /unirse/<código>), y
  * «o escanea el QR» (abre el lector de QR de la app).
@@ -208,8 +201,8 @@ type Pick = 'practica' | 'torneo';
 /**
  * La hoja «¿Qué quieres hacer?» de Ligas › «Crear o unirme» (antes el botón «+» del centro de la barra): primero
  * unirse con un código o el QR, y debajo crear una liga, un torneo (en una liga que organizas o sin liga), una
- * práctica (en una liga de boliche que organizas), un equipo (competitivo, con o sin liga: `onTeam`) o anotar un juego
- * suelto. Si hay que elegir la liga, la misma hoja pregunta «¿En qué liga?».
+ * práctica (en una liga de boliche que organizas) o un equipo (competitivo, con o sin liga: `onTeam`). Un juego suelto
+ * ya no va aquí: se anota desde Yo. Si hay que elegir la liga, la misma hoja pregunta «¿En qué liga?».
  */
 export function CreateSheet({
   open,
@@ -217,7 +210,6 @@ export function CreateSheet({
   onJoin,
   onCreate,
   onEvent,
-  onSolo,
   onTeam,
 }: {
   open: boolean;
@@ -225,7 +217,6 @@ export function CreateSheet({
   onJoin: (code: string) => void;
   onCreate: (kind: 'liga' | 'torneo') => void;
   onEvent: (org: OrganizedLeague, type: 'practica' | 'torneo') => void;
-  onSolo: () => void;
   /** Crear un equipo (Equipos › «Crear equipo»). */
   onTeam?: () => void;
 }) {
@@ -251,7 +242,6 @@ export function CreateSheet({
           onJoin={onJoin}
           onCreate={onCreate}
           onEvent={onEvent}
-          onSolo={onSolo}
           onTeam={onTeam}
           onQr={scanner.open}
         />
@@ -268,7 +258,6 @@ function CreateSheetBody({
   onJoin,
   onCreate,
   onEvent,
-  onSolo,
   onTeam,
   onQr,
 }: {
@@ -278,12 +267,11 @@ function CreateSheetBody({
   onJoin: (code: string) => void;
   onCreate: (kind: 'liga' | 'torneo') => void;
   onEvent: (org: OrganizedLeague, type: 'practica' | 'torneo') => void;
-  onSolo: () => void;
   onTeam?: () => void;
   onQr: () => void;
 }) {
   const mine = useMyLeagues(null);
-  const { organized, soloOk } = useMemo(() => createChoices(mine.all, mine.memberships.data), [mine.all, mine.memberships.data]);
+  const { organized } = useMemo(() => createChoices(mine.all, mine.memberships.data), [mine.all, mine.memberships.data]);
 
   function torneo() {
     if (organized.length) setPick('torneo');
@@ -336,7 +324,6 @@ function CreateSheetBody({
           />
         )}
         {onTeam && <OptionRow icon={<Shield className="size-[21px]" />} title="Un equipo" text="Competitivo, con o sin liga" onClick={onTeam} />}
-        {soloOk && <SoloOption onClick={onSolo} />}
       </div>
     </>
   );

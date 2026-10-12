@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarSearch, Check, ClipboardCheck, Leaf, Target, Zap, type LucideIcon } from 'lucide-react';
+import { CalendarSearch, Check, ClipboardCheck, Leaf, Zap, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import type { CalendarMatch } from '../../lib/calendar';
 import { useLeaguesByIds, useMyMemberships, type LeagueFeed } from '../../lib/data';
@@ -58,8 +58,8 @@ export function CalendarSheet({
 }
 
 /**
- * «¿Dónde jugaste?»: cuando no hay un juego que te toque hoy, a dónde anotar lo que jugaste. Los eventos de ayer y de
- * hoy de tus ligas (abren la hoja de anotar en el juego que sigue) y un juego suelto (solo para ti, sin liga).
+ * «¿Dónde jugaste?»: cuando no hay un juego que te toque hoy, a dónde anotar lo que jugaste: los eventos de ayer y de
+ * hoy de tus ligas (abren la hoja de anotar en el juego que sigue). Un juego suelto se anota desde Yo.
  */
 export function WhereSheet({ open, onClose, recent, today }: { open: boolean; onClose: () => void; recent: readonly RecentEvent[]; today: string }) {
   return (
@@ -74,16 +74,6 @@ export function WhereSheet({ open, onClose, recent, today }: { open: boolean; on
             to={scorePath(r.lid, r.event.id)}
           />
         ))}
-        <ListRow
-          leading={
-            <RowIcon>
-              <Target className="size-5" />
-            </RowIcon>
-          }
-          title="Juego suelto"
-          subtitle="Solo para ti, sin liga"
-          to="/juegos-sueltos?nuevo=1"
-        />
       </div>
     </Sheet>
   );
@@ -109,7 +99,7 @@ function useOrganizedLabel(): string | null {
 /**
  * «Elige cómo ver la app» (desde «PRO ▾» de Hoy, y la primera vez que se toca «Pro» en Yo o «Probar Pro»: ModeSheetHost):
  * Lite (lo esencial) o Pro (todo el detalle), en dos tarjetas; a quien organiza una liga y está en Lite, Pro sale marcado
- * «Para ti» con la línea «Organizas …: en Pro tienes la pestaña Organizar». «Usar Pro» cambia al momento (se guarda en
+ * «Para ti» con la línea «Organizas …: en Pro ves en Hoy lo que espera por ti». «Usar Pro» cambia al momento (se guarda en
  * la cuenta, con «Deshacer» abajo); «Seguir en Lite» la cierra. `initial`: el modo que sale marcado al abrir.
  */
 export function ModeSheet({ open, onClose, initial }: { open: boolean; onClose: () => void; initial?: UiMode }) {
@@ -174,7 +164,7 @@ function ModeChoice({ onDone, initial }: { onDone: () => void; initial?: UiMode 
         <p className="mt-3.5 flex items-center gap-3 rounded-2xl bg-surface-2 px-3.5 py-3 text-sm leading-[1.4] text-fg-2">
           <ClipboardCheck aria-hidden="true" className="size-[22px] shrink-0 text-accent" />
           <span>
-            Organizas <b className="font-semibold text-fg">{organized}</b>: en Pro tienes la pestaña Organizar.
+            Organizas <b className="font-semibold text-fg">{organized}</b>: en Pro ves en Hoy lo que espera por ti.
           </span>
         </p>
       )}

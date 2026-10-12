@@ -38,7 +38,8 @@ import type { LeagueFeed } from '../lib/data';
  * - Lite: la fecha, «Hola, Ana» y la campana; lo de hoy UNA vez (TodayCard: tus juegos y un botón, o tu próxima fecha
  *   con «Voy»); tu promedio y tu lugar (abre la Tabla); «Lo que viene» con «Voy» en línea y el Calendario en una hoja.
  * - Pro: lo mismo más denso, con «Planilla», «Por hacer», «En vivo» y «Esta semana» (y la etiqueta «PRO ▾»).
- * - Cuenta nueva: «Únete a tu liga» con el código (y el QR), crear tu liga, un juego suelto o buscar ligas abiertas.
+ * - Cuenta nueva: «Únete a tu liga» con el código (y el QR), crear tu liga o buscar ligas abiertas.
+ * Un juego suelto (sin liga) se anota desde Yo, no desde aquí.
  * Debajo de lo de hoy, «En vivo ahora» si tus ligas (o las que sigues) están transmitiendo (src/components/live).
  * Un solo aviso por pantalla (NoticeSlot). Tus ligas están en Ligas; los deportes, en Ligas › Buscar ligas abiertas.
  * Esports: con el deporte activo en esports o si la cuenta tiene equipos o inscripciones, la fila «Esports» (a
@@ -100,14 +101,13 @@ function Hoy() {
   const first = displayName(auth).split(' ')[0];
   const featured = act.games[0] ?? null;
   const manySports = sportsOf(mine.all).length > 1;
-  const playsBowling = !mine.all.length || sportsOf(mine.all).includes('bowling');
 
-  // Anotar sin un juego de hoy: seguir el que quedó a medias (ayer u hoy), «¿Dónde jugaste?» o un juego suelto.
+  // Anotar sin un juego de hoy: seguir el que quedó a medias (ayer u hoy) o «¿Dónde jugaste?» (el juego suelto es de Yo).
   const recent = useMemo(() => recentEvents(act.feeds, act.leagues, act.today), [act.feeds, act.leagues, act.today]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- tick: volver a leer la memoria de la hoja de anotar
   const started = useMemo(() => startedGames(mine.uid), [mine.uid, tick]);
   const resume = resumeElsewhere(started, recent, featured?.event.id);
-  const anotar = anotarLink({ resume, recent, today: act.today, bowling: playsBowling, onWhere: () => setSheet('donde') });
+  const anotar = anotarLink({ resume, recent, today: act.today, onWhere: () => setSheet('donde') });
 
   // Lo de hoy, una sola vez: el evento de boliche en juego (o los partidos en vivo), si no lo próximo, y si no hay nada,
   // la cuenta nueva o el día sin nada programado.
@@ -226,20 +226,18 @@ function Hoy() {
 }
 
 /**
- * El link discreto para anotar sin un juego de hoy: «Seguir mi juego 2» (si quedó uno a medias ayer u hoy), «Anotar un
- * juego» (abre «¿Dónde jugaste?» si jugaste ayer u hoy en una liga) o «Anotar un juego suelto». Nada si no juegas boliche.
+ * El link discreto para anotar sin un juego de hoy: «Seguir mi juego 2» (si quedó uno a medias ayer u hoy) o «Anotar un
+ * juego» (abre «¿Dónde jugaste?» si jugaste ayer u hoy en una liga). Si no, nada: un juego suelto se anota desde Yo.
  */
 function anotarLink({
   resume,
   recent,
   today,
-  bowling,
   onWhere,
 }: {
   resume: ReturnType<typeof resumeElsewhere>;
   recent: readonly RecentEvent[];
   today: string;
-  bowling: boolean;
   onWhere: () => void;
 }): ReactNode {
   if (resume)
@@ -248,7 +246,5 @@ function anotarLink({
         {`Seguir mi juego ${resume.game}${resume.recent.event.date === today ? '' : ' de ayer'}`}
       </QuietLink>
     );
-  if (recent.length) return <QuietLink onClick={onWhere}>Anotar un juego</QuietLink>;
-  if (!bowling) return null;
-  return <QuietLink to="/juegos-sueltos?nuevo=1">Anotar un juego suelto</QuietLink>;
+  return recent.length ? <QuietLink onClick={onWhere}>Anotar un juego</QuietLink> : null;
 }

@@ -296,8 +296,9 @@ function leaderText(text: string): ReactNode {
 /**
  * Hoy no hay nada en juego: lo próximo (práctica, torneo o evento) con su fecha (OCT / 13, con el deporte o el juego en la
  * esquina) y «Voy» como botón principal si es una práctica del boliche que se puede confirmar (ya confirmada: «Vas ✓»,
- * que se toca para quitarlo). Debajo, el link discreto para anotar igual (un juego suelto, o «¿Dónde jugaste?» si jugaste
- * ayer o hoy en una liga). Si el evento es hoy más tarde, «Hoy juegas».
+ * que se toca para quitarlo). Debajo, si hay, el link discreto para anotar igual («Seguir mi juego 2», o «¿Dónde
+ * jugaste?» si jugaste ayer o hoy en una liga); sin él la tarjeta cierra con su margen. Si el evento es hoy más tarde,
+ * «Hoy juegas».
  */
 export function NextUpCard({
   item,
@@ -309,7 +310,7 @@ export function NextUpCard({
   today: string;
   /** Confirmar o quitar «Voy» (solo prácticas del boliche con evento creado). */
   rsvp: ((going: boolean) => Promise<unknown>) | null;
-  /** El link discreto de abajo («Anotar un juego suelto» o «Seguir mi juego 2»). */
+  /** El link discreto de abajo («Anotar un juego» o «Seguir mi juego 2»); null: no hay. */
   anotar: ReactNode;
 }) {
   const isToday = item.date === today;
@@ -321,7 +322,7 @@ export function NextUpCard({
   const line = [weekdayLabel(item.date, today), item.time, lane != null ? `Pista ${lane}` : null].filter(Boolean).join(' · ');
   return (
     <SportTint sport={item.sport}>
-      <Card className="px-5 pt-5 pb-2">
+      <Card className={cx('px-5 pt-5', anotar ? 'pb-2' : 'pb-5')}>
         <section aria-label={`${lead}: ${title}`}>
           <p className="text-sm font-semibold text-muted">{lead}</p>
           <h2 className="mt-2 truncate text-card-title">{title}</h2>
@@ -339,7 +340,7 @@ export function NextUpCard({
             </span>
           </Link>
           {rsvp && <RsvpAction going={item.going} onToggle={rsvp} />}
-          <div className={rsvp ? 'mt-1' : 'mt-2'}>{anotar}</div>
+          {anotar && <div className={rsvp ? 'mt-1' : 'mt-2'}>{anotar}</div>}
         </section>
       </Card>
     </SportTint>
@@ -370,7 +371,7 @@ function RsvpAction({ going, onToggle }: { going: boolean; onToggle: (going: boo
   );
 }
 
-/** El link discreto de la tarjeta («Anotar un juego suelto»): gris fuerte, con ícono, 44 px para el dedo. */
+/** El link discreto de la tarjeta («Anotar un juego»): gris fuerte, con ícono, 44 px para el dedo. */
 export function QuietLink({ to, onClick, icon: Icon = Target, children, accent }: { to?: string; onClick?: () => void; icon?: LucideIcon; children: ReactNode; accent?: boolean }) {
   const cls = cx(
     'flex h-11 w-full items-center justify-center gap-1.5 text-meta font-[550] transition active:opacity-70',
@@ -395,17 +396,17 @@ export function QuietLink({ to, onClick, icon: Icon = Target, children, accent }
 }
 
 /**
- * Tiene ligas pero no hay nada programado (ni hoy ni en los próximos 30 días): lo dice en una línea, con el link para
- * anotar igual.
+ * Tiene ligas pero no hay nada programado (ni hoy ni en los próximos 30 días): lo dice en una línea y, si hay, el link
+ * para anotar igual (sin él, la tarjeta cierra con su margen).
  */
 export function IdleCard({ anotar }: { anotar: ReactNode }) {
   return (
-    <Card className="px-5 pt-5 pb-2">
+    <Card className={cx('px-5 pt-5', anotar ? 'pb-2' : 'pb-5')}>
       <section aria-label="Hoy no te toca jugar">
         <p className="text-sm font-semibold text-muted">Hoy no te toca jugar</p>
         <h2 className="mt-2 text-card-title">Nada programado</h2>
         <p className="mt-1.5 text-meta text-muted">Cuando tu liga ponga la próxima fecha, sale aquí.</p>
-        <div className="mt-2">{anotar}</div>
+        {anotar && <div className="mt-2">{anotar}</div>}
       </section>
     </Card>
   );

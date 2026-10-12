@@ -1,7 +1,8 @@
 /**
  * «Crear o unirme» y el asistente «Crear una liga» (rediseño «Calma y foco»), sin navegador: la hoja con el código y el
- * QR primero y después Liga · Torneo · Práctica · Juego suelto; el asistente de 4 pasos (Nombre · Día y lugar ·
- * Temporada · Invitar) con su barra de pasos, y lo que arma para crear (lo mismo que el formulario de antes).
+ * QR primero y después Liga · Torneo · Práctica (el juego suelto ya no: se anota desde Yo); el asistente de 4 pasos
+ * (Nombre · Día y lugar · Temporada · Invitar) con su barra de pasos, y lo que arma para crear (lo mismo que el
+ * formulario de antes).
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -52,7 +53,7 @@ vi.mock('../../sports/status', async (orig) => {
 });
 vi.mock('../home/LeagueCard', () => ({ LeagueLogo: ({ children }: { children: ReactNode }) => children }));
 
-const { CreateSheet, JoinCodeBox, SoloOption, createChoices } = await import('./CreateSheet');
+const { CreateSheet, JoinCodeBox, createChoices } = await import('./CreateSheet');
 const { CreateWizard, StepBar, esportsCreatePath, wizardSport } = await import('./CreateWizard');
 const logic = await import('./logic');
 
@@ -77,10 +78,10 @@ beforeEach(() => {
 });
 
 const noop = () => undefined;
-const sheet = () => render(h(CreateSheet, { open: true, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onSolo: noop }));
+const sheet = () => render(h(CreateSheet, { open: true, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop }));
 
 describe('la hoja «¿Qué quieres hacer?»', () => {
-  it('primero unirse con el código (y el QR), después Liga · Torneo · Práctica · Juego suelto', () => {
+  it('primero unirse con el código (y el QR), después Liga · Torneo · Práctica; sin juego suelto (es de Yo)', () => {
     world.leagues = [league('l1', 'Liga de los martes')];
     world.members = [member('l1', 'owner')];
     const html = sheet();
@@ -90,10 +91,12 @@ describe('la hoja «¿Qué quieres hacer?»', () => {
     expect(t).toContain('Te lo da quien organiza la liga');
     expect(html).toContain('aria-label="Código de invitación"');
     expect(t).toContain('o escanea el QR');
-    const order = ['Unirme con un código', 'Crear', 'Una liga', 'Para jugar cada semana', 'Un torneo', 'Un día, con o sin liga', 'Una práctica', 'En Liga de los martes', 'Un juego suelto', 'Solo para ti, sin liga'];
+    const order = ['Unirme con un código', 'Crear', 'Una liga', 'Para jugar cada semana', 'Un torneo', 'Un día, con o sin liga', 'Una práctica', 'En Liga de los martes'];
     const at = order.map((s) => t.indexOf(s));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(t).not.toContain('juego suelto');
+    expect(t).not.toContain('Solo para ti, sin liga');
     // Ya no está el menú viejo.
     expect(t).not.toContain('Torneo sin liga');
     expect(t).not.toContain('¿Te invitaron?');
@@ -107,23 +110,24 @@ describe('la hoja «¿Qué quieres hacer?»', () => {
     expect(t).toContain('Un día, con sus inscritos');
   });
 
-  it('el juego suelto (boliche) no sale a quien solo juega otros deportes', () => {
-    world.leagues = [league('l1', 'Pádel Naco', { sport: 'padel' })];
+  it('ni con ligas de boliche ni sin ligas sale el juego suelto (se anota desde Yo)', () => {
+    expect(text(sheet())).not.toContain('juego suelto');
+    world.leagues = [league('l1', 'Liga del club')];
     world.members = [member('l1', 'member')];
-    expect(text(sheet())).not.toContain('Un juego suelto');
+    expect(text(sheet())).not.toContain('juego suelto');
   });
 
-  it('«Un equipo» (competitivo, con o sin liga) cuando la hoja sabe crear equipos, antes del juego suelto', () => {
-    const t = text(render(h(CreateSheet, { open: true, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onSolo: noop, onTeam: noop })));
+  it('«Un equipo» (competitivo, con o sin liga) cuando la hoja sabe crear equipos, al final', () => {
+    const t = text(render(h(CreateSheet, { open: true, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onTeam: noop })));
     expect(t).toContain('Un equipo');
     expect(t).toContain('Competitivo, con o sin liga');
     expect(t.indexOf('Un torneo')).toBeLessThan(t.indexOf('Un equipo'));
-    expect(t.indexOf('Un equipo')).toBeLessThan(t.indexOf('Un juego suelto'));
+    expect(t).not.toContain('juego suelto');
     expect(text(sheet())).not.toContain('Un equipo');
   });
 
   it('cerrada no dibuja nada adentro', () => {
-    const t = text(render(h(CreateSheet, { open: false, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop, onSolo: noop })));
+    const t = text(render(h(CreateSheet, { open: false, onClose: noop, onJoin: noop, onCreate: noop, onEvent: noop })));
     expect(t).not.toContain('Unirme con un código');
   });
 
@@ -132,16 +136,13 @@ describe('la hoja «¿Qué quieres hacer?»', () => {
     const ms = [member('b', 'admin'), member('a', 'owner'), member('t', 'owner'), member('p', 'owner'), member('m', 'member')];
     const c = createChoices(ls, ms);
     expect(c.organized.map((o) => o.league.id)).toEqual(['a', 'b']);
-    expect(c.soloOk).toBe(true);
-    expect(createChoices([], []).soloOk).toBe(true);
-    expect(createChoices([league('p', 'Pádel', { sport: 'padel' })], []).soloOk).toBe(false);
+    expect(createChoices([], []).organized).toEqual([]);
   });
 
-  it('la caja del código y la opción del juego suelto', () => {
+  it('la caja del código', () => {
     const t = text(render(h(JoinCodeBox, { onJoin: noop, onQr: noop })));
     expect(t).toContain('Unirme');
     expect(t).toContain('o escanea el QR');
-    expect(text(render(h(SoloOption, { onClick: noop })))).toContain('Un juego suelto Solo para ti, sin liga');
   });
 });
 

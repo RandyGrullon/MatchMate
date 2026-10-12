@@ -74,14 +74,14 @@ vi.mock('../../lib/useMode', async (orig) => ({
   useMode: () => ({ mode: world.pro ? 'pro' : 'lite', isPro: world.pro, setMode: async () => 'local', suggestedPro: world.suggested }),
 }));
 
-const { GameTiles, NextUpCard, TodayCard } = await import('./TodayCard');
+const { GameTiles, IdleCard, NextUpCard, TodayCard } = await import('./TodayCard');
 const { JoinLeagueCard } = await import('./JoinLeagueCard');
 const { UpNext } = await import('./UpNext');
 const { HomeHeader } = await import('./HomeHeader');
 const { LiveSectionPro, ToDoSection, WeekStrip, toDoOf } = await import('./ProSections');
 const { pendingNotice } = await import('./useHomeNotices');
 const { FollowingSlot } = await import('./FollowingSlot');
-const { ModeSheet } = await import('./HomeSheets');
+const { ModeSheet, WhereSheet } = await import('./HomeSheets');
 const { AgendaRow } = await import('./WeekAgenda');
 const { LiveActions } = await import('../LiveNow');
 
@@ -341,6 +341,33 @@ describe('día sin juego', () => {
     expect(out).toContain('Hoy juegas');
     expect(out).toContain('Práctica de hoy');
   });
+
+  it('sin link para anotar (nada a medias ni jugado ayer u hoy): ni hueco abajo ni «juego suelto»', () => {
+    const card = (html: string) => /<div class="([^"]*px-5 pt-5[^"]*)"/.exec(html)?.[1] ?? '';
+    for (const rsvp of [null, async () => undefined]) {
+      const html = render(h(NextUpCard, { item: next, today: '2026-10-08', rsvp, anotar: null }));
+      expect(card(html)).toContain('pb-5');
+      expect(html).not.toMatch(/<div class="mt-[12]"><\/div>/);
+      expect(text(html)).not.toContain('juego suelto');
+    }
+    const idle = render(h(IdleCard, { anotar: null }));
+    expect(text(idle)).toContain('Nada programado');
+    expect(card(idle)).toContain('pb-5');
+    expect(idle).not.toMatch(/<div class="mt-2"><\/div>/);
+    // Con link, el link cierra la tarjeta (44 px) y el margen de abajo es corto.
+    expect(card(render(h(IdleCard, { anotar: 'ANOTAR' })))).toContain('pb-2');
+    expect(text(render(h(IdleCard, { anotar: 'ANOTAR' })))).toContain('ANOTAR');
+  });
+
+  it('«¿Dónde jugaste?»: solo los eventos de ayer y de hoy de tus ligas (el juego suelto es de Yo)', () => {
+    const recent = [{ lid: 'L1', leagueName: 'Liga de los martes', event: { id: 'E1', date: TODAY, type: 'practica', name: 'Práctica' } }] as unknown as Parameters<
+      typeof WhereSheet
+    >[0]['recent'];
+    const html = render(h(WhereSheet, { open: true, onClose: () => undefined, recent, today: TODAY }));
+    expect(text(html)).toContain('Liga de los martes');
+    expect(html).not.toContain('juegos-sueltos');
+    expect(text(html)).not.toContain('Juego suelto');
+  });
 });
 
 describe('cuenta nueva', () => {
@@ -353,8 +380,9 @@ describe('cuenta nueva', () => {
     expect(out).toContain('o escanea el QR');
     expect(out).toContain('o también');
     expect(out).toContain('Crear mi liga');
-    expect(out).toContain('Anotar un juego suelto');
-    expect(html).toContain('href="/juegos-sueltos?nuevo=1"');
+    // El juego suelto ya no está aquí: se anota desde Yo.
+    expect(out).not.toContain('juego suelto');
+    expect(html).not.toContain('juegos-sueltos');
     expect(out).toContain('Buscar ligas abiertas');
     expect(html).toContain('href="/ligas?ver=abiertas"');
   });
@@ -471,7 +499,7 @@ describe('la hoja del modo', () => {
     expect(out).toContain('La misma app, con más o menos detalle. Se guarda en tu cuenta y cambias cuando quieras.');
     expect(out).toContain('Lite Lo esencial Anotar rápido Tu promedio Tus ligas y fechas');
     expect(out).toContain('Para ti Pro Todo el detalle Aprobar juegos Planilla y Excel Estadísticas');
-    expect(out).toContain('Organizas Liga de los martes : en Pro tienes la pestaña Organizar.');
+    expect(out).toContain('Organizas Liga de los martes : en Pro ves en Hoy lo que espera por ti.');
     expect(out).toContain('Usar Pro');
     expect(out).toContain('Seguir en Lite');
     expect(html.match(/role="radio" aria-checked="true"/g)).toHaveLength(1);

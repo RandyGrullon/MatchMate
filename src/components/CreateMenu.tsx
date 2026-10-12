@@ -5,11 +5,9 @@ import { LeagueContext, type LeagueCtx } from '../lib/league';
 import { useActiveSport } from '../lib/sportContext';
 import type { EventType, LeagueKind } from '../lib/types';
 import type { SportId } from '../sports/types';
-import { CreateSheet, SoloOption, type OrganizedLeague } from './create/CreateSheet';
+import { CreateSheet, type OrganizedLeague } from './create/CreateSheet';
 import { CreateWizard } from './create/CreateWizard';
 import { EventFormModal } from './EventFormModal';
-
-export { SoloOption };
 
 interface CreateMenuApi {
   /** Abre el menú «Crear» (crear liga, torneo sin liga o unirse con código). */
@@ -44,8 +42,8 @@ export function organizedCtx({ league, member }: OrganizedLeague): LeagueCtx {
 /**
  * La hoja «Crear o unirme» (ya no es el botón del centro de la barra: se abre desde Ligas): primero unirse con un
  * código o el QR, que es lo más común, y debajo crear una liga o un torneo (el asistente de pasos, CreateWizard), una
- * práctica o un torneo en una liga que organizas (el formulario de siempre, EventFormModal), un equipo (Equipos con
- * «Crear equipo» abierto) o anotar un juego suelto.
+ * práctica o un torneo en una liga que organizas (el formulario de siempre, EventFormModal) o un equipo (Equipos con
+ * «Crear equipo» abierto). Un juego suelto se anota desde Yo.
  * Va una sola vez en la raíz de la app (no dentro de una pantalla: un modal ahí se trababa al girar el teléfono). Si
  * estás en un deporte (y lo puedes crear), el asistente lo trae marcado.
  */
@@ -84,12 +82,6 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => setOpen(false), []);
 
-  // Juego suelto: la hoja se abre en su página (sin cuenta no se llega aquí: el menú manda a entrar).
-  function solo() {
-    setOpen(false);
-    navigate('/juegos-sueltos?nuevo=1');
-  }
-
   // Un equipo: la hoja «Crear equipo» se abre en Equipos (con el deporte en que estás marcado).
   function team() {
     setOpen(false);
@@ -109,7 +101,7 @@ export function CreateMenuProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <CreateSheet open={open} onClose={close} onJoin={join} onCreate={(kind) => startCreate(kind)} onEvent={event} onSolo={solo} onTeam={team} />
+      <CreateSheet open={open} onClose={close} onJoin={join} onCreate={(kind) => startCreate(kind)} onEvent={event} onTeam={team} />
       {/* Se monta al abrirlo: el estado de los deportes y las ligas se consultan solo cuando hace falta. */}
       {creating && (
         <CreateWizard

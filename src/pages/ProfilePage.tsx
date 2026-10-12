@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, Shield, UserPlus, Users } from 'lucide-react';
+import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, Shield, Target, UserPlus, Users } from 'lucide-react';
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { useMyEsportsTeams } from '../lib/data/esports';
@@ -80,9 +80,13 @@ export function socialLine(p: Pick<PublicProfile, 'followers' | 'following' | 'l
  * la lupa (buscar personas y ligas) y un solo engranaje (la cuenta, /cuenta); debajo, tu foto (tocarla lleva a cambiarla
  * en /cuenta), tu nombre, tu @usuario, tu liga y tu biografía.
  * - Lite: tu promedio con la gráfica corta y cómo vas, Mejor juego · Mejor serie · Juegos, Mis bolas (con sus juegos),
- *   Insignias (con lo que te falta) y las filas Mis juegos, Mis publicaciones, Mis equipos y Amigos y seguidores.
+ *   Insignias (con lo que te falta) y las filas Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos y
+ *   Amigos y seguidores.
  * - Pro: los 6 números, la tendencia por juego o por mes, tus tiros (y qué pinos te quedan), por bola y las filas Por
- *   liga y temporada, Mis juegos, Mis publicaciones, Mis equipos, Insignias y Amigos y seguidores.
+ *   liga y temporada, Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos, Insignias y Amigos y
+ *   seguidores.
+ * «Anotar un juego suelto» (boliche sin liga ni torneo) solo está aquí, en Yo (no en Hoy ni en «Crear o unirme»); sale
+ * a quien ve los números del boliche.
  * Los números del boliche suman todas tus ligas, torneos y juegos sueltos (cada liga tiene además su propio perfil); las
  * ligas de otros deportes llevan a sus números. Las partes (`?tab=juegos|publicaciones|insignias|estadisticas`) se
  * abren con «‹ Yo»; el push de una insignia abre `?tab=insignias&insignia=…`.
@@ -203,6 +207,21 @@ function Yo({ uid }: { uid: string }) {
       onClick={() => open('juegos')}
     />
   );
+  // Anotar un juego suelto (boliche fuera de una liga o un torneo): abre la hoja en /juegos-sueltos.
+  const soloEntry = (dense: boolean) =>
+    showBowling && (
+      <ListRow
+        dense={dense}
+        leading={
+          <RowIcon tone="accent">
+            <Target className={dense ? 'size-[19px]' : 'size-5'} />
+          </RowIcon>
+        }
+        title="Anotar un juego suelto"
+        subtitle="Solo para ti, sin liga"
+        to="/juegos-sueltos?nuevo=1"
+      />
+    );
   const myPosts = (dense: boolean) => (
     <ListRow
       dense={dense}
@@ -254,6 +273,7 @@ function Yo({ uid }: { uid: string }) {
               onClick={() => open('estadisticas')}
             />
             {myGames(true)}
+            {soloEntry(true)}
             {myPosts(true)}
             {myTeams(true)}
             <ListRow
@@ -297,6 +317,7 @@ function Yo({ uid }: { uid: string }) {
           {others.length > 0 && <OtherSports uid={uid} others={others} alone={!showBowling} />}
           <Card className="mt-[26px] overflow-hidden">
             {myGames(false)}
+            {soloEntry(false)}
             {myPosts(false)}
             {myTeams(false)}
             {friends(false)}

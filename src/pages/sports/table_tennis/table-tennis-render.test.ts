@@ -1,8 +1,8 @@
 /**
  * Humo de las pantallas de ping pong: «Nuevo» (sin americano ni mexicano), el admin (reglas y nivel de 1 a 10), la
  * liga con la tabla de la ITTF (Jue., PF, PC), el calendario con mesas, el partido («Anotar en la mesa», la mesa y
- * «solo el resultado»), el sorteo de dobles, el perfil y la portada con «Tenis de mesa». Se dibujan en el servidor
- * (renderToString) con datos en la caché, para el admin, un jugador y un visitante.
+ * «solo el resultado»), el sorteo de dobles, el perfil y el nombre «Ping pong» con «Tenis de mesa». Se dibujan en el
+ * servidor (renderToString) con datos en la caché, para el admin, un jugador y un visitante.
  */
 import { createElement as h, type ReactElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -17,8 +17,8 @@ import type { Wire } from '../../../lib/data/stamp';
 import { LeagueContext, type LeagueCtx } from '../../../lib/league';
 import type { League, Member, Player } from '../../../lib/types';
 import { resolveRules } from '../../../sports/racket';
+import { SPORTS } from '../../../sports/registry';
 import { FeedbackProvider } from '../../../components/feedback';
-import { SportHero } from '../../../components/home/SportHero';
 import { EventWizard } from '../racket/create/EventWizard';
 import { AcceptModal } from '../racket-formats/LadderPage';
 import { levelKeys } from '../racket/levels';
@@ -292,7 +292,7 @@ describe('escalera', () => {
   });
 });
 
-describe('perfil y portada', () => {
+describe('perfil y nombre', () => {
   it('perfil: el nivel, juegos y puntos', () => {
     const t = text(render(h(screens.MyProfile!), `/l/${L}/perfil`, ANA));
     expect(t).toContain('Nivel 5.5');
@@ -301,14 +301,9 @@ describe('perfil y portada', () => {
     expect(t).toContain('Puntos 42-31 (+11)');
   });
 
-  it('la portada del deporte: «Ping pong» con «Tenis de mesa» debajo', () => {
-    const t = text(
-      renderToString(
-        h(MemoryRouter, null, h(SportHero, { sport: 'table_tennis', status: 'open', mine: 0, publicCount: 0, signedIn: false, canCreate: true, onCreate: () => undefined })),
-      ),
-    );
-    expect(t).toContain('Ping pong');
-    expect(t).toContain('Tenis de mesa');
-    expect(t).toContain('Ligas y torneos de ping pong');
+  it('el nombre del deporte: «Ping pong» con «Tenis de mesa» como otro nombre', () => {
+    expect(SPORTS.table_tennis.label).toBe('Ping pong');
+    expect(SPORTS.table_tennis.alias).toBe('Tenis de mesa');
+    expect(SPORTS.table_tennis.lower).toBe('ping pong');
   });
 });

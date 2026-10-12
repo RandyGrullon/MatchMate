@@ -1,9 +1,10 @@
 /**
  * Yo (`/perfil`) dibujado sin navegador, como final/6-perfil.png (Lite) y p6-perfil.png (Pro): arriba «Lite | Pro», la
  * lupa y un solo engranaje (la cuenta); tu foto (lleva a cambiarla), tu nombre, tu @usuario, tu liga y tu biografía; en
- * Lite tu promedio con cómo vas, los 3 números, Mis bolas, Insignias y las filas Mis juegos, Mis publicaciones y Amigos y
- * seguidores (los seguidores ya no van en la cabecera); en Pro los 6 números, la tendencia, tus tiros y las filas. Las
- * partes (`?tab=`) se abren con «‹ Yo».
+ * Lite tu promedio con cómo vas, los 3 números, Mis bolas, Insignias y las filas Mis juegos, Anotar un juego suelto, Mis
+ * publicaciones y Amigos y seguidores (los seguidores ya no van en la cabecera); en Pro los 6 números, la tendencia, tus
+ * tiros y las filas. El juego suelto se anota solo aquí (Hoy, «Únete a tu liga» y «Crear o unirme» ya no lo ofrecen:
+ * src/components/home/hoy.test.ts y src/components/create/create.test.ts). Las partes (`?tab=`) se abren con «‹ Yo».
  */
 import { createElement as h, type ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -211,6 +212,37 @@ describe('Yo en Pro', () => {
     // Sin bolas, una fila para agregar la primera.
     expect(t).toContain('Mis bolas Agrega tu bola');
     expect(t).not.toContain('Tu promedio');
+  });
+});
+
+describe('Anotar un juego suelto', () => {
+  it('en Lite y en Pro: una fila a la vista, justo después de Mis juegos, que abre la hoja en /juegos-sueltos', () => {
+    for (const pro of [false, true]) {
+      state.pro = pro;
+      const html = render();
+      const t = text(html);
+      expect(t).toContain('Anotar un juego suelto Solo para ti, sin liga');
+      expect(html).toContain('href="/juegos-sueltos?nuevo=1"');
+      expect(t.indexOf('Mis juegos')).toBeLessThan(t.indexOf('Anotar un juego suelto'));
+      expect(t.indexOf('Anotar un juego suelto')).toBeLessThan(t.indexOf('Mis publicaciones'));
+    }
+  });
+
+  it('sin ligas todavía también sale; con solo otros deportes, no (el juego suelto es de boliche)', () => {
+    state.members = [];
+    state.leagues = [];
+    expect(text(render())).toContain('Anotar un juego suelto');
+    state.members = [member('pad', null)];
+    state.leagues = [league('pad', 'Pádel Club', 'padel')];
+    const html = render();
+    expect(text(html)).not.toContain('Anotar un juego suelto');
+    expect(html).not.toContain('juegos-sueltos?nuevo=1');
+  });
+
+  it('Mis juegos sigue llevando a la lista de los juegos sueltos', () => {
+    const html = render('/perfil?tab=juegos');
+    expect(html).toContain('href="/juegos-sueltos"');
+    expect(text(html)).toContain('Juegos sueltos');
   });
 });
 
