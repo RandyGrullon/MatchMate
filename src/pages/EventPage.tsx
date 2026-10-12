@@ -55,6 +55,7 @@ import { TeamsTab } from '../components/event/TeamsTab';
 import { LanesPanel } from '../components/lanes/LanesPanel';
 import type { Entry } from '../lib/types';
 import { dispatchLeague, SportRoute } from '../sports/screens';
+import { shareOrigin } from '../lib/origin';
 
 const SportComingSoon = lazy(() => import('./sports/SportComingSoon'));
 const UpdateAppScreen = lazy(() => import('./sports/UpdateAppScreen'));
@@ -245,7 +246,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   const share = () =>
     void sharing.run('compartir', async () => {
-      if (await shareLink(`${location.origin}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
+      if (await shareLink(`${shareOrigin()}${standalone ? base : `${base}/e/${ev.id}`}`, `${eventLabel(ev)} · MatchMate`)) toast('Link copiado');
       setMenu(false);
     });
 

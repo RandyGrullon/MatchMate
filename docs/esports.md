@@ -969,7 +969,7 @@ están los suyos):
 | `STEAM_WEB_API_KEY` | Opcional: el nombre del perfil de Steam al conectar (`steamPersonaName`). «Conectar con Steam» (OpenID) **no** la necesita: está siempre encendido. |
 
 Se reutilizan los que ya existen: `SCAN_ALLOWED_ORIGINS` (CORS) y las claves de Supabase. La URL de la app a la que
-vuelve el login es la constante `APP_URL = 'https://matchmate-oficial.vercel.app'` (si existe la variable
+vuelve el login es la constante `APP_URL = 'https://matchmate.grullonb.com'` (si existe la variable
 `APP_ORIGIN`, gana ella: sirve para staging). Las URLs de vuelta se arman con `SUPABASE_URL`.
 
 **URLs** (ref del proyecto de producción `jbismsdjgjxutfvwnlmf`):
@@ -979,8 +979,8 @@ vuelve el login es la constante `APP_URL = 'https://matchmate-oficial.vercel.app
 | Vuelta de Epic (se registra en Epic) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/epic/callback` |
 | Vuelta de Riot (se registra en Riot) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/riot/callback` |
 | Vuelta de Steam (`openid.return_to`; no se registra) | `https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/steam/callback` (`openid.realm` = `https://jbismsdjgjxutfvwnlmf.supabase.co`) |
-| A dónde vuelve la persona | `https://matchmate-oficial.vercel.app/esports/mi-id?conectado=<steam\|epic\|riot>&juego=<juego>` o `…/esports/mi-id?error=<codigo>&juego=<juego>` |
-| Sitio, privacidad y términos (lo piden los proveedores) | `https://matchmate-oficial.vercel.app`, `…/privacidad`, `…/terminos` |
+| A dónde vuelve la persona | `https://matchmate.grullonb.com/esports/mi-id?conectado=<steam\|epic\|riot>&juego=<juego>` o `…/esports/mi-id?error=<codigo>&juego=<juego>` |
+| Sitio, privacidad y términos (lo piden los proveedores) | `https://matchmate.grullonb.com`, `…/privacidad`, `…/terminos` |
 
 ### 8.2 `esports-verify` (POST con `Authorization: Bearer <jwt>`)
 

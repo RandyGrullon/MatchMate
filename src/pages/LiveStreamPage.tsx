@@ -15,7 +15,7 @@ import { shareLink } from '../components/share';
 import { Button, Card, ListRow, LoadError, RowIcon, Skeleton, cx } from '../components/ui';
 
 /** El dominio de la app (Twitch lo pide para dejarse ver adentro). */
-const appHost = () => (typeof location === 'undefined' ? 'matchmate-oficial.vercel.app' : location.hostname);
+const appHost = () => (typeof location === 'undefined' ? 'matchmate.grullonb.com' : location.hostname);
 
 /**
  * En vivo (`/l/:lid/vivo`, dentro de la liga; es el link que se comparte y el del aviso): la transmisión elegida

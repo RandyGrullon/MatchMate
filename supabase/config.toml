@@ -162,9 +162,10 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-# MatchMate: producción es https://matchmate-oficial.vercel.app (Vercel). En desarrollo, `pnpm dev` (5173/5190)
+# MatchMate: producción es https://matchmate.grullonb.com (Vercel; la dirección vieja matchmate-oficial.vercel.app sigue
+# en la lista para los links que ya andan por ahí). En desarrollo, `pnpm dev` (5173/5190)
 # vuelve a su origen porque está en additional_redirect_urls.
-site_url = "https://matchmate-oficial.vercel.app"
+site_url = "https://matchmate.grullonb.com"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
@@ -180,6 +181,8 @@ additional_redirect_urls = [
   "http://localhost:4173/**",
   "http://localhost:5190",
   "http://localhost:5190/**",
+  "https://matchmate.grullonb.com",
+  "https://matchmate.grullonb.com/**",
   "https://matchmate-oficial.vercel.app",
   "https://matchmate-oficial.vercel.app/**",
 ]

@@ -3,6 +3,7 @@ import { BackendError } from '../backend/types';
 import { normalizeStreamUrl, type StreamPlatform } from '../streams';
 import { getUserId, invalidate, queryClient, remember, rpc, type Live } from './client';
 import { tags } from './keys';
+import { shareOrigin } from '../origin';
 
 /**
  * Transmisiones en vivo (docs/equipos-y-en-vivo.md §2, 20261011000100_equipos_en_vivo.sql): una liga las activa, sus
@@ -123,7 +124,7 @@ export async function setLeagueLive(lid: string, enabled: boolean): Promise<void
 }
 
 /** El link para compartir la transmisión de la liga. */
-export const streamShareUrl = (lid: string, origin = typeof location === 'undefined' ? 'https://matchmate-oficial.vercel.app' : location.origin) =>
+export const streamShareUrl = (lid: string, origin = shareOrigin()) =>
   `${origin}/l/${lid}/vivo`;
 
 /** El mensaje para un error al transmitir. */

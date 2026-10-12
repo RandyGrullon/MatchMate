@@ -11,6 +11,7 @@ import { Card, cx } from '../ui';
 import { BadgeSheet, tileSub, type SheetSubject } from './BadgeSheet';
 import { BadgeGrid, BadgeTile } from './BadgeTile';
 import { countText, eventAwards, groupTiles, monthAwards, seasonAwards, viewAward, type BadgeTileModel, type WinnerGroup } from './logic';
+import { shareOrigin } from '../../lib/origin';
 
 /**
  * Lo pesado de las insignias en la liga (se carga aparte desde LeagueBadges.tsx): «Premios de {mes}», «Campeones» y
@@ -171,7 +172,7 @@ export function LeagueAwardsPanel({ awards }: { awards: readonly BadgeAward[] })
         stats={stats.data}
         playerName={owner ? (names.get(owner) ?? '') : ''}
         announce={isAdmin && !league.hasMinors}
-        shareLink={typeof location !== 'undefined' ? `${location.origin}${base}` : undefined}
+        shareLink={`${shareOrigin()}${base}`}
       />
     </div>
   );
@@ -227,7 +228,7 @@ export function PlayerBadgesPanel({ playerId, awards }: { playerId: string; awar
         playerName={player?.name ?? ''}
         canShare={mine && !league.hasMinors}
         announce={isAdmin && !mine && !league.hasMinors}
-        shareLink={typeof location !== 'undefined' ? `${location.origin}${base}/j/${playerId}` : undefined}
+        shareLink={`${shareOrigin()}${base}/j/${playerId}`}
       />
     </section>
   );
@@ -257,7 +258,7 @@ export function EventAwardsPanel({ eventId, awards }: { eventId: string; awards:
         stats={stats.data}
         playerName={owner ? (names.get(owner) ?? '') : ''}
         announce={isAdmin && !league.hasMinors}
-        shareLink={typeof location !== 'undefined' ? `${location.origin}${base}` : undefined}
+        shareLink={`${shareOrigin()}${base}`}
       />
     </section>
   );

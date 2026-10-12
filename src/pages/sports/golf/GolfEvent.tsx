@@ -27,6 +27,7 @@ import { GolfPrizes } from './GolfPrizes';
 import { GolfPlayers } from './GolfPlayers';
 import { RoundForm } from './RoundForm';
 import { formatLabel, holesDone, isComplete, nineLabel } from './logic';
+import { shareOrigin } from '../../../lib/origin';
 
 type TabKey = 'tarjeta' | 'leaderboard' | 'jugadores';
 
@@ -199,7 +200,7 @@ export default function GolfEvent({ eventId: fixed }: { eventId?: string }) {
 
   const share = () =>
     void sharing.run('compartir', async () => {
-      if (await shareLink(`${location.origin}${standalone && embedded ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
+      if (await shareLink(`${shareOrigin()}${standalone && embedded ? base : `${base}/e/${eventId}`}`, `${title} · MatchMate`)) toast('Link copiado');
       setMenu(false);
     });
 

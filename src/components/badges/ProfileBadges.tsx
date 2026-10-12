@@ -42,6 +42,7 @@ import {
   type ProgressModel,
 } from './logic';
 import { useOpened } from './opened';
+import { shareOrigin } from '../../lib/origin';
 
 /**
  * La vitrina del perfil (docs/insignias.md §6.1): la pestaña «Insignias» de `/u/:id` y `/perfil` (se abre con
@@ -382,7 +383,7 @@ export default function ProfileBadgesTab({ userId, name, sports }: { userId: str
         stats={stats.data}
         progress={model.progress}
         playerName={name}
-        shareLink={typeof location !== 'undefined' ? `${location.origin}/u/${userId}` : undefined}
+        shareLink={`${shareOrigin()}/u/${userId}`}
         canReport={current?.kind === 'award' && canReportAward(current.tile.top.award, model.own, memberLeagues)}
         animate={animate}
       />

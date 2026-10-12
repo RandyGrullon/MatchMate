@@ -31,6 +31,7 @@ import { Segmented, Skeleton, cx } from '../../../components/ui';
 import { ToggleRow } from '../../sports/racket/bits';
 import { ChoiceChips, ScoreStepper } from '../../sports/esports/parts';
 import { CHECKIN_OPTIONS, ENTRY_BLURB, FORMAT_BLURB, cleanPoints, clampMax, idRequirement, rankRequirement, subsMaxOf, withFormat, type TournamentForm } from './logic';
+import { shareOrigin } from '../../../lib/origin';
 
 type SetField = <K extends keyof TournamentForm>(k: K, v: TournamentForm[K]) => void;
 
@@ -551,7 +552,7 @@ export function InviteStep({ lid, name, inviteCode, titleRef }: { lid: string; n
       alive = false;
     };
   }, [lid, code, priv]);
-  const origin = typeof location !== 'undefined' ? location.origin : '';
+  const origin = shareOrigin();
   const url = priv ? (code ? codeInviteUrl(origin, code) : null) : `${origin}/l/${lid}`;
   return (
     <>

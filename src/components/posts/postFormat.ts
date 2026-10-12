@@ -1,4 +1,5 @@
 import type { Post, PostVisibility } from '../../lib/data/posts';
+import { shareOrigin } from '../../lib/origin';
 
 /**
  * Textos y cuentas de las publicaciones (sin React: se prueban solos): los links del texto, la primera línea, el
@@ -9,7 +10,7 @@ import type { Post, PostVisibility } from '../../lib/data/posts';
 export const postPath = (id: string) => `/p/${encodeURIComponent(id)}`;
 
 /** La dirección completa para compartir (con el dominio de la app). */
-export function postShareUrl(id: string, origin = typeof location === 'undefined' ? '' : location.origin): string {
+export function postShareUrl(id: string, origin = shareOrigin()): string {
   return `${origin}${postPath(id)}`;
 }
 

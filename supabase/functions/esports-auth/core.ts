@@ -59,7 +59,7 @@ export interface AuthDeps {
 }
 
 /** Producción. Si existe la variable APP_ORIGIN (staging), gana ella. */
-export const APP_URL = 'https://matchmate-oficial.vercel.app';
+export const APP_URL = 'https://matchmate.grullonb.com';
 
 /** El proveedor de login de cada juego (`GAMES[g].link`). */
 export const LINK_GAMES: Readonly<Record<LinkProvider, readonly string[]>> = {

@@ -38,7 +38,7 @@ import {
 } from '../../supabase/functions/_shared/esports-providers';
 import { handleVerifyRequest, parseVerifyBody, type DbError, type VerifyDeps } from '../../supabase/functions/esports-verify/core';
 
-const APP = 'https://matchmate-oficial.vercel.app';
+const APP = 'https://matchmate.grullonb.com';
 const SUPA = 'https://jbismsdjgjxutfvwnlmf.supabase.co';
 const USER = '11111111-1111-4111-8111-111111111111';
 const LOOKUP = '22222222-2222-4222-8222-222222222222';
@@ -488,9 +488,9 @@ describe('esports-auth: las URLs', () => {
     expect(callbackUrl(SUPA, 'epic')).toBe('https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/epic/callback');
     expect(callbackUrl(SUPA, 'riot')).toBe('https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/riot/callback');
     expect(callbackUrl(`${SUPA}/`, 'steam')).toBe('https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/steam/callback');
-    expect(appRedirect(APP_URL, { provider: 'epic', game: 'fortnite' })).toBe('https://matchmate-oficial.vercel.app/esports/mi-id?conectado=epic&juego=fortnite');
-    expect(appRedirect(APP_URL, { error: 'proveedor', game: 'cs2' })).toBe('https://matchmate-oficial.vercel.app/esports/mi-id?error=proveedor&juego=cs2');
-    expect(appRedirect(APP_URL, { error: 'estado_vencido' })).toBe('https://matchmate-oficial.vercel.app/esports/mi-id?error=estado_vencido');
+    expect(appRedirect(APP_URL, { provider: 'epic', game: 'fortnite' })).toBe('https://matchmate.grullonb.com/esports/mi-id?conectado=epic&juego=fortnite');
+    expect(appRedirect(APP_URL, { error: 'proveedor', game: 'cs2' })).toBe('https://matchmate.grullonb.com/esports/mi-id?error=proveedor&juego=cs2');
+    expect(appRedirect(APP_URL, { error: 'estado_vencido' })).toBe('https://matchmate.grullonb.com/esports/mi-id?error=estado_vencido');
     // APP_ORIGIN gana (staging); si no es un origen, producción.
     expect(appUrlFrom('https://staging.matchmate.do/')).toBe('https://staging.matchmate.do');
     expect(appUrlFrom('javascript:alert(1)')).toBe(APP_URL);

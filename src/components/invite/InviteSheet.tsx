@@ -29,6 +29,7 @@ import {
   type InviteLink,
   type PeopleView,
 } from './logic';
+import { shareOrigin } from '../../lib/origin';
 
 export interface InviteSheetProps {
   league: League;
@@ -96,7 +97,7 @@ function InviteSheetOpen({
     };
   }, [lid, isAdmin]);
 
-  const origin = typeof location === 'undefined' ? '' : location.origin;
+  const origin = shareOrigin();
   const link = inviteLink({ lid, isAdmin, code, origin });
   const view = peopleView(input, people);
 

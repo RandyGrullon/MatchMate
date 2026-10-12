@@ -12,6 +12,7 @@ import { Button, Card, Empty, ListRow, SectionHeader, Sheet } from '../../../com
 import { EntryAdminSheet, EntryChip, PendingEntries, entryLine } from './admin/EntriesAdmin';
 import { competitors, countLine, formatDetails, freeAgents, memberRank, tournamentPathFor } from './logic';
 import { Initials } from './parts';
+import { shareOrigin } from '../../../lib/origin';
 
 /**
  * «Equipos» (o «Jugadores» en modo individual) del torneo (§12.8): los inscritos aprobados con su siembra, su
@@ -139,7 +140,7 @@ export function TournamentInfo({ t, className }: { t: EsportsTournament; classNa
   const { toast } = useFeedback();
   const meta = GAMES[t.game];
   const details = formatDetails(t);
-  const url = `${typeof location !== 'undefined' ? location.origin : ''}${tournamentPathFor(lid, t.eventId, league.kind)}`;
+  const url = `${shareOrigin()}${tournamentPathFor(lid, t.eventId, league.kind)}`;
   const share = async () => {
     if (await shareLink(url, t.name)) toast('Link copiado');
   };

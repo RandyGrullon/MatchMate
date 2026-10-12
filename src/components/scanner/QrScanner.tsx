@@ -28,6 +28,7 @@ import {
   type Platform,
   type Quad,
 } from './logic';
+import { OLD_ORIGINS } from '../../lib/origin';
 
 /**
  * El lector de QR a pantalla completa (como el de Telegram): la cámara de atrás, el resto oscurecido con un hueco en
@@ -67,7 +68,8 @@ const SCAN_CSS = [
 
 const platformNow = (): Platform => (isIOS() ? 'ios' : isAndroid() ? 'android' : 'other');
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const appOrigins = () => [typeof location !== 'undefined' ? location.origin : PRODUCTION_ORIGIN, PRODUCTION_ORIGIN];
+// Donde corre, el dominio de la app y las direcciones viejas (sus QR impresos se siguen leyendo).
+const appOrigins = () => [typeof location !== 'undefined' ? location.origin : PRODUCTION_ORIGIN, PRODUCTION_ORIGIN, ...OLD_ORIGINS];
 
 /** Lo que dice la línea de abajo del marco (y lo que se anuncia al lector de pantalla). */
 export function scanHint(camera: CameraState, phase: ScanPhase): string {

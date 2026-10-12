@@ -29,13 +29,18 @@ import {
   unflatQuad,
   type Quad,
 } from './logic';
+import { OLD_ORIGINS } from '../../lib/origin';
 
-const ORIGINS = ['http://localhost:5173', PRODUCTION_ORIGIN];
+// Como la app (QrScanner.tsx): donde corre, el dominio y las direcciones viejas.
+const ORIGINS = ['http://localhost:5173', PRODUCTION_ORIGIN, ...OLD_ORIGINS];
 const go = (text: string) => routeFromScan(text, ORIGINS);
 const app = (path: string) => ({ kind: 'app', path });
 
 describe('routeFromScan', () => {
   it('el link de invitación de producción abre /unirse dentro de la app', () => {
+    expect(PRODUCTION_ORIGIN).toBe('https://matchmate.grullonb.com');
+    expect(go('https://matchmate.grullonb.com/unirse/ABCD2345')).toEqual(app('/unirse/ABCD2345'));
+    // La dirección vieja: los QR que ya andan impresos se siguen leyendo.
     expect(go('https://matchmate-oficial.vercel.app/unirse/ABCD2345')).toEqual(app('/unirse/ABCD2345'));
     // http también (el QR viejo o escrito a mano) y con espacios alrededor
     expect(go('  http://matchmate-oficial.vercel.app/unirse/ABCD2345\n')).toEqual(app('/unirse/ABCD2345'));

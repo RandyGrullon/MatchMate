@@ -30,7 +30,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
   TITULO: Mantener despierto falló
-  APP_URL: ${{ vars.APP_URL || 'https://matchmate-oficial.vercel.app' }}
+  APP_URL: ${{ vars.APP_URL || 'https://matchmate.grullonb.com' }}
 
 jobs:
   ping:

@@ -15,6 +15,7 @@ import { forfeitScore } from './adapter';
 import { BasketballCourt } from './BasketballCourt';
 import { basketballParser, BoxScore, LiveStrip, PeriodsTable } from './bits';
 import { basketballConfigFrom, basketballTeamRules } from './rules';
+import { shareOrigin } from '../../../lib/origin';
 
 /**
  * Un partido (rediseño «Calma y foco», como el de raqueta): «‹ Partidos» con «•••» (lo del admin) arriba, el título
@@ -53,7 +54,7 @@ export function MatchDetail({ tl, matchId, table, onTable, onBack }: { tl: TeamL
   const speaker = tl.speakerOf(m);
   const official = tl.officialOf(m.id);
   const canTable = canOpenTable({ match: m, isAdmin: tl.isAdmin, isScorer: !!tl.member?.scorer, userId: tl.userId, official, speaker });
-  const url = typeof location !== 'undefined' ? `${location.origin}${tl.base}/juegos?partido=${m.id}` : undefined;
+  const url = `${shareOrigin()}${tl.base}/juegos?partido=${m.id}`;
   const live = m.status === 'live' || m.status === 'suspended';
   const played = hasResult(m) || live;
 

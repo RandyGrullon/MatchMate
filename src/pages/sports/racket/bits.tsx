@@ -4,6 +4,7 @@ import type { StandingsColumn } from '../../../components/match';
 import { PosNum, TuTag } from '../../../components/ranking/parts';
 import { Card, ListRow, SectionHeader, cx } from '../../../components/ui';
 import { isGameSport } from '../../../sports/racket/rules';
+import { shareOrigin } from '../../../lib/origin';
 
 /** Piezas chicas de las pantallas de raqueta. */
 
@@ -379,4 +380,4 @@ export function racketColumns(sport: string): StandingsColumn[] {
 }
 
 /** Dirección de la app (vacía sin navegador: pruebas). */
-export const appOrigin = () => (typeof location !== 'undefined' ? location.origin : '');
+export const appOrigin = () => shareOrigin();

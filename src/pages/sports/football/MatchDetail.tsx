@@ -19,6 +19,7 @@ import { CardIcon, LiveStrip, MatchTimeline, PeriodsLine, PlayersTable, Suspende
 import { FootballCourt } from './FootballCourt';
 import { disciplineFrom, footballConfigFrom, footballTeamRules, matchMinutes, variantOf } from './rules';
 import { suspendedIn, useFootballSeason } from './season';
+import { shareOrigin } from '../../../lib/origin';
 
 /** El estado del acta desde lo que guardó el anotador (matches.state); null si no hay o no se puede leer. */
 export function stateFromSnapshot(raw: unknown): FootballState | null {
@@ -80,7 +81,7 @@ export function FootballMatchDetail({ tl, matchId, table, onTable, onBack }: { t
   const speaker = tl.speakerOf(m);
   const official = tl.officialOf(m.id);
   const canTable = canOpenTable({ match: m, isAdmin: tl.isAdmin, isScorer: !!tl.member?.scorer, userId: tl.userId, official, speaker });
-  const url = typeof location !== 'undefined' ? `${location.origin}${tl.base}/juegos?partido=${m.id}` : undefined;
+  const url = `${shareOrigin()}${tl.base}/juegos?partido=${m.id}`;
   const live = m.status === 'live' || m.status === 'suspended';
   const showActa = hasResult(m) || live;
   const hasLines = !!m.score?.lines;

@@ -52,6 +52,7 @@ import {
   usernameHintText,
   type ScorerRow,
 } from './logic';
+import { shareOrigin } from '../../lib/origin';
 
 export type ScorersTab = 'liga' | 'usuario' | 'link';
 
@@ -570,7 +571,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
   const title = target.title || league.name;
 
   if (link?.status === 'ok') {
-    const origin = typeof location === 'undefined' ? '' : location.origin;
+    const origin = shareOrigin();
     const url = scorerLinkUrl(origin, link.code);
     return (
       <div className="flex flex-col gap-3">

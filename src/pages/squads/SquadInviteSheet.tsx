@@ -8,9 +8,10 @@ import type { InviteLink } from '../../components/invite/logic';
 import { QrCode } from '../../components/QrCode';
 import { squadShareText } from '../../components/squads/logic';
 import { Button, Sheet, Skeleton } from '../../components/ui';
+import { shareOrigin } from '../../lib/origin';
 
 /** El origen de la app para el link (en pruebas sin ventana, el de producción). */
-const appOrigin = () => (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://matchmate-oficial.vercel.app');
+const appOrigin = () => shareOrigin();
 
 /**
  * «Invitar al equipo» (el capitán): el QR del link (`/equipos/unirse/<código>`), el código grande, copiarlo o mandarlo

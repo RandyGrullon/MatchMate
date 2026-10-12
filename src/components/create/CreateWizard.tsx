@@ -39,6 +39,7 @@ import {
   type WizardForm,
 } from './logic';
 import { CreateStyles, wizardField, wizardLabel, wizardLegend } from './styles';
+import { shareOrigin } from '../../lib/origin';
 
 /** Lo que cambia con «Liga con menores» (lo mismo que explicaba el formulario de antes). */
 const MINORS_RULES = [
@@ -984,7 +985,7 @@ function InviteStep({ lid, torneo, name, titleRef }: { lid: string; torneo: bool
       alive = false;
     };
   }, [lid]);
-  const url = code ? codeInviteUrl(location.origin, code) : null;
+  const url = code ? codeInviteUrl(shareOrigin(), code) : null;
   return (
     <>
       <Question

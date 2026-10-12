@@ -103,6 +103,7 @@ import {
 import { MatchSheet } from './match/MatchSheet';
 import { useEntryNames, useMyTeams, useTournament, type TournamentData } from './parts';
 import { RegisterSheet } from './register/RegisterSheet';
+import { shareOrigin } from '../../../lib/origin';
 
 type SheetKey = 'menu' | 'register' | 'seed' | 'stage' | 'playoffs' | 'agents' | 'br' | 'edit' | 'scorers';
 
@@ -327,7 +328,7 @@ function Tournament({
   };
   const share = async () => {
     setSheet(null);
-    if (await shareLink(`${location.origin}${path}`, t.name)) toast('Link copiado');
+    if (await shareLink(`${shareOrigin()}${path}`, t.name)) toast('Link copiado');
   };
 
   const menu: MenuItem[] = [

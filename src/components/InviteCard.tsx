@@ -9,8 +9,9 @@ import { codeInviteUrl } from './invite/logic';
 import { QrCode } from './QrCode';
 import { shareLink } from './share';
 import { Button, Card, Skeleton } from './ui';
+import { shareOrigin } from '../lib/origin';
 
-export const inviteUrl = (code: string) => codeInviteUrl(location.origin, code);
+export const inviteUrl = (code: string) => codeInviteUrl(shareOrigin(), code);
 
 /**
  * Invitación a la liga (Admin › Liga, solo el dueño y los admins): «Invitar personas» (la hoja de invitar, con las

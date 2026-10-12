@@ -8,7 +8,8 @@
 // ---------- Qué hace lo que se leyó ----------
 
 /** Donde vive la app (los QR impresos llevan este link aunque se lean desde otra copia, p. ej. la de pruebas). */
-export const PRODUCTION_ORIGIN = 'https://matchmate-oficial.vercel.app';
+export const PRODUCTION_ORIGIN = APP_ORIGIN;
+import { APP_ORIGIN } from '../../lib/origin';
 
 /** Código de invitación: 8 letras y números sin los que se confunden (I, O, 0, 1). */
 export const INVITE_CODE = /^[A-HJ-NP-Z2-9]{8}$/;
