@@ -5,6 +5,7 @@ import { imageBlob, storedType, type CompressedImage } from '../image';
 import { POST_BUCKET } from '../publicImages';
 import { backend, getUserId, invalidate, queryClient, remember, rpc, updateCached, type Live, type QueryDesc } from './client';
 import { patchPaged, peopleKeys, peopleTags, usePaged, type PageData, type Paged } from './follows';
+import type { GameKind, ProfileGame } from './profileGames';
 import type { SquadLite } from './squads';
 
 /**
@@ -41,6 +42,13 @@ export interface Post {
   league: { id: string; name: string; sport: string } | null;
   /** Publicación del muro de un equipo (docs/equipos-y-en-vivo.md); falta en una copia vieja. */
   squad?: SquadLite | null;
+  /**
+   * El partido o juego compartido (docs/perfiles-equipos-esports.md §2), como en los juegos del perfil. null si no
+   * lleva o si quien mira no lo puede ver (entonces sale «Juego no disponible» si `hasGame`).
+   */
+  game?: ProfileGame | null;
+  /** Lleva un juego aunque quien mira no lo pueda ver (`game` null): «Juego no disponible». */
+  hasGame?: boolean;
   sport: string | null;
   visibility: PostVisibility;
   /** Cuándo se publicó (ISO; sirve de cursor con el id). */
@@ -244,9 +252,21 @@ export interface NewPost {
   leagueId?: string | null;
   /** Publicar en el muro de un equipo (miembros; siempre para todos). */
   squadId?: string | null;
+  /** Compartir un partido o juego (su liga va fija: la del juego). */
+  game?: SharedGame | null;
   visibility: PostVisibility;
   sport?: string | null;
 }
+
+/** El juego que se comparte: su tipo, la fila (entrada, partido, tarjeta, prueba o sesión) y el jugador (en un partido). */
+export interface SharedGame {
+  kind: GameKind;
+  id: string;
+  playerId?: string | null;
+}
+
+/** El juego de la lista del perfil (ProfileGame) como juego para compartir. */
+export const sharedGameOf = (g: Pick<ProfileGame, 'kind' | 'id' | 'playerId'>): SharedGame => ({ kind: g.kind, id: g.id, playerId: g.playerId ?? null });
 
 /** El texto como lo guarda la base: sin espacios alrededor y sin más de una línea en blanco seguida. */
 export function cleanPostText(text: string): string {
@@ -258,9 +278,9 @@ export function cleanPostText(text: string): string {
 }
 
 /** Qué le falta a una publicación para poder salir (null = lista). */
-export function postProblem(input: Pick<NewPost, 'text' | 'photo' | 'leagueId' | 'visibility'>): string | null {
+export function postProblem(input: Pick<NewPost, 'text' | 'photo' | 'leagueId' | 'visibility' | 'game'>): string | null {
   const text = cleanPostText(input.text);
-  if (!text && !input.photo) return 'Escribe algo o agrega una foto.';
+  if (!text && !input.photo && !input.game) return 'Escribe algo o agrega una foto.';
   if (text.length > POST_TEXT_MAX) return `Usa ${POST_TEXT_MAX} caracteres o menos.`;
   if (input.visibility === 'league' && !input.leagueId) return 'Elige la liga.';
   if (input.visibility === 'followers' && input.leagueId) return 'Lo de una liga es para todos o solo para la liga.';
@@ -308,6 +328,7 @@ export async function createPost(input: NewPost): Promise<Post> {
       p_visibility: input.squadId ? 'public' : input.visibility,
       p_sport: input.leagueId ? null : (input.sport ?? null),
       ...(input.squadId ? { p_squad: input.squadId } : {}),
+      ...(input.game ? { p_game_kind: input.game.kind, p_game_id: input.game.id, p_game_player: input.game.playerId ?? null } : {}),
     });
   } catch (e) {
     // No quedó publicada: la foto que se acaba de subir sobra.

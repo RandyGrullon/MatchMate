@@ -5,6 +5,8 @@ import { uuidv7 } from '../db/ids';
 import type { CompressedLogo } from '../image';
 import { LOGO_BUCKET, logoPath, prepareLogo, removeLogoFile } from '../logos';
 import { backend, getUserId, invalidate, queryClient, remember, rpc, updateCached, type Live } from './client';
+import { usePaged, type FollowPerson, type Paged } from './follows';
+import type { PersonLite } from './posts';
 import { tags } from './keys';
 import { postTags } from './posts';
 
@@ -78,6 +80,10 @@ export interface SquadPage extends SquadLite {
   roster: SquadMember[];
   leagues: SquadLeague[];
   record: SquadRecord;
+  /** Publicaciones del muro (docs/perfiles-equipos-esports.md §3; falta en una copia vieja). */
+  posts?: number;
+  /** Me gusta de sus publicaciones y de los juegos de sus jugadores en las ligas del equipo. */
+  likes?: number;
 }
 
 export interface MySquad extends SquadLite {
@@ -472,4 +478,158 @@ export function squadErrorText(e: unknown): string {
   if (kind === 'network') return 'Sin conexión. Revisa tu señal y vuelve a intentar.';
   if (kind === 'validation' && message && !/^[a-z_]+(:|$)/.test(message)) return message;
   return 'No se pudo. Inténtalo otra vez.';
+}
+
+// ---------- El equipo como perfil (docs/perfiles-equipos-esports.md §3) ----------
+
+/** Un partido del equipo en una de sus ligas. */
+export interface SquadGame {
+  key: string;
+  matchId: string;
+  leagueId: string;
+  leagueName: string;
+  sport: string;
+  at: string;
+  side: 1 | 2;
+  mine: string;
+  opponent: string | null;
+  score: string | null;
+  result: 'win' | 'loss' | 'draw' | null;
+  walkover: boolean;
+  stage: string | null;
+  round: string | null;
+  url: string;
+}
+
+export interface SquadStats {
+  record: SquadRecord;
+  leagues: {
+    leagueId: string;
+    name: string;
+    kind: 'liga' | 'torneo';
+    sport: string;
+    logo: string | null;
+    record: SquadRecord;
+    seasons: { seasonId: string; name: string; record: SquadRecord }[];
+  }[];
+  tournaments: { leagueId: string; eventId: string | null; name: string; sport: string; date: string | null; record: SquadRecord }[];
+}
+
+const SQUAD_PAGE = 20;
+
+/** Seguidores del equipo (más nuevos primero, por páginas de 30; también sin sesión). */
+export function useSquadFollowers(id: string | null | undefined): Paged<FollowPerson> {
+  return usePaged<FollowPerson>({
+    key: id ? `squads:followers:${id}` : null,
+    desc: { kind: 'squadFollowers', id: id ?? undefined },
+    tags: id ? [squadTags.all, squadTags.squad(id)] : [],
+    pageSize: 30,
+    fetchPage: (after, limit) =>
+      rpc<FollowPerson[]>('squad_followers', { p_squad: id, p_limit: limit, p_before: after?.at ?? null, p_before_id: after?.id ?? null }),
+    itemKey: (p) => p.id,
+  });
+}
+
+/** Los partidos del equipo en sus ligas (los que quien mira puede ver), más nuevos primero. */
+export function useSquadGames(id: string | null | undefined): Paged<SquadGame> {
+  return usePaged<SquadGame>({
+    key: id ? `squads:games:${id}` : null,
+    desc: { kind: 'squadGames', id: id ?? undefined },
+    tags: id ? [squadTags.all, squadTags.squad(id)] : [],
+    pageSize: SQUAD_PAGE,
+    fetchPage: (after, limit) =>
+      rpc<SquadGame[]>('squad_games', { p_squad: id, p_limit: limit, p_before: after?.at ?? null, p_before_key: after?.key ?? null }),
+    itemKey: (g) => g.key,
+  });
+}
+
+/** Récord por liga y temporada, y sus torneos. */
+export function useSquadStats(id: string | null | undefined): Live<SquadStats | null> {
+  const key = id ? `squads:stats:${id}` : null;
+  if (key) remember(key, { kind: 'squadStats', id: id! });
+  const st = queryClient.useQuery<SquadStats | null>(key, () => rpc<SquadStats | null>('squad_stats', { p_squad: id }), {
+    initial: null,
+    tags: id ? [squadTags.all, squadTags.squad(id)] : [],
+    staleMs: 60_000,
+  });
+  return useMemo(() => ({ data: st.data, loading: st.loading, error: st.error }), [st]);
+}
+
+// ---------- Invitar dentro de la app ----------
+
+export type SquadInviteStatus = 'sent' | 'member' | 'pending' | 'unavailable' | 'full' | 'rate_limited';
+
+export interface SquadInviteResult {
+  sent: number;
+  results: { userId: string; status: SquadInviteStatus }[];
+}
+
+export interface MySquadInvite {
+  id: string;
+  squad: SquadLite;
+  invitedBy: { id: string; name: string; username: string | null };
+  createdAt: string;
+}
+
+export interface SquadPendingInvite {
+  id: string;
+  user: PersonLite;
+  createdAt: string;
+}
+
+export const squadInviteTags = {
+  mine: 'squads:invites:mine',
+  pending: (id: string) => `squads:invites:${id}`,
+};
+
+/** El capitán invita a varias personas (desde la búsqueda dentro de la app). */
+export async function inviteToSquad(id: string, userIds: readonly string[]): Promise<SquadInviteResult> {
+  try {
+    return await rpc<SquadInviteResult>('invite_to_squad', { p_squad: id, p_users: [...userIds] });
+  } finally {
+    invalidate(squadInviteTags.pending(id), 'people:search');
+  }
+}
+
+/** Aceptar (entra al equipo) o rechazar una invitación. */
+export async function respondSquadInvite(inviteId: string, accept: boolean): Promise<{ squadId?: string }> {
+  try {
+    return (await rpc<{ squadId?: string } | null>('respond_squad_invite', { p_invite: inviteId, p_accept: accept })) ?? {};
+  } finally {
+    invalidate(squadInviteTags.mine, squadTags.mine, squadTags.all, 'posts:feed');
+  }
+}
+
+/** El capitán retira una invitación. */
+export async function cancelSquadInvite(squadId: string, inviteId: string): Promise<void> {
+  try {
+    await rpc('cancel_squad_invite', { p_invite: inviteId });
+  } finally {
+    invalidate(squadInviteTags.pending(squadId), 'people:search');
+  }
+}
+
+/** Mis invitaciones a equipos (para Avisos). */
+export function useMySquadInvites(): Live<MySquadInvite[]> {
+  const key = getUserId() ? squadInviteTags.mine : null;
+  if (key) remember(key, { kind: 'squadInvites', status: 'mine' });
+  const st = queryClient.useQuery<MySquadInvite[]>(key, () => rpc<MySquadInvite[]>('my_squad_invites'), {
+    initial: [],
+    tags: [squadTags.all, squadInviteTags.mine],
+    staleMs: 30_000,
+    pollMs: 120_000,
+  });
+  return useMemo(() => ({ data: st.data, loading: st.loading, error: st.error }), [st]);
+}
+
+/** Las invitaciones que esperan respuesta (solo el capitán). */
+export function useSquadPendingInvites(id: string | null | undefined, enabled = true): Live<SquadPendingInvite[]> {
+  const key = id && enabled && getUserId() ? squadInviteTags.pending(id) : null;
+  if (key) remember(key, { kind: 'squadInvites', id: id! });
+  const st = queryClient.useQuery<SquadPendingInvite[]>(key, () => rpc<SquadPendingInvite[]>('squad_pending_invites', { p_squad: id }), {
+    initial: [],
+    tags: id ? [squadTags.squad(id), squadInviteTags.pending(id)] : [],
+    staleMs: 30_000,
+  });
+  return useMemo(() => ({ data: st.data, loading: st.loading, error: st.error }), [st]);
 }

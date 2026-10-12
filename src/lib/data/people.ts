@@ -123,6 +123,8 @@ export interface PersonHit {
   invited: boolean;
   /** Ruta de su foto en el bucket `avatars` (falta en una copia vieja hasta que se vuelve a leer). */
   avatar?: string | null;
+  /** Con un equipo (`squad`): ya es miembro (y `invited`, si tiene una invitación pendiente a ese equipo). */
+  inSquad?: boolean;
 }
 
 /** Lo que la base mira de la búsqueda. */
@@ -153,6 +155,7 @@ const toHit = (r: Partial<PersonHit>): PersonHit => ({
   inLeague: r.inLeague === true,
   invited: r.invited === true,
   avatar: typeof r.avatar === 'string' && r.avatar ? r.avatar : null,
+  ...(r.inSquad !== undefined ? { inSquad: r.inSquad === true } : {}),
 });
 
 /**
@@ -160,10 +163,15 @@ const toHit = (r: Partial<PersonHit>): PersonHit => ({
  * @usuario o nombre (primero el @usuario exacto, luego a quien sigo). Nunca la cuenta de la sesión ni las
  * bloqueadas. Con `lid` (hay que ser miembro), `inLeague` e `invited`.
  */
-export async function fetchPeople(query: string, lid?: string | null, limit = 30): Promise<PersonHit[]> {
+export async function fetchPeople(query: string, lid?: string | null, limit = 30, squad?: string | null): Promise<PersonHit[]> {
   const q = peopleQuery(query);
   if (q.length > 0 && q.length < PEOPLE_QUERY_MIN) return [];
-  const rows = await rpc<Partial<PersonHit>[] | null>('search_people', { p_query: q, p_league: lid || null, p_limit: limit });
+  const rows = await rpc<Partial<PersonHit>[] | null>('search_people', {
+    p_query: q,
+    p_league: lid || null,
+    p_limit: limit,
+    ...(squad ? { p_squad: squad } : {}),
+  });
   return Array.isArray(rows) ? rows.filter((r) => r && r.id).map(toHit) : [];
 }
 
@@ -180,7 +188,7 @@ const NO_HITS: PersonHit[] = [];
  * Búsqueda de personas con espera de 250 ms después de la última tecla. No se guarda en el teléfono; fresca 15 s.
  * Se vuelve a leer al seguir a alguien, al invitar y con el tiempo real de invitaciones. Sin cuenta, nada.
  */
-export function usePeople(query: string, lid?: string | null): PeopleLive {
+export function usePeople(query: string, lid?: string | null, squad?: string | null): PeopleLive {
   const q = peopleQuery(query);
   const [wanted, setWanted] = useState(q);
   useEffect(() => {
@@ -189,11 +197,13 @@ export function usePeople(query: string, lid?: string | null): PeopleLive {
     return () => clearTimeout(t);
   }, [q, wanted]);
 
-  const key = getUserId() ? peopleSearchKey(wanted, lid) : null;
-  if (key) remember(key, { kind: 'peopleSearch', lid: lid || undefined, id: wanted });
-  const st = queryClient.useQuery<PersonHit[]>(key, () => fetchPeople(wanted, lid), {
+  // Con un equipo, otra clave (cada persona trae «ya es miembro» / «invitado» de ese equipo).
+  const base = getUserId() ? peopleSearchKey(wanted, lid) : null;
+  const key = base && squad ? `${base}:squad:${squad}` : base;
+  if (key) remember(key, { kind: 'peopleSearch', lid: lid || undefined, id: wanted, status: squad ? `squad:${squad}` : undefined });
+  const st = queryClient.useQuery<PersonHit[]>(key, () => fetchPeople(wanted, lid, 30, squad), {
     initial: NO_HITS,
-    tags: peopleSearchTags(lid),
+    tags: squad ? [...peopleSearchTags(lid), `squads:invites:${squad}`] : peopleSearchTags(lid),
     staleMs: 15_000,
     persist: false,
   });

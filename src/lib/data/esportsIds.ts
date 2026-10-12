@@ -27,6 +27,8 @@ export interface GameIdRecord {
   userId: string;
   game: GameId;
   platform: string;
+  /** Dónde juega con este ID (docs/perfiles-equipos-esports.md §4); vacío = no lo dijo (src/sports/esports/platforms.ts). */
+  platforms?: string[];
   region: string;
   idDisplay: string;
   idNormalized?: string;
@@ -78,7 +80,7 @@ export const esportsIdTags = {
 } as const;
 
 /** Columnas que cualquier cuenta puede leer de otra (grant select por columna, §9.3). */
-export const PUBLIC_COLUMNS = 'user_id,game,platform,region,id_display,status,ranks,rank_source,ownership,verified_at,confirmed_at,updated_at';
+export const PUBLIC_COLUMNS = 'user_id,game,platform,platforms,region,id_display,status,ranks,rank_source,ownership,verified_at,confirmed_at,updated_at';
 
 /** Lo que usa el módulo y se cambia en las pruebas. */
 export const esportsIdsDeps = {
@@ -126,6 +128,10 @@ export function toGameIdRecord(raw: unknown): Wire<GameIdRecord> | null {
     userId,
     game,
     platform: s(pick(raw, 'platform')) ?? '',
+    platforms: (() => {
+      const v = pick(raw, 'platforms');
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    })(),
     region: s(pick(raw, 'region')) ?? '',
     idDisplay,
     status: statusOf(pick(raw, 'status')),
@@ -256,8 +262,21 @@ export async function seenIdMove(id: string): Promise<void> {
 const afterMine = () => invalidate(esportsIdTags.mine, esportsIdTags.all);
 
 /** Guarda el ID (declarado). Si otra cuenta lo tiene conectado con su inicio de sesión: 'id_tomado'. */
-export async function saveGameId(game: GameId, id: string, platform = '', region = ''): Promise<{ status: IdStatus; idDisplay: string }> {
-  const res = await rpc<unknown>('esports_save_game_id', { p_game: game, p_id: id, p_platform: platform, p_region: region });
+export async function saveGameId(
+  game: GameId,
+  id: string,
+  platform = '',
+  region = '',
+  /** Dónde juega con este ID (null deja las que tenía). */
+  platforms: readonly string[] | null = null,
+): Promise<{ status: IdStatus; idDisplay: string }> {
+  const res = await rpc<unknown>('esports_save_game_id', {
+    p_game: game,
+    p_id: id,
+    p_platform: platform,
+    p_region: region,
+    ...(platforms ? { p_platforms: [...platforms] } : {}),
+  });
   afterMine();
   const r = isObj(res) ? res : {};
   return { status: statusOf(r.status), idDisplay: s(r.idDisplay) ?? id.trim() };
@@ -286,6 +305,12 @@ export async function setRanks(game: GameId, ranks: RankMap, platform = ''): Pro
   afterMine();
 }
 
+/** Cambia solo dónde juega con ese ID (sirve también en un ID conectado con su inicio de sesión). */
+export async function setGamePlatforms(game: GameId, platforms: readonly string[], platform = ''): Promise<void> {
+  await rpc('esports_set_game_platforms', { p_game: game, p_platforms: [...platforms], p_platform: platform });
+  afterMine();
+}
+
 export async function deleteGameId(game: GameId, platform = ''): Promise<void> {
   await rpc('esports_delete_game_id', { p_game: game, p_platform: platform });
   afterMine();
@@ -296,10 +321,12 @@ export async function deleteGameId(game: GameId, platform = ''): Promise<void> {
  * proveedor (por el paso «go», con un formulario: así la función sabe que viene de la app). Vuelve a
  * `/esports/mi-id?conectado=<proveedor>` o `?error=<codigo>`. Si no está encendido: BackendError 'no_disponible'.
  */
-export async function startLink(provider: LinkProvider, game: GameId): Promise<void> {
+export async function startLink(provider: LinkProvider, game: GameId, volver?: string | null): Promise<void> {
   const off = new BackendError('no_disponible', 'validation', 'no_disponible');
   if (isLocal()) throw off;
-  const res = await backend().invoke<unknown>('esports-auth/start', { provider, game });
+  // `volver`: a dónde vuelve después de conectar (p. ej. el torneo donde se estaba inscribiendo). Solo una ruta de la app.
+  const back = volver && volver.startsWith('/') && !volver.startsWith('//') ? volver : null;
+  const res = await backend().invoke<unknown>('esports-auth/start', { provider, game, ...(back ? { volver: back } : {}) });
   const r = isObj(res) ? res : {};
   if (r.status !== 'ok' || typeof r.url !== 'string' || !/^https?:\/\//i.test(r.url)) throw off;
   esportsIdsDeps.navigate(r.url);

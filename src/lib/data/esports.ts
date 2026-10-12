@@ -1198,6 +1198,16 @@ export async function registerSolo(eventId: string): Promise<string> {
   return id;
 }
 
+/**
+ * Vuelve a tomar el ID y los rangos de la inscripción con los que tiene cada uno ahora (el capitán: todos; un jugador:
+ * el suyo). Para quien cambió de cuenta del juego después de inscribirse. Solo con el torneo en inscripción.
+ */
+export async function refreshEntryIds(entryId: string, eventId: string): Promise<number> {
+  const res = await rpc<{ updated?: number } | null>('esports_refresh_entry_ids', { p_entry: entryId });
+  afterEntry(eventId);
+  return typeof res?.updated === 'number' ? res.updated : 0;
+}
+
 /** La plantilla nueva del inscrito (el capitán en la inscripción; el admin siempre). */
 export async function setEntryRoster(entryId: string, members: readonly { userId: string; role: TeamRole }[]): Promise<void> {
   await rpc('esports_set_entry_roster', { p_entry: entryId, p_members: memberArgs(members) });
@@ -1491,6 +1501,10 @@ export function esportsErrorText(e: unknown, game?: GameId, ctx?: EsportsErrorCo
       return gameName ? `Este torneo pide tu rango verificado de ${gameName}.` : 'Este torneo pide tu rango verificado.';
     case 'id_tomado':
       return 'Ese ID está conectado a otra cuenta con su inicio de sesión.';
+    case 'otra_plataforma':
+      return person ? `${person} juega ${juego} en otra plataforma que la del torneo.` : `Tu ID de ${juego} es de otra plataforma que la del torneo.`;
+    case 'sin_plataforma':
+      return person ? `${person} todavía no dice en qué plataforma juega ${juego}.` : `Di en qué plataforma juegas ${juego} (en Mi ID de juego).`;
     case 'cupo_lleno':
       return ctx === 'equipo' || /equipo/.test(detail) ? 'El equipo está lleno.' : 'Ya no hay cupo.';
     case 'limite':

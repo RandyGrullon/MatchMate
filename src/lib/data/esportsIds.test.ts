@@ -58,11 +58,14 @@ describe('de la base a la app', () => {
       verifiedAt: '2026-10-08T10:00:00Z',
       confirmedAt: '2026-10-08T10:00:00Z',
       updatedAt: '2026-10-08T10:00:00Z',
+      platforms: ['pc', 7],
     });
     expect(mine).toEqual({
       userId: UID,
       game: 'lol',
       platform: '',
+      // Dónde juega con ese ID (solo los textos).
+      platforms: ['pc'],
       region: 'la1',
       idDisplay: 'Ñandú#LAN',
       idNormalized: 'Ñandú#lan',
@@ -96,6 +99,7 @@ describe('de la base a la app', () => {
       userId: OTHER,
       game: 'nba_2k',
       platform: 'psn',
+      platforms: [],
       region: '',
       idDisplay: 'Yo2K',
       status: 'pendiente',
