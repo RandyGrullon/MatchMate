@@ -109,6 +109,13 @@ const RPC_AUTHENTICATED = [
   'create_post', 'delete_post', 'set_post_like', 'post_detail', 'post_comments', 'add_post_comment', 'delete_post_comment',
   'social_feed', 'user_posts', 'league_posts', 'league_social', 'follow_league', 'unfollow_league', 'followed_leagues',
   'search_leagues', 'set_bio', 'set_avatar', 'block_user', 'unblock_user', 'my_blocked_users',
+  // Equipos fuera de una liga (crear, código, unirse, plantilla, logo, seguir, buscar, muro y entrar a ligas) y las
+  // transmisiones en vivo.
+  'create_squad', 'update_squad', 'delete_squad', 'squad_code', 'renew_squad_code', 'squad_preview', 'join_squad',
+  'leave_squad', 'remove_squad_member', 'set_squad_member', 'begin_squad_logo', 'set_squad_logo', 'squad_page', 'my_squads',
+  'follow_squad', 'unfollow_squad', 'followed_squads', 'search_squads', 'squad_posts', 'request_squad_league',
+  'withdraw_squad_request', 'league_squad_requests', 'decide_squad_request', 'sync_squad_roster', 'set_league_live',
+  'start_stream', 'end_stream', 'league_streams', 'live_now',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -123,8 +130,8 @@ const RPC_SERVICE_ONLY = [
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
 const ANON_ALLOWED = [
-  'private.readable_leagues', 'public.esports_hub', 'public.esports_team_preview', 'public.invite_preview', 'public.public_agenda',
-  'public.public_leagues_feed', 'public.scorer_link_preview',
+  'private.readable_leagues', 'public.esports_hub', 'public.esports_team_preview', 'public.invite_preview', 'public.league_streams',
+  'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview', 'public.squad_page', 'public.squad_preview',
 ];
 
 describe('canario: la RLS se aplica en PGlite', () => {

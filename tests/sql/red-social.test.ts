@@ -212,6 +212,7 @@ describe('publicar', () => {
       text: 'Mi primer juego',
       photo: null,
       league: null,
+      squad: null,
       sport: null,
       visibility: 'public',
       at: expect.stringMatching(ISO),

@@ -139,12 +139,13 @@ describe('permisos', () => {
     // guarda que la propia cuenta aceptó los términos vigentes (una bloqueada también, para poder seguir leyendo).
     // public_leagues_feed y scorer_link_preview (a qué lleva un link para anotar) también las llama quien no tiene
     // cuenta. sync_ladder y sync_playoffs solo ponen al día lo que ya pasó. esports_hub (la página de un juego) y
-    // esports_team_preview (a qué equipo lleva un código) también las llama quien no tiene cuenta.
+    // esports_team_preview (a qué equipo lleva un código) también las llama quien no tiene cuenta. Igual squad_page (la
+    // página de un equipo), squad_preview (a qué equipo lleva un código) y league_streams (las transmisiones de una liga).
     expect(rows.map((r) => r.fn)).toEqual([
       'accept_legal', 'bowling_game_context', 'delete_push_subscription', 'esports_hub', 'esports_team_preview', 'invite_preview',
-      'league_champions', 'league_seasons',
-      'list_reports', 'my_matches', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'server_now', 'sync_ladder',
-      'sync_playoffs', 'touch_seen',
+      'league_champions', 'league_seasons', 'league_streams',
+      'list_reports', 'my_matches', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'server_now', 'squad_page',
+      'squad_preview', 'sync_ladder', 'sync_playoffs', 'touch_seen',
     ]);
   });
 });
