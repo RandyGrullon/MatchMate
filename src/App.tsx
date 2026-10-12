@@ -37,6 +37,10 @@ const SearchPage = lazy(() => import('./pages/SearchPage'));
 const SocialPage = lazy(() => import('./pages/SocialPage'));
 const PostPage = lazy(() => import('./pages/PostPage'));
 const LeagueWallPage = lazy(() => import('./pages/LeagueWallPage'));
+const SquadsPage = lazy(() => import('./pages/squads/SquadsPage'));
+const SquadPage = lazy(() => import('./pages/squads/SquadPage'));
+const JoinSquadPage = lazy(() => import('./pages/squads/JoinSquadPage'));
+const LiveStreamPage = lazy(() => import('./pages/LiveStreamPage'));
 const InvitePage = lazy(() => import('./pages/InvitePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage'));
@@ -196,6 +200,9 @@ export default function App() {
                       <Route path="/buscar" element={<Screen area="buscar" framed><SearchPage /></Screen>} />
                       <Route path="/social" element={<Screen area="social" framed><SocialPage /></Screen>} />
                       <Route path="/p/:postId" element={<Screen area="publicacion" framed><PostPage /></Screen>} />
+                      <Route path="/equipos" element={<Screen area="equipos" framed><SquadsPage /></Screen>} />
+                      <Route path="/equipos/unirse/:code" element={<Screen area="equipos/unirse" framed><JoinSquadPage /></Screen>} />
+                      <Route path="/equipos/:squadId" element={<Screen area="equipos/equipo" framed><SquadPage /></Screen>} />
                       {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}
                       <Route path="/invitacion/:inviteId" element={<Screen area="invitacion" framed><InvitePage /></Screen>} />
                       <Route path="/login" element={<Screen area="login" framed><LoginPage /></Screen>} />
@@ -245,6 +252,8 @@ export default function App() {
                         <Route path="temporadas" element={<Screen area="liga/temporadas"><SeasonsPage /></Screen>} />
                         {/* El muro de la liga (publicaciones de sus miembros), igual en todos los deportes. */}
                         <Route path="muro" element={<Screen area="liga/muro"><LeagueWallPage /></Screen>} />
+                        {/* Las transmisiones en vivo de la liga (el link que se comparte). */}
+                        <Route path="vivo" element={<Screen area="liga/vivo"><LiveStreamPage /></Screen>} />
                         <Route path="admin" element={<Screen area="liga/admin"><AdminPage /></Screen>} />
                         <Route path="e/:eventId" element={<Screen area="liga/evento"><EventPage /></Screen>} />
                         <Route path="j/:playerId" element={<Screen area="liga/jugador"><SportRoute slot="Player" bowling={<PlayerRoute />} /></Screen>} />

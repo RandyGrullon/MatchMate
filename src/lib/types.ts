@@ -60,6 +60,8 @@ export interface League {
   badgesAuto?: BadgesAutoMode;
   /** ¿Quién diseña y da las insignias de la liga? (`leagues.badge_makers`); sin valor = 'admins'. */
   badgeMakers?: BadgeMakers;
+  /** Transmisiones en vivo activadas (`leagues.live_enabled`): admins y anotadores ponen el link de la transmisión. */
+  liveEnabled?: boolean;
   createdAt?: Stamp | null;
 }
 

@@ -50,6 +50,8 @@ export interface LeagueRow {
   badge_makers?: string;
   /** Reglas de la liga (jsonb). En esports, `{ game }`: el juego de la liga o del torneo suelto. */
   rules?: unknown;
+  /** Transmisiones en vivo activadas (20261011000100_equipos_en_vivo.sql). */
+  live_enabled?: boolean;
   created_at: string;
 }
 
@@ -224,6 +226,7 @@ export const toLeague = (r: LeagueRow): Wire<League> => ({
   logoPath: r.logo_path ?? null,
   ...(r.badges_auto === 'todas' || r.badges_auto === 'sin_titulos' || r.badges_auto === 'ninguna' ? { badgesAuto: r.badges_auto } : {}),
   ...(r.badge_makers === 'owner' || r.badge_makers === 'admins' || r.badge_makers === 'chosen' ? { badgeMakers: r.badge_makers } : {}),
+  liveEnabled: r.live_enabled === true,
   createdAt: r.created_at ?? null,
 });
 

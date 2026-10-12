@@ -5,6 +5,7 @@ import { imageBlob, storedType, type CompressedImage } from '../image';
 import { POST_BUCKET } from '../publicImages';
 import { backend, getUserId, invalidate, queryClient, remember, rpc, updateCached, type Live, type QueryDesc } from './client';
 import { patchPaged, peopleKeys, peopleTags, usePaged, type PageData, type Paged } from './follows';
+import type { SquadLite } from './squads';
 
 /**
  * Publicaciones de la red social (docs/red-social.md, 20261009000100_red_social.sql): el feed (Siguiendo y
@@ -38,6 +39,8 @@ export interface Post {
   /** Ruta en el bucket `posts` y su tamaño (para reservar el hueco antes de que llegue). */
   photo: { path: string; w: number | null; h: number | null } | null;
   league: { id: string; name: string; sport: string } | null;
+  /** Publicación del muro de un equipo (docs/equipos-y-en-vivo.md); falta en una copia vieja. */
+  squad?: SquadLite | null;
   sport: string | null;
   visibility: PostVisibility;
   /** Cuándo se publicó (ISO; sirve de cursor con el id). */
@@ -76,6 +79,7 @@ export const postTags = {
   feed: 'posts:feed',
   user: (uid: string) => `posts:u:${uid}`,
   league: (lid: string) => `posts:l:${lid}`,
+  squad: (id: string) => `posts:s:${id}`,
   post: (id: string) => `posts:p:${id}`,
 };
 
@@ -83,6 +87,7 @@ export const postKeys = {
   feed: (scope: FeedScope) => `posts:feed:${scope}`,
   user: (uid: string) => `posts:user:${uid}`,
   league: (lid: string) => `posts:league:${lid}`,
+  squad: (id: string) => `posts:squad:${id}`,
   detail: (id: string) => `posts:detail:${id}`,
   comments: (id: string) => `posts:comments:${id}`,
 };
@@ -102,6 +107,9 @@ export const fetchUserPosts = (uid: string, after: Pick<Post, 'at' | 'id'> | nul
 
 export const fetchLeaguePosts = (lid: string, after: Pick<Post, 'at' | 'id'> | null = null, limit = POSTS_PAGE) =>
   rpc<Post[]>('league_posts', { p_league: lid, p_limit: limit, ...cursor(after) });
+
+export const fetchSquadPosts = (id: string, after: Pick<Post, 'at' | 'id'> | null = null, limit = POSTS_PAGE) =>
+  rpc<Post[]>('squad_posts', { p_squad: id, p_limit: limit, ...cursor(after) });
 
 export const fetchPost = (id: string) => rpc<Post | null>('post_detail', { p_post: id });
 
@@ -138,6 +146,19 @@ export function useLeaguePosts(lid: string | null | undefined): Paged<Post> {
     tags: lid ? [postTags.all, postTags.league(lid)] : [],
     pageSize: POSTS_PAGE,
     fetchPage: (after, limit) => fetchLeaguePosts(lid!, after, limit),
+    itemKey: (p) => p.id,
+    pollMs: 120_000,
+  });
+}
+
+/** El muro de un equipo. */
+export function useSquadPosts(id: string | null | undefined): Paged<Post> {
+  return usePaged<Post>({
+    key: id && getUserId() ? postKeys.squad(id) : null,
+    desc: { kind: 'posts', status: 'squad', id: id ?? undefined } satisfies PostListDesc,
+    tags: id ? [postTags.all, postTags.squad(id)] : [],
+    pageSize: POSTS_PAGE,
+    fetchPage: (after, limit) => fetchSquadPosts(id!, after, limit),
     itemKey: (p) => p.id,
     pollMs: 120_000,
   });
@@ -204,6 +225,7 @@ export function belongsTo(post: Post, desc: QueryDesc): boolean {
   if (desc.status === 'feed:discover') return post.visibility === 'public';
   if (desc.status === 'user') return desc.id === post.author.id;
   if (desc.status === 'league') return !!post.league && desc.lid === post.league.id;
+  if (desc.status === 'squad') return !!post.squad && desc.id === post.squad.id;
   return false;
 }
 
@@ -220,6 +242,8 @@ export interface NewPost {
   text: string;
   photo?: CompressedImage | null;
   leagueId?: string | null;
+  /** Publicar en el muro de un equipo (miembros; siempre para todos). */
+  squadId?: string | null;
   visibility: PostVisibility;
   sport?: string | null;
 }
@@ -281,8 +305,9 @@ export async function createPost(input: NewPost): Promise<Post> {
       p_photo_w: input.photo?.width ?? null,
       p_photo_h: input.photo?.height ?? null,
       p_league: input.leagueId ?? null,
-      p_visibility: input.visibility,
+      p_visibility: input.squadId ? 'public' : input.visibility,
       p_sport: input.leagueId ? null : (input.sport ?? null),
+      ...(input.squadId ? { p_squad: input.squadId } : {}),
     });
   } catch (e) {
     // No quedó publicada: la foto que se acaba de subir sobra.
@@ -295,13 +320,18 @@ export async function createPost(input: NewPost): Promise<Post> {
 }
 
 /** Borra una publicación (el autor, un admin de su liga o el superadmin). Sale de las listas al momento. */
-export async function deletePost(post: Pick<Post, 'id' | 'author' | 'league' | 'photo' | 'isMine'>): Promise<void> {
+export async function deletePost(post: Pick<Post, 'id' | 'author' | 'league' | 'photo' | 'isMine'> & Partial<Pick<Post, 'squad'>>): Promise<void> {
   dropPost(post.id);
   try {
     await rpc<boolean>('delete_post', { p_post: post.id });
     if (post.photo && post.isMine) await removePhoto(post.photo.path);
   } finally {
-    invalidate(postTags.user(post.author.id), postTags.feed, ...(post.league ? [postTags.league(post.league.id)] : []));
+    invalidate(
+      postTags.user(post.author.id),
+      postTags.feed,
+      ...(post.league ? [postTags.league(post.league.id)] : []),
+      ...(post.squad ? [postTags.squad(post.squad.id)] : []),
+    );
     queryClient.invalidateKey(peopleKeys.profile(post.author.id));
   }
 }

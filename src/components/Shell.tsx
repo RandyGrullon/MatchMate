@@ -120,14 +120,14 @@ const SOCIAL: SectionDef = {
   icon: MessagesSquare,
   match: (p) => under(p, '/social', '/p', '/buscar', '/u'),
 };
-// Ligas: tus ligas y torneos, las públicas, y todo lo de adentro de una liga (en Pro, menos su Organizar). Esports
-// (sus juegos, equipos, torneos e IDs de juego) también es de Ligas.
+// Ligas: tus ligas y torneos, las públicas, tus equipos (/equipos) y todo lo de adentro de una liga (en Pro, menos su
+// Organizar). Esports (sus juegos, equipos, torneos e IDs de juego) también es de Ligas.
 const LIGAS: SectionDef = {
   key: 'leagues',
   to: '/ligas',
   label: 'Ligas',
   icon: Trophy,
-  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports'),
+  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports', '/equipos'),
 };
 // Organizar (solo Pro): lo del admin de cada liga y la consola del dueño de la app.
 const ORGANIZAR: SectionDef = {

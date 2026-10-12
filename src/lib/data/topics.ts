@@ -69,6 +69,8 @@ export function handleMessage(topic: string, lid: string | null, msg: RealtimeMe
     if (msg.event === 'playoffs') return invalidate(`playoffs:${id}`);
     // Insignias que se ven en la liga (etiqueta badgeTags.league de ./badges): premios del mes, página del jugador.
     if (msg.event === 'badges') return invalidate(`badges:l:${id}`);
+    // Transmisiones en vivo de la liga (src/lib/data/streams.ts): la franja «EN VIVO» y En vivo ahora de Hoy.
+    if (msg.event === 'streams') return invalidate(`streams:${id}`, 'streams:now');
   } else if (kind === 'user') {
     if (msg.event === 'submission') return invalidate(tags.feeds);
     // Alguien me siguió / dejó de seguirme o le dio me gusta a un juego mío (etiquetas de src/lib/data/follows.ts).
