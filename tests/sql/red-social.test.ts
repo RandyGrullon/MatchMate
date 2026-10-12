@@ -221,6 +221,9 @@ describe('publicar', () => {
       comments: 0,
       isMine: true,
       canDelete: true,
+      // El juego que comparte (20261012000100_perfiles_equipos_esports.sql).
+      game: null,
+      hasGame: false,
     });
     // Otra cuenta la ve igual, sin poder borrarla.
     expect(await detail(w.u.extra, id)).toEqual({ ...p, isMine: false, canDelete: false });

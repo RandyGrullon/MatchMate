@@ -5,22 +5,25 @@
  *
  * El flujo (verify_jwt = false: la vuelta del proveedor llega sin JWT):
  *
- * 1. `POST /esports-auth/start` con el JWT de la cuenta y `{provider, game}` (desde un origen de la app, CORS con
- *    SCAN_ALLOWED_ORIGINS). Revisa que el proveedor esté encendido y sea el del juego, y pide a la base un `state`
- *    (`esports_link_begin`: uuid atado a la cuenta, al proveedor y al juego; 10 minutos y un solo uso). Devuelve
- *    `{status: 'ok', url}` (url = el paso 2) o `{status: 'no_disponible'}`.
+ * 1. `POST /esports-auth/start` con el JWT de la cuenta y `{provider, game, volver?}` (desde un origen de la app, CORS
+ *    con SCAN_ALLOWED_ORIGINS). Revisa que el proveedor esté encendido y sea el del juego, y pide a la base un `state`
+ *    (`esports_link_begin`: uuid atado a la cuenta, al proveedor, al juego y a `volver`; 10 minutos y un solo uso).
+ *    `volver` es la pantalla de la app a la que vuelve: solo una ruta que empieza con `/` y no con `//`, sin espacios,
+ *    controles ni `\` (`safeAppPath`); otra cosa se ignora. Devuelve `{status: 'ok', url}` (url = el paso 2) o
+ *    `{status: 'no_disponible'}`.
  * 2. `POST /esports-auth/go?provider&game&state`: el teléfono llega aquí con un formulario (navegación de verdad,
  *    no fetch). Solo se acepta si la cabecera `Origin` es de la app (una página ajena no puede mandar al navegador
  *    de otra persona por este paso). Guarda el `state` en una cookie de este dominio (`__Host-`, HttpOnly, Secure,
- *    SameSite=Lax, 10 min) y manda al proveedor.
+ *    SameSite=Lax, 10 min) y manda al proveedor (Epic y Riot con `prompt=login`: se puede entrar con otra cuenta).
  * 3. `GET /esports-auth/<proveedor>/callback`: la vuelta. Exige que la cookie sea el mismo `state` (CSRF: el
  *    navegador que vuelve es el que empezó en la app; quien manda a otro el link del proveedor con su propio state no
  *    logra conectar la cuenta de la víctima a la suya), toma el state (`esports_link_take`: existe, no venció y no
- *    se usó; lo marca usado), comprueba con el proveedor (Steam: la aserción OpenID con check_authentication; Epic y
- *    Riot: cambia el `code` por el token y lee la cuenta) y llama `esports_link_account`, que siempre devuelve
- *    `'ok'`: si otra cuenta tenía ese ID conectado con su login, la base se lo pasa a esta (el login prueba de quién
- *    es) y le avisa a la otra. Termina con un 302 a `{APP_URL}/esports/mi-id?conectado=<proveedor>&juego=<juego>` o
- *    `…?error=<codigo>&juego=<juego>`, con `codigo` ∈ `estado_vencido`, `proveedor`, `no_disponible`.
+ *    se usó; lo marca usado; trae `volver` si se guardó), comprueba con el proveedor (Steam: la aserción OpenID con
+ *    check_authentication; Epic y Riot: cambia el `code` por el token y lee la cuenta) y llama `esports_link_account`,
+ *    que devuelve `'ok'` (si otra cuenta tenía ese ID conectado con su login, la base se lo pasa a esta: el login
+ *    prueba de quién es, y le avisa a la otra) o `'cerrado'` (la cuenta juega un torneo en curso con otro ID). Termina
+ *    con un 302 a `{APP_URL}{volver}` (sin `volver`: `/esports/mi-id`) con `?conectado=<proveedor>&juego=<juego>` o
+ *    `?error=<codigo>&juego=<juego>`, con `codigo` ∈ `estado_vencido`, `proveedor`, `no_disponible`, `cerrado`.
  *
  * URLs de vuelta (se registran en Epic y Riot; Steam no se registra):
  * `{SUPABASE_URL}/functions/v1/esports-auth/{steam|epic|riot}/callback`.
@@ -71,7 +74,22 @@ export const LINK_GAMES: Readonly<Record<LinkProvider, readonly string[]>> = {
 export const isLinkProvider = (v: unknown): v is LinkProvider => v === 'steam' || v === 'epic' || v === 'riot';
 const isLinkGame = (p: LinkProvider, g: unknown): g is string => typeof g === 'string' && LINK_GAMES[p].includes(g);
 
-export type LinkErrorCode = 'estado_vencido' | 'proveedor' | 'no_disponible';
+export type LinkErrorCode = 'estado_vencido' | 'proveedor' | 'no_disponible' | 'cerrado';
+
+/** A dónde vuelve si no dice otra cosa. */
+export const DEFAULT_RETURN = '/esports/mi-id';
+
+/**
+ * `volver`: una ruta de la app (empieza con `/` y no con `//`, sin espacios, controles ni `\`, hasta 200 letras), o
+ * null. Así la vuelta nunca sale del origen de la app.
+ */
+export function safeAppPath(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length < 1 || v.length > 200) return null;
+  if (!v.startsWith('/') || v.startsWith('//')) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\s\\\u0000-\u001f\u007f]/.test(v)) return null;
+  return v;
+}
 
 /** La cookie que ata el `state` al navegador que empezó (solo este host: `__Host-`). */
 export const STATE_COOKIE = '__Host-mm_esports_state';
@@ -112,17 +130,40 @@ export function goUrl(supabaseUrl: string, o: { provider: LinkProvider; game: st
   return `${base(supabaseUrl)}/functions/v1/esports-auth/go?${p.toString()}`;
 }
 
-/** A dónde vuelve la persona: `/esports/mi-id?conectado=<p>&juego=<g>` o `?error=<codigo>&juego=<g>`. */
-export function appRedirect(appUrl: string, r: { provider: LinkProvider; game: string } | { error: LinkErrorCode; game?: string | null }): string {
-  const p = new URLSearchParams();
-  if ('error' in r) {
-    p.set('error', r.error);
-    if (r.game) p.set('juego', r.game);
-  } else {
-    p.set('conectado', r.provider);
-    p.set('juego', r.game);
+/**
+ * A dónde vuelve la persona: `volver` (si es una ruta segura de la app; si no, `/esports/mi-id`) con
+ * `?conectado=<p>&juego=<g>` o `?error=<codigo>&juego=<g>` (lo que ya traía la ruta se queda).
+ */
+export function appRedirect(
+  appUrl: string,
+  r: { provider: LinkProvider; game: string } | { error: LinkErrorCode; game?: string | null },
+  volver?: string | null,
+): string {
+  const set = (p: URLSearchParams) => {
+    if ('error' in r) {
+      p.set('error', r.error);
+      if (r.game) p.set('juego', r.game);
+    } else {
+      p.set('conectado', r.provider);
+      p.set('juego', r.game);
+    }
+  };
+  const path = safeAppPath(volver);
+  if (path) {
+    try {
+      const app = new URL(appUrl);
+      const u = new URL(path, app);
+      if (u.origin === app.origin) {
+        set(u.searchParams);
+        return `${appUrl}${u.pathname}${u.search}${u.hash}`;
+      }
+    } catch {
+      // Sigue con la de siempre.
+    }
   }
-  return `${appUrl}/esports/mi-id?${p.toString()}`;
+  const p = new URLSearchParams();
+  set(p);
+  return `${appUrl}${DEFAULT_RETURN}?${p.toString()}`;
 }
 
 /** La ruta dentro de la función: '/functions/v1/esports-auth/steam/callback' o '/esports-auth/steam/callback' → 'steam/callback'. */
@@ -222,10 +263,17 @@ async function handleStart(req: Request, deps: AuthDeps): Promise<Response> {
   }
   const provider = isObj(body) ? body.provider : null;
   const game = isObj(body) ? body.game : null;
+  // Solo una ruta segura de la app; otra cosa se ignora (vuelve a /esports/mi-id).
+  const volver = isObj(body) ? safeAppPath(body.volver) : null;
   if (!isLinkProvider(provider) || !isLinkGame(provider, game)) return send(400, { code: 'invalido', message: 'Ese juego no se conecta con ese proveedor.' });
   if (!deps.providers.linkEnabled(provider)) return send(200, { status: 'no_disponible' });
 
-  const { data, error } = await deps.rpc('esports_link_begin', { p_user: user, p_provider: provider, p_game: game });
+  const { data, error } = await deps.rpc('esports_link_begin', {
+    p_user: user,
+    p_provider: provider,
+    p_game: game,
+    ...(volver ? { p_volver: volver } : {}),
+  });
   if (error) {
     const code = raisedCode(error);
     if (code === 'rate_limited') return send(429, { code: 'rate_limited', message: 'rate_limited' });
@@ -267,6 +315,8 @@ interface TakenState {
   userId: string;
   provider: LinkProvider;
   game: string;
+  /** La ruta de la app a la que vuelve (null: /esports/mi-id). */
+  volver: string | null;
 }
 
 function parseTaken(data: unknown): TakenState | null {
@@ -275,12 +325,14 @@ function parseTaken(data: unknown): TakenState | null {
   const provider = data.provider;
   const game = data.game;
   if (!userId || !UUID.test(userId) || !isLinkProvider(provider) || !isLinkGame(provider, game)) return null;
-  return { userId: userId.toLowerCase(), provider, game };
+  return { userId: userId.toLowerCase(), provider, game, volver: safeAppPath(data.volver) };
 }
 
 async function handleCallback(req: Request, url: URL, provider: LinkProvider, deps: AuthDeps): Promise<Response> {
+  // Hasta tomar el state no se sabe a dónde volver: /esports/mi-id.
+  let volver: string | null = null;
   const back = (r: { error: LinkErrorCode; game?: string | null } | { provider: LinkProvider; game: string }) =>
-    redirect(appRedirect(deps.appUrl, r), 302, clearStateCookie());
+    redirect(appRedirect(deps.appUrl, r, volver), 302, clearStateCookie());
   if (req.method !== 'GET') return back({ error: 'estado_vencido' });
   if (deps.configError) {
     deps.log?.('[esports-auth] configuración', deps.configError);
@@ -298,6 +350,7 @@ async function handleCallback(req: Request, url: URL, provider: LinkProvider, de
     return back({ error: 'no_disponible' });
   }
   const link = parseTaken(taken.data);
+  volver = link?.volver ?? null;
   if (!link || link.provider !== provider) return back({ error: 'estado_vencido', game: link?.game });
   const game = link.game;
   if (!deps.providers.linkEnabled(provider)) return back({ error: 'no_disponible', game });
@@ -332,7 +385,9 @@ async function handleCallback(req: Request, url: URL, provider: LinkProvider, de
     deps.log?.('[esports-auth] esports_link_account falló', linked.error);
     return back({ error: 'no_disponible', game });
   }
-  // Siempre 'ok' (si otra cuenta lo tenía conectado, la base ya lo movió a esta y le avisó).
+  // 'ok' (si otra cuenta lo tenía conectado, la base ya lo movió a esta y le avisó) o 'cerrado' (juega un torneo en
+  // curso de ese juego con otro ID: no cambia nada).
+  if (linked.data === 'cerrado') return back({ error: 'cerrado', game });
   if (linked.data !== 'ok') {
     deps.log?.('[esports-auth] esports_link_account devolvió otra cosa', linked.data);
     return back({ error: 'no_disponible', game });

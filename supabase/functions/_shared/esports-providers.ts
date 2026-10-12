@@ -331,13 +331,22 @@ export const RIOT_ME = 'https://americas.api.riotgames.com/riot/account/v1/accou
 /** `Basic base64(id:secret)` (los dos son ASCII). */
 export const basicAuth = (id: string, secret: string) => `Basic ${btoa(`${id}:${secret}`)}`;
 
+// `prompt=login`: Epic y Riot piden entrar otra vez (así se puede elegir o conectar otra cuenta, no la que quedó
+// abierta en el navegador). Steam OpenID no tiene algo así.
 export function epicAuthorizeUrl(clientId: string, redirectUri: string, state: string): string {
-  const p = new URLSearchParams({ client_id: clientId, response_type: 'code', scope: 'basic_profile', redirect_uri: redirectUri, state });
+  const p = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    scope: 'basic_profile',
+    redirect_uri: redirectUri,
+    state,
+    prompt: 'login',
+  });
   return `${EPIC_AUTHORIZE}?${p.toString()}`;
 }
 
 export function riotAuthorizeUrl(clientId: string, redirectUri: string, state: string): string {
-  const p = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid', state });
+  const p = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid', state, prompt: 'login' });
   return `${RIOT_AUTHORIZE}?${p.toString()}`;
 }
 

@@ -581,7 +581,7 @@ describe('quién lee qué', () => {
     const [mine] = await db.rpc<Json[]>(p[0], 'esports_my_game_ids');
     expect(Object.keys(mine).sort()).toEqual(
       ['userId', 'game', 'platform', 'region', 'idDisplay', 'idNormalized', 'status', 'ownership', 'externalId', 'ranks', 'rankSource',
-        'lookupName', 'verifiedAt', 'confirmedAt', 'createdAt', 'updatedAt'].sort(),
+        'lookupName', 'verifiedAt', 'confirmedAt', 'createdAt', 'updatedAt', 'platforms'].sort(),
     );
     expect(mine).toMatchObject({ userId: p[0], game: 'lol', idNormalized: 'faker#kr1', externalId: 'puuid-1', ownership: 'busqueda', status: 'confirmado' });
     expect(await db.rpc(p[1], 'esports_my_game_ids')).toEqual([]);

@@ -116,6 +116,10 @@ const RPC_AUTHENTICATED = [
   'follow_squad', 'unfollow_squad', 'followed_squads', 'search_squads', 'squad_posts', 'request_squad_league',
   'withdraw_squad_request', 'league_squad_requests', 'decide_squad_request', 'sync_squad_roster', 'set_league_live',
   'start_stream', 'end_stream', 'league_streams', 'live_now',
+  // Perfiles (dónde juega), los equipos como perfil (seguidores, partidos, números e invitar) y las plataformas de
+  // esports.
+  'player_places', 'squad_followers', 'squad_games', 'squad_stats', 'invite_to_squad', 'respond_squad_invite',
+  'cancel_squad_invite', 'my_squad_invites', 'squad_pending_invites', 'esports_set_game_platforms', 'esports_refresh_entry_ids',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -131,7 +135,8 @@ const RPC_SERVICE_ONLY = [
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */
 const ANON_ALLOWED = [
   'private.readable_leagues', 'public.esports_hub', 'public.esports_team_preview', 'public.invite_preview', 'public.league_streams',
-  'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview', 'public.squad_page', 'public.squad_preview',
+  'public.player_places', 'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview',
+  'public.squad_followers', 'public.squad_page', 'public.squad_posts', 'public.squad_preview',
 ];
 
 describe('canario: la RLS se aplica en PGlite', () => {

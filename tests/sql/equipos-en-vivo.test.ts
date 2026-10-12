@@ -51,7 +51,8 @@ const NEW_RPC = [
   'squad_code', 'squad_page', 'squad_posts', 'squad_preview', 'start_stream', 'sync_squad_roster', 'unfollow_squad',
   'update_squad', 'withdraw_squad_request',
 ];
-const ANON_RPC = ['league_streams', 'squad_page', 'squad_preview'];
+// squad_posts también sin cuenta desde 20261012000100_perfiles_equipos_esports.sql.
+const ANON_RPC = ['league_streams', 'squad_page', 'squad_posts', 'squad_preview'];
 const HELPERS = [
   'squad_lite', 'squad_line', 'squad_color', 'squad_new_code', 'squad_as_captain', 'squad_count', 'squad_record',
   'squad_leagues_json', 'squad_ensure_player', 'squad_materialize', 'squad_members_count', 'squad_follows_count',
@@ -171,14 +172,15 @@ describe('permisos', () => {
     expect(rows).toEqual(
       NEW_RPC.map((fn) => ({ fn, definer: true, anon: ANON_RPC.includes(fn), auth: true, uid: !ANON_RPC.includes(fn), path: true })),
     );
-    // create_post (se creó de nuevo con p_squad): una sola, solo con sesión.
+    // create_post (se creó de nuevo con p_squad; 20261012000100_perfiles_equipos_esports.sql suma el juego): una sola,
+    // solo con sesión.
     expect(
       await db.admin(
         `select p.oid::regprocedure::text as sig, has_function_privilege('anon', p.oid, 'execute') as anon,
                 has_function_privilege('authenticated', p.oid, 'execute') as auth
            from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'create_post'`,
       ),
-    ).toEqual([{ sig: 'create_post(uuid,text,text,integer,integer,uuid,text,text,uuid)', anon: false, auth: true }]);
+    ).toEqual([{ sig: 'create_post(uuid,text,text,integer,integer,uuid,text,text,uuid,text,uuid,uuid)', anon: false, auth: true }]);
     const helpers = await db.admin<{ fn: string; auth: boolean; anon: boolean }>(
       `select p.proname as fn, has_function_privilege('authenticated', p.oid, 'execute') as auth,
               has_function_privilege('anon', p.oid, 'execute') as anon
@@ -500,6 +502,9 @@ describe('equipos', () => {
       roster: [],
       leagues: [],
       record: ZERO,
+      // 20261012000100_perfiles_equipos_esports.sql.
+      posts: 0,
+      likes: 0,
     });
     const usernames = Object.fromEntries(
       (await db.admin<{ id: string; username: string }>('select id, username from public.profiles where id = any ($1)', [[p[0], p[1]]])).map((r) => [
@@ -557,7 +562,8 @@ describe('el muro del equipo', () => {
     expect(await feedIds(w.u.otra, 'discover')).toContain(id);
     expect((await db.rpc<Json[]>(w.u.otra, 'squad_posts', { p_squad: s.squadId })).map((x) => x.id)).toEqual([id]);
     expect(await db.rpc(w.u.otra, 'post_detail', { p_post: id })).toMatchObject({ squad: { id: s.squadId } });
-    await fails(db.rpc(ANON, 'squad_posts', { p_squad: s.squadId }), '42501');
+    // Sin cuenta (20261012000100_perfiles_equipos_esports.sql): lo público.
+    expect((await db.rpc<Json[]>(ANON, 'squad_posts', { p_squad: s.squadId })).map((x) => x.id)).toEqual([id]);
   });
 
   it('bloqueos: quien bloqueó al autor (o fue bloqueado) no ve sus publicaciones del muro ni en el feed', async () => {

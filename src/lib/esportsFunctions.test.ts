@@ -16,6 +16,7 @@ import {
   handleAuthRequest,
   readCookie,
   routeOf,
+  safeAppPath,
   STATE_COOKIE,
   type AuthDeps,
 } from '../../supabase/functions/esports-auth/core';
@@ -412,20 +413,27 @@ describe('los adaptadores', () => {
 // ---------------------------------------------------------------------------------------------------------
 // esports-auth
 
-type Store = { states: Map<string, { userId: string; provider: string; game: string; used: boolean }> };
+type Store = { states: Map<string, { userId: string; provider: string; game: string; volver: string | null; used: boolean }> };
 
 function authDeps(env: ProviderEnv, fetchFn: FetchLike, extra: Partial<Record<string, RpcFn>> = {}) {
   const store: Store = { states: new Map() };
   const r = fakeRpc({
     esports_link_begin: (a) => {
-      store.states.set(STATE, { userId: String(a.p_user), provider: String(a.p_provider), game: String(a.p_game), used: false });
+      store.states.set(STATE, {
+        userId: String(a.p_user),
+        provider: String(a.p_provider),
+        game: String(a.p_game),
+        volver: typeof a.p_volver === 'string' ? a.p_volver : null,
+        used: false,
+      });
       return { data: STATE, error: null };
     },
     esports_link_take: (a) => {
       const s = store.states.get(String(a.p_state));
       if (!s || s.used) return { data: null, error: null };
       s.used = true;
-      return { data: { userId: s.userId, provider: s.provider, game: s.game }, error: null };
+      // Como la base: 'volver' solo si se guardó.
+      return { data: { userId: s.userId, provider: s.provider, game: s.game, ...(s.volver ? { volver: s.volver } : {}) }, error: null };
     },
     esports_link_account: () => ({ data: 'ok', error: null }),
     ...(extra as Record<string, RpcFn>),
@@ -567,7 +575,7 @@ describe('esports-auth: go (el navegador que empieza)', () => {
     expect(cookie).toMatch(/Max-Age=600/);
   });
 
-  it('Epic y Riot: la URL de autorizar con client_id, scope, la vuelta registrada y el state', async () => {
+  it('Epic y Riot: la URL de autorizar con client_id, scope, la vuelta registrada, el state y prompt=login', async () => {
     const { deps } = authDeps(ALL_SECRETS, fakeFetch([]));
     const epic = location(await handleAuthRequest(goReq(goUrl(SUPA, { provider: 'epic', game: 'rocket_league', state: STATE })), deps));
     expect(`${epic.origin}${epic.pathname}`).toBe('https://www.epicgames.com/id/authorize');
@@ -577,6 +585,8 @@ describe('esports-auth: go (el navegador que empieza)', () => {
       scope: 'basic_profile',
       redirect_uri: 'https://jbismsdjgjxutfvwnlmf.supabase.co/functions/v1/esports-auth/epic/callback',
       state: STATE,
+      // Pide entrar otra vez: se puede elegir o conectar otra cuenta de Epic.
+      prompt: 'login',
     });
     const riot = location(await handleAuthRequest(goReq(goUrl(SUPA, { provider: 'riot', game: 'lol', state: STATE })), deps));
     expect(`${riot.origin}${riot.pathname}`).toBe('https://auth.riotgames.com/authorize');
@@ -586,6 +596,7 @@ describe('esports-auth: go (el navegador que empieza)', () => {
       response_type: 'code',
       scope: 'openid',
       state: STATE,
+      prompt: 'login',
     });
   });
 
@@ -806,5 +817,112 @@ describe('esports-auth: vuelta de Epic y Riot', () => {
   it('una ruta que no existe → 404', async () => {
     const { deps } = authDeps({}, fakeFetch([]));
     expect((await handleAuthRequest(new Request(fnUrl('google/callback')), deps)).status).toBe(404);
+  });
+});
+
+describe('esports-auth: volver (la pantalla de la app a la que vuelve)', () => {
+  it('safeAppPath: solo una ruta de la app (/…, no //…, sin espacios, controles ni \\, hasta 200)', () => {
+    for (const ok of ['/esports/mi-id', '/esports/t/abc?tab=inscritos', '/u/123#juegos', '/']) expect(safeAppPath(ok)).toBe(ok);
+    for (const bad of [
+      '//evil.com/x',
+      'https://evil.com',
+      'esports/mi-id',
+      '/\\evil.com',
+      '/a b',
+      '/a\nb',
+      '/a\tb',
+      '/a\u0000',
+      `/${'x'.repeat(200)}`,
+      '',
+      null,
+      undefined,
+      42,
+      { path: '/x' },
+    ]) {
+      expect(safeAppPath(bad), String(bad)).toBeNull();
+    }
+  });
+
+  it('appRedirect con volver: esa ruta (con lo que ya traía) y conectado/error; una que no sirve → /esports/mi-id', () => {
+    expect(appRedirect(APP_URL, { provider: 'epic', game: 'fortnite' }, '/esports/t/abc')).toBe(
+      'https://matchmate.grullonb.com/esports/t/abc?conectado=epic&juego=fortnite',
+    );
+    expect(appRedirect(APP_URL, { error: 'cerrado', game: 'cs2' }, '/esports/t/abc?tab=inscritos#plantilla')).toBe(
+      'https://matchmate.grullonb.com/esports/t/abc?tab=inscritos&error=cerrado&juego=cs2#plantilla',
+    );
+    // Lo que diga la ruta de conectado / error / juego se reemplaza.
+    expect(appRedirect(APP_URL, { provider: 'steam', game: 'cs2' }, '/x?conectado=riot&juego=lol')).toBe(
+      'https://matchmate.grullonb.com/x?conectado=steam&juego=cs2',
+    );
+    for (const bad of ['//evil.com/esports', 'https://evil.com/', '/\\evil.com', null]) {
+      expect(appRedirect(APP_URL, { provider: 'epic', game: 'fortnite' }, bad)).toBe(
+        'https://matchmate.grullonb.com/esports/mi-id?conectado=epic&juego=fortnite',
+      );
+    }
+  });
+
+  const steamReturn = `${callbackUrl(SUPA, 'steam')}?state=${STATE}`;
+  const steamOk: Route = [/^https:\/\/steamcommunity\.com\/openid\/login$/, () => new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n')];
+
+  it('start: guarda volver con el state (solo si es una ruta de la app; si no, no lo manda)', async () => {
+    const { deps, calls, store } = authDeps({}, fakeFetch([]));
+    expect((await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: '/esports/t/abc' }), deps)).status).toBe(200);
+    expect(calls).toEqual([{ fn: 'esports_link_begin', args: { p_user: USER, p_provider: 'steam', p_game: 'cs2', p_volver: '/esports/t/abc' } }]);
+    expect(store.states.get(STATE)?.volver).toBe('/esports/t/abc');
+    for (const bad of ['//evil.com', 'https://evil.com/x', '/\\evil.com', 7]) {
+      const other = authDeps({}, fakeFetch([]));
+      expect((await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: bad }), other.deps)).status).toBe(200);
+      expect(other.calls).toEqual([{ fn: 'esports_link_begin', args: { p_user: USER, p_provider: 'steam', p_game: 'cs2' } }]);
+    }
+  });
+
+  it('la vuelta va a volver: conectado, error del proveedor y un torneo en curso (cerrado)', async () => {
+    const ok = authDeps({}, fakeFetch([steamOk]));
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: '/esports/t/abc?tab=inscritos' }), ok.deps);
+    const r = await handleAuthRequest(callbackReq('steam', { state: STATE, ...steamAssertion(steamReturn) }), ok.deps);
+    expect(r.status).toBe(302);
+    expect(r.headers.get('location')).toBe(`${APP}/esports/t/abc?tab=inscritos&conectado=steam&juego=cs2`);
+
+    const cancel = authDeps({}, fakeFetch([]));
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: '/esports/t/abc' }), cancel.deps);
+    expect((await handleAuthRequest(callbackReq('steam', { state: STATE, 'openid.mode': 'cancel' }), cancel.deps)).headers.get('location')).toBe(
+      `${APP}/esports/t/abc?error=proveedor&juego=cs2`,
+    );
+
+    // La base no deja cambiar el ID de quien juega un torneo en curso: 'cerrado'.
+    const closed = authDeps({}, fakeFetch([steamOk]), { esports_link_account: () => ({ data: 'cerrado', error: null }) });
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: '/esports/t/abc' }), closed.deps);
+    expect((await handleAuthRequest(callbackReq('steam', { state: STATE, ...steamAssertion(steamReturn) }), closed.deps)).headers.get('location')).toBe(
+      `${APP}/esports/t/abc?error=cerrado&juego=cs2`,
+    );
+    // Sin volver, 'cerrado' vuelve a Mi ID.
+    const plain = authDeps({}, fakeFetch([steamOk]), { esports_link_account: () => ({ data: 'cerrado', error: null }) });
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2' }), plain.deps);
+    expect((await handleAuthRequest(callbackReq('steam', { state: STATE, ...steamAssertion(steamReturn) }), plain.deps)).headers.get('location')).toBe(
+      `${APP}/esports/mi-id?error=cerrado&juego=cs2`,
+    );
+  });
+
+  it('antes de tomar el state (sin cookie) no se sabe volver: /esports/mi-id; un volver raro de la base tampoco se usa', async () => {
+    const { deps } = authDeps({}, fakeFetch([steamOk]));
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2', volver: '/esports/t/abc' }), deps);
+    expect((await handleAuthRequest(callbackReq('steam', { state: STATE, ...steamAssertion(steamReturn) }, null), deps)).headers.get('location')).toBe(
+      `${APP}/esports/mi-id?error=estado_vencido`,
+    );
+    const odd = authDeps({}, fakeFetch([steamOk]), {
+      esports_link_take: () => ({ data: { userId: USER, provider: 'steam', game: 'cs2', volver: '//evil.com/x' }, error: null }),
+    });
+    await handleAuthRequest(startReq({ provider: 'steam', game: 'cs2' }), odd.deps);
+    expect((await handleAuthRequest(callbackReq('steam', { state: STATE, ...steamAssertion(steamReturn) }), odd.deps)).headers.get('location')).toBe(
+      `${APP}/esports/mi-id?conectado=steam&juego=cs2`,
+    );
+  });
+
+  it('Epic con volver: la URL de autorizar no cambia (el volver va con el state, no con el proveedor)', async () => {
+    const { deps } = authDeps(ALL_SECRETS, fakeFetch([]));
+    await handleAuthRequest(startReq({ provider: 'epic', game: 'fortnite', volver: '/esports/t/abc' }), deps);
+    const to = location(await handleAuthRequest(goReq(goUrl(SUPA, { provider: 'epic', game: 'fortnite', state: STATE })), deps));
+    expect(to.searchParams.get('prompt')).toBe('login');
+    expect([...to.searchParams.keys()].sort()).toEqual(['client_id', 'prompt', 'redirect_uri', 'response_type', 'scope', 'state']);
   });
 });
