@@ -116,7 +116,9 @@ describe('crear torneo de esports: el formulario', () => {
 
   it('la tabla de puntos de BR: enteros de 0 a 100; el resumen del formato', () => {
     expect(cleanPoints([12, -3, 150, 2.6])).toEqual([12, 0, 100, 3]);
-    expect(summary(emptyForm('valorant', TODAY))).toBe('Eliminación simple · Al mejor de 3 y 5 en la final · Solo equipos');
-    expect(summary(emptyForm('free_fire', TODAY))).toBe('Battle royale · Solo equipos');
+    // Con la plataforma del torneo al final.
+    expect(summary(emptyForm('valorant', TODAY))).toBe('Eliminación simple · Al mejor de 3 y 5 en la final · Solo equipos · PC');
+    expect(summary(emptyForm('free_fire', TODAY))).toBe('Battle royale · Solo equipos · Móvil');
+    expect(summary(emptyForm('rocket_league', TODAY))).toContain('· Crossplay');
   });
 });

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CalendarClock, ClipboardCheck, Gamepad2, ListChecks, MapPin, Settings2, Share2, Trophy, Users } from 'lucide-react';
+import { CalendarClock, ClipboardCheck, Gamepad2, ListChecks, MapPin, MonitorSmartphone, Settings2, Share2, Trophy, Users } from 'lucide-react';
 import type { EsportsEntry, EsportsTournament } from '../../../lib/data/esports';
 import { useLeagueCtx } from '../../../lib/league';
-import { BR_TIEBREAK_TEXT, GAMES, formatLine, tiebreakText } from '../../../sports/esports';
+import { BR_TIEBREAK_TEXT, GAMES, formatLine, platformInfoText, tiebreakText } from '../../../sports/esports';
 import { RankChip, TeamLogo } from '../../../components/esports/bits';
 import { useFeedback } from '../../../components/feedback';
 import { InfoItem, WhatsAppLink } from '../../../components/league/LeagueInfo';
@@ -157,6 +157,7 @@ export function TournamentInfo({ t, className }: { t: EsportsTournament; classNa
         <Card className="px-5 py-4">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <InfoItem icon={<Gamepad2 className="size-4" />} label="Juego" value={meta.name} />
+            <InfoItem icon={<MonitorSmartphone className="size-4" />} label="Plataforma" value={platformInfoText(t.game, t.settings.platform)} />
             <InfoItem icon={<ListChecks className="size-4" />} label="Formato" value={formatLine(t)} />
             <InfoItem icon={<CalendarClock className="size-4" />} label="Empieza" value={whenText(t.startsAt, league.tz, true) ?? '—'} />
             <InfoItem icon={<ClipboardCheck className="size-4" />} label="Cierra la inscripción" value={whenText(t.registrationClosesAt, league.tz, true) ?? '—'} />

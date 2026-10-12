@@ -216,8 +216,8 @@ describe('pantallas del torneo de esports', () => {
     const t = text(eventRoute(`/l/${L}/e/E2`));
     expect(t).toContain('Liga abierta');
     expect(t).toContain('Inscripción abierta');
-    // De qué juego es, escrito (el monograma solo no lo dice), y después el formato y el cupo.
-    expect(t).toContain('VALORANT · 5 contra 5 · Doble eliminación · Solo equipos · 2/8 equipos');
+    // De qué juego y plataforma es, escrito («VALORANT · PC»: el monograma solo no lo dice), y después el formato y el cupo.
+    expect(t).toContain('VALORANT · PC · 5 contra 5 · Doble eliminación · Solo equipos · 2/8 equipos');
     expect(t).toContain('Entra para inscribirte');
     expect(t).toContain('Cuadro Equipos Info');
     expect(t).toContain('El cuadro todavía no está');

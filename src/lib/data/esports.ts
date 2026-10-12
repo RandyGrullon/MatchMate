@@ -26,6 +26,7 @@ import {
   type StagePlan,
   type TournamentSettings,
 } from '../../sports/esports';
+import { gamePlatforms, tournamentPlatform, type TournamentPlatform } from '../../sports/esports/platforms';
 import type { Side } from '../../sports/types';
 import { backend, getUserId, invalidate, rpc, select, useLive, type Live } from './client';
 import { tags } from './keys';
@@ -133,6 +134,8 @@ export interface HubTournament
   logoPath: string | null;
   approved: number;
   pending: number;
+  /** La plataforma del torneo (de sus ajustes); sin ella, no se sabe todavía (no se muestra). */
+  platform?: TournamentPlatform;
 }
 
 export interface HubData {
@@ -219,6 +222,8 @@ export interface MyEntry {
   entryName: string;
   role: TeamRole;
   kind: EntryKind;
+  /** La plataforma del torneo (de sus ajustes); sin ella, no se sabe todavía (no se muestra). */
+  platform?: TournamentPlatform;
 }
 
 // ---------- Filas de la base ----------
@@ -530,6 +535,44 @@ export function toBrGame(r: BrGameRow, results: readonly BrResultRow[] = []): Br
   };
 }
 
+/**
+ * La plataforma de un torneo de `esports_hub` o `esports_my_entries` (docs/perfiles-equipos-esports.md §4): la que
+ * traiga (`platform` o `settings.platform`) o, en un juego de una sola plataforma, esa. Si no se sabe, nada (la pone
+ * `withPlatforms` con los ajustes del torneo).
+ */
+function platformField(game: GameId, r: Obj): { platform?: TournamentPlatform } {
+  const raw = typeof r.platform === 'string' ? r.platform : isObj(r.settings) ? (r.settings.platform ?? '') : undefined;
+  const own = gamePlatforms(game);
+  const p = raw !== undefined ? tournamentPlatform(game, raw) : own.length === 1 ? own[0] : '';
+  return p ? { platform: p } : {};
+}
+
+/**
+ * Las RPC de la página del juego y de «Mis torneos» no traen los ajustes: la plataforma de los torneos de juegos con
+ * varias se lee de `esports_tournaments.settings` (una consulta por cada 60). Si falla, quedan sin plataforma.
+ */
+async function withPlatforms<T extends { eventId: string; game: GameId; platform?: TournamentPlatform }>(list: T[]): Promise<T[]> {
+  const missing = [...new Set(list.filter((x) => !x.platform && x.eventId && gamePlatforms(x.game).length > 1).map((x) => x.eventId))];
+  if (!missing.length) return list;
+  try {
+    const parts = await Promise.all(
+      chunks(missing, 60).map((part) =>
+        select<{ event_id: string; game: string; settings: unknown }>({ table: 'esports_tournaments', columns: 'event_id,game,settings', filters: [{ col: 'event_id', op: 'in', value: part }] }),
+      ),
+    );
+    const byEvent = new Map(parts.flat().map((r) => [r.event_id, r]));
+    return list.map((x) => {
+      const r = x.platform ? undefined : byEvent.get(x.eventId);
+      if (!r) return x;
+      const p = tournamentPlatform(x.game, isObj(r.settings) ? r.settings.platform : undefined);
+      return p ? { ...x, platform: p } : x;
+    });
+  } catch (e) {
+    console.warn('[esports] plataformas', e);
+    return list;
+  }
+}
+
 /** Lo que devuelve `esports_hub` (camelCase) → la app. `game` es el juego pedido (la RPC no lo repite). */
 export function toHubData(raw: unknown, game: GameId): HubData {
   const o = isObj(raw) ? raw : {};
@@ -556,6 +599,7 @@ export function toHubData(raw: unknown, game: GameId): HubData {
         logoPath: strOrNull(t.logoPath),
         approved: num(t.approved),
         pending: num(t.pending),
+        ...platformField(isGameId(t.game) ? t.game : game, t),
       }),
     ),
     teams: list(o.teams).map((t) => ({
@@ -586,6 +630,7 @@ export function toMyEntries(raw: unknown): MyEntry[] {
         entryName: str(e.entryName),
         role: oneOf(e.role, TEAM_ROLES, 'member'),
         kind: oneOf(e.kind, ENTRY_KINDS, 'team'),
+        ...platformField(asGame(e.game), e),
       }),
     )
     .filter((e) => e.entryId)
@@ -692,7 +737,8 @@ export function useEsportsTopic(eventId: string | null): void {
 // ---------- Lecturas ----------
 
 export async function fetchHub(game: GameId): Promise<HubData> {
-  return toHubData(await rpc('esports_hub', { p_game: game }), game);
+  const hub = toHubData(await rpc('esports_hub', { p_game: game }), game);
+  return { ...hub, tournaments: await withPlatforms(hub.tournaments) };
 }
 
 /** La página de un juego: sus torneos (abiertos, en curso, terminados) y sus equipos. También sin cuenta. */
@@ -889,7 +935,7 @@ export function useBrGames(eventId: string | undefined): Live<BrGame[]> {
 }
 
 export async function fetchMyEntries(): Promise<MyEntry[]> {
-  return toMyEntries(await rpc('esports_my_entries'));
+  return withPlatforms(toMyEntries(await rpc('esports_my_entries')));
 }
 
 /** Mis inscripciones (por la plantilla o como capitán) vivas o de torneos sin terminar. */

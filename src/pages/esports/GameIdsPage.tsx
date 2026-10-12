@@ -4,6 +4,7 @@ import { IdCard, Plus } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useMyGameIds, useProviders } from '../../lib/data/esportsIds';
 import { GAMES, idPlatforms, type GameId } from '../../sports/esports';
+import { platformsText, type Platform } from '../../sports/esports/platforms';
 import { EsportsTint, GameMark, IdChip, RankChip } from '../../components/esports/bits';
 import { useEsportsIdMoveNotice } from '../../components/home/EsportsHomeRow';
 import { useFeedback } from '../../components/feedback';
@@ -15,10 +16,18 @@ import { AppShell } from '../../components/Shell';
 import { Button, Card, ListRow, ListSkeleton, LoadError, Loading, SectionHeader } from '../../components/ui';
 import { GamePickerSheet } from './GamePickerSheet';
 import { GameIdSheet } from './ids/GameIdSheet';
-import { defaultRankKey, gameParam, idFor, linkResultToast, safeBack, sortIds } from './logic';
+import { asksPlatforms, defaultRankKey, gameParam, idFor, idKeyFor, linkBackPath, linkResultToast, safeBack, sortIds, wantedPlatform } from './logic';
 
 /** «PlayStation» (NBA 2K lleva un ID por plataforma). */
 const platformName = (game: GameId, id: string) => idPlatforms(game).find((p) => p.id === id)?.label ?? id;
+
+/** Lo de debajo del ID en la lista: el juego y, si lleva, la plataforma (NBA 2K) o dónde juega («PC y PlayStation»). */
+function idSubtitle(r: { game: GameId; platform: string; platforms?: string[] }): string {
+  const name = GAMES[r.game].name;
+  if (r.platform) return `${name} · ${platformName(r.game, r.platform)}`;
+  if (!asksPlatforms(r.game)) return name;
+  return r.platforms?.length ? `${name} · ${platformsText(r.platforms as Platform[])}` : `${name} · Di dónde juegas`;
+}
 
 /** Los parámetros de la vuelta de «Conectar con…» (se quitan después de avisar). */
 const LINK_PARAMS = ['conectado', 'error'];
@@ -27,9 +36,10 @@ const LINK_PARAMS = ['conectado', 'error'];
  * Mi ID de juego (`/esports/mi-id`, §12.6): tu ID en cada juego (el monograma, el ID, el rango y su chip: «Cuenta
  * conectada», «Comprobado» o «Declarado») y «Agregar un ID» (el botón principal) que pregunta el juego. El aviso de la
  * pantalla es el de un ID tuyo que pasó a otra cuenta (al cerrarlo queda visto). Tocar un ID abre su hoja
- * (src/pages/esports/ids/GameIdSheet.tsx). Parámetros: `?juego=<g>` abre la hoja de ese juego (`&plataforma=` en NBA
- * 2K); `?volver=<ruta>` vuelve ahí al guardar; `?conectado=<proveedor>` y `?error=<codigo>` (la vuelta de «Conectar
- * con…») avisan cómo salió.
+ * (src/pages/esports/ids/GameIdSheet.tsx). Parámetros: `?juego=<g>` abre la hoja de ese juego; `&plataforma=` es la del
+ * torneo de donde viene (en NBA 2K abre el ID de esa plataforma, también con la clave vieja `psn`; en los demás la marca
+ * en «¿Dónde juegas?»); `?volver=<ruta>` vuelve ahí al guardar; `?conectado=<proveedor>` y `?error=<codigo>` (la vuelta
+ * de «Conectar con…», que vuelve a esta misma hoja) avisan cómo salió; conectada la cuenta, sigue a `?volver=`.
  */
 export default function GameIdsPage() {
   const auth = useAuth();
@@ -82,16 +92,22 @@ function GameIds({ uid }: { uid: string }) {
   const back = safeBack(params.get('volver'));
   const game = gameParam(params.get('juego'));
   const platform = params.get('plataforma');
-  const record = game ? idFor(ids.data, game, platform) : null;
+  const record = game ? idFor(ids.data, game, idKeyFor(game, platform) || null) : null;
+  const wanted = game ? wantedPlatform(game, platform) : null;
 
   // El aviso de esta pantalla: un ID tuyo que pasó a otra cuenta (el mismo de Hoy y de Esports; al cerrarlo, visto).
   useEsportsIdMoveNotice(uid);
 
-  // La vuelta de «Conectar con…»: avisa una vez y quita los parámetros (así no vuelve a salir al recargar).
+  // La vuelta de «Conectar con…»: avisa una vez y quita los parámetros (así no vuelve a salir al recargar). Si salió
+  // bien y venía de otra pantalla (el torneo), vuelve ahí.
   useEffect(() => {
     const said = linkResultToast(params);
     if (!said) return;
     toast(said.text, said.tone);
+    if (said.tone === 'ok' && back) {
+      navigate(back, { replace: true });
+      return;
+    }
     setParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -161,7 +177,7 @@ function GameIds({ uid }: { uid: string }) {
                 ariaLabel={`${meta.name}: ${r.idDisplay}`}
                 subtitle={
                   <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span>{r.platform ? `${meta.name} · ${platformName(r.game, r.platform)}` : meta.name}</span>
+                    <span>{idSubtitle(r)}</span>
                     <IdChip ownership={r.ownership} />
                     {rank && <RankChip game={r.game} rank={rank} source={r.rankSource} />}
                   </span>
@@ -209,6 +225,8 @@ function GameIds({ uid }: { uid: string }) {
           game={game}
           record={record}
           providers={providers.data}
+          wanted={wanted}
+          linkBack={linkBackPath(game, back, platform)}
           onDone={() => {
             if (back) navigate(back);
             else closeGame();

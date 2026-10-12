@@ -11,6 +11,17 @@ import type { BrGame, EntryMember, EsportsEntry, EsportsTournament, StageLink } 
 import { entriesBySideTeam, keyResultOf, keyResults, seriesInput } from '../../../lib/data/esports';
 import type { Side, StandingRow } from '../../../sports/types';
 import {
+  NBA_KEY_PLATFORM,
+  PLATFORM_LABEL,
+  gamePlatforms,
+  idPlatforms,
+  platformProblem,
+  platformsText,
+  tournamentPlatform,
+  type Platform,
+  type TournamentPlatform,
+} from '../../../sports/esports/platforms';
+import {
   GAMES,
   brStandings,
   canVerifyId,
@@ -457,35 +468,165 @@ export interface IdInfo {
   status: 'pendiente' | 'confirmado';
   ranks: Partial<Record<string, RankValue>>;
   rankSource: RankSource;
+  /** NBA 2K: la plataforma del ID (psn, xbox, steam, switch); '' en los demás. */
+  platform?: string;
+  /** Dónde juega con este ID (docs/perfiles-equipos-esports.md §4); vacío = no lo dijo. */
+  platforms?: readonly string[];
 }
 
 /** Lo que le puede faltar a alguien para inscribirse (así sale en su fila de la plantilla). */
-export const MEMBER_PROBLEM = { noId: 'Sin ID', unchecked: 'ID sin comprobar', noRank: 'Sin rango verificado' } as const;
+export const MEMBER_PROBLEM = {
+  noId: 'Sin ID',
+  otherPlatform: 'Otra plataforma',
+  noPlatform: 'Sin plataforma',
+  unchecked: 'ID sin comprobar',
+  noRank: 'Sin rango verificado',
+} as const;
 export type MemberProblem = (typeof MEMBER_PROBLEM)[keyof typeof MEMBER_PROBLEM];
 
+/** Dónde juega un ID, en el orden del juego (PC, PlayStation, Xbox, Switch, Móvil). */
+export function playsOnOf(game: GameId, id: Pick<IdInfo, 'platform' | 'platforms'> | null | undefined): Platform[] {
+  const list = idPlatforms(game, id);
+  return gamePlatforms(game).filter((p) => list.includes(p));
+}
+
+/** La plataforma del torneo (de `settings.platform`, con los valores viejos de NBA 2K convertidos). */
+export const platformOf = (t: { game: GameId; settings: Pick<TournamentSettings, 'platform'> }): TournamentPlatform | '' => tournamentPlatform(t.game, t.settings.platform);
+
 /**
- * Lo que le falta a una persona según el torneo, o null si cumple: sin ID; «ID sin comprobar» si el torneo pide ID
- * confirmado y el juego lo puede comprobar (`canVerifyId`); sin rango verificado solo en LoL (`canVerifyRank`). En los
- * juegos sin verificación, tener el ID puesto basta.
+ * Lo que le falta a una persona según el torneo, o null si cumple (en el orden de `private.esp_member_ok`): sin ID; la
+ * plataforma, si el torneo no es crossplay y el juego tiene varias («Otra plataforma»: su ID es de otras; «Sin
+ * plataforma»: el ID no dice dónde juega); «ID sin comprobar» si el torneo pide ID confirmado y el juego lo puede
+ * comprobar (`canVerifyId`); sin rango verificado solo en LoL (`canVerifyRank`). En los juegos sin verificación, tener
+ * el ID puesto (de la plataforma del torneo) basta.
  */
 export function memberProblem(
   id: IdInfo | null | undefined,
-  settings: Pick<TournamentSettings, 'requireConfirmedId' | 'requireVerifiedRank'>,
+  settings: Pick<TournamentSettings, 'requireConfirmedId' | 'requireVerifiedRank'> & { platform?: string },
   rankKey: string,
   game: GameId,
 ): MemberProblem | null {
   if (!id) return MEMBER_PROBLEM.noId;
+  const platform = platformProblem(game, tournamentPlatform(game, settings.platform), idPlatforms(game, id));
+  if (platform === 'otra_plataforma') return MEMBER_PROBLEM.otherPlatform;
+  if (platform === 'sin_plataforma') return MEMBER_PROBLEM.noPlatform;
   if (settings.requireConfirmedId && canVerifyId(game) && id.status !== 'confirmado') return MEMBER_PROBLEM.unchecked;
   if (settings.requireVerifiedRank && canVerifyRank(game) && (id.rankSource !== 'verificado' || !id.ranks[rankKey])) return MEMBER_PROBLEM.noRank;
   return null;
 }
 
-/** La frase de lo que te falta a ti para inscribirte (las mismas de la base: `sin_id`, `id_sin_comprobar`, `sin_rango`). */
-export function myProblemText(problem: MemberProblem, game: GameId): string {
+/**
+ * La frase de lo que te falta a ti para inscribirte (las mismas de la base: `sin_id`, `otra_plataforma`,
+ * `sin_plataforma`, `id_sin_comprobar`, `sin_rango`). Con la plataforma del torneo y dónde juega tu ID: «Tu ID es de
+ * PC y el torneo es de PlayStation.»
+ */
+export function myProblemText(problem: MemberProblem, game: GameId, o: { tournament?: TournamentPlatform | ''; playsOn?: readonly Platform[] } = {}): string {
   const name = GAMES[game]?.name ?? 'ese juego';
-  if (problem === MEMBER_PROBLEM.noId) return `Primero pon tu ID de ${name}.`;
-  if (problem === MEMBER_PROBLEM.unchecked) return `Este torneo pide tu ID de ${name} comprobado.`;
-  return `Este torneo pide tu rango verificado de ${name}.`;
+  const tp = o.tournament && o.tournament !== 'crossplay' ? PLATFORM_LABEL[o.tournament] : null;
+  switch (problem) {
+    case MEMBER_PROBLEM.noId:
+      return `Primero pon tu ID de ${name}.`;
+    case MEMBER_PROBLEM.otherPlatform: {
+      const mine = o.playsOn?.length ? platformsText(o.playsOn) : null;
+      if (mine && tp) return `Tu ID es de ${mine}${o.playsOn!.length > 1 ? ',' : ''} y el torneo es de ${tp}.`;
+      return tp ? `Tu ID de ${name} es de otra plataforma: el torneo es de ${tp}.` : `Tu ID de ${name} es de otra plataforma que la del torneo.`;
+    }
+    case MEMBER_PROBLEM.noPlatform:
+      return `Di dónde juegas ${name}.`;
+    case MEMBER_PROBLEM.unchecked:
+      return `Este torneo pide tu ID de ${name} comprobado.`;
+    default:
+      return `Este torneo pide tu rango verificado de ${name}.`;
+  }
+}
+
+/**
+ * «Este torneo es de PlayStation» (o «Este torneo es crossplay: entra gente de PC, PlayStation, Xbox y Switch»): lo que
+ * pide de plataforma, para la hoja de inscribirse. null en los juegos de una sola plataforma (no hay qué decir).
+ */
+export function platformRequirement(game: GameId, tournament: TournamentPlatform | ''): string | null {
+  const own = gamePlatforms(game);
+  if (own.length < 2 || !tournament) return null;
+  if (tournament === 'crossplay') return `Este torneo es crossplay: entra gente de ${platformsText(own)}.`;
+  return `Este torneo es de ${PLATFORM_LABEL[tournament]}.`;
+}
+
+/**
+ * El aviso de la página del torneo con lo que le falta a tu ID para inscribirte: la clave (una por caso), el título, la
+ * línea (con lo que pide de plataforma si el juego tiene varias: «Este torneo es de PlayStation.») y el botón.
+ * `playsOn`: dónde juega tu ID.
+ */
+export function idNotice(problem: MemberProblem, game: GameId, tournament: TournamentPlatform | '', playsOn: readonly Platform[]): { key: string; title: string; text: string; action: string } {
+  const name = GAMES[game]?.name ?? 'ese juego';
+  const requirement = platformRequirement(game, tournament);
+  const withPlatform = (text: string) => (requirement ? `${requirement} ${text}` : text);
+  switch (problem) {
+    case MEMBER_PROBLEM.noId:
+      return { key: 'poner', title: `Pon tu ID de ${name}`, text: withPlatform('Lo necesitas para inscribirte.'), action: 'Poner mi ID' };
+    case MEMBER_PROBLEM.otherPlatform:
+      return {
+        key: 'plataforma',
+        title: myProblemText(problem, game, { tournament, playsOn }).replace(/\.$/, ''),
+        text: 'Cambia tu ID o marca que también juegas en esa plataforma.',
+        action: 'Cambiar mi ID',
+      };
+    case MEMBER_PROBLEM.noPlatform:
+      return { key: 'donde', title: `Di dónde juegas ${name}`, text: withPlatform('Lo necesitas para inscribirte.'), action: 'Ir a Mi ID' };
+    case MEMBER_PROBLEM.unchecked:
+      return { key: 'comprobar', title: `Comprueba tu ID de ${name}`, text: 'Este torneo lo pide comprobado.', action: 'Ir a Mi ID' };
+    default:
+      return { key: 'rango', title: `Este torneo pide tu rango verificado de ${name}`, text: 'El que da Riot al comprobar tu ID.', action: 'Ir a Mi ID' };
+  }
+}
+
+/**
+ * El ID de juego que cuenta para el torneo (como `private.esp_tournament_game_id`): en NBA 2K, el de la plataforma del
+ * torneo (en crossplay, cualquiera: primero uno comprobado); en los demás, el suyo. Si en NBA 2K solo tiene de otra
+ * plataforma, ese (así sale «Otra plataforma» y no «Sin ID», como en la base). `userId`: el de esa persona.
+ */
+export function tournamentIdFor<R extends { game: string; platform: string; userId: string; status?: string }>(
+  records: readonly R[],
+  t: { game: GameId; settings: Pick<TournamentSettings, 'platform'> },
+  userId?: string | null,
+): R | null {
+  const mine = records.filter((r) => r.game === t.game && (!userId || r.userId === userId));
+  const best = (list: readonly R[]) => list.find((r) => r.status === 'confirmado') ?? list[0] ?? null;
+  if (t.game !== 'nba_2k') return mine.find((r) => r.platform === '') ?? best(mine);
+  const tp = platformOf(t);
+  if (tp === 'crossplay' || !tp) return best(mine);
+  return best(mine.filter((r) => NBA_KEY_PLATFORM[r.platform] === tp)) ?? best(mine);
+}
+
+/** El mismo rango (sin importar el orden de las claves). */
+function sameRankMap(a: Partial<Record<string, RankValue>> | null | undefined, b: Partial<Record<string, RankValue>> | null | undefined): boolean {
+  const norm = (m: Partial<Record<string, RankValue>> | null | undefined) =>
+    JSON.stringify(
+      Object.entries(m ?? {})
+        .filter(([, v]) => v != null)
+        .sort(([x], [y]) => x.localeCompare(y))
+        .map(([k, v]) => [k, Object.entries(v as object).sort(([x], [y]) => x.localeCompare(y))]),
+    );
+  return norm(a) === norm(b);
+}
+
+/**
+ * Quiénes de la inscripción tienen ahora otro ID (u otro rango) que el que quedó al inscribirse: los que
+ * `refreshEntryIds` actualizaría. Solo los que tienen un ID que sirve para el torneo (con el de otra plataforma, la base
+ * no lo cambia).
+ */
+export function staleMembers<R extends { game: string; platform: string; userId: string; status?: string; idDisplay: string } & IdInfo>(
+  members: readonly Pick<EntryMember, 'userId' | 'gamerTag' | 'ranks'>[],
+  records: readonly R[],
+  t: { game: GameId; mode: Mode; settings: TournamentSettings },
+): string[] {
+  const rankKey = rankKeyFor(t.game, t.mode);
+  return members
+    .filter((m) => {
+      const rec = tournamentIdFor(records, t, m.userId);
+      if (!rec || memberProblem(rec, t.settings, rankKey, t.game) === MEMBER_PROBLEM.otherPlatform) return false;
+      return rec.idDisplay !== m.gamerTag || !sameRankMap(rec.ranks, m.ranks);
+    })
+    .map((m) => m.userId);
 }
 
 export interface RosterPick {

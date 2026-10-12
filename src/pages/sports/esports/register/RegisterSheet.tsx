@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Check, IdCard, LogOut, Plus, Users } from 'lucide-react';
+import { Check, IdCard, LogOut, Plus, RefreshCw, Repeat, Users } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth';
 import {
   esportsErrorText,
+  refreshEntryIds,
   registerSolo,
   registerTeam,
   setEntryRoster,
@@ -16,27 +17,73 @@ import {
 } from '../../../../lib/data/esports';
 import { useGameIdsFor, useMyGameIds, type GameIdRecord } from '../../../../lib/data/esportsIds';
 import { useLeagueCtx } from '../../../../lib/league';
-import { GAMES, isIndividualMode, modeSize, rankKeyFor } from '../../../../sports/esports';
+import { GAMES, isIndividualMode, modeSize, rankKeyFor, type GameId } from '../../../../sports/esports';
+import { gamePlatforms, platformsText, type Platform } from '../../../../sports/esports/platforms';
 import { EntryStatusChip, IdChip, RankChip, TeamLogo } from '../../../../components/esports/bits';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { linkButton } from '../../../../components/screens/ScreenBits';
 import { Button, Card, ListRow, ListSkeleton, Segmented, Sheet, cx } from '../../../../components/ui';
-import { MEMBER_PROBLEM, memberProblem, memberRank, myProblemText, rosterCheck, rosterText, speaksFor, tournamentPathFor, type RosterPick } from '../logic';
+import { myIdLink } from '../../../esports/logic';
+import {
+  MEMBER_PROBLEM,
+  memberProblem,
+  memberRank,
+  myProblemText,
+  platformOf,
+  platformRequirement,
+  playsOnOf,
+  rosterCheck,
+  rosterText,
+  speaksFor,
+  staleMembers,
+  tournamentIdFor,
+  tournamentPathFor,
+  type MemberProblem,
+  type RosterPick,
+} from '../logic';
 
-/** La fila de su ID de juego (NBA 2K: la de la plataforma del torneo). */
+/**
+ * La fila de su ID de juego para el torneo: en NBA 2K, la de la plataforma del torneo (en crossplay, cualquiera; si solo
+ * tiene de otra plataforma, esa: así dice «Otra plataforma»); en los demás juegos, la única.
+ */
 export function idFor(records: readonly GameIdRecord[], t: Pick<EsportsTournament, 'game' | 'settings'>, userId?: string): GameIdRecord | null {
-  const platform = t.game === 'nba_2k' ? t.settings.platform : '';
-  return records.find((r) => r.game === t.game && r.platform === platform && (!userId || r.userId === userId)) ?? null;
+  return tournamentIdFor(records, t, userId);
+}
+
+/** Dónde juega un ID, escrito: «PC y PlayStation»; «Sin plataforma» si el juego tiene varias y no lo dijo; '' si es una sola. */
+export function playsOnText(game: GameId, rec: Pick<GameIdRecord, 'platform' | 'platforms'> | null): string {
+  if (!rec || gamePlatforms(game).length < 2) return '';
+  const list = playsOnOf(game, rec);
+  return list.length ? platformsText(list) : 'Sin plataforma';
+}
+
+/** El botón que lleva a Mi ID de juego según lo que falta. */
+const FIX_LABEL: Record<MemberProblem, string> = {
+  [MEMBER_PROBLEM.noId]: 'Poner mi ID',
+  [MEMBER_PROBLEM.otherPlatform]: 'Cambiar mi ID',
+  [MEMBER_PROBLEM.noPlatform]: 'Decir dónde juego',
+  [MEMBER_PROBLEM.unchecked]: 'Ir a Mi ID de juego',
+  [MEMBER_PROBLEM.noRank]: 'Ir a Mi ID de juego',
+};
+
+/** Lo que dice la fila de un miembro que no cumple: «Otra plataforma (PC)», «Sin plataforma», «Sin ID»… */
+export function memberProblemLabel(problem: MemberProblem, game: GameId, rec: Pick<GameIdRecord, 'platform' | 'platforms'> | null): string {
+  if (problem !== MEMBER_PROBLEM.otherPlatform || !rec) return problem;
+  const list = playsOnOf(game, rec);
+  return list.length ? `${problem} (${platformsText(list)})` : problem;
 }
 
 /**
- * Inscribirse (§12.8): en modo individual (y como agente libre) se ve el ID de juego y el rango, o lo que falta («Primero
- * pon tu ID…», «Este torneo pide tu ID … comprobado», el rango verificado en LoL) con el link a Mi ID de juego; con
- * equipo, uno de sus equipos de ese juego donde es capitán (o «Crear equipo») y la plantilla: casillas con sus miembros,
- * titular o suplente, lo que le falta a cada uno según el torneo («Sin ID», «ID sin comprobar», «Sin rango verificado»)
- * y el contador «5 titulares · 1 suplente»; «Inscribir a {equipo}» se habilita cuando cumple. En «Libre» con modo de equipo, primero
- * «Con mi equipo» o «Como agente libre». Ya inscrito: su estado, «Cambiar plantilla» (en la inscripción) y «Retirarme».
+ * Inscribirse (§12.8): en modo individual (y como agente libre) se ve el ID de juego (tocarlo: «Cambiar cuenta» en Mi ID
+ * de juego, con la vuelta a este torneo), dónde juega y el rango, lo que pide el torneo de plataforma («Este torneo es de
+ * PlayStation») o lo que falta («Primero pon tu ID…», «Tu ID es de PC y el torneo es de PlayStation», «Di dónde juegas
+ * …», «Este torneo pide tu ID … comprobado», el rango verificado en LoL) con el link a Mi ID de juego; con equipo, uno de
+ * sus equipos de ese juego donde es capitán (o «Crear equipo») y la plantilla: casillas con sus miembros, titular o
+ * suplente, lo que le falta a cada uno según el torneo («Sin ID», «Otra plataforma», «Sin plataforma», «ID sin
+ * comprobar», «Sin rango verificado») y el contador «5 titulares · 1 suplente»; «Inscribir a {equipo}» se habilita
+ * cuando cumple. En «Libre» con modo de equipo, primero «Con mi equipo» o «Como agente libre». Ya inscrito: su estado,
+ * «Actualizar mi ID en la inscripción» (si cambió su ID), «Cambiar plantilla» (en la inscripción) y «Retirarme».
  */
 export function RegisterSheet({ open, onClose, t, entry }: { open: boolean; onClose: () => void; t: EsportsTournament; entry: EsportsEntry | null }) {
   const title = entry ? 'Tu inscripción' : t.entryType === 'teams' && !isIndividualMode(t.mode) ? 'Inscribir mi equipo' : 'Inscribirme';
@@ -76,14 +123,14 @@ function RegisterBody({ t, onDone }: { t: EsportsTournament; onDone: () => void 
   );
 }
 
-/** El link para poner (o comprobar) el ID y volver al torneo. */
+/** El link para poner, cambiar o comprobar el ID (con la plataforma del torneo) y volver al torneo. */
 function useIdLink(t: EsportsTournament): string {
   const { lid, league } = useLeagueCtx();
   const back = tournamentPathFor(lid, t.eventId, league.kind);
-  return `/esports/mi-id?juego=${t.game}&volver=${encodeURIComponent(back)}`;
+  return myIdLink(t.game, back, platformOf(t));
 }
 
-/** Individual o agente libre: su ID (y rango) y «Inscribirme». */
+/** Individual o agente libre: su ID (tocarlo para cambiar la cuenta), dónde juega, su rango y «Inscribirme». */
 function SoloRegister({ t, agent, onDone }: { t: EsportsTournament; agent: boolean; onDone: () => void }) {
   const uid = useAuth().user?.uid ?? null;
   const ids = useMyGameIds(uid);
@@ -93,7 +140,12 @@ function SoloRegister({ t, agent, onDone }: { t: EsportsTournament; agent: boole
   const meta = GAMES[t.game];
   const rec = idFor(ids.data, t);
   const rankKey = rankKeyFor(t.game, t.mode);
+  const tp = platformOf(t);
+  // Lo que falta se dice antes de llamar a la base (que igual lo revisa: esportsErrorText tiene sus códigos).
   const problem = memberProblem(rec, t.settings, rankKey, t.game);
+  const playsOn: Platform[] = playsOnOf(t.game, rec);
+  const requirement = platformRequirement(t.game, tp);
+  const where = playsOnText(t.game, rec);
   const register = () =>
     busy.run('inscribir', async () => {
       try {
@@ -115,15 +167,37 @@ function SoloRegister({ t, agent, onDone }: { t: EsportsTournament; agent: boole
             </span>
           }
           title={rec ? rec.idDisplay : `Sin ${meta.idInfo.label}`}
-          subtitle={rec ? <RankChip game={t.game} rank={memberRank(t.game, t.mode, rec.ranks)} source={rec.rankSource} /> : `Tu ${meta.idInfo.label} de ${meta.name}`}
-          trailing={rec ? <IdChip ownership={rec.ownership} /> : undefined}
+          subtitle={
+            rec ? (
+              <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                <IdChip ownership={rec.ownership} />
+                {where && <span className={cx(where === 'Sin plataforma' && 'font-semibold text-warn')}>{where}</span>}
+                <RankChip game={t.game} rank={memberRank(t.game, t.mode, rec.ranks)} source={rec.rankSource} />
+              </span>
+            ) : (
+              `Tu ${meta.idInfo.label} de ${meta.name}`
+            )
+          }
+          to={idLink}
+          ariaLabel={rec ? `Tu ${meta.idInfo.label}: ${rec.idDisplay}. Cambiar cuenta` : `Poner tu ${meta.idInfo.label}`}
+          trailing={
+            // Encima del link de la fila, pero sin atrapar el toque: toda la fila lleva a Mi ID de juego.
+            <span className="pointer-events-none inline-flex items-center gap-1 text-meta font-[550] text-accent">
+              {rec && <Repeat aria-hidden="true" className="size-4" />}
+              {rec ? 'Cambiar cuenta' : 'Poner'}
+            </span>
+          }
         />
       </Card>
+      {requirement && !problem && <p className="mx-1 -mt-1 text-[14px] text-muted">{requirement}</p>}
       {problem ? (
         <>
-          <p className="mx-1 text-[15px] font-semibold text-warn">{myProblemText(problem, t.game)}</p>
+          <p className="mx-1 text-[15px] font-semibold text-warn">
+            {myProblemText(problem, t.game, { tournament: tp, playsOn })}
+            {requirement && problem !== MEMBER_PROBLEM.otherPlatform && <span className="block font-normal text-muted">{requirement}</span>}
+          </p>
           <Link to={idLink} className={linkButton('primary', 'w-full')}>
-            <span className="min-w-0 truncate">{problem === MEMBER_PROBLEM.noId ? 'Poner mi ID' : 'Ir a Mi ID de juego'}</span>
+            <span className="min-w-0 truncate">{FIX_LABEL[problem]}</span>
           </Link>
         </>
       ) : (
@@ -219,6 +293,7 @@ function RosterForm({
   const size = modeSize(t.mode);
   const subsMax = t.settings.subs;
   const rankKey = rankKeyFor(t.game, t.mode);
+  const requirement = platformRequirement(t.game, platformOf(t));
   const problems = useMemo(() => new Map(members.map((m) => [m.userId, memberProblem(idFor(records, t, m.userId), t.settings, rankKey, t.game)])), [members, records, t, rankKey]);
   const [picks, setPicks] = useState<RosterPick[]>(() => {
     if (initial?.length) return [...initial];
@@ -262,7 +337,10 @@ function RosterForm({
     });
   return (
     <div className="flex flex-col gap-3">
-      <p className="mx-1 text-sm font-[650] text-fg-2">{`Plantilla: ${size} ${size === 1 ? 'titular' : 'titulares'}${subsMax ? ` y hasta ${subsMax} ${subsMax === 1 ? 'suplente' : 'suplentes'}` : ''}`}</p>
+      <p className="mx-1 text-sm font-[650] text-fg-2">
+        {`Plantilla: ${size} ${size === 1 ? 'titular' : 'titulares'}${subsMax ? ` y hasta ${subsMax} ${subsMax === 1 ? 'suplente' : 'suplentes'}` : ''}`}
+        {requirement && <span className="block font-normal text-muted">{requirement}</span>}
+      </p>
       <Card className="overflow-hidden">
         {members.map((m) => {
           const pick = picks.find((p) => p.userId === m.userId);
@@ -288,7 +366,7 @@ function RosterForm({
                     {captain && <span className="ml-1.5 text-[12px] font-semibold text-accent">Capitán</span>}
                   </span>
                   <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
-                    {problem ? <span className="font-semibold text-warn">{problem}</span> : rec ? <span className="truncate">{rec.idDisplay}</span> : null}
+                    {problem ? <span className="font-semibold text-warn">{memberProblemLabel(problem, t.game, rec)}</span> : rec ? <span className="truncate">{rec.idDisplay}</span> : null}
                     {rec && !problem && <RankChip game={t.game} rank={memberRank(t.game, t.mode, rec.ranks)} source={rec.rankSource} />}
                   </span>
                 </span>
@@ -319,14 +397,39 @@ function RosterForm({
   );
 }
 
-/** Ya inscrito: el estado, la plantilla, «Cambiar plantilla» y «Retirarme». */
+/**
+ * Ya inscrito: el estado, la plantilla, «Actualizar mi ID en la inscripción» (su ID de ahora no es el que quedó al
+ * inscribirse; el capitán, el de cualquiera de la plantilla), «Cambiar mi cuenta del juego», «Cambiar plantilla» y
+ * «Retirarme».
+ */
 function MyEntryView({ t, entry, onClose }: { t: EsportsTournament; entry: EsportsEntry; onClose: () => void }) {
   const uid = useAuth().user?.uid ?? null;
   const { toast, confirm } = useFeedback();
-  const busy = useBusy<'retirar'>();
+  const busy = useBusy<'retirar' | 'actualizar'>();
   const [editing, setEditing] = useState(false);
   const captain = speaksFor(entry, uid);
   const open = t.status === 'registration';
+  const idLink = useIdLink(t);
+  const ids = useGameIdsFor(
+    entry.members.map((m) => m.userId),
+    t.game,
+  );
+  const live = entry.status === 'pending' || entry.status === 'approved';
+  const stale = useMemo(() => staleMembers(entry.members, ids.data, t), [entry.members, ids.data, t]);
+  const mine = !!uid && stale.includes(uid);
+  const others = captain ? stale.filter((u) => u !== uid).length : 0;
+  const canRefresh = open && live && (mine || others > 0);
+  const myMember = uid ? entry.members.find((m) => m.userId === uid) : undefined;
+  const myNow = uid ? idFor(ids.data, t, uid) : null;
+  const refresh = () =>
+    busy.run('actualizar', async () => {
+      try {
+        const n = await refreshEntryIds(entry.id, t.eventId);
+        toast(n > 0 ? 'Listo: la inscripción tiene el ID de ahora' : 'La inscripción ya tenía el ID de ahora');
+      } catch (e) {
+        toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
+      }
+    });
   const withdraw = async () => {
     if (!(await confirm({ title: '¿Retirarte del torneo?', message: entry.kind === 'team' ? `${entry.name} sale de la inscripción.` : 'Sales de la inscripción.', confirmText: 'Retirarme', danger: true }))) return;
     await busy.run('retirar', async () => {
@@ -378,6 +481,24 @@ function MyEntryView({ t, entry, onClose }: { t: EsportsTournament; entry: Espor
             />
           ))}
         </Card>
+      )}
+      {canRefresh && (
+        <div className="flex flex-col gap-2 rounded-2xl bg-accent-soft p-4">
+          <p className="text-[14.5px] text-fg-2">
+            {mine && myMember && myNow
+              ? `Ahora tu ID es ${myNow.idDisplay}; en la inscripción quedó ${myMember.gamerTag}.`
+              : `${others === 1 ? 'Alguien de la plantilla cambió su ID' : `${others} de la plantilla cambiaron su ID`} después de inscribirse.`}
+          </p>
+          <Button variant="primary" size="lg" className="w-full" icon={<RefreshCw className="size-5" />} loading={busy.isBusy('actualizar')} onClick={() => void refresh()}>
+            {others > 0 ? 'Actualizar los IDs en la inscripción' : 'Actualizar mi ID en la inscripción'}
+          </Button>
+        </div>
+      )}
+      {open && live && (
+        <Link to={idLink} className={linkButton('quiet', 'w-full')}>
+          <Repeat aria-hidden="true" className="size-5" />
+          <span className="min-w-0 truncate">Cambiar mi cuenta del juego</span>
+        </Link>
       )}
       {open && captain && entry.kind === 'team' && entry.teamId && (
         <Button variant="quiet" size="lg" className="w-full" icon={<Users className="size-5" />} onClick={() => setEditing(true)}>

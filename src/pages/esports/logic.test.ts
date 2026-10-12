@@ -367,7 +367,9 @@ describe('Mi ID de juego', () => {
     expect(idActions(rec({ status: 'pendiente' }), PROVIDERS_ON)).toEqual(['rank', 'lookup', 'change', 'delete']);
     expect(idActions(rec({ ownership: 'busqueda' }), PROVIDERS_ON)).toEqual(['rank', 'change', 'delete']);
     expect(idActions(rec({ game: 'rocket_league', status: 'pendiente' }), PROVIDERS_ON)).toEqual(['rank', 'link', 'change', 'delete']);
-    expect(idActions(rec({ game: 'rocket_league', ownership: 'login' }), PROVIDERS_ON)).toEqual(['rank', 'delete']);
+    // Conectado con su cuenta: «Conectar otra cuenta» (si el proveedor está encendido), no «Cambiar mi ID».
+    expect(idActions(rec({ game: 'rocket_league', ownership: 'login' }), PROVIDERS_ON)).toEqual(['rank', 'relink', 'delete']);
+    expect(idActions(rec({ game: 'rocket_league', ownership: 'login' }), ALL_OFF)).toEqual(['rank', 'delete']);
     expect(idActions(rec({ game: 'mlbb', status: 'pendiente' }), PROVIDERS_ON)).toEqual(['rank', 'change', 'delete']);
     expect(idActions(rec({ status: 'pendiente' }), ALL_OFF)).toEqual(['rank', 'change', 'delete']);
   });
@@ -393,7 +395,7 @@ describe('Mi ID de juego', () => {
     expect(afterLookup({ status: 'rate_limited' }, 'Riot ID')).toEqual({ next: 'saved', message: null });
 
     const fresh = initialIdSheetState('valorant', null);
-    expect(fresh).toEqual({ step: 'edit', raw: '', region: 'latam', platform: '', display: '', found: null, message: null, ranks: {} });
+    expect(fresh).toEqual({ step: 'edit', raw: '', region: 'latam', platform: '', display: '', found: null, message: null, ranks: {}, platforms: [] });
     expect(initialIdSheetState('lol', null).region).toBe('la1');
     expect(initialIdSheetState('free_fire', null).region).toBe('');
     const withRank = initialIdSheetState('valorant', rec({ region: 'na', ranks: { main: { tier: 'gold', div: 2 } } }));

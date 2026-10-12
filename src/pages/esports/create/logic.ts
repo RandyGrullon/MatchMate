@@ -28,6 +28,7 @@ import {
   type Mode,
   type TournamentSettings,
 } from '../../../sports/esports';
+import { PLATFORM_LABEL, gamePlatforms, tournamentPlatform, tournamentPlatformOptions, type TournamentPlatform } from '../../../sports/esports/platforms';
 
 export type StepKey = 'juego' | 'inscripcion' | 'formato' | 'nombre' | 'invitar';
 
@@ -151,10 +152,11 @@ export function withRequirements(game: GameId, s: TournamentSettings): Tournamen
   return id === s.requireConfirmedId && rank === s.requireVerifiedRank ? s : { ...s, requireConfirmedId: id, requireVerifiedRank: rank };
 }
 
-/** Lo de los ajustes que se queda al cambiar de modo o formato (lo que eligió y sigue valiendo). */
+/** Lo de los ajustes que se queda al cambiar de modo o formato (lo que eligió y sigue valiendo, como la plataforma). */
 function keepSettings(game: GameId, prev: TournamentSettings, next: TournamentSettings): TournamentSettings {
   return withRequirements(game, {
     ...next,
+    platform: tournamentPlatform(game, prev.platform) || next.platform,
     autoApprove: prev.autoApprove,
     requireConfirmedId: prev.requireConfirmedId,
     requireVerifiedRank: prev.requireVerifiedRank,
@@ -189,6 +191,22 @@ export function clampMax(n: number, game: GameId, mode: Mode, format: Format): n
   const lo = minEntries(format);
   const hi = maxEntries(game, mode, format);
   return Math.max(lo, Math.min(hi, Math.round(Number.isFinite(n) ? n : lo)));
+}
+
+/**
+ * La plataforma del torneo en el paso de formato (docs/perfiles-equipos-esports.md §4): las fichas («Crossplay», «PC»,
+ * «PlayStation»…) con las del juego, la elegida (los valores viejos de NBA 2K se leen como la de ahora) y la línea de
+ * debajo. Un juego de una sola plataforma no elige: es esa.
+ */
+export function platformPick(game: GameId, raw: unknown): { options: { key: TournamentPlatform; label: string }[]; value: TournamentPlatform | ''; note: string } {
+  const value = tournamentPlatform(game, raw);
+  const options = tournamentPlatformOptions(game).map((p) => ({ key: p, label: PLATFORM_LABEL[p] }));
+  const own = gamePlatforms(game);
+  let note = '';
+  if (own.length === 1) note = `${GAMES[game].name} se juega en ${PLATFORM_LABEL[own[0]!]}.`;
+  else if (value === 'crossplay') note = 'Entra gente de todas las plataformas.';
+  else if (value) note = `Solo entran quienes juegan en ${PLATFORM_LABEL[value]}.`;
+  return { options, value, note };
 }
 
 /** Los «Mejor de» que permite el juego (vacío en BR). */
@@ -263,7 +281,8 @@ export function tournamentInput(f: TournamentForm, tz: string): TournamentInput 
   };
 }
 
-/** El resumen del paso de formato: «Doble eliminación · Al mejor de 3 y 5 en la final · Solo equipos». */
-export function summary(f: Pick<TournamentForm, 'format' | 'entryType' | 'settings'>): string {
-  return [FORMAT_LABEL[f.format], bestOfLine(f.format, f.settings.bestOf), ENTRY_LABEL[f.entryType]].filter(Boolean).join(' · ');
+/** El resumen del paso de formato: «Doble eliminación · Al mejor de 3 y 5 en la final · Solo equipos · PlayStation». */
+export function summary(f: Pick<TournamentForm, 'game' | 'format' | 'entryType' | 'settings'>): string {
+  const platform = tournamentPlatform(f.game, f.settings.platform);
+  return [FORMAT_LABEL[f.format], bestOfLine(f.format, f.settings.bestOf), ENTRY_LABEL[f.entryType], platform ? PLATFORM_LABEL[platform] : null].filter(Boolean).join(' · ');
 }

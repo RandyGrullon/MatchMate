@@ -31,7 +31,7 @@ describe('defaultSettings', () => {
       playoffs: 'single',
       doubleRoundRobin: false,
       draws: false,
-      platform: '',
+      platform: 'pc',
     });
   });
 
@@ -58,22 +58,23 @@ describe('defaultSettings', () => {
     expect(defaultSettings('fortnite', 'solo', 'br').subs).toBe(0);
   });
 
-  it('los ajustes por defecto son válidos (salvo la plataforma de NBA 2K, que hay que elegir)', () => {
+  it('los ajustes por defecto son válidos (la plataforma: la única del juego o «crossplay»)', () => {
     for (const game of GAME_IDS) {
       for (const mode of GAMES[game].modes) {
         for (const format of formatsFor(game)) {
           const cap = Math.min(maxEntries(game, mode, format), 16);
           for (const entry of entryTypesFor(game, mode)) {
             const s = defaultSettings(game, mode, format);
-            const errors = validateSettings(game, mode, format, entry, cap, s);
-            if (game === 'nba_2k') {
-              expect(errors).toEqual(['Elige la plataforma.']);
-              expect(validateSettings(game, mode, format, entry, cap, { ...s, platform: 'psn' })).toEqual([]);
-            } else expect(errors, `${game} ${mode} ${format} ${entry}`).toEqual([]);
+            expect(validateSettings(game, mode, format, entry, cap, s), `${game} ${mode} ${format} ${entry}`).toEqual([]);
           }
         }
       }
     }
+    expect(defaultSettings('valorant', '5v5', 'single_elim').platform).toBe('pc');
+    expect(defaultSettings('mlbb', '5v5', 'single_elim').platform).toBe('mobile');
+    expect(defaultSettings('smash', '1v1', 'single_elim').platform).toBe('switch');
+    expect(defaultSettings('rocket_league', '3v3', 'single_elim').platform).toBe('crossplay');
+    expect(defaultSettings('nba_2k', '1v1', 'single_elim').platform).toBe('crossplay');
   });
 });
 
@@ -143,13 +144,31 @@ describe('validateSettings: forma de cada clave (igual que esp_settings_ok)', ()
     expect(v({ playoffs: 'triple' })).toEqual(['Los playoffs son de eliminación simple o doble.']);
   });
 
-  it('plataforma: obligatoria en NBA 2K, vacía en el resto', () => {
-    expect(v({ platform: 'psn' })).toEqual(['VALORANT no lleva plataforma.']);
+  it('plataforma: una del juego o «crossplay» (si tiene varias), en todos los juegos; lo viejo de NBA 2K se acepta', () => {
+    // VALORANT se juega solo en PC: no lleva otra ni «crossplay» ('' vale la de siempre, como en la base).
+    expect(v({ platform: 'psn' })).toEqual(['VALORANT se juega en PC.']);
+    expect(v({ platform: 'crossplay' })).toEqual(['VALORANT se juega en PC.']);
+    expect(v({ platform: 'pc' })).toEqual([]);
+    expect(v({ platform: '' })).toEqual([]);
+    const rl = defaultSettings('rocket_league', '3v3', 'single_elim');
+    const r = (platform: unknown) => validateSettings('rocket_league', '3v3', 'single_elim', 'teams', 8, { ...rl, platform });
+    for (const p of ['crossplay', 'pc', 'playstation', 'xbox', 'switch']) expect(r(p), p).toEqual([]);
+    expect(r('mobile')).toEqual(['Elige la plataforma.']);
+    expect(r(3)).toEqual(['Elige la plataforma.']);
+    expect(validateSettings('fortnite', 'solo', 'br', 'open', 50, { ...defaultSettings('fortnite', 'solo', 'br'), platform: 'mobile' })).toEqual([]);
+    expect(validateSettings('mlbb', '5v5', 'single_elim', 'teams', 8, { ...defaultSettings('mlbb', '5v5', 'single_elim'), platform: 'pc' })).toEqual(['Mobile Legends: Bang Bang se juega en Móvil.']);
     const nba = defaultSettings('nba_2k', '1v1', 'single_elim');
-    expect(validateSettings('nba_2k', '1v1', 'single_elim', 'open', 8, { ...nba, platform: 'xbox' })).toEqual([]);
-    expect(validateSettings('nba_2k', '1v1', 'single_elim', 'open', 8, { ...nba, platform: 'ps5' })).toEqual(['Elige la plataforma.']);
+    const n = (platform: unknown) => validateSettings('nba_2k', '1v1', 'single_elim', 'open', 8, { ...nba, platform });
+    expect(n('xbox')).toEqual([]);
+    expect(n('playstation')).toEqual([]);
+    // Lo viejo (psn, steam) se sigue leyendo; '' en NBA 2K no (la base tampoco lo acepta).
+    expect(n('psn')).toEqual([]);
+    expect(n('steam')).toEqual([]);
+    expect(n('ps5')).toEqual(['Elige la plataforma.']);
+    expect(n('')).toEqual(['Elige la plataforma.']);
+    // Sin la clave vale la de siempre (la base ya no la exige).
     const { platform: _p, ...noPlatform } = nba;
-    expect(validateSettings('nba_2k', '1v1', 'single_elim', 'open', 8, noPlatform)).toEqual(['Elige la plataforma.']);
+    expect(validateSettings('nba_2k', '1v1', 'single_elim', 'open', 8, noPlatform)).toEqual([]);
   });
 
   it('rondas para ganar solo en juegos de pelea (SF6 solo 2); vidas solo en Smash', () => {

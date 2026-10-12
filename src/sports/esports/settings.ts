@@ -18,6 +18,7 @@ import {
   type Mode,
 } from './catalog';
 import type { SeedingMethod } from './seeding';
+import { PLATFORM_LABEL, defaultTournamentPlatform, gamePlatforms, type Platform } from './platforms';
 
 export type Format = 'single_elim' | 'double_elim' | 'groups_playoffs' | 'round_robin' | 'br';
 export type EntryType = 'teams' | 'open';
@@ -43,7 +44,11 @@ export interface TournamentSettings {
   doubleRoundRobin: boolean;
   /** Empates en grupos o liga (solo EA SPORTS FC al mejor de 1). */
   draws: boolean;
-  /** '' salvo NBA 2K: la plataforma del torneo, obligatoria. */
+  /**
+   * La plataforma del torneo (src/sports/esports/platforms.ts): una de las del juego o 'crossplay' (si tiene más de
+   * una). Por defecto, la única del juego o 'crossplay'. Los torneos viejos de NBA 2K pueden traer 'psn' o 'steam' (se
+   * leen con `tournamentPlatform`).
+   */
   platform: string;
   /** Juegos de pelea. */
   roundsToWin?: 2 | 3;
@@ -99,7 +104,7 @@ export function defaultSettings(game: GameId, mode: Mode, format: Format): Tourn
     playoffs: 'single',
     doubleRoundRobin: false,
     draws: game === 'ea_fc',
-    platform: '',
+    platform: defaultTournamentPlatform(game),
   };
   if (meta.roundsToWin) s.roundsToWin = meta.roundsToWin.default;
   if (meta.stocks) s.stocks = meta.stocks.default;
@@ -153,8 +158,9 @@ const isInt = (v: unknown, min: number, max: number): v is number => typeof v ==
 
 /**
  * Errores de los ajustes (vacío = bien). Primero la forma de cada clave (la misma tabla que `esp_settings_ok`: una
- * clave que no está es inválida; las que faltan se aceptan, salvo la plataforma de NBA 2K) y después, solo aquí, lo
- * que cruza con el formato y el cupo (`maxEntries`). Pedir ID confirmado o rango verificado en un juego que no los
+ * clave que no está es inválida; las que faltan se aceptan) y después, solo aquí, lo que cruza con el formato y el cupo
+ * (`maxEntries`). La plataforma es una de las del juego o 'crossplay' (si tiene más de una); como en la base, se
+ * aceptan los valores viejos de NBA 2K ('psn', 'steam') y '' en los demás juegos (vale la de siempre). Pedir ID confirmado o rango verificado en un juego que no los
  * puede comprobar no es un error: no cuenta (`normalizeVerifyFlags`).
  */
 export function validateSettings(game: GameId, mode: Mode, format: Format, entry: EntryType, maxEntries: number, s: unknown): string[] {
@@ -190,10 +196,10 @@ export function validateSettings(game: GameId, mode: Mode, format: Format, entry
   if (s.perGroup !== undefined && !isInt(s.perGroup, 1, 4)) errors.push('Los clasificados por grupo van de 1 a 4.');
   if (s.playoffs !== undefined && s.playoffs !== 'single' && s.playoffs !== 'double') errors.push('Los playoffs son de eliminación simple o doble.');
 
-  const platforms = meta.idInfo.platforms;
-  if (platforms.length) {
-    if (typeof s.platform !== 'string' || !platforms.some((p) => p.id === s.platform)) errors.push('Elige la plataforma.');
-  } else if (s.platform !== undefined && s.platform !== '') errors.push(`${meta.name} no lleva plataforma.`);
+  if (s.platform !== undefined && !platformOk(game, s.platform)) {
+    const own = gamePlatforms(game);
+    errors.push(own.length === 1 ? `${meta.name} se juega en ${PLATFORM_LABEL[own[0]!]}.` : 'Elige la plataforma.');
+  }
 
   if (s.roundsToWin !== undefined) {
     const opts = meta.roundsToWin?.options;
@@ -228,6 +234,15 @@ export function validateSettings(game: GameId, mode: Mode, format: Format, entry
     if (s.playoffs === 'double' && through >= 2 && through < 4) errors.push('Para doble eliminación hacen falta al menos 4.');
   }
   return errors;
+}
+
+/** La plataforma del torneo sirve (igual que `esp_settings_ok` después del trigger que convierte lo viejo). */
+function platformOk(game: GameId, v: unknown): boolean {
+  if (typeof v !== 'string') return false;
+  const own = gamePlatforms(game);
+  if (game === 'nba_2k' && (v === 'psn' || v === 'steam')) return true;
+  if (game !== 'nba_2k' && v === '') return true;
+  return own.includes(v as Platform) || (v === 'crossplay' && own.length > 1);
 }
 
 function brErrors(v: unknown): string[] {

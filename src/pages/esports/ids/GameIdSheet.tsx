@@ -1,17 +1,19 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronRight, Link2, Pencil, Save, Search, ShieldAlert, ShieldCheck, Trash2, Trophy } from 'lucide-react';
+import { ChevronRight, Link2, MonitorSmartphone, Pencil, Repeat, Save, Search, ShieldAlert, ShieldCheck, Trash2, Trophy } from 'lucide-react';
 import {
   confirmGameId,
   deleteGameId,
   gameIdErrorText,
   lookupGameId,
   saveGameId,
+  setGamePlatforms,
   setRanks,
   startLink,
   type GameIdRecord,
   type ProvidersStatus,
 } from '../../../lib/data/esportsIds';
 import { GAMES, idPlatforms, idRegions, normalizeGameId, validateRankMap, type GameId, type RankMap, type RankSource } from '../../../sports/esports';
+import { PLATFORM_LABEL, gamePlatforms, idPlatforms as platformsOfId, platformProblem, platformsText, type Platform } from '../../../sports/esports/platforms';
 import { GameMark, IdChip, RankChip } from '../../../components/esports/bits';
 import { BusyIcon, useBusy } from '../../../components/busy';
 import { useFeedback } from '../../../components/feedback';
@@ -19,7 +21,9 @@ import { useIsPro } from '../../../components/mode';
 import { Button, Field, Input, Select, Sheet, cx } from '../../../components/ui';
 import {
   PROVIDER_NAME,
+  STEAM_SWITCH_NOTE,
   afterLookup,
+  asksPlatforms,
   canLookup,
   connectLabel,
   idActions,
@@ -30,9 +34,11 @@ import {
   numericId,
   rankKeysFor,
   ranksToSend,
+  samePlatforms,
   takenText,
   type IdSheetState,
 } from '../logic';
+import { PlatformChips } from './PlatformChips';
 import { RankPicker } from './RankPicker';
 
 export interface GameIdSheetProps {
@@ -46,16 +52,23 @@ export interface GameIdSheetProps {
   onDone: () => void;
   /** Para abrir en un paso (las pruebas, o con algo ya escrito). */
   initial?: Partial<IdSheetState>;
+  /** La plataforma del torneo de donde viene (`?plataforma=`): se marca en «¿Dónde juegas?» y dice «Este torneo es de …». */
+  wanted?: Platform | null;
+  /** A dónde vuelve «Conectar con…» (la misma hoja, con su `?volver=`); sin él, a Mi ID de juego. */
+  linkBack?: string | null;
 }
 
 /**
  * La hoja del ID de un juego (§12.6):
- * - lo que hay (con un ID guardado): el ID con su chip («Cuenta conectada», «Comprobado» o «Declarado») y el rango;
- *   «Cambiar mi rango», «Comprobar con Riot» (si hay búsqueda y no está comprobado), «Conectar con…» (si está encendido y
- *   no entró con su cuenta), «Cambiar mi ID» (no si entró con su cuenta) y «Quitar mi ID»;
+ * - lo que hay (con un ID guardado): el ID con su chip («Cuenta conectada», «Comprobado» o «Declarado»), «¿Dónde
+ *   juegas?» (juegos de varias plataformas; «Guardar dónde juego» si cambia) y el rango; «Cambiar mi rango», «Comprobar
+ *   con Riot» (si hay búsqueda y no está comprobado), «Conectar con…» (si está encendido y no entró con su cuenta),
+ *   «Conectar otra cuenta» (si entró con su cuenta; en Steam, cerrar la sesión antes), «Cambiar mi ID» (no si entró con
+ *   su cuenta) y «Quitar mi ID»;
  * - escribir el ID, en un solo paso: «Conectar con Epic/Steam/Riot» arriba si el juego lo tiene y está encendido, la
- *   plataforma (NBA 2K), la región y el campo con el error de `normalizeGameId` en vivo, y el rango (opcional). «Buscar»
- *   si el juego tiene búsqueda encendida (LoL y VALORANT con Riot); si no, «Guardar»: queda declarado;
+ *   plataforma (NBA 2K), «¿Dónde juegas?», la región y el campo con el error de `normalizeGameId` en vivo, y el rango
+ *   (opcional). «Buscar» si el juego tiene búsqueda encendida (LoL y VALORANT con Riot); si no, «Guardar»: queda
+ *   declarado;
  * - «¿Eres tú?» con lo que encontró la búsqueda → «Sí, soy yo» (queda comprobado) / «No soy yo» (vuelve al campo);
  * - ese ID está conectado a otra cuenta (entró con su cuenta de Epic, Steam o Riot) → conéctalo tú o prueba con otro;
  * - el rango → «Guardar rango».
@@ -67,12 +80,12 @@ export function GameIdSheet(props: GameIdSheetProps) {
   return <GameIdOpen {...props} />;
 }
 
-function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameIdSheetProps) {
+function GameIdOpen({ game, record, providers, onClose, onDone, initial, wanted, linkBack }: GameIdSheetProps) {
   const meta = GAMES[game];
   const pro = useIsPro();
   const { toast, confirm } = useFeedback();
-  const busy = useBusy<'save' | 'found' | 'lookup' | 'rank' | 'delete' | 'link'>();
-  const [s, setS] = useState<IdSheetState>(() => ({ ...initialIdSheetState(game, record), ...initial }));
+  const busy = useBusy<'save' | 'found' | 'lookup' | 'rank' | 'delete' | 'link' | 'platforms'>();
+  const [s, setS] = useState<IdSheetState>(() => ({ ...initialIdSheetState(game, record, wanted), ...initial }));
   const [tried, setTried] = useState(false);
   const patch = (p: Partial<IdSheetState>) => setS((prev) => ({ ...prev, ...p }));
 
@@ -87,6 +100,9 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
   // Un rango a medias (el tier sin división, un número fuera de la escalera) no se manda: lo dice el selector.
   const rankError = validateRankMap(game, s.ranks);
   const label = idWord(meta.idInfo.label);
+  // «¿Dónde juegas?»: en los juegos de varias plataformas (NBA 2K lleva un ID por plataforma).
+  const asks = asksPlatforms(game);
+  const wantedText = wanted && asks ? `Este torneo es de ${PLATFORM_LABEL[wanted]}.` : null;
 
   const saved = () => {
     toast('Listo: guardaste tu ID');
@@ -102,7 +118,7 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
     }
     await busy.run('save', async () => {
       try {
-        const res = await saveGameId(game, s.raw, s.platform || undefined, s.region || undefined);
+        const res = await saveGameId(game, s.raw, s.platform || undefined, s.region || undefined, asks ? s.platforms : null);
         const display = res.idDisplay || n.display;
         // Si cambia el ID, el rango de antes ya no cuenta: se manda lo elegido.
         const before = record && record.idDisplay === display ? record.ranks : null;
@@ -187,11 +203,25 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
     });
   }
 
+  /** «Guardar dónde juego» desde lo que hay (también con la cuenta conectada). */
+  async function savePlatforms() {
+    await busy.run('platforms', async () => {
+      try {
+        await setGamePlatforms(game, s.platforms, s.platform || undefined);
+        toast('Listo: guardaste dónde juegas');
+        onDone();
+      } catch (e) {
+        console.error(e);
+        toast(gameIdErrorText(e, game), 'error');
+      }
+    });
+  }
+
   async function connect() {
     if (!provider) return;
     await busy.run('link', async () => {
       try {
-        await startLink(provider, game);
+        await startLink(provider, game, linkBack);
       } catch (e) {
         console.error(e);
         toast(gameIdErrorText(e, game), 'error');
@@ -237,13 +267,33 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
       const actions = idActions(r, providers);
       const login = r.ownership === 'login';
       const hasRank = Object.keys(r.ranks).length > 0;
+      const changed = asks && !samePlatforms(s.platforms, r.platforms ?? []);
+      // Lo que dice si el ID no sirve para el torneo de donde viene (con lo marcado ahora).
+      const marked = platformsOfId(game, { platform: r.platform, platforms: s.platforms });
+      const playsOn = gamePlatforms(game).filter((p) => marked.includes(p));
+      const problem = wanted && asks ? platformProblem(game, wanted, playsOn) : null;
       body = (
         <div className="flex flex-col gap-4 pb-1">
           {idCard(r.idDisplay, r.lookupName ? <p className="mt-0.5 truncate text-sm text-muted">En el juego: {r.lookupName}</p> : null)}
           <div className="flex flex-wrap items-center gap-2">
             <IdChip ownership={r.ownership} />
           </div>
-          {login && meta.link && <p className="-mt-1 text-meta text-muted">{`Lo conectaste con tu cuenta de ${PROVIDER_NAME[meta.link]}. Si cambió, quítalo y conéctalo otra vez.`}</p>}
+          {login && meta.link && <p className="-mt-1 text-meta text-muted">{`Lo conectaste con tu cuenta de ${PROVIDER_NAME[meta.link]}.`}</p>}
+          {asks && (
+            <section aria-labelledby="donde-juegas" className="flex flex-col gap-2">
+              <h3 id="donde-juegas" className="text-sm font-semibold">
+                ¿Dónde juegas?
+              </h3>
+              <PlatformChips id="donde-juegas" game={game} value={s.platforms} wanted={wanted} onChange={(platforms) => patch({ platforms })} disabled={busy.isBusy('platforms')} />
+              <p className={cx('text-meta', problem ? 'font-semibold text-warn' : 'text-muted')}>
+                {problem === 'otra_plataforma'
+                  ? `Tu ID es de ${platformsText(playsOn)} y el torneo es de ${PLATFORM_LABEL[wanted!]}: márcala si también juegas ahí, o usa otra cuenta.`
+                  : problem === 'sin_plataforma'
+                    ? `${wantedText} Marca dónde juegas.`
+                    : (wantedText ?? 'Los torneos que no son crossplay lo piden.')}
+              </p>
+            </section>
+          )}
           <section aria-labelledby="mi-rango" className="flex flex-col gap-2">
             <h3 id="mi-rango" className="text-sm font-semibold">
               Rango
@@ -277,6 +327,17 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
                       disabled={busy.isBusy()}
                     />
                   );
+                case 'relink':
+                  return (
+                    <ActionRow
+                      key={a}
+                      icon={<BusyIcon busy={busy.isBusy('link')} icon={<Repeat className="size-5" />} className="size-5" />}
+                      label="Conectar otra cuenta"
+                      hint={provider === 'steam' ? STEAM_SWITCH_NOTE : `Entra con otra cuenta de ${PROVIDER_NAME[provider!]}`}
+                      onClick={() => void connect()}
+                      disabled={busy.isBusy()}
+                    />
+                  );
                 case 'change':
                   return <ActionRow key={a} icon={<Pencil className="size-5" />} label="Cambiar mi ID" onClick={() => patch({ step: 'edit', raw: r.idDisplay, message: null })} />;
                 case 'delete':
@@ -295,6 +356,13 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
           </ul>
         </div>
       );
+      if (changed) {
+        footer = (
+          <Button variant="primary" size={size} className="w-full" loading={busy.isBusy('platforms')} onClick={() => void savePlatforms()} icon={<MonitorSmartphone className="size-5" />}>
+            Guardar dónde juego
+          </Button>
+        );
+      }
       break;
     }
 
@@ -316,6 +384,7 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
                 <Button variant="secondary" className="h-11 w-full" loading={busy.isBusy('link')} onClick={() => void connect()} icon={<Link2 className="size-4" />}>
                   {connectLabel(provider)}
                 </Button>
+                {provider === 'steam' && <p className="text-[13px] text-muted">{STEAM_SWITCH_NOTE}</p>}
               </div>
               <div className="flex items-center gap-3 text-[13px] font-medium text-muted">
                 <span aria-hidden="true" className="h-px flex-1 bg-line" />o escribe tu ID
@@ -334,6 +403,15 @@ function GameIdOpen({ game, record, providers, onClose, onDone, initial }: GameI
                 ))}
               </Select>
             </Field>
+          )}
+          {asks && (
+            <fieldset className="flex flex-col gap-1.5">
+              <legend id="donde-juegas-id" className="mb-1.5 text-xs font-medium text-muted">
+                ¿Dónde juegas?
+              </legend>
+              <PlatformChips id="donde-juegas-id" game={game} value={s.platforms} wanted={wanted} onChange={(platforms) => patch({ platforms })} />
+              <span className="text-xs text-muted">{wantedText ?? 'Marca todas: los torneos que no son crossplay lo piden.'}</span>
+            </fieldset>
           )}
           {regions.length > 0 && (
             <Field label="Región" hint="Dónde juegas: tu ID es el mismo en todas.">

@@ -5,6 +5,7 @@
 import { gameMeta, modeLabel, type GameId, type Mode } from './catalog';
 import type { StageKind } from './brackets';
 import { ENTRY_LABEL, FORMAT_LABEL, type EntryType, type Format } from './settings';
+import { PLATFORM_LABEL, gamePlatforms, platformsText, tournamentPlatform } from './platforms';
 
 export type Phase = 'soon' | 'registration' | 'checkin' | 'closed' | 'live' | 'finished' | 'cancelled';
 export interface PhaseInput {
@@ -79,6 +80,22 @@ export function formatLine(t: { game: GameId; mode: Mode; format: Format; entryT
  * el juego (la página de cada juego, un equipo).
  */
 export const gameLabel = (game: string | null | undefined): string => gameMeta(game)?.name ?? 'Esports';
+
+/**
+ * La plataforma del torneo escrita («PC», «PlayStation», «Crossplay»), de `settings.platform` (los valores viejos de
+ * NBA 2K se convierten; sin valor, la única del juego o «Crossplay»). '' si el juego no se conoce.
+ */
+export function platformLabel(game: string | null | undefined, raw: unknown): string {
+  const p = tournamentPlatform(game, raw);
+  return p ? PLATFORM_LABEL[p] : '';
+}
+
+/** La plataforma en la info del torneo: «PlayStation», «PC» o «Crossplay (PC, PlayStation, Xbox y Switch)». */
+export function platformInfoText(game: string | null | undefined, raw: unknown): string {
+  const p = tournamentPlatform(game, raw);
+  if (!p) return '';
+  return p === 'crossplay' ? `${PLATFORM_LABEL.crossplay} (${platformsText(gamePlatforms(game))})` : PLATFORM_LABEL[p];
+}
 
 /** Las fases que tiene el formato: simple/doble → ['bracket']; grupos → ['groups', 'playoffs']; liga → ['league']; BR → []. */
 export function stagesFor(format: Format, _playoffs?: 'single' | 'double'): StageKind[] {

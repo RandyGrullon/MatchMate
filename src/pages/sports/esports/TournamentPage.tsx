@@ -34,13 +34,13 @@ import type { Match } from '../../../lib/data/matches';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import {
-  GAMES,
   canCheckIn,
   canRegister,
   champion,
   formatLine,
   gameLabel,
   isIndividualMode,
+  platformLabel,
   rankKeyFor,
   resolvePlan,
   tiebreakText,
@@ -75,9 +75,9 @@ import {
   countLine,
   freeAgents,
   groupTablesOf,
+  idNotice,
   infoInTeams,
   lastStage,
-  MEMBER_PROBLEM,
   memberProblem,
   myActionMatches,
   myEntryOf,
@@ -87,6 +87,8 @@ import {
   phaseOf,
   pickView,
   planFromStage,
+  platformOf,
+  playsOnOf,
   primaryAction,
   resultsByKey,
   sideOfTeams,
@@ -96,6 +98,7 @@ import {
   stagesCreated,
   standingsColumns,
   tableOf,
+  tournamentIdFor,
   tournamentPathFor,
   viewsFor,
   type Primary,
@@ -105,6 +108,7 @@ import { MatchSheet } from './match/MatchSheet';
 import { useEntryNames, useMyTeams, useTournament, type TournamentData } from './parts';
 import { RegisterSheet } from './register/RegisterSheet';
 import { shareOrigin } from '../../../lib/origin';
+import { myIdLink } from '../../esports/logic';
 
 type SheetKey = 'menu' | 'register' | 'seed' | 'stage' | 'playoffs' | 'agents' | 'br' | 'edit' | 'scorers';
 
@@ -162,7 +166,6 @@ function Tournament({
   const myTeams = useMyTeams(d.entries);
   const nameOf = useEntryNames(d.entries);
   const myIds = useMyGameIds(uid);
-  const meta = GAMES[t.game];
 
   // Una vez por visita: lo que pasó a final por las 48 h sin que nadie escribiera avanza el cuadro. Solo los de la liga
   // (la base no deja a los demás): quien mira un torneo público sin ser de la liga no llama.
@@ -211,26 +214,24 @@ function Tournament({
   const path = tournamentPathFor(lid, t.eventId, league.kind);
 
   // ---- Avisos (uno por pantalla: el NoticeSlot elige) ----
-  // Lo que le falta a tu ID para inscribirte: ponerlo; o, si el torneo lo pide y el juego lo puede comprobar, comprobarlo
-  // (o el rango verificado, solo en LoL).
-  const myId = myIds.data.find((r) => r.game === t.game && r.platform === (t.game === 'nba_2k' ? t.settings.platform : ''));
+  // Lo que le falta a tu ID para inscribirte: ponerlo; que sea de la plataforma del torneo (o decir dónde juegas); o, si
+  // el torneo lo pide y el juego lo puede comprobar, comprobarlo (o el rango verificado, solo en LoL). El aviso dice la
+  // plataforma del torneo si el juego tiene varias.
+  const platform = platformOf(t);
+  const myId = tournamentIdFor(myIds.data, t, uid);
   const idProblem = memberProblem(myId, t.settings, rankKeyFor(t.game, t.mode), t.game);
+  const idTip = idProblem ? idNotice(idProblem, t.game, platform, playsOnOf(t.game, myId)) : null;
   useNotice(
     !!uid &&
       registrationOpen &&
       !myEntry &&
       !myIds.loading &&
-      !!idProblem && {
-        id: `esports-id:${t.game}:${idProblem === MEMBER_PROBLEM.noId ? 'poner' : idProblem === MEMBER_PROBLEM.unchecked ? 'comprobar' : 'rango'}`,
+      !!idTip && {
+        id: `esports-id:${t.game}:${idTip.key}`,
         kind: 'tip',
-        title:
-          idProblem === MEMBER_PROBLEM.noId
-            ? `Pon tu ID de ${meta.name}`
-            : idProblem === MEMBER_PROBLEM.unchecked
-              ? `Comprueba tu ID de ${meta.name}`
-              : `Este torneo pide tu rango verificado de ${meta.name}`,
-        text: idProblem === MEMBER_PROBLEM.noId ? 'Lo necesitas para inscribirte.' : idProblem === MEMBER_PROBLEM.unchecked ? 'Este torneo lo pide comprobado.' : 'El que da Riot al comprobar tu ID.',
-        action: { label: idProblem === MEMBER_PROBLEM.noId ? 'Poner mi ID' : 'Ir a Mi ID', to: `/esports/mi-id?juego=${t.game}&volver=${encodeURIComponent(path)}` },
+        title: idTip.title,
+        text: idTip.text,
+        action: { label: idTip.action, to: myIdLink(t.game, path, platform) },
       },
   );
   useNotice(
@@ -372,6 +373,7 @@ function Tournament({
   const view = pickView(t.format, t.mode, wanted);
   const startDay = whenText(t.startsAt, league.tz, true);
   const metaLine = [formatLine(t), `${countLine(approved.length, t.maxEntries)} ${individual ? 'jugadores' : 'equipos'}`].join(' · ');
+  const platformText = platformLabel(t.game, t.settings.platform);
   const head = (
     <div className="flex items-center gap-3.5">
       <DateBlock date={localParts(t.startsAt, league.tz)?.date ?? t.startsAt} />
@@ -381,9 +383,9 @@ function Tournament({
           <PhaseChip phase={phase} />
           {startDay && <span className="text-[13.5px] text-muted">{startDay}</span>}
         </p>
-        {/* El juego escrito (el monograma solo no dice de qué es el torneo), y después el formato y el cupo. */}
+        {/* El juego y la plataforma escritos («VALORANT · PC»: el monograma solo no dice de qué es el torneo), y después el formato y el cupo. */}
         <p className="mt-1 text-[14px] leading-snug text-muted">
-          <span className="font-semibold text-fg-2">{gameLabel(t.game)}</span> · {metaLine}
+          <span className="font-semibold text-fg-2">{[gameLabel(t.game), platformText].filter(Boolean).join(' · ')}</span> · {metaLine}
         </p>
       </div>
       {embedded && <MoreButton onClick={() => setSheet('menu')} />}
@@ -687,7 +689,7 @@ export function TournamentRow({ t, approved, to, dense }: { t: EsportsTournament
       dense={dense}
       leading={<DateBlock date={localParts(t.startsAt, league.tz)?.date ?? t.startsAt} />}
       title={t.name}
-      subtitle={[formatLine(t), approved != null ? countLine(approved, t.maxEntries) : null].filter(Boolean).join(' · ')}
+      subtitle={[platformLabel(t.game, t.settings.platform), formatLine(t), approved != null ? countLine(approved, t.maxEntries) : null].filter(Boolean).join(' · ')}
       trailing={<PhaseChip phase={phaseOf(t, now)} />}
       to={to}
     />

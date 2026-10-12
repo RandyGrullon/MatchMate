@@ -25,6 +25,7 @@ import {
   type RankMap,
   type RankValue,
 } from '../../sports/esports';
+import { NBA_KEY_PLATFORM, PLATFORM_LABEL, gamePlatforms, isPlatform, type Platform, type TournamentPlatform } from '../../sports/esports/platforms';
 import type { EsportsTeam, EsportsTeamMember, HubTournament, MyEntry, TeamRole } from '../../lib/data/esports';
 import type { GameIdRecord, LookupResult, ProvidersStatus } from '../../lib/data/esportsIds';
 import type { Notice } from '../../lib/notices';
@@ -81,12 +82,16 @@ export function entryPhase(e: Pick<MyEntry, 'tournamentStatus' | 'startsAt'>, no
   return Number.isFinite(start) && start <= now ? 'closed' : 'registration';
 }
 
+/** La plataforma escrita para una fila («PC», «PlayStation», «Crossplay»); null si no se sabe. */
+const platformText = (p: TournamentPlatform | '' | null | undefined): string | null => (p ? PLATFORM_LABEL[p] : null);
+
 /**
- * El subtítulo de «Mis torneos» (de todos los juegos): el juego escrito primero (el monograma solo no lo dice), con qué
- * te inscribiste y si falta que lo aprueben: «VALORANT · Los Tigres» o «VALORANT · Los Tigres · Por aprobar».
+ * El subtítulo de «Mis torneos» (de todos los juegos): el juego escrito primero (el monograma solo no lo dice), la
+ * plataforma del torneo (si se sabe), con qué te inscribiste y si falta que lo aprueben: «Rocket League · PlayStation ·
+ * Los Tigres · Por aprobar».
  */
-export const myEntrySubtitle = (e: Pick<MyEntry, 'game' | 'entryName' | 'entryStatus'>) =>
-  [gameLabel(e.game), e.entryName, e.entryStatus === 'pending' ? 'Por aprobar' : null].filter(Boolean).join(' · ');
+export const myEntrySubtitle = (e: Pick<MyEntry, 'game' | 'entryName' | 'entryStatus'> & { platform?: TournamentPlatform }) =>
+  [gameLabel(e.game), platformText(e.platform), e.entryName, e.entryStatus === 'pending' ? 'Por aprobar' : null].filter(Boolean).join(' · ');
 
 /** Tiene su ID puesto (de ese juego, o de cualquiera), comprobado o no: es lo que piden los equipos. */
 export const hasGameId = (ids: readonly Pick<GameIdRecord, 'game'>[], game?: GameId) => ids.some((r) => !game || r.game === game);
@@ -145,11 +150,12 @@ export const hubPhase = (t: PhaseFields, now: number): Phase => tournamentPhase(
 export const openTournamentCount = (ts: readonly PhaseFields[], now: number) => ts.filter((t) => canRegister(t, now)).length;
 
 /**
- * «5 contra 5 · Doble eliminación · Solo equipos · 6/16»: la fila de un torneo en la página del juego. Sin el nombre del
- * juego: ahí es el título de la página (en las demás listas va primero, `gameLabel`).
+ * «PlayStation · 1 contra 1 · Eliminación simple · Libre · 6/16»: la fila de un torneo en la página del juego, con la
+ * plataforma primero (si se sabe). Sin el nombre del juego: ahí es el título de la página (en las demás listas va
+ * primero, `gameLabel`).
  */
-export const tournamentSubtitle = (t: Pick<HubTournament, 'game' | 'mode' | 'format' | 'entryType' | 'approved' | 'maxEntries'>) =>
-  `${formatLine(t)} · ${num(t.approved)}/${num(t.maxEntries)}`;
+export const tournamentSubtitle = (t: Pick<HubTournament, 'game' | 'mode' | 'format' | 'entryType' | 'approved' | 'maxEntries'> & { platform?: TournamentPlatform }) =>
+  [platformText(t.platform), formatLine(t), `${num(t.approved)}/${num(t.maxEntries)}`].filter(Boolean).join(' · ');
 
 /** «5 contra 5 · Riot ID»: la línea debajo del nombre del juego. */
 export const gameLine = (meta: Pick<GameMeta, 'defaultMode' | 'idInfo' | 'kind'>, modeText: string) => `${modeText} · ${meta.idInfo.label}`;
@@ -210,9 +216,26 @@ export function withQuery(path: string, key: string, value: string): string {
   return `${base}${sep}${encodeURIComponent(key)}=${encodeURIComponent(value)}${hash ? `#${hash}` : ''}`;
 }
 
-/** «Poner mi ID» y vuelve a `back` al confirmar: /esports/mi-id?juego=valorant&volver=… */
-export const myIdLink = (game: GameId, back?: string | null) =>
-  back ? `/esports/mi-id?juego=${game}&volver=${encodeURIComponent(back)}` : `/esports/mi-id?juego=${game}`;
+/**
+ * «Poner mi ID» y vuelve a `back` al confirmar: /esports/mi-id?juego=valorant&volver=…; `platform`: la del torneo
+ * (`&plataforma=playstation`: en NBA 2K abre el ID de esa plataforma; en los demás, la marca en «¿Dónde juegas?»).
+ */
+export function myIdLink(game: GameId, back?: string | null, platform?: string | null): string {
+  const plat = platform && platform !== 'crossplay' ? `&plataforma=${encodeURIComponent(platform)}` : '';
+  return `/esports/mi-id?juego=${game}${plat}${back ? `&volver=${encodeURIComponent(back)}` : ''}`;
+}
+
+/** Lo más largo que guarda esports-auth como `volver` (safeAppPath). */
+const LINK_BACK_MAX = 200;
+
+/**
+ * A dónde vuelve «Conectar con…» desde Mi ID de juego: a la misma hoja (con su plataforma y su `volver`), para avisar
+ * cómo salió y seguir al torneo. Si no cabe en lo que guarda esports-auth, sin la plataforma o sin `volver`.
+ */
+export function linkBackPath(game: GameId, back?: string | null, platform?: string | null): string {
+  for (const path of [myIdLink(game, back, platform), myIdLink(game, back), myIdLink(game)]) if (path.length <= LINK_BACK_MAX) return path;
+  return '/esports/mi-id';
+}
 
 /** La página del juego con la hoja de crear equipo abierta (y a dónde volver después de crearlo). */
 export const createTeamLink = (game: GameId, back?: string | null) =>
@@ -350,6 +373,43 @@ export function idFor<T extends Pick<GameIdRecord, 'game' | 'platform'>>(ids: re
   return ids.find((r) => r.game === game && (platform == null || platform === '' ? true : r.platform === platform)) ?? null;
 }
 
+// ---------- Dónde juegas (docs/perfiles-equipos-esports.md §4) ----------
+
+/** NBA 2K: la clave del ID de cada plataforma (PlayStation → psn, PC → steam). */
+const NBA_ID_KEY: Partial<Record<Platform, string>> = Object.fromEntries(Object.entries(NBA_KEY_PLATFORM).map(([k, p]) => [p, k]));
+
+/** La plataforma del torneo que viene en `?plataforma=` (o la clave vieja de NBA 2K: psn → PlayStation); null si no dice una. */
+export function wantedPlatform(game: GameId, param: string | null | undefined): Platform | null {
+  if (!param) return null;
+  const p = game === 'nba_2k' ? (NBA_KEY_PLATFORM[param] ?? param) : param;
+  return isPlatform(p) && gamePlatforms(game).includes(p) ? p : null;
+}
+
+/** En NBA 2K, la clave del ID de esa plataforma (`?plataforma=playstation` o `psn` → 'psn'); en los demás juegos, ''. */
+export function idKeyFor(game: GameId, param: string | null | undefined): string {
+  if (game !== 'nba_2k' || !param) return '';
+  if (NBA_KEY_PLATFORM[param]) return param;
+  return (isPlatform(param) && NBA_ID_KEY[param]) || '';
+}
+
+/** «¿Dónde juegas?» se pregunta en los juegos de varias plataformas (NBA 2K no: lleva un ID por plataforma). */
+export const asksPlatforms = (game: GameId) => game !== 'nba_2k' && gamePlatforms(game).length > 1;
+
+/** Las fichas de «¿Dónde juegas?»: las plataformas del juego. */
+export const platformChips = (game: GameId): { key: Platform; label: string }[] => gamePlatforms(game).map((p) => ({ key: p, label: PLATFORM_LABEL[p] }));
+
+/** Marca o desmarca una plataforma (en el orden del juego). */
+export function togglePlatform(game: GameId, list: readonly string[], p: Platform): Platform[] {
+  const on = new Set(list.includes(p) ? list.filter((x) => x !== p) : [...list, p]);
+  return gamePlatforms(game).filter((x) => on.has(x));
+}
+
+/** La misma lista de plataformas (sin importar el orden). */
+export const samePlatforms = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
+/** Steam no deja elegir otra cuenta al entrar: hay que cerrar la sesión antes. */
+export const STEAM_SWITCH_NOTE = 'Para usar otra cuenta de Steam, cierra sesión de Steam en el navegador antes.';
+
 /** El juego busca el ID con la API de Riot (LoL y VALORANT) y la función la tiene encendida: «Buscar» en vez de «Guardar». */
 export const canLookup = (game: GameId, providers: Pick<ProvidersStatus, 'lookup'>) => verifyKind(game) === 'lookup' && providers.lookup.includes(game);
 
@@ -370,6 +430,7 @@ export const LINK_ERROR_TEXT: Record<string, string> = {
   estado_vencido: 'Se venció el inicio de sesión: vuelve a intentarlo.',
   proveedor: 'El proveedor no lo confirmó.',
   no_disponible: 'Conectar esa cuenta no está disponible ahora.',
+  cerrado: 'Ya estás jugando un torneo con esta cuenta: cámbiala cuando termine.',
 };
 
 export function linkResultToast(params: Pick<URLSearchParams, 'get'>): { text: string; tone: 'ok' | 'error' } | null {
@@ -405,20 +466,28 @@ export interface IdSheetState {
   message: string | null;
   /** El rango que se elige (opcional). */
   ranks: RankMap;
+  /** «¿Dónde juegas?» (los juegos de varias plataformas, salvo NBA 2K). */
+  platforms: string[];
 }
 
-/** Cómo se abre la hoja del ID de un juego: con lo guardado (si hay) y la región o plataforma de siempre. */
-export function initialIdSheetState(game: GameId, record: GameIdRecord | null): IdSheetState {
+/**
+ * Cómo se abre la hoja del ID de un juego: con lo guardado (si hay) y la región o plataforma de siempre. `wanted`: la
+ * plataforma del torneo de donde viene; si el ID todavía no dice dónde juega, queda marcada (y en NBA 2K, sin ID de esa
+ * plataforma, se elige esa).
+ */
+export function initialIdSheetState(game: GameId, record: GameIdRecord | null, wanted?: Platform | null): IdSheetState {
   const meta = GAMES[game];
+  const saved = record?.platforms ?? [];
   return {
     step: initialIdStep(record),
     raw: record?.idDisplay ?? '',
-    platform: record?.platform ?? '',
+    platform: record?.platform ?? (wanted ? idKeyFor(game, wanted) : ''),
     region: record?.region || meta?.idInfo.defaultRegion || '',
     display: record?.idDisplay ?? '',
     found: null,
     message: null,
     ranks: { ...(record?.ranks ?? {}) },
+    platforms: !asksPlatforms(game) ? [] : saved.length ? [...saved] : wanted ? [wanted] : [],
   };
 }
 
@@ -469,17 +538,18 @@ export function takenText(game: GameId): string {
   return `Quien lo conectó entró con su cuenta ${p ? `de ${PROVIDER_NAME[p]}` : 'del juego'}. Si es tuyo, conéctalo tú y pasa a tu cuenta.`;
 }
 
-export type IdActionKey = 'rank' | 'lookup' | 'link' | 'change' | 'delete';
+export type IdActionKey = 'rank' | 'lookup' | 'link' | 'relink' | 'change' | 'delete';
 
 /**
  * Lo que se hace con un ID guardado: el rango; «Comprobar con Riot» (hay búsqueda y no está comprobado); «Conectar
- * con…» (está encendido y no entró con su cuenta); «Cambiar mi ID» (no si entró con su cuenta) y quitarlo.
+ * con…» (está encendido y no entró con su cuenta); «Conectar otra cuenta» (entró con su cuenta y está encendido);
+ * «Cambiar mi ID» (no si entró con su cuenta) y quitarlo.
  */
 export function idActions(r: Pick<GameIdRecord, 'game' | 'status' | 'ownership'>, providers: Pick<ProvidersStatus, 'lookup' | 'link'>): IdActionKey[] {
   const login = r.ownership === 'login';
   const out: IdActionKey[] = ['rank'];
   if (canLookup(r.game, providers) && r.status !== 'confirmado') out.push('lookup');
-  if (!login && linkProviderFor(r.game, providers)) out.push('link');
+  if (linkProviderFor(r.game, providers)) out.push(login ? 'relink' : 'link');
   if (!login) out.push('change');
   out.push('delete');
   return out;

@@ -30,7 +30,7 @@ import { wizardField, wizardLabel, wizardLegend } from '../../../components/crea
 import { Segmented, Skeleton, cx } from '../../../components/ui';
 import { ToggleRow } from '../../sports/racket/bits';
 import { ChoiceChips, ScoreStepper } from '../../sports/esports/parts';
-import { CHECKIN_OPTIONS, ENTRY_BLURB, FORMAT_BLURB, cleanPoints, clampMax, idRequirement, rankRequirement, subsMaxOf, withFormat, type TournamentForm } from './logic';
+import { CHECKIN_OPTIONS, ENTRY_BLURB, FORMAT_BLURB, cleanPoints, clampMax, idRequirement, platformPick, rankRequirement, subsMaxOf, withFormat, type TournamentForm } from './logic';
 import { shareOrigin } from '../../../lib/origin';
 
 type SetField = <K extends keyof TournamentForm>(k: K, v: TournamentForm[K]) => void;
@@ -63,22 +63,6 @@ export function MoreOptions({ pro, children, label = 'Más opciones' }: { pro: b
         <ChevronDown aria-hidden="true" className={cx('size-5 text-muted transition-transform', open && 'rotate-180')} />
       </button>
       {open && <div className="animate-fade-up">{children}</div>}
-    </div>
-  );
-}
-
-/** Un selector con la flecha (la lista del teléfono), del tamaño de los campos del asistente. */
-function SelectField({ id, value, onChange, options, label }: { id: string; value: string; onChange: (v: string) => void; options: readonly { value: string; label: string }[]; label?: string }) {
-  return (
-    <div className={cx(wizardField, 'relative pr-3')}>
-      <select id={id} value={value} aria-label={label} onChange={(e) => onChange(e.target.value)} className="h-full min-w-0 flex-1 appearance-none bg-transparent pr-7 text-fg outline-none">
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 size-[18px] text-faint" />
     </div>
   );
 }
@@ -259,9 +243,9 @@ export interface FormatValue {
 /**
  * El formato y sus ajustes (§12.7 paso 3): tarjetas de formato con una línea; según el formato, el mejor de por fase,
  * el 3.er lugar, el reinicio de la gran final, grupos y clasificados, ida y vuelta, playoffs simple o doble; EA SPORTS
- * FC: empates en grupos; SF6/TEKKEN: rondas para ganar; Smash: vidas; NBA 2K: la plataforma; BR: jornadas, partidas y la
- * tabla de puntos editable («+ puesto», puntos por kill, «Volver a los de {juego}»); y la siembra. En Lite los ajustes
- * van en «Más opciones».
+ * FC: empates en grupos; SF6/TEKKEN: rondas para ganar; Smash: vidas; BR: jornadas, partidas y la tabla de puntos
+ * editable («+ puesto», puntos por kill, «Volver a los de {juego}»); y la siembra. En Lite los ajustes van en «Más
+ * opciones». La plataforma del torneo va siempre a la vista, arriba (`PlatformField`).
  */
 export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; onChange: (v: FormatValue) => void; pro: boolean }) {
   const meta = GAMES[v.game];
@@ -328,19 +312,6 @@ export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; 
         </div>
       )}
       {meta.stocks && <NumberRow label="Vidas por jugador" value={s.stocks ?? meta.stocks.default} min={meta.stocks.min} max={meta.stocks.max} onChange={(n) => setS({ stocks: n })} />}
-      {meta.idInfo.platforms.length > 0 && v.game === 'nba_2k' && (
-        <div className="mt-4">
-          <label htmlFor="tz-plataforma" className={wizardLegend}>
-            Plataforma del torneo
-          </label>
-          <SelectField
-            id="tz-plataforma"
-            value={s.platform}
-            onChange={(p) => setS({ platform: p })}
-            options={[{ value: '', label: 'Elige la plataforma' }, ...meta.idInfo.platforms.map((p) => ({ value: p.id, label: p.label }))]}
-          />
-        </div>
-      )}
       {v.format === 'br' && <BrFields game={v.game} settings={s} onChange={setS} />}
       {v.format !== 'br' && (
         <div className="mt-4">
@@ -362,6 +333,7 @@ export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; 
   );
   return (
     <>
+      <PlatformField game={v.game} value={s.platform} onChange={(platform) => setS({ platform })} />
       <fieldset className="mt-6" role="radiogroup">
         <legend className={wizardLegend}>Formato</legend>
         <div className="flex flex-col gap-2.5">
@@ -374,6 +346,33 @@ export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; 
         {settings}
       </MoreOptions>
     </>
+  );
+}
+
+/**
+ * La plataforma del torneo (docs/perfiles-equipos-esports.md §4): fichas con las del juego y «Crossplay» primero; en un
+ * juego de una sola plataforma, solo el texto («VALORANT se juega en PC.»). Lo de NBA 2K viejo (psn, steam) se ve como
+ * la de ahora.
+ */
+function PlatformField({ game, value, onChange }: { game: GameId; value: string; onChange: (p: string) => void }) {
+  const pick = platformPick(game, value);
+  if (pick.options.length <= 1) {
+    return (
+      <div className="mt-6">
+        <p className={wizardLegend}>Plataforma</p>
+        <p className="rounded-2xl bg-accent-soft px-4 py-3.5 text-[15px] text-fg-2">
+          {`${GAMES[game].name} se juega en `}
+          <b className="font-semibold text-accent">{pick.options[0]?.label ?? 'Esports'}</b>.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <fieldset className="mt-6">
+      <legend className={wizardLegend}>Plataforma</legend>
+      <ChoiceChips label="Plataforma" items={pick.options} value={pick.value || null} onChange={onChange} />
+      {pick.note && <p className="mx-1 mt-2 text-[13.5px] text-muted">{pick.note}</p>}
+    </fieldset>
   );
 }
 
@@ -441,7 +440,7 @@ function BrFields({ game, settings: s, onChange }: { game: GameId; settings: Tou
 export function FormatStep({ form, onChange, pro, titleRef }: { form: TournamentForm; onChange: (f: TournamentForm) => void; pro: boolean; titleRef?: Ref<HTMLHeadingElement> }) {
   return (
     <>
-      <Question title="¿Cómo se juega?" sub="El formato y lo que cambia de cada fase." titleRef={titleRef} />
+      <Question title="¿Cómo se juega?" sub="La plataforma, el formato y lo que cambia de cada fase." titleRef={titleRef} />
       <FormatFields value={form} onChange={(v) => onChange({ ...form, ...v })} pro={pro} />
     </>
   );
