@@ -14,6 +14,7 @@ import {
   publicEmptyText,
   rowLineText,
   splitMine,
+  tourneyKind,
   tourneyLine,
   tourneysOf,
 } from './logic';
@@ -162,15 +163,45 @@ describe('Ligas: la línea de cada fila', () => {
     expect(t[1].going).toBe(true);
   });
 
-  it('la línea de un torneo: su día y cuántos inscritos (y de qué liga si tienes varias)', () => {
-    const copa = { date: '2026-10-24', time: null, going: true, leagueName: 'Liga de los martes', standalone: false };
-    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6 }))).toBe('Sábado 24 oct · 6 inscritos');
-    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 1, showLeague: true }))).toBe('Sábado 24 oct · 1 inscrito · Liga de los martes');
-    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6, pro: true }))).toBe('Sábado 24 oct · 6 inscritos · ya te inscribiste');
-    expect(tourneyLine({ ...copa, date: TODAY }, { today: TODAY, live: true })).toEqual({ lead: 'En juego hoy', rest: '' });
+  it('la línea de un torneo: de qué es, su día y cuántos inscritos (y de qué liga si tienes varias)', () => {
+    const copa = { sport: 'bowling', date: '2026-10-24', time: null, going: true, leagueName: 'Liga de los martes', standalone: false };
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6 }))).toBe('Torneo de boliche · Sábado 24 oct · 6 inscritos');
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 1, showLeague: true }))).toBe(
+      'Torneo de boliche · Sábado 24 oct · 1 inscrito · Liga de los martes',
+    );
+    expect(rowLineText(tourneyLine(copa, { today: TODAY, live: false, entrants: 6, pro: true }))).toBe(
+      'Torneo de boliche · Sábado 24 oct · 6 inscritos · ya te inscribiste',
+    );
+    // Lo de hoy va primero (en el color del deporte); de qué es, después.
+    expect(tourneyLine({ ...copa, date: TODAY }, { today: TODAY, live: true })).toEqual({ lead: 'En juego hoy', rest: 'Torneo de boliche' });
     expect(tourneyLine({ ...copa, date: TODAY, time: '9:00 am' }, { today: TODAY, live: false }).lead).toBe('Hoy, 9:00 am');
-    expect(tourneyLine({ ...copa, date: '2026-10-01' }, { today: TODAY, live: false }).rest).toBe('Ya se jugó');
-    expect(tourneyLine({ ...copa, date: null }, { today: TODAY, live: false }).rest).toBe('');
+    expect(tourneyLine({ ...copa, date: '2026-10-01' }, { today: TODAY, live: false }).rest).toBe('Torneo de boliche · Ya se jugó');
+    expect(tourneyLine({ ...copa, date: null }, { today: TODAY, live: false }).rest).toBe('Torneo de boliche');
+  });
+
+  it('el torneo dice de qué deporte es (o de qué juego en esports), y no lo repite si la pantalla ya lo dice', () => {
+    expect(tourneyKind('padel')).toBe('Torneo de pádel');
+    expect(tourneyKind('bowling')).toBe('Torneo de boliche');
+    expect(tourneyKind('football')).toBe('Torneo de fútbol de campo');
+    expect(tourneyKind(null)).toBe('Torneo de boliche');
+    expect(tourneyKind('esports', 'valorant')).toBe('Torneo de VALORANT');
+    expect(tourneyKind('esports', 'cs2')).toBe('Torneo de Counter-Strike 2');
+    expect(tourneyKind('esports')).toBe('Torneo de esports');
+    expect(tourneyKind('esports', 'tetris')).toBe('Torneo de esports');
+    // El juego solo cuenta en esports.
+    expect(tourneyKind('padel', 'valorant')).toBe('Torneo de pádel');
+    expect(tourneyKind('curling')).toBe('Torneo de otro deporte');
+
+    const base = { date: '2026-10-24', time: null, going: false, leagueName: 'Copa', standalone: true };
+    const line = (t: { sport: string; game?: string | null }, o: { sportShown?: boolean } = {}) =>
+      rowLineText(tourneyLine({ ...base, ...t }, { today: TODAY, live: false, entrants: 12, ...o }));
+    expect(line({ sport: 'padel' })).toBe('Torneo de pádel · Sábado 24 oct · 12 inscritos');
+    expect(line({ sport: 'esports', game: 'valorant' })).toBe('Torneo de VALORANT · Sábado 24 oct · 12 inscritos');
+    expect(line({ sport: 'esports', game: null })).toBe('Torneo de esports · Sábado 24 oct · 12 inscritos');
+    // Ligas filtrada en un deporte: el deporte ya se ve; el juego de esports no (el filtro dice «Esports»).
+    expect(line({ sport: 'padel' }, { sportShown: true })).toBe('Sábado 24 oct · 12 inscritos');
+    expect(line({ sport: 'esports', game: 'valorant' }, { sportShown: true })).toBe('VALORANT · Sábado 24 oct · 12 inscritos');
+    expect(line({ sport: 'esports' }, { sportShown: true })).toBe('Sábado 24 oct · 12 inscritos');
   });
 
   it('el filtro de deporte: solo si juegas más de uno, y solo lo elegido en los chips (sin elegir, Todos)', () => {

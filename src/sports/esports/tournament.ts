@@ -2,7 +2,7 @@
  * Lo que se calcula al leer un torneo (docs/esports.md §3.7): la fase según el estado y la hora (que se recibe, nunca
  * se lee del sistema), si se puede inscribir o hacer check-in, y textos cortos del formato.
  */
-import { modeLabel, type GameId, type Mode } from './catalog';
+import { gameMeta, modeLabel, type GameId, type Mode } from './catalog';
 import type { StageKind } from './brackets';
 import { ENTRY_LABEL, FORMAT_LABEL, type EntryType, type Format } from './settings';
 
@@ -72,6 +72,13 @@ export const PHASE_TEXT: Record<Phase, string> = {
 export function formatLine(t: { game: GameId; mode: Mode; format: Format; entryType: EntryType }): string {
   return `${modeLabel(t.mode)} · ${FORMAT_LABEL[t.format]} · ${ENTRY_LABEL[t.entryType]}`;
 }
+
+/**
+ * El nombre del juego escrito («VALORANT», «Counter-Strike 2»), para que el torneo diga de qué es (el monograma solo
+ * no lo dice); «Esports» si no es uno del catálogo. Va primero en la línea del torneo, salvo donde la pantalla ya dice
+ * el juego (la página de cada juego, un equipo).
+ */
+export const gameLabel = (game: string | null | undefined): string => gameMeta(game)?.name ?? 'Esports';
 
 /** Las fases que tiene el formato: simple/doble → ['bracket']; grupos → ['groups', 'playoffs']; liga → ['league']; BR → []. */
 export function stagesFor(format: Format, _playoffs?: 'single' | 'double'): StageKind[] {

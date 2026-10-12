@@ -4,7 +4,8 @@
  */
 import { dayLabel, type CalendarItem } from '../../lib/calendar';
 import { inSport } from '../../lib/sportContext';
-import { sportMeta, sportsOf } from '../../sports/registry';
+import { gameMeta } from '../../sports/esports/catalog';
+import { DEFAULT_SPORT, sportMeta, sportsOf } from '../../sports/registry';
 import { itemTime } from '../home/logic';
 import { countLabel, peopleWord } from '../league/logic';
 
@@ -201,22 +202,37 @@ export function tourneysOf(leagues: readonly TourneyLeague[], upcoming: readonly
   });
 }
 
+/** El juego de un torneo de esports («VALORANT»), si es uno del catálogo. */
+const tourneyGame = (sport: string | null | undefined, game: string | null | undefined) => (sport === 'esports' ? (gameMeta(game)?.name ?? null) : null);
+
 /**
- * La fila de un torneo: «En juego hoy» o «Hoy»; si no, su día («Sábado 24 oct») y cuántos inscritos tiene. `league`:
- * de qué liga es (si la cuenta tiene más de una); Pro agrega «ya te inscribiste».
+ * De qué es un torneo, en texto (el ícono solo no lo dice): «Torneo de pádel», «Torneo de boliche», en esports el juego
+ * («Torneo de VALORANT») o «Torneo de esports» si no se sabe cuál.
+ */
+export function tourneyKind(sport: string | null | undefined, game?: string | null): string {
+  const id = sport || DEFAULT_SPORT;
+  return `Torneo de ${tourneyGame(id, game) ?? sportMeta(id)?.lower ?? 'otro deporte'}`;
+}
+
+/**
+ * La fila de un torneo: «En juego hoy» o «Hoy»; luego de qué es («Torneo de pádel», «Torneo de VALORANT»), su día
+ * («Sábado 24 oct») y cuántos inscritos tiene. `league`: de qué liga es (si la cuenta tiene más de una); Pro agrega
+ * «ya te inscribiste». `sportShown`: la pantalla ya dice el deporte (el filtro de Ligas en uno): no se repite, salvo el
+ * juego de esports («VALORANT»), que el filtro no dice.
  */
 export function tourneyLine(
-  t: Pick<TourneyItem, 'date' | 'time' | 'going' | 'leagueName' | 'standalone'>,
-  opts: { today: string; live: boolean; entrants?: number | null; showLeague?: boolean; pro?: boolean },
+  t: Pick<TourneyItem, 'sport' | 'game' | 'date' | 'time' | 'going' | 'leagueName' | 'standalone'>,
+  opts: { today: string; live: boolean; entrants?: number | null; showLeague?: boolean; pro?: boolean; sportShown?: boolean },
 ): RowLine {
   const { today } = opts;
   const lead = opts.live ? 'En juego hoy' : t.date === today ? whenText(t.date, t.time, today) : null;
+  const kind = opts.sportShown ? tourneyGame(t.sport, t.game) : tourneyKind(t.sport, t.game);
   const when = lead || !t.date ? null : t.date < today ? 'Ya se jugó' : dayLabel(t.date, today);
   const n = opts.entrants ?? 0;
   const who = n > 0 ? `${n} ${n === 1 ? 'inscrito' : 'inscritos'}` : null;
   const league = opts.showLeague && !t.standalone ? t.leagueName : null;
   const mine = opts.pro && t.going ? 'ya te inscribiste' : null;
-  return { lead, rest: [when, who, league, mine].filter(Boolean).join(' · ') };
+  return { lead, rest: [kind, when, who, league, mine].filter(Boolean).join(' · ') };
 }
 
 /** Valor del filtro de deporte de Ligas en el link: un deporte o «todos» (así se puede elegir Todos aunque la app esté en uno). */

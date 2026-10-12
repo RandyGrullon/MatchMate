@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCheckIn, canRegister, formatLine, PHASE_TEXT, stagesFor, tournamentPhase, type PhaseInput } from '.';
+import { canCheckIn, canRegister, formatLine, gameLabel, PHASE_TEXT, stagesFor, tournamentPhase, type PhaseInput } from '.';
 
 const T = (iso: string) => Date.parse(iso);
 const base: PhaseInput = {
@@ -86,6 +86,17 @@ describe('textos', () => {
     expect(formatLine({ game: 'valorant', mode: '5v5', format: 'double_elim', entryType: 'teams' })).toBe('5 contra 5 · Doble eliminación · Solo equipos');
     expect(formatLine({ game: 'free_fire', mode: 'squad', format: 'br', entryType: 'open' })).toBe('Escuadras · Battle royale · Libre');
     expect(formatLine({ game: 'ea_fc', mode: '1v1', format: 'round_robin', entryType: 'open' })).toBe('1 contra 1 · Todos contra todos · Libre');
+  });
+
+  it('gameLabel: el juego escrito (el torneo dice de qué es); «Esports» si no es del catálogo', () => {
+    expect(gameLabel('valorant')).toBe('VALORANT');
+    expect(gameLabel('cs2')).toBe('Counter-Strike 2');
+    expect(gameLabel('ea_fc')).toBe('EA SPORTS FC');
+    expect(gameLabel('tetris')).toBe('Esports');
+    expect(gameLabel(null)).toBe('Esports');
+    expect(`${gameLabel('valorant')} · ${formatLine({ game: 'valorant', mode: '5v5', format: 'single_elim', entryType: 'teams' })}`).toBe(
+      'VALORANT · 5 contra 5 · Eliminación simple · Solo equipos',
+    );
   });
 
   it('stagesFor', () => {

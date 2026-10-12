@@ -39,6 +39,7 @@ import {
   canRegister,
   champion,
   formatLine,
+  gameLabel,
   isIndividualMode,
   rankKeyFor,
   resolvePlan,
@@ -376,11 +377,14 @@ function Tournament({
       <DateBlock date={localParts(t.startsAt, league.tz)?.date ?? t.startsAt} />
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 flex-wrap items-center gap-2">
-          <GameMark game={t.game} size="sm" />
+          <GameMark game={t.game} size="sm" decorative />
           <PhaseChip phase={phase} />
           {startDay && <span className="text-[13.5px] text-muted">{startDay}</span>}
         </p>
-        <p className="mt-1 text-[14px] leading-snug text-muted">{metaLine}</p>
+        {/* El juego escrito (el monograma solo no dice de qué es el torneo), y después el formato y el cupo. */}
+        <p className="mt-1 text-[14px] leading-snug text-muted">
+          <span className="font-semibold text-fg-2">{gameLabel(t.game)}</span> · {metaLine}
+        </p>
       </div>
       {embedded && <MoreButton onClick={() => setSheet('menu')} />}
     </div>

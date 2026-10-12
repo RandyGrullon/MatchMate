@@ -161,8 +161,11 @@ describe('Esports: secciones y textos', () => {
     expect(entryPhase(entry(), NOW)).toBe('registration');
     expect(entryPhase(entry({ startsAt: iso(NOW - 60_000) }), NOW)).toBe('closed');
     expect(entryPhase(entry({ tournamentStatus: 'live' }), NOW)).toBe('live');
-    expect(myEntrySubtitle(entry({ entryStatus: 'pending' }))).toBe('Los Tigres · Por aprobar');
-    expect(myEntrySubtitle(entry())).toBe('Los Tigres');
+    // El juego escrito primero: «Mis torneos» junta torneos de todos los juegos y el monograma solo no dice cuál.
+    expect(myEntrySubtitle(entry({ entryStatus: 'pending' }))).toBe('VALORANT · Los Tigres · Por aprobar');
+    expect(myEntrySubtitle(entry())).toBe('VALORANT · Los Tigres');
+    expect(myEntrySubtitle(entry({ game: 'ea_fc', mode: '1v1', entryName: 'Ana', kind: 'player' }))).toBe('EA SPORTS FC · Ana');
+    expect(myEntrySubtitle(entry({ entryName: '' }))).toBe('VALORANT');
   });
 
   it('el aviso: sin ningún ID, «Pon tu ID de juego»; con uno (declarado basta), nada', () => {
@@ -214,6 +217,8 @@ describe('la página del juego', () => {
     const t = tour();
     expect(tournamentSubtitle(t)).toBe(`${formatLine(t)} · 6/16`);
     expect(tournamentSubtitle(t)).toContain('Doble eliminación');
+    // En la página del juego el juego es el título: la fila no lo repite.
+    expect(tournamentSubtitle(t)).not.toContain('VALORANT');
   });
 
   it('la acción principal: Pro crea torneo (y equipo al lado); Lite crea equipo si no tiene, con «¿Organizas?»', () => {

@@ -215,7 +215,8 @@ describe('Esports (/esports)', () => {
     const t = text(out);
     expect(t).toContain('Mis torneos');
     expect(t).toContain('Copa Caribe');
-    expect(t).toContain('Los Tigres · Por aprobar');
+    // El juego escrito, no solo el monograma.
+    expect(t).toContain('VALORANT · Los Tigres · Por aprobar');
     expect(t).toContain('Inscripción abierta');
     expect(out).toContain('href="/l/l1"');
     expect(t).toContain('Mis equipos');
@@ -248,6 +249,8 @@ describe('la página del juego (/esports/:game)', () => {
     expect(out).toContain('role="radiogroup" aria-label="Qué ver"');
     for (const s of ['Inscripción abierta', 'En curso', 'Terminados', 'Copa Abierta', 'Liga Privada', 'Copa Pasada']) expect(t).toContain(s);
     expect(t).toContain('5 contra 5 · Doble eliminación · Solo equipos · 6/16');
+    // El juego es el título de la página: las filas no lo repiten.
+    expect(t).not.toContain('VALORANT · 5 contra 5 · Doble eliminación');
     expect(out).toContain('aria-label="Liga Privada (privado)"');
     expect(out).toContain('href="/l/l-a"');
     expect(t).toContain('¿Organizas? Crear torneo');

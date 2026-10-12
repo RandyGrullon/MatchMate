@@ -8,6 +8,7 @@ import {
   GAME_IDS,
   canRegister,
   formatLine,
+  gameLabel,
   gamesOfKind,
   isGameId,
   rankKeysOf,
@@ -80,8 +81,12 @@ export function entryPhase(e: Pick<MyEntry, 'tournamentStatus' | 'startsAt'>, no
   return Number.isFinite(start) && start <= now ? 'closed' : 'registration';
 }
 
-/** El subtítulo de «Mis torneos»: «Los Tigres» o «Los Tigres · Por aprobar». */
-export const myEntrySubtitle = (e: Pick<MyEntry, 'entryName' | 'entryStatus'>) => (e.entryStatus === 'pending' ? `${e.entryName} · Por aprobar` : e.entryName);
+/**
+ * El subtítulo de «Mis torneos» (de todos los juegos): el juego escrito primero (el monograma solo no lo dice), con qué
+ * te inscribiste y si falta que lo aprueben: «VALORANT · Los Tigres» o «VALORANT · Los Tigres · Por aprobar».
+ */
+export const myEntrySubtitle = (e: Pick<MyEntry, 'game' | 'entryName' | 'entryStatus'>) =>
+  [gameLabel(e.game), e.entryName, e.entryStatus === 'pending' ? 'Por aprobar' : null].filter(Boolean).join(' · ');
 
 /** Tiene su ID puesto (de ese juego, o de cualquiera), comprobado o no: es lo que piden los equipos. */
 export const hasGameId = (ids: readonly Pick<GameIdRecord, 'game'>[], game?: GameId) => ids.some((r) => !game || r.game === game);
@@ -139,7 +144,10 @@ export const hubPhase = (t: PhaseFields, now: number): Phase => tournamentPhase(
 /** «Torneos abiertos»: en los que todavía te puedes inscribir. */
 export const openTournamentCount = (ts: readonly PhaseFields[], now: number) => ts.filter((t) => canRegister(t, now)).length;
 
-/** «5 contra 5 · Doble eliminación · Solo equipos · 6/16». */
+/**
+ * «5 contra 5 · Doble eliminación · Solo equipos · 6/16»: la fila de un torneo en la página del juego. Sin el nombre del
+ * juego: ahí es el título de la página (en las demás listas va primero, `gameLabel`).
+ */
 export const tournamentSubtitle = (t: Pick<HubTournament, 'game' | 'mode' | 'format' | 'entryType' | 'approved' | 'maxEntries'>) =>
   `${formatLine(t)} · ${num(t.approved)}/${num(t.maxEntries)}`;
 
