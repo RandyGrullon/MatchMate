@@ -322,6 +322,7 @@ function BackToYo() {
     <Link
       to="/perfil"
       replace={!fromYo}
+      data-back-to="/perfil"
       onClick={(e) => {
         if (!fromYo) return;
         e.preventDefault();

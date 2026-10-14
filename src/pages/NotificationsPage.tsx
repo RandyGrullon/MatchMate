@@ -34,6 +34,7 @@ function BackToHoy({ label = 'Hoy' }: { label?: string }) {
   return (
     <Link
       to="/"
+      data-back-to="/"
       className="-ml-1.5 inline-flex h-11 items-center gap-0.5 rounded-xl pr-2 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
     >
       <ChevronLeft aria-hidden="true" className="size-6" />

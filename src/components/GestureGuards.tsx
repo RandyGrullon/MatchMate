@@ -1,10 +1,10 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router';
 import { useFeedback } from './feedback';
+import { isStandaloneApp } from './swipeBack.logic';
 
-/** App instalada (pantalla de inicio), no una pestaña del navegador. */
-const standalone = () =>
-  matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+/** App instalada (pantalla de inicio), no una pestaña del navegador (lo mismo decide «desliza para salir»). */
+const standalone = () => isStandaloneApp(window);
 
 const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 

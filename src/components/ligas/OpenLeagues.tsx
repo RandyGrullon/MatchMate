@@ -88,7 +88,7 @@ export function OpenLeagues({ signedIn }: { signedIn: boolean }) {
   return (
     <div className="flex flex-col px-2">
       {signedIn && (
-        <Link to="/ligas" className="-mt-2 -ml-1.5 inline-flex h-11 items-center gap-0.5 self-start pr-2 text-body font-[550] text-accent">
+        <Link to="/ligas" data-back-to="/ligas" className="-mt-2 -ml-1.5 inline-flex h-11 items-center gap-0.5 self-start pr-2 text-body font-[550] text-accent">
           <ChevronLeft aria-hidden="true" className="size-5" /> Ligas
         </Link>
       )}

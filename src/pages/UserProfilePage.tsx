@@ -46,7 +46,8 @@ export function profileLine(p: { username?: string | null; sports?: readonly str
  * sus equipos de esports: cada uno a su perfil en ese lugar) y «Publicaciones | Juegos | Estadísticas | Insignias»
  * (`?tab=`; sin nada, Publicaciones). Si la bloqueaste, en vez de todo eso «Bloqueaste a …» con «Desbloquear». Lo que
  * se ve lo decide la base: solo ligas que puedes ver y nunca las de menores; si esa cuenta te bloqueó (o ya no existe),
- * «No encontramos este perfil». Tu propio perfil va a `/perfil`.
+ * «No encontramos este perfil». Tu propio perfil va a `/perfil`. El perfil es de Social: «‹ Atrás» entrando por un link,
+ * y deslizar desde el borde, van a Social.
  */
 export default function UserProfilePage() {
   const { userId } = useParams();
@@ -68,7 +69,7 @@ export default function UserProfilePage() {
     return (
       <AppShell>
         <div className="flex flex-col px-2">
-          <ScreenTop label="Atrás" fallback="/" />
+          <ScreenTop label="Atrás" fallback="/social" />
           <SignInCard className="mt-2" icon={<UserRound />} title="Entra para ver este perfil" text="Ve sus publicaciones y sus juegos, y síguelo." next={next} />
         </div>
       </AppShell>
@@ -86,7 +87,7 @@ export default function UserProfilePage() {
 function NotFound() {
   return (
     <div className="flex flex-col px-2">
-      <ScreenTop label="Atrás" fallback="/" />
+      <ScreenTop label="Atrás" fallback="/social" />
       <Card className="mt-2 flex flex-col items-center px-5 pt-7 pb-5 text-center">
         <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
           <UserRound className="size-7" />
@@ -123,7 +124,7 @@ function PublicProfile({ userId }: { userId: string }) {
   const top = (
     <ScreenTop
       label="Atrás"
-      fallback="/"
+      fallback="/social"
       right={
         p && !p.isMe ? (
           <>

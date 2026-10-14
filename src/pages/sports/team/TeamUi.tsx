@@ -16,6 +16,7 @@ import { rosterOf, rosterSide, teamColor, textOn } from './logic';
 import { RsvpButtons, TeamDot } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 import { matchWhen, resultLine, rowWhen, rsvpLine, scoreShort, todayIn } from './view';
+import { overlayParent } from '../../../components/swipeBack.logic';
 
 /**
  * Piezas del rediseño «Calma y foco» para las pantallas de equipos (baloncesto, fútbol y sala), con las de
@@ -350,12 +351,20 @@ export function StatTiles({ items, dense, className }: { items: readonly StatIte
 
 /**
  * La barra de una pantalla con su propio atrás (la página de un jugador, `/j/…`): «‹ Liga de los martes» vuelve a donde
- * estaba o, si se entró por un link, a `fallback`; a la derecha, lo de la pantalla.
+ * estaba o, si se entró por un link, a `fallback`; a la derecha, lo de la pantalla. Deslizar desde el borde (en la app
+ * instalada) va siempre a `fallback`, la pantalla de arriba.
  */
 export function HistoryBackBar({ label, fallback, right }: { label: string; fallback: string; right?: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  return <BackBar label={label} onBack={() => (location.key !== 'default' ? navigate(-1) : navigate(fallback, { replace: true }))} right={right} />;
+  return (
+    <BackBar
+      label={label}
+      backTo={fallback}
+      onBack={() => (location.key !== 'default' ? navigate(-1) : navigate(fallback, { replace: true }))}
+      right={right}
+    />
+  );
 }
 
 // ---------- La pantalla de un partido ----------
@@ -370,13 +379,16 @@ export function HideShellBar() {
 
 /**
  * La barra de una pantalla que se abre encima de otra (un partido): «‹ Partidos» vuelve con `onBack`; a la derecha, lo
- * de esa pantalla («•••»). Igual que la del evento (EventTopBar).
+ * de esa pantalla («•••»). Igual que la del evento (EventTopBar). Deslizar desde el borde (en la app instalada) va a
+ * `backTo` o, si no se da, a la misma pantalla sin el partido (`?partido=`, `?mesa=`; `data-back-to`, SwipeBack).
  */
-export function BackBar({ label, onBack, right }: { label: string; onBack: () => void; right?: ReactNode }) {
+export function BackBar({ label, onBack, right, backTo }: { label: string; onBack: () => void; right?: ReactNode; backTo?: string }) {
+  const { pathname, search } = useLocation();
   return (
     <div className="-mt-3 flex h-[52px] items-center justify-between gap-2">
       <button
         type="button"
+        data-back-to={backTo ?? overlayParent(pathname, search)}
         onClick={onBack}
         className="-ml-3 inline-flex h-11 min-w-0 items-center pr-2 pl-1 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
       >

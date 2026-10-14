@@ -94,6 +94,9 @@ describe('Organizar', () => {
     const out = render();
     const t = text(out);
     expect(out).toContain('<h1 class="text-title">Organizar</h1>');
+    // Se llega desde Configuración: «‹ Configuración» vuelve ahí (y es a donde sale deslizar desde el borde).
+    expect(out).toContain('data-back-to="/cuenta"');
+    expect(t).toContain('Configuración');
     expect(out).toContain('aria-label="Liga de los martes: cambiar de liga"');
     expect(t).toContain('[Por hacer y La liga de Liga de los martes]');
     expect(t).not.toContain('Esto es de Pro');

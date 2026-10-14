@@ -156,7 +156,8 @@ export function RefreshButton() {
  * Arriba de cada pantalla de la consola: «‹ Consola» (en la computadora no va: está el menú de la izquierda) con lo de
  * la pantalla a la derecha (`actions`: una píldora; actualizar; `menu`: «•••»), el título y una línea corta. `below`:
  * lo que va justo debajo (el segmentado de la vista, por ejemplo). En la computadora lo de la derecha va al lado del
- * título.
+ * título. Deslizar desde el borde (en la app instalada) va a `back.to`: lo lleva la cabecera (`data-back-to`, SwipeBack),
+ * que se ve en todos los tamaños aunque el «‹ Consola» no.
  */
 export function SectionHeader({
   title,
@@ -176,7 +177,7 @@ export function SectionHeader({
   below?: ReactNode;
 }) {
   return (
-    <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+    <header data-back-to={back?.to} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
       {back ? (
         <div className="col-start-1 row-start-1 -ml-2 flex h-[52px] min-w-0 items-center lg:hidden">
           <Link to={back.to} className={cx('inline-flex h-11 min-w-0 items-center rounded-xl pr-2 pl-0.5 text-body font-[550] text-accent transition active:opacity-70', focusRing)}>

@@ -109,7 +109,8 @@ export function CheckRow({ checked, onChange, children }: { checked: boolean; on
 
 /**
  * «‹ Inicio» arriba de una pantalla: dice a dónde vuelve (como «‹ Ligas» o «‹ Yo»). Se toca en 44 px. Con `onClick`
- * (por ejemplo, volver atrás en el historial) quien lo pone decide qué pasa.
+ * (por ejemplo, volver atrás en el historial) quien lo pone decide qué pasa; deslizar desde el borde (en la app
+ * instalada) va siempre a `to` (`data-back-to`, SwipeBack).
  */
 export function BackBar({
   to,
@@ -132,6 +133,7 @@ export function BackBar({
         to={to}
         replace={replace}
         onClick={onClick}
+        data-back-to={to}
         className={cx(
           'inline-flex h-11 min-w-0 items-center rounded-xl pr-2 pl-1 text-body font-[550] text-accent transition active:opacity-70',
           'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',

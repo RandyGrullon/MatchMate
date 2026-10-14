@@ -10,6 +10,7 @@ import { organizedLeagueIds } from '../../lib/organize';
 import { Count } from './bits';
 import { SECTIONS, sectionPath, type SectionKey } from './sections';
 import { PullToRefresh } from '../../components/PullToRefresh';
+import { SwipeBack } from '../../components/SwipeBack';
 
 /** Cuántas cosas esperan en cada sección (avisos del Resumen, reportes abiertos, reportes de insignias). */
 export type ConsoleBadges = Partial<Record<SectionKey, number>>;
@@ -43,6 +44,7 @@ export function ConsoleShell({ section, badges, children }: { section: SectionKe
     <BadgesContext.Provider value={badges ?? {}}>
       <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] max-sm:pt-[env(safe-area-inset-top)] sm:pb-10">
         <PullToRefresh />
+        <SwipeBack />
         <div className="pt-safe sticky top-0 z-30 border-b border-line bg-surface/85 backdrop-blur max-sm:hidden">
           <header className="mx-auto flex h-14 max-w-[1240px] items-center gap-2 px-4">
             <Link to="/" className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="MatchMate: Hoy" title="Hoy">

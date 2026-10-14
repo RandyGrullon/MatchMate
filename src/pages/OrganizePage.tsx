@@ -16,6 +16,7 @@ import { LeaguePickerChip, LeaguePickerSheet } from '../components/organizer/Lea
 import { canEnterLeagues } from '../components/squads/logic';
 import { SquadRequestsPanel } from '../components/squads/SquadRequestsPanel';
 import { AppShell } from '../components/Shell';
+import { BackBar } from '../components/cuenta/kit';
 import { Button, Card, ListRow, ListSkeleton, Loading, LoadError, RowIcon } from '../components/ui';
 
 /** La última liga que se miró en Organizar (en este teléfono, por cuenta). */
@@ -39,7 +40,7 @@ function rememberLeague(uid: string, lid: string) {
 }
 
 /**
- * Organizar (`/organizar`, desde Yo › Configuración, en Lite y en Pro; `?liga=` elige la liga): el título, la ficha de
+ * Organizar (`/organizar`, desde Yo › Configuración, en Lite y en Pro; `?liga=` elige la liga): «‹ Configuración», el título, la ficha de
  * la liga (toca para elegir otra de las que organizas), «Por hacer» (solo lo que tiene algo, con su número) y «La liga»
  * (cada fila a su pantalla de `/l/:lid/admin?tab=…`). `/l/:lid/admin` sin pantalla viene aquí. Sin ligas que
  * organizar, cómo crear una; el dueño de la app, además, su consola.
@@ -69,6 +70,8 @@ export default function OrganizePage() {
   return (
     <AppShell>
       <div className="flex flex-col px-2">
+        {/* Se llega desde Configuración (debajo de «Panel del superadmin»): «‹ Configuración» vuelve ahí. */}
+        <BackBar to="/cuenta" label="Configuración" className="-mt-2 mb-1" />
         <h1 className="text-title">Organizar</h1>
 
         {lid ? (

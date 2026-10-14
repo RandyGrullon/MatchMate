@@ -235,6 +235,12 @@ describe('la barra de arriba y el selector de deporte', () => {
     expect(out.indexOf('data-slot')).toBeLessThan(out.indexOf('CONTENIDO'));
   });
 
+  it('el marco pone una vez «desliza desde el borde para salir» (escondido; solo actúa en la app instalada)', () => {
+    const out = render(h(AppFrame, null, h('p', null, 'CONTENIDO')), '/l/L1/ranking');
+    expect(out.match(/data-swipe-back=""/g)).toHaveLength(1);
+    expect(out.match(/data-pull="idle"/g)).toHaveLength(1);
+  });
+
   it('con varios deportes, el selector arriba solo en la computadora: en el teléfono no hay barra (chips en Ligas)', () => {
     state.leagues = [
       { id: 'L1', sport: 'bowling' },

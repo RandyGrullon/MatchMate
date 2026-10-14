@@ -19,6 +19,7 @@ import { SportChip } from './SportSwitcher';
 import { SportTint, sportTint } from './home/SportTint';
 import { TopLoader, cx } from './ui';
 import { PullToRefresh } from './PullToRefresh';
+import { SwipeBack } from './SwipeBack';
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -323,6 +324,8 @@ export function AppFrame({ middle, subnav, children, wide }: { middle?: ReactNod
     >
       {/* Deslizar hacia abajo arriba de todo vuelve a leer lo de la pantalla (en todas las pantallas de la app). */}
       <PullToRefresh />
+      {/* En la app instalada, deslizar desde el borde izquierdo sale a la pantalla de arriba (la de su «‹ atrás»). */}
+      <SwipeBack />
       {tint.css && (
         <style href={tint.className} precedence="default">
           {tint.css}

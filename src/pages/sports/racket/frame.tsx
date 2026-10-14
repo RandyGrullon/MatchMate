@@ -1,4 +1,5 @@
 import { createContext, lazy, Suspense, useContext, useState, type ComponentProps, type ReactNode } from 'react';
+import { useLocation } from 'react-router';
 import { ChevronLeft, Share2, Zap } from 'lucide-react';
 import { LeagueBackBar } from '../../../components/league/home/LeagueTopBar';
 import { EventMenu, EventTopBar, MoreButton, type MenuItem } from '../../../components/event/EventHeader';
@@ -10,6 +11,7 @@ import { useLeagueCtx } from '../../../lib/league';
 import { leagueSport } from '../../../sports/registry';
 import { ShareImageModal, shareFileName, shareFrame } from '../../../components/share';
 import type { CardFrame, ShareCard } from '../../../components/share/cards';
+import { overlayParent } from '../../../components/swipeBack.logic';
 
 /**
  * Lo común de las pantallas de raqueta en el rediseño «Calma y foco» (como la práctica del boliche,
@@ -152,13 +154,16 @@ export function HideShellBar() {
 
 /**
  * La barra de una pantalla que se abre encima de otra (un partido): «‹ Americano del jueves» vuelve con `onBack` (cierra
- * `?partido=`); a la derecha, lo de esa pantalla («•••»). Igual que la del evento (EventTopBar).
+ * `?partido=`); a la derecha, lo de esa pantalla («•••»). Igual que la del evento (EventTopBar). Deslizar desde el borde
+ * (en la app instalada) va a `backTo` o, si no se da, a la misma pantalla sin el partido (`data-back-to`, SwipeBack).
  */
-export function BackBar({ label, onBack, right }: { label: string; onBack: () => void; right?: ReactNode }) {
+export function BackBar({ label, onBack, right, backTo }: { label: string; onBack: () => void; right?: ReactNode; backTo?: string }) {
+  const { pathname, search } = useLocation();
   return (
     <div className="-mt-3 flex h-[52px] items-center justify-between gap-2">
       <button
         type="button"
+        data-back-to={backTo ?? overlayParent(pathname, search)}
         onClick={onBack}
         className="-ml-3 inline-flex h-11 min-w-0 items-center pr-2 pl-1 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
       >

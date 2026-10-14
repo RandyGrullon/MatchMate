@@ -7,7 +7,8 @@ import { cx } from '../../ui';
 /**
  * Arriba de cada pantalla de la liga (ya no hay pestañas ni encabezado doble): «‹ Ligas» en su inicio y «‹ Liga de los
  * martes» dentro (la Tabla, Resultados anteriores, Mis números…): el atrás dice a dónde vuelve. A la derecha, lo de esa
- * pantalla («Invitar», «Excel», «•••»). 52 px de alto, como el diseño; el atrás se toca en 44.
+ * pantalla («Invitar», «Excel», «•••»). 52 px de alto, como el diseño; el atrás se toca en 44. Deslizar desde el borde
+ * (en la app instalada) va a `to` (`data-back-to`, SwipeBack).
  */
 export function LeagueTopBar({ to, label, actions, className }: { to: string; label: string; actions?: ReactNode; className?: string }) {
   return (
@@ -15,6 +16,7 @@ export function LeagueTopBar({ to, label, actions, className }: { to: string; la
     <div className={cx('-mt-5 -ml-1.5 flex h-[52px] items-center justify-between gap-3', className)}>
       <Link
         to={to}
+        data-back-to={to}
         className={cx(
           'inline-flex h-11 min-w-0 items-center rounded-xl pr-2 pl-1 text-body font-[550] text-accent transition active:opacity-70',
           'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',

@@ -73,7 +73,8 @@ export function LiveWhen({ startsSoon, startLabel }: { startsSoon: boolean; star
 
 /**
  * La barra de arriba: «‹ Liga de los martes» (vuelve a donde estaba o, si entró por un link, a `fallback`) y a la
- * derecha lo que lleve (`right`: «Excel» en Pro y «•••»). Un torneo sin liga no tiene a dónde volver.
+ * derecha lo que lleve (`right`: «Excel» en Pro y «•••»). Un torneo sin liga no tiene a dónde volver. Deslizar desde el
+ * borde (en la app instalada) va siempre a `fallback`, la pantalla de arriba (`data-back-to`, SwipeBack).
  */
 export function EventTopBar({ back, right }: { back: { label: string; fallback: string } | null; right: ReactNode }) {
   const navigate = useNavigate();
@@ -83,6 +84,7 @@ export function EventTopBar({ back, right }: { back: { label: string; fallback: 
       {back ? (
         <button
           type="button"
+          data-back-to={back.fallback}
           onClick={() => (location.key !== 'default' ? navigate(-1) : navigate(back.fallback, { replace: true }))}
           className="-ml-3 inline-flex h-11 min-w-0 items-center pr-2 pl-1 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
         >
