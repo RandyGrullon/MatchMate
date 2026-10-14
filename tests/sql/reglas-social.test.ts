@@ -135,6 +135,8 @@ describe('social: me gusta, felicitar y comentarios', () => {
   it('no se borra el me gusta, comentario o juego en vivo de otro', async () => {
     await react(w.u.luis, 'like');
     const k1 = await comment(w.u.luis, 'mío');
+    // e1 es de hoy: una práctica de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
     await db.rpc(w.u.luis, 'publish_live', { p_event: w.e.e1, p_scores: [190] });
     const [r] = await reactions();
     await fails(db.rpc(w.u.ana, 'delete_reaction', { p_reaction: r.id }), DENIED);

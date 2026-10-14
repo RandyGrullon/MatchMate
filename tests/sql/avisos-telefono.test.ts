@@ -94,7 +94,22 @@ async function oneMatch(lid: string, sides: unknown[], extra: Json = {}) {
   return id;
 }
 
-const submit = (uid: string, args: Json) => db.rpc<string>(uid, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, ...args });
+/**
+ * Envía como el día que se jugó: e1 (22 de septiembre) y las fechas de septiembre de estas pruebas ya están cerradas
+ * para el jugador (se cierra al otro día). e1 pasa a hoy mientras se envía; por fecha, se envía con la de hoy y
+ * después el envío queda con la suya.
+ */
+const submit = async (uid: string, args: Json) => {
+  const [{ today }] = await db.admin<{ today: string }>(`select (now() at time zone 'America/Santo_Domingo')::date::text as today`);
+  await db.admin('update public.events set date = $2 where id = $1', [w.e.e1, today]);
+  try {
+    const id = await db.rpc<string>(uid, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, ...args, ...(args.p_date ? { p_date: today } : {}) });
+    if (args.p_date) await db.admin('update public.submissions set date = $2 where id = $1', [id, args.p_date]);
+    return id;
+  } finally {
+    await db.admin(`update public.events set date = '2026-09-22' where id = $1`, [w.e.e1]);
+  }
+};
 
 describe('preferencias', () => {
   it('set_push_prefs cambia solo las que manda, devuelve las cuatro y la cuenta las lee en su perfil', async () => {

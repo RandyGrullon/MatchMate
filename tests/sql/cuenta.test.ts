@@ -221,6 +221,8 @@ describe('borrar la cuenta', () => {
     await db.rpc(w.u.luis, 'add_comment', { p_entry: w.e1Luis, p_text: 'Gracias' });
     await db.rpc(w.u.luis, 'set_reaction', { p_entry: w.e1Luis, p_type: 'like' });
     await db.rpc(w.u.luis, 'touch_seen');
+    // e1 es de hoy: una práctica de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
     await db.rpc(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_scores: [180], p_event: w.e.e1 });
     await logError(w.u.luis);
     await db.rpc(w.u.luis, 'export_my_data');

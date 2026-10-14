@@ -120,6 +120,8 @@ const RPC_AUTHENTICATED = [
   // esports.
   'player_places', 'squad_followers', 'squad_games', 'squad_stats', 'invite_to_squad', 'respond_squad_invite',
   'cancel_squad_invite', 'my_squad_invites', 'squad_pending_invites', 'esports_set_game_platforms', 'esports_refresh_entry_ids',
+  // Boliche: equipos fijos de la liga, la práctica abierta y el catálogo y layout de las bolas.
+  'set_bowling_teams', 'save_bowling_team', 'delete_bowling_team', 'apply_league_teams', 'open_practice', 'set_ball_details',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */

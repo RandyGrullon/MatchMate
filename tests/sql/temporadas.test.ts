@@ -367,6 +367,9 @@ describe('empezar otra temporada', () => {
     const team = await db.rpc<string>(w.u.org, 'add_team', { p_event: w.e.e1, p_name: 'Equipo 1' });
     expect(await db.admin('select season_id from public.teams where id = any ($1) order by name', [[pair, team]])).toEqual([{ season_id: null }, { season_id: null }]);
     await fails(db.admin('update public.teams set season_id = $2 where id = $1', [team, (await active(w.priv)).id]), '23514');
+    // Los equipos fijos de una liga de boliche (sin evento) tampoco: sirven de una temporada a otra.
+    const [fixedTeam] = await db.rpc<string[]>(w.u.org, 'set_bowling_teams', { p_league: w.priv, p_teams: JSON.stringify([{ name: 'Fijo', players: [w.p.luis] }]) });
+    expect(await db.admin('select season_id, event_id from public.teams where id = $1', [fixedTeam])).toEqual([{ season_id: null, event_id: null }]);
   });
 });
 

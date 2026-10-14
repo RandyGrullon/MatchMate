@@ -19,6 +19,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.begin();
   w = await makeWorld(db);
+  // La práctica e1 es de hoy: una de antes de ayer ya está cerrada para el jugador (se cierra al otro día,
+  // 20261013000100_boliche_equipos_practicas_bolas.sql).
+  await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
 });
 afterEach(async () => {
   await db.rollback();
@@ -92,10 +95,12 @@ describe('juegos', () => {
   });
 
   it('por fecha, sin evento', async () => {
-    const id = await sendGames(w.u.luis, w.priv, { p_date: '2026-09-15' }, null);
-    expect(await db.admin('select event_id, date::text from public.submissions where id = $1', [id])).toEqual([{ event_id: null, date: '2026-09-15' }]);
+    // Ayer: una fecha de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    const yesterday = (await db.admin<{ d: string }>(`select ((now() at time zone 'America/Santo_Domingo')::date - 1)::text as d`))[0].d;
+    const id = await sendGames(w.u.luis, w.priv, { p_date: yesterday }, null);
+    expect(await db.admin('select event_id, date::text from public.submissions where id = $1', [id])).toEqual([{ event_id: null, date: yesterday }]);
     // Evento y fecha a la vez, o ninguno: no.
-    await fails(sendGames(w.u.luis, w.priv, { p_date: '2026-09-15' }), INVALID);
+    await fails(sendGames(w.u.luis, w.priv, { p_date: yesterday }), INVALID);
     await fails(sendGames(w.u.luis, w.priv, {}, null), INVALID);
   });
 
@@ -269,7 +274,8 @@ describe('juegos de la sesión', () => {
     expect(await games(w.e.e1)).toBe(4);
     await fails(db.rpc(w.u.ana, 'add_practice_game', { p_event: w.e.e1 }), DENIED);
     await fails(db.asUser(w.u.luis, 'update public.events set games = 6 where id = $1', [w.e.e1]), '42501');
-    const p10 = await event(db, w.priv, 'practica', '2026-09-22', 10);
+    const today = (await db.admin<{ d: string }>('select date::text as d from public.events where id = $1', [w.e.e1]))[0].d;
+    const p10 = await event(db, w.priv, 'practica', today, 10);
     const t1 = await event(db, w.priv, 'torneo', '2026-09-22', 3, 'Copa');
     await fails(db.rpc(w.u.luis, 'add_practice_game', { p_event: p10 }), INVALID);
     await fails(db.rpc(w.u.luis, 'add_practice_game', { p_event: t1 }), DENIED);

@@ -224,7 +224,10 @@ describe('tope de ligas y torneos nuevos por cuenta', () => {
 
 describe('pendientes del organizador', () => {
   it('envíos por aprobar y reclamos, con su enlace, y los primeros pasos de una liga nueva', async () => {
+    // e1 es del 2026-09-22: ya está cerrada para el jugador (se cierra al otro día). Envía el día que se jugó.
+    await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
     const sub = await db.rpc<string>(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_event: w.e.e1, p_scores: [180, 200] });
+    await db.admin(`update public.events set date = '2026-09-22' where id = $1`, [w.e.e1]);
     const claim = await db.rpc<string>(w.u.ana, 'request_player_claim', { p_player: w.p.pedro, p_note: 'Soy yo' });
     const r = await db.rpc<Json>(w.u.org, 'league_pending', { p_league: w.priv });
     const base = `/l/${w.priv}`;
@@ -317,7 +320,8 @@ describe('pendientes del organizador', () => {
   it('muestra hasta 5 de cada cosa, lo más viejo primero, y cuenta todo', async () => {
     const subs: string[] = [];
     for (let i = 0; i < 7; i++) {
-      subs.push(await db.rpc<string>(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_date: await day(-i), p_scores: [100 + i] }));
+      // Los manda la admin por Luis: una fecha de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+      subs.push(await db.rpc<string>(w.u.sofi, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_date: await day(-i), p_scores: [100 + i], p_player: w.p.luis }));
       await db.admin(`update public.submissions set created_at = now() - make_interval(mins => $2) where id = $1`, [subs[i], 60 - i]);
     }
     const r = await db.rpc<Json>(w.u.org, 'league_pending', { p_league: w.priv });

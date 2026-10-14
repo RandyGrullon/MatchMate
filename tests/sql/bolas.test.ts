@@ -176,6 +176,9 @@ describe('bolas', () => {
           updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
           // Sin diseño (20260930000300_diseno_bolas.sql: set_ball_design).
           design: null,
+          // Sin modelo del catálogo ni layout (20261013000100_boliche_equipos_practicas_bolas.sql: set_ball_details).
+          catalog: null,
+          layout: null,
         },
       ],
       lastUsed: null,
@@ -523,6 +526,8 @@ describe('mis juegos con bola', () => {
     const c = await saveBall(w.u.luis, { p_name: 'C' });
     // luis ya marcó el juego 2 de e1 desde la hoja del evento con C.
     await setBalls(w.u.luis, 'event', w.e.e1, { 1: c });
+    // e1 es de hoy: una práctica de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    await db.admin('update public.events set date = $2 where id = $1', [w.e.e1, today]);
     const sub = await db.rpc<string>(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_scores: [198, 170, 205], p_event: w.e.e1 });
     await setBalls(w.u.luis, 'sub', sub, { 0: a, 1: b, 2: a });
     const byGame = (a: unknown[], b: unknown[]) => Number(a[0]) - Number(b[0]);
@@ -572,6 +577,8 @@ describe('mis juegos con bola', () => {
 
   it('aprobado desde un teléfono de antes (sin p_start): cuenta en su mismo juego solo si el admin aprobó lo que se envió', async () => {
     const a = await saveBall(w.u.luis);
+    // e1 es de hoy: una práctica de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    await db.admin('update public.events set date = $2 where id = $1', [w.e.e1, today]);
     const sub = await db.rpc<string>(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_scores: [198, 170], p_event: w.e.e1 });
     await setBalls(w.u.luis, 'sub', sub, { 0: a, 1: a });
     await db.rpc(w.u.org, 'approve_submission', { p_submission: sub, p_values: { 0: 189, 1: 170 } });

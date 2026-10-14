@@ -21,6 +21,9 @@ let msgs: Msg[] = [];
 beforeAll(async () => {
   db = await TestDb.open();
   w = await makeWorld(db);
+  // La práctica e1 es de hoy: una de antes de ayer ya está cerrada para el jugador (se cierra al otro día,
+  // 20261013000100_boliche_equipos_practicas_bolas.sql).
+  await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
   await db.pg.listen('mm', (raw) => msgs.push(JSON.parse(raw) as Msg));
 });
 afterAll(async () => {

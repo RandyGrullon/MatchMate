@@ -783,7 +783,9 @@ describe('equipos y parejas de temporada', () => {
     ]);
     await fails(db.rpc(w.u.luis, 'create_season_team', { p_league: h.lid, p_name: 'X' }), DENIED);
     await fails(db.rpc(w.u.org, 'create_season_team', { p_league: w.priv, p_name: 'X' }), 'invalido');
-    await fails(db.admin(`insert into public.teams (league_id, name) values ($1, 'X')`, [w.priv]), 'invalido');
+    // Sin evento solo en ligas de partidos y de boliche (sus equipos fijos: 20261013000100_boliche_equipos_practicas_bolas.sql).
+    const golf = await league(db, w.u.org, { name: 'Golf', visibility: 'private', sport: 'golf', requirePhoto: false });
+    await fails(db.admin(`insert into public.teams (league_id, name) values ($1, 'X')`, [golf]), 'invalido');
     await fails(db.rpc(w.u.luis, 'update_season_team', { p_team: h.t1, p_patch: { name: 'Gatos' } }), DENIED);
     await fails(db.rpc(w.u.otro, 'update_season_team', { p_team: h.t1, p_patch: { event_id: null } }), 'invalido');
     await db.rpc(w.u.otro, 'update_season_team', { p_team: h.t1, p_patch: { name: 'Gatos', color: '#000000' } });
@@ -792,6 +794,10 @@ describe('equipos y parejas de temporada', () => {
     const bowlingTeam = await db.rpc<string>(w.u.org, 'add_team', { p_event: w.e.e1, p_name: 'Equipo 1' });
     await fails(db.rpc(w.u.org, 'update_season_team', { p_team: bowlingTeam, p_patch: { name: 'X' } }), 'no_existe');
     await fails(db.rpc(w.u.org, 'set_team_player', { p_team: bowlingTeam, p_player: w.p.luis }), 'no_existe');
+    // Ni los equipos fijos de una liga de boliche (esos van con save_bowling_team).
+    const fixedTeam = await db.rpc<string>(w.u.org, 'save_bowling_team', { p_league: w.priv, p_id: null, p_name: 'Fijo', p_color: null, p_players: [w.p.luis] });
+    await fails(db.rpc(w.u.org, 'update_season_team', { p_team: fixedTeam, p_patch: { name: 'X' } }), 'no_existe');
+    await fails(db.rpc(w.u.org, 'set_team_player', { p_team: fixedTeam, p_player: w.p.pedro }), 'no_existe');
     await fails(db.rpc(w.u.luis, 'delete_season_team', { p_team: h.t1 }), DENIED);
     // Anon ve la plantilla de una liga pública.
     expect(await db.asAnon('select player_id from public.team_players where team_id = $1', [h.t1])).toHaveLength(2);

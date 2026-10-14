@@ -154,9 +154,11 @@ begin
       'patch', jsonb_build_object('scores', jsonb_build_array(180, 170, 180), 'photos', jsonb_build_array('sin-foto', 'sin-foto', 'sin-foto')))));
 
   -- ---------- Luis: «voy» a la próxima práctica y un envío pendiente por fecha ----------
+  -- Por fecha, de hoy en la zona de la liga: una de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_luis, 'role', 'authenticated')::text, true);
   perform public.set_rsvp(e_p2, true);
-  perform public.submit_games(p_op_id => '00000000-0000-4000-8000-0000000000a1', p_league => v_lid, p_date => '2026-09-22',
+  perform public.submit_games(p_op_id => '00000000-0000-4000-8000-0000000000a1', p_league => v_lid,
+                              p_date => (select (now() at time zone l.tz)::date from public.leagues l where l.id = v_lid),
                               p_scores => '[181, 169, 190]');
 
   perform set_config('request.jwt.claims', '', true);

@@ -20,6 +20,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.begin();
   w = await makeWorld(db);
+  // La práctica e1 es de hoy: una de antes de ayer ya está cerrada para el jugador (se cierra al otro día,
+  // 20261013000100_boliche_equipos_practicas_bolas.sql).
+  await db.admin(`update public.events set date = (now() at time zone 'America/Santo_Domingo')::date where id = $1`, [w.e.e1]);
 });
 afterEach(async () => {
   await db.rollback();
@@ -34,7 +37,9 @@ describe('menores', () => {
     await member(db, lid, w.u.org, 'owner', 'org');
     await member(db, lid, w.u.luis, 'member', 'luis');
     const luis = await player(db, lid, 'Luis', w.u.luis);
-    const e = await event(db, lid, 'practica', '2026-09-22');
+    // De hoy (una práctica de antes de ayer ya está cerrada para el jugador).
+    const today = (await db.admin<{ d: string }>(`select (now() at time zone 'America/Santo_Domingo')::date::text as d`))[0].d;
+    const e = await event(db, lid, 'practica', today);
     const en = await entry(db, lid, e, luis, [150], ['sin-foto']);
     return { lid, luis, e, en };
   }
@@ -399,12 +404,14 @@ describe('flujos del admin', () => {
 
   it('aprobar un envío por fecha lo pone en la práctica de ese día (y la crea si no hay)', async () => {
     const f = photo();
-    const s = await db.rpc<string>(w.u.luis, 'submit_games', {
+    // Los manda la admin por Luis: una fecha de antes de ayer ya está cerrada para el jugador (se cierra al otro día).
+    const s = await db.rpc<string>(w.u.sofi, 'submit_games', {
       p_op_id: randomUUID(),
       p_league: w.priv,
       p_date: '2026-09-30',
       p_scores: [150, 160, 170, 180],
       p_photo: f,
+      p_player: w.p.luis,
     });
     const r = await db.rpc<{ entry_id: string; event_id: string }>(w.u.sofi, 'approve_submission', {
       p_submission: s,
@@ -422,7 +429,7 @@ describe('flujos del admin', () => {
       { status: 'aprobado', event_id: r.event_id, date: '2026-09-30' },
     ]);
     // Un segundo envío de ese día va a la misma práctica.
-    const s2 = await db.rpc<string>(w.u.luis, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_date: '2026-09-30', p_scores: [100] });
+    const s2 = await db.rpc<string>(w.u.sofi, 'submit_games', { p_op_id: randomUUID(), p_league: w.priv, p_date: '2026-09-30', p_scores: [100], p_player: w.p.luis });
     const r2 = await db.rpc<{ event_id: string }>(w.u.sofi, 'approve_submission', { p_submission: s2, p_values: { '3': 100 } });
     expect(r2.event_id).toBe(r.event_id);
     await fails(db.rpc(w.u.sofi, 'approve_submission', { p_submission: s2, p_values: { '4': 100 } }), INVALID);
