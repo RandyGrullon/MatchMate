@@ -174,6 +174,15 @@ describe('Organizar › La liga', () => {
     expect(t.indexOf('Jugadores y miembros')).toBeLessThan(t.indexOf('Ajustes de la liga'));
   });
 
+  it('boliche: «Equipos» (los fijos de la liga) primero, con su línea; un torneo suelto no la tiene', () => {
+    const out = render(ctx());
+    const t = text(out);
+    expect(t).toContain('Equipos Fijos de la liga: al azar, parejos o a mano');
+    expect(out).toContain('href="/l/L1/admin?tab=equipos"');
+    expect(t.indexOf('Fijos de la liga')).toBeLessThan(t.indexOf('Jugadores y miembros'));
+    expect(render(ctx({ kind: 'torneo' }))).not.toContain('href="/l/L1/admin?tab=equipos"');
+  });
+
   it('otro deporte: lo suyo primero, «Miembros» si maneja a su gente, y sin «Aprobar juegos» (confirma en sus partidos)', () => {
     data.screens = { adminTabs: [{ key: 'parejas', label: 'Parejas y niveles', Component: () => null }] };
     const out = render(ctx({ sport: 'padel' }));

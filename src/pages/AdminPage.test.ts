@@ -122,6 +122,13 @@ describe('Organizar › pantallas', () => {
     expect(ajustes).not.toContain('Avisar a toda la liga');
     expect(ajustes).toContain('Respaldo y borrar la liga');
   });
+
+  it('Equipos (los fijos de la liga) es del boliche en una liga; un torneo suelto arma los suyos en el torneo', () => {
+    const out = draw('bowling', '/l/l1/admin?tab=equipos');
+    expect(out).toMatch(/<h1[^>]*>Equipos<\/h1>/);
+    const torneo: LeagueCtx = { ...ctx('bowling'), league: { ...league('bowling'), kind: 'torneo' } };
+    expect(draw('bowling', '/l/l1/admin?tab=equipos', torneo)).toMatch(/^\[ir a \/organizar\?liga=l1\]/);
+  });
 });
 
 describe('Ajustes de la liga: el logo', () => {

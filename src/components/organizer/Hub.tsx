@@ -14,6 +14,7 @@ import {
   Send,
   Settings,
   Settings2,
+  Shield,
   Swords,
   Trophy,
   UserCheck,
@@ -27,7 +28,7 @@ import { useBadgeNotices } from '../../lib/data/badges';
 import { useReportCounts } from '../../lib/data/reports';
 import { toIsoDate } from '../../lib/format';
 import { leagueSport, sportMeta } from '../../sports/registry';
-import { hasScreens, useSportScreens } from '../../sports/screens';
+import { hasScreens, useSportScreens, type SportScreens } from '../../sports/screens';
 import { useLeagueCtx, type LeagueCtx } from '../../lib/league';
 import { useNow } from '../../lib/useNow';
 import { usePendingClaimCount } from '../claims/data';
@@ -84,12 +85,23 @@ const TODO_ICONS: Record<ToDoKind, LucideIcon> = {
 /** Las pestañas generales de antes (una del deporte con la misma clave la reemplaza, no va aparte). */
 const GENERIC_TABS = new Set(['pendientes', 'jugadores', 'aprobar', 'miembros', 'reclamos', 'reportes', 'confirmar', 'insignias', 'buzon', 'temporada', 'liga', 'avisar']);
 
+/** Las pantallas propias del boliche: los equipos fijos de una liga (un torneo suelto arma los suyos en el torneo). */
+const BOWLING_TABS: NonNullable<SportScreens['adminTabs']> = [
+  {
+    key: 'equipos',
+    label: 'Equipos',
+    subtitle: 'Fijos de la liga: al azar, parejos o a mano',
+    icon: Shield,
+    Component: lazy(() => import('../bowlingTeams/BowlingTeamsAdmin')),
+  },
+];
+
 /** Las pantallas propias del deporte (Equipos, Campos, Nadadores, Parejas…) y si su gente va en una de ellas. */
 export function useOwnTabs(league: LeagueCtx['league']) {
   const sport = leagueSport(league);
   const bowling = sport === 'bowling';
   const screens = useSportScreens(bowling ? null : sport);
-  const own = screens?.adminTabs ?? [];
+  const own = bowling ? (league.kind === 'torneo' ? [] : BOWLING_TABS) : (screens?.adminTabs ?? []);
   const peopleTab = own.find((t) => PEOPLE_TABS.has(t.key)) ?? null;
   return {
     bowling,
@@ -238,7 +250,7 @@ export function LeagueSection({ toDo, className }: { toDo: readonly ToDoItem[]; 
     players: players.loading ? null : players.data.length,
     accounts: members.loading || players.loading ? null : members.data.filter((m) => m.playerId && ids.has(m.playerId)).length,
     members: members.loading ? null : members.data.length,
-    own: own.extra.map((t) => ({ key: t.key, label: t.label })),
+    own: own.extra.map((t) => ({ key: t.key, label: t.label, ...(t.subtitle ? { subtitle: t.subtitle } : {}) })),
     playersMerged: own.playersMerged,
     buzonInToDo: toDo.some((t) => t.kind === 'buzon'),
     reportsTab: (reports?.all ?? 0) > 0 && !toDo.some((t) => t.kind === 'reportes'),
@@ -308,6 +320,7 @@ export function ScreenHeader({ lid, title, children }: { lid: string; title: str
     <header className="flex flex-col">
       <Link
         to={organizeUrl(lid)}
+        data-back-to={organizeUrl(lid)}
         className="-ml-1.5 inline-flex min-h-11 items-center gap-0.5 self-start rounded-xl pr-2 text-body font-[550] text-accent transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-accent"
       >
         <ChevronLeft aria-hidden="true" className="size-5" />

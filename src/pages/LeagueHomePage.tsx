@@ -10,6 +10,7 @@ import { useNow } from '../lib/useNow';
 import type { EventType } from '../lib/types';
 import { EventFormModal } from '../components/EventFormModal';
 import { AHEAD_DAYS } from '../components/home/useHomeData';
+import { LeagueTeamsSection, homeAverages } from '../components/bowlingTeams/LeagueTeams';
 import { LeagueCalendarSheet, PlayersSheet } from '../components/league/home/LeagueSheets';
 import { LeagueIdent, LeagueRows, NextDates, NowCard, ROW_ICONS, TableTop, type LeagueRowDef } from '../components/league/home/LeagueSections';
 import { nextDates, pastLine, peopleLine, tableTop } from '../components/league/home/logic';
@@ -93,6 +94,8 @@ function LeagueScreen() {
     return nextDates(items, new Set(live.map((g) => `${lid}:${g.event.id}`)));
   }, [data.feed, league, today, live, lid]);
   const top = useMemo(() => tableTop(table.rows, myPlayerId), [table.rows, myPlayerId]);
+  // Los promedios de los equipos fijos: los de la tabla (y el fijo de quien todavía no tiene juegos).
+  const averages = useMemo(() => homeAverages(table.rows, players.data), [table.rows, players.data]);
   const observer = !member && league.visibility === 'public';
 
   const rows: LeagueRowDef[] = [
@@ -138,7 +141,7 @@ function LeagueScreen() {
         <Skeleton className="mt-[22px] h-[188px] rounded-3xl" />
       ) : (
         live.map((g) => (
-          <div key={g.event.id} className="mt-[22px]">
+          <div key={g.event.id} className="mt-[22px] empty:hidden">
             <NowCard game={g} today={today} member={!!member} />
           </div>
         ))
@@ -156,6 +159,9 @@ function LeagueScreen() {
       ) : (
         <NextDates items={dates} events={data.events} today={today} onCalendar={() => setSheet('calendario')} className="mt-[30px]" />
       )}
+
+      {/* Los equipos fijos de la liga (solo si tiene). */}
+      <LeagueTeamsSection averages={averages} className="mt-[30px]" />
 
       <LeagueRows rows={rows} className="mt-[30px]">
         {/* Para los jugadores: el buzón anónimo para quien organiza (a quien organiza no le sale). */}

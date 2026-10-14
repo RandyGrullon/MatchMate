@@ -43,6 +43,8 @@ export interface SportScreens {
   adminTabs?: {
     key: string;
     label: string;
+    /** La línea debajo en la fila de Organizar › La liga (opcional). */
+    subtitle?: string;
     icon?: LucideIcon;
     Component: ComponentType;
     /** También va como fila en el inicio de la liga, para quien la organiza (las parejas y niveles de raqueta). */

@@ -7,6 +7,7 @@ import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Button, Card, Empty, Field, Input, Modal } from '../ui';
+import { FixedTeamsCard } from '../bowlingTeams/FixedTeamsCard';
 import { AutoTeamsModal } from './AutoTeamsModal';
 import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
@@ -45,6 +46,8 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
 
   return (
     <div className="flex flex-col gap-4">
+      {/* La liga tiene equipos fijos: se ponen aquí de una vez (y los que se inscriben después entran solos al suyo). */}
+      <FixedTeamsCard event={event} entries={entries} />
       <div className="flex flex-col gap-2 sm:flex-row">
         <form onSubmit={create} className="flex flex-1 gap-2">
           <Input placeholder={`Equipo ${teams.length + 1}`} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />

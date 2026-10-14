@@ -262,7 +262,7 @@ export interface LeagueRowsInput {
   accounts: number | null;
   members: number | null;
   /** Pestañas propias del deporte (Equipos, Campos, Nadadores, Parejas…): van primero. */
-  own: readonly { key: string; label: string }[];
+  own: readonly { key: string; label: string; subtitle?: string }[];
   /** El deporte maneja a su gente en su pestaña: «Jugadores y miembros» pasa a «Miembros». */
   playersMerged: boolean;
   /** El buzón ya sale en «Por hacer» (con notas nuevas). */
@@ -277,7 +277,7 @@ export interface LeagueRowsInput {
  */
 export function leagueRows(input: LeagueRowsInput): LeagueRowItem[] {
   const torneo = input.kind === 'torneo';
-  const rows: LeagueRowItem[] = input.own.map((t) => ({ key: `own:${t.key}`, kind: 'own', title: t.label, tab: t.key }));
+  const rows: LeagueRowItem[] = input.own.map((t) => ({ key: `own:${t.key}`, kind: 'own', title: t.label, ...(t.subtitle ? { subtitle: t.subtitle } : {}), tab: t.key }));
   const players = input.players != null ? plural(input.players, 'jugador', 'jugadores') : '';
   const accounts = input.players != null && input.accounts != null ? `${input.accounts} con cuenta` : '';
   rows.push(
