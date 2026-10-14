@@ -1,7 +1,9 @@
+import { addDays, localParts } from '../pages/sports/racket/logic/time';
 import { leagueSport } from '../sports/registry';
-import { isMatchSport, matchDetail, matchHref, matchTitle, type CalendarMatch } from './calendar';
+import { isMatchSport, matchDetail, matchHref, matchTitle, upcomingCalendar, type CalendarMatch } from './calendar';
 import type { Match } from './data/matches';
-import { toIsoDate } from './format';
+import { parseDate, toIsoDate } from './format';
+import { eventStart } from './reminders';
 import { formatTime, parseSchedule } from './schedule';
 import type { LeagueFeed } from './data';
 import { isValidScore, slots } from './stats';
@@ -19,20 +21,78 @@ export interface LiveInfo {
   startsSoon: boolean;
 }
 
+/** La hora de la liga ahora: hoy ('YYYY-MM-DD'), el minuto del día y el día de la semana (0 = lunes, como WEEKDAYS). */
+export interface LeagueClock {
+  date: string;
+  minutes: number;
+  weekday: number;
+}
+
+/** La hora en la zona de la liga (`leagues.tz`); una liga sin zona (las de prueba) usa la del teléfono. */
+export function leagueClock(league: Pick<League, 'tz'>, now: Date): LeagueClock {
+  const local = league.tz ? localParts(now.toISOString(), league.tz) : null;
+  if (!local) return { date: toIsoDate(now), minutes: now.getHours() * 60 + now.getMinutes(), weekday: (now.getDay() + 6) % 7 };
+  const [h, m] = local.time.split(':').map(Number);
+  return { date: local.date, minutes: h * 60 + m, weekday: (parseDate(local.date).getDay() + 6) % 7 };
+}
+
 /**
  * ¿El evento está en juego ahora? El día del evento, desde 30 minutos antes de la hora de la liga
  * (la que se eligió en "Cuándo juegan") hasta la medianoche. Sin hora, o si el evento cae en otro día
- * que los de la liga (p. ej. un torneo el sábado), todo ese día.
+ * que los de la liga (p. ej. un torneo el sábado), todo ese día. En la zona de la liga.
  */
-export function liveInfo(event: Pick<BowlingEvent, 'date'>, league: Pick<League, 'schedule'>, now: Date): LiveInfo {
-  if (event.date !== toIsoDate(now)) return { live: false, startLabel: null, startsSoon: false };
+export function liveInfo(event: Pick<BowlingEvent, 'date'>, league: Pick<League, 'schedule' | 'tz'>, now: Date): LiveInfo {
+  const clock = leagueClock(league, now);
+  if (event.date !== clock.date) return { live: false, startLabel: null, startsSoon: false };
   const { days, time } = parseSchedule(league.schedule ?? '');
-  const weekday = (now.getDay() + 6) % 7; // 0 = lunes, como WEEKDAYS
-  if (!time || (days.length > 0 && !days.includes(weekday))) return { live: true, startLabel: null, startsSoon: false };
+  if (!time || (days.length > 0 && !days.includes(clock.weekday))) return { live: true, startLabel: null, startsSoon: false };
   const [h, m] = time.split(':').map(Number);
   const start = h * 60 + m;
-  const current = now.getHours() * 60 + now.getMinutes();
-  return { live: current >= start - LIVE_EARLY_MIN, startLabel: formatTime(time), startsSoon: current < start };
+  return { live: clock.minutes >= start - LIVE_EARLY_MIN, startLabel: formatTime(time), startsSoon: clock.minutes < start };
+}
+
+// ---------- La práctica abierta: el día que toca y el día siguiente ----------
+
+/**
+ * Cómo está una práctica del boliche para anotar: todavía no ('antes'), el día de la práctica desde la hora de la liga
+ * ('abierta'), el día siguiente hasta la medianoche ('anoche') o ya cerrada.
+ */
+export type PracticeWindow = 'antes' | 'abierta' | 'anoche' | 'cerrada';
+
+/** ¿Ya cerró para quien no es admin? Desde antes de ayer (`today` en la zona de la liga). Los admins siempre anotan. */
+export const practiceClosed = (date: string, today: string): boolean => date < addDays(today, -1);
+
+/**
+ * Cuándo se anota una práctica, en la zona de la liga (la gemela de `open_practice` y del cierre de `submit_games`):
+ * desde la hora de la liga del día de la práctica (`private.event_start`: sin hora, o una hora sin am/pm, todo el día)
+ * hasta el final del día siguiente.
+ */
+export function practiceWindow(date: string, league: Pick<League, 'schedule' | 'tz'>, now: Date): PracticeWindow {
+  const clock = leagueClock(league, now);
+  if (date > clock.date) return 'antes';
+  if (date === clock.date) {
+    const start = eventStart({ date }, league);
+    return start && clock.minutes < start.minutes ? 'antes' : 'abierta';
+  }
+  return practiceClosed(date, clock.date) ? 'cerrada' : 'anoche';
+}
+
+/** Una práctica del horario que todavía no tiene evento lleva este id (la misma clave del calendario: `<liga>:horario:<fecha>`). */
+const PLANNED_PREFIX = 'horario:';
+export const plannedEventId = (date: string) => `${PLANNED_PREFIX}${date}`;
+/** ¿Es una práctica del horario sin evento? (anotar primero la abre: openPractice). */
+export const isPlannedEvent = (event: Pick<BowlingEvent, 'id'> | null | undefined): boolean => !!event?.id.startsWith(PLANNED_PREFIX);
+
+/** La práctica del horario como evento (todavía no existe en la base: la crea `open_practice` con 3 juegos). */
+export function plannedEvent(date: string): BowlingEvent {
+  return { id: plannedEventId(date), type: 'practica', name: '', date, games: 3, hcpBase: 0, hcpPercent: 0, teams: {}, playerCount: 0 };
+}
+
+/** Las fechas de ayer y de hoy con práctica del horario y sin nada creado (las mismas del calendario: temporada, días movidos). */
+function plannedDates(feed: LeagueFeed, league: League, yesterday: string): string[] {
+  return upcomingCalendar([feed], [league], yesterday, 2)
+    .filter((it) => it.kind === 'event' && it.eventId == null && it.type === 'practica')
+    .map((it) => it.date);
 }
 
 export interface LiveGame {
@@ -40,24 +100,48 @@ export interface LiveGame {
   league: League;
   event: BowlingEvent;
   info: LiveInfo;
+  /** Práctica del horario que todavía no tiene evento (`event` es de mentira): anotar la abre (openPractice). */
+  planned?: boolean;
+  /** La práctica fue ayer: se anota hasta el final de hoy («Anota tus juegos de anoche», «Cierra hoy»). */
+  late?: boolean;
+  /** Hoy en la zona de la liga. */
+  today?: string;
 }
 
+const LATE_INFO: LiveInfo = { live: true, startLabel: null, startsSoon: false };
+
 /**
- * Eventos en juego ahora en las ligas de la cuenta (los que empiezan antes, primero). Solo las del boliche:
- * la tarjeta es de anotar tus juegos de la práctica o del torneo; los partidos de los otros deportes se
- * siguen en sus propias pantallas.
+ * Lo que se anota ahora en las ligas de la cuenta: los eventos en juego (los que empiezan antes, primero), la práctica
+ * del día desde la hora de la liga aunque nadie la haya creado (la del horario: anotar la abre) y la de anoche, que se
+ * anota hasta el final del día siguiente (al final). Todo en la zona de la liga. Solo las del boliche: la tarjeta es de
+ * anotar tus juegos de la práctica o del torneo; los partidos de los otros deportes se siguen en sus propias pantallas.
  */
 export function liveGames(feeds: LeagueFeed[], leagues: League[], now: Date): LiveGame[] {
   const out: LiveGame[] = [];
   for (const feed of feeds) {
     const league = leagues.find((l) => l.id === feed.lid);
     if (!league || leagueSport(league) !== 'bowling') continue;
+    const today = leagueClock(league, now).date;
+    const yesterday = addDays(today, -1);
     for (const event of feed.events) {
+      if (event.type === 'practica' && event.date === yesterday) {
+        out.push({ feed, league, event, info: LATE_INFO, late: true, today });
+        continue;
+      }
       const info = liveInfo(event, league, now);
-      if (info.live) out.push({ feed, league, event, info });
+      if (info.live) out.push({ feed, league, event, info, today });
+    }
+    for (const date of plannedDates(feed, league, yesterday)) {
+      const window = practiceWindow(date, league, now);
+      if (window !== 'abierta' && window !== 'anoche') continue;
+      const event = plannedEvent(date);
+      const late = window === 'anoche';
+      const info = late ? LATE_INFO : { live: true, startLabel: eventStart(event, league)?.label ?? null, startsSoon: false };
+      out.push({ feed, league, event, info, planned: true, late, today });
     }
   }
-  return out.sort((a, b) => Number(a.info.startsSoon) - Number(b.info.startsSoon) || a.league.name.localeCompare(b.league.name));
+  const rank = (g: LiveGame) => (g.late ? 2 : g.info.startsSoon ? 1 : 0);
+  return out.sort((a, b) => rank(a) - rank(b) || a.league.name.localeCompare(b.league.name));
 }
 
 /** De dónde sale cada juego del tablero en vivo. */

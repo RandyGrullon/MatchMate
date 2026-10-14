@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { BarChart3, Check, ChevronRight, ClipboardList, FileSpreadsheet, List, PencilLine, Send, UserRound, Users, type LucideIcon } from 'lucide-react';
 import type { CalendarItem } from '../../../lib/calendar';
 import { useLeagueCtx } from '../../../lib/league';
-import type { LiveGame } from '../../../lib/live';
+import { isPlannedEvent, type LiveGame } from '../../../lib/live';
 import { countLabel } from '../../../lib/organize';
 import type { BowlingEvent } from '../../../lib/types';
 import { nextGameLabel, useNextGame, type NextGame } from '../../../lib/useNextGame';
@@ -13,8 +13,8 @@ import { initials } from '../../Avatar';
 import { LeagueLogo } from '../../home/LeagueCard';
 import { canRsvp } from '../../home/UpNext';
 import { RsvpButton, useRsvp } from '../../home/RsvpButton';
-import { ActionLink, LiveDot, useLiveTable } from '../../home/TodayCard';
-import { todayTitle } from '../../home/logic';
+import { LiveDot, NextGameAction, useLiveTable } from '../../home/TodayCard';
+import { LATE_WHEN, lateTitle, todayTitle } from '../../home/logic';
 import { Card, DateBlock, ListRow, RowIcon, SectionHeader, Skeleton, cx, sectionLinkClass } from '../../ui';
 import { dateLine, leagueLine, nowLine, type TopRow } from './logic';
 
@@ -57,15 +57,32 @@ const NEXT_ICON: Record<NextGame['kind'], LucideIcon> = {
  * práctica: cómo van todos), lo tuyo en una línea («Llevas 187 y 210 · el juego 3 va a medias») y UN botón con la misma
  * lógica que Hoy (useNextGame: «Seguir mi juego 3» abre la hoja de anotar en ese juego, 1 toque). Quien mira la liga sin
  * ser miembro ve la tarjeta sin el botón.
+ *
+ * La práctica del día sale desde la hora de la liga aunque nadie la haya creado (la del horario: «Anotar juego 1» la abre)
+ * y, al día siguiente, «Anota tus juegos de anoche» con «Cierra hoy». Esas dos son de los miembros: quien solo mira, no
+ * las ve.
  */
 export function NowCard({ game, today, member }: { game: LiveGame; today: string; member: boolean }) {
-  const { event, info, feed } = game;
+  const { event, info, feed, late } = game;
+  const planned = isPlannedEvent(event);
   const mine = useNextGame(member ? game : null, today);
   const table = useLiveTable(game);
+  if (!member && (planned || late)) return null;
   const n = table.rows.length;
-  const title = todayTitle(event, today);
-  const when = info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : 'En juego ahora';
+  const title = late ? lateTitle(mine?.next) : todayTitle(event, game.today ?? today);
+  const when = late ? LATE_WHEN : info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : 'En juego ahora';
   const line = mine && !mine.loading ? nowLine(mine.cells, mine.next) : member ? null : 'Mira cómo van todos';
+  const heading = (
+    <span className="flex items-center justify-between gap-3">
+      <b className="min-w-0 truncate text-[21px] leading-[1.4] font-bold tracking-[-0.02em]">{title}</b>
+      {!planned && <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-accent" />}
+    </span>
+  );
+  const sub = line ? (
+    <span className="mt-[3px] block text-[14.5px] leading-[1.4] text-fg-2">{line}</span>
+  ) : (
+    <Skeleton className="mt-1.5 h-4 w-3/4 rounded-md" />
+  );
   return (
     <Card soft className="pt-[18px] pr-[18px] pb-[18px] pl-5">
       <section aria-label={`${title}: ${when}`}>
@@ -74,28 +91,33 @@ export function NowCard({ game, today, member }: { game: LiveGame; today: string
             <LiveDot />
             <span className="truncate">{when}</span>
           </p>
-          {n > 0 && <span className="shrink-0 text-sm font-[550] text-fg-2">{n} jugando</span>}
-        </div>
-        <Link
-          to={`/l/${feed.lid}/e/${event.id}`}
-          aria-label={`${title}: cómo van todos`}
-          className="mt-2 block rounded-xl transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <span className="flex items-center justify-between gap-3">
-            <b className="min-w-0 truncate text-[21px] leading-[1.4] font-bold tracking-[-0.02em]">{title}</b>
-            <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-accent" />
-          </span>
-          {line ? (
-            <span className="mt-[3px] block text-[14.5px] leading-[1.4] text-fg-2">{line}</span>
-          ) : (
-            <Skeleton className="mt-1.5 h-4 w-3/4 rounded-md" />
+          {n > 0 && (
+            <span className="shrink-0 text-sm font-[550] text-fg-2">
+              {n} {late ? 'anotaron' : 'jugando'}
+            </span>
           )}
-        </Link>
+        </div>
+        {/* La del horario que nadie abrió todavía no tiene a dónde llevar. */}
+        {planned ? (
+          <div className="mt-2">
+            {heading}
+            {sub}
+          </div>
+        ) : (
+          <Link
+            to={`/l/${feed.lid}/e/${event.id}`}
+            aria-label={`${title}: cómo van todos`}
+            className="mt-2 block rounded-xl transition active:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {heading}
+            {sub}
+          </Link>
+        )}
         {member &&
           (mine ? (
-            <ActionLink to={mine.next.to} icon={NEXT_ICON[mine.next.kind]} className="mt-4 w-full">
+            <NextGameAction lid={feed.lid} event={event} next={mine.next} today={game.today ?? today} icon={NEXT_ICON[mine.next.kind]} className="mt-4 w-full">
               {nextGameLabel(mine.next)}
-            </ActionLink>
+            </NextGameAction>
           ) : (
             <Skeleton className="mt-4 h-btn rounded-btn" />
           ))}

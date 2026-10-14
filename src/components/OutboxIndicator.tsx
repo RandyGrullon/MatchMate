@@ -2,16 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CloudUpload, Copy, LogIn, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { updateApp } from '../lib/appUpdate';
 import { useCurrentOutbox, useOutboxSnapshot } from '../lib/data';
+import { isPracticeClosed, PRACTICE_CLOSED_TEXT } from '../lib/data/events';
 import { isOutdatedCode } from '../lib/db/errors';
 import type { OutboxItem } from '../lib/db/outbox';
 import { useBusy } from './busy';
 import { useFeedback } from './feedback';
 import { Button, Modal } from './ui';
 
+/** Lo que se anota en una práctica: después del día siguiente la base responde `cerrado` a quien no es admin. */
+const PRACTICE_OPS = new Set(['submit_games', 'add_practice_game', 'publish_live']);
+
 /** Por qué el servidor no aceptó una operación de la cola, en palabras sencillas. */
-function reason(item: OutboxItem): string {
+export function reason(item: Pick<OutboxItem, 'fn' | 'errorCode' | 'errorKind' | 'lastError'>): string {
   // Ya se intentó con la app actualizada y el servidor sigue sin reconocerla (ver src/lib/db/outbox.ts).
   if (isOutdatedCode(item.errorCode)) return 'Se hizo con una versión vieja de la app y el servidor ya no lo acepta. Cópialo y anótalo de nuevo.';
+  if (PRACTICE_OPS.has(item.fn) && isPracticeClosed(item.lastError ?? '')) return `${PRACTICE_CLOSED_TEXT}: cópialo y pídele al admin que lo anote.`;
   switch (item.errorKind) {
     case 'permission':
       return 'Ya no tienes permiso (¿te sacaron de la liga o te cambiaron el rol?).';

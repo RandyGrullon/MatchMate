@@ -18,7 +18,7 @@ import { FrameStatsPanel } from '../components/stats/FrameStatsPanel';
 import { TrendSection } from '../components/stats/TrendSection';
 import { SubmitGamesModal } from '../components/SubmitGamesModal';
 import { NextPracticeCard } from '../components/NextPracticeCard';
-import { ActionLink } from '../components/home/TodayCard';
+import { NextGameAction } from '../components/home/TodayCard';
 import { useLeagueFeed } from '../components/league/home/useLeagueData';
 import { useAction, useFeedback } from '../components/feedback';
 import { useBusy } from '../components/busy';
@@ -33,17 +33,18 @@ import { MarkIcon, MarksLine, markedChip } from '../components/event/GameMarks';
 
 /**
  * «Anotar» en tu página de la liga (rediseño «Calma y foco»): si hoy se juega, lo mismo que Hoy y la Liga (useNextGame:
- * «Anotar juego 3», «Seguir mi juego 3», «Enviar mis juegos»), que abre la hoja de anotar en ese evento; si no, «Anotar
- * un juego» (la hoja para enviar los juegos de otro día, con la foto del marcador).
+ * «Anotar juego 3», «Seguir mi juego 3», «Enviar mis juegos»), que abre la hoja de anotar en ese evento (la práctica del
+ * horario que nadie abrió, la abre; la de anoche, hasta el final de hoy); si no, «Anotar un juego» (la hoja para enviar
+ * los juegos de otro día, con la foto del marcador).
  */
 function OwnerScoreButton({ game, today, onOther }: { game: LiveGame | null; today: string; onOther: () => void }) {
   const mine = useNextGame(game, today);
   if (game && mine && !mine.loading) {
     const Icon = mine.next.kind === 'enviar' ? Send : mine.next.kind === 'ver' ? Check : PencilLine;
     return (
-      <ActionLink to={mine.next.to} icon={Icon} size="lg" className="w-full sm:w-auto">
+      <NextGameAction lid={game.feed.lid} event={game.event} next={mine.next} today={game.today ?? today} icon={Icon} size="lg" className="w-full sm:w-auto">
         {nextGameLabel(mine.next)}
-      </ActionLink>
+      </NextGameAction>
     );
   }
   return (

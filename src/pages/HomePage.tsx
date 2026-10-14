@@ -110,10 +110,12 @@ function Hoy() {
   const anotar = anotarLink({ resume, recent, today: act.today, onWhere: () => setSheet('donde') });
 
   // Lo de hoy, una sola vez: el evento de boliche en juego (o los partidos en vivo), si no lo próximo, y si no hay nada,
-  // la cuenta nueva o el día sin nada programado.
+  // la cuenta nueva o el día sin nada programado. La práctica de anoche (se anota hasta el final de hoy) va arriba sin
+  // tapar lo de hoy: el «Voy» de la siguiente sigue a la vista (y si ya no le falta nada, la tarjeta de anoche no sale).
   const nextEvent = act.next?.kind === 'event' ? act.next.event : null;
   const nextMatch = act.next?.kind === 'match' ? act.next.match : null;
-  const live = act.games.length > 0 || act.liveItems.length > 0;
+  const late = act.games.filter((g) => g.late);
+  const live = act.games.length > late.length || act.liveItems.length > 0;
   let today: ReactNode;
   if (live) {
     today = (
@@ -148,6 +150,16 @@ function Hoy() {
   } else {
     today = <IdleCard anotar={anotar} />;
   }
+  if (!live && late.length) {
+    today = (
+      <div className="flex flex-col gap-3.5">
+        {late.map((g) => (
+          <TodayCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} pro={isPro} />
+        ))}
+        {today}
+      </div>
+    );
+  }
 
   // «Lo que viene» sin lo que ya sale arriba.
   const shownKeys = new Set([...act.games.map((g) => `${g.feed.lid}:${g.event.id}`), ...(nextEvent && !live ? [nextEvent.key] : [])]);
@@ -172,7 +184,8 @@ function Hoy() {
         {isPro ? (
           <>
             <ToDoSection todo={todo} leagues={act.leagues} className="mt-[26px]" />
-            {featured && <LiveSectionPro game={featured} today={act.today} className="mt-[26px]" />}
+            {/* «En vivo» es lo de hoy: la práctica de anoche no. */}
+            {featured && !featured.late && <LiveSectionPro game={featured} today={act.today} className="mt-[26px]" />}
             {hasLeagues && (
               <WeekStrip
                 feeds={act.feeds}

@@ -4,6 +4,8 @@ import type { RankingRow } from '../../lib/bowlingSeason';
 import {
   greeting,
   groupBySport,
+  LATE_WHEN,
+  lateTitle,
   leaguesCountLabel,
   myStanding,
   namesLine,
@@ -199,6 +201,16 @@ describe('Hoy: textos', () => {
     expect(socialLine(6, { name: 'Pedro Gómez', me: false })).toEqual({ count: '6 jugando', leader: 'Pedro va primero' });
     expect(socialLine(3, { name: 'Ana Pérez', me: true })).toEqual({ count: '3 jugando', leader: 'Vas primero' });
     expect(socialLine(0, null)).toEqual({ count: 'Todavía nadie anota', leader: null });
+    // La práctica de anoche: ya no están jugando.
+    expect(socialLine(6, { name: 'Pedro Gómez', me: false }, true)).toEqual({ count: '6 anotaron', leader: 'Pedro va primero' });
+  });
+
+  it('la tarjeta de anoche: «Anota tus juegos de anoche»; sin nada que hacer, «Tus juegos de anoche»', () => {
+    expect(lateTitle({ kind: 'anotar' })).toBe('Anota tus juegos de anoche');
+    expect(lateTitle({ kind: 'enviar' })).toBe('Anota tus juegos de anoche');
+    expect(lateTitle(null)).toBe('Anota tus juegos de anoche');
+    expect(lateTitle({ kind: 'ver' })).toBe('Tus juegos de anoche');
+    expect(LATE_WHEN).toBe('Cierra hoy');
   });
 
   it('los nombres de pila de quienes esperan aprobación', () => {

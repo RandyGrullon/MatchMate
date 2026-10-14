@@ -180,6 +180,31 @@ export async function addEventGame(lid: string, event: Pick<BowlingEvent, 'id' |
   await sentOrQueued(done);
 }
 
+/**
+ * Abre (o encuentra) la práctica de ese día para anotar (`open_practice`): cualquier jugador o admin de la liga, hoy
+ * desde la hora de la liga o la de ayer (en la zona de la liga). Sin fecha, la de hoy. Devuelve el id del evento y
+ * vuelve a leer los eventos de la liga y la campana (ahí ya sale la práctica de verdad). Necesita señal.
+ * Errores de la base: `cerrado` (antes de la hora, o ya cerró: isPracticeClosed) y `no_permitido` (no es de la liga).
+ */
+export async function openPractice(lid: string, date?: string | null): Promise<string> {
+  const id = await rpc<string>('open_practice', { p_league: lid, p_date: date ?? null });
+  if (typeof id !== 'string' || !id) throw new Error('open_practice no devolvió el evento');
+  afterEvent(lid, id);
+  return id;
+}
+
+/** Lo que dice la app cuando la práctica ya cerró (después del día siguiente; los admins siempre pueden anotar). */
+export const PRACTICE_CLOSED_TEXT = 'Esta práctica ya cerró';
+
+/**
+ * ¿La base dijo `cerrado`? En una práctica (open_practice, submit_games, add_practice_game y publish_live): todavía no
+ * empieza o ya cerró para quien no es admin. Sirve con el error o con su mensaje (`lastError` de la cola).
+ */
+export function isPracticeClosed(e: unknown): boolean {
+  const message = typeof e === 'string' ? e : e && typeof e === 'object' ? (e as { message?: unknown }).message : null;
+  return typeof message === 'string' && message.trim().split(/[\s:]/)[0] === 'cerrado';
+}
+
 /** El jugador confirma (o quita) que va a la práctica. Va por la cola: sirve sin señal. */
 export async function setRsvp(lid: string, eventId: string, playerId: string, going: boolean): Promise<void> {
   const { done } = enqueue(

@@ -3,10 +3,12 @@ import { AlertTriangle, CheckCircle2, Grid3x3, Plus, Send, Sparkles, Target, Wif
 import { ballForGame, sameBall, submissionBalls } from '../lib/balls';
 import { setSubmissionScan, submitGames } from '../lib/data';
 import { getUserId } from '../lib/data/client';
+import { isPracticeClosed, PRACTICE_CLOSED_TEXT } from '../lib/data/events';
 import { clearSent, draftCount, latestDraft, loadDraft, restoreDraft, saveDraft } from '../lib/draft';
 import { eventTitle, parseDate, toIsoDate } from '../lib/format';
 import type { CompressedImage } from '../lib/image';
 import { useLeagueCtx } from '../lib/league';
+import { leagueClock, practiceClosed } from '../lib/live';
 import { rowFor } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
 import { isValidScore } from '../lib/stats';
@@ -71,14 +73,17 @@ export function SubmitGamesModal({
   /** Evento que se abre elegido (desde la pantalla del evento). */
   preferEventId?: string;
 }) {
-  const { lid, league, myPlayerId } = useLeagueCtx();
+  const { lid, league, myPlayerId, isAdmin } = useLeagueCtx();
   const requirePhoto = league.requirePhoto !== false;
   const { toast, confirm } = useFeedback();
 
+  // Una práctica se anota hasta el final del día siguiente (en la zona de la liga); después solo el admin. Por fecha, igual.
+  const leagueToday = leagueClock(league, new Date()).date;
   const recent = useMemo(() => {
     const cutoff = Date.now() - 120 * 86400_000;
-    return events.filter((e) => parseDate(e.date).getTime() >= cutoff || myEntries.some((m) => m.eventId === e.id) || e.id === preferEventId);
-  }, [events, myEntries, preferEventId]);
+    const open = (e: BowlingEvent) => isAdmin || e.type !== 'practica' || !practiceClosed(e.date, leagueToday);
+    return events.filter((e) => open(e) && (parseDate(e.date).getTime() >= cutoff || myEntries.some((m) => m.eventId === e.id) || e.id === preferEventId));
+  }, [events, myEntries, preferEventId, leagueToday, isAdmin]);
 
   const today = toIsoDate(new Date());
   /** Con qué se abre: el evento pedido; si no, donde se quedó el último borrador; si no, el más reciente que ya se jugó (o por fecha). */
@@ -326,19 +331,27 @@ export function SubmitGamesModal({
         sending.catch((e) => {
           console.error(e);
           restoreDraft(lid, player.id, draftId, sent);
-          toast('No se pudieron enviar tus juegos. Siguen en tu teléfono: vuelve a enviarlos.', 'error');
+          toast(
+            isPracticeClosed(e)
+              ? `${PRACTICE_CLOSED_TEXT}: tus juegos siguen en tu teléfono. Pídele al admin que los anote.`
+              : 'No se pudieron enviar tus juegos. Siguen en tu teléfono: vuelve a enviarlos.',
+            'error',
+          );
         });
       }
       onClose();
     } catch (e) {
       console.error(e);
-      toast('No se pudo enviar. Revisa tu conexión e intenta de nuevo.', 'error');
+      toast(isPracticeClosed(e) ? `${PRACTICE_CLOSED_TEXT}: pídele al admin que anote tus juegos.` : 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.', 'error');
     } finally {
       setSending(false);
     }
   }
 
-  const dateOk = !byDate || (/^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today);
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  // Por fecha, quien no es admin envía hasta los de ayer (después la base responde `cerrado`).
+  const dateClosed = byDate && !isAdmin && validDate && practiceClosed(date, leagueToday);
+  const dateOk = !byDate || (validDate && date <= today && !dateClosed);
   // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
   const byPins = framesMode() === 'pines';
   // No se espera a que se lea la foto: se comprueba sola en segundo plano.
@@ -374,9 +387,11 @@ export function SubmitGamesModal({
             <Field
               label="¿Qué día jugaste?"
               hint={
-                sameDay
-                  ? `Ese día hay ${eventTitle(sameDay)}; el admin pondrá tus juegos ahí.`
-                  : 'El admin pondrá tus juegos en la práctica de ese día (se crea si no existe).'
+                dateClosed
+                  ? 'Ese día ya cerró: tú envías los juegos de hoy o de ayer. Para otro día, pídeselo al admin.'
+                  : sameDay
+                    ? `Ese día hay ${eventTitle(sameDay)}; el admin pondrá tus juegos ahí.`
+                    : 'El admin pondrá tus juegos en la práctica de ese día (se crea si no existe).'
               }
             >
               <Input type="date" max={today} required value={date} onChange={(e) => setDate(e.target.value)} />

@@ -157,6 +157,20 @@ describe('el botón de la tarjeta de hoy', () => {
   it('un evento que todavía no llega no se anota', () => {
     expect(nextGame({ ...base, event: event({ date: '2026-10-13' }), cells: [{ kind: 'vacio' }] }).kind).toBe('ver');
   });
+
+  it('la práctica de ayer todavía se anota; la de antes de ayer ya cerró (el admin sí la anota; el torneo no cierra)', () => {
+    const empty: GameCell[] = [{ kind: 'vacio' }];
+    expect(nextGame({ ...base, event: event({ date: '2026-10-06' }), cells: empty })).toEqual({ kind: 'anotar', game: 1, to: scorePath('L1', 'E1') });
+    expect(nextGame({ ...base, event: event({ date: '2026-10-05' }), cells: empty }).kind).toBe('ver');
+    expect(nextGame({ ...base, staff: true, event: event({ date: '2026-10-05' }), cells: empty }).kind).toBe('anotar');
+    expect(nextGame({ ...base, event: event({ date: '2026-10-05', type: 'torneo' }), cells: empty }).kind).toBe('anotar');
+  });
+
+  it('la práctica del horario que nadie abrió: «Anotar juego 1» (la tarjeta la abre antes de ir)', () => {
+    const n = nextGame({ ...base, event: event({ id: 'horario:2026-10-07' }), cells: [{ kind: 'vacio' }, { kind: 'vacio' }, { kind: 'vacio' }] });
+    expect(n).toMatchObject({ kind: 'anotar', game: 1 });
+    expect(nextGame({ ...base, playerId: null, event: event({ id: 'horario:2026-10-07' }), cells: [{ kind: 'vacio' }] })).toEqual({ kind: 'preparar', to: '/l/L1/perfil' });
+  });
 });
 
 describe('juegos a medias en cualquier evento', () => {

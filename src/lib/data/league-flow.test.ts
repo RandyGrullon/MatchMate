@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { addDays, todayIn } from '../../pages/sports/racket/logic/time';
 import { toIsoDate } from '../format';
 import { playerStats } from '../stats';
 import { NO_PHOTO } from '../types';
@@ -31,6 +32,12 @@ vi.mock('../photos', async () => {
 
 const img = { data: 'data:image/webp;base64,AAAA', width: 800, height: 600, scan: '' };
 const today = toIsoDate(new Date());
+/**
+ * Un día sin práctica que el jugador todavía puede enviar por fecha: ayer en la zona de la liga (la de la base); después
+ * la práctica cierra (`cerrado`). Si ayer allá es hoy aquí (ya hay práctica), hoy allá.
+ */
+const leagueToday = todayIn('America/Santo_Domingo');
+const openDay = addDays(leagueToday, -1) !== today ? addDays(leagueToday, -1) : leagueToday;
 
 let w: TestWorld;
 let lid: string;
@@ -186,18 +193,18 @@ describe('liga completa con la base de verdad (PGlite + RLS)', () => {
   });
 
   it('envío por fecha: la práctica de ese día la crea la base al aprobar; rechazar deja la nota', async () => {
-    const { id, sent } = submitGames(lid, { playerId: anaPlayer, eventId: null, date: '2026-01-06', scores: [150, 160, 170, 180], scanned: null, frames: null, photo: null });
+    const { id, sent } = submitGames(lid, { playerId: anaPlayer, eventId: null, date: openDay, scores: [150, 160, 170, 180], scanned: null, frames: null, photo: null });
     await sent;
-    const second = submitGames(lid, { playerId: anaPlayer, eventId: null, date: '2026-01-07', scores: [99], scanned: null, frames: null, photo: null });
+    const second = submitGames(lid, { playerId: anaPlayer, eventId: null, date: openDay, scores: [99], scanned: null, frames: null, photo: null });
     await second.sent;
     await w.as('rosa@x.com');
     const events = stamped<BowlingEvent[]>(await fetchEvents(lid));
     const [sub] = await fetchSubmissions({ kind: 'subs', lid }, [{ col: 'id', op: 'eq', value: id }]);
-    const target = await practiceForDate(lid, events, '2026-01-06', 4);
+    const target = await practiceForDate(lid, events, openDay, 4);
     expect(target.id).toBe('');
     const r = await approveSubmission(lid, stamped<Submission>(sub), target, null, 0, { 0: 150, 1: 160, 2: 170, 3: 180 }, 0);
     const created = stamped<BowlingEvent | null>((await fetchEvent(lid, r.eventId))!);
-    expect(created).toMatchObject({ type: 'practica', date: '2026-01-06', games: 4 });
+    expect(created).toMatchObject({ type: 'practica', date: openDay, games: 4 });
     const entries = await fetchEntries(lid, [{ col: 'event_id', op: 'eq', value: r.eventId }]);
     expect(entries[0]).toMatchObject({ playerId: anaPlayer, scores: [150, 160, 170, 180], photos: [NO_PHOTO, NO_PHOTO, NO_PHOTO, NO_PHOTO] });
 

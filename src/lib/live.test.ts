@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { LeagueFeed } from './data';
-import { liveGames, liveInfo, liveMatches, liveRows, liveScoreText, type LiveMatchLike } from './live';
+import {
+  isPlannedEvent,
+  leagueClock,
+  liveGames,
+  liveInfo,
+  liveMatches,
+  liveRows,
+  liveScoreText,
+  practiceClosed,
+  practiceWindow,
+  type LiveMatchLike,
+} from './live';
 import type { BowlingEvent, Entry, League, LiveScore, Submission } from './types';
 
 const at = (h: number, m = 0) => new Date(2026, 8, 29, h, m);
@@ -81,6 +92,127 @@ describe('en juego ahora en el home', () => {
       { ...lg('tenis', 'Tenis', ''), sport: 'tennis' },
     ];
     expect(liveGames(feeds, leagues, at(19, 45)).map((g) => g.event.id)).toEqual(['practica-hoy']);
+  });
+});
+
+describe('la práctica abierta: desde la hora de la liga hasta el final del día siguiente', () => {
+  // 29 de septiembre de 2026 es martes.
+  const day = (d: number, h: number, m = 0) => new Date(2026, 8, d, h, m);
+  const tue = '2026-09-29';
+
+  it('se anota desde la hora (no 30 minutos antes), todo ese día y el siguiente; después cierra', () => {
+    const lg = league('Martes · 7:30 pm');
+    expect(practiceWindow(tue, lg, day(29, 19, 0))).toBe('antes');
+    expect(practiceWindow(tue, lg, day(29, 19, 29))).toBe('antes');
+    expect(practiceWindow(tue, lg, day(29, 19, 30))).toBe('abierta');
+    expect(practiceWindow(tue, lg, day(29, 23, 59))).toBe('abierta');
+    expect(practiceWindow(tue, lg, day(30, 0, 0))).toBe('anoche');
+    expect(practiceWindow(tue, lg, day(30, 23, 59))).toBe('anoche');
+    expect(practiceWindow(tue, lg, new Date(2026, 9, 1, 0, 0))).toBe('cerrada');
+    // Una que todavía no llega.
+    expect(practiceWindow('2026-10-06', lg, day(29, 20))).toBe('antes');
+  });
+
+  it('sin hora, o una hora sin am/pm (como la base: private.event_start), todo el día', () => {
+    expect(practiceWindow(tue, league('Martes'), day(29, 0, 5))).toBe('abierta');
+    expect(practiceWindow(tue, league('Martes · 7:30'), day(29, 0, 5))).toBe('abierta');
+    expect(practiceWindow(tue, league('Martes 19:30'), day(29, 19, 0))).toBe('antes');
+  });
+
+  it('cierra desde antes de ayer', () => {
+    expect(practiceClosed(tue, tue)).toBe(false);
+    expect(practiceClosed(tue, '2026-09-30')).toBe(false);
+    expect(practiceClosed(tue, '2026-10-01')).toBe(true);
+    // Fin de mes y de año.
+    expect(practiceClosed('2026-12-31', '2027-01-01')).toBe(false);
+    expect(practiceClosed('2026-12-30', '2027-01-01')).toBe(true);
+  });
+});
+
+describe('la práctica del horario en el home (sin evento creado)', () => {
+  const lg = (id: string, name: string, schedule: string, extra: Partial<League> = {}) => ({ id, name, schedule, ...extra }) as League;
+  const ev = (id: string, date: string, type: BowlingEvent['type'] = 'practica') => ({ id, date, type, games: 3 }) as BowlingEvent;
+  const feed = (lid: string, events: BowlingEvent[] = []): LeagueFeed => ({
+    lid,
+    uid: 'u1',
+    playerId: 'p1',
+    isAdmin: false,
+    isScorer: false,
+    events,
+    mySubs: [],
+    pending: [],
+    reactions: [],
+    comments: [],
+    suggestions: [],
+  });
+  const tuesday = lg('a', 'Liga de los martes', 'Martes · 7:30 pm');
+
+  it('sale desde la hora de la liga, para anotar aunque nadie la haya creado', () => {
+    expect(liveGames([feed('a')], [tuesday], new Date(2026, 8, 29, 19, 15))).toEqual([]);
+    const [g, ...rest] = liveGames([feed('a')], [tuesday], new Date(2026, 8, 29, 19, 30));
+    expect(rest).toEqual([]);
+    expect(g).toMatchObject({ planned: true, late: false, today: '2026-09-29', info: { live: true, startLabel: '7:30 pm', startsSoon: false } });
+    expect(g.event).toMatchObject({ id: 'horario:2026-09-29', type: 'practica', date: '2026-09-29', games: 3 });
+    expect(isPlannedEvent(g.event)).toBe(true);
+    expect(isPlannedEvent(ev('E1', '2026-09-29'))).toBe(false);
+  });
+
+  it('al otro día es «de anoche» hasta la medianoche, y después no sale', () => {
+    const late = liveGames([feed('a')], [tuesday], new Date(2026, 8, 30, 9, 0));
+    expect(late.map((g) => [g.event.id, g.planned, g.late, g.info.startLabel])).toEqual([['horario:2026-09-29', true, true, null]]);
+    expect(liveGames([feed('a')], [tuesday], new Date(2026, 8, 30, 23, 59))).toHaveLength(1);
+    expect(liveGames([feed('a')], [tuesday], new Date(2026, 9, 1, 0, 0))).toEqual([]);
+  });
+
+  it('la práctica creada también se anota al otro día (el torneo no)', () => {
+    const feeds = [feed('a', [ev('P1', '2026-09-29')]), feed('b', [ev('T1', '2026-09-29', 'torneo')])];
+    const leagues = [tuesday, lg('b', 'Copa', 'Martes · 7:30 pm')];
+    expect(liveGames(feeds, leagues, new Date(2026, 8, 30, 12, 0)).map((g) => [g.event.id, !!g.planned, !!g.late])).toEqual([['P1', false, true]]);
+    expect(liveGames(feeds, leagues, new Date(2026, 9, 1, 12, 0))).toEqual([]);
+  });
+
+  it('con evento ese día, el evento manda (un torneo reemplaza la práctica): se juega como siempre', () => {
+    const feeds = [feed('a', [ev('T1', '2026-09-29', 'torneo')])];
+    expect(liveGames(feeds, [tuesday], new Date(2026, 8, 29, 19, 0)).map((g) => [g.event.id, g.info.startsSoon, !!g.planned])).toEqual([['T1', true, false]]);
+    expect(liveGames(feeds, [tuesday], new Date(2026, 8, 30, 12, 0))).toEqual([]);
+  });
+
+  it('solo en los días de práctica, dentro de la temporada y en ligas (no en un torneo suelto)', () => {
+    const wed = new Date(2026, 8, 30, 20, 0);
+    expect(liveGames([feed('a')], [lg('a', 'Liga', 'Miércoles · 7:30 pm')], wed)).toHaveLength(1);
+    expect(liveGames([feed('a')], [lg('a', 'Liga', 'Jueves · 7:30 pm')], wed)).toEqual([]);
+    expect(liveGames([feed('a')], [lg('a', 'Liga', 'Miércoles · 7:30 pm', { seasonEnd: '2026-09-15' })], wed)).toEqual([]);
+    expect(liveGames([feed('a')], [lg('a', 'Liga', 'Miércoles · 7:30 pm', { seasonStart: '2026-10-05' })], wed)).toEqual([]);
+    expect(liveGames([feed('a')], [lg('a', 'Copa', 'Miércoles · 7:30 pm', { kind: 'torneo' })], wed)).toEqual([]);
+  });
+
+  it('los otros deportes no cambian: su horario no inventa nada que anotar', () => {
+    const wed = new Date(2026, 8, 30, 20, 0);
+    const others = ['padel', 'tennis', 'football', 'golf'].map((sport) => lg(sport, sport, 'Martes y miércoles · 7:30 pm', { sport }));
+    expect(liveGames(others.map((l) => feed(l.id)), others, wed)).toEqual([]);
+  });
+
+  it('primero lo que se juega ahora, después lo que está por empezar y al final lo de anoche', () => {
+    const feeds = [feed('a', [ev('P1', '2026-09-29')]), feed('b'), feed('c', [ev('P3', '2026-09-30')])];
+    const leagues = [tuesday, lg('b', 'B', 'Miércoles · 7:00 pm'), lg('c', 'C', 'Miércoles · 8:00 pm')];
+    expect(liveGames(feeds, leagues, new Date(2026, 8, 30, 19, 45)).map((g) => g.event.id)).toEqual(['horario:2026-09-30', 'P3', 'P1']);
+  });
+
+  it('en la zona de la liga, no en la del teléfono', () => {
+    const sd = { ...tuesday, tz: 'America/Santo_Domingo' };
+    // 00:30 UTC del miércoles = 8:30 pm del martes en Santo Domingo (UTC-4).
+    const tueNight = new Date(Date.UTC(2026, 8, 30, 0, 30));
+    expect(leagueClock(sd, tueNight)).toEqual({ date: '2026-09-29', minutes: 20 * 60 + 30, weekday: 1 });
+    const [g] = liveGames([feed('a')], [sd], tueNight);
+    expect(g).toMatchObject({ planned: true, late: false, today: '2026-09-29' });
+    expect(practiceWindow('2026-09-29', sd, new Date(Date.UTC(2026, 8, 29, 23, 29)))).toBe('antes');
+    expect(practiceWindow('2026-09-29', sd, new Date(Date.UTC(2026, 8, 29, 23, 30)))).toBe('abierta');
+    // 11 pm del miércoles en Santo Domingo (ya es jueves en UTC): de anoche.
+    expect(liveGames([feed('a')], [sd], new Date(Date.UTC(2026, 9, 1, 3, 0))).map((x) => x.late)).toEqual([true]);
+    // 12:30 am del jueves en Santo Domingo: cerrada.
+    expect(liveGames([feed('a')], [sd], new Date(Date.UTC(2026, 9, 1, 4, 30)))).toEqual([]);
+    // El torneo también se mira en la zona de la liga.
+    expect(liveInfo({ date: '2026-09-29' }, sd, new Date(Date.UTC(2026, 8, 29, 23, 15)))).toEqual({ live: true, startLabel: '7:30 pm', startsSoon: true });
   });
 });
 

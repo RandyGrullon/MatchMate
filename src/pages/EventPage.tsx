@@ -387,7 +387,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       entry={mine}
       subs={mySubs.data.filter((s) => s.eventId === ev.id)}
       live={liveNow}
-      today={today}
+      // Hoy en la zona de la liga: la práctica se anota hasta el final del día siguiente (después, solo el admin).
+      today={leagueToday}
       autoStart={params.get('anotar') === '1'}
       onAutoStarted={() =>
         setParams(

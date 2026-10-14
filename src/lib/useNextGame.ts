@@ -5,6 +5,7 @@ import { scoreGame } from './bowling';
 import { useEventEntries, type LeagueFeed } from './data';
 import { useDraft, type GameDraft } from './draft';
 import { parseDate, toIsoDate } from './format';
+import { isPlannedEvent, practiceClosed } from './live';
 import { slots } from './stats';
 import type { BowlingEvent, Entry, League, Submission } from './types';
 import { leagueSport } from '../sports/registry';
@@ -132,8 +133,10 @@ export function nextGame({
   const started = hasSubs || cells.some((c) => c.kind !== 'vacio');
   const player = !!playerId && !(staff && event.type === 'torneo' && !started);
   if (!player) return staff ? { kind: 'planilla', to: sheetPath(lid, event.id) } : { kind: 'preparar', to: `/l/${lid}/perfil` };
+  // Se anota desde el día del evento; una práctica, hasta el día siguiente (después solo el admin).
+  const open = event.date <= today && (staff || event.type !== 'practica' || !practiceClosed(event.date, today));
   // El que sigue es el primero sin número (MyGamesPanel abre ese con ?anotar=1): si quedó a medias, se sigue.
-  const first = event.date <= today ? cells.findIndex((c) => c.kind === 'vacio' || c.kind === 'medias') : -1;
+  const first = open ? cells.findIndex((c) => c.kind === 'vacio' || c.kind === 'medias') : -1;
   if (first >= 0) {
     const c = cells[first];
     return c.kind === 'medias'
@@ -250,32 +253,35 @@ export interface TodayGames {
 /**
  * Los juegos de la cuenta en un evento de boliche y qué hace «Anotar» ahí: lo de la tabla, lo que guardó en este
  * teléfono, lo enviado y lo que dejó a medias en la hoja. `game` = el evento con lo de la cuenta en su liga (LeagueFeed);
- * null = no hay evento (devuelve null).
+ * null = no hay evento (devuelve null). Con `game.today` (hoy en la zona de la liga, LiveGame) manda ese día. Una práctica
+ * del horario sin evento (isPlannedEvent) no lee nada: todos sus juegos están por anotar.
  */
-export function useNextGame(game: { feed: LeagueFeed; event: BowlingEvent } | null, today: string): TodayGames | null {
+export function useNextGame(game: { feed: LeagueFeed; event: BowlingEvent; today?: string } | null, today: string): TodayGames | null {
   const { user } = useAuth();
   const uid = user?.uid ?? null;
   const lid = game?.feed.lid;
-  const eventId = game?.event.id;
+  const planned = isPlannedEvent(game?.event);
+  const eventId = planned ? undefined : game?.event.id;
   const playerId = game?.feed.playerId ?? null;
   const entries = useEventEntries(lid, eventId);
-  const draft = useDraft(lid ?? '', playerId, eventId ?? '');
+  const draft = useDraft(lid ?? '', planned ? null : playerId, eventId ?? '');
   const tick = useMemoryTick();
+  const day = game?.today ?? today;
 
   return useMemo(() => {
-    if (!game || !lid || !eventId) return null;
+    if (!game || !lid || (!eventId && !planned)) return null;
     const { feed, event } = game;
-    const entry = playerId ? (entries.data.find((e) => e.playerId === playerId) ?? null) : null;
-    const subs = feed.mySubs.filter((s) => s.eventId === event.id);
-    const place = playerId ? myGamesPlace(uid, lid, playerId, event.id) : null;
+    const entry = playerId && !planned ? (entries.data.find((e) => e.playerId === playerId) ?? null) : null;
+    const subs = planned ? [] : feed.mySubs.filter((s) => s.eventId === event.id);
+    const place = playerId && !planned ? myGamesPlace(uid, lid, playerId, event.id) : null;
     const cells = gameCells({
       games: event.games,
       entry,
-      draft,
+      draft: planned ? null : draft,
       subs,
       partial: (i) => (place ? partialGame(readGameDraft(gameKey(place, i))) : null),
     });
-    const next = nextGame({ lid, event, playerId, staff: feed.isAdmin || feed.isScorer, cells, hasSubs: subs.length > 0, today });
+    const next = nextGame({ lid, event, playerId, staff: feed.isAdmin || feed.isScorer, cells, hasSubs: subs.length > 0, today: day });
     const at = cells.findIndex((c) => c.kind === 'medias');
     const half = at >= 0 ? cells[at] : null;
     return {
@@ -283,11 +289,11 @@ export function useNextGame(game: { feed: LeagueFeed; event: BowlingEvent } | nu
       next,
       series: seriesOf(cells),
       partial: half?.kind === 'medias' ? { game: at + 1, score: half.score } : null,
-      loading: entries.loading && !entries.data.length,
+      loading: !planned && entries.loading && !entries.data.length,
     };
     // tick: volver a leer la memoria de la hoja de anotar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, lid, eventId, playerId, uid, entries.data, entries.loading, draft, today, tick]);
+  }, [game, lid, eventId, planned, playerId, uid, entries.data, entries.loading, draft, day, tick]);
 }
 
 // ---------- ¿Dónde jugaste? ----------

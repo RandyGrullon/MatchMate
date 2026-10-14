@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Camera, CheckCircle2, Clock, PencilLine, Plus, Send, Smartphone, Trash2, XCircle, type LucideIcon } from 'lucide-react';
+import { Camera, CheckCircle2, Clock, Lock, PencilLine, Plus, Send, Smartphone, Trash2, XCircle, type LucideIcon } from 'lucide-react';
 import { addEventGame } from '../../lib/data';
+import { isPracticeClosed, PRACTICE_CLOSED_TEXT } from '../../lib/data/events';
 import { ballKeys, ballTags, fetchMyBallGames, queuedBallsByGame, useMyBallGames } from '../../lib/data/balls';
 import { getUserId, queryClient, type Live } from '../../lib/data/client';
 import { saveDraft, useDraft } from '../../lib/draft';
 import { useLeagueCtx } from '../../lib/league';
-import type { LiveInfo } from '../../lib/live';
+import { practiceClosed, type LiveInfo } from '../../lib/live';
 import { ballForGame, ballLabel, ballsByGame, draftBallsAfter, type BallGame } from '../../lib/balls';
 import type { GameMark } from '../../lib/bowlingSeason';
 import { slots } from '../../lib/stats';
@@ -144,6 +145,9 @@ export type MyGamesLook = 'lite' | 'pro' | 'sheet';
  * `look`: 'lite' (por defecto), 'pro' (la misma, más compacta: J1 J2 J3 Serie) o 'sheet' (Pro con Planilla: sin
  * tarjeta, solo la hoja, que se abre desde «?anotar=1» o con `openRequest`; si tiene juegos en el teléfono sin enviar,
  * sale la tarjeta compacta para enviarlos).
+ *
+ * Una práctica se anota hasta el final del día siguiente (`today` en la zona de la liga): después, para quien no es
+ * admin, «Esta práctica ya cerró» y sin botón de anotar (la base también responde `cerrado`). Los torneos no cierran.
  */
 export function MyGamesPanel({
   event,
@@ -187,9 +191,11 @@ export function MyGamesPanel({
   /** De la tarjeta (el espacio de arriba): en 'sheet' sin tarjeta no ocupa nada. */
   className?: string;
 }) {
-  const { lid } = useLeagueCtx();
+  const { lid, isAdmin } = useLeagueCtx();
   const { toast, confirm } = useFeedback();
   const draft = useDraft(lid, playerId, event.id);
+  // La práctica ya cerró (después del día siguiente): solo el admin la anota.
+  const closed = event.type === 'practica' && !isAdmin && practiceClosed(event.date, today);
   const [adding, setAdding] = useState(false);
   // La bola de cada juego: la que ya eligió en el teléfono, la del juego anterior o la última que usó. Se elige arriba
   // del editor (aunque la cuenta no tenga ninguna: «Agregar») y se envía con los juegos («Enviar a revisión»).
@@ -221,7 +227,7 @@ export function MyGamesPanel({
   const nextEmpty = cells.findIndex((c) => c.kind === 'vacio');
   const notYet = event.date > today;
   // Desde "En juego ahora" (autoStart) el próximo juego por anotar ya sale abierto al dibujar la primera vez.
-  const [editing, setEditing] = useState<number | null>(() => (autoStart && !notYet && nextEmpty >= 0 ? nextEmpty : null));
+  const [editing, setEditing] = useState<number | null>(() => (autoStart && !notYet && !closed && nextEmpty >= 0 ? nextEmpty : null));
   // La hoja que se abrió sola (autoStart): al cerrarla se avisa (onAutoDone) para volver a la pantalla de donde vino.
   const autoOpened = useRef(editing != null);
   // Lo que quedó a medias en la hoja de anotar (draftMemory) en cada juego sin número: «A medias» y «Seguir mi juego 3»,
@@ -273,7 +279,7 @@ export function MyGamesPanel({
     added.catch((e) => {
       console.error(e);
       setOpenAdded(null);
-      toast('No se pudo agregar el juego. Intenta de nuevo.', 'error');
+      toast(isPracticeClosed(e) ? `${PRACTICE_CLOSED_TEXT}.` : 'No se pudo agregar el juego. Intenta de nuevo.', 'error');
     });
     // Sin señal queda en cola y sale solo: no se espera al servidor.
     const done = await Promise.race([added.then(() => true, () => false), new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
@@ -342,7 +348,7 @@ export function MyGamesPanel({
     started.current = true;
     onAutoStarted();
     const first = cells.findIndex((c) => c.kind === 'vacio');
-    if (editing == null && !notYet && first >= 0) {
+    if (editing == null && !notYet && !closed && first >= 0) {
       autoOpened.current = true;
       edit(first);
     }
@@ -351,7 +357,7 @@ export function MyGamesPanel({
 
   // Desde la Planilla (Pro): su propio juego, en esta hoja (la misma memoria del teléfono que «Seguir mi juego 3»).
   useEffect(() => {
-    if (openRequest && !notYet && openRequest.game < count) edit(openRequest.game);
+    if (openRequest && !notYet && !closed && openRequest.game < count) edit(openRequest.game);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequest?.at]);
 
@@ -379,7 +385,7 @@ export function MyGamesPanel({
   const columns = Math.max(3, Math.min(count + (pro ? 1 : 0), 5));
   // El botón principal: el juego que sigue (o el que quedó a medias); con todos anotados y en el teléfono, enviarlos.
   const primary =
-    notYet || allInTable
+    notYet || allInTable || closed
       ? null
       : nextEmpty >= 0
         ? {
@@ -461,7 +467,8 @@ export function MyGamesPanel({
               {cells.map((c, i) => {
                 const label = dense ? `J${i + 1}` : `Juego ${i + 1}`;
                 const spoken = `Juego ${i + 1}${c.kind === 'vacio' ? (halfway[i] ? ': a medias' : ': anotar') : `: ${c.score}`}${tileBalls[i] ? `, bola ${ballLabel(tileBalls[i])}` : ''}`;
-                const open = () => (c.kind === 'tabla' ? onOpenEntry() : edit(i));
+                // Cerrada: lo de la tabla se sigue viendo; lo demás ya no se abre para anotar.
+                const open = c.kind === 'tabla' ? onOpenEntry : closed ? undefined : () => edit(i);
                 // Lo que todavía no cuenta (enviado, o en la tabla sin la foto que se exige) va en gris.
                 const faint = c.kind === 'enviado' || (c.kind === 'tabla' && !c.counted);
                 return (
@@ -479,7 +486,7 @@ export function MyGamesPanel({
                         onClick={open}
                         ariaLabel={spoken}
                       />
-                    ) : i === nextEmpty ? (
+                    ) : i === nextEmpty && !closed ? (
                       <GameTile label={label} state="next" dense={dense} onClick={open} ariaLabel={spoken} />
                     ) : (
                       <GameTile label={label} dense={dense} onClick={open} ariaLabel={spoken} className="text-faint" />
@@ -510,13 +517,22 @@ export function MyGamesPanel({
               </p>
             )}
 
+            {closed && !allInTable && (
+              <p className={cx('mx-0.5 flex items-start gap-[7px] text-fg-2', pro ? 'mb-3 text-[13px]' : 'mb-4 text-sm')}>
+                <Lock aria-hidden="true" className="mt-px size-[17px] shrink-0 text-muted" />
+                <span className="min-w-0">
+                  <b className="font-[650] text-fg">{PRACTICE_CLOSED_TEXT}.</b>{' '}
+                  {inPhone > 0 ? 'Lo que quedó en tu teléfono ya no se envía: pídele al admin que lo anote.' : 'Si te falta un juego, pídeselo al admin.'}
+                </span>
+              </p>
+            )}
             {primary && (
               <Button variant="primary" size={pro ? 'lg' : 'xl'} className="w-full" icon={<primary.icon className={pro ? 'size-[18px]' : 'size-5'} />} onClick={primary.onClick}>
                 {primary.label}
               </Button>
             )}
-            <div className={cx('flex flex-col', primary && 'mt-0.5', !primary && !allInTable && '-mt-1')}>
-              {nextEmpty >= 0 && phoneGames.length > 0 && (
+            <div className={cx('flex flex-col', primary && 'mt-0.5', !primary && !allInTable && !closed && '-mt-1')}>
+              {!closed && nextEmpty >= 0 && phoneGames.length > 0 && (
                 <QuietAction icon={Send} onClick={onSend} accent>
                   {phoneGames.length === 1 ? 'Enviar mi juego' : 'Enviar mis juegos'} {gamesList(phoneGames)}
                 </QuietAction>
@@ -526,7 +542,7 @@ export function MyGamesPanel({
                   Otro juego
                 </QuietAction>
               )}
-              {!allInTable && inPhone === 0 && (
+              {!allInTable && !closed && inPhone === 0 && (
                 <QuietAction icon={Camera} onClick={onSend}>
                   Anotar con foto del marcador
                 </QuietAction>

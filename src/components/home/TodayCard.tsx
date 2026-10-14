@@ -1,19 +1,23 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Check, ChevronRight, FileSpreadsheet, PencilLine, Send, Target, UserRound, type LucideIcon } from 'lucide-react';
+import { asBackendError } from '../../lib/db/errors';
 import type { CalendarItem } from '../../lib/calendar';
 import { useEventEntries, useEventLive, useEventSubmissions, usePlayers } from '../../lib/data';
+import { isPracticeClosed, openPractice, PRACTICE_CLOSED_TEXT } from '../../lib/data/events';
 import { useEventLanes } from '../../lib/data/lanes';
 import { laneOf, lanesPublished } from '../../lib/lanes';
 import { formatTime } from '../../lib/schedule';
-import type { LiveGame } from '../../lib/live';
-import { nextGameLabel, sheetPath, useNextGame, type GameCell, type NextGame, type TodayGames } from '../../lib/useNextGame';
+import { isPlannedEvent, type LiveGame } from '../../lib/live';
+import type { BowlingEvent } from '../../lib/types';
+import { nextGameLabel, scorePath, sheetPath, useNextGame, type GameCell, type NextGame, type TodayGames } from '../../lib/useNextGame';
 import { initials } from '../Avatar';
 import { BusyIcon, useBusy } from '../busy';
 import { boardRows, type BoardRow } from '../event/board';
+import { saveErrorMessage, useFeedback } from '../feedback';
 import { SportCorner, SportMark } from '../SportMark';
 import { Card, DateBlock, GameTile, Skeleton, cx } from '../ui';
-import { socialLine, todayTitle, weekdayLabel } from './logic';
+import { LATE_WHEN, lateTitle, socialLine, todayTitle, weekdayLabel } from './logic';
 import { SportTint } from './SportTint';
 
 // ---------- Piezas ----------
@@ -26,42 +30,107 @@ const actionVariants: Record<ActionVariant, string> = {
   soft: 'bg-accent-soft text-accent hover:brightness-95',
 };
 
-/**
- * Link con forma de botón (el botón principal de la tarjeta lleva a otra pantalla): 56 px en Lite (`xl`) y 48 en Pro
- * (`lg`), en una línea (si no cabe, «…»).
- */
-export function ActionLink({
-  to,
-  icon: Icon,
-  children,
-  variant = 'primary',
-  size = 'xl',
-  narrowIcon,
-  className,
-}: {
-  to: string;
+/** Cómo se ve el botón principal (el link o el botón que abre la práctica). */
+interface ActionLook {
   icon?: LucideIcon;
-  children: ReactNode;
   variant?: ActionVariant;
   size?: 'lg' | 'xl';
   /** Sin ícono en un teléfono angosto (menos de 390 px): dos botones lado a lado no caben con ícono. */
   narrowIcon?: boolean;
   className?: string;
-}) {
+}
+
+const actionClass = ({ variant = 'primary', size = 'xl', className }: ActionLook) =>
+  cx(
+    'inline-flex min-w-0 items-center justify-center font-semibold whitespace-nowrap transition select-none active:scale-[0.97]',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+    size === 'xl' ? 'h-btn gap-2.5 rounded-btn px-6 text-[17px] tracking-[-0.01em]' : 'h-btn-pro gap-2 rounded-[15px] px-4 text-base',
+    actionVariants[variant],
+    className,
+  );
+
+const actionIconClass = ({ size = 'xl', narrowIcon }: ActionLook) => cx(size === 'xl' ? 'size-5 shrink-0' : 'size-[18px] shrink-0', narrowIcon && 'max-[389px]:hidden');
+
+/**
+ * Link con forma de botón (el botón principal de la tarjeta lleva a otra pantalla): 56 px en Lite (`xl`) y 48 en Pro
+ * (`lg`), en una línea (si no cabe, «…»).
+ */
+export function ActionLink({ to, children, ...look }: ActionLook & { to: string; children: ReactNode }) {
+  const Icon = look.icon;
   return (
-    <Link
-      to={to}
-      className={cx(
-        'inline-flex min-w-0 items-center justify-center font-semibold whitespace-nowrap transition select-none active:scale-[0.97]',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        size === 'xl' ? 'h-btn gap-2.5 rounded-btn px-6 text-[17px] tracking-[-0.01em]' : 'h-btn-pro gap-2 rounded-[15px] px-4 text-base',
-        actionVariants[variant],
-        className,
-      )}
-    >
-      {Icon && <Icon aria-hidden="true" className={cx(size === 'xl' ? 'size-5 shrink-0' : 'size-[18px] shrink-0', narrowIcon && 'max-[389px]:hidden')} />}
+    <Link to={to} className={actionClass(look)}>
+      {Icon && <Icon aria-hidden="true" className={actionIconClass(look)} />}
       <span className="min-w-0 truncate">{children}</span>
     </Link>
+  );
+}
+
+/** Lo que se dice si no se pudo abrir la práctica. `today`: es la de hoy (`cerrado` = todavía no es la hora). */
+export function openPracticeErrorText(e: unknown, today: boolean): string {
+  if (isPracticeClosed(e)) return today ? 'La práctica todavía no empieza. Intenta de nuevo a la hora de la liga.' : `${PRACTICE_CLOSED_TEXT}.`;
+  const be = asBackendError(e);
+  if (be?.kind === 'permission') return 'Solo los jugadores de la liga anotan en su práctica.';
+  if (be?.kind === 'network') return 'Sin señal: para abrir la práctica hace falta conexión. Intenta de nuevo.';
+  return saveErrorMessage(e);
+}
+
+/**
+ * Abre la práctica del horario (o la encuentra, si otro ya la abrió: openPractice) y lleva a la hoja de anotar (o, quien
+ * anota los de todos, a la planilla). Devuelve a dónde fue.
+ */
+export async function goToPractice(lid: string, date: string, sheet: boolean, navigate: (to: string) => void): Promise<string> {
+  const id = await openPractice(lid, date);
+  const to = sheet ? sheetPath(lid, id) : scorePath(lid, id);
+  navigate(to);
+  return to;
+}
+
+/** El botón que abre la práctica del horario y lleva a anotar, con la ruedita mientras la base la abre. */
+function OpenPracticeButton({ lid, date, today, sheet, children, ...look }: ActionLook & { lid: string; date: string; today: boolean; sheet: boolean; children: ReactNode }) {
+  const navigate = useNavigate();
+  const { toast } = useFeedback();
+  const { isBusy, run } = useBusy();
+  const busy = isBusy();
+  const Icon = look.icon;
+  const open = () =>
+    void run('abrir', async () => {
+      try {
+        await goToPractice(lid, date, sheet, navigate);
+      } catch (e) {
+        console.error(e);
+        toast(openPracticeErrorText(e, today), 'error');
+      }
+    });
+  return (
+    <button type="button" onClick={open} disabled={busy} aria-busy={busy || undefined} className={cx(actionClass(look), 'disabled:opacity-80')}>
+      <BusyIcon busy={busy} icon={Icon ? <Icon aria-hidden="true" className={actionIconClass(look)} /> : null} className={actionIconClass(look)} />
+      <span className="min-w-0 truncate">{children}</span>
+    </button>
+  );
+}
+
+/**
+ * El botón principal de anotar (Hoy, la Liga, tu página): el link de `next` o, en una práctica del horario que todavía
+ * no tiene evento (isPlannedEvent), un botón que la abre y lleva a la hoja de anotar (o a la planilla).
+ */
+export function NextGameAction({
+  lid,
+  event,
+  next,
+  today,
+  children,
+  ...look
+}: ActionLook & { lid: string; event: Pick<BowlingEvent, 'id' | 'date'>; next: NextGame; today?: string; children: ReactNode }) {
+  if (isPlannedEvent(event) && (next.kind === 'anotar' || next.kind === 'planilla'))
+    return (
+      <OpenPracticeButton lid={lid} date={event.date} today={event.date === today} sheet={next.kind === 'planilla'} {...look}>
+        {children}
+      </OpenPracticeButton>
+    );
+  return (
+    <ActionLink to={next.to} {...look}>
+      {children}
+    </ActionLink>
   );
 }
 
@@ -127,10 +196,13 @@ export interface LiveTable {
   loading: boolean;
 }
 
-/** Cómo van todos en el evento en juego (null = no hay: no lee nada). Comparte las lecturas con la pantalla del evento. */
+/**
+ * Cómo van todos en el evento en juego (null = no hay: no lee nada; una práctica del horario sin evento tampoco: nadie
+ * anota todavía). Comparte las lecturas con la pantalla del evento.
+ */
 export function useLiveTable(game: Pick<LiveGame, 'feed' | 'event'> | null): LiveTable {
   const lid = game?.feed.lid;
-  const event = game?.event;
+  const event = game && !isPlannedEvent(game.event) ? game.event : undefined;
   const entries = useEventEntries(lid, event?.id);
   const subs = useEventSubmissions(lid, event?.id);
   const live = useEventLive(lid, event?.id);
@@ -144,7 +216,7 @@ export function useLiveTable(game: Pick<LiveGame, 'feed' | 'event'> | null): Liv
 function useMyLaneNumber(lid: string, eventId: string | null, playerId: string | null): number | null {
   const lanes = useEventLanes(playerId && eventId ? lid : null, eventId);
   const mine = laneOf(lanes.data, playerId);
-  return mine && lanesPublished(lanes.data) ? mine.lane : null;
+  return eventId && mine && lanesPublished(lanes.data) ? mine.lane : null;
 }
 
 // ---------- La tarjeta de hoy (evento en juego) ----------
@@ -154,24 +226,40 @@ function useMyLaneNumber(lid: string, eventId: string | null, playerId: string |
  * grande (el que dejaste a medias se ve como «A medias»), UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1»,
  * «Enviar mis juegos») y la línea social «6 jugando · Pedro va primero ›» (lleva a la práctica). En Pro, más densa: J1
  * J2 J3 Serie, «Seguir juego 3» y «Planilla» (si anotas el evento) al lado; «Cómo van todos» va abajo en «En vivo».
+ *
+ * La práctica del día sale desde la hora de la liga aunque nadie la haya creado (la del horario: «Anotar juego 1» la abre
+ * y lleva a anotar). Al día siguiente, «Anota tus juegos de anoche» con «Cierra hoy», hasta la medianoche de la liga
+ * (si ya no le falta nada, no sale).
  */
 export function TodayCard({ game, today, pro }: { game: LiveGame; today: string; pro: boolean }) {
-  const { feed, league, event, info } = game;
+  const { feed, league, event, info, late } = game;
+  const planned = isPlannedEvent(event);
+  const day = game.today ?? today;
   const mine = useNextGame(game, today);
   const table = useLiveTable(game);
-  const lane = useMyLaneNumber(feed.lid, event.id, feed.playerId);
+  const lane = useMyLaneNumber(feed.lid, planned || late ? null : event.id, feed.playerId);
   const staff = feed.isAdmin || feed.isScorer;
-  const title = todayTitle(event, today);
+  const title = late ? lateTitle(mine?.next) : todayTitle(event, day);
   const eventUrl = `/l/${feed.lid}/e/${event.id}`;
   const n = table.rows.length;
 
-  const when = info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : pro && n ? `En juego · ${n} jugando` : pro ? 'En juego' : 'En juego ahora';
-  // La hora: la de la liga; si el evento cae otro día (un torneo el sábado), la que tenga el evento.
-  const start = info.startLabel ?? (event.startTime ? formatTime(event.startTime.slice(0, 5)) || null : null);
+  const when = late
+    ? LATE_WHEN
+    : info.startsSoon && info.startLabel
+      ? `Empieza a las ${info.startLabel}`
+      : pro && n
+        ? `En juego · ${n} jugando`
+        : pro
+          ? 'En juego'
+          : 'En juego ahora';
+  // La hora: la de la liga; si el evento cae otro día (un torneo el sábado), la que tenga el evento. Anoche, ninguna.
+  const start = late ? null : (info.startLabel ?? (event.startTime ? formatTime(event.startTime.slice(0, 5)) || null : null));
   const meta = [league.kind !== 'torneo' ? league.name : null, league.venue?.trim() || null].filter(Boolean).join(' · ');
   // «7:30 pm · Pista 7» (sin hora ni pista, nada).
   const whenWhere = [!info.startsSoon ? start : null, lane != null ? `Pista ${lane}` : null].filter(Boolean).join(' · ');
 
+  // La de anoche ya no tiene nada que hacer (todo enviado o en la tabla): no ocupa Hoy.
+  if (late && mine && !mine.loading && mine.next.kind === 'ver') return null;
   return (
     <SportTint sport="bowling">
       <Card className={pro ? 'p-[18px]' : 'px-5 pt-5 pb-2'}>
@@ -206,9 +294,10 @@ export function TodayCard({ game, today, pro }: { game: LiveGame; today: string;
             )}
           </div>
 
-          {mine && <TodayActions mine={mine} pro={pro} staff={staff} sheetTo={sheetPath(feed.lid, event.id)} />}
+          {mine && <TodayActions lid={feed.lid} event={event} today={day} mine={mine} pro={pro} staff={staff} />}
 
-          {!pro && <SocialLine to={eventUrl} table={table} me={feed.playerId} />}
+          {/* La del horario todavía no tiene a dónde llevar: nadie anota. */}
+          {!pro && <SocialLine to={planned ? null : eventUrl} table={table} me={feed.playerId} late={!!late} />}
         </section>
       </Card>
     </SportTint>
@@ -216,35 +305,40 @@ export function TodayCard({ game, today, pro }: { game: LiveGame; today: string;
 }
 
 /** El botón principal y, en Pro, «Planilla» al lado (solo quien anota el evento). */
-function TodayActions({ mine, pro, staff, sheetTo }: { mine: TodayGames; pro: boolean; staff: boolean; sheetTo: string }) {
+function TodayActions({ lid, event, today, mine, pro, staff }: { lid: string; event: BowlingEvent; today: string; mine: TodayGames; pro: boolean; staff: boolean }) {
   const { next } = mine;
   const label = nextGameLabel(next, { pro });
   const sheet = pro && staff && next.kind !== 'planilla';
+  const common = { lid, event, today };
   if (!sheet)
     return (
-      <ActionLink to={next.to} icon={NEXT_ICON[next.kind]} size={pro ? 'lg' : 'xl'} className="w-full">
+      <NextGameAction {...common} next={next} icon={NEXT_ICON[next.kind]} size={pro ? 'lg' : 'xl'} className="w-full">
         {label}
-      </ActionLink>
+      </NextGameAction>
     );
   return (
     <div className="grid grid-cols-[1.45fr_1fr] gap-2">
-      <ActionLink to={next.to} icon={NEXT_ICON[next.kind]} size="lg" narrowIcon>
+      <NextGameAction {...common} next={next} icon={NEXT_ICON[next.kind]} size="lg" narrowIcon>
         {label}
-      </ActionLink>
-      <ActionLink to={sheetTo} icon={FileSpreadsheet} variant="quiet" size="lg" narrowIcon>
+      </NextGameAction>
+      <NextGameAction {...common} next={{ kind: 'planilla', to: sheetPath(lid, event.id) }} icon={FileSpreadsheet} variant="quiet" size="lg" narrowIcon>
         Planilla
-      </ActionLink>
+      </NextGameAction>
     </div>
   );
 }
 
-/** «PG LM SR  6 jugando · Pedro va primero ›»: lleva a la práctica (cómo van todos). */
-function SocialLine({ to, table, me }: { to: string; table: LiveTable; me: string | null }) {
+/**
+ * «PG LM SR  6 jugando · Pedro va primero ›»: lleva a la práctica (cómo van todos). `to` null (la práctica del horario
+ * que todavía nadie abrió): solo la línea («Todavía nadie anota»).
+ */
+function SocialLine({ to, table, me, late }: { to: string | null; table: LiveTable; me: string | null; late: boolean }) {
   // Primero va quien más suma con lo aprobado; si todavía nadie tiene juegos aprobados, nadie «va primero».
   const first = table.rows[0];
   const leader = first && first.total > 0 ? { name: table.nameOf(first.playerId), me: first.playerId === me } : null;
-  const line = socialLine(table.rows.length, leader);
+  const line = socialLine(table.rows.length, leader, late);
   const faces = table.rows.slice(0, 3).map((r) => table.nameOf(r.playerId));
+  if (!to) return <p className="mt-1 flex h-[52px] items-center text-sm font-medium text-fg-2">{line.count}</p>;
   return (
     <Link
       to={to}

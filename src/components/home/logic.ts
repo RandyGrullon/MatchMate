@@ -164,6 +164,14 @@ export function todayTitle(e: { type: string; name?: string | null; date: string
   return e.date === today ? 'Práctica de hoy' : 'Práctica';
 }
 
+/** Arriba de la tarjeta de la práctica de anoche (se anota hasta el final de hoy). */
+export const LATE_WHEN = 'Cierra hoy';
+
+/** El título de la tarjeta de la práctica de anoche: «Anota tus juegos de anoche» (si ya no falta nada, «Tus juegos de anoche»). */
+export function lateTitle(next: { kind: string } | null | undefined): string {
+  return next?.kind === 'ver' ? 'Tus juegos de anoche' : 'Anota tus juegos de anoche';
+}
+
 /** «Hoy», «Mañana» o el día de la semana («Martes»): va debajo del bloque de fecha (OCT / 13). */
 export function weekdayLabel(date: string, today: string): string {
   if (date === today) return 'Hoy';
@@ -227,9 +235,12 @@ export function namesLine(names: readonly string[], max = 3): string {
   return `${shown.join(', ')} y ${firsts.length - shown.length} más`;
 }
 
-/** La línea social de la tarjeta de hoy: «6 jugando · Pedro va primero» (o «Vas primero»). */
-export function socialLine(rows: number, leader: { name: string; me: boolean } | null): { count: string; leader: string | null } {
+/**
+ * La línea social de la tarjeta de hoy: «6 jugando · Pedro va primero» (o «Vas primero»). La de anoche (`late`): «6
+ * anotaron».
+ */
+export function socialLine(rows: number, leader: { name: string; me: boolean } | null, late = false): { count: string; leader: string | null } {
   if (!rows) return { count: 'Todavía nadie anota', leader: null };
   const first = leader?.name.trim().split(/\s+/)[0] ?? '';
-  return { count: `${rows} jugando`, leader: !leader ? null : leader.me ? 'Vas primero' : `${first} va primero` };
+  return { count: `${rows} ${late ? 'anotaron' : 'jugando'}`, leader: !leader ? null : leader.me ? 'Vas primero' : `${first} va primero` };
 }

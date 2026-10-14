@@ -316,6 +316,59 @@ describe('las piezas', () => {
     expect(text(render(h(NowCard, { game: g, today: TODAY, member: true })))).toContain('Empieza a las 7:30 pm');
   });
 
+  describe('NowCard: la práctica del horario sin crear y la de anoche', () => {
+    const feed = { lid: 'L1', uid: 'u1', playerId: 'p-ana', isAdmin: false, isScorer: false, events: [], mySubs: [], pending: [], reactions: [], comments: [], suggestions: [] };
+    const planned: LiveGame = {
+      feed,
+      league,
+      event: ev(`horario:${TODAY}`, TODAY, { playerCount: 0 }),
+      info: { live: true, startLabel: '7:30 pm', startsSoon: false },
+      planned: true,
+      late: false,
+      today: TODAY,
+    };
+    const late: LiveGame = { feed, league, event: ev('E2', '2026-10-06'), info: { live: true, startLabel: null, startsSoon: false }, late: true, today: TODAY };
+
+    it('el miembro: «Anotar juego 1» abre la práctica (un botón: todavía no hay a dónde llevar)', () => {
+      const html = render(h(NowCard, { game: planned, today: TODAY, member: true }));
+      const out = text(html);
+      expect(out).toContain('En juego ahora');
+      expect(out).toContain('Práctica de hoy');
+      expect(out).toContain('Todavía no anotas tus juegos');
+      expect(html).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Anotar juego 1/s);
+      expect(html).not.toContain('/e/horario');
+    });
+
+    it('al otro día: «Anota tus juegos de anoche» con «Cierra hoy»; ya todo anotado: «Tus juegos de anoche»', () => {
+      world.entries = [entry('E2', 'p-ana', [195, null, null])];
+      const out = text(render(h(NowCard, { game: late, today: TODAY, member: true })));
+      expect(out).toContain('Cierra hoy');
+      expect(out).toContain('Anota tus juegos de anoche');
+      expect(out).toContain('Anotar juego 2');
+      world.entries = [entry('E2', 'p-ana', [195, 195, 195])];
+      expect(text(render(h(NowCard, { game: late, today: TODAY, member: true })))).toContain('Tus juegos de anoche');
+    });
+
+    it('quien solo mira la liga no las ve', () => {
+      expect(text(render(h(NowCard, { game: planned, today: TODAY, member: false })))).not.toContain('Práctica');
+      expect(text(render(h(NowCard, { game: late, today: TODAY, member: false })))).not.toContain('anoche');
+    });
+  });
+
+  it('la Liga el día de práctica sin crear: «Anotar juego 1» arriba (no en Próximas fechas) y la de anoche abajo', () => {
+    world.events = [ev('E2', '2026-10-06'), ev('E3', '2026-10-13', { rsvp: {} })];
+    world.entries = [entry('E2', 'p-ana', [195, null, null])];
+    const html = render(h(LeagueHome));
+    const out = text(html);
+    expect(out).toContain('Práctica de hoy');
+    expect(out.match(/Práctica de hoy/g)).toHaveLength(1);
+    expect(html).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Anotar juego 1/s);
+    expect(out.indexOf('Práctica de hoy')).toBeLessThan(out.indexOf('Anota tus juegos de anoche'));
+    expect(out).toContain('Cierra hoy');
+    expect(html).toContain('href="/l/L1/e/E2?anotar=1"');
+    expect(html).not.toContain('/e/horario');
+  });
+
   it('NextDates: una práctica del horario que todavía no se creó no lleva a ningún lado ni tiene «Voy»', () => {
     const item: CalendarItem = {
       key: 'L1:horario:2026-10-13',

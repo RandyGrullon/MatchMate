@@ -267,6 +267,84 @@ describe('la tarjeta de hoy (Pro)', () => {
   });
 });
 
+describe('la práctica del día sin crear y la de anoche', () => {
+  /** La práctica del horario que nadie abrió todavía (liveGames: `planned`). */
+  const planned = (p: Partial<LeagueFeed> = {}, extra: Partial<LiveGame> = {}): LiveGame => ({
+    feed: feed({ events: [], ...p }),
+    league,
+    event: { ...practice, id: `horario:${TODAY}`, name: '', playerCount: 0 },
+    info: { live: true, startLabel: '7:30 pm', startsSoon: false },
+    planned: true,
+    late: false,
+    today: TODAY,
+    ...extra,
+  });
+  const lateInfo = { live: true, startLabel: null, startsSoon: false };
+
+  it('desde la hora de la liga, todos ven «Anotar juego 1» aunque nadie la haya creado: un botón que la abre', () => {
+    world.lanes = [];
+    const html = render(h(TodayCard, { game: planned(), today: TODAY, pro: false }));
+    const out = text(html);
+    expect(out).toContain('En juego ahora');
+    expect(out).toContain('7:30 pm');
+    expect(out).toContain('Práctica de hoy');
+    expect(out).toContain('Juego 1 por anotar');
+    // Nada de la tabla de otro evento: todavía nadie anota, y la línea no lleva a ningún lado.
+    expect(out).toContain('Todavía nadie anota');
+    expect(out).not.toContain('A medias');
+    expect(html).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Anotar juego 1/s);
+    expect(html).not.toContain('/e/horario');
+  });
+
+  it('sin jugador: «Preparar mi jugador» como siempre (no hace falta abrirla)', () => {
+    const html = render(h(TodayCard, { game: planned({ playerId: null }), today: TODAY, pro: false }));
+    expect(text(html)).toContain('Preparar mi jugador');
+    expect(html).toContain('href="/l/L1/perfil"');
+  });
+
+  it('Pro, quien organiza: «Anotar juego 1» y «Planilla», los dos abren la práctica primero', () => {
+    world.pro = true;
+    const html = render(h(TodayCard, { game: planned({ isAdmin: true }), today: TODAY, pro: true }));
+    expect(text(html)).toContain('Anotar juego 1');
+    expect(html).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Planilla/s);
+    expect(html).not.toContain('/e/horario');
+  });
+
+  it('«En vivo» (Pro) no sale: todavía nadie anota', () => {
+    expect(text(render(h(LiveSectionPro, { game: planned(), today: TODAY })))).not.toContain('En vivo');
+  });
+
+  it('al otro día: «Anota tus juegos de anoche» y «Cierra hoy», con el juego que sigue', () => {
+    const yesterday = { ...practice, date: '2026-10-06' };
+    const g: LiveGame = { ...game(), event: yesterday, info: lateInfo, late: true, today: TODAY };
+    const html = render(h(TodayCard, { game: g, today: TODAY, pro: false }));
+    const out = text(html);
+    expect(out).toContain('Cierra hoy');
+    expect(out).toContain('Anota tus juegos de anoche');
+    expect(out).not.toContain('En juego');
+    expect(out).not.toContain('Pista 7');
+    expect(out).toContain('Seguir mi juego 3');
+    expect(html).toContain('href="/l/L1/e/E1?anotar=1"');
+  });
+
+  it('al otro día con todo anotado (o enviado): la tarjeta de anoche no ocupa Hoy', () => {
+    store.clear();
+    world.entries = [entry('p-ana', [187, 210, 199])];
+    const g: LiveGame = { ...game(), event: { ...practice, date: '2026-10-06' }, info: lateInfo, late: true, today: TODAY };
+    expect(text(render(h(TodayCard, { game: g, today: TODAY, pro: false })))).not.toContain('anoche');
+    world.entries = [entry('p-ana', [187, 210, null])];
+    const sent = { id: 's1', playerId: 'p-ana', eventId: 'E1', scores: [null, null, 199], status: 'pendiente' } as Submission;
+    expect(text(render(h(TodayCard, { game: { ...g, feed: feed({ mySubs: [sent] }) }, today: TODAY, pro: false })))).not.toContain('anoche');
+  });
+
+  it('la de anoche sin crear: también se abre al anotar', () => {
+    const g = planned({}, { event: { ...practice, id: 'horario:2026-10-06', name: '', date: '2026-10-06' }, info: lateInfo, late: true });
+    const html = render(h(TodayCard, { game: g, today: TODAY, pro: false }));
+    expect(text(html)).toContain('Anota tus juegos de anoche');
+    expect(html).toMatch(/<button type="button"[^>]*>(?:(?!<\/button>).)*Anotar juego 1/s);
+  });
+});
+
 describe('las fichas', () => {
   it('lo enviado todavía no cuenta: en gris', () => {
     const html = render(h(GameTiles, { cells: [{ kind: 'tabla', score: 187, counted: true }, { kind: 'enviado', score: 190 }, { kind: 'vacio' }] }));

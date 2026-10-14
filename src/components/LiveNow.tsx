@@ -26,7 +26,8 @@ const secondary =
 export function LiveNow({ live = [], mine = [] }: { live?: readonly Match[]; mine?: readonly Match[] }) {
   const { feeds, leagues } = useNotifications();
   const now = useNow();
-  const games = liveGames(feeds, leagues, now);
+  // Solo los eventos que se juegan ahora (no la práctica del horario sin abrir ni la de anoche: esas van en Hoy).
+  const games = liveGames(feeds, leagues, now).filter((g) => !g.planned && !g.late);
   const matches = liveMatches(live, mine, leagues, now.getTime());
   if (!games.length && !matches.length) return null;
   return (
