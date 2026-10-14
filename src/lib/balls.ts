@@ -4,8 +4,12 @@
  * promedio, el más alto, strikes y spares (de los juegos anotados por cuadros) y cuántos juegos lleva desde que se pulió.
  *
  * Los datos: src/lib/data/balls.ts (public.bowling_balls y public.ball_games, 20260930000100_bolas.sql).
+ *
+ * También el modelo del catálogo (src/lib/ballCatalog.ts) y la perforación (el layout Dual Angle, «45° × 4½″ × 30°»):
+ * `catalog` y `layout` de la bola (set_ball_details, docs/boliche-equipos-practicas-bolas.md §3).
  */
-import type { BallDesign } from './ballDesign';
+import type { CatalogBall } from './ballCatalog';
+import { cleanColor, defaultBallDesign, type BallDesign } from './ballDesign';
 import { countedFrames, frameRates } from './bowlingStats';
 import { isValidScore } from './stats';
 import type { GameFrames } from './types';
@@ -36,6 +40,27 @@ export interface Ball {
    * clave: lisa con su color (ballDesignOf).
    */
   design?: BallDesign | null;
+  /** La clave del modelo en el catálogo ('storm:phaze-ii'); null o sin la clave: no se eligió del catálogo. */
+  catalog?: string | null;
+  /** La perforación (layout); null o sin la clave: no la puso. */
+  layout?: BallLayout | null;
+}
+
+/**
+ * El layout de la perforación (Dual Angle): ángulo de perforación × distancia del pin al PAP × ángulo VAL, y el buffer
+ * del pin. Todo opcional (sin nada es null); los mismos límites de private.ball_layout_ok.
+ */
+export interface BallLayout {
+  /** Ángulo de perforación, en grados (0 a 90). */
+  drillingAngle?: number;
+  /** Del pin al PAP (el punto del eje de la mano), en pulgadas: 0 a 7, de a 1/8. */
+  pinToPap?: number;
+  /** Ángulo VAL, en grados (0 a 90). */
+  valAngle?: number;
+  /** Pin buffer, en pulgadas: 0 a 7, de a 1/8. */
+  pinBuffer?: number;
+  /** Hasta LAYOUT_NOTES_MAX letras («Dual Angle, mano derecha»). */
+  notes?: string;
 }
 
 /** Lo que se edita en la hoja de una bola (sin `id`: una nueva). */
@@ -49,6 +74,10 @@ export interface BallDraft {
   drilledOn: string | null;
   resurfacedOn: string | null;
   retired: boolean;
+  /** El modelo del catálogo (sin la clave: no se toca). Va aparte de la bola: set_ball_details. */
+  catalog?: string | null;
+  /** La perforación (sin la clave: no se toca). Va aparte de la bola: set_ball_details. */
+  layout?: BallLayout | null;
 }
 
 /** Dónde está el juego: un juego suelto, un evento de la liga o un envío («Subir mis juegos»). */
@@ -168,8 +197,9 @@ const PROBLEM_TEXT: Record<BallProblem, string> = {
 export const ballProblemText = (p: BallProblem) => PROBLEM_TEXT[p];
 
 /**
- * La bola como queda al guardar la hoja (lo mismo que manda saveBall: recortada y el color en minúsculas), para verla
- * enseguida en la lista. Sin diseño ni fechas de la base: llegan al volver a leer.
+ * La bola como queda al guardar la hoja (lo mismo que manda saveBall: recortada y el color en minúsculas, con el
+ * catálogo y la perforación que manda set_ball_details), para verla enseguida en la lista. Sin diseño ni fechas de la
+ * base: llegan al volver a leer.
  */
 export function ballFromDraft(id: string, d: BallDraft): Ball {
   return {
@@ -185,7 +215,163 @@ export function ballFromDraft(id: string, d: BallDraft): Ball {
     createdAt: null,
     updatedAt: null,
     design: null,
+    catalog: cleanCatalogId(d.catalog),
+    layout: cleanLayout(d.layout),
   };
+}
+
+// ---------- El modelo del catálogo (src/lib/ballCatalog.ts) ----------
+
+/** Lo más largo que guarda la base en `catalog` (la clave del modelo). */
+export const BALL_CATALOG_ID_MAX = 80;
+
+/** La clave del modelo como la guarda la base (recortada y en minúsculas); null si no hay. */
+export const cleanCatalogId = (id: string | null | undefined): string | null => (typeof id === 'string' && id.trim().toLowerCase()) || null;
+
+/** ¿Es una clave de modelo que acepta la base? ('marca:modelo': minúsculas, cifras, punto, guion y guion bajo). */
+export const isCatalogId = (id: string) => id.length <= BALL_CATALOG_ID_MAX && /^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$/.test(id);
+
+const CORE_LABEL = { simetrico: 'simétrico', asimetrico: 'asimétrico' } as const;
+
+/** «Reactiva perlada · 2023 · asimétrico»: lo que se dice de un modelo al buscarlo. */
+export function catalogLine(c: Pick<CatalogBall, 'cover' | 'year' | 'core'>): string {
+  return [coverLabel(c.cover), c.year, c.core && CORE_LABEL[c.core]].filter(Boolean).join(' · ');
+}
+
+/** «TX-16 Reactive · núcleo simétrico · 2014»: lo del catálogo que la bola no dice (su tarjeta y su hoja); null si nada. */
+export function catalogSpecs(c: Pick<CatalogBall, 'coverstock' | 'core' | 'year'>): string | null {
+  return [c.coverstock?.trim(), c.core && `núcleo ${CORE_LABEL[c.core]}`, c.year].filter(Boolean).join(' · ') || null;
+}
+
+/**
+ * Cómo se propone dibujar una bola de ese modelo (con sus colores): con uno, lisa de ese color (perlada o jaspeada según
+ * la cubierta, como defaultBallDesign); con dos o más, jaspeada con el segundo (y el tercero), que es como se ven casi
+ * todas. null si el modelo no trae colores.
+ */
+export function catalogLook(c: Pick<CatalogBall, 'colors' | 'cover'>): BallDesign | null {
+  const colors = (c.colors ?? []).map(cleanColor).filter((x): x is string => x != null);
+  if (!colors.length) return null;
+  const d = defaultBallDesign(colors[0], c.cover);
+  return colors.length < 2 ? d : { ...d, pattern: 'jaspeada', second: colors[1], third: colors[2] ?? null };
+}
+
+/**
+ * La hoja con un modelo del catálogo: su marca, su nombre, su cubierta y su clave (para `catalog`). En una nueva
+ * (`fresh`) también su color (el primero del modelo); en una que ya existe el color se queda (es el de su diseño).
+ */
+export function draftFromCatalog(d: BallDraft, c: CatalogBall, fresh: boolean): BallDraft {
+  const color = fresh ? cleanColor(c.colors?.[0]) : null;
+  return {
+    ...d,
+    name: c.name.trim().slice(0, BALL_NAME_MAX),
+    brand: c.brand.trim().slice(0, BALL_BRAND_MAX),
+    cover: c.cover,
+    catalog: c.id,
+    ...(color ? { color } : {}),
+  };
+}
+
+// ---------- La perforación (layout Dual Angle) ----------
+
+export const LAYOUT_ANGLE_MAX = 90;
+export const LAYOUT_INCHES_MAX = 7;
+export const LAYOUT_NOTES_MAX = 60;
+
+const LAYOUT_NUMBERS = ['drillingAngle', 'pinToPap', 'valAngle', 'pinBuffer'] as const;
+const LAYOUT_KEYS: readonly string[] = [...LAYOUT_NUMBERS, 'notes'];
+
+export type LayoutProblem = (typeof LAYOUT_NUMBERS)[number] | 'notes' | 'keys';
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+
+/**
+ * La perforación como se guarda: solo lo que tiene algo, siempre en el mismo orden, y las notas recortadas; null si no
+ * queda nada (también `{}`). Los números no se arreglan: los revisa layoutProblem.
+ */
+export function cleanLayout(x: unknown): BallLayout | null {
+  if (!isPlainObject(x)) return null;
+  const out: Record<string, unknown> = {};
+  for (const k of LAYOUT_NUMBERS) if (x[k] != null && x[k] !== '') out[k] = x[k];
+  if (typeof x.notes === 'string' && x.notes.trim()) out.notes = x.notes.trim();
+  return Object.keys(out).length ? (out as BallLayout) : null;
+}
+
+const isAngle = (v: unknown) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= LAYOUT_ANGLE_MAX;
+const isInches = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= LAYOUT_INCHES_MAX && Number.isInteger(v * 8);
+
+/**
+ * Lo que no deja guardar la perforación (null = todo bien; null o sin nada también): los ángulos, enteros de 0 a 90°;
+ * el pin al PAP y el buffer, de 0 a 7″ de a 1/8; las notas, hasta 60 letras; ninguna otra clave.
+ */
+export function layoutProblem(x: unknown): LayoutProblem | null {
+  if (x == null) return null;
+  if (!isPlainObject(x) || Object.keys(x).some((k) => !LAYOUT_KEYS.includes(k))) return 'keys';
+  if (x.drillingAngle !== undefined && !isAngle(x.drillingAngle)) return 'drillingAngle';
+  if (x.pinToPap !== undefined && !isInches(x.pinToPap)) return 'pinToPap';
+  if (x.valAngle !== undefined && !isAngle(x.valAngle)) return 'valAngle';
+  if (x.pinBuffer !== undefined && !isInches(x.pinBuffer)) return 'pinBuffer';
+  if (x.notes !== undefined && (typeof x.notes !== 'string' || [...x.notes.trim()].length > LAYOUT_NOTES_MAX)) return 'notes';
+  return null;
+}
+
+const LAYOUT_PROBLEM_TEXT: Record<LayoutProblem, string> = {
+  drillingAngle: `El ángulo de perforación va de 0 a ${LAYOUT_ANGLE_MAX}°.`,
+  pinToPap: `Del pin al PAP va de 0 a ${LAYOUT_INCHES_MAX}″.`,
+  valAngle: `El ángulo VAL va de 0 a ${LAYOUT_ANGLE_MAX}°.`,
+  pinBuffer: `El buffer va de 0 a ${LAYOUT_INCHES_MAX}″.`,
+  notes: `Las notas de la perforación pueden tener hasta ${LAYOUT_NOTES_MAX} letras.`,
+  keys: 'Revisa la perforación.',
+};
+
+export const layoutProblemText = (p: LayoutProblem) => LAYOUT_PROBLEM_TEXT[p];
+
+/** Los octavos de pulgada como se escriben («½»); el primero (0) va vacío. */
+export const INCH_EIGHTHS: readonly string[] = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
+
+/** Pulgadas con su fracción: 4.5 → «4½″», 0.25 → «¼″», 3 → «3″» (algo que no va de a 1/8, con coma: «4,3″»). */
+export function inchesText(v: number): string {
+  if (!Number.isInteger(v * 8)) return `${String(Math.round(v * 100) / 100).replace('.', ',')}″`;
+  const whole = Math.floor(v);
+  const eighths = v * 8 - whole * 8;
+  return `${whole || !eighths ? whole : ''}${INCH_EIGHTHS[eighths]}″`;
+}
+
+/** Las pulgadas en entero y octavos (para elegirlas): 4.5 → {whole: 4, eighths: 4}; null si no hay. */
+export function splitInches(v: number | null | undefined): { whole: number; eighths: number } | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  const whole = Math.floor(v);
+  return { whole, eighths: Math.min(7, Math.max(0, Math.round((v - whole) * 8))) };
+}
+
+/**
+ * Las pulgadas desde el entero y los octavos que se eligieron: sin entero ni octavos, nada (undefined); sin entero, solo
+ * la fracción (½″); con 7 (el máximo), justo 7.
+ */
+export function joinInches(whole: number | null, eighths: number): number | undefined {
+  if (whole == null && !eighths) return undefined;
+  const w = whole ?? 0;
+  return w >= LAYOUT_INCHES_MAX ? LAYOUT_INCHES_MAX : w + eighths / 8;
+}
+
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/**
+ * La perforación en una línea, como la escribe el taladrador: «45° × 4½″ × 30°» (lo que falta, «—») y el buffer al
+ * final («+ 2″ buffer»); solo el buffer: «Buffer 2″». null si no tiene números (las notas van aparte).
+ */
+export function layoutText(l: BallLayout | null | undefined): string | null {
+  if (!l) return null;
+  const [angle, pap, val, buffer] = [num(l.drillingAngle), num(l.pinToPap), num(l.valAngle), num(l.pinBuffer)];
+  if (angle == null && pap == null && val == null) return buffer == null ? null : `Buffer ${inchesText(buffer)}`;
+  const main = [angle == null ? '—' : `${angle}°`, pap == null ? '—' : inchesText(pap), val == null ? '—' : `${val}°`].join(' × ');
+  return buffer == null ? main : `${main} + ${inchesText(buffer)} buffer`;
+}
+
+/** ¿Cambió el modelo del catálogo o la perforación? (solo entonces se manda set_ball_details). */
+export function ballDetailsChanged(before: Pick<Ball, 'catalog' | 'layout'> | null | undefined, d: Pick<BallDraft, 'catalog' | 'layout'>): boolean {
+  if (cleanCatalogId(d.catalog) !== cleanCatalogId(before?.catalog)) return true;
+  return JSON.stringify(cleanLayout(d.layout)) !== JSON.stringify(cleanLayout(before?.layout));
 }
 
 /**

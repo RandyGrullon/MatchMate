@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { AlertTriangle, Archive, ChevronRight, MoreHorizontal, Palette, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react';
-import { RESURFACE_EVERY, ballDetail, ballStats, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
+import { catalogBall } from '../../lib/ballCatalog';
+import { RESURFACE_EVERY, ballDetail, ballStats, catalogSpecs, layoutText, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
 import { useMyBallGames, useMyBalls } from '../../lib/data/balls';
 import { formatDate } from '../../lib/format';
 import { EventMenu, type MenuItem } from '../event/EventHeader';
@@ -21,7 +22,8 @@ function Mini({ label, value }: { label: string; value: string | number }) {
 
 /**
  * Una bola en «Mis bolas» (rediseño «Calma y foco»): la bola dibujada (con su diseño; tocarla abre «Diseñar»), nombre y
- * detalle, y «•••» con Editar, Diseñar y Retirar (o Volver a usarla); sus números (juegos, promedio, el más alto y
+ * detalle (con lo que dice el catálogo de su modelo y su perforación, «Perforación 45° × 4½″ × 30°», si los tiene), y
+ * «•••» con Editar, Diseñar y Retirar (o Volver a usarla); sus números (juegos, promedio, el más alto y
  * strikes de los juegos anotados por cuadros) en una fila, y cuántos juegos lleva desde la última pulida con una barrita
  * (en ámbar cuando ya le toca) y «La pulí hoy» al lado. Una retirada trae «Volver a usarla» a la vista.
  */
@@ -42,6 +44,10 @@ export function BallCard({
   onRetire: () => void;
 }) {
   const b = s.ball;
+  const model = catalogBall(b.catalog);
+  const specs = model ? catalogSpecs(model) : null;
+  const layout = layoutText(b.layout);
+  const notes = b.layout?.notes?.trim();
   // `busy` dice que la bola espera; la ruedita va en lo que se tocó.
   const [pressed, setPressed] = useState<'resurface' | 'retire' | null>(null);
   const [menu, setMenu] = useState(false);
@@ -56,7 +62,7 @@ export function BallCard({
       key: 'editar',
       icon: Pencil,
       label: 'Editar',
-      hint: 'Nombre, peso, cubierta y fechas',
+      hint: 'Nombre, peso, cubierta, fechas y perforación',
       onClick: () => {
         setMenu(false);
         onEdit();
@@ -105,6 +111,15 @@ export function BallCard({
             {ballDetail(b)}
             {b.retired && ' · retirada'}
           </p>
+          {specs && <p className="mt-0.5 truncate text-[13px] text-muted">{specs}</p>}
+          {(layout || notes) && (
+            <p className="mt-1 line-clamp-2 text-[13px] text-fg-2">
+              <span className="text-muted">Perforación </span>
+              {layout && <span className="num font-semibold whitespace-nowrap">{layout}</span>}
+              {layout && notes && <span className="text-muted"> · </span>}
+              {notes}
+            </p>
+          )}
         </div>
         <button
           type="button"

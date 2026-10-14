@@ -6,12 +6,18 @@ import {
   ballDraftProblem,
   ballFromDraft,
   ballProblemText,
+  cleanCatalogId,
+  cleanLayout,
   composeBalls,
+  isCatalogId,
+  layoutProblem,
+  layoutProblemText,
   withBall,
   type Ball,
   type BallDraft,
   type BallGame,
   type BallGameKind,
+  type BallLayout,
   type GameBall,
 } from '../balls';
 import { ballDesignProblem, normalizeBallDesign, type BallDesign } from '../ballDesign';
@@ -35,7 +41,11 @@ import { currentOutbox, enqueue, getUserId, invalidate, onOutbox, queryClient, r
  * El diseño (cómo se ve dibujada, src/lib/ballDesign.ts) también necesita señal: se ve enseguida en la lista (cambio
  * optimista) y, si la base dice que no, vuelve a como estaba (set_ball_design, 20260930000300_diseno_bolas.sql).
  *
- * RPC: save_ball, retire_ball, resurface_ball, delete_ball, set_ball_design, set_game_balls, my_balls y my_ball_games.
+ * El modelo del catálogo y la perforación (layout) van igual, aparte de la bola: set_ball_details después de save_ball
+ * (docs/boliche-equipos-practicas-bolas.md §3).
+ *
+ * RPC: save_ball, retire_ball, resurface_ball, delete_ball, set_ball_design, set_ball_details, set_game_balls, my_balls y
+ * my_ball_games.
  */
 
 export interface MyBalls {
@@ -86,9 +96,12 @@ export function rememberBall(id: string | null | undefined, uid = getUserId()) {
 
 // ---------- Lecturas ----------
 
+/** Una bola como llega de my_balls: el modelo del catálogo (o null) y la perforación limpia (`{}` es null). */
+const fromServer = (b: Ball): Ball => ({ ...b, catalog: cleanCatalogId(b.catalog), layout: cleanLayout(b.layout) });
+
 export async function fetchMyBalls(): Promise<MyBalls> {
   const r = await rpc<Partial<MyBalls> | null>('my_balls');
-  return { balls: r?.balls ?? [], lastUsed: r?.lastUsed ?? null };
+  return { balls: (r?.balls ?? []).map(fromServer), lastUsed: r?.lastUsed ?? null };
 }
 
 /** Mis juegos con bola (del más nuevo al más viejo); con `ref`, solo los de ese juego suelto, evento o envío. */
@@ -219,6 +232,35 @@ export async function setBallDesign(id: string, design: BallDesign | null): Prom
   }
 }
 
+/** Lo que dice si la clave del modelo no es una del catálogo (no pasa desde la hoja: sale de la lista). */
+const BALL_CATALOG_INVALID = 'Ese modelo no está en el catálogo.';
+
+/**
+ * Pone el modelo del catálogo y la perforación de una bola (null quita cada uno; una perforación sin nada también).
+ * Necesita señal. Se ve enseguida en la lista y, si la base dice que no, vuelve a como estaba. La perforación va limpia
+ * (cleanLayout) y revisada (layoutProblem) antes de salir del teléfono.
+ */
+export async function setBallDetails(id: string, catalog: string | null, layout: BallLayout | null): Promise<void> {
+  const uid = getUserId();
+  if (!uid) throw noSession();
+  const cat = cleanCatalogId(catalog);
+  const next = cleanLayout(layout);
+  if (cat && !isCatalogId(cat)) throw new BackendError(BALL_CATALOG_INVALID, 'validation', 'invalido');
+  const problem = layoutProblem(next);
+  if (problem) throw new BackendError(layoutProblemText(problem), 'validation', 'invalido');
+  const before = queryClient.getQueryData<MyBalls>(ballKeys.list(uid))?.balls.find((b) => b.id === id);
+  patchBall(uid, id, (b) => ({ ...b, catalog: cat, layout: next }));
+  try {
+    await rpc('set_ball_details', { p_ball: id, p_catalog: cat, p_layout: next });
+  } catch (e) {
+    // Vuelve a como estaba (sin señal no se puede volver a leer).
+    if (before) patchBall(uid, id, (b) => ({ ...b, catalog: before.catalog ?? null, layout: before.layout ?? null }));
+    throw e;
+  } finally {
+    afterBalls();
+  }
+}
+
 /** Borra la bola y con cuál juego se usó (los juegos quedan). */
 export async function deleteBall(id: string): Promise<void> {
   if (!getUserId()) throw noSession();
@@ -302,7 +344,11 @@ export function requeueGameBalls(kind: BallGameKind, ref: string, games: number,
   if (Object.keys(kept).length) enqueueBalls(kind, ref, kept, group);
 }
 
-const LOCAL_PROBLEMS = (['name', 'brand', 'weight', 'color', 'dates'] as const).map(ballProblemText);
+const LOCAL_PROBLEMS = [
+  ...(['name', 'brand', 'weight', 'color', 'dates'] as const).map(ballProblemText),
+  ...(['drillingAngle', 'pinToPap', 'valAngle', 'pinBuffer', 'notes', 'keys'] as const).map(layoutProblemText),
+  BALL_CATALOG_INVALID,
+];
 
 /** Lo que dice la base cuando algo de la bola no vale (en la hoja de la bola). */
 const BALL_INVALID = 'Revisa el nombre, el peso y las fechas de la bola.';
@@ -328,6 +374,15 @@ export function ballErrorText(e: unknown): string {
 export function ballDesignErrorText(e: unknown): string {
   const text = ballErrorText(e);
   return text === BALL_INVALID ? BALL_DESIGN_INVALID : text;
+}
+
+/** Lo que dice la base cuando la perforación no vale. */
+const BALL_DETAILS_INVALID = 'Revisa la perforación: los ángulos van de 0 a 90° y el pin a PAP y el buffer, de 0 a 7″.';
+
+/** El error de guardar el catálogo y la perforación de una bola: lo mismo, pero lo que no vale es la perforación. */
+export function ballDetailsErrorText(e: unknown): string {
+  const text = ballErrorText(e);
+  return text === BALL_INVALID ? BALL_DETAILS_INVALID : text;
 }
 
 // ---------- Al confirmar ----------

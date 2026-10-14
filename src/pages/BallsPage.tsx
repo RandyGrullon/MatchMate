@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
-import { Plus, Trophy } from 'lucide-react';
+import { Plus, Search, Trophy } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { BALL_MAX, ballStats, bestBallText, resurfaceQuestion, type Ball } from '../lib/balls';
 import { ballErrorText, resurfaceBall, retireBall, useMyBallGames, useMyBalls } from '../lib/data/balls';
 import { formatDate, toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
+import { CatalogSearchSheet, hasBallCatalog } from '../components/balls/BallCatalog';
 import { BallDesigner } from '../components/balls/BallDesigner';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallSheet } from '../components/balls/BallSheet';
@@ -19,9 +20,10 @@ import { Button, Card, ListSkeleton, Loading, LoadError, SectionHeader } from '.
  * Mis bolas (/bolas), rediseño «Calma y foco»: «‹ Yo», el título y una línea; con cuál tiras mejor (una sola línea), cada
  * bola en su tarjeta (dibujada con su diseño, sus números en una fila y cuántos juegos lleva desde la última pulida, con
  * «La pulí hoy»; Editar, Diseñar y Retirar en su «•••»), un solo botón «Agregar bola» y las retiradas aparte. La bola de
- * cada juego se elige al anotarlo (juegos sueltos, «Mis juegos» y «Subir mis juegos» en la liga). `?bola=<id>` abre esa;
- * `?nueva=1`, una nueva; `?disenar=<id>`, el creador de esa. Solo la cuenta ve sus bolas. Sin cuenta, invita a entrar y
- * vuelve aquí.
+ * cada juego se elige al anotarlo (juegos sueltos, «Mis juegos» y «Subir mis juegos» en la liga). Arriba, «Buscar bolas»
+ * en el catálogo de marcas y modelos: «Agregar a mi arsenal» abre la hoja de una nueva ya llena. `?bola=<id>` abre esa;
+ * `?nueva=1`, una nueva (con `&catalogo=<modelo>`, ya llena con ese modelo); `?disenar=<id>`, el creador de esa;
+ * `?buscar=<texto>`, el buscador. Solo la cuenta ve sus bolas. Sin cuenta, invita a entrar y vuelve aquí.
  */
 export default function BallsPage() {
   const auth = useAuth();
@@ -74,27 +76,34 @@ function Balls() {
   const openId = params.get('bola');
   const isNew = params.get('nueva') === '1';
   const designId = params.get('disenar');
+  const catalogId = params.get('catalogo');
+  const searching = params.has('buscar');
   const editing = openId ? (balls.find((b) => b.id === openId) ?? null) : null;
   const designing = designId ? (balls.find((b) => b.id === designId) ?? null) : null;
   const full = balls.length >= BALL_MAX;
 
-  /** Abre la hoja de una bola (`as` 'bola'), una nueva ('nueva') o el creador de una ('disenar'); null cierra. */
+  /**
+   * Abre la hoja de una bola (`as` 'bola'), una nueva ('nueva'; con `catalog`, ya llena con ese modelo) o el creador de
+   * una ('disenar'); null cierra (también el buscador).
+   */
   const setOpen = useCallback(
-    (id: string | 'nueva' | null, as: 'bola' | 'disenar' = 'bola') =>
+    (id: string | 'nueva' | null, as: 'bola' | 'disenar' = 'bola', catalog?: string) =>
       setParams(
         (p) => {
           const next = new URLSearchParams(p);
-          next.delete('bola');
-          next.delete('nueva');
-          next.delete('disenar');
+          for (const k of ['bola', 'nueva', 'disenar', 'catalogo', 'buscar']) next.delete(k);
           if (id === 'nueva') next.set('nueva', '1');
           else if (id) next.set(as, id);
+          if (id === 'nueva' && catalog) next.set('catalogo', catalog);
           return next;
         },
         { replace: true },
       ),
     [setParams],
   );
+
+  /** Abre el buscador del catálogo. */
+  const openSearch = () => setParams((p) => new URLSearchParams([...p, ['buscar', '']]), { replace: true });
 
   async function act(id: string, what: () => Promise<void>, done: string) {
     if (busy) return;
@@ -132,6 +141,20 @@ function Balls() {
     }
     await act(id, () => retireBall(id, on), on ? 'Bola retirada' : 'Bola de vuelta');
   }
+
+  // Buscar en el catálogo (sin catálogo no sale).
+  const search = hasBallCatalog() && (
+    <button
+      type="button"
+      onClick={openSearch}
+      aria-haspopup="dialog"
+      className="card-shadow flex h-[52px] w-full items-center gap-3 rounded-2xl bg-surface pr-4 pl-4 text-left transition active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <Search aria-hidden="true" className="size-5 shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 truncate text-base text-fg">Buscar bolas</span>
+      <span className="shrink-0 text-[13px] text-faint">Marca o modelo</span>
+    </button>
+  );
 
   // El único botón principal de la pantalla.
   const add = (
@@ -203,18 +226,30 @@ function Balls() {
       <div className="flex flex-col px-2">
         <ScreenTop label="Yo" fallback="/perfil" />
         <ScreenTitle title="Mis bolas" hint="Solo tú ves tus bolas" />
-        <div className="mt-5 flex flex-col gap-3.5">{content}</div>
+        <div className="mt-5 flex flex-col gap-3.5">
+          {search}
+          {content}
+        </div>
       </div>
       {designing ? (
         <BallDesigner key={designing.id} ball={designing} onClose={() => setOpen(null)} />
+      ) : isNew || editing ? (
+        <BallSheet
+          key={editing?.id ?? `nueva:${catalogId ?? ''}`}
+          ball={editing}
+          today={today}
+          catalog={editing ? null : catalogId}
+          onClose={() => setOpen(null)}
+          onDesign={editing ? () => setOpen(editing.id, 'disenar') : undefined}
+        />
       ) : (
-        (isNew || editing) && (
-          <BallSheet
-            key={editing?.id ?? 'nueva'}
-            ball={editing}
-            today={today}
+        searching && (
+          <CatalogSearchSheet
+            initialQuery={params.get('buscar') ?? ''}
+            full={full}
+            onAdd={(id) => setOpen('nueva', 'bola', id)}
+            onManual={() => setOpen('nueva')}
             onClose={() => setOpen(null)}
-            onDesign={editing ? () => setOpen(editing.id, 'disenar') : undefined}
           />
         )
       )}

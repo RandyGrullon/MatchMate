@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { BALL_CATALOG, type CatalogBall } from './ballCatalog';
+import { defaultBallDesign } from './ballDesign';
 import {
   BALL_COLORS,
   BALL_MIN_GAMES,
   RESURFACE_EVERY,
   ballDetail,
+  ballDetailsChanged,
   ballDraftProblem,
   ballForGame,
   ballFromDraft,
@@ -15,6 +18,10 @@ import {
   ballsOfScored,
   bestBall,
   bestBallText,
+  catalogLine,
+  catalogLook,
+  catalogSpecs,
+  cleanLayout,
   colorLabel,
   commonBall,
   compactBalls,
@@ -22,12 +29,18 @@ import {
   coverLabel,
   defaultBall,
   draftBallsAfter,
+  draftFromCatalog,
   eventBallUpdate,
   eventGameBall,
   gameBallTitle,
+  inchesText,
+  joinInches,
   keepBalls,
   knownBalls,
   lastBall,
+  layoutProblem,
+  layoutProblemText,
+  layoutText,
   ownPickShown,
   pctText,
   pickableBalls,
@@ -35,6 +48,7 @@ import {
   resurfaceText,
   sameBall,
   seenPick,
+  splitInches,
   submissionBalls,
   withBall,
   type Ball,
@@ -123,6 +137,11 @@ describe('la hoja de una bola', () => {
 
   it('la que queda al guardar (para verla enseguida en la lista): recortada, el color en minúsculas, sin diseño', () => {
     const draft = { id: null, name: ' Phaze II ', brand: ' Storm ', weight: 15, color: ' #1D4ED8 ', cover: 'solida' as const, drilledOn: '', resurfacedOn: '2026-09-01', retired: false };
+    // Con el modelo del catálogo y la perforación: limpios (lo que manda set_ball_details).
+    expect(ballFromDraft('n1', { ...draft, catalog: ' storm:phaze-ii ', layout: { valAngle: 30, drillingAngle: 45, notes: ' Dual ' } })).toMatchObject({
+      catalog: 'storm:phaze-ii',
+      layout: { drillingAngle: 45, valAngle: 30, notes: 'Dual' },
+    });
     expect(ballFromDraft('n1', draft)).toEqual({
       id: 'n1',
       name: 'Phaze II',
@@ -136,6 +155,8 @@ describe('la hoja de una bola', () => {
       createdAt: null,
       updatedAt: null,
       design: null,
+      catalog: null,
+      layout: null,
     });
   });
 
@@ -434,5 +455,136 @@ describe('los números de cada bola', () => {
     // Empate en promedio: la de más juegos, sin «más que».
     const tie = ballStats([ball('a', { name: 'A' }), ball('b', { name: 'B' })], [...[200, 200, 200].map((s) => game('a', s)), ...[200, 200, 200, 200].map((s) => game('b', s))]);
     expect(bestBallText(tie)).toBe('Tiras mejor con la B: 200 de promedio en 4 juegos.');
+  });
+});
+
+describe('la perforación (layout Dual Angle)', () => {
+  it('en una línea, como la escribe el taladrador: «45° × 4½″ × 30°» y el buffer al final', () => {
+    expect(layoutText({ drillingAngle: 45, pinToPap: 4.5, valAngle: 30 })).toBe('45° × 4½″ × 30°');
+    expect(layoutText({ drillingAngle: 45, pinToPap: 4.5, valAngle: 30, pinBuffer: 2 })).toBe('45° × 4½″ × 30° + 2″ buffer');
+    expect(layoutText({ drillingAngle: 70, pinToPap: 3.375, valAngle: 45, pinBuffer: 1.5, notes: 'Dual Angle' })).toBe('70° × 3⅜″ × 45° + 1½″ buffer');
+    // Lo que falta, «—»; solo el buffer; sin números (solo notas o nada), null.
+    expect(layoutText({ drillingAngle: 60 })).toBe('60° × — × —');
+    expect(layoutText({ pinToPap: 5 })).toBe('— × 5″ × —');
+    expect(layoutText({ pinBuffer: 0.25 })).toBe('Buffer ¼″');
+    expect(layoutText({ notes: 'Mano derecha' })).toBeNull();
+    expect(layoutText({})).toBeNull();
+    expect(layoutText(null)).toBeNull();
+  });
+
+  it('las pulgadas con su fracción (de a ⅛), y en enteros y octavos para elegirlas', () => {
+    expect([0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 4.5, 6.875, 7].map(inchesText)).toEqual([
+      '0″',
+      '⅛″',
+      '¼″',
+      '⅜″',
+      '½″',
+      '⅝″',
+      '¾″',
+      '⅞″',
+      '1″',
+      '4½″',
+      '6⅞″',
+      '7″',
+    ]);
+    // Algo que no va de a 1/8 (no debería llegar): con coma.
+    expect(inchesText(4.3)).toBe('4,3″');
+    expect(splitInches(4.5)).toEqual({ whole: 4, eighths: 4 });
+    expect(splitInches(0.125)).toEqual({ whole: 0, eighths: 1 });
+    expect(splitInches(undefined)).toBeNull();
+    expect(joinInches(4, 4)).toBe(4.5);
+    expect(joinInches(null, 2)).toBe(0.25);
+    expect(joinInches(null, 0)).toBeUndefined();
+    expect(joinInches(0, 0)).toBe(0);
+    // Con 7 (el máximo), justo 7.
+    expect(joinInches(7, 3)).toBe(7);
+  });
+
+  it('lo que no deja guardar: los mismos límites de la base', () => {
+    const ok = { drillingAngle: 45, pinToPap: 4.5, valAngle: 30, pinBuffer: 2, notes: 'Dual Angle, mano derecha' };
+    expect(layoutProblem(ok)).toBeNull();
+    expect(layoutProblem({ drillingAngle: 0, pinToPap: 0, valAngle: 90, pinBuffer: 7 })).toBeNull();
+    expect(layoutProblem(null)).toBeNull();
+    expect(layoutProblem({})).toBeNull();
+    expect(layoutProblem({ ...ok, drillingAngle: 91 })).toBe('drillingAngle');
+    expect(layoutProblem({ ...ok, drillingAngle: -1 })).toBe('drillingAngle');
+    expect(layoutProblem({ ...ok, drillingAngle: 45.5 })).toBe('drillingAngle');
+    expect(layoutProblem({ ...ok, pinToPap: 4.3 })).toBe('pinToPap');
+    expect(layoutProblem({ ...ok, pinToPap: 7.125 })).toBe('pinToPap');
+    expect(layoutProblem({ ...ok, pinToPap: '4' })).toBe('pinToPap');
+    expect(layoutProblem({ ...ok, valAngle: Number.NaN })).toBe('valAngle');
+    expect(layoutProblem({ ...ok, pinBuffer: 8 })).toBe('pinBuffer');
+    expect(layoutProblem({ ...ok, notes: 'x'.repeat(61) })).toBe('notes');
+    expect(layoutProblem({ ...ok, notes: 'x'.repeat(60) })).toBeNull();
+    expect(layoutProblem({ ...ok, hand: 'derecha' })).toBe('keys');
+    expect(layoutProblem([45, 4.5, 30])).toBe('keys');
+    expect(layoutProblemText('pinToPap')).toBe('Del pin al PAP va de 0 a 7″.');
+  });
+
+  it('como se guarda: solo lo que tiene algo, en orden y las notas recortadas; sin nada, null', () => {
+    expect(cleanLayout({ notes: '  Dual  ', valAngle: 30, drillingAngle: 45 })).toEqual({ drillingAngle: 45, valAngle: 30, notes: 'Dual' });
+    expect(JSON.stringify(cleanLayout({ valAngle: 30, drillingAngle: 45 }))).toBe('{"drillingAngle":45,"valAngle":30}');
+    expect(cleanLayout({ drillingAngle: undefined, pinToPap: null, notes: '   ' })).toBeNull();
+    expect(cleanLayout({})).toBeNull();
+    expect(cleanLayout(null)).toBeNull();
+    expect(cleanLayout('45 x 4.5 x 30')).toBeNull();
+  });
+
+  it('set_ball_details solo sale si cambió el modelo o la perforación', () => {
+    const before = { catalog: 'storm:phaze-ii', layout: { drillingAngle: 45, valAngle: 30 } };
+    expect(ballDetailsChanged(before, { catalog: 'storm:phaze-ii', layout: { valAngle: 30, drillingAngle: 45 } })).toBe(false);
+    expect(ballDetailsChanged(before, { catalog: null, layout: before.layout })).toBe(true);
+    expect(ballDetailsChanged(before, { catalog: 'storm:phaze-ii', layout: { drillingAngle: 50, valAngle: 30 } })).toBe(true);
+    expect(ballDetailsChanged(null, { catalog: null, layout: null })).toBe(false);
+    expect(ballDetailsChanged(null, { catalog: '', layout: { notes: ' ' } })).toBe(false);
+    expect(ballDetailsChanged(null, { catalog: null, layout: { pinToPap: 4 } })).toBe(true);
+  });
+});
+
+describe('el modelo del catálogo', () => {
+  const model: CatalogBall = {
+    id: 'marca:modelo',
+    brand: 'Marca',
+    name: 'Modelo',
+    cover: 'perlada',
+    coverstock: 'R2S Pearl',
+    core: 'asimetrico',
+    year: 2023,
+    colors: ['#7C3AED', '#facc15'],
+  };
+  const empty = { id: null, name: '', brand: '', weight: 14, color: '#1d4ed8', cover: null, drilledOn: null, resurfacedOn: null, retired: false, catalog: null, layout: null };
+
+  it('lo que dice al buscarlo y en su tarjeta', () => {
+    expect(catalogLine(model)).toBe('Reactiva perlada · 2023 · asimétrico');
+    expect(catalogLine({ cover: 'solida' })).toBe('Reactiva sólida');
+    expect(catalogSpecs(model)).toBe('R2S Pearl · núcleo asimétrico · 2023');
+    expect(catalogSpecs({ core: 'simetrico' })).toBe('núcleo simétrico');
+    expect(catalogSpecs({})).toBeNull();
+  });
+
+  it('sus colores, como diseño propuesto: jaspeada con el segundo; con uno, como sin diseño; sin colores, null', () => {
+    expect(catalogLook(model)).toEqual({ ...defaultBallDesign('#7c3aed', 'perlada'), pattern: 'jaspeada', second: '#facc15', third: null });
+    expect(catalogLook({ ...model, colors: ['#111111'] })).toEqual(defaultBallDesign('#111111', 'perlada'));
+    expect(catalogLook({ ...model, colors: ['rojo'] })).toBeNull();
+    expect(catalogLook({ cover: 'solida' })).toBeNull();
+  });
+
+  it('llena la hoja: marca, nombre, cubierta y su clave; en una nueva también el color', () => {
+    expect(draftFromCatalog(empty, model, true)).toEqual({ ...empty, name: 'Modelo', brand: 'Marca', cover: 'perlada', catalog: 'marca:modelo', color: '#7c3aed' });
+    // Una que ya existe se queda con su color (el de su diseño); el peso y lo demás, igual.
+    expect(draftFromCatalog({ ...empty, id: 'a', name: 'La mía' }, model, false)).toEqual({ ...empty, id: 'a', name: 'Modelo', brand: 'Marca', cover: 'perlada', catalog: 'marca:modelo' });
+    // Sin colores, el que tenía.
+    expect(draftFromCatalog(empty, { ...model, colors: undefined }, true).color).toBe('#1d4ed8');
+  });
+
+  it('cada modelo del catálogo de la app llena la hoja (clave única, marca y nombre)', () => {
+    expect(new Set(BALL_CATALOG.map((c) => c.id)).size).toBe(BALL_CATALOG.length);
+    for (const c of BALL_CATALOG) {
+      expect(catalogLine(c)).toMatch(/^(Reactiva|Uretano|Poliéster)/);
+      const d = draftFromCatalog(empty, c, true);
+      expect(d.name.trim()).not.toBe('');
+      expect(d.brand.trim()).not.toBe('');
+      expect(d.catalog).toBe(c.id);
+    }
   });
 });
