@@ -1,0 +1,19 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // Como Metro en el teléfono: un archivo compartido con hermano `.native.ts` usa ese (src/lib/backend/index.native.ts…).
+    "moduleSuffixes": [".native", ""],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"],
+      // La lógica compartida con la web (../src) y, desde ella, el código de la app (lo mismo que metro.config.js).
+      "@mm/*": ["../src/*"],
+      "@movil/*": ["./src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "exclude": ["node_modules"]
+}

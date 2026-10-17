@@ -14,6 +14,8 @@ const LEAGUES_MAX = 40;
 
 /** Quita la animación de apertura (index.html) cuando la app ya tiene la sesión, dejándola verse al menos 1,3 s. */
 export function hideSplash() {
+  // En la app del teléfono no hay `document`: su splash lo quita movil/src/app/_layout.tsx.
+  if (typeof document === 'undefined') return;
   const el = document.getElementById('splash');
   if (!el) return;
   const wait = Math.max(0, 1300 - performance.now());

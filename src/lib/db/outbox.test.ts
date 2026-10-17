@@ -308,6 +308,40 @@ describe('cola sin conexión', () => {
     expect(third.getSnapshot().pendingCount).toBe(0);
   });
 
+  it('en el teléfono (storage local): lo anotado sin señal queda en localStorage y sale al volver a abrir la app', async () => {
+    // El localStorage de la app (movil/src/platform/storage.ts va a AsyncStorage): una clave por operación.
+    const data = new Map<string, string>();
+    const phone: Storage = {
+      get length() {
+        return data.size;
+      },
+      key: (i) => [...data.keys()][i] ?? null,
+      getItem: (k) => data.get(k) ?? null,
+      setItem: (k, v) => void data.set(k, String(v)),
+      removeItem: (k) => void data.delete(k),
+      clear: () => data.clear(),
+    };
+    vi.stubGlobal('localStorage', phone);
+    be.isOnline = false;
+    const user = newUser();
+    const first = make(be, user, { storage: 'local' });
+    const op = first.enqueue('submit_games', { score: 210 }, { group: 'L' });
+    await first.flush();
+    first.dispose();
+    resetMemoryOutbox(); // se cerró la app: lo de memoria se perdió
+    expect([...data.keys()]).toEqual([`mm:cola:${op.opId}`]);
+
+    const again = make(be, user, { storage: 'local' });
+    await again.ready;
+    expect(again.listPending()[0]).toMatchObject({ opId: op.opId, fn: 'submit_games', args: { score: 210, p_op_id: op.opId } });
+    expect((await pendingByUser())[user]).toEqual({ pending: 1, failed: 0 });
+    be.isOnline = true;
+    await again.flush();
+    expect(be.calls.map((c) => c.args.p_op_id)).toEqual([op.opId]);
+    await again.idle();
+    expect(data.size).toBe(0);
+  });
+
   it('sin IndexedDB queda en memoria: aguanta cerrar sesión y volver a entrar en la misma pestaña', async () => {
     be.isOnline = false;
     const user = newUser();

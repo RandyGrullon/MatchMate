@@ -1,3 +1,4 @@
+import { env } from './env';
 /**
  * Clave pública VAPID de las notificaciones push (es pública: va en la app), de VITE_VAPID_PUBLIC_KEY.
  *
@@ -7,7 +8,7 @@
  * Sin la clave (desarrollo, demo local) no hay push: la app sigue avisando mientras está abierta.
  */
 export function vapidPublicKey(): string {
-  return String(import.meta.env.VITE_VAPID_PUBLIC_KEY ?? '').trim();
+  return String(env().VITE_VAPID_PUBLIC_KEY ?? '').trim();
 }
 
 /** Hay clave (65 bytes en base64url = 87 letras): se puede suscribir el teléfono a los recordatorios. */

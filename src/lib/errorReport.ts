@@ -17,6 +17,7 @@
  */
 import { getBackend } from './backend';
 import { isBlockedError, isFetchFailure } from './backend/errors';
+import { env } from './env';
 
 export type ClientErrorKind = 'error' | 'promise' | 'render' | 'chunk';
 
@@ -163,14 +164,14 @@ export function reportKey(r: Pick<ClientErrorReport, 'kind' | 'message' | 'compo
  * (`index-<hash>`, cambia con cada versión). En desarrollo, 'dev'.
  */
 export function appVersion(): string | null {
-  const sha = String(import.meta.env.VITE_VERCEL_GIT_COMMIT_SHA ?? '').trim();
+  const sha = String(env().VITE_VERCEL_GIT_COMMIT_SHA ?? '').trim();
   if (sha) return sha.slice(0, 12);
   if (typeof document !== 'undefined') {
     const src = document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')?.src ?? '';
     const file = /\/assets\/([\w.-]+?)\.js/.exec(src)?.[1];
     if (file) return file.slice(0, ERROR_LIMITS.appVersion);
   }
-  return import.meta.env.DEV ? 'dev' : null;
+  return env().DEV ? 'dev' : null;
 }
 
 function currentEnv(): ReportEnv {

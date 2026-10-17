@@ -1,6 +1,6 @@
 import { scoreGame, validRolls } from '../../lib/bowling';
 import type { GameFrames } from '../../lib/types';
-import type { EditorWork, ScoreMode, ScoreValue } from './FrameEditor';
+import type { EditorWork, ScoreMode, ScoreValue } from './editorLogic';
 
 /**
  * Memoria del juego que se está anotando: cada cambio de la hoja queda en el teléfono hasta «Guardar», así cerrarla

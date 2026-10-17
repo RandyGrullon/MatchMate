@@ -159,13 +159,15 @@ function publishLive(lid: string, playerId: string, eventId: string, values: str
 }
 
 // Al guardar el teléfono o cambiar de app se manda ya lo pendiente (en segundo plano los timers se pausan).
-function flushLive() {
+export function flushLive() {
   for (const p of [...pendingLive.values()]) {
     window.clearTimeout(p.timer);
     p.send();
   }
 }
-if (typeof window !== 'undefined') {
+// En la app del teléfono no hay `document` (window sí, y es el objeto global): allí manda lo pendiente
+// movil/src/platform/network.ts cuando la app se va a segundo plano.
+if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && flushLive());
   window.addEventListener('pagehide', flushLive);
 }

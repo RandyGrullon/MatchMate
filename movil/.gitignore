@@ -1,0 +1,21 @@
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Nativo: lo genera Expo (Continuous Native Generation) desde app.json; nunca se edita a mano.
+ios/
+android/
+
+# Firmas y llaves
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.keystore
+credentials.json
+
+node_modules/
+.env*.local

@@ -110,7 +110,8 @@ export function applySelect(client: SupabaseClient, q: SelectQuery): FilterBuild
   return b;
 }
 
-const origin = () => (typeof window !== 'undefined' ? window.location.origin : '');
+// En la app del teléfono no hay `window.location`: sin origen, Supabase vuelve al «Site URL» (la web).
+const origin = () => (typeof window !== 'undefined' && window.location ? window.location.origin : '');
 
 /**
  * A dónde vuelve el link de Google o del correo: el origen, más la ruta de la app a la que iba (si es una ruta

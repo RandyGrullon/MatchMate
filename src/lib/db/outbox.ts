@@ -86,8 +86,11 @@ export interface OutboxOptions {
   onEnqueue?: (item: OutboxItem) => void;
   /** Cuando el servidor confirma o rechaza (p. ej. invalidar etiquetas de la caché). También llega de otras pestañas. */
   onSettled?: (item: OutboxItem, outcome: SettleOutcome) => void;
-  /** 'idb' (por defecto si existe) o 'memory' (se pierde al recargar). */
-  storage?: 'idb' | 'memory';
+  /**
+   * 'idb' (por defecto si existe), 'memory' (se pierde al recargar) o 'local': cada operación en `localStorage`
+   * (la app del teléfono, movil/: allí `localStorage` va a AsyncStorage y queda al cerrar la app).
+   */
+  storage?: OutboxStorage;
   /** Cargar y enviar al crear (por defecto sí). */
   autoStart?: boolean;
   /** Escuchar online / focus / visibilitychange (por defecto sí, si hay ventana). */
@@ -225,6 +228,43 @@ const memoryStore: Store = {
   close: () => {},
 };
 
+/** Prefijo de cada operación guardada en `localStorage` (storage 'local'). */
+export const OUTBOX_LOCAL_PREFIX = 'mm:cola:';
+
+function readLocal(ls: Storage, key: string): OutboxItem | null {
+  try {
+    const raw = ls.getItem(key);
+    return raw ? fromStored(JSON.parse(raw) as StoredItem) : null;
+  } catch {
+    return null;
+  }
+}
+
+function localKeys(ls: Storage): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < ls.length; i++) {
+    const k = ls.key(i);
+    if (k?.startsWith(OUTBOX_LOCAL_PREFIX)) out.push(k);
+  }
+  return out;
+}
+
+/** En `localStorage`: una clave por operación (en el teléfono queda guardado aunque se cierre la app sin señal). */
+function localStore(ls: Storage): Store {
+  return {
+    all: async (userId) => localKeys(ls).map((k) => readLocal(ls, k)).filter((i): i is OutboxItem => !!i && i.userId === userId),
+    async replace(remove, item) {
+      for (const id of remove) ls.removeItem(OUTBOX_LOCAL_PREFIX + id);
+      if (item) ls.setItem(OUTBOX_LOCAL_PREFIX + item.opId, JSON.stringify(toStored(item)));
+    },
+    async patch(opId, patch) {
+      const old = readLocal(ls, OUTBOX_LOCAL_PREFIX + opId);
+      if (old) ls.setItem(OUTBOX_LOCAL_PREFIX + opId, JSON.stringify(toStored(merge(old, patch))));
+    },
+    close: () => {},
+  };
+}
+
 /** Solo para pruebas: vacía la cola en memoria. */
 export function resetMemoryOutbox() {
   memoryOps.clear();
@@ -234,6 +274,13 @@ export function resetMemoryOutbox() {
 export async function pendingByUser(): Promise<Record<string, { pending: number; failed: number }>> {
   const out: Record<string, { pending: number; failed: number }> = {};
   let items: OutboxItem[] = [...memoryOps.values()];
+  if (typeof localStorage !== 'undefined') {
+    try {
+      items = items.concat(localKeys(localStorage).map((k) => readLocal(localStorage, k)).filter((i): i is OutboxItem => !!i));
+    } catch {
+      // almacenamiento no disponible
+    }
+  }
   if (typeof indexedDB !== 'undefined') {
     try {
       const db = await openOutboxDB();
@@ -287,6 +334,9 @@ interface Waiter {
 
 const bySeq = (a: OutboxItem, b: OutboxItem) => a.seq - b.seq || (a.opId < b.opId ? -1 : a.opId > b.opId ? 1 : 0);
 
+/** Dónde se guarda la cola (ver OutboxOptions.storage). */
+export type OutboxStorage = 'idb' | 'memory' | 'local';
+
 export function createOutbox(options: OutboxOptions): Outbox {
   const { backend, userId } = options;
   if (!userId) throw new Error('La cola necesita la cuenta (userId).');
@@ -297,13 +347,16 @@ export function createOutbox(options: OutboxOptions): Outbox {
   const appVersion = options.appVersion ?? null;
   const lockName = `mm-outbox:${userId}`;
 
-  const useIdb = (options.storage ?? (typeof indexedDB === 'undefined' ? 'memory' : 'idb')) === 'idb';
-  const storePromise: Promise<Store> = useIdb
-    ? openOutboxDB().then(idbStore, (e) => {
-        console.warn('Sin IndexedDB: la cola queda solo en memoria', e);
-        return memoryStore;
-      })
-    : Promise.resolve(memoryStore);
+  const kind = options.storage ?? (typeof indexedDB === 'undefined' ? 'memory' : 'idb');
+  const storePromise: Promise<Store> =
+    kind === 'idb'
+      ? openOutboxDB().then(idbStore, (e) => {
+          console.warn('Sin IndexedDB: la cola queda solo en memoria', e);
+          return memoryStore;
+        })
+      : kind === 'local' && typeof localStorage !== 'undefined'
+        ? Promise.resolve(localStore(localStorage))
+        : Promise.resolve(memoryStore);
 
   /** Copia en memoria de lo guardado (de esta cuenta). */
   let items = new Map<string, OutboxItem>();

@@ -227,12 +227,14 @@ export function useMemoryTick(): number {
     window.addEventListener('focus', bump);
     window.addEventListener('storage', bump);
     window.addEventListener('mm:borrador', bump);
-    document.addEventListener('visibilitychange', onVisible);
+    // La app del teléfono no tiene `document` (la vuelta a la app la avisa su `focus`, movil/src/platform/events.ts).
+    const hasDoc = typeof document !== 'undefined';
+    if (hasDoc) document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('focus', bump);
       window.removeEventListener('storage', bump);
       window.removeEventListener('mm:borrador', bump);
-      document.removeEventListener('visibilitychange', onVisible);
+      if (hasDoc) document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
   return tick;

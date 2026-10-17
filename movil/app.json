@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "MatchMate",
+    "slug": "matchmate",
+    "description": "Ligas y torneos de boliche, pádel, tenis y 8 deportes más: la tabla, los resultados en vivo y tus números.",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "matchmate",
+    "userInterfaceStyle": "automatic",
+    "primaryColor": "#4338ca",
+    "ios": {
+      "bundleIdentifier": "com.grullonb.matchmate",
+      "supportsTablet": false,
+      "icon": "./assets/images/icon.png",
+      "associatedDomains": ["applinks:matchmate.grullonb.com"],
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "MatchMate usa la cámara para la foto del marcador y para leer el QR de una liga.",
+        "NSPhotoLibraryUsageDescription": "MatchMate usa tus fotos para la foto del marcador, tu foto de perfil y tus publicaciones."
+      }
+    },
+    "android": {
+      "package": "com.grullonb.matchmate",
+      "adaptiveIcon": {
+        "backgroundColor": "#4338ca",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "matchmate.grullonb.com" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "com.google.android.gms.permission.AD_ID"
+      ]
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "name": "MatchMate",
+      "shortName": "MatchMate",
+      "themeColor": "#0d0f15",
+      "backgroundColor": "#0d0f15"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f4f5f8",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 120,
+          "dark": {
+            "backgroundColor": "#0d0f15",
+            "image": "./assets/images/splash-icon.png"
+          }
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "expo-sharing",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
