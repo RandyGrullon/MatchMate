@@ -20,7 +20,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "MatchMate usa la cámara para la foto del marcador y para leer el QR de una liga.",
         "NSPhotoLibraryUsageDescription": "MatchMate usa tus fotos para la foto del marcador, tu foto de perfil y tus publicaciones."
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.grullonb.matchmate",
@@ -33,7 +34,18 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "matchmate.grullonb.com" }],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/unirse/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/l/"
+            }
+          ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
@@ -73,7 +85,16 @@
         }
       ],
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#4338ca",
+          "defaultChannel": "avisos"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

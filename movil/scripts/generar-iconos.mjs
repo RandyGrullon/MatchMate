@@ -3,7 +3,9 @@
 // - icon.png 1024 × 1024 cuadrado y sin transparencia (la App Store no los acepta redondeados ni transparentes);
 // - android-icon-foreground.png: solo el dibujo, dentro de la zona segura del ícono adaptable (el fondo es el color
 //   de app.json › android.adaptiveIcon.backgroundColor);
-// - splash-icon.png (el logo redondeado) y favicon.png (la vista previa web).
+// - splash-icon.png (el logo redondeado) y favicon.png (la vista previa web);
+// - notification-icon.png: el ícono de los avisos en Android (96 × 96, blanco sobre transparente, como badge-96.png de
+//   la web; Android lo pinta con el color de app.json › plugins › expo-notifications).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +26,7 @@ const files = {
   'android-icon-foreground.png': png(duoSvg({ tile: null, ink: onAccent, viewBox: '-128 -128 768 768' }), 1024),
   'splash-icon.png': png(duoSvg({ tile: accent, ink: onAccent }), 512),
   'favicon.png': png(duoSvg({ tile: accent, ink: onAccent }), 48),
+  'notification-icon.png': png(duoSvg({ tile: null, ink: '#ffffff' }), 96),
 };
 for (const [name, data] of Object.entries(files)) {
   writeFileSync(join(outDir, name), data);

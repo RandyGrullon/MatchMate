@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Check, Minus, Plus, Undo2, X } from 'lucide-react-native';
@@ -6,7 +6,7 @@ import { maxPossibleScore, scoreGame, standingNow } from '@mm/lib/bowling';
 import { loadDraft, saveDraft } from '@mm/lib/draft';
 import { isValidScore } from '@mm/lib/stats';
 import { forgetAfterSave, gameKey, pendingDraft, rememberGame } from '@mm/components/frames/draftMemory';
-import { editorValue, setPreferredMode, startState, type EditorWork, type ScoreMode, type ScoreValue } from '@mm/components/frames/editorLogic';
+import { editorValue, setPreferredMode, startState, type ScoreMode, type ScoreValue } from '@mm/components/frames/editorLogic';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { toast } from '../feedback';
@@ -33,11 +33,9 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
     const typed = d?.values[index]?.trim();
     return { score: typed ? Number(typed) : null, frames: d?.frames?.[index] ?? null };
   }, [lid, playerId, eventId, index]);
-  const resumed = useRef<EditorWork | null>(null);
   const [start] = useState(() => {
     const pending = pendingDraft(memoryKey, initial);
-    resumed.current = pending?.work ?? null;
-    return startState(initial, undefined, pending?.work ?? null);
+    return { ...startState(initial, undefined, pending?.work ?? null), resumed: !!pending?.work };
   });
   const [mode, setMode] = useState<Mode>(start.mode === 'total' ? 'total' : 'teclado');
   const [rolls, setRolls] = useState<number[]>(start.rolls);
@@ -45,8 +43,8 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
   const [total, setTotal] = useState(start.total);
 
   useEffect(() => {
-    if (resumed.current) toast('Seguimos donde lo dejaste.');
-  }, []);
+    if (start.resumed) toast('Seguimos donde lo dejaste.');
+  }, [start.resumed]);
 
   // Cada cambio queda en el teléfono (igual a lo guardado o vacío, se borra).
   useEffect(() => {

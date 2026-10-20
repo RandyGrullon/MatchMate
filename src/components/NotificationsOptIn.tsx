@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bell, BellOff, CalendarClock, CheckCircle2, ClipboardCheck, Heart, Smartphone, Trophy, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import { PUSH_CATEGORIES, setPushPref, type PushCategory, type PushPrefs } from '../lib/data/pushPrefs';
+import { PUSH_CATEGORIES, PUSH_SHORT_HINTS, setPushPref, type PushCategory, type PushPrefs } from '../lib/data/pushPrefs';
 import { PROMPT_SNOOZE_DAYS, pushNotice, pushPageNotice, type PushPageState } from '../lib/prompts';
 import { enableNotifications, isStandalone, notificationsSupported, notifyState, type NotifyState } from '../lib/push';
 import { pushConfigured } from '../lib/pushKey';
@@ -10,6 +10,8 @@ import { useAction, useFeedback } from './feedback';
 import { useNotice } from './NoticeSlot';
 import { useIsPro } from '../lib/useMode';
 import { Button, Card, ListRow, RowIcon, SectionHeader, cx } from './ui';
+
+export { PUSH_SHORT_HINTS };
 
 /** «Ahora no» de antes (y la X del aviso ahora): mientras esté reciente no se vuelve a ofrecer. */
 const LATER_KEY = 'mm:avisos-despues';
@@ -84,17 +86,6 @@ export function PushNotice() {
 export function NotificationsPrompt(): null {
   return null;
 }
-
-/**
- * Lo que dice cada interruptor, en una línea (las de src/lib/data/pushPrefs.ts son de dos o tres en el teléfono). Si
- * aparece una categoría nueva sin texto aquí, sale el de la base.
- */
-export const PUSH_SHORT_HINTS: Partial<Record<PushCategory, string>> = {
-  resultados: 'Aprobados y por confirmar',
-  social: 'Me gusta y seguidores',
-  recordatorios: 'Lo que viene y anotar después',
-  liga: 'Admins e invitaciones',
-};
 
 /** El ícono de cada interruptor (el mismo cuadro de 40 px de las filas). */
 const PUSH_ICONS: Partial<Record<PushCategory, LucideIcon>> = {

@@ -959,7 +959,8 @@ en los juegos que se comprueban y `requireVerifiedRank`, solo en LoL; en los equ
 | RPC | Quién | Qué hace |
 |---|---|---|
 | `upsert_push_subscription(p_endpoint, p_p256dh, p_auth, p_ua='') → uuid` | la cuenta | Solo `https://` de FCM, Apple, Mozilla o `*.notify.windows.com` (23514). El mismo teléfono con otra cuenta pasa a la cuenta nueva. |
-| `delete_push_subscription(p_endpoint) → boolean` | la cuenta | Solo las suyas. |
+| `upsert_app_push(p_token, p_platform) → uuid` | la cuenta | La app del teléfono (Expo): el token `ExponentPushToken[…]` (o `ExpoPushToken[…]`) y `ios`/`android` (otro: `invalido`). Queda en `push_subscriptions` con `kind = 'expo'` y sin claves; el mismo teléfono con otra cuenta pasa a la cuenta nueva. |
+| `delete_push_subscription(p_endpoint) → boolean` | la cuenta | Solo las suyas (también un token de la app). |
 | `set_push_prefs(p_prefs jsonb) → {resultados, social, recordatorios, liga}` | la cuenta | Solo las que cambian, con `true`/`false` (otra clave, otro tipo o algo que no sea objeto: `invalido`). Devuelve las cuatro como quedaron. Ver «Avisos al teléfono». |
 
 ### Servicio (solo `service_role`, la clave secreta: Edge Functions, cron y GitHub Actions)
@@ -1040,6 +1041,7 @@ que llama el cron revisan `x-cron-secret`.
 | `sendSuggestion` / `markSuggestions` / `deleteSuggestion` | `send_suggestion` / `mark_suggestions_read` / `delete_suggestion` |
 | `createProfile` / `renameProfile` / `ensureProfile` (auth.tsx) | trigger en `auth.users` (pasar `name` en la metadata del registro) / `rename_profile` / `ensure_profile` |
 | `subscribePush` / `unsubscribePush` (push.ts) | `upsert_push_subscription` / `delete_push_subscription` |
+| `subscribePush` / `unsubscribePush` (push.native.ts, la app del teléfono) | `upsert_app_push` / `delete_push_subscription` |
 | Modo de la app (`useMode`, el rediseño): leerlo / cambiarlo | `select profiles.ui_mode` con el perfil (`fetchProfile` en auth.tsx) / `set_ui_mode` |
 | Insignias (`src/lib/data/badges.ts`): `useProfileBadges` / `useBadgeNotices` / `useBadgeProgress` / `useBadgeStats` / `useLeagueAwards` / `usePlayerAwards` | `profile_badges` / `badge_notices` / `select badge_progress` / `select badge_stats` / `select badge_awards` (liga o jugador) |
 | `setFeaturedBadges` / `setBadgeHidden` / `markBadgesSeen` / `setBadgesAuto` / `reviewBadge` / `reportBadge` | `set_featured_badges` / `set_badge_hidden` / `mark_badges_seen` (de 50 en 50) / `set_badges_auto` / `review_badge` / `report_badge` |

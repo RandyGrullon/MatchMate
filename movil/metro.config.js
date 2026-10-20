@@ -12,9 +12,11 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const projectRoot = __dirname;
 const sharedRoot = path.resolve(projectRoot, '../src');
+// La palabra de confirmar el borrado de la cuenta vive con su Edge Function (TypeScript puro, sin imports).
+const deleteAccountCore = path.resolve(projectRoot, '../supabase/functions/delete-account');
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [...(config.watchFolders ?? []), sharedRoot];
+config.watchFolders = [...(config.watchFolders ?? []), sharedRoot, deleteAccountCore];
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')];
 
 const inShared = (file) => file.startsWith(sharedRoot + path.sep) || file === sharedRoot;

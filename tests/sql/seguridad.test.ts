@@ -32,7 +32,7 @@ const RPC_AUTHENTICATED = [
   'reject_submission', 'remove_entry', 'remove_member', 'rename_profile', 'rename_team', 'renew_invite_code', 'save_game',
   'save_verified_games', 'send_suggestion', 'set_member_role', 'set_member_scorer', 'set_player_private', 'set_reaction', 'set_rsvp',
   'set_sport_status', 'set_submission_scan', 'set_superadmin', 'step_down_admin', 'submit_games', 'transfer_ownership', 'unlink_account',
-  'update_entries', 'update_entry', 'update_event', 'update_league', 'update_player', 'upsert_push_subscription',
+  'update_entries', 'update_entry', 'update_event', 'update_league', 'update_player', 'upsert_push_subscription', 'upsert_app_push',
   // Deportes (partidos, golf, natación, raqueta, equipos).
   'admin_correct_result', 'claim_scorer', 'confirm_result', 'create_matches', 'create_season_team', 'delete_match',
   'delete_season_team', 'dispute_result', 'finish_match', 'my_matches', 'postpone_match', 'publish_match',

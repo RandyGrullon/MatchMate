@@ -36,6 +36,9 @@ Paso a paso para el dueño: `docs/CONFIGURAR-SUPABASE.md`, pasos 9 y 10. En resu
    supabase secrets set CRON_SECRET=<secreto> VAPID_PUBLIC_KEY=<pública> VAPID_PRIVATE_KEY=<privada> VAPID_SUBJECT=mailto:<correo>
    ```
    `SUPABASE_URL` y `SUPABASE_SECRET_KEYS` (o `SUPABASE_SERVICE_ROLE_KEY` con las claves viejas) los pone Supabase.
+   La app del teléfono (Expo) no usa VAPID: sus avisos van al servicio de push de Expo (`sendExpo` en `core.ts`). Si en
+   Expo se activa «Enhanced security for push notifications», agregar también `EXPO_ACCESS_TOKEN=<token de Expo>`. Que
+   lleguen al teléfono depende de las credenciales de APNs y FCM en EAS (docs/movil.md › Publicar).
 4. **Vault** (SQL Editor del proyecto):
    ```sql
    select vault.create_secret('https://<ref>.supabase.co', 'project_url');

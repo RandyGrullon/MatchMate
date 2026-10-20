@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Check, Eye, EyeOff, MailCheck, X } from 'lucide-react-native';
-import { authErrorMessage, isEmailNotConfirmed, login, MIN_PASSWORD, resendConfirmation, resetPassword, signUp } from '@mm/lib/auth';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { authErrorMessage, isEmailNotConfirmed, login, loginWithGoogle, MIN_PASSWORD, rememberAdultForGoogle, resendConfirmation, resetPassword, signUp } from '@mm/lib/auth';
+import { rememberLegalForGoogle } from '@mm/lib/legal';
+import { appleAvailable, signInWithApple } from '@/platform/backend';
 import { LogoLockup } from '@/components/Logo';
 import { Button, Card, ErrorNote, Field, Input, Screen, Segmented, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
-import { useColors } from '@/theme/theme';
+import { useColors, useTheme } from '@/theme/theme';
 
 type Mode = 'entrar' | 'registro' | 'recuperar';
 
@@ -71,10 +74,11 @@ function PasswordInput({ value, onChange, label, newPassword, invalid }: { value
 
 /**
  * Entrar, crear la cuenta o pedir una contraseña nueva: lo mismo que src/pages/LoginPage.tsx (las mismas reglas y
- * mensajes de src/lib/auth.tsx). Google y «Iniciar sesión con Apple» llegan juntos (Apple lo pide si hay Google).
+ * mensajes de src/lib/auth.tsx). Google e «Iniciar sesión con Apple» van juntos (regla 4.8 de Apple).
  */
 export default function LoginScreen() {
   const c = useColors();
+  const { isDark } = useTheme();
   const params = useLocalSearchParams<{ modo?: string }>();
   const [mode, setMode] = useState<Mode>(params.modo === 'registro' ? 'registro' : 'entrar');
   const [name, setName] = useState('');
@@ -87,6 +91,13 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<'confirmar' | 'recuperar' | null>(null);
   const [unconfirmed, setUnconfirmed] = useState(false);
+  const [social, setSocial] = useState<'google' | 'apple' | null>(null);
+  const [apple, setApple] = useState(false);
+  useEffect(() => {
+    void appleAvailable().then(setApple);
+  }, []);
+  // Regla 4.8 de Apple: en iPhone, Google solo junto a «Iniciar sesión con Apple».
+  const googleShown = Platform.OS !== 'ios' || apple;
 
   const signingUp = mode === 'registro';
   const short = signingUp && password !== '' && password.length < MIN_PASSWORD;
@@ -128,6 +139,29 @@ export default function LoginScreen() {
       setUnconfirmed(mode === 'entrar' && isEmailNotConfirmed(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Google o Apple. Al crear la cuenta, primero las dos casillas (quedan marcadas para cuando vuelva, como la web). */
+  async function withProvider(kind: 'google' | 'apple') {
+    if (busy || social) return;
+    if (signingUp && (!adult || !terms)) {
+      setError('Marca primero las dos casillas: tener 18 años o más y aceptar los Términos.');
+      return;
+    }
+    if (signingUp) {
+      rememberAdultForGoogle();
+      rememberLegalForGoogle();
+    }
+    setSocial(kind);
+    setError(null);
+    try {
+      if (kind === 'google') await loginWithGoogle();
+      else await signInWithApple();
+    } catch (e) {
+      setError(authErrorMessage(e));
+    } finally {
+      setSocial(null);
     }
   }
 
@@ -194,6 +228,27 @@ export default function LoginScreen() {
                       .
                     </Txt>
                   </CheckRow>
+                </View>
+              )}
+              {(apple || googleShown) && (
+                <View style={{ gap: 10 }}>
+                  {apple && (
+                    <AppleAuthentication.AppleAuthenticationButton
+                      buttonType={signingUp ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP : AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                      buttonStyle={isDark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      cornerRadius={16}
+                      style={{ height: 56, width: '100%', opacity: social ? 0.6 : 1 }}
+                      onPress={() => void withProvider('apple')}
+                    />
+                  )}
+                  {googleShown && (
+                    <Button size="xl" full loading={social === 'google'} disabled={!!social || busy} onPress={() => withProvider('google')}>
+                      {signingUp ? 'Registrarme con Google' : 'Entrar con Google'}
+                    </Button>
+                  )}
+                  <Txt variant="meta" tone="muted" style={{ textAlign: 'center' }}>
+                    o con tu correo
+                  </Txt>
                 </View>
               )}
               {signingUp && (

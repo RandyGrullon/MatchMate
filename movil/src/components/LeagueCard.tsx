@@ -2,8 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
 import type { League } from '@mm/lib/types';
-import { colorsFor } from '@/theme/theme';
-import { useTheme } from '@/theme/theme';
+import { colorsFor, useTheme } from '@/theme/theme';
 import { radius } from '@/theme/tokens';
 import { Txt } from './ui';
 

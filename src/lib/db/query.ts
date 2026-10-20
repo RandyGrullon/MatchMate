@@ -37,8 +37,11 @@ export interface QueryOptions<T> {
 }
 
 export interface QueryClientOptions {
-  /** 'idb' guarda lo cargado en IndexedDB (por defecto si existe); 'none' solo en memoria. */
-  persistence?: 'idb' | 'none';
+  /**
+   * 'idb' guarda lo cargado en IndexedDB (por defecto si existe); 'none' solo en memoria. O un QueryStore propio: la
+   * app del teléfono guarda en AsyncStorage (src/lib/db/queryStore.native.ts).
+   */
+  persistence?: 'idb' | 'none' | QueryStore;
   /** De quién es la caché (id de la cuenta). null = sin sesión. */
   userKey?: () => string | null;
   /** Para useTopic (tiempo real). Se puede pasar después con setBackend. */
@@ -318,12 +321,32 @@ export function tagsForMessage(msg: RealtimeMessage, map: MessageTagMap = {}): s
   return [...out];
 }
 
-// ---------- Copia en IndexedDB ----------
+// ---------- Copia en el teléfono ----------
+
+/** Una consulta guardada: de quién (`u`), su clave (`k`), lo que trajo, cuándo y sus etiquetas. */
+export interface PersistedQuery {
+  u: string;
+  k: string;
+  data: unknown;
+  at: number;
+  tags: string[];
+}
+
+/** Dónde se guarda la copia de las consultas (IndexedDB en la web; AsyncStorage en la app del teléfono). */
+export interface QueryStore {
+  /** Todo lo guardado de una cuenta. */
+  all(user: string): Promise<PersistedQuery[]>;
+  put(row: PersistedQuery): Promise<void>;
+  delete(user: string, key: string): Promise<void>;
+  /** Borra todo lo de una cuenta. */
+  clear(user: string): Promise<void>;
+  close(): void;
+}
 
 interface QueryDB extends DBSchema {
   q: {
     key: [string, string];
-    value: { u: string; k: string; data: unknown; at: number; tags: string[] };
+    value: PersistedQuery;
     indexes: { u: string };
   };
 }
@@ -347,6 +370,26 @@ async function openQueryDB(): Promise<IDBPDatabase<QueryDB> | null> {
     console.warn('No se pudo abrir la copia de consultas', e);
     return null;
   }
+}
+
+async function openIdbStore(): Promise<QueryStore | null> {
+  const db = await openQueryDB();
+  if (!db) return null;
+  return {
+    all: (user) => db.getAllFromIndex('q', 'u', user),
+    put: async (row) => {
+      await db.put('q', row);
+    },
+    delete: async (user, key) => {
+      await db.delete('q', [user, key]);
+    },
+    clear: async (user) => {
+      const tx = db.transaction('q', 'readwrite');
+      const keys = await tx.store.index('u').getAllKeys(user);
+      await Promise.all([...keys.map((k) => tx.store.delete(k)), tx.done]);
+    },
+    close: () => db.close(),
+  };
 }
 
 // ---------- Caché ----------
@@ -412,14 +455,15 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
   let disposed = false;
   /** La base ya se cerró (después de dispose y de terminar lo pendiente). */
   let closed = false;
-  const dbPromise: Promise<IDBPDatabase<QueryDB> | null> = persistence === 'idb' ? openQueryDB() : Promise.resolve(null);
+  const storePromise: Promise<QueryStore | null> =
+    persistence === 'idb' ? openIdbStore() : persistence === 'none' ? Promise.resolve(null) : Promise.resolve(persistence);
   let writes: Promise<void> = Promise.resolve();
 
-  const queueWrite = (fn: (db: IDBPDatabase<QueryDB>) => Promise<unknown>) => {
+  const queueWrite = (fn: (store: QueryStore) => Promise<unknown>) => {
     writes = writes
       .then(async () => {
-        const db = await dbPromise;
-        if (db && !closed) await fn(db);
+        const store = await storePromise;
+        if (store && !closed) await fn(store);
       })
       .catch((e) => console.warn('No se pudo guardar la copia de la consulta', e));
     return writes;
@@ -498,12 +542,12 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     // Si la cuenta cambió y todavía no se llamó userChanged, no se guarda bajo la cuenta equivocada.
     if (userKeyOf() !== user) return;
     const row = { u: user, k: e.key, data: e.data, at: e.updatedAt, tags: [...e.tags] };
-    void queueWrite((db) => db.put('q', row));
+    void queueWrite((store) => store.put(row));
   }
 
   function removePersisted(key: string) {
     const user = currentUser;
-    void queueWrite((db) => db.delete('q', [user, key]));
+    void queueWrite((store) => store.delete(user, key));
   }
 
   function afterFetch(e: Entry) {
@@ -672,11 +716,11 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
   async function hydrate(): Promise<void> {
     const gen = generation;
     const user = currentUser;
-    const db = await dbPromise;
-    if (!db || disposed) return;
-    let rows: QueryDB['q']['value'][];
+    const store = await storePromise;
+    if (!store || disposed) return;
+    let rows: PersistedQuery[];
     try {
-      rows = await db.getAllFromIndex('q', 'u', user);
+      rows = await store.all(user);
     } catch (e) {
       console.warn('No se pudo leer la copia de consultas', e);
       return;
@@ -685,7 +729,7 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
     const oldest = Date.now() - maxAgeMs;
     for (const r of rows) {
       if (r.at < oldest) {
-        void queueWrite((d) => d.delete('q', [r.u, r.k]));
+        void queueWrite((s) => s.delete(r.u, r.k));
         continue;
       }
       const e = ensure(r.k);
@@ -703,11 +747,7 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
 
   async function clearPersisted(userKey?: string | null): Promise<void> {
     const user = userKey === undefined ? currentUser : (userKey ?? ANON);
-    await queueWrite(async (db) => {
-      const tx = db.transaction('q', 'readwrite');
-      const keys = await tx.store.index('u').getAllKeys(user);
-      await Promise.all([...keys.map((k) => tx.store.delete(k)), tx.done]);
-    });
+    await queueWrite((store) => store.clear(user));
   }
 
   async function userChanged(opts: { clearPrevious?: boolean } = {}): Promise<void> {
@@ -867,7 +907,7 @@ export function createQueryClient(options: QueryClientOptions = {}): QueryClient
       disposed = true;
       void writes.then(async () => {
         closed = true;
-        (await dbPromise)?.close();
+        (await storePromise)?.close();
       });
     },
   };

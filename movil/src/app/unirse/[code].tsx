@@ -21,23 +21,25 @@ export default function JoinScreen() {
   const { code = '' } = useLocalSearchParams<{ code: string }>();
   const c = useColors();
   const auth = useAuth();
-  const [invite, setInvite] = useState<Invite | null | undefined>(undefined);
-  const [failed, setFailed] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Lo que respondió la búsqueda de este código en este intento (lo de un intento anterior no cuenta: «cargando»).
+  const [result, setResult] = useState<{ key: string; invite?: Invite | null; failed?: string } | null>(null);
+  const key = `${code}:${attempt}`;
+  const invite = result?.key === key ? result.invite : undefined;
+  const failed = result?.key === key ? (result.failed ?? null) : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const membership = useMembership(invite?.leagueId, auth.user?.uid);
 
   useEffect(() => {
     let alive = true;
-    setInvite(undefined);
-    setFailed(null);
+    const key = `${code}:${attempt}`;
     getInvite(code)
-      .then((i) => alive && setInvite(i))
+      .then((i) => alive && setResult({ key, invite: i }))
       .catch((e: unknown) => {
         if (!alive) return;
         const be = asBackendError(e);
-        setFailed(be?.kind === 'rate_limited' ? 'Fueron muchos intentos seguidos. Espera un minuto.' : 'No pudimos revisar la invitación. Revisa tu conexión.');
+        setResult({ key, failed: be?.kind === 'rate_limited' ? 'Fueron muchos intentos seguidos. Espera un minuto.' : 'No pudimos revisar la invitación. Revisa tu conexión.' });
       });
     return () => {
       alive = false;

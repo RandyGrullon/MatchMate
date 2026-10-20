@@ -22,6 +22,17 @@ export const PUSH_CATEGORIES: readonly { key: PushCategory; label: string; hint:
   { key: 'liga', label: 'Tus ligas', hint: 'Avisos de los admins de tus ligas, el fin de temporada con sus campeones, invitaciones a una liga y quién aceptó la tuya.' },
 ];
 
+/**
+ * Lo que dice cada interruptor, en una línea (las de arriba son de dos o tres en el teléfono). Las usan la web
+ * (NotificationsOptIn.tsx) y la app del teléfono. Si aparece una categoría nueva sin texto aquí, sale `hint`.
+ */
+export const PUSH_SHORT_HINTS: Partial<Record<PushCategory, string>> = {
+  resultados: 'Aprobados y por confirmar',
+  social: 'Me gusta y seguidores',
+  recordatorios: 'Lo que viene y anotar después',
+  liga: 'Admins e invitaciones',
+};
+
 export const ALL_PUSH_ON: PushPrefs = { resultados: true, social: true, recordatorios: true, liga: true };
 
 /** Lo que guarda la base (solo las que cambió, `{social: false}`) → las cuatro. Falta una o no es false: activa. */

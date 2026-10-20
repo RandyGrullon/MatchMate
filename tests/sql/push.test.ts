@@ -468,6 +468,39 @@ describe('cola de envío', () => {
     expect(await db.as(SERVICE, 'select * from public.claim_push_batch()')).toEqual([]);
   });
 
+  it('la app del teléfono guarda su token de Expo (sin claves), recibe su parte de la cola y se borra si ya no existe', async () => {
+    const ana = await db.createUser('ana@x.com', 'ana');
+    const luis = await db.createUser('luis@x.com', 'luis');
+    const token = 'ExponentPushToken[abcDEF123_-xyz]';
+    const id = await db.rpc<string>(ana, 'upsert_app_push', { p_token: token, p_platform: 'ios' });
+    expect(await db.admin('select kind, p256dh, auth, ua from public.push_subscriptions where id = $1', [id])).toEqual([{ kind: 'expo', p256dh: null, auth: null, ua: 'App ios' }]);
+    // El mismo teléfono con otra cuenta pasa a esa cuenta.
+    expect(await db.rpc(luis, 'upsert_app_push', { p_token: token, p_platform: 'ios' })).toBe(id);
+    expect(await db.rpc(ana, 'upsert_app_push', { p_token: token, p_platform: 'android' })).toBe(id);
+    for (const bad of [{ p_token: 'ExponentPushToken[x]', p_platform: 'ios' }, { p_token: 'https://fcm.googleapis.com/fcm/send/x', p_platform: 'android' }, { p_token: token, p_platform: 'web' }]) {
+      await fails(db.rpc(ana, 'upsert_app_push', bad), 'invalido');
+    }
+    await fails(db.as(ANON, `select public.upsert_app_push('${token}', 'ios')`), DENIED);
+    // Web Push sigue pidiendo las dos claves; un token de Expo no entra como web ni una web sin claves.
+    await fails(db.admin(`insert into public.push_subscriptions (user_id, endpoint) values ($1, 'https://fcm.googleapis.com/fcm/send/sin')`, [ana]), '23514');
+    await fails(db.admin(`insert into public.push_subscriptions (user_id, endpoint, p256dh, auth) values ($1, 'ExpoPushToken[abcdefgh12]', 'k', 'a')`, [ana]), '23514');
+
+    const web = await addPhone(ana, 'web');
+    await db.admin(`insert into public.push_outbox (user_id, title, ttl) values ($1, 'Hola', 600)`, [ana]);
+    const batch = await db.as<{ id: number; endpoint: string; p256dh: string | null; auth: string | null }>(SERVICE, 'select * from public.claim_push_batch()');
+    expect(batch.map((m) => [m.endpoint, m.p256dh, m.auth]).sort()).toEqual([
+      ['ExponentPushToken[abcDEF123_-xyz]', null, null],
+      ['https://fcm.googleapis.com/fcm/send/web', 'BPclave', 'secreto'],
+    ]);
+    const expo = batch.find((m) => m.endpoint === token)!;
+    await db.as(SERVICE, 'select public.finish_push_batch(p_results => $1::jsonb)', [JSON.stringify([{ id: expo.id, outcome: 'gone', status: 410 }])]);
+    expect(await db.count('public.push_subscriptions', 'id = $1', [id])).toBe(0);
+    expect(await db.count('public.push_subscriptions', 'id = $1', [web])).toBe(1);
+    // Quitarlo al cerrar sesión: delete_push_subscription con el token.
+    await db.rpc(ana, 'upsert_app_push', { p_token: token, p_platform: 'ios' });
+    expect(await db.rpc(ana, 'delete_push_subscription', { p_endpoint: token })).toBe(true);
+  });
+
   it('nadie de la app toca la cola ni el cron; claim y finish solo con la clave secreta', async () => {
     const ana = await db.createUser('ana@x.com', 'ana');
     for (const who of [ana, ANON]) {

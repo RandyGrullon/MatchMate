@@ -5,7 +5,7 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackendError } from '../backend/types';
 import { createFakeBackend } from './fakeBackend';
-import { createQueryClient, realtimeStatus, tagsForMessage, watchTopic, type QueryClient, type QueryClientOptions, type QueryOptions } from './query';
+import { createQueryClient, realtimeStatus, tagsForMessage, watchTopic, type QueryClient, type QueryClientOptions, type PersistedQuery, type QueryOptions, type QueryStore } from './query';
 
 /** setImmediate de Node (los relojes falsos de estas pruebas no lo tocan; IndexedDB falso lo usa). */
 const nextTask = (globalThis as unknown as { setImmediate: (cb: () => void) => void }).setImmediate;
@@ -324,6 +324,38 @@ describe('copia guardada en el teléfono', () => {
     const second = make({ userKey: () => 'c' });
     await second.ready;
     expect(second.getQueryData('profiles')).toBeUndefined();
+  });
+
+  it('con un almacén propio (la app del teléfono) guarda, carga y borra por cuenta igual que con IndexedDB', async () => {
+    const rows = new Map<string, PersistedQuery>();
+    const id = (u: string, k: string) => `${u}|${k}`;
+    const store: QueryStore = {
+      all: async (u) => [...rows.values()].filter((r) => r.u === u),
+      put: async (r) => void rows.set(id(r.u, r.k), r),
+      delete: async (u, k) => void rows.delete(id(u, k)),
+      clear: async (u) => {
+        for (const [k, r] of rows) if (r.u === u) rows.delete(k);
+      },
+      close: vi.fn(),
+    };
+    let who: string | null = 'ana';
+    const first = make({ userKey: () => who, persistence: store, clearOnSignOut: true });
+    await first.fetchQuery('me', async () => ({ name: 'Ana' }), { tags: ['user:ana'] });
+    await first.whenPersisted();
+    expect(rows.get(id('ana', 'me'))).toMatchObject({ data: { name: 'Ana' }, tags: ['user:ana'] });
+    first.dispose();
+    await first.whenPersisted();
+    await tick();
+    expect(store.close).toHaveBeenCalled();
+
+    const second = make({ userKey: () => who, persistence: store, clearOnSignOut: true });
+    await second.ready;
+    expect(second.getState('me', null)).toEqual({ data: { name: 'Ana' }, loading: false, error: null, fromCache: true });
+
+    who = null;
+    await second.userChanged();
+    await second.whenPersisted();
+    expect(rows.size).toBe(0);
   });
 });
 

@@ -3,8 +3,11 @@
  * hecho para React Native (la sesión en el teléfono, sin leer la URL) y la señal de NetInfo. Lo usa la capa de datos
  * compartida por src/lib/backend/index.native.ts. Sin modo local (PGlite no corre en el teléfono).
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
+import { mapAuthError } from '@mm/lib/backend/errors';
 import { AUTH_STORAGE_KEY, createSupabaseBackend } from '@mm/lib/backend/supabase';
 import type { Backend } from '@mm/lib/backend/types';
 import { env } from '@mm/lib/env';
@@ -12,6 +15,62 @@ import { isDeviceOnline } from './network';
 import { authStorage } from './storage';
 
 let instance: Backend | null = null;
+let supabase: SupabaseClient | null = null;
+
+/** A dónde vuelve Google o Apple: `matchmate://auth` (en Expo Go, `exp://…/--/auth`). Va en las «Redirect URLs» de Supabase. */
+export const authRedirect = () => Linking.createURL('auth');
+
+/**
+ * «Entrar con Google» en el teléfono: la pantalla de Google en el navegador seguro de la app (ASWebAuthenticationSession
+ * en iPhone, Custom Tabs en Android) con PKCE, y el código que vuelve se cambia por la sesión. Cancelar no es error.
+ */
+async function signInWithGoogleNative(client: SupabaseClient): Promise<void> {
+  const redirectTo = authRedirect();
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
+  });
+  if (error) throw mapAuthError(error);
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success') return;
+  const back = new URL(result.url);
+  const problem = back.searchParams.get('error_description') ?? back.searchParams.get('error');
+  if (problem) throw mapAuthError({ message: problem, status: 400 });
+  const code = back.searchParams.get('code');
+  if (!code) return;
+  const { error: exchange } = await client.auth.exchangeCodeForSession(code);
+  if (exchange) throw mapAuthError(exchange);
+}
+
+/**
+ * «Iniciar sesión con Apple» (solo iPhone): la hoja nativa de Apple y su token a Supabase (signInWithIdToken). Necesita
+ * el proveedor Apple activado en Supabase y la capacidad «Sign in with Apple» del App ID (docs/movil.md). Cancelar no
+ * es error.
+ */
+export async function signInWithApple(): Promise<void> {
+  const Apple = await import('expo-apple-authentication');
+  getBackend();
+  let credential;
+  try {
+    credential = await Apple.signInAsync({ requestedScopes: [Apple.AppleAuthenticationScope.FULL_NAME, Apple.AppleAuthenticationScope.EMAIL] });
+  } catch (e) {
+    if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
+    throw e;
+  }
+  if (!credential.identityToken) throw mapAuthError({ message: 'Apple no devolvió el token.', status: 400 });
+  const { error } = await supabase!.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
+  if (error) throw mapAuthError(error);
+  // Apple da el nombre solo la primera vez: queda en la cuenta (la base lo usa si el perfil no tiene nombre).
+  const name = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ').trim();
+  if (name) await supabase!.auth.updateUser({ data: { name } }).catch(() => undefined);
+}
+
+/** ¿Hay «Iniciar sesión con Apple» en este teléfono? (iPhone con iOS 13 o más.) */
+export async function appleAvailable(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  const Apple = await import('expo-apple-authentication');
+  return Apple.isAvailableAsync().catch(() => false);
+}
 
 export function backendMode(): Backend['mode'] {
   return 'supabase';
@@ -46,7 +105,13 @@ export function getBackend(): Backend {
   // metro.config.js resuelve el código compartido con los node_modules de la app.
   type SharedClient = NonNullable<Parameters<typeof createSupabaseBackend>[0]['client']>;
   const base = createSupabaseBackend({ url, publishableKey: key, client: client as unknown as SharedClient });
-  instance = { ...base, online: () => isDeviceOnline() };
+  supabase = client;
+  instance = {
+    ...base,
+    // En el teléfono, Google va por el navegador seguro de la app (en la vista previa web, como la web).
+    auth: Platform.OS === 'web' ? base.auth : { ...base.auth, signInWithGoogle: () => signInWithGoogleNative(client) },
+    online: () => isDeviceOnline(),
+  };
   return instance;
 }
 

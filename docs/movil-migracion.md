@@ -17,13 +17,17 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 ## 1. Cuenta
 
 - ✅ Entrar, crear cuenta (18+ y Términos), contraseña nueva, reenviar el correo de confirmar.
-- ⏳ «Entrar con Google» + «Iniciar sesión con Apple» (juntos: regla 4.8 de Apple). Necesita el esquema `matchmate://`
-  en las «Redirect URLs» de Supabase.
-- ⏳ Puertas de la cuenta de la web: «Tengo 18 años o más» para quien entró con Google (AdultGate) y aceptar los
-  Términos vigentes (LegalGate). **Antes de publicar.**
-- ⏳ Borrar la cuenta desde la app (regla 5.1.1(v) de Apple). **Antes de publicar.**
-- 🌐 Configuración: nombre, usuario, contraseña, perfil público (foto, biografía), personas bloqueadas, avisos.
-- ✅ Apariencia (Auto / Claro / Oscuro) y salir.
+- ✅ «Entrar con Google» (pestaña segura que vuelve por `matchmate://auth`) y «Iniciar sesión con Apple» en el iPhone
+  (botón del sistema, `signInWithIdToken`): `movil/src/platform/backend.ts`, `login.tsx`. Al crear cuenta piden lo
+  mismo que la web (18+ y Términos). Falta configurarlos en Supabase y Apple (docs/movil.md › Publicar).
+- ✅ Puertas de la cuenta, como la web: «¿Tienes 18 años o más?» (AdultGate) y aceptar los Términos vigentes
+  (LegalGate), sobre toda la app (`movil/src/components/account/Gates.tsx`).
+- ✅ Borrar la cuenta desde la app (regla 5.1.1(v) de Apple): Yo › Borrar mi cuenta (`movil/src/app/cuenta/borrar.tsx`,
+  la misma Edge Function y las mismas trabas que la web: ligas a tu nombre, último superadmin).
+- ✅ Descargar mis datos (el mismo JSON de la web, con la hoja de compartir del teléfono).
+- ✅ Notificaciones: activar en este teléfono y qué te avisamos (las cuatro categorías de la web), en Yo.
+- 🌐 Configuración: nombre, usuario, contraseña, perfil público (foto, biografía), personas bloqueadas.
+- ✅ Apariencia (Auto / Claro / Oscuro) y salir (quita los avisos de la cuenta en este teléfono).
 
 ## 2. Hoy y Ligas
 
@@ -86,10 +90,15 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 - ✅ La cola sin conexión queda en el teléfono (`storage: 'local'` de `src/lib/db/outbox.ts`, elegido por
   `src/lib/db/outboxStorage.native.ts`): lo anotado sin señal sale al volver a abrir la app.
-- ⏳ Guardar también la caché de consultas (`src/lib/db/query.ts`, hoy en memoria en el teléfono: sin señal, al
-  volver a abrir la app no se ve lo último que se leyó) y las fotos que esperan subir (`src/lib/data/uploads.ts`, hoy en
-  memoria: guardarlas con expo-file-system).
-- ⏳ Avisos con la app cerrada (expo-notifications + envío desde Supabase).
-- ⏳ Links universales (`/.well-known/` en la web) y abrir `matchmate://` desde los correos.
+- ✅ La caché de consultas también (AsyncStorage, `src/lib/db/queryStore.native.ts`): sin señal, al volver a abrir la
+  app se ve lo último que se leyó.
+- ✅ Las fotos que esperan subir (`src/lib/data/photoStore.native.ts`: archivos de la app con expo-file-system). Falta
+  la pantalla que toma la foto del marcador.
+- ✅ Avisos con la app cerrada: expo-notifications, token guardado con `upsert_app_push`, envío por Expo desde
+  `send-push`; tocar un aviso abre su pantalla. Falta en EAS: llave de APNs y FCM (docs/movil.md › Publicar).
+- ✅ Links: los de `/unirse/…` y `/l/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
+  `/.well-known/` salen de `movil/scripts/enlaces-universales.mjs` cuando estén el Team ID y las huellas.
+- ⏳ Subir fotos desde el teléfono: `new Blob([bytes])` no existe en React Native (`dataUrlToBlob` de
+  `src/lib/image.ts`); hay que mandar a Storage los bytes (ArrayBuffer) en vez del Blob.
 - ⏳ Compartir (expo-sharing), cámara y fotos (expo-image-picker / expo-camera), vibración al anotar (expo-haptics: ✅
   en los botones principales).

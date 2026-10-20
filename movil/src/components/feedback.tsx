@@ -2,7 +2,7 @@
  * Avisos cortos abajo de la pantalla («Guardado en tu teléfono…») y la pregunta de confirmar (¿Enviar?). Como
  * `useFeedback` de la web (src/components/feedback.tsx), sin depender de un proveedor: se llaman desde cualquier lado.
  */
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,32 +19,31 @@ interface Toast {
 
 let current: Toast | null = null;
 let seq = 0;
-const listeners = new Set<(t: Toast | null) => void>();
+const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export function toast(text: string, tone: Tone = 'ok') {
   current = { id: ++seq, text, tone };
-  listeners.forEach((l) => l(current));
+  listeners.forEach((l) => l());
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     current = null;
-    listeners.forEach((l) => l(null));
+    listeners.forEach((l) => l());
   }, tone === 'error' ? 4500 : 3000);
 }
 
-/** Va una vez en la raíz (_layout.tsx). */
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Va una vez en la raíz (_layout.tsx). Ve también el aviso que salió antes de que escuchara. */
 export function ToastHost() {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const [t, setT] = useState<Toast | null>(current);
-  useEffect(() => {
-    listeners.add(setT);
-    // Un aviso que salió antes de que esto escuchara (los efectos de las pantallas corren antes que los de la raíz).
-    setT(current);
-    return () => {
-      listeners.delete(setT);
-    };
-  }, []);
+  const t = useSyncExternalStore(subscribe, () => current);
   if (!t) return null;
   const Icon = t.tone === 'error' ? CircleAlert : CircleCheck;
   return (

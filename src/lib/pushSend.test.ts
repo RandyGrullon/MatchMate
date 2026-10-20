@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EXPO_PUSH_URL,
   MAX_PAYLOAD,
   classify,
+  expoResult,
   createRestClient,
   handleRequest,
   payloadFor,
@@ -215,6 +217,68 @@ describe('handleRequest', () => {
     expect(data).toEqual({ title: 'Hoy es la práctica', body: 'Liga Norte a las 7:00 pm. ¡Nos vemos en la bolera!', url: '/l/liga/e/evento', tag: 'recordatorio:evento' });
     expect(lines).toEqual(['send-push: 2 tomados · 1 enviados · 0 teléfonos borrados · 0 para reintentar · 0 rechazados · 1 vencidos · quedan 3 (sigue otro lote)']);
     expect(lines.join(' ')).not.toContain('fcm');
+  });
+
+  it('la app del teléfono (token de Expo) va al servicio de Expo con el mismo texto; si la app ya no está, se borra', async () => {
+    const a = await phone();
+    const token = 'ExponentPushToken[abcDEF123_-xyz]';
+    const claim = [
+      msg(21, { endpoint: token, p256dh: null, auth: null, urgency: 'high' }),
+      msg(22, { endpoint: 'ExpoPushToken[otroTelefono1]', p256dh: null, auth: null }),
+      msg(23, { endpoint: 'https://fcm.googleapis.com/fcm/send/a', p256dh: a.p256dh, auth: a.auth }),
+      msg(24, { endpoint: 'https://fcm.googleapis.com/fcm/send/sin-claves', p256dh: null, auth: null }),
+    ];
+    const rpcs: { fn: string; args: Record<string, unknown> }[] = [];
+    const expo: { headers: Record<string, string>; body: Record<string, unknown> }[] = [];
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('https://p.supabase.co/rest/v1/rpc/')) {
+        const fn = url.slice('https://p.supabase.co/rest/v1/rpc/'.length);
+        rpcs.push({ fn, args: JSON.parse(String(init?.body ?? '{}')) });
+        return Response.json(fn === 'claim_push_batch' ? claim : { remaining: 0, chained: false });
+      }
+      if (url === EXPO_PUSH_URL) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expo.push({ headers: init?.headers as Record<string, string>, body });
+        const ticket = body.to === token ? { status: 'ok', id: 'x' } : { status: 'error', message: 'no', details: { error: 'DeviceNotRegistered' } };
+        return Response.json({ data: [ticket] });
+      }
+      return new Response(null, { status: 201 });
+    }) as typeof fetch;
+    const { deps } = await depsFor(fetchFn, { EXPO_ACCESS_TOKEN: 'tok-expo' });
+    const res = await handleRequest(post(), deps);
+    expect(await res.json()).toMatchObject({ claimed: 4, sent: 2, gone: 2 });
+    expect(rpcs[1].args).toEqual({
+      p_results: [
+        { id: 21, outcome: 'sent', status: 200 },
+        { id: 22, outcome: 'gone', status: 410 },
+        { id: 23, outcome: 'sent', status: 201 },
+        { id: 24, outcome: 'gone', status: null },
+      ],
+    });
+    expect(expo[0].headers.Authorization).toBe('Bearer tok-expo');
+    expect(expo.find((e) => e.body.to === token)?.body).toEqual({
+      to: token,
+      title: 'Hoy es la práctica',
+      body: 'Liga Norte a las 7:00 pm. ¡Nos vemos en la bolera!',
+      data: { url: '/l/liga/e/evento', tag: 'recordatorio:evento' },
+      ttl: 3600,
+      priority: 'high',
+      sound: 'default',
+      channelId: 'avisos',
+    });
+  });
+
+  it('respuestas de Expo: lo de la app, lo del proyecto y lo del servicio', () => {
+    expect(expoResult(200, { status: 'ok' })).toEqual({ status: 200 });
+    expect(classify(expoResult(200, { status: 'error', details: { error: 'DeviceNotRegistered' } }))).toBe('gone');
+    expect(classify(expoResult(200, { status: 'error', details: { error: 'MessageTooBig' } }))).toBe('failed');
+    expect(classify(expoResult(200, { status: 'error', details: { error: 'MessageRateExceeded' } }))).toBe('retry');
+    // Sin credenciales de APNs/FCM en EAS: se reintenta y no cuenta contra el teléfono.
+    expect(classify(expoResult(200, { status: 'error', details: { error: 'InvalidCredentials' } }))).toBe('retry');
+    expect(classify(expoResult(429, null))).toBe('retry');
+    expect(classify(expoResult(502, null))).toBe('retry');
+    expect(classify(expoResult(400, null))).toBe('failed');
   });
 
   it('cola vacía: no manda nada; con ping llama a ping()', async () => {

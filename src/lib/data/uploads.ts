@@ -4,6 +4,7 @@ import type { OutboxItem } from '../db/outbox';
 import { uuidv7 } from '../db/ids';
 import type { CompressedImage } from '../image';
 import { uploadScoreboardPhoto, type UploadedPhoto } from '../photos';
+import { photoStore } from './photoStore';
 
 /**
  * Fotos de los envíos que esperan en la cola sin conexión.
@@ -23,7 +24,7 @@ export const PENDING_PHOTO = 'mm_pending_photo';
  */
 export const REUPLOAD_AFTER_MS = 7 * 86400_000;
 
-interface StashedPhoto {
+export interface StashedPhoto {
   key: string;
   /** Cuenta que la envió (la cola es por cuenta). */
   uid: string;
@@ -41,7 +42,8 @@ interface UploadsDB extends DBSchema {
   photos: { key: string; value: StashedPhoto };
 }
 
-interface PhotoStore {
+/** Dónde esperan las fotos: IndexedDB en la web; archivos en la app del teléfono (photoStore.native.ts). */
+export interface PhotoStore {
   get(key: string): Promise<StashedPhoto | undefined>;
   put(v: StashedPhoto): Promise<void>;
   delete(key: string): Promise<void>;
@@ -60,6 +62,8 @@ let storePromise: Promise<PhotoStore> | null = null;
 
 function store(): Promise<PhotoStore> {
   return (storePromise ??= (async () => {
+    const own = photoStore();
+    if (own) return own;
     if (typeof indexedDB === 'undefined') return memoryStore;
     try {
       const db: IDBPDatabase<UploadsDB> = await openDB<UploadsDB>('mm-uploads', 1, {

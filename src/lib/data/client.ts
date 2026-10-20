@@ -4,6 +4,7 @@ import { BackendError, type Backend, type SelectQuery } from '../backend/types';
 import { createOutbox, useOutbox, type EnqueueOptions, type Outbox, type OutboxItem, type OutboxSnapshot, type SettleOutcome } from '../db/outbox';
 import { outboxStorage } from '../db/outboxStorage';
 import { createQueryClient, type QueryOptions } from '../db/query';
+import { queryPersistence } from '../db/queryStore';
 import { appVersion } from '../errorReport';
 import { stamped, type Wire } from './stamp';
 import { sweepPhotos, withPhotoUploads } from './uploads';
@@ -38,7 +39,7 @@ let currentUser: string | null = null;
 /** Cuenta que está usando la app (null = sin sesión). */
 export const getUserId = () => currentUser;
 
-export const queryClient = createQueryClient({ userKey: () => currentUser, backend: () => backend() });
+export const queryClient = createQueryClient({ userKey: () => currentUser, backend: () => backend(), persistence: queryPersistence() });
 
 // ---------- Qué consultas hay ----------
 

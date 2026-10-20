@@ -7,7 +7,8 @@
  * 1. exige la cabecera `x-cron-secret` igual al secreto CRON_SECRET (el mismo que está en Vault como
  *    'cron_secret'); la función va con verify_jwt = false;
  * 2. toma hasta 50 mensajes de push_outbox (`claim_push_batch`, con la clave secreta = service_role);
- * 3. los manda con Web Push, 10 a la vez; el que ya venció no se manda;
+ * 3. los manda, 10 a la vez: con Web Push a los navegadores y con el servicio de Expo a la app del teléfono (token
+ *    «ExponentPushToken[…]», 20261020000100_push_app_telefono.sql); el que ya venció no se manda;
  * 4. avisa cómo le fue a cada uno (`finish_push_batch`): la base borra los teléfonos que ya no existen (404/410),
  *    deja para después los 429/5xx/sin respuesta y, si queda cola, pide el siguiente lote con pg_net.
  * Con `{"ping": true}` además llama a `ping()` por la API REST (ayuda a mantener despierto el proyecto).
@@ -18,12 +19,15 @@
 export type Outcome = 'sent' | 'gone' | 'expired' | 'retry' | 'failed';
 export type Urgency = 'very-low' | 'low' | 'normal' | 'high';
 
-/** Una fila de `claim_push_batch`. `ttl` = segundos que le quedan (0 o menos: ya no sirve). */
+/**
+ * Una fila de `claim_push_batch`. `ttl` = segundos que le quedan (0 o menos: ya no sirve). La app del teléfono no
+ * tiene claves (`p256dh` y `auth` en null): su `endpoint` es el token de Expo.
+ */
 export interface OutboxMessage {
   id: number;
   endpoint: string;
-  p256dh: string;
-  auth: string;
+  p256dh: string | null;
+  auth: string | null;
   title: string;
   body: string | null;
   url: string | null;
@@ -56,8 +60,11 @@ export interface VapidConfig {
 export interface SendPushDeps {
   env(name: string): string | undefined;
   fetch: typeof fetch;
-  /** createPushSender de webpush.ts (se inyecta para no importar nada aquí). */
-  createSender(keys: VapidConfig, fetchFn: typeof fetch): Promise<{ send: (target: OutboxMessage, payload: string, options: { ttl: number; urgency: Urgency }) => Promise<SendResult> }>;
+  /** createPushSender de webpush.ts (se inyecta para no importar nada aquí). Solo recibe los de Web Push (con claves). */
+  createSender(
+    keys: VapidConfig,
+    fetchFn: typeof fetch,
+  ): Promise<{ send: (target: OutboxMessage & { p256dh: string; auth: string }, payload: string, options: { ttl: number; urgency: Urgency }) => Promise<SendResult> }>;
   log?(line: string): void;
 }
 
@@ -138,6 +145,66 @@ export async function processBatch(messages: OutboxMessage[], send: SendFn, para
   const counts = emptyCounts();
   for (const r of results) counts[r.outcome]++;
   return { results, counts };
+}
+
+// ---------- App del teléfono (servicio de push de Expo) ----------
+
+export const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+/** El canal de Android que crea la app (movil/src/platform/notifications.ts). */
+export const EXPO_CHANNEL = 'avisos';
+
+/** ¿Es el token de la app del teléfono? (los de Web Push son https://…). */
+export const isExpoToken = (endpoint: string) => /^Expo(nent)?PushToken\[[A-Za-z0-9_-]{8,200}\]$/.test(endpoint);
+
+/** Un ticket de Expo (lo que contesta por cada mensaje) → lo mismo que respondería Web Push. */
+export function expoResult(httpStatus: number, ticket: unknown): SendResult {
+  if (httpStatus === 429 || httpStatus >= 500) return { status: httpStatus };
+  const t = (ticket ?? {}) as { status?: unknown; details?: { error?: unknown } };
+  if (httpStatus >= 200 && httpStatus < 300 && t.status === 'ok') return { status: 200 };
+  const error = typeof t.details?.error === 'string' ? t.details.error : '';
+  // La app se borró o quitó el permiso: como un 410.
+  if (error === 'DeviceNotRegistered') return { status: 410 };
+  if (error === 'MessageTooBig') return { status: 413, error: 'too-large' };
+  if (error === 'MessageRateExceeded') return { status: 429 };
+  // Faltan las credenciales de APNs o FCM en EAS: es del proyecto, no del teléfono (no cuenta contra él).
+  if (error === 'InvalidCredentials') return { status: 503 };
+  return { status: httpStatus >= 400 ? httpStatus : 400 };
+}
+
+/**
+ * Manda un aviso a la app del teléfono con el servicio de push de Expo (uno por llamada: así cada mensaje tiene su
+ * resultado). El texto es el mismo de Web Push (payloadFor, ya recortado); `url` va en `data` para abrir la pantalla.
+ * Con EXPO_ACCESS_TOKEN (si se activó la seguridad de push en Expo) va en Authorization.
+ */
+export async function sendExpo(
+  message: OutboxMessage,
+  payload: string,
+  options: { ttl: number; urgency: Urgency },
+  fetchFn: typeof fetch,
+  accessToken?: string,
+): Promise<SendResult> {
+  const data = JSON.parse(payload) as { title: string; body: string; url: string; tag?: string };
+  const body = {
+    to: message.endpoint,
+    title: data.title,
+    body: data.body,
+    data: { url: data.url, ...(data.tag ? { tag: data.tag } : {}) },
+    ttl: Math.max(0, Math.floor(options.ttl)),
+    priority: options.urgency === 'high' ? 'high' : 'default',
+    sound: 'default',
+    channelId: EXPO_CHANNEL,
+  };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const res = await fetchFn(EXPO_PUSH_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+  let ticket: unknown = null;
+  try {
+    const parsed = (await res.json()) as { data?: unknown };
+    ticket = Array.isArray(parsed?.data) ? parsed.data[0] : parsed?.data;
+  } catch {
+    // Sin JSON: decide el código HTTP.
+  }
+  return expoResult(res.status, ticket);
 }
 
 /** Compara el secreto sin cortar en la primera diferencia (no dice cuántas letras acertó). */
@@ -263,7 +330,12 @@ export async function handleRequest(req: Request, deps: SendPushDeps): Promise<R
   }
   if (!messages.length) return json({ claimed: 0, ...emptyCounts(), remaining: 0, chained: false, pinged });
 
-  const { results, counts } = await processBatch(messages, (m, payload, options) => sender.send(m, payload, options));
+  const expoToken = (deps.env('EXPO_ACCESS_TOKEN') ?? '').trim() || undefined;
+  const { results, counts } = await processBatch(messages, (m, payload, options) => {
+    if (isExpoToken(m.endpoint)) return sendExpo(m, payload, options, deps.fetch, expoToken);
+    if (!m.p256dh || !m.auth) return Promise.resolve({ status: null, error: 'invalid-subscription' });
+    return sender.send({ ...m, p256dh: m.p256dh, auth: m.auth }, payload, options);
+  });
 
   // Si no se puede avisar, los mensajes quedan apartados 3 minutos y se vuelven a tomar (podrían llegar dos veces).
   let finish: { remaining: number; chained: boolean } | null = null;
