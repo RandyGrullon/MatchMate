@@ -16,7 +16,7 @@ import { ScreenTop, SignInCard, linkButton } from '../components/screens/ScreenB
 import { FollowButton } from '../components/social/FollowButton';
 import { FollowersSheet } from '../components/social/FollowersSheet';
 import { GamesTab, StatsTab } from '../components/social/ProfileView';
-import { atUsername, compactCount, knownSports, sportShort } from '../components/social/socialFormat';
+import { compactCount, knownSports, profileLine } from '../components/social/socialFormat';
 import { Card, Empty, LoadError, Loading, Skeleton, Tabs, cx } from '../components/ui';
 
 // Las insignias traen el catálogo y el dibujo: se cargan aparte (la vitrina y las destacadas debajo del nombre).
@@ -29,14 +29,8 @@ type ProfileTab = 'publicaciones' | 'juegos' | 'estadisticas' | 'insignias';
 export const profileTab = (raw: string | null): ProfileTab =>
   raw === 'juegos' || raw === 'estadisticas' || raw === 'insignias' ? raw : 'publicaciones';
 
-/** «@anaperez · Boliche y pádel · Desde octubre de 2026»: su usuario, sus deportes y desde cuándo está. */
-export function profileLine(p: { username?: string | null; sports?: readonly string[] | null; since?: string | null }): string {
-  const sports = knownSports(p.sports).map((s, i) => (i === 0 ? sportShort(s) : sportShort(s).toLowerCase()));
-  const sportsText = sports.length > 1 ? `${sports.slice(0, -1).join(', ')} y ${sports.at(-1)}` : sports[0];
-  const t = p.since ? Date.parse(p.since) : NaN;
-  const since = Number.isFinite(t) ? `Desde ${new Date(t).toLocaleDateString('es-DO', { month: 'long', year: 'numeric' })}` : null;
-  return [atUsername(p.username), sportsText, since].filter(Boolean).join(' · ');
-}
+// La línea de abajo del nombre está en socialFormat.ts (la usa también la app del teléfono).
+export { profileLine };
 
 /**
  * Perfil público de una cuenta (`/u/:userId`), rediseño «Calma y foco» (como Yo): «‹ Atrás» con «Reportar esta cuenta»

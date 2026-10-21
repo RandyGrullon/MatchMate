@@ -44,6 +44,16 @@
               "scheme": "https",
               "host": "matchmate.grullonb.com",
               "pathPrefix": "/l/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/p/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/u/"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
@@ -93,6 +103,14 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#4338ca",
           "defaultChannel": "avisos"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MatchMate usa tus fotos para la foto del marcador, tu foto de perfil y tus publicaciones.",
+          "cameraPermission": "MatchMate usa la cámara para la foto del marcador y para leer el QR de una liga.",
+          "microphonePermission": false
         }
       ]
     ],

@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Download, FileText, Globe, LogOut, Moon, Shield, Trash2 } from 'lucide-react-native';
+import { Download, FileText, Globe, LogOut, Moon, Shield, Trash2, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
 import { accountErrorMessage } from '@mm/pages/legal/account';
 import { NotificationsCard } from '@/components/account/NotificationsCard';
@@ -57,6 +57,19 @@ export default function YoScreen() {
           </Txt>
         </View>
       </View>
+
+      <Card padded={false}>
+        <ListRow
+          icon={
+            <RowIcon>
+              <UserRound size={20} color={c.accent} />
+            </RowIcon>
+          }
+          title="Ver mi perfil"
+          subtitle="Como lo ven los demás"
+          onPress={() => router.push({ pathname: '/u/[userId]', params: { userId: uid } })}
+        />
+      </Card>
 
       <SectionHeader title="Apariencia" />
       <Card style={{ gap: 12 }}>

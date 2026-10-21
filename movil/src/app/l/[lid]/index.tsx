@@ -1,13 +1,16 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, Clock, Globe, MapPin } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, Clock, Globe, MapPin, Newspaper, UserPlus } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
+import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
+import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
 import { eventTitle, formatDateLong, toIsoDate } from '@mm/lib/format';
 import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
 import { Button, Card, Divider, Empty, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
+import { LeagueFollowButton } from '@/components/social/People';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
@@ -22,6 +25,7 @@ export default function LeagueScreen() {
   const league = useLeague(lid);
   const membership = useMembership(lid, auth.user?.uid);
   const events = useEvents(lid);
+  const social = useLeagueSocial(auth.user ? lid : null);
   const sport = league.data ? leagueSport(league.data) : null;
   const meta = sport ? sportMeta(sport) : null;
 
@@ -117,6 +121,53 @@ export default function LeagueScreen() {
           </>
         )}
       </Card>
+
+      {(() => {
+        const isAdmin = membership.data?.role === 'admin' || membership.data?.role === 'owner';
+        const canInvite = canInviteTo(l, isAdmin, !!membership.data);
+        return (
+          <Card padded={false}>
+            {!l.hasMinors && (
+              <ListRow
+                icon={
+                  <RowIcon>
+                    <Newspaper size={20} color={c.accent} />
+                  </RowIcon>
+                }
+                title="Muro"
+                subtitle={`Lo que cuentan ${l.kind === 'torneo' ? 'en el torneo' : 'en la liga'}`}
+                onPress={() => router.push({ pathname: '/l/[lid]/muro', params: { lid: l.id } })}
+              />
+            )}
+            {canInvite && (
+              <>
+                {!l.hasMinors && <Divider inset={68} />}
+                <ListRow
+                  icon={
+                    <RowIcon>
+                      <UserPlus size={20} color={c.accent} />
+                    </RowIcon>
+                  }
+                  title={inviteTitle(l.kind)}
+                  subtitle="Con el link o el QR"
+                  onPress={() => router.push({ pathname: '/l/[lid]/invitar', params: { lid: l.id } })}
+                />
+              </>
+            )}
+            {social.data?.canFollow && (
+              <>
+                <Divider inset={16} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 }}>
+                  <Txt variant="meta" tone="muted" style={{ flex: 1 }}>
+                    Síguela y sus publicaciones salen en Social.
+                  </Txt>
+                  <LeagueFollowButton leagueId={l.id} name={l.name} following={social.data.following} />
+                </View>
+              </>
+            )}
+          </Card>
+        );
+      })()}
 
       {isBowling ? (
         <>

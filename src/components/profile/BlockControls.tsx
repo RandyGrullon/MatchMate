@@ -5,10 +5,10 @@ import { useBusy } from '../busy';
 import { EventMenu, MoreButton, type MenuItem } from '../event/EventHeader';
 import { saveErrorMessage, useFeedback } from '../feedback';
 import { Button, Card, cx } from '../ui';
+import { BLOCK_EXPLAIN } from '../social/socialFormat';
 
-/** Lo que pasa al bloquear (va en la pregunta antes de hacerlo). */
-export const BLOCK_EXPLAIN =
-  'Ya no verán las publicaciones del otro, dejarán de seguirse y no te encontrará en la búsqueda. Puedes desbloquear cuando quieras.';
+// Lo que pasa al bloquear está en socialFormat.ts (lo usa también la app del teléfono).
+export { BLOCK_EXPLAIN };
 
 /**
  * Bloquear (con la pregunta antes) y desbloquear a alguien, con su ruedita y el aviso abajo. El perfil cambia solo (la

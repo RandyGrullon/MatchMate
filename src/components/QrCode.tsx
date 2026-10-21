@@ -100,7 +100,7 @@ export function qrModel(value: string): QrModel {
 }
 
 /** Un ojo (7×7): el marco redondeado (con su hueco) y el centro de 3×3. */
-const eyeRing = (x: number, y: number) =>
+export const eyeRing = (x: number, y: number) =>
   `M${x + 2.2} ${y}h2.6a2.2 2.2 0 0 1 2.2 2.2v2.6a2.2 2.2 0 0 1-2.2 2.2h-2.6a2.2 2.2 0 0 1-2.2-2.2v-2.6a2.2 2.2 0 0 1 2.2-2.2z` +
   `M${x + 2.4} ${y + 1}h2.2a1.4 1.4 0 0 1 1.4 1.4v2.2a1.4 1.4 0 0 1-1.4 1.4h-2.2a1.4 1.4 0 0 1-1.4-1.4v-2.2a1.4 1.4 0 0 1 1.4-1.4z`;
 

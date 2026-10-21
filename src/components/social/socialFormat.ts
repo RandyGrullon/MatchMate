@@ -159,3 +159,16 @@ export function likeLabel(liked: boolean, likes: number): string {
   const count = likes === 1 ? '1 me gusta' : `${compactCount(likes)} me gusta`;
   return liked ? `Quitar me gusta (${count})` : `Me gusta (${count})`;
 }
+
+/** «@anaperez · Boliche y pádel · Desde octubre de 2026»: su usuario, sus deportes y desde cuándo está. */
+export function profileLine(p: { username?: string | null; sports?: readonly string[] | null; since?: string | null }): string {
+  const sports = knownSports(p.sports).map((s, i) => (i === 0 ? sportShort(s) : sportShort(s).toLowerCase()));
+  const sportsText = sports.length > 1 ? `${sports.slice(0, -1).join(', ')} y ${sports.at(-1)}` : sports[0];
+  const t = p.since ? Date.parse(p.since) : NaN;
+  const since = Number.isFinite(t) ? `Desde ${new Date(t).toLocaleDateString('es-DO', { month: 'long', year: 'numeric' })}` : null;
+  return [atUsername(p.username), sportsText, since].filter(Boolean).join(' · ');
+}
+
+/** Lo que pasa al bloquear (va en la pregunta antes de hacerlo: BlockControls.tsx y la app del teléfono). */
+export const BLOCK_EXPLAIN =
+  'Ya no verán las publicaciones del otro, dejarán de seguirse y no te encontrará en la búsqueda. Puedes desbloquear cuando quieras.';

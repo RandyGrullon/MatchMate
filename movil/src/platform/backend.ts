@@ -110,9 +110,23 @@ export function getBackend(): Backend {
     ...base,
     // En el teléfono, Google va por el navegador seguro de la app (en la vista previa web, como la web).
     auth: Platform.OS === 'web' ? base.auth : { ...base.auth, signInWithGoogle: () => signInWithGoogleNative(client) },
+    // En el teléfono las fotos llegan como bytes (src/lib/bytesBlob.native.ts): se suben así (supabase-js acepta un
+    // ArrayBuffer; un Blob de React Native subiría vacío).
+    storage:
+      Platform.OS === 'web'
+        ? base.storage
+        : {
+            ...base.storage,
+            upload: async (bucket, path, data, contentType) => base.storage.upload(bucket, path, (await uploadBytes(data)) as unknown as Blob, contentType),
+          },
     online: () => isDeviceOnline(),
   };
   return instance;
+}
+
+/** Los bytes de lo que se sube (lo que da bytesBlob.native.ts, o un Blob que sepa darlos). */
+async function uploadBytes(data: Blob): Promise<Blob | ArrayBuffer> {
+  return typeof data.arrayBuffer === 'function' ? data.arrayBuffer() : data;
 }
 
 /** Supabase está listo de una vez (no hay base local que abrir). */

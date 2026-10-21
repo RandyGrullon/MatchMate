@@ -9,7 +9,7 @@ import { router } from 'expo-router';
 import { APP_ORIGIN } from '@mm/lib/origin';
 import { openOnWeb } from './web';
 
-const TABS = ['/', '/ligas', '/social', '/yo', '/login'];
+const TABS = ['/', '/ligas', '/social', '/yo', '/login', '/buscar'];
 
 /** La pantalla de la app para una dirección de la web (con su ?…), o null si la app no la tiene. */
 export function appRoute(href: string): string | null {
@@ -19,7 +19,12 @@ export function appRoute(href: string): string | null {
   if (TABS.includes(path) || path === '/auth') return path + query;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path;
-  // Las otras partes de la liga (tabla, juegos, muro…) todavía están en la liga misma.
+  if (/^\/l\/[^/]+\/muro$/.test(path)) return path;
+  if (/^\/p\/[^/]+$/.test(path)) return path;
+  // El perfil (?tab= de la web: Publicaciones o Juegos se eligen ahí).
+  const user = /^\/u\/([^/]+)/.exec(path);
+  if (user) return `/u/${user[1]}`;
+  // Las otras partes de la liga (tabla, juegos…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;
   return null;

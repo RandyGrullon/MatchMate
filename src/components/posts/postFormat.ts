@@ -7,6 +7,14 @@ import { shareOrigin } from '../../lib/origin';
  * tamaño del hueco de la foto, a quién le sale y la dirección para compartir.
  */
 
+/** Las opciones del menú «⋯» de una publicación o un comentario según lo que puede hacer quien mira (PostMenu.tsx). */
+export function contentMenuKeys(c: { isMine: boolean; canDelete: boolean }): ('borrar' | 'reportar' | 'bloquear')[] {
+  return [...(c.isMine ? [] : (['reportar', 'bloquear'] as const)), ...(c.canDelete ? (['borrar'] as const) : [])];
+}
+
+/** El nombre corto para «Bloquear a Ana». */
+export const shortName = (name: string) => name.trim().split(/\s+/)[0] || 'esta persona';
+
 /** Ruta de una publicación. */
 export const postPath = (id: string) => `/p/${encodeURIComponent(id)}`;
 

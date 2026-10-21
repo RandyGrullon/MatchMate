@@ -100,6 +100,8 @@ export const type = {
   section: { fontSize: 19, lineHeight: 24, letterSpacing: -0.3, fontFamily: font.bold },
   body: { fontSize: 16, lineHeight: 23, fontFamily: font.regular },
   bodyStrong: { fontSize: 16, lineHeight: 23, fontFamily: font.semibold },
+  /** El texto de una publicación abierta (text-[17px] leading-relaxed de la web). */
+  bodyLarge: { fontSize: 17, lineHeight: 27, fontFamily: font.regular },
   meta: { fontSize: 14, lineHeight: 19, fontFamily: font.regular },
   small: { fontSize: 12.5, lineHeight: 16, fontFamily: font.medium },
 } as const;

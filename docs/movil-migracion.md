@@ -26,6 +26,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   la misma Edge Function y las mismas trabas que la web: ligas a tu nombre, último superadmin).
 - ✅ Descargar mis datos (el mismo JSON de la web, con la hoja de compartir del teléfono).
 - ✅ Notificaciones: activar en este teléfono y qué te avisamos (las cuatro categorías de la web), en Yo.
+- ✅ Ver mi perfil (como lo ven los demás), desde Yo.
 - 🌐 Configuración: nombre, usuario, contraseña, perfil público (foto, biografía), personas bloqueadas.
 - ✅ Apariencia (Auto / Claro / Oscuro) y salir (quita los avisos de la cuenta en este teléfono).
 
@@ -36,9 +37,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ⏳ Escanear el QR (expo-camera).
 - ⏳ En juego ahora, lo próximo, la semana (useActivity de la web: necesita la campana, `useNotifications`).
 - ⏳ Campana de avisos e invitaciones (`/avisos`, `/invitacion/<id>`).
-- ✅ Ligas: las tuyas y las abiertas, con búsqueda.
-- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche). ⏳ tabla, jugadores, muro y anuncios,
-  temporadas, invitar (link, QR, compartir), admin (🌐 «Tabla, jugadores y más en la web»).
+- ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
+- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche); ✅ muro (`/l/<liga>/muro`), invitar
+  (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
+  seguir una liga pública. ⏳ tabla, jugadores, anuncios, temporadas, admin (🌐 «Tabla, jugadores y más en la web»).
 
 ## 3. Boliche (deporte activo)
 
@@ -70,12 +72,20 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 ## 7. Social
 
-- ⏳ Feed, publicar (con foto), comentarios y me gusta, perfil público (`/u/<id>`), seguir, buscar personas y ligas,
-  equipos (`/equipos`), compartir un partido.
+- ✅ Social: «¿Qué jugaste hoy?» (texto, foto de la galería o la cámara, en tu perfil o en una de tus ligas, para
+  todos o tus seguidores) y «Siguiendo · Descubrir · Juegos» (`movil/src/components/social/`).
+- ✅ Publicación (`/p/<id>`): me gusta, comentarios, compartir y «⋯» (reportar, bloquear, borrar).
+- ✅ Perfil (`/u/<id>`): Seguir, «Te sigue», biografía, contadores, publicaciones y juegos; seguidores y seguidos
+  (`/u/<id>/seguidores`); reportar la cuenta, bloquear y desbloquear. 🌐 Estadísticas e insignias.
+- ✅ Buscar (`/buscar`): personas y ligas (Todo · Personas · Ligas), seguir desde la lista; sin cuenta, ligas públicas.
+- 🟡 Un juego compartido sale resumido (sin la tarjeta del juego) y los juegos de «Juegos» todavía sin me gusta.
+- ⏳ Equipos (`/equipos`), compartir un partido desde la app, avisos de lo social (la campana).
 
 ## 8. Organizar y crear
 
-- 🌐 Crear liga o torneo (el asistente), Organizar, Agenda. ⏳ en la app.
+- ✅ Crear liga o torneo (`/crear`, el asistente de la web con su misma lógica: Nombre · Día y lugar · Temporada ·
+  Invitar). 🌐 El logo al crear y los esports (llevan a la web).
+- 🌐 Organizar, Agenda.
 
 ## 9. Insignias, premios, reportes
 
@@ -96,9 +106,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   la pantalla que toma la foto del marcador.
 - ✅ Avisos con la app cerrada: expo-notifications, token guardado con `upsert_app_push`, envío por Expo desde
   `send-push`; tocar un aviso abre su pantalla. Falta en EAS: llave de APNs y FCM (docs/movil.md › Publicar).
-- ✅ Links: los de `/unirse/…` y `/l/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
+- ✅ Fotos desde el teléfono: elegir o tomar (expo-image-picker), achicar como la web (expo-image-manipulator +
+  `fitImage`, `movil/src/lib/pickImage.ts`) y subir los bytes (React Native no arma `new Blob([bytes])`:
+  `src/lib/bytesBlob.native.ts` y `storage.upload` de `movil/src/platform/backend.ts`).
+- ✅ Links: los de `/unirse/…`, `/l/…`, `/p/…` y `/u/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
   `/.well-known/` salen de `movil/scripts/enlaces-universales.mjs` cuando estén el Team ID y las huellas.
-- ⏳ Subir fotos desde el teléfono: `new Blob([bytes])` no existe en React Native (`dataUrlToBlob` de
-  `src/lib/image.ts`); hay que mandar a Storage los bytes (ArrayBuffer) en vez del Blob.
-- ⏳ Compartir (expo-sharing), cámara y fotos (expo-image-picker / expo-camera), vibración al anotar (expo-haptics: ✅
-  en los botones principales).
+- ✅ Compartir (la hoja del teléfono: publicaciones, invitaciones; expo-sharing para archivos), fotos y cámara
+  (expo-image-picker), vibración (expo-haptics). ⏳ Escanear un QR (expo-camera).

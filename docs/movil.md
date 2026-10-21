@@ -33,6 +33,8 @@ src/sports, src/badges, src/prizes, src/lib/…   la misma lógica de la web
     dónde se guardan en el teléfono la cola sin conexión, la caché de consultas y las fotos que esperan subir (abajo).
   - `src/lib/push.native.ts` → `movil/src/platform/notifications.ts`: las notificaciones con expo-notifications, con
     las mismas funciones que `src/lib/push.ts` (abajo).
+  - `src/lib/bytesBlob.native.ts`: los bytes de una foto para subirla (React Native no arma `new Blob([bytes])`); el
+    `storage.upload` del teléfono manda a Storage el ArrayBuffer.
 - **`localStorage` en el teléfono** (`movil/src/platform/storage.ts`, el mismo patrón de El Play): al abrir la app se
   cargan en memoria todas las claves `mm:` (AsyncStorage) y la sesión de Supabase (`mm:auth`, en el llavero con
   SecureStore, en trozos); después se lee de memoria y se escribe en segundo plano. `movil/index.ts` lo instala antes de
@@ -77,7 +79,7 @@ Node: Expo 58 pide 22.13 o más; con Node 20 avisa pero arranca (como El Play).
 ## Publicar (cuando esté la cuenta de Apple)
 
 Identificadores: `com.grullonb.matchmate` (iOS y Android), esquema `matchmate://`, links universales de
-`matchmate.grullonb.com` solo para `/unirse/…` y `/l/…` (`APP_LINK_PATHS` en `movil/src/lib/appLinkPaths.ts`, que
+`matchmate.grullonb.com` solo para `/unirse/…`, `/l/…`, `/p/…` y `/u/…` (`APP_LINK_PATHS` en `movil/src/lib/appLinkPaths.ts`, que
 tiene que coincidir con `associatedDomains` e `intentFilters` de `movil/app.json`).
 
 Lo que pide cada tienda y ya está en la app: entrar con Google **y** con Apple (regla 4.8), borrar la cuenta desde la

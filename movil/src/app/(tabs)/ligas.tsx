@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { Search } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { Plus, Search, Trophy } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships, usePublicLeagues } from '@mm/lib/data';
 import { formatDate } from '@mm/lib/format';
 import { LeagueCard } from '@/components/LeagueCard';
-import { Empty, Input, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
+import { Button, Empty, Input, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 
 /** Ligas: las tuyas y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
@@ -24,6 +25,20 @@ export default function LigasScreen() {
   return (
     <Screen>
       <Txt variant="title">Ligas</Txt>
+      {!!uid && (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Button variant="primary" full icon={<Plus size={18} color={c.accentFg} />} onPress={() => router.push({ pathname: '/crear', params: { kind: 'liga' } })}>
+              Crear liga
+            </Button>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button full icon={<Trophy size={18} color={c.fg} />} onPress={() => router.push({ pathname: '/crear', params: { kind: 'torneo' } })}>
+              Crear torneo
+            </Button>
+          </View>
+        </View>
+      )}
       {!!uid && mine.data.length > 0 && (
         <>
           <SectionHeader title="Las tuyas" />

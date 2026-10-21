@@ -6,6 +6,7 @@ import type { ReportKind } from '../../lib/data/reports';
 import { BusyIcon, useBusy } from '../busy';
 import { useFeedback } from '../feedback';
 import { Sheet, cx } from '../ui';
+import { contentMenuKeys, shortName } from './postFormat';
 
 const loadReportModal = () => import('../report/ReportModal');
 const ReportModal = lazy(loadReportModal);
@@ -20,13 +21,8 @@ export interface MenuOption {
   onClick: () => void;
 }
 
-/** Las opciones del menú de una publicación o un comentario según lo que puede hacer quien mira. */
-export function contentMenuKeys(c: { isMine: boolean; canDelete: boolean }): ('borrar' | 'reportar' | 'bloquear')[] {
-  return [...(c.isMine ? [] : (['reportar', 'bloquear'] as const)), ...(c.canDelete ? (['borrar'] as const) : [])];
-}
-
-/** El nombre corto para «Bloquear a Ana». */
-export const shortName = (name: string) => name.trim().split(/\s+/)[0] || 'esta persona';
+// Las opciones y el nombre corto están en postFormat.ts (los usa también la app del teléfono).
+export { contentMenuKeys, shortName };
 
 /**
  * El menú «⋯» de algo que alguien escribió (publicación o comentario): Reportar y Bloquear a quien lo escribió (si no

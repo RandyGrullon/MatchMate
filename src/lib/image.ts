@@ -7,6 +7,8 @@
  *   No se guarda: solo viaja a la Edge Function scan-bowling.
  */
 
+import { bytesToBlob } from './bytesBlob';
+
 /** Tope de la foto que se guarda, en bytes. */
 export const MAX_STORED_BYTES = 110_000;
 /** La copia para la IA va más nítida (tope en letras del data URL, como en BowlingX). */
@@ -131,9 +133,9 @@ export function dataUrlToBlob(dataUrl: string, type?: string): Blob {
   const m = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(dataUrl);
   if (!m) throw new Error('No es un data URL.');
   const payload = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
-  const bytes = new Uint8Array(payload.length);
+  const bytes = new Uint8Array(new ArrayBuffer(payload.length));
   for (let i = 0; i < payload.length; i++) bytes[i] = payload.charCodeAt(i);
-  return new Blob([bytes], { type: type ?? (m[1] || 'application/octet-stream') });
+  return bytesToBlob(bytes, type ?? (m[1] || 'application/octet-stream'));
 }
 
 /** data URL de un archivo (sin FileReader: sirve igual en el navegador y en las pruebas). */

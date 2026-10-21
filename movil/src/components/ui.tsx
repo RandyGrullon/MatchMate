@@ -5,6 +5,9 @@
 import { forwardRef, type ComponentRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,8 +21,10 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
-import { ChevronRight } from 'lucide-react-native';
+import Animated, { SlideInDown } from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/theme/theme';
 import { font, radius, size, type } from '@/theme/tokens';
@@ -331,6 +336,106 @@ export function Loading({ label = 'Cargando' }: { label?: string }) {
   );
 }
 
+/** «‹ Atrás» arriba de una pantalla que se abrió encima de otra (sin historial, va a `fallback`). */
+export function BackBar({ label, fallback = '/', right }: { label: string; fallback?: string; right?: ReactNode }) {
+  const c = useColors();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Atrás: ${label}`}
+        hitSlop={8}
+        onPress={() => (router.canGoBack() ? router.back() : router.navigate(fallback as never))}
+        style={{ flexDirection: 'row', alignItems: 'center', height: 44, marginLeft: -6, flexShrink: 1 }}
+      >
+        <ChevronLeft size={24} color={c.accent} />
+        <Txt tone="accent" variant="bodyStrong" numberOfLines={1}>
+          {label}
+        </Txt>
+      </Pressable>
+      {right}
+    </View>
+  );
+}
+
+/**
+ * Hoja que sube desde abajo (como Sheet de la web): título, lo de adentro con desplazamiento y, si hay, el botón de
+ * abajo fijo. Tocar afuera o la X la cierra.
+ */
+export function Sheet({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string | null;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  return (
+    // El fondo aparece con un fundido y solo la hoja sube (con «slide» del Modal subiría también el fondo oscuro).
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Pressable accessibilityLabel="Cerrar" onPress={onClose} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]} />
+        <Animated.View entering={SlideInDown.duration(240)} style={[styles.sheet, { backgroundColor: c.bg, paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Txt variant="cardTitle" accessibilityRole="header">
+                {title}
+              </Txt>
+              {!!subtitle && (
+                <Txt variant="meta" tone="muted" numberOfLines={1}>
+                  {subtitle}
+                </Txt>
+              )}
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" hitSlop={8} onPress={onClose} style={[styles.sheetClose, { backgroundColor: c.surface2 }]}>
+              <X size={20} color={c.fg} />
+            </Pressable>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 12, paddingVertical: 16 }}>
+            {children}
+          </ScrollView>
+          {footer}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/** Una opción para elegir (como un radio de la web): título, línea de abajo y la marca si está elegida. */
+export function ChoiceRow({ title, subtitle, selected, onPress, icon }: { title: string; subtitle?: string | null; selected: boolean; onPress: () => void; icon?: ReactNode }) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.choice, { backgroundColor: selected ? c.accentSoft : c.surface2, borderColor: selected ? c.accent : 'transparent' }]}
+    >
+      {icon}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Txt variant="bodyStrong" tone={selected ? 'accent' : 'fg'}>
+          {title}
+        </Txt>
+        {!!subtitle && (
+          <Txt variant="meta" tone="muted">
+            {subtitle}
+          </Txt>
+        )}
+      </View>
+      {selected && <Check size={20} color={c.accent} />}
+    </Pressable>
+  );
+}
+
 export function Badge({ children, tone = 'accent' }: { children: ReactNode; tone?: 'accent' | 'ok' | 'warn' | 'danger' | 'muted' }) {
   const c = useColors();
   const bg = tone === 'accent' ? c.accentSoft : tone === 'ok' ? c.okSoft : tone === 'warn' ? c.warnSoft : tone === 'danger' ? c.dangerSoft : c.surface2;
@@ -356,4 +461,7 @@ const styles = StyleSheet.create({
   note: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   badge: { borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingTop: 20, maxHeight: '90%' },
+  sheetClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  choice: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, borderRadius: 16, borderWidth: 1.5, paddingHorizontal: 16, paddingVertical: 10 },
 });

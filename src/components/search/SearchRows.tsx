@@ -1,8 +1,5 @@
 import type { ReactNode } from 'react';
-import type { LeagueHit } from '../../lib/data/leagueSocial';
-import type { PublicLeague } from '../../lib/data/leagues';
 import type { PersonHit } from '../../lib/data/people';
-import { leagueSport, sportMeta } from '../../sports/registry';
 import { Avatar } from '../Avatar';
 import { LeagueTile } from '../ligas/LigasRows';
 import { FollowButton } from '../social/FollowButton';
@@ -10,6 +7,7 @@ import { LeagueFollowButton } from '../social/LeagueFollowButton';
 import { atUsername } from '../social/socialFormat';
 import { userPath } from '../social/UserLink';
 import { Badge, Card, ListRow } from '../ui';
+import { fromPublicLeague, leagueResultLine, type LeagueResult } from './searchFormat';
 
 /**
  * Las filas de la lupa (/buscar): una persona con cuenta (su foto o iniciales, nombre, «@usuario · Te sigue» y Seguir)
@@ -45,29 +43,8 @@ export function PersonRow({ hit }: { hit: PersonHit }) {
   );
 }
 
-/** Lo que la fila necesita de una liga: lo de search_leagues y followed_leagues, o una pública del listado (sin cuenta). */
-export type LeagueResult = Pick<LeagueHit, 'id' | 'name' | 'sport' | 'kind' | 'visibility' | 'venue' | 'logo' | 'members' | 'isMember' | 'isFollowing'>;
-
-/** Una liga del listado público (sin cuenta: ni es miembro ni la sigue). */
-export const fromPublicLeague = (l: PublicLeague): LeagueResult => ({
-  id: l.id,
-  name: l.name,
-  sport: leagueSport(l),
-  kind: l.kind === 'torneo' ? 'torneo' : 'liga',
-  visibility: 'public',
-  venue: l.venue?.trim() || null,
-  logo: l.logoPath ?? null,
-  members: l.members,
-  isMember: false,
-  isFollowing: false,
-});
-
-const membersLabel = (n: number) => (n > 0 ? `${n} ${n === 1 ? 'miembro' : 'miembros'}` : null);
-
-/** «Liga · Pádel · Club Naco · 12 miembros» (lo que falta no sale). */
-export function leagueResultLine(l: LeagueResult): string {
-  return [l.kind === 'torneo' ? 'Torneo' : 'Liga', sportMeta(l.sport)?.short, l.venue?.trim(), membersLabel(l.members)].filter(Boolean).join(' · ');
-}
+// El tipo, el de una liga pública y la línea de la fila están en searchFormat.ts (los usa también la app del teléfono).
+export { fromPublicLeague, leagueResultLine, type LeagueResult };
 
 /**
  * Una liga: su cuadro (logo, o el ícono del deporte en su color), el nombre y su línea; a la derecha «Tu liga» si es
