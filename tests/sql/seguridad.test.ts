@@ -127,6 +127,8 @@ const RPC_AUTHENTICATED = [
   'delete_venue', 'add_venue_photo', 'delete_venue_photo', 'set_venue_cover', 'request_promotion', 'cancel_promotion',
   'set_league_venue', 'set_account_mode', 'admin_businesses', 'admin_business', 'admin_set_business_status',
   'admin_set_commission', 'admin_decide_promotion', 'admin_grant_promotion', 'admin_end_promotion',
+  // Pagos con Azul (20261105000200_pagos_azul.sql): precios, empezar y cancelar el pago, y la consola.
+  'promotion_prices', 'begin_promotion_payment', 'cancel_payment', 'admin_set_promotion_price', 'admin_payments',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -137,6 +139,8 @@ const RPC_SERVICE_ONLY = [
   'badge_apply', 'badge_claim', 'badge_fail', 'badge_finish', 'badge_release', 'badge_snapshot',
   // Esports (las Edge Functions esports-verify y esports-auth): la búsqueda de Riot y conectar la cuenta.
   'esports_begin_lookup', 'esports_store_lookup', 'esports_link_begin', 'esports_link_take', 'esports_link_account',
+  // La respuesta de Azul ya revisada (la Edge Function azul-pay).
+  'finish_payment',
 ].sort();
 
 /** Lo único security definer que un visitante sin cuenta puede ejecutar. */

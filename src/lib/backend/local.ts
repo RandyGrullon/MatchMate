@@ -15,6 +15,8 @@ import {
   planBlocker,
   SESSION as DELETE_SESSION,
 } from '../../../supabase/functions/delete-account/core';
+import { PAY_STATUS, startPayment, verifyPayment, type PayFailure } from '../../../supabase/functions/azul-pay/core';
+import { LOCAL_AZUL_URL, localAzulConfig } from '../azulLocal';
 import { mapAuthError, toBackendError } from './errors';
 import { createIdbFileStore, createMemoryFileStore, toDataUrl, type FileStore } from './localFiles';
 import { hashPassword, verifyPassword } from './password';
@@ -531,6 +533,71 @@ export async function createLocalBackend(opts: LocalBackendOptions): Promise<Loc
           emit('SIGNED_OUT', null);
         }
         return { deleted: true };
+      },
+    ],
+    // Pagar con Azul (en Supabase, la Edge Function azul-pay) contra el simulador de la app (src/lib/azulLocal.ts):
+    // la misma lógica y la misma firma, con una clave de prueba. finish_payment, como superusuario (allá, la clave
+    // secreta).
+    [
+      'azul-pay',
+      async (body) => {
+        const origin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+        const config = localAzulConfig(origin);
+        const b = (body && typeof body === 'object' ? body : {}) as { action?: unknown; venueId?: unknown; days?: unknown; params?: unknown };
+        const failure = (f: PayFailure) => {
+          const status = PAY_STATUS[f.code];
+          const kind =
+            status === 401 ? 'auth' : status === 403 ? 'permission' : status === 404 ? 'not_found' : status === 429 ? 'rate_limited' : status === 400 ? 'validation' : 'unknown';
+          return new BackendError(f.message, kind, f.code);
+        };
+        if (b.action === 'start' && typeof b.venueId === 'string' && typeof b.days === 'number') {
+          if (!current) throw failure({ code: 'sesion', message: 'Tu sesión venció. Entra de nuevo para pagar.' });
+          const started = await startPayment(
+            {
+              begin: async (_token, venueId, days) => {
+                try {
+                  return { data: await backend.rpc('begin_promotion_payment', { p_venue: venueId, p_days: days }), error: null };
+                } catch (e) {
+                  const be = toBackendError(e);
+                  return { data: null, error: { message: be.message, code: be.code ?? undefined } };
+                }
+              },
+            },
+            config,
+            'local',
+            b.venueId,
+            b.days,
+          );
+          if ('code' in started) throw failure(started);
+          // El navegador se va al simulador de una vez: que el pago pendiente ya esté guardado en IndexedDB.
+          await db.syncToFs();
+          return { url: LOCAL_AZUL_URL, fields: started.fields, orderNumber: started.order.orderNumber, amount: started.order.amount };
+        }
+        if (b.action === 'verify' && b.params && typeof b.params === 'object') {
+          const done = await verifyPayment(
+            {
+              finish: async (order, status, amount, data) => {
+                try {
+                  const res = await db.query<{ r: unknown }>('select public.finish_payment($1, $2, $3, $4::jsonb) as r', [
+                    order,
+                    status,
+                    amount,
+                    JSON.stringify(data),
+                  ]);
+                  return { data: res.rows[0]?.r ?? null, error: null };
+                } catch (e) {
+                  const be = toBackendError(e);
+                  return { data: null, error: { message: be.message, code: be.code ?? undefined } };
+                }
+              },
+            },
+            config,
+            b.params as Record<string, string>,
+          );
+          if ('code' in done) throw failure(done);
+          return done.result;
+        }
+        throw new BackendError('Petición inválida.', 'validation', 'invalido');
       },
     ],
     ...Object.entries(opts.handlers ?? {}),

@@ -148,6 +148,7 @@ export const businessTags = {
   venues: 'business:venues',
   venue: (id: string) => `business:venue:${id}`,
   admin: 'business:admin',
+  prices: 'business:prices',
 };
 
 const keys = {
@@ -156,6 +157,8 @@ const keys = {
   venue: (id: string) => `business:venue:${id}`,
   adminList: (status: string | null, q: string, page: number) => `business:admin:list:${status ?? '*'}:${q}:${page}`,
   admin: (id: string) => `business:admin:${id}`,
+  prices: 'business:prices',
+  payments: (status: string | null, page: number) => `business:admin:payments:${status ?? '*'}:${page}`,
 };
 
 function afterChange(venueId?: string | null) {
@@ -304,6 +307,124 @@ export async function cancelPromotion(venueId: string, promotionId: string): Pro
   afterChange(venueId);
 }
 
+// ---------- Pagar con Azul (20261105000200_pagos_azul.sql, supabase/functions/azul-pay) ----------
+
+/** Lo que cuesta destacar por tantos días (RD$, ITBIS incluido). Sin precios, se pide y se cobra aparte. */
+export interface PromotionPrice {
+  days: number;
+  amount: number;
+}
+
+export function usePromotionPrices(): Live<PromotionPrice[]> {
+  const uid = getUserId();
+  const key = uid ? keys.prices : null;
+  const st = queryClient.useQuery<PromotionPrice[]>(key, () => rpc<PromotionPrice[]>('promotion_prices'), {
+    initial: [],
+    tags: [businessTags.all, businessTags.prices],
+    staleMs: 60_000,
+  });
+  return useMemo(() => ({ data: st.data, loading: st.loading, error: st.error }), [st]);
+}
+
+/** El formulario que el navegador manda a la Página de Pagos de Azul (lo firma la Edge Function azul-pay). */
+export interface AzulForm {
+  url: string;
+  fields: Record<string, string>;
+  orderNumber: number;
+  amount: number;
+}
+
+/** Empieza el pago: la base pone el precio y deja el pago pendiente; azul-pay firma el formulario. */
+export async function startPromotionPayment(venueId: string, days: number): Promise<AzulForm> {
+  const form = await backend().invoke<AzulForm>('azul-pay', { action: 'start', venueId, days });
+  afterChange(venueId);
+  return form;
+}
+
+/**
+ * Lleva el navegador a Azul con un formulario (Azul lo pide así: POST desde el navegador de la persona). Una ruta de
+ * la app (el simulador del modo local, /dev/azul) va por GET.
+ */
+export function sendToAzul(form: Pick<AzulForm, 'url' | 'fields'>, doc: Document = document): void {
+  const f = doc.createElement('form');
+  f.method = form.url.startsWith('/') ? 'get' : 'post';
+  f.action = form.url;
+  f.style.display = 'none';
+  for (const [name, value] of Object.entries(form.fields)) {
+    const input = doc.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    f.appendChild(input);
+  }
+  doc.body.appendChild(f);
+  f.submit();
+}
+
+export type PaymentStatus = 'pending' | 'approved' | 'declined' | 'cancelled' | 'error';
+
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  pending: 'Sin terminar',
+  approved: 'Aprobado',
+  declined: 'Declinado',
+  cancelled: 'Cancelado',
+  error: 'Con error',
+};
+
+/** Lo que dijo azul-pay al volver de Azul. */
+export interface PaymentResult {
+  status: PaymentStatus;
+  orderNumber: number;
+  venueId: string | null;
+  endsAt: string | null;
+  days: number | null;
+  amount: number;
+}
+
+/** La vuelta de Azul (lo que trae el query string): azul-pay revisa la firma y la base activa la promoción. */
+export async function verifyPromotionPayment(params: Record<string, string>): Promise<PaymentResult> {
+  const result = await backend().invoke<PaymentResult>('azul-pay', { action: 'verify', params });
+  afterChange(result.venueId);
+  return result;
+}
+
+/** Volvió de Azul con «Cancelar»: el pago pendiente queda cancelado (la promoción sigue pedida). */
+export async function cancelPromotionPayment(orderNumber: number): Promise<boolean> {
+  const done = await rpc<boolean>('cancel_payment', { p_order: orderNumber });
+  afterChange();
+  return done;
+}
+
+export type PaymentReturn = { kind: 'response'; params: Record<string, string> } | { kind: 'cancelled'; orderNumber: number };
+
+/** Lo que vino de Azul en la URL de vuelta: la respuesta (con AuthHash), el «Cancelar» o nada (null). */
+export function paymentReturn(search: string): PaymentReturn | null {
+  const q = new URLSearchParams(search);
+  const cancelled = q.get('cancelado');
+  if (cancelled !== null) return /^\d{1,18}$/.test(cancelled) ? { kind: 'cancelled', orderNumber: Number(cancelled) } : null;
+  if (!q.get('AuthHash') || !q.get('OrderNumber')) return null;
+  const params: Record<string, string> = {};
+  for (const [k, v] of q) params[k] = v;
+  return { kind: 'response', params };
+}
+
+/** Los códigos de azul-pay (PAY_MESSAGES en supabase/functions/azul-pay/core.ts): su mensaje ya viene para mostrar. */
+const PAY_CODES = new Set(['invalido', 'sesion', 'no_permitido', 'firma', 'no_existe', 'rate_limited', 'config', 'servidor']);
+const PAY_NOT_READY = 'El pago con Azul no está listo todavía. Pide la promoción y te escribimos.';
+
+/**
+ * El error de pagar, en palabras sencillas: azul-pay manda `{code, message}` con el mensaje en español (sin importar
+ * su core aquí: la app del teléfono comparte este archivo y Metro no ve supabase/functions/azul-pay).
+ */
+export function paymentErrorText(e: unknown): string {
+  const be = asBackendError(e);
+  // Un código crudo de la base ('invalido') no es un mensaje: ese va por businessErrorText.
+  if (be?.code && PAY_CODES.has(be.code) && be.message && !/^[a-z_]+$/.test(be.message)) return be.message;
+  // La función no está publicada todavía.
+  if (be?.kind === 'not_found') return PAY_NOT_READY;
+  return businessErrorText(e, 'No se pudo empezar el pago. Inténtalo otra vez.');
+}
+
 /** El torneo o la liga se juega en un espacio de la empresa (null = ya no). */
 export async function setLeagueVenue(lid: string, venueId: string | null): Promise<void> {
   await rpc<boolean>('set_league_venue', { p_league: lid, p_venue: venueId });
@@ -390,11 +511,36 @@ export interface AdminPromotion extends VenuePromotion {
   decidedAt: string | null;
 }
 
+export interface AdminPayment {
+  id: string;
+  orderNumber: number;
+  amount: number;
+  status: PaymentStatus;
+  authorizationCode: string | null;
+  responseMessage: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface AdminPaymentRow extends AdminPayment {
+  businessId: string | null;
+  businessName: string;
+}
+
+export interface AdminPaymentList {
+  rows: AdminPaymentRow[];
+  total: number;
+  /** Lo cobrado con Azul (aprobados). */
+  approvedTotal: number;
+}
+
 export interface AdminBusiness extends Business {
   owner: { id: string; name: string | null; email: string | null; blocked: boolean };
   promotions: AdminPromotion[];
   leagues: { id: string; name: string; kind: 'liga' | 'torneo'; sport: string; venueId: string; createdAt: string }[];
-  /** Lo anotado como pagado en promociones. */
+  /** Los pagos con Azul (los más nuevos primero). */
+  payments?: AdminPayment[];
+  /** Lo pagado en promociones (con Azul o anotado). */
   paid: number;
 }
 
@@ -448,6 +594,26 @@ export async function adminGrantPromotion(venueId: string, days: number, amount:
 export async function adminEndPromotion(id: string): Promise<void> {
   await rpc('admin_end_promotion', { p_promotion: id });
   afterChange();
+}
+
+/** Pone (o quita, con null) el precio de destacar por tantos días. */
+export async function adminSetPromotionPrice(days: number, amount: number | null): Promise<PromotionPrice[]> {
+  const prices = await rpc<PromotionPrice[]>('admin_set_promotion_price', { p_days: days, p_amount: amount });
+  invalidate(businessTags.prices);
+  return prices;
+}
+
+export const ADMIN_PAYMENTS_PAGE = 50;
+
+/** Los pagos con Azul (`enabled` false: no lee nada, p. ej. con el panel cerrado). */
+export function useAdminPayments(status: PaymentStatus | null, page = 0, enabled = true): Live<AdminPaymentList> {
+  const key = enabled ? keys.payments(status, page) : null;
+  const st = queryClient.useQuery<AdminPaymentList>(
+    key,
+    () => rpc<AdminPaymentList>('admin_payments', { p_status: status, p_limit: ADMIN_PAYMENTS_PAGE, p_offset: page * ADMIN_PAYMENTS_PAGE }),
+    { initial: { rows: [], total: 0, approvedTotal: 0 }, tags: [businessTags.all, businessTags.admin], persist: false },
+  );
+  return useMemo(() => ({ data: st.data, loading: st.loading, error: st.error }), [st]);
 }
 
 // ---------- Errores ----------

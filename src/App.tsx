@@ -39,6 +39,8 @@ const PostPage = lazy(() => import('./pages/PostPage'));
 const LeagueWallPage = lazy(() => import('./pages/LeagueWallPage'));
 const SquadsPage = lazy(() => import('./pages/squads/SquadsPage'));
 const BusinessPage = lazy(() => import('./pages/business/BusinessPage'));
+const PaymentReturnPage = lazy(() => import('./pages/business/PaymentReturnPage'));
+const AzulSimulatorPage = lazy(() => import('./pages/dev/AzulSimulatorPage'));
 const VenuesPage = lazy(() => import('./pages/venues/VenuesPage'));
 const VenuePage = lazy(() => import('./pages/venues/VenuePage'));
 const SquadPage = lazy(() => import('./pages/squads/SquadPage'));
@@ -209,6 +211,9 @@ export default function App() {
                       <Route path="/equipos" element={<Screen area="equipos" framed><SquadsPage /></Screen>} />
                       {/* Empresas: su panel y «Dónde jugar» (docs/empresas.md). */}
                       <Route path="/empresa" element={<Screen area="empresa" framed><BusinessPage /></Screen>} />
+                      {/* La vuelta de Azul al pagar una promoción; /dev/azul es su simulador del modo local. */}
+                      <Route path="/empresa/pago" element={<Screen area="empresa/pago" framed><PaymentReturnPage /></Screen>} />
+                      <Route path="/dev/azul" element={<Screen area="dev/azul" framed><AzulSimulatorPage /></Screen>} />
                       <Route path="/canchas" element={<Screen area="canchas" framed><VenuesPage /></Screen>} />
                       <Route path="/canchas/:venueId" element={<Screen area="canchas/espacio" framed><VenuePage /></Screen>} />
                       <Route path="/equipos/unirse/:code" element={<Screen area="equipos/unirse" framed><JoinSquadPage /></Screen>} />

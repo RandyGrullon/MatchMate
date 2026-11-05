@@ -46,14 +46,48 @@ empresa puede pedir que un espacio salga **destacado** (primero en la búsqueda)
 ## Monetización
 
 - **Destacar un espacio:**
-  - La empresa lo pide desde el espacio (7, 15 o 30 días y una nota).
-  - El superadmin le escribe para el pago y lo activa en la consola con lo que pagó.
+  - **Con precios puestos** (consola › Empresas › *Cobrar con Azul*): la empresa elige los días, paga con tarjeta en
+    la Página de Pagos de Azul y la promoción se activa sola al volver (ver «Pagos con Azul»). Si ya está destacado,
+    los días pagados se suman al final.
+  - **Sin precios:** la empresa lo pide desde el espacio (7, 15 o 30 días y una nota); el superadmin le escribe para
+    el pago y lo activa en la consola con lo que pagó.
   - Sale primero hasta la fecha de fin; también se puede dar una directa o terminarla antes.
   - La consola suma lo pagado por empresa.
 - **Comisión:** cada empresa tiene su porcentaje (consola › Empresas › la empresa). Por ahora solo se anota, junto con
   los torneos que se juegan en sus espacios: todavía no hay cobros en la app (inscripciones con pago, reservas).
-- **Falta:** elegir con quién cobrar (Azul, CardNet, Stripe…). Con eso, el pago de la promoción se hace en la app y se
-  activa solo; también se puede cobrar la inscripción de un torneo y separar la comisión.
+- **Falta:** cobrar en la app la inscripción de un torneo (o las reservas) y separar la comisión. Azul ya cobra las
+  promociones.
+
+## Pagos con Azul (20261105000200_pagos_azul.sql, supabase/functions/azul-pay)
+
+Azul (Página de Pagos, documento E-Commerce de 2023-08) es la pasarela que eligió el dueño de la app. El cobro es de
+MatchMate a la empresa (la promoción); la app nunca ve ni guarda datos de tarjetas: se escriben en la página de Azul.
+
+1. **Empezar** (*Pagar con Azul* en el espacio): la app llama `azul-pay` (`start`) con el JWT de la cuenta. La función
+   llama `begin_promotion_payment` como la cuenta: la base revisa que sea la dueña de una empresa aprobada, pone el
+   precio (nunca la app), deja la promoción pedida y un pago `pending` con su número de orden. La función arma los
+   campos de Azul y los firma (`AuthHash`: HMAC SHA-512 en UTF-16LE con la AuthKey, que nunca sale del servidor).
+2. **Pagar:** el navegador manda ese formulario a Azul (POST, como pide Azul) y la persona paga ahí.
+3. **Volver** a `/empresa/pago` con la respuesta en la dirección. La app la manda a `azul-pay` (`verify`), que revisa
+   la firma de Azul y el monto, y llama `finish_payment` con la clave secreta: aprobado (IsoCode `00`) activa la
+   promoción; declinado o error lo anota. La app quita la respuesta de la dirección y dice qué pasó. Repetirlo
+   (recargar) no cambia nada.
+4. **Cancelar** en Azul vuelve a `/empresa/pago?cancelado=<orden>`: el pago queda `cancelled` y la promoción sigue
+   pedida (puede pagarla después o retirarla).
+
+- **ITBIS:** el precio lo incluye (`AZUL_ITBIS_PCT`, 18 por defecto; 0 si está exento). Se manda a Azul y se guarda en
+  el pago.
+- **Lo que no hay en Azul:** aviso de servidor a servidor. Si la persona cierra el navegador antes de volver, el pago
+  queda «Sin terminar» en la consola: se busca por el número de orden en el portal de Azul y, si se cobró, se activa
+  a mano.
+- **Consola:** *Cobrar con Azul* (los precios) y *Pagos* (todos, con lo cobrado); cada empresa trae los suyos.
+- **Configurar:** docs/CONFIGURAR-SUPABASE.md, paso 9c (los datos de Azul los pone el dueño como secretos).
+- **Modo local:** sin Azul. `azul-pay` corre en la app (src/lib/backend/local.ts) con una clave de prueba y *Pagar con
+  Azul* abre un simulador (`/dev/azul`, src/pages/dev/AzulSimulatorPage.tsx) que aprueba, declina o cancela firmado
+  igual que Azul.
+- **Pruebas:** `tests/sql/pagos-azul.test.ts` (la base), `src/lib/azulPayFunction.test.ts` (la firma contra la de
+  Node, el formulario, la vuelta y la función), `src/lib/azulLocal.test.ts` (el simulador) y
+  `src/lib/data/business.test.ts`.
 
 ## La consola (superadmin)
 
@@ -65,6 +99,7 @@ pedidas). Una lista por estado y búsqueda, y el detalle de cada empresa:
 - **comisión;**
 - **espacios**, con «Destacar» directo;
 - **promociones:** activar con lo pagado y los días, rechazar o terminar;
+- **pagos con Azul** de la empresa;
 - **torneos** que se juegan en sus espacios.
 
 Todo queda en la auditoría (`target_type = 'business'`).
@@ -95,8 +130,9 @@ Todo queda en la auditoría (`target_type = 'business'`).
 
 ## Pendiente
 
-- Cobrar en la app: elegir pasarela (ver Monetización).
+- Cobrar en la app la inscripción de los torneos y separar la comisión (Azul ya cobra las promociones).
+- La app del teléfono: pagar con Azul (abrir la Página de Pagos en el navegador y volver por enlace).
 - Los Términos y la Política de privacidad tienen que decir que las empresas publican datos y fotos públicas de sus
-  espacios y que la app cobra por destacar. Cambiar la versión obliga a aceptar de nuevo (src/lib/legal.ts).
+  espacios y que la app cobra por destacar (con Azul: qué se guarda del pago, sin datos de tarjeta). Cambiar la versión obliga a aceptar de nuevo (src/lib/legal.ts).
 - La app del teléfono (`movil/`): Mi empresa y Dónde jugar (la lógica ya está en `src/lib/data/business.ts`).
 - Personal de la empresa (más de una cuenta por empresa) y reservas de canchas por hora.
