@@ -9,7 +9,9 @@ import { backend } from './data/client';
 
 export const AVATAR_BUCKET = 'avatars';
 export const POST_BUCKET = 'posts';
-export type PublicBucket = typeof AVATAR_BUCKET | typeof POST_BUCKET;
+/** Las fotos de los espacios de las empresas (20261105000110_empresas_supabase.sql). */
+export const VENUE_BUCKET = 'venues';
+export type PublicBucket = typeof AVATAR_BUCKET | typeof POST_BUCKET | typeof VENUE_BUCKET;
 
 const urls = new Map<string, string>();
 const failed = new Set<string>();

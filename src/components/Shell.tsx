@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { House, Info, LogIn, MessageCircle, MessagesSquare, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
+import { Building2, House, Info, LogIn, MessageCircle, MessagesSquare, Settings, Trophy, UserRound, WifiOff, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { backendMode } from '../lib/backend';
 import { useLeaguesByIds } from '../lib/data/leagues';
@@ -99,7 +99,7 @@ export function TopActions() {
 
 /** Secciones de la app (abajo en el celular, arriba en la computadora). */
 export interface SectionDef {
-  key: 'home' | 'social' | 'leagues' | 'me' | 'contact' | 'about' | 'login';
+  key: 'home' | 'social' | 'leagues' | 'me' | 'contact' | 'about' | 'login' | 'business';
   to: string;
   label: string;
   icon: LucideIcon;
@@ -126,8 +126,10 @@ const LIGAS: SectionDef = {
   to: '/ligas',
   label: 'Ligas',
   icon: Trophy,
-  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports', '/equipos'),
+  match: (p) => under(p, '/ligas', '/l', '/unirse', '/anotar', '/agenda', '/invitacion', '/esports', '/equipos', '/canchas'),
 };
+// Mi empresa (modo empresa): su panel y las fichas de los espacios («Dónde jugar»).
+const EMPRESA: SectionDef = { key: 'business', to: '/empresa', label: 'Mi empresa', icon: Building2, match: (p) => under(p, '/empresa', '/canchas') };
 // El Organizar de una liga (`/l/:lid/admin`): es de Yo, como Organizar, aunque la ruta esté dentro de la liga.
 const leagueAdmin = (p: string) => /^\/l\/[^/]+\/admin(\/|$)/.test(p);
 // Yo: tu perfil, tus bolas y juegos sueltos y la configuración (el engranaje de Yo). Desde la configuración se llega a
@@ -152,8 +154,11 @@ const ENTRAR: SectionDef = { key: 'login', to: '/login', label: 'Entrar', icon: 
  * y la lupa). Tampoco hay botón de crear en la barra (está en Ligas › «Crear o unirme») ni pestaña de avisos (es la
  * campana de Hoy).
  */
-export function navSections(signedIn: boolean): SectionDef[] {
-  return signedIn ? [HOY, SOCIAL, LIGAS, YO] : [INICIO, CONTACT, ABOUT, ENTRAR];
+export function navSections(signedIn: boolean, business = false): SectionDef[] {
+  if (!signedIn) return [INICIO, CONTACT, ABOUT, ENTRAR];
+  // En modo empresa: su empresa y lo social (y Yo, para volver a jugador). Lo de los jugadores sigue por su link.
+  // Su Yo es la configuración de la cuenta (el perfil de jugador, con sus bolas y juegos, es de los jugadores).
+  return business ? [EMPRESA, SOCIAL, { ...YO, to: '/cuenta' }] : [HOY, SOCIAL, LIGAS, YO];
 }
 
 /** La sección marcada en esa ruta. Yo gana a Ligas en el Organizar de una liga (`/l/:lid/admin`). */
@@ -202,8 +207,8 @@ function useSportBar(): { switcher: boolean; own: string | null } {
 
 /** Las secciones de quien usa la app. Mientras se lee la sesión guardada se quedan las de con cuenta (no parpadean). */
 function useSections() {
-  const { user, loading } = useAuth();
-  return navSections(!!user || loading);
+  const { user, loading, profile } = useAuth();
+  return navSections(!!user || loading, !!user && profile?.accountMode === 'business');
 }
 
 /** «Entrar» con la pantalla actual como `next`: al entrar (o crear la cuenta) vuelve aquí. */

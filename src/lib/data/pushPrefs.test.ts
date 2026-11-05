@@ -105,40 +105,57 @@ describe('con la base de verdad', () => {
       return reads;
     };
 
-    // Antes de 20261007000100 (sin ui_mode, el modo de la app): con sus preferencias, sin modo (src/lib/mode.ts).
+    // Antes de 20261105000100 (sin account_mode, jugador o empresa): con su modo de la app, sin modo de cuenta (jugador).
     expect(
-      await without(['ui_mode'], (profile) => {
+      await without(['account_mode'], (profile) => {
+        expect(profile).toMatchObject({ id: ana, name: 'Ana', username: 'ana', pushPrefs: { ...ALL_PUSH_ON, social: true, liga: false } });
+        expect(profile && 'uiMode' in profile).toBe(true);
+        expect(profile && 'accountMode' in profile).toBe(false);
+      }),
+    ).toEqual([
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode',
+    ]);
+
+    // Antes de 20261007000100 (sin ui_mode, el modo de la app, ni account_mode que es más nueva): con sus
+    // preferencias, sin modo (src/lib/mode.ts).
+    expect(
+      await without(['ui_mode', 'account_mode'], (profile) => {
         expect(profile).toMatchObject({ id: ana, name: 'Ana', username: 'ana', pushPrefs: { ...ALL_PUSH_ON, social: true, liga: false } });
         expect(profile && 'uiMode' in profile).toBe(false);
       }),
     ).toEqual([
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,account_mode',
       'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs',
     ]);
 
-    // Antes de 20260929000500 (sin push_prefs, ni ui_mode que es más nueva): con su @usuario, sin preferencias.
+    // Antes de 20260929000500 (sin push_prefs, ni ui_mode ni account_mode que son más nuevas): con su @usuario, sin
+    // preferencias.
     expect(
-      await without(['push_prefs', 'ui_mode'], (profile) => {
+      await without(['push_prefs', 'ui_mode', 'account_mode'], (profile) => {
         expect(profile).toMatchObject({ id: ana, name: 'Ana', username: 'ana', adultConfirmedAt: null });
         expect(profile && 'pushPrefs' in profile).toBe(false);
         expect(profile && 'uiMode' in profile).toBe(false);
       }),
     ).toEqual([
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode',
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,ui_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,account_mode',
       'id,email,name,is_superadmin,adult_confirmed_at,created_at,username',
     ]);
 
     // Antes de 20260929000200 (tampoco username): el perfil igual, con el @usuario vacío.
     expect(
-      await without(['username', 'push_prefs', 'ui_mode'], (profile) => {
+      await without(['username', 'push_prefs', 'ui_mode', 'account_mode'], (profile) => {
         expect(profile).toMatchObject({ id: ana, name: 'Ana', username: '', adultConfirmedAt: null });
         expect(profile && 'pushPrefs' in profile).toBe(false);
       }),
     ).toEqual([
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode',
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,push_prefs,ui_mode',
-      'id,email,name,is_superadmin,adult_confirmed_at,created_at,ui_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,username,push_prefs,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,push_prefs,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,ui_mode,account_mode',
+      'id,email,name,is_superadmin,adult_confirmed_at,created_at,account_mode',
       'id,email,name,is_superadmin,adult_confirmed_at,created_at',
     ]);
 

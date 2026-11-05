@@ -122,6 +122,11 @@ const RPC_AUTHENTICATED = [
   'cancel_squad_invite', 'my_squad_invites', 'squad_pending_invites', 'esports_set_game_platforms', 'esports_refresh_entry_ids',
   // Boliche: equipos fijos de la liga, la práctica abierta y el catálogo y layout de las bolas.
   'set_bowling_teams', 'save_bowling_team', 'delete_bowling_team', 'apply_league_teams', 'open_practice', 'set_ball_details',
+  // Empresas (20261105000100_empresas.sql): la empresa, sus espacios, el modo y la consola.
+  'search_venues', 'venue_detail', 'register_business', 'update_business', 'delete_business', 'my_business', 'save_venue',
+  'delete_venue', 'add_venue_photo', 'delete_venue_photo', 'set_venue_cover', 'request_promotion', 'cancel_promotion',
+  'set_league_venue', 'set_account_mode', 'admin_businesses', 'admin_business', 'admin_set_business_status',
+  'admin_set_commission', 'admin_decide_promotion', 'admin_grant_promotion', 'admin_end_promotion',
 ].sort();
 
 /** RPC de public solo para la clave secreta (service_role): Edge Functions, cron y scripts. Nadie de la app. */
@@ -138,7 +143,9 @@ const RPC_SERVICE_ONLY = [
 const ANON_ALLOWED = [
   'private.readable_leagues', 'public.esports_hub', 'public.esports_team_preview', 'public.invite_preview', 'public.league_streams',
   'public.player_places', 'public.public_agenda', 'public.public_leagues_feed', 'public.scorer_link_preview',
-  'public.squad_followers', 'public.squad_page', 'public.squad_posts', 'public.squad_preview',
+  // Empresas: «Dónde jugar» (search_venues y venue_detail: los espacios de empresas aprobadas).
+  'public.search_venues', 'public.squad_followers', 'public.squad_page', 'public.squad_posts', 'public.squad_preview',
+  'public.venue_detail',
 ];
 
 describe('canario: la RLS se aplica en PGlite', () => {
@@ -290,8 +297,8 @@ describe('nada abierto por accidente', () => {
     expect(rows).toEqual([
       { who: 'anon', fn: 'readable_leagues' },
       ...[
-        'admin_leagues', 'can_remove_logo_path', 'can_upload_logo_path', 'can_upload_photo_path', 'is_super', 'my_leagues',
-        'photo_admin_leagues', 'readable_leagues',
+        'admin_leagues', 'can_remove_logo_path', 'can_upload_logo_path', 'can_upload_photo_path', 'can_upload_venue_photo',
+        'is_super', 'my_leagues', 'photo_admin_leagues', 'readable_leagues',
       ].map((fn) => ({
         who: 'authenticated',
         fn,
