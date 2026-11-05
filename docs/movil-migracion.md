@@ -38,7 +38,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ⏳ En juego ahora, lo próximo, la semana (useActivity de la web: necesita la campana, `useNotifications`).
 - ⏳ Campana de avisos e invitaciones (`/avisos`, `/invitacion/<id>`).
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
-- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche); ✅ muro (`/l/<liga>/muro`), invitar
+- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5); ✅ muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
   seguir una liga pública. ⏳ tabla, jugadores, anuncios, temporadas, admin (🌐 «Tabla, jugadores y más en la web»).
 
@@ -58,12 +58,30 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 ## 4. Raqueta: pádel, tenis, pickleball, ping pong
 
-- ⏳ Inicio del deporte, liga de parejas, torneo (grupos + cuadro), liga por cajas, escalera, noches de americano y
-  mexicano (pádel), partido y modo cancha (`src/court/`, motores en `src/sports/racket/`), tabla, perfil.
+- ✅ Inicio de la liga (`movil/src/components/racket/RacketHome.tsx`): en vivo, mis próximos partidos, próximas fechas y
+  anteriores; un torneo con un solo evento abre directo. Arriba, Partidos, Tabla y Mis partidos (`SportLinks`).
+- ✅ Evento (`RacketEvent.tsx`): liga de parejas (tu próximo partido, jornadas, tabla y parejas), noche de americano o
+  mexicano (te toca o descansas, canchas de la ronda, tabla y rondas) y torneo (categorías, grupos, cuadro y partidos).
+- ✅ Partidos (`/l/<liga>/partidos`): en vivo, por confirmar, próximos y resultados; Todos · Míos (· liga y torneos ·
+  noches). Tabla (`/l/<liga>/tabla`): ligas y grupos, ranking individual (por modalidad) y noches de la temporada.
+- ✅ Partido (`/l/<liga>/partido/<id>`, también desde `?partido=` de los links y avisos): marcador, confirmar o «No es
+  así», «Solo el resultado» (el mismo lector de la web: `racketResultParser`), decidir un reclamo (admin), compartir e
+  historial.
+- ✅ Modo cancha (`/l/<liga>/partido/<id>/cancha`, `RacketCourt.tsx` + `court/CourtShell.tsx`): la misma máquina de la
+  web (`src/court/machine.ts`, `useCourt`, `usePointsCourt`), sets (quién saca y de qué lado, 15/30/40/AD, cambio de
+  lado, retiro) y puntos del americano (a cuántos o por tiempo); deshacer, terminar, suspender, otro anotador y sin
+  señal. La pantalla no se apaga mientras se anota.
+- 🌐 Crear eventos y lo de organizar (armar jornadas, la siguiente ronda, grupos y cuadro), liga por cajas, escalera,
+  las opciones del admin en un partido (corregir, W.O., aplazar), el perfil del jugador y las temporadas cerradas.
 
 ## 5. Equipos: baloncesto, fútbol, futsal
 
-- ⏳ Inicio, partidos, mesa anotadora / acta, convocatoria, tabla, líderes, playoffs, disciplina, admin.
+- ✅ Inicio (`movil/src/components/team/TeamScreens.tsx`): en vivo, «Tu próximo partido» con la convocatoria (Voy / Tal
+  vez / No voy y cómo va tu equipo), próximos, resultados y la tabla corta con el máximo anotador o el goleador.
+- ✅ Partidos (Por jugar · Resultados · Mi equipo, por jornada), el partido (marcador, confirmar o reclamar, compartir) y
+  la tabla con anotadores (baloncesto) o goleadores (fútbol y sala).
+- 🌐 La mesa anotadora y el acta (el botón abre la web), el detalle por cuarto, goles y tarjetas, la disciplina, los
+  playoffs, los eventos especiales, armar el calendario y los equipos.
 
 ## 6. Golf, natación, esports
 

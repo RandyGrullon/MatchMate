@@ -9,7 +9,10 @@ import { saveErrorMessage } from '@mm/lib/errorText';
 import { eventTitle, formatDateLong } from '@mm/lib/format';
 import { nextGameLabel, type GameCell } from '@mm/lib/useNextGame';
 import { confirmAsync, toast } from '@/components/feedback';
-import { Badge, Button, Card, Empty, ErrorNote, Loading, Screen, Txt } from '@/components/ui';
+import { BackBar, Badge, Button, Card, Empty, ErrorNote, Loading, Screen, Txt } from '@/components/ui';
+import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
+import { RacketEventBody } from '@/components/racket/RacketEvent';
+import { useLeague } from '@mm/lib/data';
 import { useMyGames } from '@/lib/useMyGames';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
@@ -41,7 +44,42 @@ function Cell({ n, cell }: { n: number; cell: GameCell }) {
  * Un evento de boliche (práctica o torneo): «Tus juegos» con lo que sigue (anotar, seguir el que va a medias, enviar),
  * como la web (src/pages/EventPage.tsx + MyGamesPanel). La planilla de todos y los resultados, por ahora en la web.
  */
+/** El evento: el de raqueta (o el deporte que tenga sus pantallas en la app) o el del boliche. */
 export default function EventScreen() {
+  const { lid, eventId } = useLocalSearchParams<{ lid: string; eventId: string }>();
+  const c = useColors();
+  const league = useLeague(lid);
+  if (league.loading && !league.data) return <Loading label="Cargando la liga" />;
+  if (league.data && sportFamily(league.data) === 'racket') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <BackBar label={league.data.name} fallback={`/l/${lid}`} />
+          <RacketEventBody eventId={eventId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (league.data && sportFamily(league.data) !== 'series') {
+    // Los eventos de equipos (jornadas especiales, el torneo relámpago) y de esports: por ahora en la web.
+    return (
+      <Screen>
+        <BackBar label={league.data.name} fallback={`/l/${lid}`} />
+        <Empty
+          title={league.data.name}
+          action={
+            <Button icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>
+              Abrir en la web
+            </Button>
+          }
+        />
+      </Screen>
+    );
+  }
+  return <BowlingEventScreen />;
+}
+
+function BowlingEventScreen() {
   const { lid, eventId } = useLocalSearchParams<{ lid: string; eventId: string }>();
   const c = useColors();
   const g = useMyGames(lid, eventId);

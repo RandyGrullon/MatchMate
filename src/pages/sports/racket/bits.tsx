@@ -1,33 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowUpDown, Boxes, Check, ChevronDown, ChevronsUp, ListOrdered, Loader2, Minus, Moon, Plus, Search, Shuffle, Trophy, type LucideIcon } from 'lucide-react';
-import type { StandingsColumn } from '../../../components/match';
+import { Check, ChevronDown, Loader2, Minus, Plus, Search } from 'lucide-react';
 import { PosNum, TuTag } from '../../../components/ranking/parts';
 import { Card, ListRow, SectionHeader, cx } from '../../../components/ui';
-import { isGameSport } from '../../../sports/racket/rules';
 import { shareOrigin } from '../../../lib/origin';
+import { eventTypeInfo, plural, racketColumns, type EventTypeInfo } from './view';
 
 /** Piezas chicas de las pantallas de raqueta. */
 
-export interface EventTypeInfo {
-  label: string;
-  icon: LucideIcon;
-  hint: string;
-}
-
-const TYPES: Record<string, EventTypeInfo> = {
-  americano: { label: 'Americano', icon: Shuffle, hint: 'Parejas que rotan cada ronda; cada quien suma sus puntos.' },
-  mexicano: { label: 'Mexicano', icon: ArrowUpDown, hint: 'Cada ronda se arma con la tabla: 1+4 contra 2+3.' },
-  liga: { label: 'Liga', icon: ListOrdered, hint: 'Todos contra todos por jornadas, con tabla.' },
-  torneo: { label: 'Torneo', icon: Trophy, hint: 'Categorías, grupos y cuadro de eliminación.' },
-  noche: { label: 'Noche', icon: Moon, hint: 'Noche de puntos.' },
-  cajas: { label: 'Liga por cajas', icon: Boxes, hint: 'Cajas de 4 a 6 por nivel; cada mes suben 2 y bajan 2.' },
-  escalera: { label: 'Escalera', icon: ChevronsUp, hint: 'Reta hasta 3 puestos arriba; si ganas, tomas su puesto.' },
-};
-
-export const eventTypeInfo = (type: string, doubles = true): EventTypeInfo => {
-  const t = TYPES[type] ?? TYPES.noche;
-  return type === 'liga' && doubles ? { ...t, label: 'Liga de parejas' } : t;
-};
+// Los textos y columnas sin React están en view.ts (los usa también la app del teléfono).
+export { eventTypeInfo, plural, racketColumns, type EventTypeInfo };
 
 export function EventIcon({ type, className }: { type: string; className?: string }) {
   const Icon = eventTypeInfo(type).icon;
@@ -355,28 +336,6 @@ export function FinePrint({ summary = 'Cómo se desempata', children, className 
       <p className="pt-1 pb-1">{children}</p>
     </details>
   );
-}
-
-/** «1 pareja» / «3 parejas». */
-export const plural = (n: number, [one, many]: readonly [string, string]) => `${n} ${n === 1 ? one : many}`;
-
-const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
-
-/**
- * Columnas de la tabla de raqueta: PJ, G, P, dif. de sets, juegos a favor y en contra, dif. de juegos (pickleball y
- * ping pong: juegos y puntos).
- */
-export function racketColumns(sport: string): StandingsColumn[] {
-  const pk = isGameSport(sport);
-  return [
-    { key: 'played', label: 'PJ', title: 'Partidos jugados', value: (r) => r.played },
-    { key: 'won', label: 'G', title: 'Ganados', value: (r) => r.won },
-    { key: 'lost', label: 'P', title: 'Perdidos', value: (r) => r.lost },
-    { key: 'sets', label: pk ? 'Jue.' : 'Sets', title: pk ? 'Diferencia de juegos' : 'Diferencia de sets', value: (r) => signed(r.extra[pk ? 'gamesDiff' : 'setsDiff'] ?? 0) },
-    { key: 'for', label: pk ? 'PF' : 'JF', title: pk ? 'Puntos a favor' : 'Juegos a favor', value: (r) => r.for, wide: true },
-    { key: 'against', label: pk ? 'PC' : 'JC', title: pk ? 'Puntos en contra' : 'Juegos en contra', value: (r) => r.against, wide: true },
-    { key: 'diff', label: pk ? 'Dif.' : 'Dif. J', title: pk ? 'Diferencia de puntos' : 'Diferencia de juegos', value: (r) => signed(r.diff) },
-  ];
 }
 
 /** Dirección de la app (vacía sin navegador: pruebas). */

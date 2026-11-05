@@ -16,6 +16,9 @@ import { rosterOf, rosterSide, teamColor, textOn } from './logic';
 import { RsvpButtons, TeamDot } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 import { matchWhen, resultLine, rowWhen, rsvpLine, scoreShort, todayIn } from './view';
+import { editableRsvp, matchHeading, sideNames } from './lists';
+// Los nombres de los lados y el título del partido están en lists.ts (los usa también la app del teléfono).
+export { matchHeading, sideNames };
 import { overlayParent } from '../../../components/swipeBack.logic';
 
 /**
@@ -28,10 +31,6 @@ import { overlayParent } from '../../../components/swipeBack.logic';
 /** El link de un partido (el push de «resultado por confirmar» trae `?partido=`). */
 export const matchLink = (base: string, id: string) => `${base}/juegos?partido=${id}`;
 
-/** Los nombres de los dos lados (el equipo de ahora; si se borró, el que se copió en el partido). */
-export function sideNames(tl: Pick<TeamLeague, 'teamOf'>, m: Pick<Match, 'sides'>): [string, string] {
-  return [tl.teamOf(m.sides[0].teamId)?.name ?? (m.sides[0].label || 'Por definir'), tl.teamOf(m.sides[1].teamId)?.name ?? (m.sides[1].label || 'Por definir')];
-}
 
 /**
  * Título de una pantalla de la liga (debajo de «‹ Liga de los martes»): 32 px en Lite y 28 en Pro, con lo de la derecha
@@ -100,7 +99,6 @@ export function VsTitle({ tl, match: m, className }: { tl: Pick<TeamLeague, 'tea
   );
 }
 
-const editableRsvp = (m: Pick<Match, 'status'>) => m.status === 'scheduled' || m.status === 'postponed' || m.status === 'live' || m.status === 'suspended';
 
 /**
  * «Tu próximo partido» (en acento suave, como «En juego ahora» de la Liga): el día y la hora, «● Tigres vs. ● Leones»
@@ -400,8 +398,6 @@ export function BackBar({ label, onBack, right, backTo }: { label: string; onBac
   );
 }
 
-/** El título de la pantalla de un partido: «Jornada 3», la fase («Final», «Amistoso») o «Partido». */
-export const matchHeading = (m: Pick<Match, 'stage' | 'round'>, roundWord = 'Jornada') => m.stage || roundLabel(m.round, roundWord) || 'Partido';
 
 /**
  * El estado de un partido en una línea (un solo color): «● En vivo» en el del deporte, «● Por confirmar» en ámbar (lo

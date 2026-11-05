@@ -35,6 +35,13 @@ src/sports, src/badges, src/prizes, src/lib/…   la misma lógica de la web
     las mismas funciones que `src/lib/push.ts` (abajo).
   - `src/lib/bytesBlob.native.ts`: los bytes de una foto para subirla (React Native no arma `new Blob([bytes])`); el
     `storage.upload` del teléfono manda a Storage el ArrayBuffer.
+- **Las pantallas de los deportes** (raqueta y equipos) leen la liga con `useLeagueCtx` (src/lib/league.tsx), como en
+  la web: la app la da con `LeagueScope` (`movil/src/components/league/LeagueScope.tsx`, con `leagueCtxOf`, el mismo
+  armado de LeagueShell) y, en raqueta, `RacketProvider`. Se importan los módulos sueltos, no los índices que traen
+  pantallas de la web (`@mm/court/useCourt`, no `@mm/court`; `@mm/components/match/format`, no `…/match`). Lo que la web
+  tenía dentro de sus pantallas y la app necesita se pasó a módulos sin React (re-exportados desde donde estaban):
+  `racket/view.ts`, `racket/match/side.ts`, `team/lists.ts`, `components/match/standings.ts` y `schedule.ts`,
+  `components/event/eventDay.ts`, `lib/dateBlock.ts`, `court/background.ts`.
 - **`localStorage` en el teléfono** (`movil/src/platform/storage.ts`, el mismo patrón de El Play): al abrir la app se
   cargan en memoria todas las claves `mm:` (AsyncStorage) y la sesión de Supabase (`mm:auth`, en el llavero con
   SecureStore, en trozos); después se lee de memoria y se escribe en segundo plano. `movil/index.ts` lo instala antes de

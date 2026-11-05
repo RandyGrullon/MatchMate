@@ -2,7 +2,7 @@
  * Las piezas de la app, con las medidas del rediseño «Calma y foco» de la web (src/components/ui.tsx y cuenta/kit.tsx):
  * textos, botones, tarjetas, filas, campos, selector segmentado, vacío, error y carga.
  */
-import { forwardRef, type ComponentRef, type ReactNode } from 'react';
+import { forwardRef, useState, type ComponentRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,6 +26,8 @@ import { SafeAreaView, useSafeAreaInsets, type Edge } from 'react-native-safe-ar
 import { router } from 'expo-router';
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { queryClient } from '@mm/lib/data/client';
+import { isDeniedError } from '@mm/lib/errorText';
 import { useColors } from '@/theme/theme';
 import { font, radius, size, type } from '@/theme/tokens';
 import type { Colors } from '@/theme/tokens';
@@ -313,6 +315,37 @@ export function Empty({ icon, title, text, action }: { icon?: ReactNode; title: 
       )}
       {action && <View style={{ marginTop: 12 }}>{action}</View>}
     </View>
+  );
+}
+
+/**
+ * Una lectura que falló (LoadError de la web, con sus textos): sin permiso, sin señal o «Revisa tu conexión», y
+ * «Reintentar» (vuelve a pedir lo que falló, como al volver la señal) si no es de permisos.
+ */
+export function LoadError({ error, onRetry }: { error: Error; onRetry?: () => unknown }) {
+  const [busy, setBusy] = useState(false);
+  const denied = isDeniedError(error);
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  async function retry() {
+    setBusy(true);
+    try {
+      await Promise.all([onRetry ? onRetry() : queryClient.onReconnect(), new Promise((r) => setTimeout(r, 700))]);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Empty
+      title="No se pudieron cargar los datos"
+      text={denied ? 'No tienes permiso para ver esto.' : offline ? 'No hay señal. Cuando vuelva, toca «Reintentar».' : 'Revisa tu conexión y toca «Reintentar».'}
+      action={
+        !denied ? (
+          <Button loading={busy} onPress={retry}>
+            Reintentar
+          </Button>
+        ) : undefined
+      }
+    />
   );
 }
 

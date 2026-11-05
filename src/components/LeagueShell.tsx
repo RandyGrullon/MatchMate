@@ -21,11 +21,11 @@ import { useLeague, useMembership } from '../lib/data';
 import { setActiveSport } from '../lib/sportContext';
 import { rememberLeagueSport } from '../lib/splash';
 import type { LeagueTabNames } from '../lib/tours';
-import { leagueSport, sportMeta } from '../sports/registry';
+import { sportMeta } from '../sports/registry';
 import { dispatchLeague, useSportScreens } from '../sports/screens';
 import { InviteSheet } from './invite/InviteSheet';
 import { canInviteTo, inviteTitle } from './invite/logic';
-import { LeagueContext, rememberLeague, type LeagueCtx } from '../lib/league';
+import { LeagueContext, leagueCtxOf, rememberLeague, type LeagueCtx } from '../lib/league';
 import { AppFrame, AppShell } from './Shell';
 import { Empty, Loading, PageSkeleton } from './ui';
 import { LeaguePlayerBadges, playerPageId } from './badges/LeagueBadges';
@@ -78,28 +78,10 @@ export default function LeagueShell() {
   const [inviting, setInviting] = useState(false);
   const pro = useIsPro();
 
-  const ctx = useMemo<LeagueCtx | null>(() => {
-    if (!lid || !league.data) return null;
-    const member = membership.data;
-    const isOwner = isSuper || member?.role === 'owner';
-    const isAdmin = isOwner || member?.role === 'admin';
-    // Anotadores: torneos de boliche y cualquier liga de otro deporte (golf, cronometristas, mesa anotadora). En una
-    // liga de boliche la marca vale en sus torneos: cada evento lo mira con canScoreEvent (src/lib/league.tsx).
-    const isScorer = (league.data.kind === 'torneo' || leagueSport(league.data) !== 'bowling') && member?.scorer === true;
-    return {
-      lid,
-      league: league.data,
-      member,
-      isOwner,
-      isAdmin,
-      isScorer,
-      canScore: isAdmin || isScorer,
-      // Entró solo para anotar y sigue sin jugador: «Mis juegos» le ofrece «También juego».
-      scorerOnly: member?.scorerOnly === true && !member.playerId,
-      myPlayerId: member?.playerId ?? null,
-      base: `/l/${lid}`,
-    };
-  }, [lid, league.data, membership.data, isSuper]);
+  const ctx = useMemo<LeagueCtx | null>(
+    () => (lid && league.data ? leagueCtxOf(lid, league.data, membership.data ?? null, isSuper) : null),
+    [lid, league.data, membership.data, isSuper],
+  );
 
   useEffect(() => {
     if (ctx && (ctx.member || ctx.league.visibility === 'public')) rememberLeague(ctx.lid);

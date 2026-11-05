@@ -32,6 +32,31 @@ export interface LeagueCtx {
 export const LeagueContext = createContext<LeagueCtx | null>(null);
 
 /**
+ * El contexto de una liga para quien la mira (LeagueShell en la web y la liga en la app del teléfono): su membresía,
+ * si es dueño o admin (el superadmin siempre) y si anota. Anotadores: torneos de boliche y cualquier liga de otro
+ * deporte (golf, cronometristas, mesa anotadora); en una liga de boliche la marca vale en sus torneos (cada evento lo
+ * mira con canScoreEvent).
+ */
+export function leagueCtxOf(lid: string, league: League, member: Member | null, isSuper: boolean): LeagueCtx {
+  const isOwner = isSuper || member?.role === 'owner';
+  const isAdmin = isOwner || member?.role === 'admin';
+  const isScorer = (league.kind === 'torneo' || leagueSport(league) !== 'bowling') && member?.scorer === true;
+  return {
+    lid,
+    league,
+    member,
+    isOwner,
+    isAdmin,
+    isScorer,
+    canScore: isAdmin || isScorer,
+    // Entró solo para anotar y sigue sin jugador: «Mis juegos» le ofrece «También juego».
+    scorerOnly: member?.scorerOnly === true && !member.playerId,
+    myPlayerId: member?.playerId ?? null,
+    base: `/l/${lid}`,
+  };
+}
+
+/**
  * ¿La cuenta anota los juegos de todos en ese evento? El admin siempre; el anotador de la liga en un torneo sin liga,
  * en cualquier evento de otro deporte y, en una liga de boliche, en los torneos (no en las prácticas: esas las anota
  * cada jugador y el admin las aprueba). La gemela de private.is_event_scorer.

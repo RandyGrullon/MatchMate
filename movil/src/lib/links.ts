@@ -18,13 +18,20 @@ export function appRoute(href: string): string | null {
   const query = cut < 0 || href[cut] === '#' ? '' : href.slice(cut).split('#')[0];
   if (TABS.includes(path) || path === '/auth') return path + query;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
+  // Un partido (`?partido=` en la liga, sus partidos o un evento; los avisos de resultados llegan así).
+  const partido = /[?&]partido=([^&]+)/.exec(query)?.[1];
+  const inLeague = /^\/l\/([^/]+)/.exec(path);
+  if (partido && inLeague) return `/l/${inLeague[1]}/partido/${partido}`;
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path;
+  // La tabla y los partidos de la liga (las pestañas de la web).
+  const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
+  if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}`;
   if (/^\/l\/[^/]+\/muro$/.test(path)) return path;
   if (/^\/p\/[^/]+$/.test(path)) return path;
   // El perfil (?tab= de la web: Publicaciones o Juegos se eligen ahí).
   const user = /^\/u\/([^/]+)/.exec(path);
   if (user) return `/u/${user[1]}`;
-  // Las otras partes de la liga (tabla, juegos…) todavía están en la liga misma.
+  // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;
   return null;

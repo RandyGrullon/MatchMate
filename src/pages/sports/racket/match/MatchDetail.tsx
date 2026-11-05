@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Gavel, History, Keyboard, Play, Share2, Trophy, Undo2 } from 'lucide-react';
 import { useAuth } from '../../../../lib/auth';
 import { useLeagueMembers } from '../../../../lib/data';
-import { hasResult, isOpen, resolveDispute, sideOf, useMatch, type Match } from '../../../../lib/data/matches';
+import { hasResult, isOpen, resolveDispute, useMatch, type Match } from '../../../../lib/data/matches';
 import type { Side } from '../../../../sports/types';
 import { savePointsResult, useWithPendingPoints } from '../../../../lib/data/racket';
 import { useLeagueCtx } from '../../../../lib/league';
@@ -33,7 +33,6 @@ import { engineRules } from '../court/adapters';
 import { parsePoints } from '../logic/night';
 import { isPointsMatch } from '../logic/results';
 import { rulesText } from '../logic/rulesText';
-import { useNames } from '../names';
 import { courtWords, useRacket } from '../sport';
 import { BackBar, HideShellBar } from '../frame';
 import { historyLines } from './history';
@@ -62,15 +61,9 @@ export function useMatchParam() {
   };
 }
 
-/** Mi lado en el partido (por mi jugador o mis parejas). */
-export function useMySide() {
-  const { myPlayerId } = useLeagueCtx();
-  const names = useNames();
-  return useMemo(() => {
-    const teamIds = names.teamsOf(myPlayerId);
-    return (m: Pick<Match, 'sides'>) => (myPlayerId ? sideOf(m, { playerIds: [myPlayerId], teamIds }) : null);
-  }, [myPlayerId, names]);
-}
+// Mi lado está en side.ts (lo usa también la app del teléfono).
+export { useMySide } from './side';
+import { useMySide } from './side';
 
 /**
  * Un partido (rediseño «Calma y foco»): «‹ Americano del jueves» arriba (vuelve a donde estaba) con «•••»; el título

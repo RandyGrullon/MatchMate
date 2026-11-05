@@ -34,3 +34,8 @@ export function saveErrorMessage(e: unknown): string {
   if (be?.code === 'invalid_code') return be.message;
   return 'No se pudo guardar. Intenta de nuevo.';
 }
+
+/** El error es de permisos (reintentar no sirve). */
+export function isDeniedError(error: Error): boolean {
+  return (error as { kind?: string }).kind === 'permission' || /permission|insufficient|no_permitido/i.test(error.message);
+}

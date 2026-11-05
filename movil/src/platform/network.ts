@@ -35,7 +35,11 @@ export function installNetwork() {
     }
     AppState.addEventListener('change', (status) => {
       if (status === 'active') emitWindowEvent('focus');
-      else if (status === 'background') flushLive();
+      else if (status === 'background') {
+        flushLive();
+        // El modo cancha publica lo pendiente con el `pagehide` de la web (src/court/background.ts).
+        emitWindowEvent('pagehide');
+      }
     });
   }
   NetInfo.addEventListener((state) => {

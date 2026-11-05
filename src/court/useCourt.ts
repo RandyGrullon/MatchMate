@@ -10,6 +10,7 @@ import {
   type ClaimResult,
   type MatchStatus,
 } from '../lib/data/matches';
+import { onBackground } from './background';
 import { courtOrigin, courtStore, pruneCourtLogs, type CourtStore } from './log';
 import { createCourtMachine, type CourtDeps, type CourtMachine, type CourtView } from './machine';
 import type { CourtAdapter } from './types';
@@ -126,15 +127,9 @@ export function useCourt<C, S, E>(o: UseCourtOptions<C, S, E>): CourtController<
       void pruneCourtLogs(o.store ?? courtStore(), new Set()).catch(() => {});
     }
     // Al pasar a segundo plano o cerrar la pestaña: publicar lo pendiente.
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') m.flush();
-    };
-    const onPageHide = () => m.flush();
-    document.addEventListener('visibilitychange', onHide);
-    window.addEventListener('pagehide', onPageHide);
+    const stop = onBackground(() => m.flush());
     return () => {
-      document.removeEventListener('visibilitychange', onHide);
-      window.removeEventListener('pagehide', onPageHide);
+      stop();
       m.close();
     };
   }, [o.lid, o.matchId, o.userId, o.store]);

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { courtDeps, createCourtMachine, type CourtController, type CourtDeps, type CourtMachine, type CourtView } from '../../../../court';
+// Los módulos sueltos, no el índice de court (trae pantallas de la web): así sirve también en la app del teléfono.
+import { onBackground } from '../../../../court/background';
+import { createCourtMachine, type CourtDeps, type CourtMachine, type CourtView } from '../../../../court/machine';
+import { courtDeps, type CourtController } from '../../../../court/useCourt';
 import type { MatchStatus } from '../../../../lib/data/matches';
 import { savePointsResult } from '../../../../lib/data/racket';
 import type { PointsConfig, PointsEvent, PointsState } from '../../../../sports/formats';
@@ -62,15 +65,9 @@ export function usePointsCourt(o: {
     });
     setMachine(m);
     void m.open(true);
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') m.flush();
-    };
-    const onPageHide = () => m.flush();
-    document.addEventListener('visibilitychange', onHide);
-    window.addEventListener('pagehide', onPageHide);
+    const stop = onBackground(() => m.flush());
     return () => {
-      document.removeEventListener('visibilitychange', onHide);
-      window.removeEventListener('pagehide', onPageHide);
+      stop();
       m.close();
     };
   }, [o.lid, o.matchId, o.userId]);

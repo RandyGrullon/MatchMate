@@ -11,6 +11,10 @@ import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
 import { Button, Card, Divider, Empty, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { LeagueFollowButton } from '@/components/social/People';
+import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
+import { SportLinks } from '@/components/league/SportLinks';
+import { RacketHome } from '@/components/racket/RacketHome';
+import { TeamHome } from '@/components/team/TeamScreens';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
@@ -54,6 +58,7 @@ export default function LeagueScreen() {
   const l = league.data;
   const Icon = meta?.icon;
   const isBowling = sport === 'bowling';
+  const family = sportFamily(l);
   const openEvent = (eventId: string) => router.push({ pathname: '/l/[lid]/e/[eventId]', params: { lid: l.id, eventId } });
 
   return (
@@ -198,6 +203,16 @@ export default function LeagueScreen() {
             </>
           )}
         </>
+      ) : family === 'racket' ? (
+        <LeagueScope lid={l.id}>
+          <SportLinks lid={l.id} mine={!!membership.data?.playerId} />
+          <RacketHome />
+        </LeagueScope>
+      ) : family === 'team' ? (
+        <LeagueScope lid={l.id}>
+          <SportLinks lid={l.id} mine={!!membership.data?.playerId} mineLabel="Mi equipo" />
+          <TeamHome />
+        </LeagueScope>
       ) : (
         <Empty
           title={`${meta?.label ?? 'Este deporte'} llega pronto a la app`}

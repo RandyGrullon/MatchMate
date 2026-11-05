@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Swords } from 'lucide-react';
-import { awaitingConfirmation, hasResult, useMatches, type Match } from '../../../lib/data/matches';
+import { awaitingConfirmation, useMatches, type Match } from '../../../lib/data/matches';
 import { useWithPendingPoints } from '../../../lib/data/racket';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
@@ -8,11 +8,12 @@ import { MatchCard } from '../../../components/match';
 import { useIsPro } from '../../../components/mode';
 import { Button, Empty, ListSkeleton, LoadError, Segmented } from '../../../components/ui';
 import { Chips, Section } from './bits';
-import { isPointsMatch, matchTime } from './logic/results';
+import { isPointsMatch } from './logic/results';
 import { MatchDetail, useMatchParam, useMySide } from './match/MatchDetail';
 import { hasNights, useRacket } from './sport';
+import { feedGroups, type FeedFilter } from './view';
 
-type Filter = 'todos' | 'mios' | 'sets' | 'noches';
+type Filter = FeedFilter;
 
 const PAGE = 20;
 
@@ -33,21 +34,7 @@ export default function RacketFeed() {
   const [shown, setShown] = useState(PAGE);
   const pro = useIsPro();
 
-  const groups = useMemo(() => {
-    const list = all.filter((m) => {
-      if (filter === 'mios') return mySideOf(m) !== null;
-      if (filter === 'sets') return !isPointsMatch(m);
-      if (filter === 'noches') return isPointsMatch(m);
-      return true;
-    });
-    const live = list.filter((m) => m.status === 'live');
-    const toConfirm = list.filter((m) => awaitingConfirmation(m, now) || m.status === 'disputed');
-    const upcoming = list
-      .filter((m) => m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended')
-      .sort((a, b) => matchTime(a) - matchTime(b));
-    const results = list.filter((m) => hasResult(m) && !toConfirm.includes(m)).sort((a, b) => matchTime(b) - matchTime(a));
-    return { live, toConfirm, upcoming, results };
-  }, [all, filter, mySideOf, now]);
+  const groups = useMemo(() => feedGroups(all, filter, mySideOf, now), [all, filter, mySideOf, now]);
 
   if (param.id) return <MatchDetail matchId={param.id} onBack={param.close} backLabel="Partidos" shellBar />;
   if (q.error) return <LoadError error={q.error} />;

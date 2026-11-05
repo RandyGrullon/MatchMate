@@ -1,31 +1,16 @@
 import { useMemo, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { CalendarDays } from 'lucide-react';
-import { awaitingConfirmation, hasResult, type Match } from '../../../lib/data/matches';
+import { awaitingConfirmation, type Match } from '../../../lib/data/matches';
 import { groupSchedule } from '../../../components/match';
 import { useIsPro } from '../../../components/mode';
 import { Empty, ListSkeleton, LoadError, SectionHeader, Segmented, type SegmentedOption } from '../../../components/ui';
 import { MatchRows, ScreenTitle } from './TeamUi';
+import { defaultGamesFilter, filterGames, type GamesFilter } from './lists';
 import type { TeamLeague } from './useTeamLeague';
 
-export type GamesFilter = 'proximos' | 'resultados' | 'mios';
-
-/** Qué partidos van en cada opción: por jugar (programados y aplazados), lo ya jugado (con resultado o anulado) y los de mi equipo. */
-export function filterGames(all: readonly Match[], filter: GamesFilter, myTeamIds: readonly string[]): Match[] {
-  switch (filter) {
-    case 'proximos':
-      return all.filter((m) => m.status === 'scheduled' || m.status === 'postponed');
-    case 'resultados':
-      return all.filter((m) => hasResult(m) || m.status === 'void');
-    case 'mios':
-      return all.filter((m) => m.sides.some((s) => s.teamId && myTeamIds.includes(s.teamId)));
-  }
-}
-
-/** La opción de entrada: lo que viene; si ya no queda nada por jugar, los resultados. */
-export function defaultGamesFilter(all: readonly Match[]): GamesFilter {
-  return all.some((m) => m.status === 'scheduled' || m.status === 'postponed') ? 'proximos' : 'resultados';
-}
+// El filtro está en lists.ts (sin React: lo usa también la app del teléfono).
+export { defaultGamesFilter, filterGames, type GamesFilter };
 
 /**
  * Partidos de la liga (/l/:lid/juegos), rediseño «Calma y foco»: «‹ Liga» arriba (la barra de la liga), el título

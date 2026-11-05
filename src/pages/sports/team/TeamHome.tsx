@@ -1,26 +1,14 @@
 import { useMemo, type ReactNode } from 'react';
 import { CalendarPlus, Shirt, Trophy } from 'lucide-react';
-import { compareMatches, hasResult, isOpen, type Match } from '../../../lib/data/matches';
+import type { Match } from '../../../lib/data/matches';
 import { ActionLink } from '../../../components/home/TodayCard';
 import { Button, Card, ListSkeleton, LoadError, SectionHeader } from '../../../components/ui';
-import { upcomingFor } from './logic';
+import { homeMatches } from './lists';
 import { MatchRows, NextMatchCard, SectionLink, TableTop, type TableTopRow } from './TeamUi';
 import type { TeamLeague } from './useTeamLeague';
 
-/** Lo que se muestra de los partidos en el inicio (puro): el mío que sigue, lo en vivo, los próximos y los últimos resultados. */
-export function homeMatches(matches: readonly Match[], myTeamIds: readonly string[], now: number, opts: { upcoming?: number; results?: number } = {}) {
-  const live = matches.filter((m) => m.status === 'live' || m.status === 'suspended');
-  const next = upcomingFor(matches, myTeamIds, now).find((m) => m.status === 'scheduled' || m.status === 'postponed') ?? null;
-  const upcoming = matches
-    .filter((m) => (isOpen(m) || m.status === 'postponed') && m.status !== 'live' && m.status !== 'suspended' && m.id !== next?.id)
-    .sort(compareMatches)
-    .slice(0, opts.upcoming ?? 4);
-  const results = matches
-    .filter((m) => hasResult(m))
-    .sort((a, b) => compareMatches(b, a))
-    .slice(0, opts.results ?? 3);
-  return { live, next, upcoming, results };
-}
+// La lista del inicio está en lists.ts (sin React: la usa también la app del teléfono).
+export { homeMatches };
 
 /**
  * El inicio de una liga de equipos (baloncesto, fútbol y sala), rediseño «Calma y foco»: va dentro del marco de la liga

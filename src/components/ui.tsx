@@ -13,6 +13,8 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { isDeniedError } from '../lib/errorText';
+import { monthShort, toLocalDate } from '../lib/dateBlock';
 import { AlertTriangle, ChevronRight, Loader2, Lock, Plus, RotateCw, WifiOff, X } from 'lucide-react';
 import { Link } from 'react-router';
 import { LogoSpinner } from './Logo';
@@ -300,10 +302,8 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   );
 }
 
-/** El error es de permisos (reintentar no sirve). */
-export function isDeniedError(error: Error): boolean {
-  return (error as { kind?: string }).kind === 'permission' || /permission|insufficient|no_permitido/i.test(error.message);
-}
+// Está en lib/errorText.ts (lo usa también la app del teléfono).
+export { isDeniedError };
 
 /**
  * Vuelve a pedir lo que falló de las pantallas abiertas (como al volver la señal), sin recargar la app: con 3G,
@@ -707,19 +707,10 @@ export function GameTile({
   );
 }
 
-const MONTHS_SHORT = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
-/** 'YYYY-MM-DD' (el día tal cual, sin correrse por la zona horaria), una fecha con hora o un Date → Date; null si no es fecha. */
-export function toLocalDate(value: Date | string): Date | null {
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  const d = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])) : new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/** El mes corto en mayúsculas que va arriba del día: «OCT». Nunca el día de la semana («MAR 13» se leía como marzo). */
-export const monthShort = (d: Date): string => MONTHS_SHORT[d.getMonth()];
+// La fecha y el mes del bloque de fecha están en lib/dateBlock.ts (los usa también la app del teléfono).
+export { monthShort, toLocalDate };
 
 /**
  * Bloque de fecha de las listas (Lo que viene, Próximas fechas): el mes arriba («OCT», en el color del deporte) y el
