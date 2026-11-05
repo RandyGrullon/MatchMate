@@ -59,6 +59,21 @@ describe('secciones de la barra', () => {
     expect(navSections(true).map((s) => s.key)).toEqual(['home', 'social', 'leagues', 'me']);
   });
 
+  it('en modo empresa: Mi empresa, Social y Yo (la configuración); lo de los jugadores sigue por su link', () => {
+    expect(navSections(true, true).map((s) => [s.label, s.to])).toEqual([
+      ['Mi empresa', '/empresa'],
+      ['Social', '/social'],
+      ['Yo', '/cuenta'],
+    ]);
+    const at = (p: string) => currentSection(navSections(true, true), p);
+    expect(at('/empresa')).toBe('business');
+    expect(at('/canchas/abc')).toBe('business');
+    expect(at('/cuenta')).toBe('me');
+    expect(at('/ligas')).toBeNull();
+    // Como jugador, Dónde jugar es de Ligas.
+    expect(currentSection(navSections(true), '/canchas')).toBe('leagues');
+  });
+
   it('sin cuenta: Inicio, Contáctanos, Acerca de y Entrar', () => {
     expect(navSections(false).map((s) => [s.label, s.to])).toEqual([
       ['Inicio', '/'],

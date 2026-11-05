@@ -232,7 +232,9 @@ describe('Configuración', () => {
     const out = render(h(AccountPage), '/cuenta');
     const t = text(out);
     expect(out).toContain('href="/organizar"');
-    expect(t).toMatch(/Panel del superadmin Organizar Tus ligas, pendientes y ajustes Acerca de MatchMate/);
+    // Después de Organizar, «Mi empresa» (registrar sus canchas o cambiar a modo empresa) y Acerca de.
+    expect(t).toMatch(/Panel del superadmin Organizar Tus ligas, pendientes y ajustes Mi empresa ¿Tienes canchas\? Regístralas o cambia a modo empresa Acerca de MatchMate/);
+    expect(out).toContain('href="/empresa"');
     expect(out.indexOf('href="/superadmin"')).toBeLessThan(out.indexOf('href="/organizar"'));
   });
 

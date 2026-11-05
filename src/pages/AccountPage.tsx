@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { AtSign, ChevronLeft, ClipboardList, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
+import { AtSign, Building2, ChevronLeft, ClipboardList, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
 import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { usePublicProfile } from '../lib/data/follows';
@@ -250,6 +250,18 @@ export default function AccountPage() {
             )}
             {/* Cuentan lo que espera en cada liga que organizas (no dibujan nada). */}
             {organize.probes}
+            {/* Empresas (docs/empresas.md): registrar sus canchas, su panel y cambiar entre jugador y empresa. */}
+            <ListRow
+              dense={pro}
+              leading={
+                <RowIcon tone={auth.profile?.accountMode === 'business' ? 'accent' : 'neutral'}>
+                  <Building2 className={icon} />
+                </RowIcon>
+              }
+              title="Mi empresa"
+              subtitle={auth.profile?.accountMode === 'business' ? 'Estás usando la app como empresa' : '¿Tienes canchas? Regístralas o cambia a modo empresa'}
+              to="/empresa"
+            />
             <ListRow
               dense={pro}
               leading={

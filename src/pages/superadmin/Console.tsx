@@ -18,6 +18,8 @@ import ErrorsSection from './ErrorsSection';
 import BrandSection from './BrandSection';
 import ReportsSection from './ReportsSection';
 import LegalSection from './LegalSection';
+import BusinessesSection from './BusinessesSection';
+import { useAdminBusinesses } from '../../lib/data/business';
 
 // Insignias (revisar, motor y la galería de todo el catálogo dibujado) se descarga solo al abrirla.
 const BadgesSection = lazy(() => import('./BadgesSection'));
@@ -26,6 +28,7 @@ export const SECTION_VIEWS: Record<SectionKey, ComponentType> = {
   resumen: OverviewSection,
   cuentas: UsersSection,
   ligas: LeaguesSection,
+  empresas: BusinessesSection,
   reportes: ReportsSection,
   deportes: SportsSection,
   anuncios: AnnouncementsSection,
@@ -47,9 +50,11 @@ export function Console({ section }: { section: SectionKey }) {
   // insignias automáticas) son otra cola (private.badge_reports): su número va al lado de «Insignias».
   const reports = useReportCounts(true).data.open;
   const badgeReports = useBadgeReports(true).data.open;
+  // Empresas en revisión y promociones pedidas: el número al lado de «Empresas».
+  const business = useAdminBusinesses('pending', '').data.counts;
   const View = SECTION_VIEWS[section];
   return (
-    <ConsoleShell section={section} badges={{ resumen: urgent, reportes: reports, insignias: badgeReports }}>
+    <ConsoleShell section={section} badges={{ resumen: urgent, reportes: reports, insignias: badgeReports, empresas: business.pending + business.requests }}>
       <Suspense fallback={<Loading />}>
         <View />
       </Suspense>

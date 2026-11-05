@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Plus, Shield } from 'lucide-react';
+import { MapPin, Plus, Shield } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useMySquads } from '../lib/data/squads';
 import { useLiveNow } from '../lib/data/streams';
@@ -242,6 +242,21 @@ function MyLeagues() {
       <div className={cx(showEsports || squadMode === 'row' ? 'mt-3.5' : rowsGap)}>
         <OpenLeaguesRow subtitle={openLeaguesSubtitle(mySports)} pro={pro} />
       </div>
+
+      {/* Dónde jugar: las canchas y espacios de las empresas (docs/empresas.md). */}
+      <Card className="mt-3.5 overflow-hidden">
+        <ListRow
+          dense={pro}
+          leading={
+            <RowIcon tone="accent">
+              <MapPin className="size-5" />
+            </RowIcon>
+          }
+          title="Dónde jugar"
+          subtitle="Canchas y espacios deportivos cerca de ti"
+          to="/canchas"
+        />
+      </Card>
     </div>
   );
 }
