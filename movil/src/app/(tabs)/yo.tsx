@@ -1,18 +1,19 @@
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Download, FileText, Globe, LogOut, Moon, Shield, Trash2, UserRound } from 'lucide-react-native';
+import { Building2, Download, FileText, Globe, LogOut, Moon, Shield, Trash2, UserRound } from 'lucide-react-native';
 import { useState } from 'react';
 import { accountErrorMessage } from '@mm/pages/legal/account';
 import { NotificationsCard } from '@/components/account/NotificationsCard';
 import { toast } from '@/components/feedback';
 import { shareMyData } from '@/lib/myData';
-import { displayName, logout, useAuth } from '@mm/lib/auth';
+import { displayName, logout, useAuth, type AccountMode } from '@mm/lib/auth';
+import { BUSINESS_STATUS_LABEL, businessErrorText, setAccountMode, useMyBusiness } from '@mm/lib/data/business';
 import { unsubscribePush } from '@mm/lib/push';
 import { Button, Card, Divider, ListRow, Loading, RowIcon, Screen, SectionHeader, Segmented, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
 import { useColors, useTheme, type ThemeMode } from '@/theme/theme';
 
-/** Yo: la cuenta, la apariencia, lo legal y salir (Yo y Configuración de la web). */
+/** Yo: la cuenta, el modo (jugador o empresa), la apariencia, lo legal y salir (Yo y Configuración de la web). */
 export default function YoScreen() {
   const auth = useAuth();
   const c = useColors();
@@ -70,6 +71,8 @@ export default function YoScreen() {
           onPress={() => router.push({ pathname: '/u/[userId]', params: { userId: uid } })}
         />
       </Card>
+
+      <BusinessMode />
 
       <SectionHeader title="Apariencia" />
       <Card style={{ gap: 12 }}>
@@ -173,5 +176,65 @@ export default function YoScreen() {
         Salir de la cuenta
       </Button>
     </Screen>
+  );
+}
+
+/**
+ * Mi empresa (docs/empresas.md), como Configuración › Mi empresa de la web: sin empresa, registrarla; con empresa, su
+ * panel y usar la app como jugador o como empresa (la barra de abajo cambia al momento).
+ */
+function BusinessMode() {
+  const auth = useAuth();
+  const c = useColors();
+  const business = useMyBusiness();
+  const [busy, setBusy] = useState(false);
+  const mode: AccountMode = auth.profile?.accountMode === 'business' ? 'business' : 'player';
+  const b = business.data;
+
+  async function change(next: AccountMode) {
+    if (next === mode || busy) return;
+    setBusy(true);
+    try {
+      await setAccountMode(next);
+      toast(next === 'player' ? 'Ahora ves la app como jugador' : 'Ahora ves la app como empresa');
+    } catch (e) {
+      toast(businessErrorText(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <SectionHeader title="Mi empresa" />
+      <Card padded={false}>
+        <ListRow
+          icon={
+            <RowIcon>
+              <Building2 size={20} color={c.accent} />
+            </RowIcon>
+          }
+          title={b ? b.name : 'Mi empresa'}
+          subtitle={b ? `${BUSINESS_STATUS_LABEL[b.status]} · ${b.venues.length} ${b.venues.length === 1 ? 'espacio' : 'espacios'}` : '¿Tienes canchas? Regístralas o cambia a modo empresa'}
+          onPress={() => router.push('/empresa')}
+        />
+        {b && (
+          <View style={{ gap: 10, paddingHorizontal: 16, paddingBottom: 16, paddingTop: 4 }}>
+            <Txt variant="meta" tone="muted">
+              Usar la app como
+            </Txt>
+            <Segmented<AccountMode>
+              label="Usar la app como"
+              value={mode}
+              onChange={(m) => void change(m)}
+              options={[
+                { key: 'player', label: 'Jugador' },
+                { key: 'business', label: 'Empresa' },
+              ]}
+            />
+          </View>
+        )}
+      </Card>
+    </>
   );
 }

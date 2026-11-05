@@ -11,7 +11,9 @@
  *    primero 'scoreboards' (fotos borradas, también al borrar un evento o una liga), después 'logos' (el logo cambiado
  *    o quitado, el de una liga borrada, las reservas sin usar; 20260929001000_sueltos_logos.sql) y al final los de la
  *    red social (20261009000100_red_social.sql): 'avatars' (la foto de perfil cambiada o quitada, la de una cuenta
- *    borrada) y 'posts' (la foto de una publicación borrada, también con su liga o su cuenta). De cada uno toma
+ *    borrada) y 'posts' (la foto de una publicación borrada, también con su liga o su cuenta), y 'venues' (la foto de un
+ *    espacio de una empresa, quitada o borrada con su espacio, su empresa o su cuenta; 20261105000100_empresas.sql). De
+ *    cada uno toma
  *    hasta 500 rutas, las borra de ESE bucket con la API de Storage (de a 100) y las saca de la cola. Las de un grupo
  *    que Storage no aceptó se quedan: se vuelven a tomar al otro día (a los 10 intentos la base deja de darlas). Las
  *    fotos se piden sin `p_bucket` (la base lo pone en 'scoreboards'): así sirve igual con una base de antes de 001000;
@@ -32,8 +34,10 @@ export const LOGOS_BUCKET = 'logos';
 export const AVATARS_BUCKET = 'avatars';
 /** El bucket público de las fotos de las publicaciones (20261009000110_red_social_supabase.sql). */
 export const POSTS_BUCKET = 'posts';
+/** El bucket público de las fotos de los espacios de las empresas (20261105000110_empresas_supabase.sql). */
+export const VENUES_BUCKET = 'venues';
 /** Los buckets de la cola, en el orden en que se vacían (la cola dice de cuál es cada ruta). */
-export const PURGE_BUCKETS = [BUCKET, LOGOS_BUCKET, AVATARS_BUCKET, POSTS_BUCKET] as const;
+export const PURGE_BUCKETS = [BUCKET, LOGOS_BUCKET, AVATARS_BUCKET, POSTS_BUCKET, VENUES_BUCKET] as const;
 export type PurgeBucket = (typeof PURGE_BUCKETS)[number];
 /** Rutas por llamada, de la cola y de huérfanos (la base da de 1 a 1000). */
 export const TAKE_LIMIT = 500;
@@ -73,6 +77,8 @@ export interface PurgeCounts {
   avatars: number;
   /** De las borradas, cuántas eran fotos de publicaciones. */
   posts: number;
+  /** De las borradas, cuántas eran fotos de los espacios de las empresas. */
+  venues: number;
   /** Huérfanos que dio la base. */
   orphans: number;
   /** De esos, borrados del bucket. */
@@ -172,7 +178,7 @@ export async function removeInChunks(
 }
 
 export function emptyPurgeCounts(): PurgeCounts {
-  return { queued: 0, purged: 0, logos: 0, avatars: 0, posts: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
+  return { queued: 0, purged: 0, logos: 0, avatars: 0, posts: 0, venues: 0, orphans: 0, orphansRemoved: 0, failed: 0 };
 }
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -240,6 +246,7 @@ export async function handlePurgeRequest(req: Request, deps: PurgeDeps): Promise
             if (bucket === LOGOS_BUCKET) counts.logos += r.removed.length;
             else if (bucket === AVATARS_BUCKET) counts.avatars += r.removed.length;
             else if (bucket === POSTS_BUCKET) counts.posts += r.removed.length;
+            else if (bucket === VENUES_BUCKET) counts.venues += r.removed.length;
           } catch (e) {
             ok = false;
             log('error', 'queue_done', { bucket, removed: r.removed.length, status: statusOf(e) });

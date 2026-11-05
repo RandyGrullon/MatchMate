@@ -54,6 +54,11 @@
               "scheme": "https",
               "host": "matchmate.grullonb.com",
               "pathPrefix": "/u/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/canchas/"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

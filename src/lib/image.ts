@@ -116,6 +116,34 @@ export async function compressImage(file: Blob): Promise<CompressedImage> {
   }
 }
 
+/** Una foto para mostrar (la de un espacio de una empresa), lista para subir. */
+export interface ShowcasePhoto {
+  blob: Blob;
+  contentType: StoredImageType;
+  width: number;
+  height: number;
+}
+
+/** Tope de una foto para mostrar, en bytes (el bucket 'venues' acepta hasta 512 kB). */
+export const MAX_SHOWCASE_BYTES = 450_000;
+
+/** Cómo se achica una foto para mostrar (la web aquí y el teléfono en movil/src/lib/pickImage.ts). */
+export const SHOWCASE_FIT: FitOptions = { maxSide: 1600, quality: 0.8, minQuality: 0.5, max: MAX_SHOWCASE_BYTES, floor: 720 };
+
+/**
+ * La foto de una cancha o un local: más grande y nítida que la del marcador (lado de hasta 1600 px), hasta 450 kB, en
+ * WebP (o JPEG donde el navegador no sabe). Los mismos pasos de fitImage.
+ */
+export async function compressShowcase(file: Blob): Promise<ShowcasePhoto> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  try {
+    const out = await fitImage((side, q) => encodeStored(bitmap, side, q), SHOWCASE_FIT);
+    return { blob: out.blob, contentType: out.contentType, width: out.width, height: out.height };
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** Tipo del archivo guardado: el que se sabe o el del data URL (las fotos viejas son JPEG). */
 export function storedType(img: Pick<CompressedImage, 'contentType' | 'blob' | 'data'>): StoredImageType {
   if (img.contentType) return img.contentType;

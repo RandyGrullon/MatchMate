@@ -45,7 +45,15 @@ export interface AccountProfile extends UserProfile {
    * decide). undefined = no se sabe: copia vieja guardada en el teléfono o base que todavía no tiene la columna.
    */
   uiMode?: UiMode | null;
+  /**
+   * En qué modo usa la app (profiles.account_mode, 20261105000100_empresas.sql): 'business' = su empresa y lo social;
+   * 'player' o null = jugador. undefined = base que todavía no tiene la columna (jugador).
+   */
+  accountMode?: AccountMode | null;
 }
+
+/** Jugador (lo de siempre) o empresa (sus canchas y lo social). */
+export type AccountMode = 'player' | 'business';
 
 interface AuthState {
   user: AppUser | null;
@@ -69,14 +77,20 @@ const toAppUser = (s: Session): AppUser => ({ uid: s.userId, email: s.email, dis
 const sameUser = (u: AppUser | null, s: Session | null) =>
   (!u && !s) || (!!u && !!s && u.uid === s.userId && u.email === s.email && u.displayName === s.name);
 
-type AccountProfileRow = ProfileRow & { adult_confirmed_at?: string | null; created_at?: string | null; push_prefs?: unknown; ui_mode?: unknown };
+type AccountProfileRow = ProfileRow & {
+  adult_confirmed_at?: string | null;
+  created_at?: string | null;
+  push_prefs?: unknown;
+  ui_mode?: unknown;
+  account_mode?: unknown;
+};
 
 const PROFILE_COLUMNS = 'id,email,name,is_superadmin,adult_confirmed_at,created_at';
 /**
  * Columnas que llegaron después, en el orden de sus migraciones: username (20260929000200), push_prefs
- * (20260929000500) y ui_mode (20261007000100).
+ * (20260929000500), ui_mode (20261007000100) y account_mode (20261105000100).
  */
-const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs', 'ui_mode'];
+const PROFILE_NEWER_COLUMNS = ['username', 'push_prefs', 'ui_mode', 'account_mode'];
 
 /**
  * Perfil de la cuenta. Si el registro no alcanzó a crearlo (raro), se crea ahora con su nombre. Si la base todavía no
@@ -121,6 +135,7 @@ export async function fetchProfile(uid: string): Promise<AccountProfile | null> 
   const profile: AccountProfile = { ...toProfile(row), adultConfirmedAt: row.adult_confirmed_at ?? null, legal, createdAt: row.created_at ?? null };
   if (row.push_prefs !== undefined) profile.pushPrefs = toPushPrefs(row.push_prefs);
   if (row.ui_mode !== undefined) profile.uiMode = toUiMode(row.ui_mode);
+  if (row.account_mode !== undefined) profile.accountMode = row.account_mode === 'business' || row.account_mode === 'player' ? row.account_mode : null;
   return profile;
 }
 

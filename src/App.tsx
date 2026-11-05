@@ -38,6 +38,9 @@ const SocialPage = lazy(() => import('./pages/SocialPage'));
 const PostPage = lazy(() => import('./pages/PostPage'));
 const LeagueWallPage = lazy(() => import('./pages/LeagueWallPage'));
 const SquadsPage = lazy(() => import('./pages/squads/SquadsPage'));
+const BusinessPage = lazy(() => import('./pages/business/BusinessPage'));
+const VenuesPage = lazy(() => import('./pages/venues/VenuesPage'));
+const VenuePage = lazy(() => import('./pages/venues/VenuePage'));
 const SquadPage = lazy(() => import('./pages/squads/SquadPage'));
 const JoinSquadPage = lazy(() => import('./pages/squads/JoinSquadPage'));
 const LiveStreamPage = lazy(() => import('./pages/LiveStreamPage'));
@@ -91,12 +94,15 @@ function SuperOnly({ children }: { children: ReactNode }) {
  * Volver atrás hasta aquí sí es salir del deporte (p. ej. entraste a una liga desde Hoy).
  */
 function GlobalHomeRoute() {
+  const { profile } = useAuth();
   const { key } = useLocation();
   const back = useNavigationType() === NavigationType.Pop && key !== 'default';
   useLayoutEffect(() => {
     // Solo al llegar atrás a esta entrada: no cuando después se elige un deporte aquí mismo (ese navega solo).
     if (back && getActiveSport()) setActiveSport(null);
   }, [back, key]);
+  // En modo empresa el inicio es su panel (Hoy es de los jugadores).
+  if (profile?.accountMode === 'business') return <Navigate to="/empresa" replace />;
   return <HomePage />;
 }
 
@@ -201,6 +207,10 @@ export default function App() {
                       <Route path="/social" element={<Screen area="social" framed><SocialPage /></Screen>} />
                       <Route path="/p/:postId" element={<Screen area="publicacion" framed><PostPage /></Screen>} />
                       <Route path="/equipos" element={<Screen area="equipos" framed><SquadsPage /></Screen>} />
+                      {/* Empresas: su panel y «Dónde jugar» (docs/empresas.md). */}
+                      <Route path="/empresa" element={<Screen area="empresa" framed><BusinessPage /></Screen>} />
+                      <Route path="/canchas" element={<Screen area="canchas" framed><VenuesPage /></Screen>} />
+                      <Route path="/canchas/:venueId" element={<Screen area="canchas/espacio" framed><VenuePage /></Screen>} />
                       <Route path="/equipos/unirse/:code" element={<Screen area="equipos/unirse" framed><JoinSquadPage /></Screen>} />
                       <Route path="/equipos/:squadId" element={<Screen area="equipos/equipo" framed><SquadPage /></Screen>} />
                       {/* Una invitación a una liga (el push y el aviso de la campana llevan aquí). */}

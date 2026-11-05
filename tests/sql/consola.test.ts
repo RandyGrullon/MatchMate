@@ -15,6 +15,8 @@ import { makeWorld, type World } from './fixture';
 
 let db: TestDb;
 let w: World;
+/** Una empresa (de otra, ya aprobada) con un espacio y una promoción pedida: para las admin_* de empresas. */
+let biz: { id: string; venue: string; promotion: string };
 
 beforeAll(async () => {
   db = await TestDb.open();
@@ -25,6 +27,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.begin();
   w = await makeWorld(db);
+  const id = await db.rpc<string>(w.u.otra, 'register_business', { p_name: 'Club de Otra', p_city: 'Santiago' });
+  const venue = await db.rpc<{ id: string }>(w.u.otra, 'save_venue', { p_id: null, p_sport: 'padel', p_name: 'Pádel Otra', p_city: 'Santiago', p_details: { canchas: 2 } });
+  // Aprobada sin pasar por la consola (la auditoría queda vacía para las pruebas de abajo).
+  await db.admin(`update public.businesses set status = 'approved' where id = $1`, [id]);
+  const asked = await db.rpc<{ promotion: { id: string } }>(w.u.otra, 'request_promotion', { p_venue: venue.id, p_days: 7 });
+  biz = { id, venue: venue.id, promotion: asked.promotion.id };
 });
 afterEach(async () => {
   await db.rollback();
@@ -87,6 +95,15 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   // El motor de insignias (20260929001110_insignias_motor.sql): cola, trabajos muertos y corridas en seco.
   ['admin_badges_engine', {}],
   ['admin_badge_jobs', { p_ids: [] }],
+  // Empresas (20261105000100_empresas.sql): la lista, una, su estado, la comisión y las promociones (decidir la pedida,
+  // dar una y terminar la que se decidió).
+  ['admin_businesses', {}],
+  ['admin_business', { p_business: biz.id }],
+  ['admin_set_business_status', { p_business: biz.id, p_status: 'approved' }],
+  ['admin_set_commission', { p_business: biz.id, p_pct: 8 }],
+  ['admin_decide_promotion', { p_promotion: biz.promotion, p_approve: true, p_amount: 1500 }],
+  ['admin_grant_promotion', { p_venue: biz.venue, p_days: 3, p_amount: 0 }],
+  ['admin_end_promotion', { p_promotion: biz.promotion }],
 ];
 
 describe('permisos', () => {
@@ -142,11 +159,13 @@ describe('permisos', () => {
     // esports_team_preview (a qué equipo lleva un código) también las llama quien no tiene cuenta. Igual squad_page (la
     // página de un equipo), squad_preview (a qué equipo lleva un código) y league_streams (las transmisiones de una liga).
     // Y player_places (dónde juega una persona), squad_followers y squad_posts (los seguidores y el muro de un equipo).
+    // Y search_venues y venue_detail («Dónde jugar»: los espacios de las empresas aprobadas).
     expect(rows.map((r) => r.fn)).toEqual([
       'accept_legal', 'bowling_game_context', 'delete_push_subscription', 'esports_hub', 'esports_team_preview', 'invite_preview',
       'league_champions', 'league_seasons', 'league_streams',
-      'list_reports', 'my_matches', 'player_places', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'server_now',
-      'squad_followers', 'squad_page', 'squad_posts', 'squad_preview', 'sync_ladder', 'sync_playoffs', 'touch_seen',
+      'list_reports', 'my_matches', 'player_places', 'public_agenda', 'public_leagues_feed', 'scorer_link_preview', 'search_venues',
+      'server_now', 'squad_followers', 'squad_page', 'squad_posts', 'squad_preview', 'sync_ladder', 'sync_playoffs', 'touch_seen',
+      'venue_detail',
     ]);
   });
 });

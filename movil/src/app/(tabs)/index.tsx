@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { Plus, Search, Ticket } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '@mm/lib/data';
@@ -94,6 +94,8 @@ export default function HoyScreen() {
 
   if (auth.loading) return <Loading />;
   if (!auth.user) return <Landing />;
+  // En modo empresa el inicio es su panel (Hoy es de los jugadores), como GlobalHomeRoute de la web.
+  if (auth.profile?.accountMode === 'business') return <Redirect href="/empresa" />;
 
   const name = displayName(auth).split(' ')[0];
   const loading = memberships.loading || leagues.loading;

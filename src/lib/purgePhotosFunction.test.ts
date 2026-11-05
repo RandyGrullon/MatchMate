@@ -205,7 +205,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, orphans: 2, orphansRemoved: 2, failed: 0 });
+    expect(await res.json()).toEqual({ queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, venues: 0, orphans: 2, orphansRemoved: 2, failed: 0 });
 
     // Las fotos sin p_bucket (sirve también con una base de antes de los logos), después los logos y los de la red social.
     expect(rpcCalls(calls, 'purge_queue_take').map((c) => c.body)).toEqual([
@@ -213,6 +213,7 @@ describe('handlePurgeRequest', () => {
       { p_limit: TAKE_LIMIT, p_bucket: 'logos' },
       { p_limit: TAKE_LIMIT, p_bucket: 'avatars' },
       { p_limit: TAKE_LIMIT, p_bucket: 'posts' },
+      { p_limit: TAKE_LIMIT, p_bucket: 'venues' },
     ]);
     expect(rpcCalls(calls, 'storage_orphans').map((c) => c.body)).toEqual([{ p_limit: TAKE_LIMIT }]);
     expect(storageCalls(calls).map((c) => (c.body as { prefixes: string[] }).prefixes.length)).toEqual([100, 100, 50, 2]);
@@ -224,7 +225,7 @@ describe('handlePurgeRequest', () => {
     expect(calls.every((c) => c.headers.apikey === 'sb_secret_abc')).toBe(true);
 
     expect(d.lines.map((l) => JSON.parse(l))).toEqual([
-      { fn: 'purge-photos', level: 'info', event: 'summary', queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, orphans: 2, orphansRemoved: 2, failed: 0 },
+      { fn: 'purge-photos', level: 'info', event: 'summary', queued: 250, purged: 250, logos: 0, avatars: 0, posts: 0, venues: 0, orphans: 2, orphansRemoved: 2, failed: 0 },
     ]);
     expect(d.lines.join('\n')).not.toContain(LEAGUE);
   });
@@ -235,7 +236,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 150, purged: 50, logos: 0, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 0, failed: 101 });
+    expect(await res.json()).toEqual({ queued: 150, purged: 50, logos: 0, avatars: 0, posts: 0, venues: 0, orphans: 1, orphansRemoved: 0, failed: 101 });
     expect(rpcCalls(calls, 'purge_queue_done').map((c) => (c.body as { p_paths: string[] }).p_paths)).toEqual([queue.slice(100).map((q) => q.path)]);
     const lines = d.lines.map((l) => JSON.parse(l));
     expect(lines).toContainEqual({ fn: 'purge-photos', level: 'warn', event: 'storage', bucket: 'scoreboards', failed: 100, statuses: [503] });
@@ -246,7 +247,7 @@ describe('handlePurgeRequest', () => {
   it('si Storage no borró nada, no se llama a purge_queue_done; las rutas raras nunca llegan a Storage', async () => {
     const { fetchFn, calls } = fakeSupabase({ queue: [{ path: '../../otra/cosa' }, { path: '' }], orphans: [{ path: '/raiz.webp' }] });
     const res = await handlePurgeRequest(post(), deps(fetchFn));
-    expect(await res.json()).toEqual({ queued: 2, purged: 0, logos: 0, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 0, failed: 3 });
+    expect(await res.json()).toEqual({ queued: 2, purged: 0, logos: 0, avatars: 0, posts: 0, venues: 0, orphans: 1, orphansRemoved: 0, failed: 3 });
     expect(storageCalls(calls)).toEqual([]);
     expect(rpcCalls(calls, 'purge_queue_done')).toEqual([]);
   });
@@ -287,7 +288,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 5, purged: 5, logos: 3, avatars: 0, posts: 0, orphans: 1, orphansRemoved: 1, failed: 0 });
+    expect(await res.json()).toEqual({ queued: 5, purged: 5, logos: 3, avatars: 0, posts: 0, venues: 0, orphans: 1, orphansRemoved: 1, failed: 0 });
     expect(storageCalls(calls).map((c) => [c.url.split('/storage/v1/object/')[1], (c.body as { prefixes: string[] }).prefixes])).toEqual([
       ['scoreboards', queue.map((q) => q.path)],
       ['logos', logoQueue.map((q) => q.path)],
@@ -307,7 +308,7 @@ describe('handlePurgeRequest', () => {
     const d = deps(fetchFn);
     const res = await handlePurgeRequest(post(), d);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ queued: 4, purged: 3, logos: 0, avatars: 2, posts: 1, orphans: 0, orphansRemoved: 0, failed: 1 });
+    expect(await res.json()).toEqual({ queued: 4, purged: 3, logos: 0, avatars: 2, posts: 1, venues: 0, orphans: 0, orphansRemoved: 0, failed: 1 });
     expect(storageCalls(calls).map((c) => [c.url.split('/storage/v1/object/')[1], (c.body as { prefixes: string[] }).prefixes])).toEqual([
       [AVATARS_BUCKET, avatarQueue.map((q) => q.path)],
       [POSTS_BUCKET, [postPhoto(1)]],
