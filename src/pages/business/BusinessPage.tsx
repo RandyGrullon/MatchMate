@@ -22,6 +22,7 @@ import { AppShell } from '../../components/Shell';
 import { FeaturedBadge, VenuePhotoImg, venueLine } from '../../components/venues/VenueBits';
 import { Badge, Button, Card, Empty, ListRow, LoadError, Loading, SectionHeader, Sheet } from '../../components/ui';
 import { BusinessFields, businessFormFrom, businessInputFrom, businessProblem, emptyBusinessForm, type BusinessFormValue } from './BusinessForm';
+import { businessStatusInfo, showStatusNote, type StatusTone } from './logic';
 import { VenueSheet } from './VenueSheet';
 
 /**
@@ -117,20 +118,12 @@ function Register() {
   );
 }
 
-const ICON_TONE = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' } as const;
+const ICON_TONE: Record<StatusTone, string> = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
 
 function StatusCard({ business }: { business: Business }) {
   const s = business.status;
   const Icon = s === 'approved' ? CircleCheck : s === 'pending' ? Clock : ShieldAlert;
-  const tone: keyof typeof ICON_TONE = s === 'approved' ? 'ok' : s === 'pending' ? 'warn' : 'danger';
-  const text =
-    s === 'approved'
-      ? 'Tus espacios activos salen en «Dónde jugar».'
-      : s === 'pending'
-        ? 'La estamos revisando. Mientras, agrega tus espacios y sus fotos: salen en cuanto la aprobemos.'
-        : s === 'rejected'
-          ? 'Corrige tus datos y la volvemos a revisar.'
-          : 'Tus espacios no salen en la app mientras esté suspendida.';
+  const { tone, text } = businessStatusInfo(s);
   return (
     <Card className="mt-5 flex items-start gap-3 p-4">
       <Icon className={`mt-0.5 size-5 shrink-0 ${ICON_TONE[tone]}`} aria-hidden="true" />
@@ -139,7 +132,7 @@ function StatusCard({ business }: { business: Business }) {
           {business.name} <Badge tone={tone}>{BUSINESS_STATUS_LABEL[s]}</Badge>
         </p>
         <p className="mt-1 text-meta text-muted">{text}</p>
-        {business.statusNote && (s === 'rejected' || s === 'suspended') && <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{business.statusNote}</p>}
+        {showStatusNote(business) && <p className="mt-2 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">{business.statusNote}</p>}
       </div>
     </Card>
   );

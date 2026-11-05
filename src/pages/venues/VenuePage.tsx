@@ -3,6 +3,7 @@ import { Clock, MapPin, MessageCircle, PencilLine, Phone, SearchX, Trophy } from
 import { isFeatured, priceText, useVenue, whatsappLink } from '../../lib/data/business';
 import { useIsPro } from '../../lib/useMode';
 import { venueDetailsLines } from '../../lib/venues/fields';
+import { venueMapUrl, venueWhatsappText } from '../../lib/venues/text';
 import { sportMeta } from '../../sports/registry';
 import { AppShell } from '../../components/Shell';
 import { LeagueTopBar } from '../../components/league/home/LeagueTopBar';
@@ -49,8 +50,8 @@ export default function VenuePage() {
   const meta = sportMeta(v.sport);
   const lines = venueDetailsLines(v.sport, v.details);
   const price = priceText(v.priceHour);
-  const wa = whatsappLink(v.phone, `Hola, vi ${v.name} en MatchMate.`);
-  const map = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([v.name, v.address, v.city].filter(Boolean).join(', '))}`;
+  const wa = whatsappLink(v.phone, venueWhatsappText(v));
+  const map = venueMapUrl(v);
 
   return (
     <AppShell>

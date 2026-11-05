@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Plus, Search, Trophy } from 'lucide-react-native';
+import { MapPin, Plus, Search, Trophy } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships, usePublicLeagues } from '@mm/lib/data';
 import { formatDate } from '@mm/lib/format';
 import { LeagueCard } from '@/components/LeagueCard';
-import { Button, Empty, Input, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
+import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 
-/** Ligas: las tuyas y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
+/** Ligas: las tuyas, Dónde jugar y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
 export default function LigasScreen() {
   const auth = useAuth();
   const c = useColors();
@@ -49,6 +49,19 @@ export default function LigasScreen() {
           </View>
         </>
       )}
+      {/* Dónde jugar: las canchas y espacios de las empresas (docs/empresas.md). */}
+      <Card padded={false}>
+        <ListRow
+          icon={
+            <RowIcon>
+              <MapPin size={20} color={c.accent} />
+            </RowIcon>
+          }
+          title="Dónde jugar"
+          subtitle="Canchas y espacios deportivos cerca de ti"
+          onPress={() => router.push('/canchas')}
+        />
+      </Card>
       <SectionHeader title="Ligas abiertas" />
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Search size={18} color={c.muted} style={{ position: 'absolute', left: 16, zIndex: 1 }} />

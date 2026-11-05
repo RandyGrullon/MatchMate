@@ -87,6 +87,27 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   Invitar). 🌐 El logo al crear y los esports (llevan a la web).
 - 🌐 Organizar, Agenda.
 
+## 8b. Empresas (docs/empresas.md)
+
+- ✅ Mi empresa (`/empresa`, `movil/src/app/(tabs)/empresa.tsx`): registrarla (queda en revisión y la app pasa a modo
+  empresa), cómo va la revisión (en revisión, aprobada, rechazada o suspendida con el motivo), sus espacios, sus
+  datos (hoja), usar la app como jugador y borrarla. La lógica es la de la web (`src/lib/data/business.ts` y
+  `src/pages/business/logic.ts`, que salió de BusinessForm/BusinessPage/VenueSheet).
+- ✅ Un espacio (`/espacio/nuevo` o `/espacio/<id>`, pantalla propia en vez de la hoja de la web): el deporte, lo que
+  pide (`venueFields`: números, fichas para las opciones e interruptores), precio, horario, teléfono y si sale en
+  Dónde jugar; las fotos (varias de la galería o la cámara, `showcasePhoto` de `movil/src/lib/pickImage.ts` con
+  `SHOWCASE_FIT` de la web: 1600 px y 450 kB), portada y quitar; pedir destacarlo; enlazar un torneo que organizas;
+  «Ver cómo la ven los jugadores» y borrarlo.
+- ✅ Dónde jugar (`/canchas`, desde Ligas): por deporte (`?deporte=`), ciudad y nombre, las destacadas primero; la
+  ficha (`/canchas/<id>`): fotos, deporte y lo que tiene, precio, WhatsApp (`whatsappLink`), llamar, el mapa, horario,
+  la empresa, los torneos y, para la dueña, «Cambiar en mi panel».
+- ✅ El modo de la cuenta (`profile.accountMode`): en modo empresa la barra es Mi empresa · Social · Yo y el inicio
+  lleva a `/empresa`; en modo jugador, Hoy · Social · Ligas · Yo con «Dónde jugar» en Ligas. Se cambia en Yo (y en
+  Mi empresa). Las pestañas que no tocan se esconden con `tabBarButton: () => null` (con `href: null` expo-router 58
+  ya no deja abrir la pantalla).
+- ✅ Links: `/canchas` y `/canchas/<id>` (`links.ts`), `/canchas/` abre la app (`APP_LINK_PATHS` y `app.json`).
+- 🌐 La consola del superadmin (aprobar, comisión, promociones) se queda en la web.
+
 ## 9. Insignias, premios, reportes
 
 - ⏳ Insignias del perfil y de la liga, el diseñador; premios del torneo; reportes en PDF y Excel (compartir con
@@ -109,7 +130,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Fotos desde el teléfono: elegir o tomar (expo-image-picker), achicar como la web (expo-image-manipulator +
   `fitImage`, `movil/src/lib/pickImage.ts`) y subir los bytes (React Native no arma `new Blob([bytes])`:
   `src/lib/bytesBlob.native.ts` y `storage.upload` de `movil/src/platform/backend.ts`).
-- ✅ Links: los de `/unirse/…`, `/l/…`, `/p/…` y `/u/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
+- ✅ Links: los de `/unirse/…`, `/l/…`, `/p/…`, `/u/…` y `/canchas/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
   `/.well-known/` salen de `movil/scripts/enlaces-universales.mjs` cuando estén el Team ID y las huellas.
 - ✅ Compartir (la hoja del teléfono: publicaciones, invitaciones; expo-sharing para archivos), fotos y cámara
   (expo-image-picker), vibración (expo-haptics). ⏳ Escanear un QR (expo-camera).

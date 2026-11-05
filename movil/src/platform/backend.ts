@@ -78,6 +78,13 @@ export function backendMode(): Backend['mode'] {
 
 export function getBackend(): Backend {
   if (instance) return instance;
+  // Solo en desarrollo y en la vista previa web: la demostración en memoria de /dev/empresa (sin Supabase). Con
+  // require dentro del `if`, la app publicada (__DEV__ falso) no la lleva.
+  if (__DEV__ && Platform.OS === 'web') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const demo = require('./demoBackend') as typeof import('./demoBackend');
+    if (demo.demoOn()) return (instance = demo.createDemoBackend());
+  }
   const url = String(env().VITE_SUPABASE_URL ?? '').trim();
   const key = String(env().VITE_SUPABASE_PUBLISHABLE_KEY ?? '').trim();
   if (!url || !key) {

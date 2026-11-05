@@ -1,51 +1,10 @@
 import { useState } from 'react';
-import { BUSINESS_ADDRESS_MAX, BUSINESS_CITY_MAX, BUSINESS_DESCRIPTION_MAX, BUSINESS_NAME_MAX, type Business, type BusinessInput } from '../../lib/data/business';
+import { BUSINESS_ADDRESS_MAX, BUSINESS_CITY_MAX, BUSINESS_DESCRIPTION_MAX, BUSINESS_NAME_MAX } from '../../lib/data/business';
 import { Field, Input, Textarea } from '../../components/ui';
+import { businessProblem, type BusinessFormValue } from './logic';
 
-/** Lo que se llena de la empresa (registrarla y cambiar sus datos). */
-export interface BusinessFormValue {
-  name: string;
-  city: string;
-  phone: string;
-  email: string;
-  taxId: string;
-  address: string;
-  description: string;
-}
-
-export const emptyBusinessForm = (): BusinessFormValue => ({ name: '', city: '', phone: '', email: '', taxId: '', address: '', description: '' });
-
-export const businessFormFrom = (b: Business): BusinessFormValue => ({
-  name: b.name,
-  city: b.city,
-  phone: b.phone ?? '',
-  email: b.email ?? '',
-  taxId: b.taxId ?? '',
-  address: b.address ?? '',
-  description: b.description ?? '',
-});
-
-export const businessInputFrom = (f: BusinessFormValue): BusinessInput => ({
-  name: f.name.trim(),
-  city: f.city.trim(),
-  phone: f.phone.trim() || null,
-  email: f.email.trim() || null,
-  taxId: f.taxId.trim() || null,
-  address: f.address.trim() || null,
-  description: f.description.trim() || null,
-});
-
-/** Qué falta para poder guardar (null = listo). Lo demás lo revisa la base. */
-export function businessProblem(f: BusinessFormValue): string | null {
-  if (f.name.trim().length < 2) return 'Escribe el nombre de la empresa.';
-  if (f.city.trim().length < 2) return 'Escribe la ciudad.';
-  const digits = f.phone.replace(/\D/g, '');
-  if (f.phone.trim() && (digits.length < 7 || digits.length > 15)) return 'Revisa el teléfono (de 7 a 15 números).';
-  if (f.email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) return 'Revisa el correo.';
-  const tax = f.taxId.replace(/\D/g, '');
-  if (f.taxId.trim() && tax.length !== 9 && tax.length !== 11) return 'El RNC lleva 9 números (o la cédula, 11).';
-  return null;
-}
+// La lógica del formulario está en logic.ts (la usa también la app del teléfono).
+export { businessFormFrom, businessInputFrom, businessProblem, emptyBusinessForm, type BusinessFormValue } from './logic';
 
 /** Los campos de la empresa. */
 export function BusinessFields({ value, onChange }: { value: BusinessFormValue; onChange: (v: BusinessFormValue) => void }) {

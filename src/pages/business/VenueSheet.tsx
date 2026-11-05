@@ -22,38 +22,14 @@ import {
   type VenuePhoto,
 } from '../../lib/data/business';
 import { formatDateLong, toIsoDate } from '../../lib/format';
-import { cleanVenueDetails, venueFields, type VenueField } from '../../lib/venues/fields';
+import { venueFields, type VenueField } from '../../lib/venues/fields';
 import { sportMeta } from '../../sports/registry';
 import { useSportStatus } from '../../sports/status';
-import type { SportId } from '../../sports/types';
 import { useFeedback } from '../../components/feedback';
 import { VenuePhotoImg } from '../../components/venues/VenueBits';
 import { Button, Field, Input, Segmented, Select, Sheet, Textarea, cx } from '../../components/ui';
 import { SportPicker } from '../sports/SportPicker';
-
-interface Draft {
-  sport: SportId;
-  name: string;
-  city: string;
-  address: string;
-  details: Record<string, string | boolean>;
-  priceHour: string;
-  hours: string;
-  phone: string;
-  active: boolean;
-}
-
-const draftFrom = (v: OwnVenue | null, business: Business): Draft => ({
-  sport: (v?.sport as SportId) ?? 'padel',
-  name: v?.name ?? '',
-  city: v?.city ?? business.city,
-  address: v?.address ?? business.address ?? '',
-  details: Object.fromEntries(Object.entries(v?.details ?? {}).map(([k, x]) => [k, typeof x === 'boolean' ? x : String(x)])),
-  priceHour: v?.priceHour === null || v?.priceHour === undefined ? '' : String(v.priceHour),
-  hours: v?.hours ?? '',
-  phone: v && v.phone !== business.phone ? (v.phone ?? '') : '',
-  active: v?.active ?? true,
-});
+import { digitsOnly, venueDraftFrom, venueInputFrom, venueLeaguesText, type VenueDraft } from './logic';
 
 /**
  * Un espacio de la empresa (nuevo o para cambiarlo): el deporte, lo que pide ese deporte (src/lib/venues/fields.ts),
@@ -74,33 +50,19 @@ function VenueEditor({ business, venue: initial, onClose }: { business: Business
   const sports = useSportStatus(auth.isSuper);
   // El espacio como quedó guardado (después de guardar uno nuevo, sigue aquí para sus fotos).
   const [venue, setVenue] = useState<OwnVenue | null>(initial);
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(initial, business));
+  const [draft, setDraft] = useState<VenueDraft>(() => venueDraftFrom(initial, business));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fields = venueFields(draft.sport);
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
+  const set = <K extends keyof VenueDraft>(k: K, v: VenueDraft[K]) => setDraft((d) => ({ ...d, [k]: v }));
 
   async function save() {
     setError(null);
-    const cleaned = cleanVenueDetails(draft.sport, draft.details);
-    if (!cleaned.ok) return setError(cleaned.message);
-    if (draft.name.trim().length < 2) return setError('Escribe el nombre del espacio.');
-    if (draft.city.trim().length < 2) return setError('Escribe la ciudad.');
-    const price = draft.priceHour.trim() ? Number(draft.priceHour.replace(/[^\d]/g, '')) : null;
+    const built = venueInputFrom(draft, venue?.id ?? null);
+    if (!built.ok) return setError(built.message);
     setBusy(true);
     try {
-      const saved = await saveVenue({
-        id: venue?.id ?? null,
-        sport: draft.sport,
-        name: draft.name.trim(),
-        city: draft.city.trim(),
-        address: draft.address.trim() || null,
-        details: cleaned.details,
-        priceHour: price,
-        hours: draft.hours.trim() || null,
-        phone: draft.phone.trim() || null,
-        active: draft.active,
-      });
+      const saved = await saveVenue(built.input);
       toast(venue ? 'Guardado' : 'Listo: agrega sus fotos abajo');
       setVenue(saved);
     } catch (e) {
@@ -135,7 +97,7 @@ function VenueEditor({ business, venue: initial, onClose }: { business: Business
           <Input value={draft.city} maxLength={60} onChange={(e) => set('city', e.target.value)} />
         </Field>
         <Field label="Precio por hora (RD$)">
-          <Input inputMode="numeric" value={draft.priceHour} maxLength={7} placeholder="Opcional" onChange={(e) => set('priceHour', e.target.value.replace(/[^\d]/g, ''))} />
+          <Input inputMode="numeric" value={draft.priceHour} maxLength={7} placeholder="Opcional" onChange={(e) => set('priceHour', digitsOnly(e.target.value))} />
         </Field>
       </div>
       <Field label="Dirección">
@@ -187,7 +149,7 @@ function DetailsFields({ fields, value, onChange }: { fields: readonly VenueFiel
         <div className="grid grid-cols-2 gap-3">
           {counts.map((f) => (
             <Field key={f.key} label={f.required ? f.label : `${f.label} (opcional)`}>
-              <Input inputMode="numeric" value={String(value[f.key] ?? '')} maxLength={3} onChange={(e) => set(f.key, e.target.value.replace(/[^\d]/g, ''))} />
+              <Input inputMode="numeric" value={String(value[f.key] ?? '')} maxLength={3} onChange={(e) => set(f.key, digitsOnly(e.target.value))} />
             </Field>
           ))}
         </div>
@@ -396,7 +358,7 @@ function Leagues({ venue }: { venue: OwnVenue }) {
     <section className="flex flex-col gap-3" aria-label="Torneos en este espacio">
       <h3 className="text-section">Torneos aquí</h3>
       <p className="text-meta text-muted">
-        {venue.leagues ? `${venue.leagues} ${venue.leagues === 1 ? 'torneo o liga se juega' : 'torneos o ligas se juegan'} aquí.` : 'Enlaza los torneos que organizas aquí: salen en la ficha del espacio.'}
+        {venueLeaguesText(venue.leagues)}
       </p>
       {leagues.data.length > 0 ? (
         <div className="flex gap-2">

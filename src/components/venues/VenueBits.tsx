@@ -3,10 +3,13 @@ import { Link } from 'react-router';
 import { MapPin, Sparkles } from 'lucide-react';
 import { isFeatured, priceText, type Venue, type VenuePhoto } from '../../lib/data/business';
 import { usePublicImage, VENUE_BUCKET } from '../../lib/publicImages';
-import { venueDetailsLines } from '../../lib/venues/fields';
+import { venueLine } from '../../lib/venues/text';
 import { sportMeta } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { Badge, cx } from '../ui';
+
+// En palabras (también en el teléfono): src/lib/venues/text.ts.
+export { venueLine } from '../../lib/venues/text';
 
 /**
  * Las piezas de los espacios deportivos (src/lib/data/business.ts): la foto (bucket público 'venues'), la tarjeta de
@@ -35,11 +38,6 @@ export function FeaturedBadge({ className }: { className?: string }) {
       Destacada
     </Badge>
   );
-}
-
-/** «Pádel · 6 canchas · Cristal» (el deporte y lo más importante de lo llenado). */
-export function venueLine(v: Pick<Venue, 'sport' | 'details'>, max = 3): string {
-  return [sportMeta(v.sport)?.label, ...venueDetailsLines(v.sport, v.details).slice(0, max)].filter(Boolean).join(' · ');
 }
 
 /** La tarjeta de un espacio: portada, nombre, deporte y lo llenado, ciudad, precio y si está destacada. */

@@ -90,6 +90,8 @@ Todo queda en la auditoría (`target_type = 'business'`).
   borrada y las políticas del bucket.
 - `src/lib/venues/fields.test.ts`: los campos por deporte.
 - `src/lib/data/business.test.ts`: subir fotos y los textos.
+- `src/pages/business/logic.test.ts`: los datos de la empresa, la revisión, un espacio mientras se llena y sus textos
+  (lo comparten la web y el teléfono).
 - Las listas de `tests/sql/seguridad.test.ts` y `consola.test.ts`.
 - `src/components/Shell.test.ts`: la barra en modo empresa.
 
@@ -98,5 +100,8 @@ Todo queda en la auditoría (`target_type = 'business'`).
 - Cobrar en la app: elegir pasarela (ver Monetización).
 - Los Términos y la Política de privacidad tienen que decir que las empresas publican datos y fotos públicas de sus
   espacios y que la app cobra por destacar. Cambiar la versión obliga a aceptar de nuevo (src/lib/legal.ts).
-- La app del teléfono (`movil/`): Mi empresa y Dónde jugar (la lógica ya está en `src/lib/data/business.ts`).
+- La app del teléfono (`movil/`) ya tiene Mi empresa, sus espacios con fotos, Dónde jugar, la ficha y el cambio de
+  modo (docs/movil-migracion.md › Empresas), con la misma lógica (`src/lib/data/business.ts`,
+  `src/pages/business/logic.ts` y `src/lib/venues/`). Falta probarla en un teléfono de verdad y contra Supabase con
+  la migración aplicada (la vista previa se probó con la demostración de `/dev/empresa`). La consola sigue en la web.
 - Personal de la empresa (más de una cuenta por empresa) y reservas de canchas por hora.

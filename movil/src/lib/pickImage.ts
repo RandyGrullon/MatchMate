@@ -2,11 +2,14 @@
  * Elegir o tomar una foto en el teléfono y dejarla como la web (src/lib/image.ts · compressImage): la copia que se
  * guarda (hasta ~110 kB, lado de 1100 px) con los mismos pasos (`fitImage`), en JPEG, como data URL. La copia para la
  * IA (`scan`) solo si se pide (la foto del marcador); en una publicación no hace falta.
+ *
+ * Las fotos de un espacio de una empresa (compressShowcase de la web) son más grandes: `pickPhotoAssets` (varias de la
+ * galería a la vez) y `showcasePhoto` (hasta 1600 px y 450 kB, lista para uploadVenuePhoto).
  */
 import { Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import { fitImage, MAX_STORED_BYTES, type CompressedImage } from '@mm/lib/image';
+import { dataUrlToBlob, fitImage, MAX_STORED_BYTES, SHOWCASE_FIT, type CompressedImage, type ShowcasePhoto } from '@mm/lib/image';
 
 export type PhotoSource = 'library' | 'camera';
 
@@ -41,12 +44,21 @@ async function encode(uri: string, width: number, height: number, maxSide: numbe
   return { data: `data:image/jpeg;base64,${b64}`, width: out.width, height: out.height, size: Math.floor((b64.length * 3) / 4) - padding };
 }
 
+/** Una foto elegida (su archivo en el teléfono y su tamaño). */
+export type PickedAsset = Pick<ImagePicker.ImagePickerAsset, 'uri' | 'width' | 'height'>;
+
+/** Abre la galería (hasta `limit` fotos a la vez) o la cámara. Vacío: canceló o no dio permiso. */
+export async function pickPhotoAssets(source: PhotoSource, limit = 1): Promise<PickedAsset[]> {
+  if (!(await allowed(source))) return [];
+  const many = source === 'library' && limit > 1;
+  const options: ImagePicker.ImagePickerOptions = { mediaTypes: 'images', quality: 1, exif: false, allowsMultipleSelection: many, selectionLimit: many ? limit : 1 };
+  const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+  return result.canceled ? [] : result.assets.slice(0, Math.max(1, limit));
+}
+
 /** Abre la galería o la cámara. null: canceló o no dio permiso. */
 export async function pickPhoto(source: PhotoSource, opts: { scan?: boolean } = {}): Promise<CompressedImage | null> {
-  if (!(await allowed(source))) return null;
-  const options: ImagePicker.ImagePickerOptions = { mediaTypes: 'images', quality: 1, exif: false };
-  const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-  const asset = result.canceled ? null : result.assets[0];
+  const [asset] = await pickPhotoAssets(source);
   if (!asset) return null;
   const stored = await fitImage((side, q) => encode(asset.uri, asset.width, asset.height, side, q), {
     maxSide: 1100,
@@ -67,4 +79,10 @@ export async function pickPhoto(source: PhotoSource, opts: { scan?: boolean } = 
       ).data
     : '';
   return { data: stored.data, contentType: 'image/jpeg', bytes: stored.size, width: stored.width, height: stored.height, scan };
+}
+
+/** La foto de un espacio como la de la web (SHOWCASE_FIT, en JPEG), con sus bytes listos para subir. */
+export async function showcasePhoto(asset: PickedAsset): Promise<ShowcasePhoto> {
+  const out = await fitImage((side, q) => encode(asset.uri, asset.width, asset.height, side, q), SHOWCASE_FIT);
+  return { blob: dataUrlToBlob(out.data, 'image/jpeg'), contentType: 'image/jpeg', width: out.width, height: out.height };
 }

@@ -76,6 +76,13 @@ valores públicos de la web. Sin modo local: PGlite no corre en el teléfono.
 
 Node: Expo 58 pide 22.13 o más; con Node 20 avisa pero arranca (como El Play).
 
+**Probar sin cuenta** (en el Supabase real no se crean cuentas de prueba): rutas solo de desarrollo en `src/app/dev/`
+(con `__DEV__` falso llevan a Hoy). `/dev/anotar` (el editor de boliche) y `/dev/social` pintan con datos fijos.
+`/dev/empresa` prende, en la vista previa web, una demostración en memoria (`src/platform/demoBackend.ts`): una
+cuenta de prueba con canchas de ejemplo que contesta las RPC de las empresas. Ahí se registra la empresa, se agregan
+canchas con fotos, se cambia de modo y se busca en Dónde jugar; el mismo `/dev/empresa` la aprueba o la rechaza (lo
+del superadmin) y la apaga.
+
 ## Publicar (cuando esté la cuenta de Apple)
 
 Identificadores: `com.grullonb.matchmate` (iOS y Android), esquema `matchmate://`, links universales de
