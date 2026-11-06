@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View, useColorScheme } from 'react-native';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { Stack, router, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { AuthProvider, useAuth } from '@mm/lib/auth';
 import { subscribePush } from '@mm/lib/push';
+import { NoticesProvider } from '@mm/components/notifications/provider';
 import { installNetwork } from '@/platform/network';
 import { installNotifications, refreshNotifyState } from '@/platform/notifications';
 import { hydrateStorage } from '@/platform/storage';
@@ -40,6 +41,9 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   );
 }
 
+/** La campana lleva a Avisos (el proveedor de la web, con la navegación de la app). */
+const openNotices = () => router.push('/avisos');
+
 function Navigator() {
   const { colors, isDark } = useTheme();
   const { loading, user } = useAuth();
@@ -58,7 +62,7 @@ function Navigator() {
       .catch(() => undefined);
   }, [uid]);
   return (
-    <>
+    <NoticesProvider onOpen={openNotices}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
@@ -71,7 +75,7 @@ function Navigator() {
       {/* «¿Tienes 18 años o más?» y aceptar los Términos vigentes, sobre todo lo demás (como la web). */}
       <AccountGates />
       <ToastHost />
-    </>
+    </NoticesProvider>
   );
 }
 

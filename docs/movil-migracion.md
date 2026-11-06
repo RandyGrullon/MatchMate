@@ -35,8 +35,17 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Portada sin cuenta; Hoy con tus ligas; «Únete a tu liga» con el código.
 - ✅ `/unirse/<código>`: a qué liga lleva y «Unirme» (sin «¿Quién eres?» todavía: ⏳).
 - ⏳ Escanear el QR (expo-camera).
-- ⏳ En juego ahora, lo próximo, la semana (useActivity de la web: necesita la campana, `useNotifications`).
-- ⏳ Campana de avisos e invitaciones (`/avisos`, `/invitacion/<id>`).
+- ✅ Lo de hoy, como la web: la práctica o el torneo de boliche en juego con su botón (anotar, seguir, enviar; la del
+  horario se abre al tocar), los partidos en vivo, tu próximo partido o lo próximo con «Voy», «Nada programado» y «Lo
+  que viene» (`movil/src/components/home/Activity.tsx`; los datos son `useActivity` de `src/components/home/activity.ts`,
+  el mismo de la web). Con datos de prueba: `/dev/hoy`. 🌐 El calendario completo y «¿Dónde jugaste?».
+- ✅ Campana de avisos en Hoy (con el número de lo nuevo) y Avisos (`/avisos`): los mismos avisos de la web (el
+  proveedor `src/components/notifications/provider.tsx` es el mismo en las dos; la vista de la app sale de
+  `src/lib/visibility(.native).ts`), por Hoy, Esta semana y Antes, filtros por tipo y por deporte, «Marcar todo como
+  leído» y las invitaciones sin responder con Aceptar y Rechazar. Tocar un aviso abre lo suyo (en la app si la tiene).
+- ✅ Una invitación (`/invitacion/<id>`): quién invitó, la liga con sus datos, «¿Quién eres?»
+  (`movil/src/components/league/WhoAreYou.tsx`) y Aceptar / Rechazar; la de anotador lleva al torneo. Las de equipos
+  abren la web (no hay `/equipos` en la app todavía).
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
 - 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5); ✅ muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
@@ -46,13 +55,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 - ✅ Evento (`/l/<liga>/e/<evento>`): «Tus juegos» (en la tabla, en el teléfono, enviado, a medias, por anotar), la
   serie, el botón que sigue (`nextGame` de `src/lib/useNextGame.ts`) y la práctica cerrada.
-- ✅ Anotar un juego (`movil/src/components/bowling/ScoreEditor.tsx`): teclado (solo las teclas que valen), total con
+- ✅ Anotar un juego (`movil/src/components/bowling/ScoreEditor.tsx`): pines, teclado (solo las teclas que valen), total con
   0–300, la hoja de 10 cuadros, «Llevas» y «Máx. posible», deshacer, cada tiro guardado en el teléfono y «Seguimos
   donde lo dejaste» (`src/components/frames/editorLogic.ts` y `draftMemory.ts`, los mismos de la web). Al guardar va a
   «Tus juegos» y se publica en vivo (`saveDraft`).
 - ✅ Enviar mis juegos (`submitGames`, por la cola sin conexión): sale del teléfono al enviarse; si falla después,
   vuelve al teléfono con el aviso. Sin foto: pregunta si la liga la pide.
-- ⏳ Pines (tocar los pinos que cayeron), corregir un tiro tocando su cuadro, la bola de cada juego.
+- ✅ Pines (tocar los pinos que cayeron, con Fallo, Strike o Spare y Anotar), corregir un tiro tocándolo en la hoja
+  (dejarlo presionado lo borra; «Listo», «Deshacer» o «Dejar en −») y la bola de cada juego arriba del editor (la
+  misma lógica de la web: `editorLogic.ts`, `replaceRoll`, `src/components/balls/choice.ts`). Agregar una bola nueva
+  todavía es en la web. Se prueba sin cuenta en `/dev/anotar`.
 - ⏳ Foto del marcador (cámara) y lectura con IA; aprobar envíos (admin); planilla y resultados; pistas; equipos fijos
   y de torneo; temporadas y ranking; bolas (catálogo, diseño, layout); juegos sueltos; jugador y «Mis números».
 

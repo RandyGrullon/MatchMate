@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Check, ChevronRight, FileSpreadsheet, PencilLine, Send, Target, UserRound, type LucideIcon } from 'lucide-react';
-import { asBackendError } from '../../lib/db/errors';
 import type { CalendarItem } from '../../lib/calendar';
 import { useEventEntries, useEventLive, useEventSubmissions, usePlayers } from '../../lib/data';
-import { isPracticeClosed, openPractice, PRACTICE_CLOSED_TEXT } from '../../lib/data/events';
+import { openPractice } from '../../lib/data/events';
 import { useEventLanes } from '../../lib/data/lanes';
 import { laneOf, lanesPublished } from '../../lib/lanes';
 import { formatTime } from '../../lib/schedule';
@@ -14,10 +13,12 @@ import { nextGameLabel, scorePath, sheetPath, useNextGame, type GameCell, type N
 import { initials } from '../Avatar';
 import { BusyIcon, useBusy } from '../busy';
 import { boardRows, type BoardRow } from '../event/board';
-import { saveErrorMessage, useFeedback } from '../feedback';
+import { useFeedback } from '../feedback';
 import { SportCorner, SportMark } from '../SportMark';
 import { Card, DateBlock, GameTile, Skeleton, cx } from '../ui';
-import { LATE_WHEN, lateTitle, socialLine, todayTitle, weekdayLabel } from './logic';
+import { LATE_WHEN, lateTitle, openPracticeErrorText, socialLine, todayTitle, weekdayLabel } from './logic';
+
+export { openPracticeErrorText };
 import { SportTint } from './SportTint';
 
 // ---------- Piezas ----------
@@ -63,15 +64,6 @@ export function ActionLink({ to, children, ...look }: ActionLook & { to: string;
       <span className="min-w-0 truncate">{children}</span>
     </Link>
   );
-}
-
-/** Lo que se dice si no se pudo abrir la práctica. `today`: es la de hoy (`cerrado` = todavía no es la hora). */
-export function openPracticeErrorText(e: unknown, today: boolean): string {
-  if (isPracticeClosed(e)) return today ? 'La práctica todavía no empieza. Intenta de nuevo a la hora de la liga.' : `${PRACTICE_CLOSED_TEXT}.`;
-  const be = asBackendError(e);
-  if (be?.kind === 'permission') return 'Solo los jugadores de la liga anotan en su práctica.';
-  if (be?.kind === 'network') return 'Sin señal: para abrir la práctica hace falta conexión. Intenta de nuevo.';
-  return saveErrorMessage(e);
 }
 
 /**

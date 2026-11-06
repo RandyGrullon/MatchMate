@@ -1,12 +1,7 @@
 import { cx } from '../ui';
+import { PIN_ROWS } from './editorLogic';
 
-/** Filas de pines vistas desde el jugador: 7-8-9-10 al fondo, el 1 adelante. */
-export const PIN_ROWS: readonly (readonly number[])[] = [
-  [7, 8, 9, 10],
-  [4, 5, 6],
-  [2, 3],
-  [1],
-];
+export { PIN_ROWS };
 
 /**
  * Pines para tocar los que cayeron en el tiro.

@@ -30,11 +30,67 @@ export function setDemo(on: boolean) {
     else {
       sessionStorage.removeItem(FLAG);
       sessionStorage.removeItem(DATA);
+      sessionStorage.removeItem('mm-demo-invite');
     }
   } catch {
     // sin sessionStorage no hay demostración
   }
 }
+
+const INVITE = 'mm-demo-invite';
+type DemoInviteStatus = 'pending' | 'accepted' | 'declined';
+const inviteStatus = (): DemoInviteStatus => {
+  try {
+    const v = sessionStorage.getItem(INVITE);
+    return v === 'accepted' || v === 'declined' ? v : 'pending';
+  } catch {
+    return 'pending';
+  }
+};
+const setInviteStatus = (v: DemoInviteStatus) => {
+  try {
+    sessionStorage.setItem(INVITE, v);
+  } catch {
+    // sin sessionStorage
+  }
+};
+
+const DEMO_INVITE = {
+  id: '00000000-0000-7000-8000-00000000e001',
+  leagueId: '00000000-0000-7000-8000-00000000e0aa',
+  leagueName: 'Liga de Ejemplo',
+  logoPath: null,
+  sport: 'padel',
+  kind: 'liga',
+  visibility: 'private',
+  members: 12,
+  invitedBy: { id: '00000000-0000-7000-8000-00000000d0ff', name: 'Persona de Prueba', username: 'prueba' },
+  createdAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+};
+
+const DEMO_INVITE_DETAILS = {
+  id: DEMO_INVITE.id,
+  mine: true,
+  invitedBy: DEMO_INVITE.invitedBy,
+  createdAt: DEMO_INVITE.createdAt,
+  league: {
+    id: DEMO_INVITE.leagueId,
+    name: DEMO_INVITE.leagueName,
+    logoPath: null,
+    sport: 'padel',
+    kind: 'liga',
+    visibility: 'private',
+    venue: 'Club de Ejemplo',
+    schedule: 'Martes 7:00 p. m.',
+    seasonStart: null,
+    seasonEnd: null,
+    members: 12,
+  },
+  players: [
+    { id: '00000000-0000-7000-8000-00000000e101', name: 'Juan Pérez' },
+    { id: '00000000-0000-7000-8000-00000000e102', name: 'Jugador Uno' },
+  ],
+};
 
 /** La cuenta de prueba. */
 export const DEMO_USER = '00000000-0000-7000-8000-00000000d001';
@@ -150,6 +206,16 @@ export function createDemoBackend(): Backend {
   const text = (a: Record<string, unknown>, k: string) => (typeof a[k] === 'string' && (a[k] as string).trim() ? (a[k] as string).trim() : null);
 
   const rpcs: Record<string, (a: Record<string, unknown>) => unknown> = {
+    // Una invitación a una liga (ficticia), para probar Avisos y /invitacion/<id> (src/lib/data/invites.ts).
+    my_league_invites: () => (inviteStatus() === 'pending' ? [DEMO_INVITE] : []),
+    // Como la base: sin invitaciones a equipos es una lista vacía (no null).
+    my_squad_invites: () => [],
+    league_invite_details: (x) => (x.p_invite === DEMO_INVITE.id ? { ...DEMO_INVITE_DETAILS, status: inviteStatus(), member: inviteStatus() === 'accepted' } : null),
+    respond_league_invite: (x) => {
+      if (x.p_invite !== DEMO_INVITE.id || inviteStatus() !== 'pending') return { status: inviteStatus(), leagueId: DEMO_INVITE.leagueId };
+      setInviteStatus(x.p_accept ? 'accepted' : 'declined');
+      return { status: inviteStatus(), leagueId: DEMO_INVITE.leagueId, joined: !!x.p_accept, playerId: null, claimId: null };
+    },
     my_business: () => myBusiness(),
     register_business: (a) => {
       if (mine()) fail('Ya tiene empresa.', 'conflict', 'duplicado');

@@ -102,3 +102,11 @@ export function startState(initial: ScoreValue, startMode: ScoreMode | undefined
     hole: hole?.kind ?? null,
   };
 }
+
+/** Filas de pines vistas desde el jugador: 7-8-9-10 al fondo, el 1 adelante (PinDeck de la web y del teléfono). */
+export const PIN_ROWS: readonly (readonly number[])[] = [
+  [7, 8, 9, 10],
+  [4, 5, 6],
+  [2, 3],
+  [1],
+];

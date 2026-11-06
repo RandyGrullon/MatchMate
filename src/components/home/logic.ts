@@ -10,6 +10,9 @@ import { WEEKDAYS } from '../../lib/schedule';
 import { MIN_RANK_GAMES, rank } from '../../lib/stats';
 import { leagueSport, sportsOf } from '../../sports/registry';
 import { countLabel, peopleWord } from '../league/logic';
+import { isPracticeClosed, PRACTICE_CLOSED_TEXT } from '../../lib/data/events';
+import { asBackendError } from '../../lib/db/errors';
+import { saveErrorMessage } from '../../lib/errorText';
 
 const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -243,4 +246,13 @@ export function socialLine(rows: number, leader: { name: string; me: boolean } |
   if (!rows) return { count: 'Todavía nadie anota', leader: null };
   const first = leader?.name.trim().split(/\s+/)[0] ?? '';
   return { count: `${rows} ${late ? 'anotaron' : 'jugando'}`, leader: !leader ? null : leader.me ? 'Vas primero' : `${first} va primero` };
+}
+
+/** Lo que se dice si no se pudo abrir la práctica. `today`: es la de hoy (`cerrado` = todavía no es la hora). */
+export function openPracticeErrorText(e: unknown, today: boolean): string {
+  if (isPracticeClosed(e)) return today ? 'La práctica todavía no empieza. Intenta de nuevo a la hora de la liga.' : `${PRACTICE_CLOSED_TEXT}.`;
+  const be = asBackendError(e);
+  if (be?.kind === 'permission') return 'Solo los jugadores de la liga anotan en su práctica.';
+  if (be?.kind === 'network') return 'Sin señal: para abrir la práctica hace falta conexión. Intenta de nuevo.';
+  return saveErrorMessage(e);
 }

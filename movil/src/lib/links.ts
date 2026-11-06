@@ -18,6 +18,9 @@ export function appRoute(href: string): string | null {
   const query = cut < 0 || href[cut] === '#' ? '' : href.slice(cut).split('#')[0];
   if (TABS.includes(path) || path === '/auth') return path + query;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
+  // La campana (con sus ?ver= y ?deporte=) y una invitación a una liga.
+  if (path === '/avisos') return path + query;
+  if (/^\/invitacion\/[^/]+$/.test(path)) return path;
   // Un partido (`?partido=` en la liga, sus partidos o un evento; los avisos de resultados llegan así).
   const partido = /[?&]partido=([^&]+)/.exec(query)?.[1];
   const inLeague = /^\/l\/([^/]+)/.exec(path);

@@ -1,15 +1,18 @@
-import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { Plus, Search, Ticket } from 'lucide-react-native';
+import { Bell, Plus, Search, Ticket } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
-import { useLeaguesByIds, useMyMemberships } from '@mm/lib/data';
 import { codeReady, normalizeCode } from '@mm/components/scanner/logic';
+import { useNotifications } from '@mm/components/notifications/provider';
+import { useActivity, useMyLeagues } from '@mm/components/home/activity';
+import { IdleCard, LiveMatchesCard, NextMatchCard, NextUpCard, TodayGameCard, UpNext } from '@/components/home/Activity';
 import { LeagueCard } from '@/components/LeagueCard';
 import { LogoLockup } from '@/components/Logo';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
+import { font } from '@/theme/tokens';
 
 const today = () => {
   const s = new Date().toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -42,6 +45,29 @@ function Landing() {
         <ListRow chevron={false} title="Avisos en tu teléfono" subtitle="Tu próximo juego y lo que falta" />
       </Card>
     </Screen>
+  );
+}
+
+/** La campana de Hoy (como HomeHeader de la web): lleva a Avisos, con el número de lo nuevo. */
+function NoticesBell() {
+  const c = useColors();
+  const { unread, openNotifications } = useNotifications();
+  const label = unread ? `Avisos: ${unread} ${unread === 1 ? 'nuevo' : 'nuevos'}` : 'Avisos';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={6}
+      onPress={openNotifications}
+      style={({ pressed }) => [styles.bell, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}
+    >
+      <Bell size={22} color={c.fg} />
+      {unread > 0 && (
+        <View style={[styles.badge, { backgroundColor: c.danger, borderColor: c.bg }]}>
+          <Text style={{ color: '#fff', fontFamily: font.bold, fontSize: 10, lineHeight: 14 }}>{unread > 9 ? '9+' : unread}</Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -83,12 +109,59 @@ function JoinCard() {
   );
 }
 
+/**
+ * Lo de hoy, una sola vez (como Hoy de la web, src/pages/HomePage.tsx): el juego de boliche en juego (o los partidos en
+ * vivo); si no, tu próximo partido o lo próximo; si no hay nada, «Nada programado». La práctica de anoche va arriba.
+ * Después «Lo que viene» sin lo que ya salió arriba.
+ */
+function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof useMyLeagues>['leagues']; uid: string; loading: boolean }) {
+  const act = useActivity(leagues, uid);
+  const notices = useNotifications();
+  const nextEvent = act.next?.kind === 'event' ? act.next.event : null;
+  const nextMatch = act.next?.kind === 'match' ? act.next.match : null;
+  const late = act.games.filter((g) => g.late);
+  const live = act.games.length > late.length || act.liveItems.length > 0;
+  let today: ReactNode;
+  if (live) {
+    today = (
+      <>
+        {act.games.map((g) => (
+          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} />
+        ))}
+        <LiveMatchesCard items={act.liveItems} />
+      </>
+    );
+  } else if (nextMatch) today = <NextMatchCard next={nextMatch} />;
+  else if (nextEvent) today = <NextUpCard item={nextEvent} today={act.today} />;
+  else if (loading || notices.loading) today = <Loading label="Cargando lo de hoy" />;
+  else today = <IdleCard />;
+  if (!live && late.length) {
+    today = (
+      <>
+        {late.map((g) => (
+          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} />
+        ))}
+        {today}
+      </>
+    );
+  }
+  // «Lo que viene» sin lo que ya sale arriba.
+  const shownKeys = new Set([...act.games.map((g) => `${g.feed.lid}:${g.event.id}`), ...(nextEvent && !live ? [nextEvent.key] : [])]);
+  const upcoming = act.upcoming.filter((it) => !shownKeys.has(it.key) && !(nextMatch && !live && it.matchId === nextMatch.match.id));
+  return (
+    <>
+      <View style={{ gap: 14 }}>{today}</View>
+      <UpNext items={upcoming} today={act.today} showLeague={leagues.length > 1} />
+    </>
+  );
+}
+
 export default function HoyScreen() {
   const auth = useAuth();
   const uid = auth.user?.uid;
-  const memberships = useMyMemberships(uid);
-  const ids = useMemo(() => memberships.data.map((m) => m.leagueId), [memberships.data]);
-  const leagues = useLeaguesByIds(ids);
+  const mine = useMyLeagues();
+  const leagues = { data: mine.all, loading: mine.loading, error: mine.error };
+  const memberships = mine.memberships;
   const [refreshing, setRefreshing] = useState(false);
   const c = useColors();
 
@@ -109,16 +182,20 @@ export default function HoyScreen() {
         setTimeout(() => setRefreshing(false), 700);
       }}
     >
-      <View style={{ gap: 2 }}>
-        <Txt variant="meta" tone="muted">
-          {today()}
-        </Txt>
-        <Txt variant="title">Hola, {name}</Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="meta" tone="muted">
+            {today()}
+          </Txt>
+          <Txt variant="title">Hola, {name}</Txt>
+        </View>
+        <NoticesBell />
       </View>
       {loading && !leagues.data.length ? (
         <Loading label="Cargando tus ligas" />
       ) : leagues.data.length ? (
         <>
+          <TodaySection leagues={mine.all} uid={uid!} loading={loading} />
           <SectionHeader title="Tus ligas" />
           <View style={{ gap: 10 }}>
             {leagues.data.map((l) => (
@@ -162,5 +239,7 @@ export default function HoyScreen() {
 }
 
 const styles = StyleSheet.create({
+  bell: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   ticket: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });
