@@ -14,9 +14,12 @@ const projectRoot = __dirname;
 const sharedRoot = path.resolve(projectRoot, '../src');
 // La palabra de confirmar el borrado de la cuenta vive con su Edge Function (TypeScript puro, sin imports).
 const deleteAccountCore = path.resolve(projectRoot, '../supabase/functions/delete-account');
+// Leer la foto del marcador con la IA (src/lib/scan-result.ts): sus tipos y su revisión viven con la Edge Function
+// scan-bowling (_shared/scan-core.ts, TypeScript puro, sin imports).
+const scanCore = path.resolve(projectRoot, '../supabase/functions/_shared');
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [...(config.watchFolders ?? []), sharedRoot, deleteAccountCore];
+config.watchFolders = [...(config.watchFolders ?? []), sharedRoot, deleteAccountCore, scanCore];
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')];
 
 const inShared = (file) => file.startsWith(sharedRoot + path.sep) || file === sharedRoot;

@@ -65,8 +65,17 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (dejarlo presionado lo borra; «Listo», «Deshacer» o «Dejar en −») y la bola de cada juego arriba del editor (la
   misma lógica de la web: `editorLogic.ts`, `replaceRoll`, `src/components/balls/choice.ts`). Agregar una bola nueva
   todavía es en la web. Se prueba sin cuenta en `/dev/anotar`.
-- ⏳ Foto del marcador (cámara) y lectura con IA; aprobar envíos (admin); planilla y resultados; pistas; equipos fijos
-  y de torneo; temporadas y ranking; bolas (catálogo, diseño, layout); juegos sueltos; jugador y «Mis números».
+- ✅ Enviar mis juegos con la foto del marcador (cámara o galería) y la lectura con IA en segundo plano (`scanJobs`,
+  como la web: se puede enviar sin esperar; si la foto dice otra cosa, avisa y deja «Usar lo de la foto»), con la bola
+  de cada juego (`movil/src/app/l/[lid]/e/[eventId]/enviar.tsx`).
+- ✅ «Por aprobar» en el evento (owner y admin): Aprobar, Rechazar con motivo y Aprobar todo, con la foto en grande
+  (`approvalLogic.ts`, la misma de la web); lo que hay que revisar a fondo abre Organizar › Aprobar en la web.
+- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla, la
+  clasificación del torneo y Organizar › Aprobar completo.
+- ⏳ Pistas; equipos fijos y de torneo; temporadas y ranking; bolas (catálogo, diseño, layout); juegos sueltos; jugador y
+  «Mis números».
+- Para probar sin cuenta: `/dev/empresa` › Entrar a la demostración trae una liga de boliche ficticia
+  (`movil/src/platform/demoLeague.ts`: práctica hoy, un envío por aprobar y una planilla).
 
 ## 4. Raqueta: pádel, tenis, pickleball, ping pong
 

@@ -11,6 +11,7 @@ import { BackendError, type AuthEvent, type Backend, type Session } from '@mm/li
 import type { Business, BusinessStatus, OwnVenue, Venue, VenueDetail, VenuePhoto } from '@mm/lib/data/business';
 import { uuidv7 } from '@mm/lib/db/ids';
 import { CURRENT_LEGAL } from '@mm/lib/legal';
+import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -31,6 +32,7 @@ export function setDemo(on: boolean) {
       sessionStorage.removeItem(FLAG);
       sessionStorage.removeItem(DATA);
       sessionStorage.removeItem('mm-demo-invite');
+      forgetDemoLeague();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -388,8 +390,11 @@ export function createDemoBackend(): Backend {
       resendConfirmation: async () => notInDemo(),
       updatePassword: async () => notInDemo(),
     },
-    select: async <T,>(q: { table: string }) => {
+    select: async <T,>(q: { table: string; filters?: { col: string; op: string; value: unknown }[] }) => {
       if (q.table === 'profiles') return [profileRow()] as T[];
+      // La liga de boliche ficticia (demoLeague.ts).
+      const league = demoLeagueSelect(DEMO_USER, q.table, q.filters);
+      if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
           { doc: 'terminos', version: CURRENT_LEGAL.terms },
@@ -401,6 +406,8 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      const fromLeague = demoLeagueRpc(DEMO_USER, fn, args);
+      if (fromLeague !== undefined) return structuredClone(fromLeague) as T;
       const run = rpcs[fn] as ((a: Record<string, unknown>) => unknown) | undefined;
       const out = run ? structuredClone(run(args)) : null;
       if (run) save();

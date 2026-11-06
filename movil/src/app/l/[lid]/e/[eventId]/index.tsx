@@ -1,15 +1,17 @@
-import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, Globe, Send, SquarePen } from 'lucide-react-native';
-import { clearSent, loadDraft, restoreDraft } from '@mm/lib/draft';
-import { submitGames } from '@mm/lib/data/submissions';
-import { clearGameDraft, gameKey } from '@mm/components/frames/draftMemory';
-import { saveErrorMessage } from '@mm/lib/errorText';
 import { eventTitle, formatDateLong } from '@mm/lib/format';
-import { nextGameLabel, type GameCell } from '@mm/lib/useNextGame';
-import { confirmAsync, toast } from '@/components/feedback';
-import { BackBar, Badge, Button, Card, Empty, ErrorNote, Loading, Screen, Txt } from '@/components/ui';
+import { nextGameLabel, partialGame, type GameCell } from '@mm/lib/useNextGame';
+import { useEventEntries } from '@mm/lib/data/entries';
+import { useEventLive } from '@mm/lib/data/liveScores';
+import { usePlayers } from '@mm/lib/data/players';
+import { useEventSubmissions } from '@mm/lib/data/submissions';
+import { boardRows } from '@mm/components/event/board';
+import { gameKey, readGameDraft } from '@mm/components/frames/draftMemory';
+import { ApprovalCard } from '@/components/bowling/ApprovalCard';
+import { EventBoard } from '@/components/bowling/EventBoard';
+import { BackBar, Badge, Button, Card, Empty, Loading, Screen, Txt } from '@/components/ui';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketEventBody } from '@/components/racket/RacketEvent';
 import { useLeague } from '@mm/lib/data';
@@ -17,9 +19,6 @@ import { useMyGames } from '@/lib/useMyGames';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font, radius } from '@/theme/tokens';
-
-/** Cuánto se espera al servidor antes de decir «sin señal: se envía solo» (la cola lo sigue intentando). */
-const QUEUED_AFTER_MS = 6000;
 
 function Cell({ n, cell }: { n: number; cell: GameCell }) {
   const c = useColors();
@@ -83,8 +82,11 @@ function BowlingEventScreen() {
   const { lid, eventId } = useLocalSearchParams<{ lid: string; eventId: string }>();
   const c = useColors();
   const g = useMyGames(lid, eventId);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Lo de todos: lo enviado (lo que falta por aprobar), la planilla y lo que cada uno lleva en su teléfono.
+  const subs = useEventSubmissions(lid, eventId);
+  const entries = useEventEntries(lid, eventId);
+  const live = useEventLive(lid, eventId);
+  const players = usePlayers(lid);
 
   if (g.loading && !g.event.data) return <Loading label="Cargando el evento" />;
   const ev = g.event.data;
@@ -97,47 +99,18 @@ function BowlingEventScreen() {
     );
   }
   const inPhone = g.cells.filter((x) => x.kind === 'telefono').length;
+  const isAdmin = g.member.data?.role === 'owner' || g.member.data?.role === 'admin';
+  const pending = subs.data.filter((s) => s.status === 'pendiente');
+  // «Cómo van todos»: lo que cuenta suma; lo enviado, lo del teléfono y tu juego a medias se ven aparte.
+  const board = boardRows(ev, entries.data, subs.data, live.data, {
+    partial: (playerId, _entry, game) => (playerId === g.playerId && g.place ? partialGame(readGameDraft(gameKey(g.place, game))) : null),
+  });
   const next = g.next;
 
   const openEditor = (game: number) => router.push({ pathname: '/l/[lid]/e/[eventId]/anotar', params: { lid, eventId, juego: String(game) } });
 
-  async function send() {
-    if (!g.playerId || sending) return;
-    const d = loadDraft(lid, g.playerId, eventId);
-    if (!d) return;
-    const values = [...d.values];
-    const scores = values.map((v) => (v.trim() ? Number(v) : null));
-    while (scores.length && scores[scores.length - 1] == null) scores.pop();
-    if (!scores.length) return;
-    if (league!.requirePhoto) {
-      const ok = await confirmAsync({
-        title: '¿Enviar sin foto?',
-        message: 'Esta liga pide la foto del marcador para comprobar los juegos. Sin foto se puede enviar, pero quizá el admin no lo acepte.',
-        confirmText: 'Enviar sin foto',
-      });
-      if (!ok) return;
-    }
-    setSending(true);
-    setError(null);
-    const frames = d.frames && Object.keys(d.frames).length ? d.frames : null;
-    const { sent } = submitGames(lid, { playerId: g.playerId, eventId, date: null, scores, scanned: null, frames, photo: null });
-    const result = await Promise.race([sent.then(() => 'ok' as const), new Promise<'cola'>((r) => setTimeout(() => r('cola'), QUEUED_AFTER_MS))]).catch((e: unknown) => e);
-    setSending(false);
-    if (result === 'ok' || result === 'cola') {
-      // Lo enviado sale del teléfono (también lo que iba a medias de esos juegos): queda en la cola o ya en la liga.
-      clearSent(lid, g.playerId, eventId, values);
-      values.forEach((v, i) => v.trim() && g.place && clearGameDraft(gameKey(g.place, i)));
-      toast(result === 'ok' ? 'Enviado: un admin lo revisa y entra en la tabla.' : 'Sin señal: tus juegos se envían solos cuando vuelva la conexión.');
-      if (result === 'cola') {
-        sent.catch((e: unknown) => {
-          restoreDraft(lid, g.playerId!, eventId, { values, frames: d.frames, date: d.date, balls: d.balls });
-          toast(`No se pudieron enviar: ${saveErrorMessage(e)} Tus juegos volvieron al teléfono.`, 'error');
-        });
-      }
-    } else {
-      setError(saveErrorMessage(result));
-    }
-  }
+  // Enviar: la hoja con la foto del marcador y su lectura con IA (enviar.tsx).
+  const send = () => router.push({ pathname: '/l/[lid]/e/[eventId]/enviar', params: { lid, eventId } });
 
   return (
     <Screen>
@@ -200,7 +173,6 @@ function BowlingEventScreen() {
               Esta práctica ya cerró: solo un admin puede anotar.
             </Txt>
           )}
-          {error && <ErrorNote>{error}</ErrorNote>}
           {next && (next.kind === 'anotar' || next.kind === 'medias') && !g.closed && (
             <Button variant="primary" size="xl" full icon={<SquarePen size={20} color={c.accentFg} />} onPress={() => openEditor(next.game)}>
               {nextGameLabel(next)}
@@ -211,7 +183,6 @@ function BowlingEventScreen() {
               variant={next?.kind === 'enviar' ? 'primary' : 'quiet'}
               size="xl"
               full
-              loading={sending}
               icon={<Send size={20} color={next?.kind === 'enviar' ? c.accentFg : c.fg} />}
               onPress={send}
             >
@@ -221,8 +192,13 @@ function BowlingEventScreen() {
         </Card>
       )}
 
+      {isAdmin && <ApprovalCard league={league} event={ev} subs={pending} entries={entries.data} players={players.data} />}
+      {ev.type !== 'torneo' && ev.date <= g.today && (
+        <EventBoard rows={board} players={players.data} me={g.playerId} live={ev.date === g.today} past={ev.date < g.today} />
+      )}
+
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>
-        Planilla y resultados en la web
+        {ev.type === 'torneo' ? 'Planilla y clasificación en la web' : 'Planilla en la web'}
       </Button>
     </Screen>
   );

@@ -36,7 +36,8 @@ async function allowed(source: PhotoSource): Promise<boolean> {
 async function encode(uri: string, width: number, height: number, maxSide: number, quality: number) {
   const scale = Math.min(1, maxSide / Math.max(width, height));
   const ctx = ImageManipulator.manipulate(uri);
-  if (scale < 1) ctx.resize(width >= height ? { width: Math.round(width * scale), height: null } : { width: null, height: Math.round(height * scale) });
+  // Las dos medidas (la misma proporción): con una en null, la versión web de expo-image-manipulator deja el lienzo sin alto.
+  if (scale < 1) ctx.resize({ width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) });
   const ref = await ctx.renderAsync();
   const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: quality, base64: true });
   const b64 = out.base64 ?? '';

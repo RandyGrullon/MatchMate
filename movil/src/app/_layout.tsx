@@ -9,6 +9,8 @@ import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, In
 import { AuthProvider, useAuth } from '@mm/lib/auth';
 import { subscribePush } from '@mm/lib/push';
 import { NoticesProvider } from '@mm/components/notifications/provider';
+import { scanScoreboard } from '@mm/lib/scan';
+import { scanDeps } from '@mm/lib/scanJobs';
 import { installNetwork } from '@/platform/network';
 import { installNotifications, refreshNotifyState } from '@/platform/notifications';
 import { hydrateStorage } from '@/platform/storage';
@@ -19,6 +21,10 @@ import { ThemeProvider, useTheme } from '@/theme/theme';
 import { dark, light } from '@/theme/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+// Leer la foto del marcador: con import directo (en la web, scanJobs la carga aparte con import(); en el teléfono Metro
+// no encuentra ese pedazo, que vive en ../src).
+scanDeps.scan = (dataUrl, ctx) => scanScoreboard(dataUrl, ctx);
 
 // Volvió la señal o la app volvió a la vista: la caché y la cola sin conexión lo oyen por `window` ('online', 'focus'),
 // como en la web (src/platform/network.ts y events.ts).
@@ -68,6 +74,7 @@ function Navigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="login" options={{ presentation: 'modal' }} />
         <Stack.Screen name="l/[lid]/e/[eventId]/anotar" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
+        <Stack.Screen name="l/[lid]/e/[eventId]/enviar" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cuenta/borrar" options={{ presentation: 'modal' }} />
         <Stack.Screen name="crear" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="l/[lid]/partido/[matchId]/cancha" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
