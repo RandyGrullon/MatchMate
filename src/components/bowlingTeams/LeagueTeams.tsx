@@ -1,25 +1,13 @@
 import { Link } from 'react-router';
-import type { RankingRow } from '../../lib/bowlingSeason';
 import { colorOf, teamAverageSum, useBowlingTeams } from '../../lib/data/bowlingTeams';
 import { useLeagueCtx } from '../../lib/league';
-import type { Player } from '../../lib/types';
 import { MeTag } from '../league/home/LeagueSections';
 import { Card, ListRow, SectionHeader, sectionLinkClass } from '../ui';
+import { firstNames } from './logic';
 import { TeamMark } from './parts';
 
-/**
- * El promedio de cada jugador en el inicio de la liga: el de la tabla de la temporada (ya está leída) y, si todavía no
- * tiene juegos, el fijo del admin. Sin nada, no sale.
- */
-export function homeAverages(rows: readonly Pick<RankingRow, 'playerId' | 'average'>[], players: readonly Pick<Player, 'id' | 'averageOverride'>[]): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const p of players) if (p.averageOverride) out.set(p.id, p.averageOverride);
-  for (const r of rows) if (r.average > 0) out.set(r.playerId, r.average);
-  return out;
-}
-
-/** «Ana · Luis · Pedro» (los nombres de pila). */
-const firstNames = (names: readonly string[]) => names.map((n) => n.trim().split(/\s+/)[0] || n).join(' · ');
+// El promedio de cada jugador en el inicio de la liga (logic.ts: también lo usa la app del teléfono).
+export { homeAverages } from './logic';
 
 /**
  * Inicio de la liga › «Equipos»: cada equipo fijo en una fila (su color, su nombre, sus jugadores y la suma de sus

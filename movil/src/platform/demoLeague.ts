@@ -33,22 +33,6 @@ const pastEntry = (n: number, eventId: string, playerId: string, scores: number[
   photos: scores.map(() => 'ok'),
   frames: null,
 });
-const PAST_ENTRIES: Row[] = [
-  pastEntry(1, PAST[0], ME_PLAYER, [188, 201, 176]),
-  pastEntry(2, PAST[0], OTHER, [212, 190, 199]),
-  pastEntry(3, PAST[0], THIRD, [170, 185, 193]),
-  pastEntry(4, PAST[1], ME_PLAYER, [195, 207, 183]),
-  pastEntry(5, PAST[1], OTHER, [180, 221, 204]),
-  pastEntry(6, PAST[1], THIRD, [166, 178, 190]),
-];
-
-type Row = Record<string, unknown>;
-interface State {
-  entries: Row[];
-  submissions: Row[];
-}
-
-const iso = (ms = 0) => new Date(Date.now() + ms).toISOString();
 const practice = (id: string, date: string): Row => ({
   id,
   league_id: DEMO_LEAGUE,
@@ -67,6 +51,55 @@ const practice = (id: string, date: string): Row => ({
   player_count: 3,
   created_at: iso(-30 * 86_400_000),
 });
+
+// Dos torneos por equipos de 2: uno jugado hace 3 días (su clasificación, también por equipos) y uno en 3 días con
+// los tres inscritos (para armar los equipos en Organizar). Los equipos del torneo van en la tabla `teams`.
+const TOURNEY_PAST = '00000000-0000-7000-8000-00000000f0e6';
+const TOURNEY_NEXT = '00000000-0000-7000-8000-00000000f0e5';
+const TEAM = (n: number) => `00000000-0000-7000-8000-00000000f7a${n}`;
+const tourney = (id: string, name: string, date: string): Row => ({
+  ...practice(id, date),
+  type: 'torneo',
+  name,
+  hcp_base: 220,
+  hcp_percent: 80,
+  individual_rank_by: 'scratch',
+  team_rank_by: 'scratch',
+  team_size: 2,
+  announcement: '',
+});
+const teamEntry = (n: number, eventId: string, playerId: string, teamId: string, scores: number[]): Row => ({ ...pastEntry(n, eventId, playerId, scores), team_id: teamId, photos: scores.map(() => 'ok') });
+const TOURNEY_ENTRIES: Row[] = [
+  teamEntry(7, TOURNEY_PAST, ME_PLAYER, TEAM(1), [201, 189, 210]),
+  teamEntry(8, TOURNEY_PAST, OTHER, TEAM(1), [178, 196, 184]),
+  teamEntry(9, TOURNEY_PAST, THIRD, TEAM(2), [205, 214, 199]),
+  teamEntry(10, TOURNEY_NEXT, ME_PLAYER, TEAM(3), []),
+  teamEntry(11, TOURNEY_NEXT, OTHER, TEAM(3), []),
+  teamEntry(12, TOURNEY_NEXT, THIRD, TEAM(4), []),
+];
+const TOURNEY_TEAMS: Row[] = [
+  { id: TEAM(1), league_id: DEMO_LEAGUE, event_id: TOURNEY_PAST, name: 'Equipo Uno', sort_order: 0, color: null },
+  { id: TEAM(2), league_id: DEMO_LEAGUE, event_id: TOURNEY_PAST, name: 'Equipo Dos', sort_order: 1, color: null },
+  { id: TEAM(3), league_id: DEMO_LEAGUE, event_id: TOURNEY_NEXT, name: 'Equipo Uno', sort_order: 0, color: null },
+  { id: TEAM(4), league_id: DEMO_LEAGUE, event_id: TOURNEY_NEXT, name: 'Equipo Dos', sort_order: 1, color: null },
+];
+
+const PAST_ENTRIES: Row[] = [
+  pastEntry(1, PAST[0], ME_PLAYER, [188, 201, 176]),
+  pastEntry(2, PAST[0], OTHER, [212, 190, 199]),
+  pastEntry(3, PAST[0], THIRD, [170, 185, 193]),
+  pastEntry(4, PAST[1], ME_PLAYER, [195, 207, 183]),
+  pastEntry(5, PAST[1], OTHER, [180, 221, 204]),
+  pastEntry(6, PAST[1], THIRD, [166, 178, 190]),
+];
+
+type Row = Record<string, unknown>;
+interface State {
+  entries: Row[];
+  submissions: Row[];
+}
+
+const iso = (ms = 0) => new Date(Date.now() + ms).toISOString();
 
 function seed(): State {
   return {
@@ -243,8 +276,8 @@ function tables(uid: string): Record<string, Row[]> {
         schedule: 'Martes 7:00 p. m.',
         season_start: null,
         season_end: null,
-        contact_name: '',
-        contact_phone: '',
+        contact_name: 'Juan Pérez',
+        contact_phone: '809-000-0000',
         require_photo: true,
         has_minors: false,
         tz: 'America/Santo_Domingo',
@@ -267,6 +300,8 @@ function tables(uid: string): Record<string, Row[]> {
     events: [
       practice(PAST[0], dayAgo(14)),
       practice(PAST[1], dayAgo(7)),
+      tourney(TOURNEY_PAST, 'Copa de Ejemplo', dayAgo(3)),
+      { ...tourney(TOURNEY_NEXT, 'Torneo de Ejemplo', toIsoDate(new Date(Date.now() + 3 * DAY))), announcement: 'Trae tu bola: son 3 juegos, por equipos de 2.' },
       {
         id: EVENT,
         league_id: DEMO_LEAGUE,
@@ -289,7 +324,9 @@ function tables(uid: string): Record<string, Row[]> {
       ...swimEvents,
       ...espEvents,
     ],
-    entries: [...PAST_ENTRIES, ...s.entries],
+    entries: [...PAST_ENTRIES, ...TOURNEY_ENTRIES, ...s.entries],
+    // Los equipos de los torneos del boliche (y los de temporada de esports).
+    teams: [...(esp.teams ?? []), ...TOURNEY_TEAMS],
     submissions: s.submissions,
     // Las pistas de hoy, ya publicadas: tú en la 7 con Jugador Uno.
     event_lanes: [

@@ -85,8 +85,12 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   de cada juego (`movil/src/app/l/[lid]/e/[eventId]/enviar.tsx`).
 - ✅ «Por aprobar» en el evento (owner y admin): Aprobar, Rechazar con motivo y Aprobar todo, con la foto en grande
   (`approvalLogic.ts`, la misma de la web); lo que hay que revisar a fondo abre Organizar › Aprobar en la web.
-- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla, la
-  clasificación del torneo y Organizar › Aprobar completo.
+- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla y
+  Organizar › Aprobar completo.
+- ✅ La clasificación de un torneo ya jugado (`movil/src/components/bowling/Standings.tsx`, StandingsTab de la web en
+  solo mirar): mejor juego y jugadores, los equipos (con sus jugadores) y lo individual, cada tabla con «Con
+  handicap · Scratch» y el aviso si no es el criterio oficial. El anuncio de un torneo que viene con «Escribir a…»
+  por WhatsApp (`TourneyAnnouncement.tsx`; en un torneo sin liga, con cuánto falta).
 - ✅ La Tabla del boliche por temporada (`/l/<liga>/tabla`, Lite de la web: Promedio, Mejor juego, Mejor serie,
   Asistencia, tu lugar con su barra y «Tú»; `movil/src/components/bowling/BowlingRanking.tsx`). 🌐 La tabla completa
   de Pro (columnas, con hcp, récords, el más mejorado) y el historial de temporadas.
@@ -110,7 +114,18 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   - La bola de cada juego al anotar (`GameBall.tsx`): dibujada, con «Agregar bola» encima de la hoja (queda elegida).
   - Yo › «Mis bolas» (`MyBalls.tsx`, Lite).
   - 🌐 El creador de la bola («Diseñar»: colores, dibujo y figuras; la app lo abre en la web) y Yo › Pro › «Por bola».
-- ⏳ Equipos fijos y de torneo.
+- ✅ Equipos fijos en el inicio de la liga (`movil/src/components/bowling/LeagueTeams.tsx`): cada equipo con su color,
+  sus jugadores y la suma de sus promedios, tu equipo con «Tú» y «Editar» para quien organiza.
+- ✅ Organizar › Equipos (`/l/<liga>/equipos`, `movil/src/components/bowlingTeams/`, la lógica de
+  `src/lib/data/bowlingTeams.ts` y `src/components/bowlingTeams/logic.ts`, la misma de la web): generar al azar o
+  parejos por promedio (de a 2 a 6, quiénes entran, cómo quedan, mezclar otra vez, reemplazar con aviso), crear,
+  nombre y color, borrar, agregar jugadores, mover o sacar a uno y «Sin equipo». En el inicio, la fila «Equipos».
+  - 🌐 «Otro color» (cualquier color con el selector del navegador): en el teléfono, los 10 de la paleta.
+- ✅ Torneo › Equipos (`/l/<liga>/e/<evento>/equipos`, quien organiza un torneo; `movil/src/components/event/`, la
+  lógica de `src/components/bowlingTeams/eventTeams.ts`): «Usar los equipos fijos de la liga», crear, «Armar
+  automáticamente», renombrar, eliminar, quitar a uno, agregar de los sin equipo y «Sin equipo».
+- La demostración trae dos equipos fijos en «Liga de Ejemplo» (`movil/src/platform/demoTeams.ts`), la «Copa de
+  Ejemplo» ya jugada (su clasificación) y el «Torneo de Ejemplo» que viene, con sus equipos y su anuncio.
 - Para probar sin cuenta: `/dev/empresa` › Entrar a la demostración trae una liga de boliche ficticia
   (`movil/src/platform/demoLeague.ts`: práctica hoy con pistas, dos pasadas, un envío por aprobar y una planilla).
 

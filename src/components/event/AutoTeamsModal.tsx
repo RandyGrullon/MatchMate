@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Shuffle } from 'lucide-react';
 import { applyTeams } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
-import { balancedTeams, category } from '../../lib/stats';
+import { category } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { useAction } from '../feedback';
 import { Badge, Button, Card, Field, Input, Modal } from '../ui';
+import { autoTeamCount, autoTeamName, autoTeamSize, autoTeamsProposal, autoTeamsRemoved, autoTeamsSpread, entryNames, eventTeamList } from '../bowlingTeams/eventTeams';
 import { CategoryBadge } from './CategoryBadge';
 
 /**
@@ -39,25 +40,19 @@ export function AutoTeamsModal({
     }
   }, [open, defaultSize]);
 
-  const nameOf = (e: Entry) => players.find((p) => p.id === e.playerId)?.name ?? '(jugador borrado)';
-  const existing = Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order);
-  const count = Math.max(1, Math.ceil(entries.length / Math.max(1, size)));
+  const nameOf: (e: Entry) => string = entryNames(players);
+  const existing = eventTeamList(event);
+  const count = autoTeamCount(entries.length, size);
 
   const proposal = useMemo(
-    () =>
-      balancedTeams(entries, count, (e) => e.average || 0, (e) => category(e.average, event.categoryCuts)).map((members, i) => ({
-        teamId: existing[i]?.[0] ?? null,
-        name: existing[i]?.[1].name ?? `Equipo ${i + 1}`,
-        members,
-        sum: members.reduce((a, m) => a + (m.average || 0), 0),
-      })),
+    () => autoTeamsProposal(entries, count, event),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, count, event.teams],
   );
-  const spread = proposal.length > 1 ? Math.max(...proposal.map((t) => t.sum)) - Math.min(...proposal.map((t) => t.sum)) : 0;
-  const removed = existing.length - Math.min(existing.length, count);
+  const spread = autoTeamsSpread(proposal);
+  const removed = autoTeamsRemoved(existing.length, count);
 
-  const nameAt = (i: number, fallback: string) => (names[i] ?? fallback).trim().slice(0, 40) || fallback;
+  const nameAt = (i: number, fallback: string) => autoTeamName(names, i, fallback);
 
   async function apply() {
     setBusy(true);
@@ -95,7 +90,7 @@ export function AutoTeamsModal({
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Jugadores por equipo" className="w-40">
-            <Input type="number" inputMode="numeric" min={1} max={10} value={size} onChange={(e) => setSize(Math.min(10, Math.max(1, +e.target.value || 1)))} />
+            <Input type="number" inputMode="numeric" min={1} max={10} value={size} onChange={(e) => setSize(autoTeamSize(e.target.value))} />
           </Field>
           <p className="flex-1 text-sm text-muted">
             {entries.length} inscritos → <b className="text-fg">{count} equipos</b>. Cada equipo lleva categorías distintas cuando se puede y sumas de promedio parejas; diferencia

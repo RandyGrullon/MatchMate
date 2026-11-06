@@ -3,6 +3,7 @@
  * avisos que salen en el inicio, las zonas horarias del formulario, las reglas de «Liga con menores» y el orden de
  * las pestañas del Admin. Funciones puras, con pruebas en logic.test.ts.
  */
+import { parseDate } from '../../lib/format';
 import { normalizeName } from '../../lib/stats';
 import type { LeagueKind, Player, Visibility } from '../../lib/types';
 import { sportMeta, type UnitPair } from '../../sports/registry';
@@ -150,6 +151,18 @@ export function saveClosedNotices(lid: string, ids: Set<string>) {
   } catch {
     // sin almacenamiento: se cierra solo mientras la pantalla está abierta
   }
+}
+
+// ---------- El anuncio de un torneo ----------
+
+/** Cuánto falta para el torneo: «¡Es hoy!», «Mañana», «En 3 días», «En 2 semanas», «En 2 meses». */
+export function tourneyCountdown(date: string, today: string): string {
+  const days = Math.round((parseDate(date).getTime() - parseDate(today).getTime()) / 86400_000);
+  if (days <= 0) return '¡Es hoy!';
+  if (days === 1) return 'Mañana';
+  if (days < 7) return `En ${days} días`;
+  const weeks = Math.round(days / 7);
+  return days < 45 ? `En ${weeks} ${weeks === 1 ? 'semana' : 'semanas'}` : `En ${Math.round(days / 30)} meses`;
 }
 
 // ---------- Zona horaria ----------

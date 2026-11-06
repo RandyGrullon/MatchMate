@@ -16,6 +16,8 @@ import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { SportLinks } from '@/components/league/SportLinks';
 import { LeagueNotices } from '@/components/league/Announce';
 import { PlayersRow } from '@/components/players/PlayersRow';
+import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
+import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
@@ -190,6 +192,12 @@ export default function LeagueScreen() {
         <>
           <SectionHeader title="Organizar" />
           <Card padded={false}>
+            {isBowling && l.kind !== 'torneo' && (
+              <>
+                <TeamsRow lid={l.id} league={l} />
+                <Divider inset={68} />
+              </>
+            )}
             <PlayersRow lid={l.id} league={l} />
             <Divider inset={68} />
             <ListRow
@@ -233,6 +241,10 @@ export default function LeagueScreen() {
               </>
             )}
           </Card>
+          {/* Los equipos fijos de la liga (solo si tiene). */}
+          <LeagueScope lid={l.id}>
+            <LeagueTeamsSection />
+          </LeagueScope>
           <SectionHeader title="Próximas fechas" />
           {upcoming.length ? (
             <Card padded={false}>

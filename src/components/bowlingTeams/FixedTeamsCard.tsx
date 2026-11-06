@@ -5,7 +5,7 @@ import type { BowlingEvent } from '../../lib/types';
 import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Button, Card } from '../ui';
-import { playersWord } from './parts';
+import { fixedTeamsAsk, fixedTeamsDone } from './logic';
 
 /**
  * Torneo › Equipos (quien organiza), si la liga tiene equipos fijos: «Usar los equipos fijos de la liga» (cada
@@ -22,7 +22,7 @@ export function FixedTeamsCard({ event, entries }: { event: Pick<BowlingEvent, '
 
   const apply = async () => {
     // Ya hay equipos armados aquí: se avisa antes de cambiar a alguien.
-    if (Object.keys(event.teams ?? {}).length || entries.some((e) => e.teamId)) {
+    if (fixedTeamsAsk(event, entries)) {
       const yes = await confirm({
         title: '¿Usar los equipos fijos?',
         message: 'Cada inscrito que está en un equipo fijo pasa a su equipo en este torneo. Los demás se quedan como están.',
@@ -33,7 +33,7 @@ export function FixedTeamsCard({ event, entries }: { event: Pick<BowlingEvent, '
     await busy.run('fijos', async () => {
       // La base dice cuántos inscritos quedaron con su equipo.
       const done = await run(() => applyLeagueTeams(lid, event.id));
-      if (done != null) toast(done ? `${playersWord(done)} con su equipo` : 'Ningún inscrito está en un equipo fijo');
+      if (done != null) toast(fixedTeamsDone(done));
     });
   };
 

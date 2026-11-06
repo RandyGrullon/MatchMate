@@ -13,6 +13,7 @@ import { uuidv7 } from '@mm/lib/db/ids';
 import { CURRENT_LEGAL } from '@mm/lib/legal';
 import { ballRpc, forgetDemoBalls } from './demoBalls';
 import { demoPlayersSelect, forgetDemoPlayers, playersRpc } from './demoPlayers';
+import { demoTeamsSelect, forgetDemoTeams, teamsRpc } from './demoTeams';
 import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
 
 const FLAG = 'mm-demo';
@@ -37,6 +38,7 @@ export function setDemo(on: boolean) {
       forgetDemoLeague();
       forgetDemoBalls();
       forgetDemoPlayers();
+      forgetDemoTeams();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -398,7 +400,10 @@ export function createDemoBackend(): Backend {
       if (q.table === 'profiles') return [profileRow()] as T[];
       // La liga de boliche ficticia (demoLeague.ts).
       // Lo que cambió en los jugadores de la demostración (demoPlayers.ts) encima de la liga ficticia.
-      const league = demoPlayersSelect(q.table, q.filters, (t) => demoLeagueSelect(DEMO_USER, t)) ?? demoLeagueSelect(DEMO_USER, q.table, q.filters);
+      // Los equipos del boliche (demoTeams.ts) también van encima: los fijos (event_id is null) y los de un torneo.
+      const raw = (t: string) => demoLeagueSelect(DEMO_USER, t);
+      const withTeams = (t: string) => demoTeamsSelect(t, [], raw) ?? raw(t);
+      const league = demoPlayersSelect(q.table, q.filters, withTeams) ?? demoTeamsSelect(q.table, q.filters, raw) ?? demoLeagueSelect(DEMO_USER, q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -414,6 +419,10 @@ export function createDemoBackend(): Backend {
       // Los jugadores de la liga ficticia (Organizar › Jugadores).
       const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromPlayers !== undefined) return structuredClone(fromPlayers) as T;
+      // Los equipos del boliche (fijos y de torneo).
+      const rawRow = (t: string) => demoLeagueSelect(DEMO_USER, t);
+      const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], rawRow) ?? rawRow(t) ?? []);
+      if (fromTeams !== undefined) return structuredClone(fromTeams) as T;
       // Las bolas (demoBalls.ts): leen los juegos de la liga y los sueltos de la demostración.
       const fromBalls = ballRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromBalls !== undefined) return structuredClone(fromBalls) as T;

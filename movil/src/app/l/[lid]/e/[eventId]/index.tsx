@@ -12,11 +12,14 @@ import { gameKey, readGameDraft } from '@mm/components/frames/draftMemory';
 import { ApprovalCard } from '@/components/bowling/ApprovalCard';
 import { EventBoard } from '@/components/bowling/EventBoard';
 import { LaneChip } from '@/components/bowling/LaneChip';
+import { Standings } from '@/components/bowling/Standings';
+import { TourneyAnnouncement } from '@/components/bowling/TourneyAnnouncement';
+import { EventTeamsRow } from '@/components/event/EventTeamsRow';
 import { GolfEventBody } from '@/components/golf/GolfEvent';
 import { SwimEventBody } from '@/components/swimming/SwimEvent';
 import { EsportsEventBody } from '@/components/esports/EsportsLeague';
 import { leagueSport } from '@mm/sports/registry';
-import { BackBar, Badge, Button, Card, Empty, Loading, Screen, Txt } from '@/components/ui';
+import { BackBar, Badge, Button, Card, Empty, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketEventBody } from '@/components/racket/RacketEvent';
 import { useLeague } from '@mm/lib/data';
@@ -171,6 +174,9 @@ function BowlingEventScreen() {
 
       {!!g.playerId && <LaneChip lid={lid} eventId={eventId} playerId={g.playerId} />}
 
+      {/* Torneo que viene: su anuncio y «Escribir a…» por WhatsApp (como la web). */}
+      <TourneyAnnouncement event={ev} league={league} today={g.today} />
+
       {!g.playerId ? (
         <Empty
           title="Todavía no eres jugador de esta liga"
@@ -229,12 +235,24 @@ function BowlingEventScreen() {
       )}
 
       {isAdmin && <ApprovalCard league={league} event={ev} subs={pending} entries={entries.data} players={players.data} />}
-      {ev.type !== 'torneo' && ev.date <= g.today && (
-        <EventBoard rows={board} players={players.data} me={g.playerId} live={ev.date === g.today} past={ev.date < g.today} />
+      {/* Quien organiza un torneo: sus equipos (la pestaña Equipos de la web). */}
+      {isAdmin && ev.type === 'torneo' && (
+        <Card padded={false}>
+          <EventTeamsRow lid={lid} eventId={eventId} />
+        </Card>
+      )}
+      {/* Un torneo ya jugado: su clasificación (equipos e individual); si no, «Cómo van todos» desde el día del evento. */}
+      {ev.type === 'torneo' && ev.date < g.today ? (
+        <View style={{ gap: 10 }}>
+          <SectionHeader title="Clasificación" />
+          <Standings lid={lid} event={ev} entries={entries.data} players={players.data} me={g.playerId} />
+        </View>
+      ) : (
+        ev.date <= g.today && <EventBoard rows={board} players={players.data} me={g.playerId} live={ev.date === g.today} past={ev.date < g.today} />
       )}
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>
-        {ev.type === 'torneo' ? 'Planilla y clasificación en la web' : 'Planilla en la web'}
+        Planilla en la web
       </Button>
     </Screen>
   );

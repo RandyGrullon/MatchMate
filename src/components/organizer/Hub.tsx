@@ -36,6 +36,7 @@ import { PEOPLE_TABS } from '../league/logic';
 import { useNotifications } from '../Notifications';
 import { BusyIcon, useBusy } from '../busy';
 import { Card, ListRow, ListSkeleton, RowIcon, SectionHeader, cx } from '../ui';
+import { BOWLING_TEAMS_TAB } from '../bowlingTeams/logic';
 import { leagueOf, leagueRows, organizeUrl, teamsToBuild, toDoItems, toDoLine, type LeagueRowKind, type ToDoItem, type ToDoKind } from './hubLogic';
 
 // La hoja de Anotadores se baja al tocar la fila (quien no la abre no la carga).
@@ -88,9 +89,7 @@ const GENERIC_TABS = new Set(['pendientes', 'jugadores', 'aprobar', 'miembros', 
 /** Las pantallas propias del boliche: los equipos fijos de una liga (un torneo suelto arma los suyos en el torneo). */
 const BOWLING_TABS: NonNullable<SportScreens['adminTabs']> = [
   {
-    key: 'equipos',
-    label: 'Equipos',
-    subtitle: 'Fijos de la liga: al azar, parejos o a mano',
+    ...BOWLING_TEAMS_TAB,
     icon: Shield,
     Component: lazy(() => import('../bowlingTeams/BowlingTeamsAdmin')),
   },

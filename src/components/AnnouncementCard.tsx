@@ -1,9 +1,10 @@
 import { Link } from 'react-router';
 import { ChevronRight, Megaphone, MessageCircle } from 'lucide-react';
-import { eventLabel, formatDateLong, parseDate, toIsoDate } from '../lib/format';
+import { eventLabel, formatDateLong, toIsoDate } from '../lib/format';
 import { useLeagueCtx, whatsappUrl } from '../lib/league';
 import type { BowlingEvent, League } from '../lib/types';
 import { Card, cx } from './ui';
+import { tourneyCountdown } from './league/logic';
 
 /**
  * «Escribir a Ana» por WhatsApp para entrar a un torneo (con el saludo ya escrito), si la liga tiene el teléfono de su
@@ -28,14 +29,7 @@ export function TourneyContact({ league, eventName, className }: { league: Pick<
   );
 }
 
-function countdown(date: string) {
-  const days = Math.round((parseDate(date).getTime() - parseDate(toIsoDate(new Date())).getTime()) / 86400_000);
-  if (days <= 0) return '¡Es hoy!';
-  if (days === 1) return 'Mañana';
-  if (days < 7) return `En ${days} días`;
-  const weeks = Math.round(days / 7);
-  return days < 45 ? `En ${weeks} ${weeks === 1 ? 'semana' : 'semanas'}` : `En ${Math.round(days / 30)} meses`;
-}
+const countdown = (date: string) => tourneyCountdown(date, toIsoDate(new Date()));
 
 /** Torneos que vienen: los ve toda la liga (también quien entró después del anuncio), con el contacto del admin. */
 export function Announcements({ events, hideLink }: { events: BowlingEvent[]; hideLink?: boolean }) {

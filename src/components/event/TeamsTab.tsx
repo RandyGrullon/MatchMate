@@ -8,6 +8,7 @@ import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Button, Card, Empty, Field, Input, Modal } from '../ui';
 import { FixedTeamsCard } from '../bowlingTeams/FixedTeamsCard';
+import { entryNames, eventTeamList, nextTeamName, teamFull, teamMembers, teamTotals, unassignedEntries } from '../bowlingTeams/eventTeams';
 import { AutoTeamsModal } from './AutoTeamsModal';
 import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
@@ -21,15 +22,14 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
   const [auto, setAuto] = useState(false);
   // Crear, renombrar, borrar un equipo o sacar a alguien: una a la vez, con la ruedita en el que la hizo.
   const busy = useBusy();
-  const byId = new Map(players.map((p) => [p.id, p]));
-  const nameOf = (e: Entry) => byId.get(e.playerId)?.name ?? '(jugador borrado)';
-  const teams = Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order);
-  const unassigned = entries.filter((e) => !e.teamId || !event.teams?.[e.teamId]).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
+  const nameOf: (e: Entry) => string = entryNames(players);
+  const teams = eventTeamList(event);
+  const unassigned = unassignedEntries(event, entries, nameOf);
 
   async function create(ev: FormEvent) {
     ev.preventDefault();
     if (busy.isBusy()) return;
-    const n = name.trim() || `Equipo ${teams.length + 1}`;
+    const n = name.trim() || nextTeamName(teams.length);
     setName('');
     await busy.run('crear', () => run(() => addTeam(lid, event.id, n), `${n} creado`));
   }
@@ -50,7 +50,7 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
       <FixedTeamsCard event={event} entries={entries} />
       <div className="flex flex-col gap-2 sm:flex-row">
         <form onSubmit={create} className="flex flex-1 gap-2">
-          <Input placeholder={`Equipo ${teams.length + 1}`} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />
+          <Input placeholder={nextTeamName(teams.length)} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre del equipo" />
           <Button type="submit" icon={<Plus className="size-4" />} loading={busy.isBusy('crear')} disabled={busy.isBusy()} className="shrink-0">
             Crear
           </Button>
@@ -67,10 +67,9 @@ export function TeamsTab({ event, entries, players }: { event: BowlingEvent; ent
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {teams.map(([teamId, team]) => {
-            const members = entries.filter((e) => e.teamId === teamId).sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-            const avg = members.reduce((a, m) => a + (m.average || 0), 0);
-            const hcp = members.reduce((a, m) => a + entryHandicap(m, event), 0);
-            const full = !!event.teamSize && members.length >= event.teamSize;
+            const members = teamMembers(entries, teamId, nameOf);
+            const { avg, hcp } = teamTotals(members, event);
+            const full = teamFull(event, members.length);
             return (
               <Card key={teamId} className="flex flex-col">
                 <div className="flex items-center gap-2 border-b border-line px-4 py-3">

@@ -25,6 +25,9 @@ export function appRoute(href: string): string | null {
   const partido = /[?&]partido=([^&]+)/.exec(query)?.[1];
   const inLeague = /^\/l\/([^/]+)/.exec(path);
   if (partido && inLeague) return `/l/${inLeague[1]}/partido/${partido}`;
+  // Los equipos de un torneo (?tab=equipos, también «Armar equipos» de Por hacer).
+  const evTeams = /^\/l\/([^/]+)\/e\/([^/]+)$/.exec(path);
+  if (evTeams && /[?&]tab=equipos(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/equipos`;
   // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
   // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
@@ -51,6 +54,7 @@ export function appRoute(href: string): string | null {
   const adminTab = /[?&]tab=([^&]+)/.exec(query)?.[1];
   if (admin && adminTab === 'avisar') return `/l/${admin[1]}/avisar`;
   if (admin && adminTab === 'jugadores') return `/l/${admin[1]}/jugadores`;
+  if (admin && adminTab === 'equipos') return `/l/${admin[1]}/equipos`;
   // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;

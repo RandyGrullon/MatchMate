@@ -5,7 +5,6 @@ import { usePlayers } from '../../lib/data';
 import {
   TEAM_COLORS,
   TEAM_SIZES,
-  balancedLeagueTeams,
   colorOf,
   defaultTeamName,
   defaultTeamSize,
@@ -14,9 +13,7 @@ import {
   rosterWith,
   rosterWithout,
   saveBowlingTeam,
-  seededTeams,
   setBowlingTeams,
-  teamAverageSum,
   teamColorAt,
   teamOf,
   useBowlingTeams,
@@ -28,7 +25,11 @@ import { BusyIcon, useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Initials } from '../ranking/parts';
 import { Button, Card, Field, Input, ListRow, ListSkeleton, LoadError, RowIcon, SectionHeader, Segmented, Sheet, cx, sectionLinkClass } from '../ui';
+import { generateCandidates, generateGroups, generateSummary, replaceMessage, teamLine, type GenerateMode } from './logic';
 import { TeamDot, TeamMark, playersWord, useLeagueAverages } from './parts';
+
+// Lo que no dibuja está en logic.ts (también lo usa la app del teléfono).
+export { replaceMessage, type GenerateMode } from './logic';
 
 /**
  * Organizar › Equipos de una liga de boliche (docs/boliche-equipos-practicas-bolas.md §1): los equipos fijos, cada
@@ -46,15 +47,6 @@ export default function BowlingTeamsAdmin() {
 }
 
 type Averages = ReadonlyMap<string, number>;
-
-/** «3 jugadores · suma 540». */
-const teamLine = (team: BowlingTeam, averages: Averages) => {
-  const sum = teamAverageSum(
-    team.players.map((p) => p.playerId),
-    averages,
-  );
-  return `${playersWord(team.players.length)}${sum ? ` · suma ${sum}` : ''}`;
-};
 
 /** La pantalla con sus datos (sin leer nada: se prueba con renderToString). */
 export function TeamsAdmin({ teams, loading, players, averages }: { teams: BowlingTeam[]; loading: boolean; players: Player[]; averages: Averages }) {
@@ -203,16 +195,6 @@ export function TeamsAdmin({ teams, loading, players, averages }: { teams: Bowli
 
 // ---------- Generar ----------
 
-export type GenerateMode = 'azar' | 'parejos';
-
-/** El aviso antes de reemplazar los equipos de ahora. */
-export function replaceMessage(current: number, next: number): string {
-  const gone = Math.max(0, current - next);
-  const now = current === 1 ? 'Se reemplaza el equipo de ahora' : `Se reemplazan los ${current} equipos de ahora`;
-  const extra = gone ? ` y se ${gone === 1 ? 'borra 1 que sobra' : `borran ${gone} que sobran`}` : '';
-  return `${now}${extra}. Los torneos que ya tienen sus equipos no cambian.`;
-}
-
 /**
  * «Generar equipos»: cómo (al azar o parejos por promedio), de a cuántos (2 a 6) y quiénes entran (todos, o tocar para
  * dejar a alguien fuera); abajo, cómo quedan. «Usar estos equipos» reemplaza los de ahora (con aviso si hay):
@@ -258,18 +240,10 @@ export function GenerateSheet({
     }
   }
 
-  const candidates = useMemo(
-    () => players.filter((p) => !out.has(p.id)).map((p) => ({ id: p.id, name: p.name, average: averages.get(p.id) || p.averageOverride || 0 })),
-    [players, out, averages],
-  );
-  const groups = useMemo(
-    () => (mode === 'azar' ? seededTeams(candidates, size, seed) : balancedLeagueTeams(candidates, size)).map((g) => [...g].sort((a, b) => b.average - a.average || a.name.localeCompare(b.name, 'es'))),
-    [mode, candidates, size, seed],
-  );
+  const candidates = useMemo(() => generateCandidates(players, out, averages), [players, out, averages]);
+  const groups = useMemo(() => generateGroups(mode, candidates, size, seed), [mode, candidates, size, seed]);
   const drafts = draftsFromGroups(groups, teams);
-  const sums = groups.map((g) => g.reduce((a, p) => a + p.average, 0));
-  const spread = sums.length > 1 ? Math.max(...sums) - Math.min(...sums) : 0;
-  const gone = Math.max(0, teams.length - groups.length);
+  const { sums, spread, gone } = generateSummary(groups, teams.length);
 
   const use = async () => {
     if (busy.isBusy() || candidates.length < 2) return;
