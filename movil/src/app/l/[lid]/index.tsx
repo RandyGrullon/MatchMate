@@ -18,6 +18,8 @@ import { LeagueNotices } from '@/components/league/Announce';
 import { PlayersRow } from '@/components/players/PlayersRow';
 import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
 import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
+import { ChampionsSection } from '@/components/season/Seasons';
+import { SeasonRow } from '@/components/seasonAdmin/SeasonRow';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
@@ -187,7 +189,7 @@ export default function LeagueScreen() {
         );
       })()}
 
-      {/* Organizar (quien la organiza): jugadores y miembros, y avisar a toda la liga. Lo demás, en la web. */}
+      {/* Organizar (quien la organiza): equipos, jugadores y miembros, temporada y fechas, y avisar a toda la liga. */}
       {(membership.data?.role === 'admin' || membership.data?.role === 'owner') && (
         <>
           <SectionHeader title="Organizar" />
@@ -199,6 +201,8 @@ export default function LeagueScreen() {
               </>
             )}
             <PlayersRow lid={l.id} league={l} />
+            <Divider inset={68} />
+            <SeasonRow lid={l.id} league={l} />
             <Divider inset={68} />
             <ListRow
               icon={
@@ -317,6 +321,11 @@ export default function LeagueScreen() {
           text="La tabla, los partidos y anotar en la cancha. Mientras, la liga completa está en la web."
         />
       )}
+
+      {/* Los campeones de las temporadas cerradas, con «Temporadas» (en todos los deportes). */}
+      <LeagueScope lid={l.id}>
+        <ChampionsSection />
+      </LeagueScope>
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${l.id}`)}>
         {membership.data ? 'Tabla, jugadores y más en la web' : 'Ver la liga en la web'}

@@ -33,7 +33,7 @@ export function appRoute(href: string): string | null {
   // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
   if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}${query}`;
-  if (/^\/l\/[^/]+\/(muro|perfil)$/.test(path)) return path;
+  if (/^\/l\/[^/]+\/(muro|perfil|temporadas)$/.test(path)) return path;
   if (/^\/p\/[^/]+$/.test(path)) return path;
   // Esports: el índice (con su ?crear=), Mi ID de juego, un equipo, unirse a un equipo y la página de un juego. Crear
   // un torneo (`/esports/<juego>/nuevo-torneo`) sigue en la web.
@@ -55,6 +55,7 @@ export function appRoute(href: string): string | null {
   if (admin && adminTab === 'avisar') return `/l/${admin[1]}/avisar`;
   if (admin && adminTab === 'jugadores') return `/l/${admin[1]}/jugadores`;
   if (admin && adminTab === 'equipos') return `/l/${admin[1]}/equipos`;
+  if (admin && adminTab === 'temporada') return `/l/${admin[1]}/temporada`;
   // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;

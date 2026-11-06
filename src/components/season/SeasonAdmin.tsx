@@ -1,53 +1,52 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { CalendarPlus, CalendarRange, Flag, History, Pencil, Plus, Trash2, Trophy } from 'lucide-react';
-import { asBackendError } from '../../lib/db/errors';
 import { closeSeason, startSeason } from '../../lib/data/seasonAdmin';
 import { useLeagueSeasons } from '../../lib/data/seasons';
 import { useLeagueCtx } from '../../lib/league';
 import type { Season } from '../../lib/seasons';
 import { todayIn } from '../../pages/sports/racket/logic/time';
-import { leagueSport, sportMeta } from '../../sports/registry';
+import { leagueSport } from '../../sports/registry';
 import { hasScreens, useSportScreens } from '../../sports/screens';
 import { useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, Skeleton, cx } from '../ui';
+import {
+  awardOptions,
+  awardTeamWord,
+  closeSeasonNotes,
+  noSeasonTable,
+  optionalAward,
+  seasonChampion,
+  seasonCopiesTeams,
+  seasonErrorText,
+  seasonHeadDates,
+  seasonsOverview,
+  type UseSeasonTable,
+} from './adminLogic';
 import { useBowlingSeasonTable } from './bowlingTable';
 import {
   AWARD_LABEL,
   awardsArg,
   awardsProblem,
   initialAwards,
-  makeSnapshot,
   newOtherAward,
   newSeasonDefaults,
   newSeasonProblem,
   parseSnapshot,
   playerRef,
-  seasonDates,
-  shortDay,
   teamRef,
   withStartDate,
   type AwardDraft,
   type Awardee,
   type NewSeasonInput,
-  type SeasonTableResult,
 } from './logic';
 import { SnapshotTables } from './SeasonView';
 
-type UseTable = (season: Season) => SeasonTableResult;
-
-/** Deporte sin tabla propia: sin foto, con los jugadores de la liga para los premios. */
-const noTable: UseTable = () => ({ loading: false, snapshot: makeSnapshot('', []), teams: [], players: [] });
-
-/** Mensaje de un error de close_season / start_season. */
-function errorText(e: unknown, fallback: string): string {
-  const be = asBackendError(e);
-  const code = (be?.message ?? (e instanceof Error ? e.message : '')).trim().split(/[\s:]/)[0];
-  if (be?.kind === 'network') return 'Sin conexión. Intenta de nuevo cuando vuelva la señal.';
-  if (be?.kind === 'permission') return 'Solo los admins de la liga manejan las temporadas.';
-  if (code === 'invalido') return fallback;
-  return 'No se pudo guardar. Intenta de nuevo.';
-}
+// La tabla de cada deporte, lo que no es pantalla y los mensajes de error: en adminLogic.ts (los usa también la app
+// del teléfono).
+type UseTable = UseSeasonTable;
+const noTable: UseTable = noSeasonTable;
+const errorText = seasonErrorText;
 
 /**
  * Admin › Temporada (todas las ligas, no los torneos sueltos): la temporada en curso con sus fechas, «Cerrar
@@ -67,9 +66,8 @@ export default function SeasonAdmin() {
   // Las pantallas del deporte llegan aparte (con su tabla): mientras tanto no se abre el cierre.
   const waiting = !bowling && hasScreens(sport) && !screens;
   const list = seasons.data;
-  const active = list.find((s) => s.status === 'active') ?? null;
-  const lastClosed = list.find((s) => s.status === 'closed') ?? null;
-  const teamSport = sportMeta(sport)?.family === 'team';
+  const { active, lastClosed } = seasonsOverview(list);
+  const teamSport = seasonCopiesTeams(sport);
 
   return (
     <div className="flex flex-col gap-4">
@@ -131,7 +129,7 @@ export default function SeasonAdmin() {
 }
 
 function SeasonHead({ season }: { season: Season }) {
-  const champion = season.awards.find((a) => a.kind === 'campeon');
+  const champion = seasonChampion(season);
   return (
     <div className="flex items-start gap-3">
       <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
@@ -142,9 +140,7 @@ function SeasonHead({ season }: { season: Season }) {
           <p className="truncate font-semibold">{season.name}</p>
           <Badge tone={season.status === 'active' ? 'accent' : 'neutral'}>{season.status === 'active' ? 'En curso' : 'Cerrada'}</Badge>
         </div>
-        <p className="text-xs text-muted">
-          {season.status === 'active' && season.endsOn ? `${shortDay(season.startsOn)} – termina el ${shortDay(season.endsOn)} (previsto)` : seasonDates(season)}
-        </p>
+        <p className="text-xs text-muted">{seasonHeadDates(season)}</p>
         {champion && <p className="mt-1 truncate text-sm">Campeón: {champion.name}</p>}
       </div>
     </div>
@@ -212,29 +208,13 @@ export function CloseSeasonModal({ season, useTable, onClose }: { season: Season
   }, [awards, table.loading, snapshot, season, table.suggested, table.podium]);
 
   // Quien ya tenía un premio aunque ya no esté en la lista (se borró de un equipo) sigue saliendo.
-  const players = useMemo(() => {
-    const extra = season.awards.filter((a) => a.playerId && !table.players.some((p) => p.id === a.playerId)).map((a) => ({ id: a.playerId!, name: a.name }));
-    const fromTable = snapshot.tables.flatMap((t) => t.rows.filter((r) => r.playerId && !table.players.some((p) => p.id === r.playerId)).map((r) => ({ id: r.playerId!, name: r.name })));
-    const all = [...table.players, ...extra, ...fromTable];
-    return all.filter((p, i) => all.findIndex((x) => x.id === p.id) === i).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-  }, [table.players, season.awards, snapshot]);
-  const teams = useMemo(() => {
-    const extra = season.awards.filter((a) => a.teamId && !table.teams.some((t) => t.id === a.teamId)).map((a) => ({ id: a.teamId!, name: a.name }));
-    const fromTable = snapshot.tables.flatMap((t) => t.rows.filter((r) => r.teamId && !table.teams.some((x) => x.id === r.teamId)).map((r) => ({ id: r.teamId!, name: r.name })));
-    const all = [...table.teams, ...extra, ...fromTable];
-    return all.filter((t, i) => all.findIndex((x) => x.id === t.id) === i).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-  }, [table.teams, season.awards, snapshot]);
+  const players = useMemo(() => awardOptions(table.players, season.awards, snapshot, 'playerId'), [table.players, season.awards, snapshot]);
+  const teams = useMemo(() => awardOptions(table.teams, season.awards, snapshot, 'teamId'), [table.teams, season.awards, snapshot]);
 
-  const teamWord = sportMeta(leagueSport(league))?.family === 'racket' ? 'Parejas' : 'Equipos';
+  const teamWord = awardTeamWord(leagueSport(league));
   const problem = awards ? awardsProblem(awards) : null;
-  const fromPlayoff = !closed && season.playoffs.some((p) => p.status === 'finished' && p.champion);
-  // Un playoff a medias: su final todavía no se juega y el campeón saldría de la tabla.
-  const running = !closed && season.playoffs.some((p) => p.status === 'active');
-  const podiumNote = closed || fromPlayoff || table.podium === undefined
-    ? null
-    : table.podium
-      ? 'El campeón y el subcampeón salen de la final del cuadro. Puedes cambiarlos.'
-      : 'La tabla va por grupos: elige tú el campeón, el subcampeón y el tercero.';
+  // Un playoff a medias (`running`): su final todavía no se juega y el campeón saldría de la tabla.
+  const { fromPlayoff, running, podiumNote } = closeSeasonNotes(season, table.podium);
   const set = (key: string, patch: Partial<AwardDraft>) => setAwards((list) => list?.map((a) => (a.key === key ? { ...a, ...patch } : a)) ?? list);
 
   const save = async () => {
@@ -331,7 +311,7 @@ export function CloseSeasonModal({ season, useTable, onClose }: { season: Season
                   <label key={a.key} className="flex flex-col gap-1.5">
                     <span className={cx('text-xs font-medium', a.kind === 'campeon' ? 'text-fg' : 'text-muted')}>
                       {AWARD_LABEL[a.kind]}
-                      {a.kind === 'mvp' || a.kind === 'mas_mejorado' || a.kind === 'fair_play' ? ' (opcional)' : ''}
+                      {optionalAward(a.kind) ? ' (opcional)' : ''}
                     </span>
                     <AwardeeSelect value={a.ref} onChange={(v) => set(a.key, { ref: v })} teams={teams} players={players} label={AWARD_LABEL[a.kind]} teamWord={teamWord} />
                   </label>

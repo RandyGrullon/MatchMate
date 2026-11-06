@@ -64,7 +64,21 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   con cuántos y cuántos con cuenta.
   - 🌐 Miembros y Reclamos (las pestañas abren la web); donde el deporte lleva a su gente en su pestaña (natación:
     Nadadores; raqueta: Parejas y niveles), «Miembros» y las cuentas; «Ver su página» de quien no es de boliche.
-- ⏳ Temporadas y lo demás de Organizar (🌐 «Tabla, jugadores y más en la web»).
+- ✅ Temporadas (`/l/<liga>/temporadas`, `movil/src/components/season/Seasons.tsx`, SeasonsPage de la web): cada
+  temporada con sus fechas, el campeón y los demás premios, el campeón del playoff y la tabla final guardada; la en
+  curso lleva a su tabla («?temporada=» abre esa temporada en la Tabla del boliche). «Campeones» abajo en el inicio de
+  cualquier liga.
+- ✅ Organizar › Temporada y fechas (`/l/<liga>/temporada`, `movil/src/components/seasonAdmin/`, la lógica de
+  `src/components/organizer/suspendForm.ts` y `src/components/season/adminLogic.ts`, la misma de la web): «Suspender
+  un día» (el día, el motivo con los motivos listos, la nueva fecha opcional, lo que va a pasar y confirmar antes del
+  aviso) y, en una liga, «Cerrar temporada» (la tabla final, los premios propuestos que se pueden cambiar, otros
+  premios con nota y el aviso), «Corregir premios», «Nueva temporada» (el nombre sigue al año, las fechas y, en las
+  ligas de equipos, copiar los equipos) y el historial. En un torneo suelto, «Fechas». En el inicio, la fila.
+  - 🌐 Cerrar y corregir la temporada en raqueta (su tabla usa lo que cada deporte agrega en la web).
+  - ⏳ «Hoy · Suspender» en el inicio de la liga (SuspendTodayCard de la web).
+- La demostración trae en «Liga de Ejemplo» la «Temporada de Ejemplo 1» cerrada (tabla final y premios) y la
+  «Temporada de Ejemplo 2» en curso (`movil/src/platform/demoSeasons.ts`).
+- 🌐 Lo demás de Organizar: Miembros, Reclamos, Anotadores, Insignias, Ajustes de la liga, Buzón y Reportes.
 
 ## 3. Boliche (deporte activo)
 

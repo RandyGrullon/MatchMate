@@ -18,12 +18,12 @@ import { font } from '@/theme/tokens';
  * cuántos juegos te faltan) y la lista con «Tú». Solo cuentan los juegos aprobados. La lógica es la de la web
  * (src/lib/bowlingSeason.ts y src/components/ranking/logic.ts). La tabla completa de Pro, en la web.
  */
-export function BowlingRanking({ lid, myPlayerId }: { lid: string; myPlayerId: string | null }) {
+export function BowlingRanking({ lid, myPlayerId, initialSeasonId }: { lid: string; myPlayerId: string | null; initialSeasonId?: string | null }) {
   const c = useColors();
   const events = useEvents(lid);
   const players = usePlayers(lid);
   const seasons = useLeagueSeasons(lid);
-  const [seasonId, setSeasonId] = useState<string | null>(null);
+  const [seasonId, setSeasonId] = useState<string | null>(initialSeasonId ?? null);
   const [metric, setMetric] = useState<Metric>('promedio');
   const [picking, setPicking] = useState(false);
   const season = pickSeason(seasons.data, seasonId);

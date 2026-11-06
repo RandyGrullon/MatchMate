@@ -14,7 +14,7 @@ import { BackBar, Loading, Screen } from '@/components/ui';
 
 /** La tabla de la liga (la pestaña Tabla de la web). */
 export default function LeagueTableScreen() {
-  const { lid } = useLocalSearchParams<{ lid: string }>();
+  const { lid, temporada } = useLocalSearchParams<{ lid: string; temporada?: string }>();
   const auth = useAuth();
   const league = useLeague(lid);
   const member = useMembership(lid, auth.user?.uid);
@@ -59,7 +59,7 @@ export default function LeagueTableScreen() {
     return (
       <Screen>
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
-        <BowlingRanking lid={lid} myPlayerId={member.data?.playerId ?? null} />
+        <BowlingRanking lid={lid} myPlayerId={member.data?.playerId ?? null} initialSeasonId={temporada ?? null} />
       </Screen>
     );
   }

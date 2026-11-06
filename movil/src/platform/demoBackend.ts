@@ -15,6 +15,19 @@ import { ballRpc, forgetDemoBalls } from './demoBalls';
 import { demoPlayersSelect, forgetDemoPlayers, playersRpc } from './demoPlayers';
 import { demoTeamsSelect, forgetDemoTeams, teamsRpc } from './demoTeams';
 import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
+import { demoSeasonsSelect, forgetDemoSeasons, seasonsRpc } from './demoSeasons';
+
+type DemoFilter = { col: string; op: string; value: unknown };
+/**
+ * Las tablas de las ligas ficticias por capas, de abajo hacia arriba: la liga (demoLeague.ts), lo que cambiaron las
+ * temporadas («Suspender un día» mueve eventos; empezar una cambia las fechas de la liga), los equipos del boliche y
+ * los jugadores. Cada capa lee la de abajo entera; los filtros se aplican en la de arriba que tiene la tabla. null si
+ * la tabla no es de las ligas ficticias.
+ */
+const baseLayer = (t: string, f: readonly DemoFilter[] = []) => demoLeagueSelect(DEMO_USER, t, f);
+const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+const teamsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamsSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
+const demoLayer = (t: string, f: readonly DemoFilter[] = []) => demoPlayersSelect(t, f, (x) => teamsLayer(x)) ?? teamsLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -39,6 +52,7 @@ export function setDemo(on: boolean) {
       forgetDemoBalls();
       forgetDemoPlayers();
       forgetDemoTeams();
+      forgetDemoSeasons();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -398,12 +412,8 @@ export function createDemoBackend(): Backend {
     },
     select: async <T,>(q: { table: string; filters?: { col: string; op: string; value: unknown }[] }) => {
       if (q.table === 'profiles') return [profileRow()] as T[];
-      // La liga de boliche ficticia (demoLeague.ts).
-      // Lo que cambió en los jugadores de la demostración (demoPlayers.ts) encima de la liga ficticia.
-      // Los equipos del boliche (demoTeams.ts) también van encima: los fijos (event_id is null) y los de un torneo.
-      const raw = (t: string) => demoLeagueSelect(DEMO_USER, t);
-      const withTeams = (t: string) => demoTeamsSelect(t, [], raw) ?? raw(t);
-      const league = demoPlayersSelect(q.table, q.filters, withTeams) ?? demoTeamsSelect(q.table, q.filters, raw) ?? demoLeagueSelect(DEMO_USER, q.table, q.filters);
+      // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
+      const league = demoLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -419,10 +429,12 @@ export function createDemoBackend(): Backend {
       // Los jugadores de la liga ficticia (Organizar › Jugadores).
       const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromPlayers !== undefined) return structuredClone(fromPlayers) as T;
-      // Los equipos del boliche (fijos y de torneo).
-      const rawRow = (t: string) => demoLeagueSelect(DEMO_USER, t);
-      const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], rawRow) ?? rawRow(t) ?? []);
+      // Los equipos del boliche (fijos y de torneo): leen la liga con las temporadas y los jugadores encima.
+      const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], (x) => seasonsLayer(x)) ?? seasonsLayer(t) ?? []);
       if (fromTeams !== undefined) return structuredClone(fromTeams) as T;
+      // Las temporadas y «Suspender un día» (demoSeasons.ts): leen todas las capas.
+      const fromSeasons = seasonsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromSeasons !== undefined) return structuredClone(fromSeasons) as T;
       // Las bolas (demoBalls.ts): leen los juegos de la liga y los sueltos de la demostración.
       const fromBalls = ballRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromBalls !== undefined) return structuredClone(fromBalls) as T;

@@ -1,25 +1,15 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CalendarX, CloudRain } from 'lucide-react';
-import { DEFAULT_TZ } from '../../lib/calendar';
-import { asBackendError } from '../../lib/db/errors';
-import { SUSPEND_REASON_MAX, suspendChanges, suspendDay, suspendable, useSuspendPreview } from '../../lib/data/organizer';
+import { SUSPEND_REASON_MAX, suspendDay, suspendable, useSuspendPreview } from '../../lib/data/organizer';
 import { useLeagueCtx } from '../../lib/league';
-import { localNow } from '../../lib/reminders';
 import { useNow } from '../../lib/useNow';
-import { saveErrorMessage, useFeedback } from '../feedback';
+import { useFeedback } from '../feedback';
 import { Button, Card, Field, Input, ListRow, Modal, RowIcon, Skeleton, cx } from '../ui';
 import { dayWords, suspendCounts, suspendDoneText, suspendLines, suspendNotice, suspendReasons } from './logic';
+import { ISO_DATE, leagueToday, suspendAudience, suspendErrorText, suspendForm } from './suspendForm';
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Hoy en la zona de la liga ('YYYY-MM-DD'). */
-export function leagueToday(tz: string | null | undefined, now: Date = new Date()): string {
-  try {
-    return localNow(now, tz || DEFAULT_TZ).today;
-  } catch {
-    return localNow(now, DEFAULT_TZ).today;
-  }
-}
+// Hoy en la zona de la liga y lo que falta para suspender: en suspendForm.ts (lo usa también la app del teléfono).
+export { leagueToday } from './suspendForm';
 
 /**
  * Suspender un día (lluvia, apagón): el día (hoy por defecto), el motivo y, si se sabe, la nueva fecha. Muestra lo
@@ -45,14 +35,9 @@ export function SuspendDayModal({ open, onClose }: { open: boolean; onClose: () 
   const validDate = ISO_DATE.test(date);
   const preview = useSuspendPreview(open ? lid : null, open && validDate ? date : null);
   const p = preview.data;
-  const target = newDate && ISO_DATE.test(newDate) ? newDate : null;
-  const badNewDate = !!target && (target < today || target === date);
-  const why = reason.trim();
-  const n = suspendable(p);
   // Sin nueva fecha, lo que tiene inscritos se queda: si es lo único, suspender no cambiaría nada (ni sale el aviso).
-  const changes = suspendChanges(p, target);
-  const canSend = validDate && !!why && !!p && changes > 0 && !badNewDate && !busy;
-  const all = league.kind === 'torneo' ? 'todo el torneo' : 'toda la liga';
+  const { target, badNewDate, why, n, changes, canSend } = suspendForm({ date, reason, newDate, today, preview: p, busy });
+  const all = suspendAudience(league.kind);
 
   async function send() {
     if (!canSend) return;
@@ -75,11 +60,7 @@ export function SuspendDayModal({ open, onClose }: { open: boolean; onClose: () 
       onClose();
     } catch (e) {
       console.error(e);
-      const be = asBackendError(e);
-      toast(
-        be?.kind === 'validation' ? 'Revisa el motivo y la nueva fecha (desde hoy y distinta del día que se suspende).' : saveErrorMessage(e),
-        'error',
-      );
+      toast(suspendErrorText(e), 'error');
     } finally {
       setBusy(false);
     }
@@ -214,7 +195,7 @@ export function SuspendDayRow() {
           </RowIcon>
         }
         title="Suspender un día"
-        subtitle={`Lluvia, sin luz… mueve o aplaza lo de ese día y avisa a ${league.kind === 'torneo' ? 'todo el torneo' : 'toda la liga'}`}
+        subtitle={`Lluvia, sin luz… mueve o aplaza lo de ese día y avisa a ${suspendAudience(league.kind)}`}
         onClick={() => setOpen(true)}
       />
       <SuspendDayModal open={open} onClose={() => setOpen(false)} />
