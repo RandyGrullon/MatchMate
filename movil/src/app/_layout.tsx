@@ -75,6 +75,7 @@ function Navigator() {
         <Stack.Screen name="login" options={{ presentation: 'modal' }} />
         <Stack.Screen name="l/[lid]/e/[eventId]/anotar" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="l/[lid]/e/[eventId]/enviar" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="escanear" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
         <Stack.Screen name="cuenta/borrar" options={{ presentation: 'modal' }} />
         <Stack.Screen name="crear" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="l/[lid]/partido/[matchId]/cancha" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />

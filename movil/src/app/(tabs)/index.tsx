@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { Bell, Plus, Search, Ticket } from 'lucide-react-native';
+import { Bell, Plus, QrCode, Search, Ticket } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { codeReady, normalizeCode } from '@mm/components/scanner/logic';
 import { useNotifications } from '@mm/components/notifications/provider';
@@ -105,6 +105,17 @@ function JoinCard() {
           Unirme
         </Button>
       </View>
+      {/* «o escanea el QR» (JoinLeagueCard de la web): abre el lector. */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.push('/escanear')}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44 }}
+      >
+        <QrCode size={18} color={c.accent} />
+        <Txt tone="accent" variant="bodyStrong">
+          o escanea el QR
+        </Txt>
+      </Pressable>
     </Card>
   );
 }

@@ -196,8 +196,34 @@ export function demoLeagueSelect(uid: string, table: string, filters: readonly F
   );
 }
 
-/** Las RPC de la liga ficticia: enviar, aprobar y rechazar. undefined si no es de la liga. */
+/** Un código de invitación ficticio (otra liga, con dos jugadores sin cuenta) para probar /unirse y el lector de QR. */
+export const DEMO_CODE = 'ABCD2345';
+const OTHER_LEAGUE = '00000000-0000-7000-8000-00000000f002';
+
+/** Las RPC de la liga ficticia: enviar, aprobar, rechazar y la invitación. undefined si no es de la liga. */
 export function demoLeagueRpc(uid: string, fn: string, a: Record<string, unknown>): unknown {
+  if (fn === 'invite_preview' || fn === 'invite_details') {
+    if (a.p_code !== DEMO_CODE) return null;
+    if (fn === 'invite_preview') return [{ league_id: OTHER_LEAGUE, name: 'Liga de los Jueves', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null }];
+    return {
+      leagueId: OTHER_LEAGUE,
+      name: 'Liga de los Jueves',
+      sport: 'bowling',
+      kind: 'liga',
+      visibility: 'private',
+      venue: 'Bolera de Ejemplo',
+      schedule: 'Jueves 7:00 p. m.',
+      seasonStart: null,
+      seasonEnd: null,
+      hasMinors: false,
+      members: 8,
+      member: false,
+      players: [
+        { id: '00000000-0000-7000-8000-00000000f111', name: 'Juan Pérez' },
+        { id: '00000000-0000-7000-8000-00000000f112', name: 'Jugador Tres' },
+      ],
+    };
+  }
   const s = load();
   if (fn === 'submit_games') {
     if (a.p_league !== DEMO_LEAGUE) return undefined;

@@ -33,8 +33,11 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 ## 2. Hoy y Ligas
 
 - ✅ Portada sin cuenta; Hoy con tus ligas; «Únete a tu liga» con el código.
-- ✅ `/unirse/<código>`: a qué liga lleva y «Unirme» (sin «¿Quién eres?» todavía: ⏳).
-- ⏳ Escanear el QR (expo-camera).
+- ✅ `/unirse/<código>`: a qué liga lleva, «¿Quién eres?» si el admin ya anotó jugadores sin cuenta (queda pendiente de
+  que lo apruebe) y «Unirme a la liga» o «Unirme como …».
+- ✅ Escanear el QR (`movil/src/app/escanear.tsx`, expo-camera; «o escanea el QR» en Hoy): la misma lógica de la web
+  (`routeFromScan`), «Ese QR no es de MatchMate» con Copiar y Escanear otro, «Escribir el código» y la linterna.
+  Hace falta un build nuevo de la app (módulo nativo). 🌐 Leer el QR de una foto.
 - ✅ Lo de hoy, como la web: la práctica o el torneo de boliche en juego con su botón (anotar, seguir, enviar; la del
   horario se abre al tocar), los partidos en vivo, tu próximo partido o lo próximo con «Voy», «Nada programado» y «Lo
   que viene» (`movil/src/components/home/Activity.tsx`; los datos son `useActivity` de `src/components/home/activity.ts`,

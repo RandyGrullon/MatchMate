@@ -117,6 +117,14 @@
           "cameraPermission": "MatchMate usa la cámara para la foto del marcador y para leer el QR de una liga.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MatchMate usa la cámara para la foto del marcador y para leer el QR de una liga.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {
