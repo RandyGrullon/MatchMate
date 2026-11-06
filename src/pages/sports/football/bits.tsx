@@ -11,7 +11,7 @@ import { REASON_TEXT } from './rules';
 import { decodeLines, decodeTimeline, liveFromScore, liveMinute, livePowerPlays, pensFromScore, periodsFromScore, type ScoreEvent, type ScoreLine } from './adapter';
 
 /** Posiciones del fútbol para la plantilla. */
-export const FOOTBALL_POSITIONS = ['Portero', 'Defensa', 'Medio', 'Delantero'] as const;
+export { FOOTBALL_POSITIONS } from '../../../components/players/positions';
 
 /** Tarjetita amarilla o roja (la doble amarilla, amarilla sobre roja). */
 export function CardIcon({ kind, className }: { kind: 'yellow' | 'second_yellow' | 'red'; className?: string }) {

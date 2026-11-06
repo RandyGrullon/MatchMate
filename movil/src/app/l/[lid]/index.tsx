@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Medal, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
 import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
+import { adminScreenTitle } from '@mm/components/organizer/hubLogic';
 import { eventTitle, formatDateLong, toIsoDate } from '@mm/lib/format';
 import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
@@ -13,6 +14,8 @@ import { Button, Card, Divider, Empty, ListRow, Loading, RowIcon, Screen, Sectio
 import { LeagueFollowButton } from '@/components/social/People';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { SportLinks } from '@/components/league/SportLinks';
+import { LeagueNotices } from '@/components/league/Announce';
+import { PlayersRow } from '@/components/players/PlayersRow';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
@@ -85,6 +88,11 @@ export default function LeagueScreen() {
           </Txt>
         </View>
       </View>
+
+      {/* El aviso del admin de los últimos 2 días (lluvia, apagón…), arriba como en la web. */}
+      <LeagueScope lid={l.id}>
+        <LeagueNotices />
+      </LeagueScope>
 
       <Card padded={false}>
         {!!l.venue && (
@@ -176,6 +184,26 @@ export default function LeagueScreen() {
           </Card>
         );
       })()}
+
+      {/* Organizar (quien la organiza): jugadores y miembros, y avisar a toda la liga. Lo demás, en la web. */}
+      {(membership.data?.role === 'admin' || membership.data?.role === 'owner') && (
+        <>
+          <SectionHeader title="Organizar" />
+          <Card padded={false}>
+            <PlayersRow lid={l.id} league={l} />
+            <Divider inset={68} />
+            <ListRow
+              icon={
+                <RowIcon>
+                  <Megaphone size={20} color={c.accent} />
+                </RowIcon>
+              }
+              title={adminScreenTitle('avisar', l.kind) ?? ''}
+              onPress={() => router.push({ pathname: '/l/[lid]/avisar', params: { lid: l.id } })}
+            />
+          </Card>
+        </>
+      )}
 
       {isBowling ? (
         <>

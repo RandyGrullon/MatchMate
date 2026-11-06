@@ -46,6 +46,11 @@ export function appRoute(href: string): string | null {
   // El perfil (?tab= de la web: Publicaciones o Juegos se eligen ahí).
   const user = /^\/u\/([^/]+)/.exec(path);
   if (user) return `/u/${user[1]}`;
+  // Organizar › Avisar y Jugadores (la pestaña ?tab= de la web); lo demás de Organizar abre la liga.
+  const admin = /^\/l\/([^/]+)\/admin$/.exec(path);
+  const adminTab = /[?&]tab=([^&]+)/.exec(query)?.[1];
+  if (admin && adminTab === 'avisar') return `/l/${admin[1]}/avisar`;
+  if (admin && adminTab === 'jugadores') return `/l/${admin[1]}/jugadores`;
   // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;

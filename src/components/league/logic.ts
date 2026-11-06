@@ -130,6 +130,28 @@ export function reachLine(reach: number, others: number): string {
 export const noticesLeft = (r: { sentToday: number; dailyLimit: number } | null | undefined) =>
   r ? Math.max(0, r.dailyLimit - r.sentToday) : null;
 
+// Los avisos que cada quien cerró (en este teléfono): la web y la app del teléfono los leen igual.
+const closedNoticesKey = (lid: string) => `mm:avisos-cerrados:${lid}`;
+
+/** Los avisos que cerró en este teléfono (vacío si no hay almacenamiento). */
+export function readClosedNotices(lid: string): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(closedNoticesKey(lid)) ?? '[]') as unknown;
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Guarda los que cerró (los últimos 20 bastan: los avisos salen solo 2 días). */
+export function saveClosedNotices(lid: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(closedNoticesKey(lid), JSON.stringify([...ids].slice(-20)));
+  } catch {
+    // sin almacenamiento: se cierra solo mientras la pantalla está abierta
+  }
+}
+
 // ---------- Zona horaria ----------
 
 export const DEFAULT_TZ = 'America/Santo_Domingo';

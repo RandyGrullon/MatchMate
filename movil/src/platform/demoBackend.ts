@@ -12,6 +12,7 @@ import type { Business, BusinessStatus, OwnVenue, Venue, VenueDetail, VenuePhoto
 import { uuidv7 } from '@mm/lib/db/ids';
 import { CURRENT_LEGAL } from '@mm/lib/legal';
 import { ballRpc, forgetDemoBalls } from './demoBalls';
+import { demoPlayersSelect, forgetDemoPlayers, playersRpc } from './demoPlayers';
 import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
 
 const FLAG = 'mm-demo';
@@ -35,6 +36,7 @@ export function setDemo(on: boolean) {
       sessionStorage.removeItem('mm-demo-invite');
       forgetDemoLeague();
       forgetDemoBalls();
+      forgetDemoPlayers();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -395,7 +397,8 @@ export function createDemoBackend(): Backend {
     select: async <T,>(q: { table: string; filters?: { col: string; op: string; value: unknown }[] }) => {
       if (q.table === 'profiles') return [profileRow()] as T[];
       // La liga de boliche ficticia (demoLeague.ts).
-      const league = demoLeagueSelect(DEMO_USER, q.table, q.filters);
+      // Lo que cambió en los jugadores de la demostración (demoPlayers.ts) encima de la liga ficticia.
+      const league = demoPlayersSelect(q.table, q.filters, (t) => demoLeagueSelect(DEMO_USER, t)) ?? demoLeagueSelect(DEMO_USER, q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -408,6 +411,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Los jugadores de la liga ficticia (Organizar › Jugadores).
+      const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
+      if (fromPlayers !== undefined) return structuredClone(fromPlayers) as T;
       // Las bolas (demoBalls.ts): leen los juegos de la liga y los sueltos de la demostración.
       const fromBalls = ballRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromBalls !== undefined) return structuredClone(fromBalls) as T;

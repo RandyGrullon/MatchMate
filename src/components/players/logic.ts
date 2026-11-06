@@ -3,8 +3,8 @@ import type { RacketSport } from '../../sports/racket';
 import { SPORT_FAMILY, type SportId } from '../../sports/types';
 import { formatLevel, levelScale, parseLevelInput, readLevel, type LevelScale } from '../../pages/sports/racket/levels';
 import { indexText } from '../../pages/sports/golf/logic';
-import { BASKETBALL_POSITIONS } from '../../pages/sports/basketball/bits';
-import { FOOTBALL_POSITIONS } from '../../pages/sports/football/bits';
+// Sin las pantallas de baloncesto y fútbol (bits.tsx): este módulo lo usa también la app del teléfono.
+import { BASKETBALL_POSITIONS, FOOTBALL_POSITIONS } from './positions';
 
 /**
  * «Agregar jugador» según el deporte: qué números se piden al anotar a alguien sin cuenta y cómo se leen.
@@ -40,6 +40,22 @@ export function teamPositions(sport: string): readonly string[] {
   if (sport === 'basketball') return BASKETBALL_POSITIONS;
   if (sport === 'football' || sport === 'futsal') return FOOTBALL_POSITIONS;
   return [];
+}
+
+/** Qué pide cada deporte, en palabras («con su nivel»). */
+export function statWord(sport: string): string {
+  switch (statKind(sport)) {
+    case 'bowling':
+      return 'su promedio';
+    case 'racket':
+      return 'su nivel';
+    case 'golf':
+      return 'su Index';
+    case 'team':
+      return 'su posición y dorsal';
+    default:
+      return '';
+  }
 }
 
 /** Lo que escribe el admin, tal cual (texto de cada campo). */
@@ -231,6 +247,28 @@ export function parseManyNames(text: string, current: readonly string[] = []): M
     else out.names.push(name);
   }
   return out;
+}
+
+/** «Agregar varios»: cuántos se agregan, los que ya están y los repetidos (debajo de la lista). */
+export function manyCountLine(o: { count: number; existing: readonly string[]; repeated: number }): string {
+  const { count, existing, repeated } = o;
+  return [
+    count > MAX_MANY ? `Son ${count}: agrega hasta ${MAX_MANY} a la vez.` : count === 0 ? 'Escribe o pega la lista.' : `Se agrega${count === 1 ? '' : 'n'} ${count}.`,
+    existing.length > 0 ? ` Ya están en la liga (no se repiten): ${existing.join(', ')}.` : '',
+    repeated > 0 ? ` ${repeated} repetido${repeated === 1 ? '' : 's'} en la lista.` : '',
+  ].join('');
+}
+
+/** El aviso al terminar «Agregar varios»: cuántos entraron o con quién no se pudo. */
+export function manyAddedToast(r: { added: number; failed: readonly string[] }): { text: string; tone: 'ok' | 'error' } {
+  if (r.failed.length) return { text: `Se agregaron ${r.added}. No se pudo con: ${r.failed.join(', ')}.`, tone: 'error' };
+  return { text: r.added === 1 ? '1 jugador agregado' : `${r.added} jugadores agregados`, tone: 'ok' };
+}
+
+/** El aviso al agregar a uno (si su número no se guardó, se dice y se pone al editarlo). `word`: statWord del deporte. */
+export function oneAddedToast(name: string, statsSaved: boolean, word: string): { text: string; tone: 'ok' | 'error' } {
+  if (statsSaved) return { text: `${name.trim()} agregado`, tone: 'ok' };
+  return { text: `${name.trim()} se agregó, pero no se guardó ${word}. Tócalo en la lista para ponerlo.`, tone: 'error' };
 }
 
 // ---------- Menores de edad (ligas con menores) ----------

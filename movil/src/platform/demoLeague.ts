@@ -7,6 +7,7 @@
 import { toIsoDate } from '@mm/lib/format';
 import { DEMO_COURSE, DEMO_PARS } from '@mm/sports/golf/demo';
 import { esportsRpc, esportsTables, forgetDemoEsports } from './demoEsports';
+import { announceRpc, announceTables, forgetDemoAnnounce } from './demoAnnounce';
 import { forgetDemoSolo, soloRpc } from './demoSolo';
 import { forgetDemoSwim, swimRpc, swimTables } from './demoSwim';
 
@@ -117,6 +118,7 @@ export function forgetDemoLeague() {
   forgetDemoSwim();
   forgetDemoEsports();
   forgetDemoSolo();
+  forgetDemoAnnounce();
   try {
     sessionStorage.removeItem(KEY);
   } catch {
@@ -224,6 +226,7 @@ function tables(uid: string): Record<string, Row[]> {
   return {
     ...swim,
     ...esp,
+    ...announceTables(DEMO_LEAGUE),
     golf_courses: g.golf_courses,
     golf_rounds: g.golf_rounds,
     golf_tournaments: g.golf_tournaments,
@@ -325,6 +328,8 @@ export function demoLeagueRpc(uid: string, fn: string, a: Record<string, unknown
   if (esp !== undefined) return esp;
   const solo = soloRpc(uid, fn, a);
   if (solo !== undefined) return solo;
+  const notice = announceRpc(DEMO_LEAGUE, fn, a);
+  if (notice !== undefined) return notice;
   if (fn === 'invite_preview' || fn === 'invite_details') {
     if (a.p_code !== DEMO_CODE) return null;
     if (fn === 'invite_preview') return [{ league_id: OTHER_LEAGUE, name: 'Liga de los Jueves', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null }];

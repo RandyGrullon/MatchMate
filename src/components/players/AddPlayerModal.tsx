@@ -12,10 +12,14 @@ import {
   emptyDraft,
   emptyGuardian,
   guardianProblem,
+  manyAddedToast,
+  manyCountLine,
+  oneAddedToast,
   parseManyMinors,
   parseManyNames,
   parseStats,
   statKind,
+  statWord,
   type GuardianDraft,
   type StatDraft,
 } from './logic';
@@ -23,21 +27,8 @@ import { SportStatFields } from './SportStatFields';
 
 type Mode = 'uno' | 'varios';
 
-/** Qué pide cada deporte, en palabras («con su nivel»). */
-export function statWord(sport: string): string {
-  switch (statKind(sport)) {
-    case 'bowling':
-      return 'su promedio';
-    case 'racket':
-      return 'su nivel';
-    case 'golf':
-      return 'su Index';
-    case 'team':
-      return 'su posición y dorsal';
-    default:
-      return '';
-  }
-}
+// Qué pide cada deporte, en palabras: vive en ./logic (sin pantallas; lo usa también la app del teléfono).
+export { statWord };
 
 /**
  * Admin: agrega a gente sin cuenta (los que no vienen siempre, los invitados, los que no usan la app) con el
@@ -106,8 +97,8 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
     const r = await run(() => addPlayerWithStats(lid, sport, name, parsed.stats, minor));
     setBusy(false);
     if (!r) return;
-    if (r.statsSaved) toast(`${name.trim()} agregado`);
-    else toast(`${name.trim()} se agregó, pero no se guardó ${word}. Tócalo en la lista para ponerlo.`, 'error');
+    const done = oneAddedToast(name, r.statsSaved, word);
+    toast(done.text, done.tone);
     onClose();
   }
 
@@ -118,8 +109,8 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
     const r = await run(() => (minors ? addManyMinors(lid, minors.rows, manyConsent) : addManyPlayers(lid, many.names)));
     setBusy(false);
     if (!r) return;
-    if (r.failed.length) toast(`Se agregaron ${r.added}. No se pudo con: ${r.failed.join(', ')}.`, 'error');
-    else toast(r.added === 1 ? '1 jugador agregado' : `${r.added} jugadores agregados`);
+    const done = manyAddedToast(r);
+    toast(done.text, done.tone);
     onClose();
   }
 
@@ -222,13 +213,7 @@ export function AddPlayerModal({ open, onClose, existingNames }: { open: boolean
             </Field>
           )}
           <p className={cx('text-xs', tooMany ? 'text-danger' : 'text-muted')} aria-live="polite">
-            {tooMany
-              ? `Son ${count}: agrega hasta ${MAX_MANY} a la vez.`
-              : count === 0
-                ? 'Escribe o pega la lista.'
-                : `Se agrega${count === 1 ? '' : 'n'} ${count}.`}
-            {existing.length > 0 && ` Ya están en la liga (no se repiten): ${existing.join(', ')}.`}
-            {repeated > 0 && ` ${repeated} repetido${repeated === 1 ? '' : 's'} en la lista.`}
+            {manyCountLine({ count, existing, repeated })}
           </p>
           {minors && minors.noGuardian.length > 0 && (
             <p role="alert" className="text-xs text-danger">

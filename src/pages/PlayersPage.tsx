@@ -3,9 +3,9 @@ import { BadgeCheck, ExternalLink, Link2, Merge, Plus, Search, ShieldCheck, Tras
 import { deletePlayer, linkAccountToPlayer, unlinkAccount, updatePlayer, useAllEntries, useEvents, useLeagueMembers, usePlayers } from '../lib/data';
 import { setPlayerMinor, useGuardians } from '../lib/data/players';
 import { useLeagueSeasons } from '../lib/data/seasons';
-import { averageSourceLabel, averageSourceShort, handicapAverages, type SeasonAverage } from '../lib/bowlingSeason';
+import { handicapAverages, type SeasonAverage } from '../lib/bowlingSeason';
 import { roleLabel, useLeagueCtx } from '../lib/league';
-import { MIN_RANK_GAMES, playerStats, type PlayerStats } from '../lib/stats';
+import { MIN_RANK_GAMES, type PlayerStats } from '../lib/stats';
 import { todayIn } from './sports/racket/logic/time';
 import type { Entry, Member, Player } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
@@ -33,49 +33,30 @@ import {
 import { GuardianFields, MinorCheck } from '../components/players/GuardianFields';
 import { MergePlayerModal } from '../components/players/MergePlayerModal';
 import { PlayerClaimBadge } from '../components/claims/PlayerClaimBadge';
+import {
+  accountOptionLabel,
+  averageHint,
+  deletePlayerMessage,
+  filterPlayers,
+  guardianDraftOf,
+  handicapSubtitle,
+  handicapValue,
+  linkCandidates,
+  linkMessage,
+  membersWithoutPlayer,
+  minorChanged as minorDiffers,
+  noStats,
+  playerLine,
+  statsByPlayer,
+  unlinkMessage,
+} from '../components/players/list';
 
 export function useStatsByPlayer(entries: Entry[]) {
-  return useMemo(() => {
-    const groups = new Map<string, Entry[]>();
-    for (const e of entries) groups.set(e.playerId, [...(groups.get(e.playerId) ?? []), e]);
-    const map = new Map<string, PlayerStats>();
-    groups.forEach((list, id) => map.set(id, playerStats(list)));
-    return map;
-  }, [entries]);
+  return useMemo(() => statsByPlayer(entries), [entries]);
 }
 
-const noStats: PlayerStats = { games: 0, pins: 0, autoAverage: null, high: 0, highSeries: 0, pending: 0 };
-
-/** El promedio del handicap (o «—» si todavía no tiene). */
-const handicapValue = (value: SeasonAverage | undefined): number | null => (value && value.source !== 'ninguno' ? value.average : null);
-
-/**
- * Debajo del nombre de un jugador: «prom. fijo · 12 juegos · mejor 245» (boliche: de dónde sale su promedio si no es el de la
- * temporada, cuántos juegos y el mejor), «Sin cuenta» o «Menor · sin cuenta», el número de su deporte y lo que falta
- * por aprobar («3 sin foto»).
- */
-export function playerLine(o: {
-  bowling: boolean;
-  hasAccount: boolean;
-  isMinor?: boolean;
-  games: number;
-  high: number;
-  pending: number;
-  source?: SeasonAverage['source'] | null;
-  summary?: string | null;
-}): string {
-  const short = o.bowling && o.source ? averageSourceShort(o.source) : null;
-  return [
-    !o.hasAccount && (o.isMinor ? 'Menor · sin cuenta' : 'Sin cuenta'),
-    short && `prom. ${short}`,
-    o.bowling && `${o.games} ${o.games === 1 ? 'juego' : 'juegos'}`,
-    o.bowling && o.high > 0 && `mejor ${o.high}`,
-    o.summary,
-    o.pending > 0 && `${o.pending} sin foto`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
+// La línea de cada jugador vive en components/players/list.ts (sin pantallas; la usa también la app del teléfono).
+export { playerLine };
 
 /**
  * Organizar › Jugadores y miembros › Jugadores (rediseño «Calma y foco»): «Agregar jugador» (el único botón principal),
@@ -98,7 +79,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   const members = useLeagueMembers(lid);
   const memberByUid = useMemo(() => new Map(members.data.map((m) => [m.uid, m])), [members.data]);
   // Cuentas sin jugador (quien entró solo para anotar no juega: no sale para vincular).
-  const unlinked = members.data.filter((m) => !m.playerId && !m.scorerOnly);
+  const unlinked = membersWithoutPlayer(members.data);
   const entries = useAllEntries(bowling ? lid : undefined);
   const stats = useStatsByPlayer(entries.data);
   // El promedio que toma una inscripción de hoy (el del handicap): la temporada, la anterior, el fijo o el de entrada.
@@ -124,7 +105,7 @@ export default function PlayersPage({ variant = 'full', addWhere }: { variant?: 
   // El link de qué jugador se está compartiendo (solo esa fila da vueltas).
   const sharing = useBusy();
 
-  const filtered = players.data.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const filtered = filterPlayers(players.data, q);
 
   function share(p: Player) {
     return sharing.run(p.id, async () => {
@@ -357,9 +338,7 @@ function PlayerFormModal({
   // El tutor guardado llega aparte (solo admins): se pone cuando llega.
   useEffect(() => {
     if (!open) return;
-    setGuardian(
-      saved ? { guardianName: saved.guardianName ?? '', guardianPhone: saved.guardianPhone ?? '', consent: !!saved.consentAt } : emptyGuardian,
-    );
+    setGuardian(guardianDraftOf(saved));
   }, [open, player?.id, saved?.guardianName, saved?.guardianPhone, saved?.consentAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit(e: FormEvent) {
@@ -370,13 +349,7 @@ function PlayerFormModal({
       setError(parsed.error);
       return;
     }
-    const minorChanged =
-      minorsOk &&
-      (isMinor !== !!player.isMinor ||
-        (isMinor &&
-          (guardian.guardianName.trim() !== (saved?.guardianName ?? '') ||
-            guardian.guardianPhone.replace(/[\s().-]/g, '') !== (saved?.guardianPhone ?? '') ||
-            guardian.consent !== !!saved?.consentAt)));
+    const minorChanged = minorDiffers({ minorsOk, isMinor, wasMinor: !!player.isMinor, guardian, saved });
     const problem = minorChanged && isMinor ? guardianProblem(guardian) : null;
     if (problem) {
       setError(problem);
@@ -398,9 +371,7 @@ function PlayerFormModal({
     if (!player) return;
     const ok = await confirm({
       title: `¿Eliminar a ${player.name}?`,
-      message: bowling
-        ? `Se borran también sus ${stats.games + stats.pending} juegos en torneos y prácticas. No se puede deshacer.`
-        : 'Se borran también sus resultados en esta liga. No se puede deshacer.',
+      message: deletePlayerMessage(bowling, stats),
       confirmText: 'Eliminar',
       danger: true,
     });
@@ -417,7 +388,7 @@ function PlayerFormModal({
       open={open}
       onClose={onClose}
       title={player?.name || 'Editar jugador'}
-      subtitle={handicap && handicap.source !== 'ninguno' ? `Promedio del handicap: ${handicap.average} (${averageSourceLabel(handicap.source).toLowerCase()})` : undefined}
+      subtitle={handicapSubtitle(handicap)}
       footer={
         <Button
           variant="primary"
@@ -441,9 +412,7 @@ function PlayerFormModal({
             sport={sport}
             draft={draft}
             onChange={setDraft}
-            averageHint={`Cuenta mientras no tenga ${MIN_RANK_GAMES} juegos verificados en la temporada (ni en la anterior); después manda el de sus juegos.${
-              handicap && handicap.source !== 'ninguno' ? ` Hoy su handicap usa ${handicap.average} (${averageSourceLabel(handicap.source).toLowerCase()}).` : ''
-            }`}
+            averageHint={averageHint(handicap)}
           />
         )}
         {minorsOk && <MinorCheck checked={isMinor} onChange={setIsMinor} />}
@@ -540,17 +509,13 @@ function AccountSection({
   const nameOf = (id: string | null) => players.find((p) => p.id === id)?.name ?? null;
 
   if (!player.uid) {
-    const candidates = members.filter((m) => m.playerId !== player.id);
+    const candidates = linkCandidates(members, player.id);
     async function link() {
       const picked = candidates.find((c) => c.id === who);
       if (!picked) return;
       const ok = await confirm({
         title: 'Vincular con la cuenta',
-        message: `${player.name} pasa a ser el jugador de ${picked.name}: sus juegos cuentan en su perfil.${
-          picked.playerId
-            ? ` De su jugador de ahora (${nameOf(picked.playerId) ?? picked.name}), lo pendiente (envíos por aprobar, "voy") pasa a ${player.name}; si nunca jugó un evento se borra, y si jugó se queda en la lista sin cuenta.`
-            : ''
-        }`,
+        message: linkMessage(player.name, picked, nameOf),
         confirmText: 'Vincular',
       });
       if (!ok) return;
@@ -571,8 +536,7 @@ function AccountSection({
               <option value="">— Elegir cuenta —</option>
               {candidates.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.name}
-                  {m.playerId && nameOf(m.playerId) && nameOf(m.playerId) !== m.name ? ` (hoy: ${nameOf(m.playerId)})` : ''}
+                  {accountOptionLabel(m, nameOf)}
                 </option>
               ))}
             </Select>
@@ -588,7 +552,7 @@ function AccountSection({
   async function unlink() {
     const ok = await confirm({
       title: 'Desvincular cuenta',
-      message: `${account?.name ?? 'La cuenta'} deja de estar vinculada a ${player.name} y pasa a jugar con un jugador nuevo, con su cuenta. ${player.name} y sus juegos se quedan en la lista sin cuenta.`,
+      message: unlinkMessage(account?.name, player.name),
       confirmText: 'Desvincular',
       danger: true,
     });

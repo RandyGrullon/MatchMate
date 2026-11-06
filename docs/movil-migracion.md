@@ -52,7 +52,19 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
 - 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5); ✅ muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
-  seguir una liga pública. ⏳ tabla, jugadores, anuncios, temporadas, admin (🌐 «Tabla, jugadores y más en la web»).
+  seguir una liga pública. La tabla de cada deporte está en sus secciones (3 a 6).
+- ✅ Avisos de la liga (`movil/src/components/league/Announce.tsx`, los mismos de la web): el aviso del admin de los
+  últimos 2 días arriba en el inicio de la liga (cerrarlo; quien no organiza lo puede reportar) y, para quien la
+  organiza, Organizar › «Avisar a toda la liga» (`/l/<liga>/avisar`: avisos listos, a cuántos les llega, cuántos
+  quedan hoy, confirmar antes de enviar y los últimos enviados).
+- ✅ Organizar › Jugadores (`/l/<liga>/jugadores`, `movil/src/components/players/`, la lógica de
+  `src/components/players/list.ts` y `logic.ts`, la misma de la web): buscar, la lista con su línea, agregar uno o
+  varios (menores con tutor), editar (nombre, promedio fijo, Index, posición y dorsal, menor y tutor), vincular o
+  desvincular la cuenta, juntar con…, compartir su link y eliminar. En el inicio de la liga, «Jugadores y miembros»
+  con cuántos y cuántos con cuenta.
+  - 🌐 Miembros y Reclamos (las pestañas abren la web); donde el deporte lleva a su gente en su pestaña (natación:
+    Nadadores; raqueta: Parejas y niveles), «Miembros» y las cuentas; «Ver su página» de quien no es de boliche.
+- ⏳ Temporadas y lo demás de Organizar (🌐 «Tabla, jugadores y más en la web»).
 
 ## 3. Boliche (deporte activo)
 

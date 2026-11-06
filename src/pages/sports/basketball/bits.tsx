@@ -12,7 +12,7 @@ import type { TeamLeague } from '../team/useTeamLeague';
 export const basketballParser = twoNumbersParser({ allowDraw: false, max: 300, unit: 'puntos' });
 
 /** Posiciones del baloncesto para la plantilla. */
-export const BASKETBALL_POSITIONS = ['Base', 'Escolta', 'Alero', 'Ala-pívot', 'Pívot'] as const;
+export { BASKETBALL_POSITIONS } from '../../../components/players/positions';
 
 /** «BONUS» (el equipo ya tira libres por faltas): en rojo, sin fondo. */
 function Bonus() {

@@ -15,29 +15,7 @@ import { useNow } from '../../lib/useNow';
 import { saveErrorMessage, useFeedback } from '../feedback';
 import { ReportButton } from '../report/ReportButton';
 import { Button, Card, Textarea, cx } from '../ui';
-import { announceTemplates, noticesLeft, reachLine, recentNotices } from './logic';
-
-// ---------- Avisos cerrados (en este teléfono) ----------
-
-const closedKey = (lid: string) => `mm:avisos-cerrados:${lid}`;
-
-function readClosed(lid: string): Set<string> {
-  try {
-    const v = JSON.parse(localStorage.getItem(closedKey(lid)) ?? '[]') as unknown;
-    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveClosed(lid: string, ids: Set<string>) {
-  try {
-    // Los últimos 20 bastan: los avisos salen solo 2 días.
-    localStorage.setItem(closedKey(lid), JSON.stringify([...ids].slice(-20)));
-  } catch {
-    // sin almacenamiento: se cierra solo mientras la pantalla está abierta
-  }
-}
+import { announceTemplates, noticesLeft, reachLine, readClosedNotices, recentNotices, saveClosedNotices } from './logic';
 
 /**
  * Arriba en el inicio de la liga: el aviso del admin de los últimos 2 días («Se suspende por lluvia»), para quien no
@@ -47,14 +25,14 @@ export function LeagueNotices() {
   const { lid, isAdmin } = useLeagueCtx();
   const list = useLeagueAnnouncements(lid, 5);
   const now = useNow();
-  const [closed, setClosed] = useState(() => readClosed(lid));
+  const [closed, setClosed] = useState(() => readClosedNotices(lid));
   const shown = useMemo(() => recentNotices(list.data, now.getTime(), closed), [list.data, now, closed]);
   if (!shown.length) return null;
 
   const close = (id: string) => {
     const next = new Set(closed).add(id);
     setClosed(next);
-    saveClosed(lid, next);
+    saveClosedNotices(lid, next);
   };
 
   return (
