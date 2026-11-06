@@ -5,6 +5,7 @@
  * aprobar, rechazar) se guarda en sessionStorage y se borra al salir de la demostración. Todos los datos son ficticios.
  */
 import { toIsoDate } from '@mm/lib/format';
+import { DEMO_COURSE, DEMO_PARS } from '@mm/sports/golf/demo';
 
 const KEY = 'mm-demo-liga';
 export const DEMO_LEAGUE = '00000000-0000-7000-8000-00000000f001';
@@ -117,10 +118,104 @@ export function forgetDemoLeague() {
   }
 }
 
+// ---------- La liga de golf ficticia: una ronda hoy (en juego) y una cerrada, con el campo de ejemplo de la web ----------
+export const DEMO_GOLF = '00000000-0000-7000-8000-00000000a001';
+const GOLF_TODAY = '00000000-0000-7000-8000-00000000a0e1';
+const GOLF_PAST = '00000000-0000-7000-8000-00000000a0e2';
+const G_ME = '00000000-0000-7000-8000-00000000a101';
+const G_ONE = '00000000-0000-7000-8000-00000000a102';
+const G_TWO = '00000000-0000-7000-8000-00000000a103';
+const COMPETITION = { format: 'stroke', basis: 'net', allowance: 95 };
+const golfEvent = (id: string, date: string): Row => ({ ...practice(id, date), league_id: DEMO_GOLF, type: 'ronda', games: 1 });
+const golfRound = (eventId: string, closed: boolean): Row => ({
+  event_id: eventId,
+  league_id: DEMO_GOLF,
+  course_id: 'demo',
+  course: DEMO_COURSE,
+  course_name: DEMO_COURSE.name,
+  holes: 18,
+  nine: 'all',
+  competition: COMPETITION,
+  shotgun: false,
+  tournament_id: null,
+  round_no: null,
+  status: closed ? 'cerrada' : 'abierta',
+  closed_at: closed ? iso(-6 * 86_400_000) : null,
+});
+// Golpes: el par con algo de ruido (inventado). `upTo` = hoyos anotados.
+const strokesOf = (shift: number[], upTo = 18) => DEMO_PARS.map((p, i) => (i < upTo ? p + (shift[i % shift.length] ?? 0) : null));
+const golfCard = (n: number, eventId: string, playerId: string, hcp: number, strokes: (number | null)[], signed = false): Row => ({
+  id: `00000000-0000-7000-8000-0000000a2${String(n).padStart(3, '0')}`,
+  league_id: DEMO_GOLF,
+  event_id: eventId,
+  player_id: playerId,
+  tee_id: 'azul',
+  hcp_index: hcp,
+  course_hcp: hcp,
+  playing_hcp: Math.round(hcp * 0.95),
+  group_no: 1,
+  start_hole: 1,
+  strokes,
+  putts: strokes.map(() => null),
+  picked_up: strokes.map(() => false),
+  status: signed ? 'firmada' : 'abierta',
+  signed_at: signed ? iso(-6 * 86_400_000) : null,
+  scored_at: strokes.some((x) => x != null) ? iso(-3_600_000) : null,
+  dq: false,
+});
+function golfTables(uid: string): Record<string, Row[]> {
+  return {
+    golf_courses: [{ id: 'demo', league_id: DEMO_GOLF, name: DEMO_COURSE.name, holes: DEMO_COURSE.holes, tees: DEMO_COURSE.tees }],
+    golf_rounds: [golfRound(GOLF_TODAY, false), golfRound(GOLF_PAST, true)],
+    golf_tournaments: [],
+    golf_cards: [
+      golfCard(1, GOLF_TODAY, G_ME, 14.2, strokesOf([1, 0, 0, 1], 6)),
+      golfCard(2, GOLF_TODAY, G_ONE, 8.4, strokesOf([0, 1, 0], 7)),
+      golfCard(3, GOLF_TODAY, G_TWO, 20.1, strokesOf([1, 1, 0], 5)),
+      golfCard(4, GOLF_PAST, G_ME, 14.2, strokesOf([1, 0, 1, 0]), true),
+      golfCard(5, GOLF_PAST, G_ONE, 8.4, strokesOf([0, 0, 1]), true),
+      golfCard(6, GOLF_PAST, G_TWO, 20.1, strokesOf([1, 2, 0]), true),
+    ],
+    golfLeague: [
+      {
+        id: DEMO_GOLF,
+        sport: 'golf',
+        kind: 'liga',
+        visibility: 'private',
+        name: 'Golf de Ejemplo',
+        owner_id: uid,
+        venue: DEMO_COURSE.name,
+        schedule: 'Sábados 8:00 a. m.',
+        season_start: null,
+        season_end: null,
+        contact_name: '',
+        contact_phone: '',
+        require_photo: false,
+        has_minors: false,
+        tz: 'America/Santo_Domingo',
+        logo_path: null,
+        created_at: iso(-60 * 86_400_000),
+      },
+    ],
+    golfMember: [{ league_id: DEMO_GOLF, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: G_ME, scorer_only: false }],
+    golfPlayers: [
+      { id: G_ME, league_id: DEMO_GOLF, user_id: uid, name: 'Juan Pérez', average_override: null, is_minor: false, attrs: { golf: { index: 14.2 } } },
+      { id: G_ONE, league_id: DEMO_GOLF, user_id: null, name: 'Golfista Uno', average_override: null, is_minor: false, attrs: null },
+      { id: G_TWO, league_id: DEMO_GOLF, user_id: null, name: 'Golfista Dos', average_override: null, is_minor: false, attrs: null },
+    ],
+    golfEvents: [golfEvent(GOLF_TODAY, toIsoDate(new Date())), golfEvent(GOLF_PAST, dayAgo(6))],
+  };
+}
+
 /** Las filas fijas (la liga, los jugadores, la práctica de hoy) y lo que cambia (planilla y envíos). */
 function tables(uid: string): Record<string, Row[]> {
   const s = load();
+  const g = golfTables(uid);
   return {
+    golf_courses: g.golf_courses,
+    golf_rounds: g.golf_rounds,
+    golf_tournaments: g.golf_tournaments,
+    golf_cards: g.golf_cards,
     leagues: [
       {
         id: DEMO_LEAGUE,
@@ -141,12 +236,14 @@ function tables(uid: string): Record<string, Row[]> {
         logo_path: null,
         created_at: iso(-60 * 86_400_000),
       },
+      ...g.golfLeague,
     ],
-    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }],
+    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }, ...g.golfMember],
     players: [
       { id: ME_PLAYER, league_id: DEMO_LEAGUE, user_id: uid, name: 'Juan Pérez', average_override: null, is_minor: false },
       { id: OTHER, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugador Uno', average_override: null, is_minor: false },
       { id: THIRD, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugadora Dos', average_override: null, is_minor: false },
+      ...g.golfPlayers,
     ],
     events: [
       practice(PAST[0], dayAgo(14)),
@@ -169,6 +266,7 @@ function tables(uid: string): Record<string, Row[]> {
         player_count: 3,
         created_at: iso(-86_400_000),
       },
+      ...g.golfEvents,
     ],
     entries: [...PAST_ENTRIES, ...s.entries],
     submissions: s.submissions,

@@ -115,7 +115,23 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 ## 6. Golf, natación, esports
 
-- ⏳ Golf: rondas, tarjeta por hoyos, tabla. Natación: competencias, series, cronómetro, resultados.
+- ✅ Golf, inicio de la liga (`movil/src/components/golf/GolfHome.tsx`, Lite de la web): la ronda de hoy con lo tuyo en
+  una línea y UN botón («Seguir en el hoyo 7», «Inscribirme»; `golfNow`), los 3 de arriba del orden de mérito con
+  «Ver toda», «Próximas rondas» y «Resultados». Un torneo sin liga con una sola ronda abre la ronda.
+- ✅ Golf, la ronda (`/l/<liga>/e/<evento>`, `GolfEvent.tsx`): Tarjeta · Leaderboard · Jugadores, como la web.
+  - Tarjeta (`GolfCourt.tsx`): hoyo por hoyo con − / + (par de un toque), «Recogió», putts, «Hoyo listo → hoyo N», tu
+    grupo o solo tu tarjeta; los golpes se guardan en el teléfono y se publican cada 3 hoyos por la cola sin conexión
+    (`courtLog.ts` de la web). La pantalla no se apaga mientras se anota.
+  - Revisar y firmar la tarjeta (hoja con los 9 de ida y vuelta, bruto, neto y Stableford; `queueGolfSign`).
+  - Leaderboard (`roundBoard` de la web) y Jugadores: inscribirme con salida e Index (sale tu handicap de juego), mi
+    tarjeta (cambiar la salida antes de anotar, salirme) y los grupos.
+- ✅ Golf, orden de mérito de la temporada (`/l/<liga>/tabla`, `GolfStandings.tsx`, `useGolfMerit`): tu lugar con su
+  barra, la lista con «Tú» y las rondas que cuentan.
+- 🌐 Golf: crear rondas y torneos, campos y formato, armar los grupos, inscribir a otros, la tabla de Pro y otras
+  temporadas, el perfil de golf del jugador y lo del admin en la tarjeta.
+- Para probar golf sin cuenta: la demostración (`/dev/empresa`) trae «Golf de Ejemplo» (ronda en juego hoy y una
+  cerrada; `demoLeague.ts`).
+- ⏳ Natación: competencias, series, cronómetro, resultados.
 - ⏳ Esports: juegos, IDs de juego, equipos, torneos (cuadros, battle royale), inscripciones.
 
 ## 7. Social

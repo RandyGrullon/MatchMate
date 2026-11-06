@@ -15,6 +15,7 @@ import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { SportLinks } from '@/components/league/SportLinks';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
+import { GolfHome } from '@/components/golf/GolfHome';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
@@ -229,6 +230,10 @@ export default function LeagueScreen() {
             </>
           )}
         </>
+      ) : sport === 'golf' ? (
+        <LeagueScope lid={l.id}>
+          <GolfHome />
+        </LeagueScope>
       ) : family === 'racket' ? (
         <LeagueScope lid={l.id}>
           <SportLinks lid={l.id} mine={!!membership.data?.playerId} />

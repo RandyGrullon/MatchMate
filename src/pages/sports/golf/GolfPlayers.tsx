@@ -23,19 +23,9 @@ import { Badge, Button, Card, Field, Input, ListRow, Modal, SectionHeader, Selec
 import { EmptyCard, ProLine } from '../FieldChrome';
 import { MAX_INDEX, MIN_INDEX, isValidIndex } from '../../../sports/golf/course';
 import { HcpExplain } from './bits';
-import { cardHoles, hcpText, holesDone, indexText, isComplete } from './logic';
+import { cardHoles, hcpText, holesDone, indexInput, indexText, isComplete, parseIndex } from './logic';
 
-/** Index escrito a mano ('12.4', '12,4', '+1.2' = plus) → número; '' = sin Index; NaN = no sirve. */
-export function parseIndex(text: string): number | null {
-  const t = text.trim().replace(',', '.');
-  if (!t) return null;
-  const plus = t.startsWith('+');
-  const n = Number(plus ? t.slice(1) : t);
-  if (!Number.isFinite(n)) return Number.NaN;
-  return plus ? -n : n;
-}
-
-export const indexInput = (v: number | null | undefined) => (v == null ? '' : v < 0 ? `+${Math.abs(v)}` : String(v));
+export { indexInput, parseIndex } from './logic';
 
 /**
  * Jugadores de la ronda (rediseño «Calma y foco»): inscribirme (con salida e Index) o mi tarjeta arriba, y los grupos

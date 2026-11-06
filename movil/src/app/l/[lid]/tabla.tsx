@@ -3,6 +3,8 @@ import { useAuth } from '@mm/lib/auth';
 import { useLeague } from '@mm/lib/data';
 import { useMembership } from '@mm/lib/data/members';
 import { BowlingRanking } from '@/components/bowling/BowlingRanking';
+import { GolfStandings } from '@/components/golf/GolfStandings';
+import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketStandings } from '@/components/racket/RacketStandings';
 import { TeamStandings } from '@/components/team/TeamScreens';
@@ -16,8 +18,20 @@ export default function LeagueTableScreen() {
   const member = useMembership(lid, auth.user?.uid);
   if (league.loading && !league.data) return <Loading label="Cargando la liga" />;
   const family = league.data ? sportFamily(league.data) : null;
+  const sport = league.data ? leagueSport(league.data) : null;
+  // El golf: el orden de mérito de la temporada.
+  if (sport === 'golf') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <GolfStandings />
+        </LeagueScope>
+      </Screen>
+    );
+  }
   // El boliche: su tabla por temporada (promedios).
-  if (family === 'series') {
+  if (sport === 'bowling') {
     return (
       <Screen>
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />

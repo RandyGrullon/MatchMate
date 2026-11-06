@@ -232,3 +232,15 @@ export function holeTone(strokes: number | null, par: number): 'eagle' | 'birdie
   const d = strokes - par;
   return d <= -2 ? 'eagle' : d === -1 ? 'birdie' : d === 0 ? 'par' : d === 1 ? 'bogey' : 'double';
 }
+
+/** Index escrito a mano ('12.4', '12,4', '+1.2' = plus) → número; '' = sin Index; NaN = no sirve. */
+export function parseIndex(text: string): number | null {
+  const t = text.trim().replace(',', '.');
+  if (!t) return null;
+  const plus = t.startsWith('+');
+  const n = Number(plus ? t.slice(1) : t);
+  if (!Number.isFinite(n)) return Number.NaN;
+  return plus ? -n : n;
+}
+
+export const indexInput = (v: number | null | undefined) => (v == null ? '' : v < 0 ? `+${Math.abs(v)}` : String(v));
