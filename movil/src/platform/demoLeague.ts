@@ -6,6 +6,7 @@
  */
 import { toIsoDate } from '@mm/lib/format';
 import { DEMO_COURSE, DEMO_PARS } from '@mm/sports/golf/demo';
+import { forgetDemoSwim, swimRpc, swimTables } from './demoSwim';
 
 const KEY = 'mm-demo-liga';
 export const DEMO_LEAGUE = '00000000-0000-7000-8000-00000000f001';
@@ -111,6 +112,7 @@ function save(s: State) {
 }
 
 export function forgetDemoLeague() {
+  forgetDemoSwim();
   try {
     sessionStorage.removeItem(KEY);
   } catch {
@@ -211,7 +213,10 @@ function golfTables(uid: string): Record<string, Row[]> {
 function tables(uid: string): Record<string, Row[]> {
   const s = load();
   const g = golfTables(uid);
+  // La liga de natación ficticia (demoSwim.ts): sus tablas propias y sus filas de liga, jugadores y encuentros.
+  const { leagues: swimLeagues = [], memberships: swimMembers = [], players: swimPlayers = [], events: swimEvents = [], ...swim } = swimTables(uid);
   return {
+    ...swim,
     golf_courses: g.golf_courses,
     golf_rounds: g.golf_rounds,
     golf_tournaments: g.golf_tournaments,
@@ -237,13 +242,15 @@ function tables(uid: string): Record<string, Row[]> {
         created_at: iso(-60 * 86_400_000),
       },
       ...g.golfLeague,
+      ...swimLeagues,
     ],
-    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }, ...g.golfMember],
+    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }, ...g.golfMember, ...swimMembers],
     players: [
       { id: ME_PLAYER, league_id: DEMO_LEAGUE, user_id: uid, name: 'Juan Pérez', average_override: null, is_minor: false },
       { id: OTHER, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugador Uno', average_override: null, is_minor: false },
       { id: THIRD, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugadora Dos', average_override: null, is_minor: false },
       ...g.golfPlayers,
+      ...swimPlayers,
     ],
     events: [
       practice(PAST[0], dayAgo(14)),
@@ -267,6 +274,7 @@ function tables(uid: string): Record<string, Row[]> {
         created_at: iso(-86_400_000),
       },
       ...g.golfEvents,
+      ...swimEvents,
     ],
     entries: [...PAST_ENTRIES, ...s.entries],
     submissions: s.submissions,
@@ -281,7 +289,7 @@ function tables(uid: string): Record<string, Row[]> {
 
 type Filter = { col: string; op: string; value: unknown };
 
-/** Las filas de una tabla de la liga ficticia con los filtros más comunes (eq e in); null si no es de la liga. */
+/** Las filas de una tabla de la liga ficticia con los filtros más comunes (eq, in y gt); null si no es de la liga. */
 export function demoLeagueSelect(uid: string, table: string, filters: readonly Filter[] = []): Row[] | null {
   const all = tables(uid)[table];
   if (!all) return null;
@@ -289,6 +297,7 @@ export function demoLeagueSelect(uid: string, table: string, filters: readonly F
     filters.every((f) => {
       if (f.op === 'eq') return r[f.col] === f.value;
       if (f.op === 'in') return Array.isArray(f.value) && f.value.includes(r[f.col]);
+      if (f.op === 'gt') return typeof r[f.col] === 'number' && (r[f.col] as number) > (f.value as number);
       return true;
     }),
   );
@@ -300,6 +309,8 @@ const OTHER_LEAGUE = '00000000-0000-7000-8000-00000000f002';
 
 /** Las RPC de la liga ficticia: enviar, aprobar, rechazar y la invitación. undefined si no es de la liga. */
 export function demoLeagueRpc(uid: string, fn: string, a: Record<string, unknown>): unknown {
+  const swim = swimRpc(uid, fn, a);
+  if (swim !== undefined) return swim;
   if (fn === 'invite_preview' || fn === 'invite_details') {
     if (a.p_code !== DEMO_CODE) return null;
     if (fn === 'invite_preview') return [{ league_id: OTHER_LEAGUE, name: 'Liga de los Jueves', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null }];

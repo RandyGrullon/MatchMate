@@ -4,6 +4,7 @@ import { useLeague } from '@mm/lib/data';
 import { useMembership } from '@mm/lib/data/members';
 import { BowlingRanking } from '@/components/bowling/BowlingRanking';
 import { GolfStandings } from '@/components/golf/GolfStandings';
+import { SwimStandings } from '@/components/swimming/SwimStandings';
 import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketStandings } from '@/components/racket/RacketStandings';
@@ -26,6 +27,17 @@ export default function LeagueTableScreen() {
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
         <LeagueScope lid={lid}>
           <GolfStandings />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  // La natación: los puntos por club de la temporada.
+  if (sport === 'swimming') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <SwimStandings />
         </LeagueScope>
       </Screen>
     );

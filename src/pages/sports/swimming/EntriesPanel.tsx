@@ -9,7 +9,6 @@ import {
   type SwimEntry,
   type SwimEventItem,
   type SwimmerInfo,
-  type SwimmerPrivate,
 } from '../../../lib/data/swimming';
 import { usePlayers } from '../../../lib/data';
 import { useBusy } from '../../../components/busy';
@@ -18,10 +17,8 @@ import { Badge, Button, Card, Input, Modal, cx } from '../../../components/ui';
 import { TuTag } from '../../../components/ranking/parts';
 import { EmptyCard } from '../FieldChrome';
 import { ClubTag, SeedField, TimeText, useSwim } from './bits';
-import { canEnter, groupForMeet, groupLabel, raceDetail, raceName } from './logic';
+import { bySeed, canEnterSome, canManageEntry, enterCandidates, groupLabel, raceDetail, raceName, type EnterCandidate } from './logic';
 import type { MeetData } from './MeetPage';
-
-const bySeed = (a: SwimEntry, b: SwimEntry) => (a.seed ?? Infinity) - (b.seed ?? Infinity);
 
 /**
  * Inscritos por prueba, con su tiempo de siembra. Inscriben: el admin (a cualquiera), el entrenador (a los de su
@@ -40,8 +37,8 @@ export function EntriesPanel({ data }: { data: MeetData }) {
   // La inscripción que se está sacando: la ruedita en su botón.
   const removing = useBusy();
   const closed = !!meet.finalizedAt;
-  const canEnterAny = !closed && (isAdmin || coachOf.size > 0 || !!myPlayerId);
-  const mayManage = (e: SwimEntry) => isAdmin || e.playerId === myPlayerId || (!!e.clubId && coachOf.has(e.clubId));
+  const who = { isAdmin, myPlayerId, coachOf };
+  const canEnterAny = canEnterSome(closed, who);
 
   if (!events.length) return <EmptyCard icon={<Users className="size-5" />} title="Todavía no hay pruebas" text="Primero se arma el programa." />;
 
@@ -99,7 +96,7 @@ export function EntriesPanel({ data }: { data: MeetData }) {
               <div className="border-t border-line">
                 {!list.length && <p className="px-5 py-3.5 text-sm text-muted">Nadie inscrito todavía.</p>}
                 {list.map((e) => {
-                  const manage = !closed && mayManage(e) && e.resultAt == null && e.time == null;
+                  const manage = canManageEntry(e, closed, who);
                   const me = !!myPlayerId && e.playerId === myPlayerId;
                   return (
                     <div key={e.id} className={cx('mm-row relative flex min-h-row-pro items-center gap-2 py-2 pr-2 pl-5', me && 'mm-row-me bg-accent-soft')}>
@@ -206,15 +203,6 @@ function SeedModal({ data, entry, onClose }: { data: MeetData; entry: SwimEntry 
   );
 }
 
-interface Candidate {
-  playerId: string;
-  name: string;
-  info: SwimmerInfo | undefined;
-  priv: SwimmerPrivate | undefined;
-  group: string | null;
-  ok: boolean;
-}
-
 /** Elegir nadadores para una prueba, cada uno con su tiempo de siembra. */
 function EnterModal({ data, ev, info, onClose }: { data: MeetData; ev: SwimEventItem; info: Map<string, SwimmerInfo>; onClose: () => void }) {
   const { isAdmin, coachOf, myPlayerId } = useSwim();
@@ -229,18 +217,10 @@ function EnterModal({ data, ev, info, onClose }: { data: MeetData; ev: SwimEvent
   const entered = useMemo(() => new Set(entries.filter((e) => e.swimEventId === ev.id).map((e) => e.playerId)), [entries, ev.id]);
   const privBy = useMemo(() => new Map(priv.data.map((p) => [p.playerId, p] as const)), [priv.data]);
 
-  const candidates: Candidate[] = useMemo(() => {
-    return players.data
-      .filter((p) => !entered.has(p.id))
-      .filter((p) => isAdmin || p.id === myPlayerId || (!!info.get(p.id)?.clubId && coachOf.has(info.get(p.id)!.clubId!)))
-      .map((p) => {
-        const i = info.get(p.id);
-        const pr = privBy.get(p.id);
-        const group = groupForMeet(meet.date, meet.ageGroups, { birthYear: pr?.birthYear, category: i?.category, categoryYear: i?.categoryYear });
-        return { playerId: p.id, name: p.name, info: i, priv: pr, group, ok: canEnter(ev, { sex: pr?.sex ?? null, group }) };
-      })
-      .sort((a, b) => Number(b.ok) - Number(a.ok) || a.name.localeCompare(b.name));
-  }, [players.data, entered, isAdmin, myPlayerId, info, coachOf, privBy, meet.date, meet.ageGroups, ev]);
+  const candidates: EnterCandidate[] = useMemo(
+    () => enterCandidates({ players: players.data, entered, who: { isAdmin, myPlayerId, coachOf }, info, privBy, meet, ev }),
+    [players.data, entered, isAdmin, myPlayerId, info, coachOf, privBy, meet, ev],
+  );
 
   const needle = q.trim().toLowerCase();
   const shown = candidates.filter((c) => c.ok && (!needle || c.name.toLowerCase().includes(needle)));

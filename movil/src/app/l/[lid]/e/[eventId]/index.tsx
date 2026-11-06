@@ -13,6 +13,7 @@ import { ApprovalCard } from '@/components/bowling/ApprovalCard';
 import { EventBoard } from '@/components/bowling/EventBoard';
 import { LaneChip } from '@/components/bowling/LaneChip';
 import { GolfEventBody } from '@/components/golf/GolfEvent';
+import { SwimEventBody } from '@/components/swimming/SwimEvent';
 import { leagueSport } from '@mm/sports/registry';
 import { BackBar, Badge, Button, Card, Empty, Loading, Screen, Txt } from '@/components/ui';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
@@ -71,7 +72,16 @@ export default function EventScreen() {
       </Screen>
     );
   }
-  // Lo que la app todavía no tiene (natación, equipos, esports): la web. El boliche, aquí abajo.
+  if (league.data && leagueSport(league.data) === 'swimming') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <SwimEventBody eventId={eventId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  // Lo que la app todavía no tiene (equipos, esports): la web. El boliche, aquí abajo.
   if (league.data && leagueSport(league.data) !== 'bowling') {
     // Los eventos de equipos (jornadas especiales, el torneo relámpago) y de esports: por ahora en la web.
     return (

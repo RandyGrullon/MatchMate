@@ -131,7 +131,24 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   temporadas, el perfil de golf del jugador y lo del admin en la tarjeta.
 - Para probar golf sin cuenta: la demostración (`/dev/empresa`) trae «Golf de Ejemplo» (ronda en juego hoy y una
   cerrada; `demoLeague.ts`).
-- ⏳ Natación: competencias, series, cronómetro, resultados.
+- ✅ Natación, inicio de la liga (`movil/src/components/swimming/SwimHome.tsx`, Lite de la web): el próximo encuentro
+  con su aviso y «Cronometrar» (quien cronometra), tus marcas con «Ver todas», próximos encuentros y anteriores; arriba,
+  Puntos y Mis marcas.
+- ✅ Natación, el encuentro (`/l/<liga>/e/<evento>`, `SwimEvent.tsx`, `meetTabs` de la web): Pruebas (inscribirse uno
+  mismo, o el entrenador a su club; cambiar la siembra o salirse), Series y Resultados; con `?ver=` (un link de Pro para
+  quien organiza o cronometra) también Programa, Inscritos, Cronometrar y Puntos, solo para mirar lo del admin.
+  - Cronometrar (`SwimTiming.tsx`, la lógica de `timing.ts` de la web): la prueba y la serie, SALIDA, STOP por carril,
+    escribir el tiempo con el teclado, DQ/DNS/DNF, deshacer y «Publicar serie»; luego pasa a la serie que sigue. La
+    pantalla no se apaga mientras se cronometra.
+- ✅ Natación, Puntos de la temporada por club (`/l/<liga>/tabla`, `SwimStandings.tsx`) y Mis marcas
+  (`/l/<liga>/perfil`) o un nadador (`/l/<liga>/j/<jugador>`): marcas personales por piscina, cómo fue bajando, lo
+  nadado y los nadadores de tu club si lo entrenas.
+- 🌐 Natación: crear y cambiar encuentros, Admin › Clubes y Nadadores, registrar un nadador, cronometristas,
+  finalizar o volver a abrir, borrar, armar el programa y las series (mover carriles y publicar), inscribir a
+  cualquiera, el reporte (PDF o Excel), transmitir y «Ver en vivo», premios del encuentro, compartir las imágenes, el
+  modo piscina, la tabla completa de Pro y las temporadas cerradas.
+- Para probar natación sin cuenta: la demostración trae «Natación de Ejemplo» (`movil/src/platform/demoSwim.ts`: el
+  festival de hoy con la hoja de series, dos encuentros finalizados y uno próximo).
 - ⏳ Esports: juegos, IDs de juego, equipos, torneos (cuadros, battle royale), inscripciones.
 
 ## 7. Social

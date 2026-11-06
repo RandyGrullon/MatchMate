@@ -3,16 +3,13 @@ import { Link, useNavigate } from 'react-router';
 import { ChevronRight, Megaphone, Plus, Timer, Trophy, Waves } from 'lucide-react';
 import { useSwimHistory, useSwimMeets, useSwimRules, type SwimMeet } from '../../../lib/data/swimming';
 import { formatDate, toIsoDate } from '../../../lib/format';
-import { formatTime } from '../../../lib/schedule';
 import { useNow } from '../../../lib/useNow';
-import { personalBests, STROKE_LABEL, type PersonalBest } from '../../../sports/swimming';
-import { eventDay } from '../../../components/event/EventHeader';
-import { weekdayLabel } from '../../../components/home/logic';
+import { STROKE_LABEL, type PersonalBest } from '../../../sports/swimming';
 import { ActionLink, LiveDot } from '../../../components/home/TodayCard';
 import { Button, Card, DateBlock, ListRow, ListSkeleton, LoadError, PageSkeleton, SectionHeader, cx } from '../../../components/ui';
 import { EmptyCard, SectionAdd, SectionLink, ShowMore } from '../FieldChrome';
 import { TimeText, meetTitle, useSwim } from './bits';
-import { STAGE_LABEL, meetStage } from './logic';
+import { latestBests, meetRowLine, nextMeetView } from './home';
 import { MeetFormModal } from './MeetFormModal';
 import MeetPage from './MeetPage';
 
@@ -98,18 +95,9 @@ function MeetList({ meets, today }: { meets: readonly SwimMeet[]; today: string 
   const { base } = useSwim();
   return (
     <Card className="overflow-hidden">
-      {meets.map((m) => {
-        const ahead = m.date >= today;
-        const line = [
-          ahead ? weekdayLabel(m.date, today) : null,
-          ahead && m.startTime ? formatTime(m.startTime.slice(0, 5)) : null,
-          m.type === 'control' ? 'Control de marcas' : `Piscina ${m.pool} m`,
-          STAGE_LABEL[meetStage(m, 1)],
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        return <ListRow key={m.id} leading={<DateBlock date={m.date} />} title={meetTitle(m)} subtitle={line} to={`${base}/e/${m.id}`} />;
-      })}
+      {meets.map((m) => (
+        <ListRow key={m.id} leading={<DateBlock date={m.date} />} title={meetTitle(m)} subtitle={meetRowLine(m, today)} to={`${base}/e/${m.id}`} />
+      ))}
     </Card>
   );
 }
@@ -120,18 +108,7 @@ function MeetList({ meets, today }: { meets: readonly SwimMeet[]; today: string 
  */
 function NextMeetCard({ meet, today }: { meet: SwimMeet; today: string }) {
   const { base, isTimer } = useSwim();
-  const isToday = meet.date === today;
-  const time = meet.startTime ? formatTime(meet.startTime.slice(0, 5)) : '';
-  const when = isToday ? (time ? `Hoy · ${time}` : 'Hoy') : 'Próximo encuentro';
-  const line = [
-    isToday ? null : eventDay(meet.date, today),
-    isToday ? null : time || null,
-    meet.type === 'control' ? 'Control de marcas' : `Piscina ${meet.pool} m`,
-    STAGE_LABEL[meetStage(meet, 1)],
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const timing = isToday && isTimer && !!meet.heatsPublishedAt && !meet.finalizedAt;
+  const { isToday, when, line, timing } = nextMeetView(meet, today, isTimer);
   return (
     <Card soft={isToday} className="pt-[18px] pr-[18px] pb-[18px] pl-5">
       <section aria-label={`${meetTitle(meet)}: ${when}`}>
@@ -169,7 +146,7 @@ function NextMeetCard({ meet, today }: { meet: SwimMeet; today: string }) {
 function MyBestsCard({ playerId }: { playerId: string }) {
   const { lid, base } = useSwim();
   const history = useSwimHistory(lid, playerId);
-  const bests = useMemo(() => personalBests(history.data).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4), [history.data]);
+  const bests = useMemo(() => latestBests(history.data), [history.data]);
   if (!bests.length) return null;
   return (
     <section aria-labelledby="natacion-marcas">

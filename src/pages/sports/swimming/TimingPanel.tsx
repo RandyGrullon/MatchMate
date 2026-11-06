@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, RotateCcw, Send, Timer, Undo2 } from 'lucide-react';
 import { useWakeLock } from '../../../court';
 import { useHoldBadgeUnlock } from '../../../components/badges/hold';
-import { recordHeat, type SwimEntry, type SwimEventItem } from '../../../lib/data/swimming';
+import { recordHeat, type SwimEventItem } from '../../../lib/data/swimming';
 import { formatSwimTime, type SwimStatus } from '../../../sports/swimming';
 import { saveErrorMessage, useFeedback } from '../../../components/feedback';
 import { PillSelect } from '../../../components/ranking/parts';
@@ -10,32 +10,33 @@ import { Badge, Button, Card, cx } from '../../../components/ui';
 import { EmptyCard, STICKY_ABOVE_NAV } from '../FieldChrome';
 import { FieldModeButton, FieldScreen, useFieldMode } from '../golf/FieldScreen';
 import { ClubTag, TimeKeypad, TimeText } from './bits';
-import { groupLabel, pendingHeats, raceName, raceTitle } from './logic';
+import { groupLabel, hasResult, raceName, raceTitle } from './logic';
 import type { MeetData } from './MeetPage';
 import {
   applyTiming,
   elapsedCs,
+  firstPendingHeat,
+  hasWatchStops,
+  heatHasResults,
+  heatLanes,
   heatOrder,
-  laneDone,
-  laneValue,
+  heatResults,
+  heatsOf,
+  laneValues,
   loadTiming,
+  missingLanes,
+  nextHeat,
   replayTiming,
+  resolveHeat,
   saveTiming,
+  stopPending,
   sweepTimings,
+  timingEventLabel,
   timingKey,
-  type LaneValue,
+  toggledStatus,
+  type HeatRef,
   type TimingEvent,
 } from './timing';
-
-interface HeatRef {
-  ev: string;
-  heat: number;
-}
-
-const heatsOf = (ev: SwimEventItem, entries: readonly SwimEntry[]) =>
-  [...new Set(entries.filter((e) => e.swimEventId === ev.id && e.heat != null).map((e) => e.heat!))].sort((a, b) => a - b);
-
-const hasResult = (e: SwimEntry) => e.resultAt != null || e.time != null || e.status !== 'ok';
 
 /** El modo piscina: pantalla completa (en la dirección, `?piscina=1`) con la pestaña de cronometrar. */
 type FieldMode = ReturnType<typeof useFieldMode>;
@@ -62,49 +63,27 @@ export function TimingPanel({ data }: { data: MeetData }) {
   useEffect(() => sweepTimings(), []);
 
   /** Al abrir: la primera serie que falta por cronometrar. Después no se mueve sola (aunque otro publique). */
-  const firstPending = (): HeatRef | null => {
-    for (const ev of seeded) {
-      const p = pendingHeats(ev, entries);
-      if (p.length) return { ev: ev.id, heat: p[0] };
-    }
-    return seeded[0] ? { ev: seeded[0].id, heat: heatsOf(seeded[0], entries)[0] } : null;
-  };
-  const auto = firstPending();
+  const auto = firstPendingHeat(seeded, entries);
   useEffect(() => {
     if (!sel && auto) setSel(auto);
   }, [sel, auto?.ev, auto?.heat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!seeded.length || !auto) return <EmptyCard icon={<Timer className="size-5" />} title="No hay series publicadas" text="Primero se publica la hoja de series." />;
 
-  const cur = sel && seeded.some((e) => e.id === sel.ev) ? sel : auto;
-  const ev = seeded.find((e) => e.id === cur.ev)!;
-  const heats = heatsOf(ev, entries);
-  const heat = heats.includes(cur.heat) ? cur.heat : heats[0];
-
-  /** La serie que sigue (en la misma prueba o la primera de la siguiente). */
-  const next = (): HeatRef | null => {
-    const k = heats.indexOf(heat);
-    if (k >= 0 && k < heats.length - 1) return { ev: ev.id, heat: heats[k + 1] };
-    const i = seeded.findIndex((e) => e.id === ev.id);
-    const after = seeded[i + 1];
-    return after ? { ev: after.id, heat: heatsOf(after, entries)[0] } : null;
-  };
+  const { ev, heats, heat } = resolveHeat(seeded, entries, sel, auto);
 
   const selectors = (
     <>
       <PillSelect
         label="Prueba"
         className="max-w-full self-start"
-        options={seeded.map((e) => ({
-          key: e.id,
-          label: `${e.num}. ${raceName(e)} · ${e.gender === 'F' ? 'Fem.' : e.gender === 'M' ? 'Masc.' : 'Mixto'}${pendingHeats(e, entries).length === 0 ? ' ✓' : ''}`,
-        }))}
+        options={seeded.map((e) => ({ key: e.id, label: timingEventLabel(e, entries) }))}
         value={ev.id}
         onChange={(id) => setSel({ ev: id, heat: heatsOf(seeded.find((x) => x.id === id)!, entries)[0] })}
       />
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Serie">
         {heats.map((h) => {
-          const done = entries.some((e) => e.swimEventId === ev.id && e.heat === h && hasResult(e));
+          const done = heatHasResults(ev.id, h, entries);
           return (
             <button
               key={h}
@@ -135,7 +114,7 @@ export function TimingPanel({ data }: { data: MeetData }) {
       field={field}
       selectors={selectors}
       onDone={() => {
-        const n = next();
+        const n = nextHeat(seeded, entries, ev, heat);
         if (n) setSel(n);
       }}
     />
@@ -208,17 +187,10 @@ function HeatTimer({
     saveTiming(key, log, publishedAt);
   }, [key, log, publishedAt]);
 
-  const lanes = useMemo(
-    () =>
-      entries
-        .filter((e) => e.swimEventId === ev.id && e.heat === heat)
-        .sort((a, b) => (a.lane ?? 0) - (b.lane ?? 0)),
-    [entries, ev.id, heat],
-  );
-  const values: Record<number, LaneValue> = {};
-  for (const e of lanes) values[e.lane!] = laneValue(hasResult(e) ? { time: e.time, status: e.status } : undefined, state.lanes[e.lane!]);
+  const lanes = useMemo(() => heatLanes(entries, ev.id, heat), [entries, ev.id, heat]);
+  const values = laneValues(lanes, state);
   const order = heatOrder(values);
-  const missing = lanes.filter((e) => !laneDone(values[e.lane!]));
+  const missing = missingLanes(lanes, values);
   const onServer = lanes.some(hasResult);
 
   const push = (ev: TimingEvent) => {
@@ -231,10 +203,10 @@ function HeatTimer({
     // Funcional: dos STOP casi juntos no se pisan.
     setLog((prev) => [...prev, ev]);
   };
-  const setStatus = (lane: number, s: SwimStatus) => push({ t: 'status', lane, status: values[lane]?.status === s ? 'ok' : s });
+  const setStatus = (lane: number, s: SwimStatus) => push({ t: 'status', lane, status: toggledStatus(values[lane], s) });
 
   const reset = async () => {
-    if (Object.values(state.lanes).some((l) => l.source === 'watch') && !(await confirm({ title: '¿Poner el cronómetro en cero?', message: 'Se borran los STOP de esta serie (los tiempos escritos a mano se quedan).', confirmText: 'Poner en cero', danger: true })))
+    if (hasWatchStops(state) && !(await confirm({ title: '¿Poner el cronómetro en cero?', message: 'Se borran los STOP de esta serie (los tiempos escritos a mano se quedan).', confirmText: 'Poner en cero', danger: true })))
       return;
     push({ t: 'reset' });
   };
@@ -249,9 +221,7 @@ function HeatTimer({
       }))
     )
       return;
-    const results = lanes
-      .filter((e) => laneDone(values[e.lane!]) || hasResult(e))
-      .map((e) => ({ entryId: e.id, time: values[e.lane!].status === 'dns' || values[e.lane!].status === 'dnf' ? null : values[e.lane!].time, status: values[e.lane!].status }));
+    const results = heatResults(lanes, values);
     if (!results.length) return;
     setBusy(true);
     try {
@@ -303,7 +273,7 @@ function HeatTimer({
         {lanes.map((e) => {
           const lane = e.lane!;
           const v = values[lane];
-          const watchPending = running && state.lanes[lane]?.source !== 'watch' && v.status !== 'dns';
+          const watchPending = stopPending(state, lane, v);
           return (
             <Card key={e.id} className={cx('flex flex-col gap-2.5 p-3.5', v.status !== 'ok' && 'border-warn')}>
               <div className="flex items-center gap-3">

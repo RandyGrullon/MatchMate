@@ -8,7 +8,9 @@ import {
   GENDER_LABEL,
   STROKE_LABEL,
   defaultPoints,
+  formatSwimTime,
   mastersAgeGroups,
+  parseSwimTime,
   medalTable,
   placeResults,
   seedHeats,
@@ -22,7 +24,18 @@ import {
   type SwimStroke,
   type TeamScore,
 } from '../../../sports/swimming';
-import type { AgeScheme, SwimEntry, SwimEventItem, SwimEventInput, SwimMeet, SwimSeason } from '../../../lib/data/swimming';
+import type { AgeScheme, SwimClub, SwimEntry, SwimEventItem, SwimEventInput, SwimMeet, SwimSeason, SwimmerInfo, SwimmerPrivate } from '../../../lib/data/swimming';
+
+/** Lo que comparten las pestañas del encuentro (MeetPage; también la app del teléfono). */
+export interface MeetData {
+  lid: string;
+  meet: SwimMeet;
+  events: SwimEventItem[];
+  entries: SwimEntry[];
+  clubs: Map<string, SwimClub>;
+  clubList: SwimClub[];
+  name: (playerId: string) => string;
+}
 
 // ---------- Categorías ----------
 
@@ -169,7 +182,8 @@ export function toResult(e: SwimEntry, ev: Pick<SwimEventItem, 'gender'>): Resul
   };
 }
 
-const hasResult = (e: SwimEntry) => e.resultAt != null || e.time != null || e.status !== 'ok';
+/** La inscripción ya tiene resultado (un tiempo, o DQ, DNS, DNF). */
+export const hasResult = (e: SwimEntry) => e.resultAt != null || e.time != null || e.status !== 'ok';
 
 export interface ResultGroup {
   /** «Femenino · 9-10». */
@@ -195,6 +209,11 @@ export function eventResults(ev: SwimEventItem, entries: readonly SwimEntry[], t
     return i < 0 ? 999 : i;
   };
   return [...groups.values()].sort((a, b) => order(a.ageGroup) - order(b.ageGroup) || a.gender.localeCompare(b.gender));
+}
+
+/** Las pruebas que ya tienen resultados, cada una con sus categorías (la pestaña Resultados). */
+export function resultsByEvent(events: readonly SwimEventItem[], entries: readonly SwimEntry[], table: readonly number[]): { ev: SwimEventItem; groups: ResultGroup[] }[] {
+  return events.map((ev) => ({ ev, groups: eventResults(ev, entries, table) })).filter((x) => x.groups.length > 0);
 }
 
 /** Todas las filas con puesto de un encuentro (cada prueba con su tabla de puntos). */
@@ -258,6 +277,19 @@ export function seasonTable(season: SwimSeason, year?: string, within?: (date: s
   clubs.forEach((c, k) => (c.rank = k > 0 && c.points === clubs[k - 1].points ? clubs[k - 1].rank : k + 1));
   return { meets: counted, clubs };
 }
+
+/** Los años con encuentros (el más nuevo primero): la temporada de una liga sin temporadas. */
+export const seasonYears = (season: Pick<SwimSeason, 'meets'>) => [...new Set(season.meets.map((m) => m.date.slice(0, 4)))].sort().reverse();
+
+/** Los clubes que sumaron en un encuentro de la temporada, del que más sumó al que menos. */
+export const clubsOfMeet = (clubs: readonly SeasonClub[], meetId: string) =>
+  clubs.filter((c) => c.byMeet[meetId] != null).sort((a, b) => b.byMeet[meetId] - a.byMeet[meetId]);
+
+/** Puntos para mostrar: «6», «4,5». */
+export const pointsText = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
+
+/** Un porcentaje para mostrar: «1,25 %». */
+export const pctText = (n: number) => `${n.toFixed(2).replace('.', ',')} %`;
 
 // ---------- Hoja de series ----------
 
@@ -369,4 +401,127 @@ export function groupForMeet(
     return ageGroupsOf(scheme).find((g) => (g.min == null || age >= g.min) && (g.max == null || age <= g.max))?.id ?? null;
   }
   return info.categoryYear === year ? (info.category ?? null) : null;
+}
+
+/** Inscritos de una prueba por su siembra (los NT al final). */
+export const bySeed = (a: SwimEntry, b: SwimEntry) => (a.seed ?? Infinity) - (b.seed ?? Infinity);
+
+/** Quién inscribe y cambia inscripciones: el admin (a cualquiera), el entrenador (a los de su club) y quien nada con cuenta (a sí mismo). */
+export interface EntryWho {
+  isAdmin: boolean;
+  myPlayerId: string | null;
+  coachOf: ReadonlySet<string>;
+}
+
+/** ¿Puede inscribir a alguien en el encuentro? (cerrado, nadie). */
+export const canEnterSome = (closed: boolean, who: EntryWho) => !closed && (who.isAdmin || who.coachOf.size > 0 || !!who.myPlayerId);
+
+/** ¿Puede cambiar la siembra o sacar a este inscrito? Solo antes de que nade y con el encuentro abierto. */
+export const canManageEntry = (e: Pick<SwimEntry, 'playerId' | 'clubId' | 'resultAt' | 'time'>, closed: boolean, who: EntryWho) =>
+  !closed && (who.isAdmin || e.playerId === who.myPlayerId || (!!e.clubId && who.coachOf.has(e.clubId))) && e.resultAt == null && e.time == null;
+
+export interface EnterCandidate {
+  playerId: string;
+  name: string;
+  info: SwimmerInfo | undefined;
+  priv: SwimmerPrivate | undefined;
+  group: string | null;
+  /** Cumple el sexo y la categoría de la prueba (lo que se sabe en el teléfono). */
+  ok: boolean;
+}
+
+/**
+ * A quién puede inscribir en una prueba (sin los que ya están en ella), con su categoría del encuentro: primero los que
+ * cumplen el sexo y la categoría, por nombre.
+ */
+export function enterCandidates(o: {
+  players: readonly { id: string; name: string }[];
+  entered: ReadonlySet<string>;
+  who: EntryWho;
+  info: ReadonlyMap<string, SwimmerInfo>;
+  privBy: ReadonlyMap<string, SwimmerPrivate>;
+  meet: Pick<SwimMeet, 'date' | 'ageGroups'>;
+  ev: Pick<SwimEventItem, 'gender' | 'ageGroups'>;
+}): EnterCandidate[] {
+  const { players, entered, who, info, privBy, meet, ev } = o;
+  return players
+    .filter((p) => !entered.has(p.id))
+    .filter((p) => who.isAdmin || p.id === who.myPlayerId || (!!info.get(p.id)?.clubId && who.coachOf.has(info.get(p.id)!.clubId!)))
+    .map((p) => {
+      const i = info.get(p.id);
+      const pr = privBy.get(p.id);
+      const group = groupForMeet(meet.date, meet.ageGroups, { birthYear: pr?.birthYear, category: i?.category, categoryYear: i?.categoryYear });
+      return { playerId: p.id, name: p.name, info: i, priv: pr, group, ok: canEnter(ev, { sex: pr?.sex ?? null, group }) };
+    })
+    .sort((a, b) => Number(b.ok) - Number(a.ok) || a.name.localeCompare(b.name));
+}
+
+/** Lo escrito en el campo de siembra: centésimas (vacío = NT, null) y si no se entiende. */
+export function readSeed(text: string): { cs: number | null; invalid: boolean } {
+  const t = text.trim();
+  const cs = t ? parseSwimTime(t) : null;
+  return { cs, invalid: t !== '' && cs == null };
+}
+
+/** El texto del campo de siembra cuando cambia el tiempo de afuera: si ya dice ese tiempo, se deja como se escribió. */
+export const seedText = (current: string, value: number | null) => (parseSwimTime(current) === value ? current : value ? formatSwimTime(value) : '');
+
+// ---------- Las partes del encuentro ----------
+
+export type MeetTabKey = 'programa' | 'inscritos' | 'series' | 'cronometro' | 'resultados' | 'puntos';
+
+export const MEET_TAB_LABEL: Record<MeetTabKey, string> = {
+  programa: 'Programa',
+  inscritos: 'Inscritos',
+  series: 'Series',
+  cronometro: 'Cronometrar',
+  resultados: 'Resultados',
+  puntos: 'Puntos',
+};
+
+/**
+ * Qué partes tiene el encuentro y cuál se ve (MeetPage):
+ * - Lite: Pruebas (inscribirse) · Series (publicadas) · Resultados.
+ * - Pro: Programa, Inscritos, Series (publicadas, o para el admin), Cronometrar (admin y cronometristas, con las series
+ *   publicadas y el encuentro abierto), Resultados y Puntos (si el encuentro da puntos).
+ * - En Lite, un link de Pro (`?ver=`, p. ej. cronometrar) para quien organiza o cronometra abre lo de Pro igual (`pro`).
+ * Sin pedir una parte: cronometrar si falta (Pro y cronometrista), resultados si hay, las series si están, y si no el
+ * programa (Pro) o las pruebas (Lite).
+ */
+export function meetTabs(o: {
+  meet: Pick<SwimMeet, 'type' | 'heatsPublishedAt' | 'finalizedAt'>;
+  events: readonly SwimEventItem[];
+  entries: readonly SwimEntry[];
+  isPro: boolean;
+  isAdmin: boolean;
+  isTimer: boolean;
+  /** La parte pedida (`?ver=`). */
+  requested: string | null;
+}): { tabs: { key: MeetTabKey; label: string }[]; tab: MeetTabKey; pro: boolean; timing: boolean } {
+  const { meet, events, entries, isPro, isAdmin, isTimer } = o;
+  const requested = o.requested as MeetTabKey | null;
+  const published = !!meet.heatsPublishedAt;
+  const hasResults = entries.some((e) => e.resultAt != null);
+  const toTime = published && events.some((ev) => pendingHeats(ev, entries).length > 0);
+  const timing = isTimer && published && !meet.finalizedAt;
+  const proKeys: MeetTabKey[] = [
+    'programa',
+    'inscritos',
+    ...(published || isAdmin ? ['series' as const] : []),
+    ...(timing ? ['cronometro' as const] : []),
+    'resultados',
+    ...(scores(meet) ? ['puntos' as const] : []),
+  ];
+  // Lite: lo del nadador (inscribirse, su serie y carril, los resultados).
+  const liteTabs: { key: MeetTabKey; label: string }[] = [
+    { key: 'inscritos', label: 'Pruebas' },
+    ...(published ? [{ key: 'series' as const, label: 'Series' }] : []),
+    { key: 'resultados', label: 'Resultados' },
+  ];
+  // Pro, o un link de Pro (cronometrar, el programa) para quien organiza o cronometra: lo de Pro se abre igual.
+  const pro = isPro || (isTimer && !!requested && proKeys.includes(requested) && !liteTabs.some((t) => t.key === requested));
+  const tabs = pro ? proKeys.map((key) => ({ key, label: MEET_TAB_LABEL[key] })) : liteTabs;
+  const fallback: MeetTabKey = pro && isTimer && toTime && !meet.finalizedAt ? 'cronometro' : hasResults ? 'resultados' : published ? 'series' : pro ? 'programa' : 'inscritos';
+  const tab: MeetTabKey = requested && tabs.some((t) => t.key === requested) ? requested : tabs.some((t) => t.key === fallback) ? fallback : tabs[0].key;
+  return { tabs, tab, pro, timing };
 }

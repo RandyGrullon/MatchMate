@@ -9,10 +9,8 @@ import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../compon
 import { Badge, Card, DateBlock, ListRow, ListSkeleton, LoadError, SectionHeader } from '../../../components/ui';
 import { EmptyCard, ShowMore } from '../FieldChrome';
 import { ClubTag, clubMap, meetTitle, useSwim } from './bits';
-import { seasonTable } from './logic';
+import { clubsOfMeet, pointsText as pts, seasonTable, seasonYears } from './logic';
 import { ClubPointsCard } from './ResultsPanel';
-
-const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
 
 /**
  * Puntos por club de la temporada (rediseño «Calma y foco», como la Tabla del boliche): el título con compartir, la
@@ -26,7 +24,7 @@ export default function SwimStandings() {
   const season = useSwimSeason(lid);
   const picked = useStandingsSeason();
   const sel = picked.selected;
-  const years = useMemo(() => [...new Set(season.data.meets.map((m) => m.date.slice(0, 4)))].sort().reverse(), [season.data.meets]);
+  const years = useMemo(() => seasonYears(season.data), [season.data]);
   const [year, setYear] = useState<string | null>(null);
   const shownYear = sel ? sel.name : (year ?? years[0] ?? String(new Date().getFullYear()));
   const table = useMemo(
@@ -91,7 +89,7 @@ export default function SwimStandings() {
                 render={(shown) => (
                   <Card className="overflow-hidden">
                     {shown.map((m) => {
-                      const rows = table.clubs.filter((c) => c.byMeet[m.id] != null).sort((a, b) => b.byMeet[m.id] - a.byMeet[m.id]);
+                      const rows = clubsOfMeet(table.clubs, m.id);
                       return (
                         <ListRow
                           key={m.id}

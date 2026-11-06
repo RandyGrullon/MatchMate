@@ -25,11 +25,12 @@ export function appRoute(href: string): string | null {
   const partido = /[?&]partido=([^&]+)/.exec(query)?.[1];
   const inLeague = /^\/l\/([^/]+)/.exec(path);
   if (partido && inLeague) return `/l/${inLeague[1]}/partido/${partido}`;
-  if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path;
+  // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
+  if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
   // La tabla y los partidos de la liga (las pestañas de la web).
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
   if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}`;
-  if (/^\/l\/[^/]+\/muro$/.test(path)) return path;
+  if (/^\/l\/[^/]+\/(muro|perfil)$/.test(path)) return path;
   if (/^\/p\/[^/]+$/.test(path)) return path;
   // Dónde jugar (con su ?deporte=) y la ficha de un espacio.
   if (path === '/canchas') return path + query;

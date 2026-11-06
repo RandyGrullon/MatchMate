@@ -8,10 +8,8 @@ import { PillSelect, PosNum, TuTag } from '../../../components/ranking/parts';
 import { Card, SectionHeader, cx } from '../../../components/ui';
 import { EmptyCard } from '../FieldChrome';
 import { ClubTag, StatusBadge, TimeText, meetTitle, useSwim } from './bits';
-import { eventResults, groupLabel, meetScores, raceName, raceTitle, scores, type ResultGroup } from './logic';
+import { groupLabel, meetScores, pointsText as pts, raceName, raceTitle, resultsByEvent, scores, type ResultGroup } from './logic';
 import type { MeetData } from './MeetPage';
-
-const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
 
 /**
  * Imagen de una prueba para mandar al grupo: cada categoría con el puesto, el club, el tiempo (o DQ, «No
@@ -55,10 +53,7 @@ export function ResultsPanel({ data }: { data: MeetData }) {
   const { base, myPlayerId } = useSwim();
   const { meet, events, entries, clubs, name } = data;
   const [only, setOnly] = useState<string>('');
-  const withResults = useMemo(
-    () => events.map((ev) => ({ ev, groups: eventResults(ev, entries, meet.points) })).filter((x) => x.groups.length > 0),
-    [events, entries, meet.points],
-  );
+  const withResults = useMemo(() => resultsByEvent(events, entries, meet.points), [events, entries, meet.points]);
   const withPoints = scores(meet);
 
   if (!withResults.length) {

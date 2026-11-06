@@ -1,52 +1,17 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Delete } from 'lucide-react';
-import { useAuth } from '../../../lib/auth';
-import { usePlayers } from '../../../lib/data';
-import { useSwimClubs, type SwimClub, type SwimMeet } from '../../../lib/data/swimming';
-import { formatDate } from '../../../lib/format';
-import { useLeagueCtx } from '../../../lib/league';
-import { formatSwimTime, parseSwimTime, STATUS_LABEL, timeFromDigits, type SwimStatus } from '../../../sports/swimming';
+import type { SwimClub } from '../../../lib/data/swimming';
+import { formatSwimTime, STATUS_LABEL, timeFromDigits, type SwimStatus } from '../../../sports/swimming';
 import { Badge, Button, Input, Sheet, cx } from '../../../components/ui';
+import { readSeed, seedText } from './logic';
+import { keypadPress, keypadText } from './timing';
 
 /**
- * Piezas comunes de las pantallas de natación: quién es quién en la liga (admin, cronometrista, entrenador),
- * tiempos, estados, clubes y el teclado mm:ss.hh.
+ * Piezas comunes de las pantallas de natación: tiempos, estados, clubes y el teclado mm:ss.hh. Quién es quién en la
+ * liga (admin, cronometrista, entrenador), los nombres y el título del encuentro están en swim.ts (sin pantallas: los
+ * usa también la app del teléfono) y se re-exportan aquí.
  */
-
-/** La liga más lo propio de la natación: cronometrista (anotador de la liga) y los clubes que entrena la cuenta. */
-export function useSwim() {
-  const ctx = useLeagueCtx();
-  const { user } = useAuth();
-  const clubs = useSwimClubs(ctx.lid);
-  const uid = user?.uid ?? null;
-  const coachOf = useMemo(() => new Set(clubs.data.filter((c) => uid && c.coachId === uid).map((c) => c.id)), [clubs.data, uid]);
-  return {
-    ...ctx,
-    uid,
-    clubs,
-    /** Admin o cronometrista (el anotador de la liga): toma tiempos y publica series. */
-    isTimer: ctx.isAdmin || ctx.member?.scorer === true,
-    /** Clubes que entrena esta cuenta. */
-    coachOf,
-  };
-}
-
-/** Nombre de cada jugador de la liga (los borrados salen como «(nadador borrado)»). */
-export function useNames(lid: string) {
-  const players = usePlayers(lid);
-  return useMemo(() => {
-    const m = new Map(players.data.map((p) => [p.id, p.name] as const));
-    return { players, name: (id: string) => m.get(id) ?? '(nadador borrado)' };
-  }, [players]);
-}
-
-/** «Copa Delfín», o sin nombre: «Encuentro 10 oct 2026» / «Control de marcas 10 oct 2026». */
-export const meetTitle = (m: Pick<SwimMeet, 'type' | 'name' | 'date'>) =>
-  m.name || `${m.type === 'control' ? 'Control de marcas' : m.type === 'torneo' ? 'Torneo' : 'Encuentro'} ${formatDate(m.date)}`;
-
-export function clubMap(clubs: readonly SwimClub[]) {
-  return new Map(clubs.map((c) => [c.id, c] as const));
-}
+export { clubMap, meetTitle, useNames, useSwim } from './swim';
 
 /** Tiempo m:ss.hh (o «NT»), con cifras del mismo ancho (los grandes, con `num`). */
 export function TimeText({ cs, className, empty = 'NT' }: { cs: number | null | undefined; className?: string; empty?: string }) {
@@ -84,11 +49,11 @@ export function SeedField({
   className?: string;
   label?: string;
 }) {
-  const [text, setText] = useState(value ? formatSwimTime(value) : '');
+  const [text, setText] = useState(() => seedText('', value));
   useEffect(() => {
-    setText((t) => (parseSwimTime(t) === value ? t : value ? formatSwimTime(value) : ''));
+    setText((t) => seedText(t, value));
   }, [value]);
-  const bad = text.trim() !== '' && parseSwimTime(text) == null;
+  const bad = readSeed(text).invalid;
   return (
     <Input
       inputMode="decimal"
@@ -99,9 +64,8 @@ export function SeedField({
       className={cx('h-11 w-24 text-center tabular-nums', bad && 'border-danger', className)}
       onChange={(e) => {
         setText(e.target.value);
-        const t = e.target.value.trim();
-        const cs = t ? parseSwimTime(t) : null;
-        onChange(cs, t !== '' && cs == null);
+        const { cs, invalid } = readSeed(e.target.value);
+        onChange(cs, invalid);
       }}
     />
   );
@@ -129,8 +93,8 @@ export function TimeKeypad({
     if (open) setDigits('');
   }, [open]);
   const cs = digits ? timeFromDigits(digits) : null;
-  const shown = digits ? (cs ? formatSwimTime(cs, { full: true }) : '—') : initial ? formatSwimTime(initial, { full: true }) : '00:00.00';
-  const press = (d: string) => setDigits((x) => (x.length >= 6 ? x : (x + d).replace(/^0+/, '')));
+  const shown = keypadText(digits, initial);
+  const press = (d: string) => setDigits((x) => keypadPress(x, d));
   const key = (label: ReactNode, onClick: () => void, extra?: string, aria?: string) => (
     <button
       type="button"

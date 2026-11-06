@@ -10,11 +10,9 @@ import { Initials } from '../../../components/ranking/parts';
 import { Badge, Card, DateBlock, ListRow, ListSkeleton, LoadError, SectionHeader } from '../../../components/ui';
 import { EmptyCard, SectionAdd, ShowMore } from '../FieldChrome';
 import { ClubTag, StatusBadge, TimeText, clubMap, useNames, useSwim } from './bits';
-import { groupLabel, raceName } from './logic';
+import { groupLabel, pctText as pct, raceName } from './logic';
 import { BestTile } from './SwimHome';
 import { SwimmerFormModal } from './SwimmersAdmin';
-
-const pct = (n: number) => `${n.toFixed(2).replace('.', ',')} %`;
 
 /** Mis marcas: las del nadador de la cuenta y, si entrena un club, sus nadadores. */
 export function SwimMyProfile() {

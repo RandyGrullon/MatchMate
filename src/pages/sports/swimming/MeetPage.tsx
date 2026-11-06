@@ -1,25 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ClipboardPen, FileDown, ListChecks, Lock, LockOpen, Medal, Megaphone, Pencil, Timer, Trash2, Trophy } from 'lucide-react';
-import {
-  deleteMeet,
-  finalizeMeet,
-  useSwimEntries,
-  useSwimEvents,
-  useSwimMeets,
-  useSwimRules,
-  type SwimClub,
-  type SwimEntry,
-  type SwimEventItem,
-  type SwimMeet,
-} from '../../../lib/data/swimming';
+import { deleteMeet, finalizeMeet, useSwimEntries, useSwimEvents, useSwimMeets, useSwimRules } from '../../../lib/data/swimming';
 import { toIsoDate } from '../../../lib/format';
-import { formatTime } from '../../../lib/schedule';
 import { useNow } from '../../../lib/useNow';
 import { ReportButton } from '../../../components/tournamentReport/ReportButton';
 import { swimComp } from '../../../prizes/sports';
 import { useBusy } from '../../../components/busy';
-import { EventMenu, EventTopBar, MoreButton, eventDay, type MenuItem } from '../../../components/event/EventHeader';
+import { EventMenu, EventTopBar, MoreButton, type MenuItem } from '../../../components/event/EventHeader';
 import { LiveWatchPill } from '../../../components/live/LiveParts';
 import { useStartLive } from '../../../components/live/useStartLive';
 import { useAction, useFeedback } from '../../../components/feedback';
@@ -29,34 +17,18 @@ import { MenuSheets, ProLine, useMenuSheet } from '../FieldChrome';
 import { clubMap, meetTitle, useNames, useSwim } from './bits';
 import { EntriesPanel } from './EntriesPanel';
 import { HeatSheetPanel } from './HeatSheetPanel';
-import { STAGE_LABEL, meetStage, pendingHeats, scores } from './logic';
+import { meetMeta } from './home';
+import { STAGE_LABEL, meetStage, meetTabs, scores, type MeetData, type MeetTabKey } from './logic';
 import { MeetFormModal } from './MeetFormModal';
 import { MeetPrizes } from './MeetPrizes';
 import { ProgramPanel } from './ProgramPanel';
 import { ResultsPanel, ScoresPanel } from './ResultsPanel';
 import { TimingPanel } from './TimingPanel';
 
-/** Lo que comparten las pestañas del encuentro. */
-export interface MeetData {
-  lid: string;
-  meet: SwimMeet;
-  events: SwimEventItem[];
-  entries: SwimEntry[];
-  clubs: Map<string, SwimClub>;
-  clubList: SwimClub[];
-  name: (playerId: string) => string;
-}
+/** Lo que comparten las pestañas del encuentro (está en logic.ts: lo usa también la app del teléfono). */
+export type { MeetData };
 
-type TabKey = 'programa' | 'inscritos' | 'series' | 'cronometro' | 'resultados' | 'puntos';
-
-const TAB_LABEL: Record<TabKey, string> = {
-  programa: 'Programa',
-  inscritos: 'Inscritos',
-  series: 'Series',
-  cronometro: 'Cronometrar',
-  resultados: 'Resultados',
-  puntos: 'Puntos',
-};
+type TabKey = MeetTabKey;
 
 /**
  * Un encuentro de natación (rediseño «Calma y foco», con la forma de la práctica del boliche): «‹ Club Acuático» y «•••»
@@ -108,33 +80,10 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
 
   const data: MeetData = { lid, meet, events: events.data, entries: entries.data, clubs: clubById, clubList: clubs.data, name };
   const stage = meetStage(meet, events.data.length);
-  const published = !!meet.heatsPublishedAt;
-  const hasResults = entries.data.some((e) => e.resultAt != null);
-  const toTime = published && events.data.some((ev) => pendingHeats(ev, entries.data).length > 0);
-  const timing = isTimer && published && !meet.finalizedAt;
   const embedded = !!fixed;
   const standalone = league.kind === 'torneo';
-
-  const proKeys: TabKey[] = [
-    'programa',
-    'inscritos',
-    ...(published || isAdmin ? ['series' as const] : []),
-    ...(timing ? ['cronometro' as const] : []),
-    'resultados',
-    ...(scores(meet) ? ['puntos' as const] : []),
-  ];
-  // Lite: lo del nadador (inscribirse, su serie y carril, los resultados).
-  const liteTabs: { key: TabKey; label: string }[] = [
-    { key: 'inscritos', label: 'Pruebas' },
-    ...(published ? [{ key: 'series' as const, label: 'Series' }] : []),
-    { key: 'resultados', label: 'Resultados' },
-  ];
-  const requested = search.get('ver') as TabKey | null;
-  // Pro, o un link de Pro (cronometrar, el programa) para quien organiza o cronometra: lo de Pro se abre igual.
-  const pro = isPro || (isTimer && !!requested && proKeys.includes(requested) && !liteTabs.some((t) => t.key === requested));
-  const tabs = pro ? proKeys.map((key) => ({ key, label: TAB_LABEL[key] })) : liteTabs;
-  const fallback: TabKey = pro && isTimer && toTime && !meet.finalizedAt ? 'cronometro' : hasResults ? 'resultados' : published ? 'series' : pro ? 'programa' : 'inscritos';
-  const tab: TabKey = requested && tabs.some((t) => t.key === requested) ? requested : tabs.some((t) => t.key === fallback) ? fallback : tabs[0].key;
+  // Las partes (Lite o Pro, o un link de Pro para quien organiza o cronometra) y cuál se ve: meetTabs (logic.ts).
+  const { tabs, tab, pro, timing } = meetTabs({ meet, events: events.data, entries: entries.data, isPro, isAdmin, isTimer, requested: search.get('ver') });
   const setTab = (k: TabKey) =>
     setSearch(
       (p) => {
@@ -247,16 +196,7 @@ export default function MeetPage({ meetId: fixed }: { meetId?: string }) {
   ) : (
     <span className="shrink-0 font-semibold text-accent">{STAGE_LABEL[stage]}</span>
   );
-  const meta = [
-    eventDay(meet.date, today, isPro),
-    meet.startTime ? formatTime(meet.startTime.slice(0, 5)) : null,
-    `Piscina ${meet.pool} m`,
-    isPro ? `${meet.lanes} carriles` : null,
-    meet.type === 'control' ? 'Control de marcas' : null,
-    isPro && events.data.length ? `${events.data.length} pruebas` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const meta = meetMeta(meet, today, isPro, events.data.length);
   const metaLine = (
     <p className={cx('flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-muted', embedded ? 'flex-1' : isPro ? 'mt-1' : 'mt-1.5')}>
       {status}

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CalendarCheck, CheckCircle2, Clock, Flame, Globe, Hash, Layers, Sigma, Target, Trophy, XCircle } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { useEntriesOfEvents, useEvents, usePlayer, usePlayerEntries, usePlayerSubmissions } from '@mm/lib/data';
+import { useEntriesOfEvents, useEvents, useLeague, usePlayer, usePlayerEntries, usePlayerSubmissions } from '@mm/lib/data';
 import { useMembership } from '@mm/lib/data/members';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { averageForDay, averageSourceLabel } from '@mm/lib/bowlingSeason';
@@ -12,6 +12,9 @@ import { currentSeason, inSeason } from '@mm/lib/seasons';
 import { effectiveAverage, entryLine, eventPosition, playerStats } from '@mm/lib/stats';
 import type { Entry } from '@mm/lib/types';
 import { useNow } from '@mm/lib/useNow';
+import { leagueSport } from '@mm/sports/registry';
+import { LeagueScope } from '@/components/league/LeagueScope';
+import { SwimPlayer } from '@/components/swimming/SwimProfile';
 import { BackBar, Badge, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
@@ -23,7 +26,24 @@ import { font } from '@/theme/tokens';
  * tuyo), los torneos con su lugar, las prácticas y los números por temporada. La tendencia y el análisis por cuadros,
  * en la web.
  */
+/** Un jugador de la liga: el nadador en natación; el del boliche, aquí abajo. */
 export default function PlayerScreen() {
+  const { lid, playerId } = useLocalSearchParams<{ lid: string; playerId: string }>();
+  const league = useLeague(lid);
+  if (league.loading && !league.data) return <Loading label="Cargando el jugador" />;
+  if (league.data && leagueSport(league.data) === 'swimming') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <SwimPlayer playerId={playerId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  return <BowlingPlayerScreen />;
+}
+
+function BowlingPlayerScreen() {
   const { lid, playerId } = useLocalSearchParams<{ lid: string; playerId: string }>();
   const c = useColors();
   const auth = useAuth();

@@ -1,13 +1,16 @@
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { ListOrdered, Swords, UserRound } from 'lucide-react-native';
+import { ListOrdered, Swords, UserRound, type LucideIcon } from 'lucide-react-native';
 import { Card, Divider, ListRow, RowIcon } from '../ui';
 import { useColors } from '@/theme/theme';
 
+/** Una fila de las pestañas de la liga: su título, su ícono y a dónde lleva. */
+export type SportLink = { key: string; title: string; icon: LucideIcon; go: () => void };
+
 /** Las pestañas de la liga de la web (Partidos, Tabla, Mis partidos) como filas, arriba del inicio de la liga. */
-export function SportLinks({ lid, mine, mineLabel = 'Mis partidos' }: { lid: string; mine: boolean; mineLabel?: string }) {
+export function SportLinks({ lid, mine, mineLabel = 'Mis partidos', items }: { lid: string; mine: boolean; mineLabel?: string; items?: readonly SportLink[] }) {
   const c = useColors();
-  const rows = [
+  const rows = items ?? [
     { key: 'partidos', title: 'Partidos', icon: Swords, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid } }) },
     { key: 'tabla', title: 'Tabla', icon: ListOrdered, go: () => router.push({ pathname: '/l/[lid]/tabla', params: { lid } }) },
     ...(mine ? [{ key: 'mios', title: mineLabel, icon: UserRound, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid, ver: 'mios' } }) }] : []),

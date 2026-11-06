@@ -7,7 +7,9 @@
  * El cronómetro del teléfono NO es oficial (cada teléfono arranca el suyo con la señal de salida): la forma
  * principal es escribir el tiempo de los cronómetros físicos con el teclado mm:ss.hh.
  */
-import { officialTime, type SwimStatus } from '../../../sports/swimming';
+import type { SwimEntry, SwimEventItem } from '../../../lib/data/swimming';
+import { formatSwimTime, officialTime, timeFromDigits, type SwimStatus } from '../../../sports/swimming';
+import { hasResult, pendingHeats, raceName } from './logic';
 
 export type TimingEvent =
   /** Salida: arranca el cronómetro del teléfono (hora en ms, Date.now()). */
@@ -178,4 +180,90 @@ export function sweepTimings(now = Date.now()) {
   } catch {
     // nada
   }
+}
+
+// ---------- La serie que se cronometra (TimingPanel; también la app del teléfono) ----------
+
+/** Las series de una prueba (las que tienen nadadores con serie), en orden. */
+export const heatsOf = (ev: Pick<SwimEventItem, 'id'>, entries: readonly SwimEntry[]) =>
+  [...new Set(entries.filter((e) => e.swimEventId === ev.id && e.heat != null).map((e) => e.heat!))].sort((a, b) => a - b);
+
+export interface HeatRef {
+  ev: string;
+  heat: number;
+}
+
+/** Al abrir: la primera serie que falta por cronometrar (si no falta ninguna, la primera). `seeded`: las pruebas con series. */
+export function firstPendingHeat(seeded: readonly SwimEventItem[], entries: readonly SwimEntry[]): HeatRef | null {
+  for (const ev of seeded) {
+    const p = pendingHeats(ev, entries);
+    if (p.length) return { ev: ev.id, heat: p[0] };
+  }
+  return seeded[0] ? { ev: seeded[0].id, heat: heatsOf(seeded[0], entries)[0] } : null;
+}
+
+/** La serie elegida (o la de `auto` si ya no está): su prueba, las series de la prueba y el número de la serie. */
+export function resolveHeat(seeded: readonly SwimEventItem[], entries: readonly SwimEntry[], sel: HeatRef | null, auto: HeatRef): { ev: SwimEventItem; heats: number[]; heat: number } {
+  const cur = sel && seeded.some((e) => e.id === sel.ev) ? sel : auto;
+  const ev = seeded.find((e) => e.id === cur.ev)!;
+  const heats = heatsOf(ev, entries);
+  return { ev, heats, heat: heats.includes(cur.heat) ? cur.heat : heats[0] };
+}
+
+/** La serie que sigue (en la misma prueba o la primera de la siguiente). */
+export function nextHeat(seeded: readonly SwimEventItem[], entries: readonly SwimEntry[], ev: SwimEventItem, heat: number): HeatRef | null {
+  const heats = heatsOf(ev, entries);
+  const k = heats.indexOf(heat);
+  if (k >= 0 && k < heats.length - 1) return { ev: ev.id, heat: heats[k + 1] };
+  const i = seeded.findIndex((e) => e.id === ev.id);
+  const after = seeded[i + 1];
+  return after ? { ev: after.id, heat: heatsOf(after, entries)[0] } : null;
+}
+
+/** La prueba en el selector: «3. 50 m Libre · Fem.», con «✓» si ya no le falta ninguna serie. */
+export const timingEventLabel = (e: SwimEventItem, entries: readonly SwimEntry[]) =>
+  `${e.num}. ${raceName(e)} · ${e.gender === 'F' ? 'Fem.' : e.gender === 'M' ? 'Masc.' : 'Mixto'}${pendingHeats(e, entries).length === 0 ? ' ✓' : ''}`;
+
+/** La serie ya tiene algún resultado en el servidor. */
+export const heatHasResults = (evId: string, heat: number, entries: readonly SwimEntry[]) => entries.some((e) => e.swimEventId === evId && e.heat === heat && hasResult(e));
+
+/** Los carriles de la serie, en orden. */
+export const heatLanes = (entries: readonly SwimEntry[], evId: string, heat: number) =>
+  entries.filter((e) => e.swimEventId === evId && e.heat === heat).sort((a, b) => (a.lane ?? 0) - (b.lane ?? 0));
+
+/** Lo que vale en cada carril de la serie: lo tocado en este teléfono encima de lo que tenía el servidor. */
+export function laneValues(lanes: readonly SwimEntry[], state: TimingState): Record<number, LaneValue> {
+  const values: Record<number, LaneValue> = {};
+  for (const e of lanes) values[e.lane!] = laneValue(hasResult(e) ? { time: e.time, status: e.status } : undefined, state.lanes[e.lane!]);
+  return values;
+}
+
+/** Los carriles sin tiempo ni estado. */
+export const missingLanes = (lanes: readonly SwimEntry[], values: Record<number, LaneValue>) => lanes.filter((e) => !laneDone(values[e.lane!]));
+
+/** Lo que manda «Publicar serie»: los carriles con algo (o que ya tenían resultado); DNS y DNF sin tiempo. */
+export function heatResults(lanes: readonly SwimEntry[], values: Record<number, LaneValue>): { entryId: string; time: number | null; status: SwimStatus }[] {
+  return lanes
+    .filter((e) => laneDone(values[e.lane!]) || hasResult(e))
+    .map((e) => ({ entryId: e.id, time: values[e.lane!].status === 'dns' || values[e.lane!].status === 'dnf' ? null : values[e.lane!].time, status: values[e.lane!].status }));
+}
+
+/** DQ, DNS o DNF con un toque: tocar el que ya tiene lo quita (vuelve a ok). */
+export const toggledStatus = (v: LaneValue | undefined, s: SwimStatus): SwimStatus => (v?.status === s ? 'ok' : s);
+
+/** Hay STOP del cronómetro en la serie (poner en cero pregunta antes). */
+export const hasWatchStops = (state: TimingState) => Object.values(state.lanes).some((l) => l.source === 'watch');
+
+/** El carril todavía espera su STOP: el cronómetro corre, no tiene STOP y no es DNS. */
+export const stopPending = (state: TimingState, lane: number, v: LaneValue) => state.startedAt != null && state.lanes[lane]?.source !== 'watch' && v.status !== 'dns';
+
+// ---------- El teclado mm:ss.hh ----------
+
+/** Una cifra más: entra por la derecha (hasta 6, sin ceros a la izquierda). */
+export const keypadPress = (digits: string, d: string) => (digits.length >= 6 ? digits : (digits + d).replace(/^0+/, ''));
+
+/** Lo que muestra el teclado: lo escrito («—» si no vale), o el tiempo que ya tenía, o «00:00.00». */
+export function keypadText(digits: string, initial: number | null): string {
+  const cs = digits ? timeFromDigits(digits) : null;
+  return digits ? (cs ? formatSwimTime(cs, { full: true }) : '—') : initial ? formatSwimTime(initial, { full: true }) : '00:00.00';
 }
