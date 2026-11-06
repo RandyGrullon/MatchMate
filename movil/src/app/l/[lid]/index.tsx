@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, Clock, Globe, MapPin, Newspaper, UserPlus } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Newspaper, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
@@ -176,6 +176,32 @@ export default function LeagueScreen() {
 
       {isBowling ? (
         <>
+          {/* La tabla por temporada y «Mis números» (la página de tu jugador). */}
+          <Card padded={false}>
+            <ListRow
+              icon={
+                <RowIcon>
+                  <ListOrdered size={20} color={c.accent} />
+                </RowIcon>
+              }
+              title="Tabla"
+              onPress={() => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } })}
+            />
+            {!!membership.data?.playerId && (
+              <>
+                <Divider inset={68} />
+                <ListRow
+                  icon={
+                    <RowIcon>
+                      <UserRound size={20} color={c.accent} />
+                    </RowIcon>
+                  }
+                  title="Mis números"
+                  onPress={() => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid: l.id, playerId: membership.data!.playerId! } })}
+                />
+              </>
+            )}
+          </Card>
           <SectionHeader title="Próximas fechas" />
           {upcoming.length ? (
             <Card padded={false}>

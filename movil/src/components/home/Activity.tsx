@@ -13,6 +13,7 @@ import { sportMeta } from '@mm/sports/registry';
 import { DateBlock } from '@/components/DateBlock';
 import { toast } from '@/components/feedback';
 import { Badge, Button, Card, SectionHeader, Txt } from '@/components/ui';
+import { useMyLane } from '@/components/bowling/LaneChip';
 import { openLink } from '@/lib/links';
 import { useColors } from '@/theme/theme';
 
@@ -52,10 +53,14 @@ export function TodayGameCard({ game, today }: { game: LiveGame; today: string }
   const day = game.today ?? today;
   const mine = useNextGame(game, today);
   const [busy, setBusy] = useState(false);
+  const lane = useMyLane(feed.lid, planned || late ? null : event.id, feed.playerId);
   const title = late ? lateTitle(mine?.next) : todayTitle(event, day);
   const when = late ? LATE_WHEN : info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : 'En juego ahora';
   const start = late ? null : (info.startLabel ?? (event.startTime ? formatTime(event.startTime.slice(0, 5)) || null : null));
-  const meta = [league.kind !== 'torneo' ? league.name : null, league.venue?.trim() || null, !info.startsSoon ? start : null].filter(Boolean).join(' · ');
+  // «Liga · bolera · 7:30 pm · Pista 7» (sin hora ni pista, lo que haya).
+  const meta = [league.kind !== 'torneo' ? league.name : null, league.venue?.trim() || null, !info.startsSoon ? start : null, lane != null ? `Pista ${lane}` : null]
+    .filter(Boolean)
+    .join(' · ');
 
   // La de anoche ya no tiene nada que hacer: no ocupa Hoy.
   if (late && mine && !mine.loading && mine.next.kind === 'ver') return null;

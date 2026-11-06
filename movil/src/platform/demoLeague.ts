@@ -12,6 +12,30 @@ const EVENT = '00000000-0000-7000-8000-00000000f0e1';
 const ME_PLAYER = '00000000-0000-7000-8000-00000000f101';
 const OTHER = '00000000-0000-7000-8000-00000000f102';
 const THIRD = '00000000-0000-7000-8000-00000000f103';
+// Dos prácticas pasadas, con juegos aprobados de los tres (para la tabla y «Mis números»).
+const PAST = ['00000000-0000-7000-8000-00000000f0e2', '00000000-0000-7000-8000-00000000f0e3'];
+const DAY = 86_400_000;
+const dayAgo = (n: number) => toIsoDate(new Date(Date.now() - n * DAY));
+const pastEntry = (n: number, eventId: string, playerId: string, scores: number[]): Row => ({
+  id: `00000000-0000-7000-8000-0000000f5${String(n).padStart(3, '0')}`,
+  league_id: DEMO_LEAGUE,
+  event_id: eventId,
+  player_id: playerId,
+  team_id: null,
+  average: 180,
+  handicap_override: null,
+  scores,
+  photos: scores.map(() => 'ok'),
+  frames: null,
+});
+const PAST_ENTRIES: Row[] = [
+  pastEntry(1, PAST[0], ME_PLAYER, [188, 201, 176]),
+  pastEntry(2, PAST[0], OTHER, [212, 190, 199]),
+  pastEntry(3, PAST[0], THIRD, [170, 185, 193]),
+  pastEntry(4, PAST[1], ME_PLAYER, [195, 207, 183]),
+  pastEntry(5, PAST[1], OTHER, [180, 221, 204]),
+  pastEntry(6, PAST[1], THIRD, [166, 178, 190]),
+];
 
 type Row = Record<string, unknown>;
 interface State {
@@ -20,6 +44,24 @@ interface State {
 }
 
 const iso = (ms = 0) => new Date(Date.now() + ms).toISOString();
+const practice = (id: string, date: string): Row => ({
+  id,
+  league_id: DEMO_LEAGUE,
+  type: 'practica',
+  name: '',
+  date,
+  start_time: null,
+  games: 3,
+  hcp_base: 0,
+  hcp_percent: 0,
+  individual_rank_by: null,
+  team_rank_by: null,
+  category_cuts: null,
+  team_size: 1,
+  announcement: '',
+  player_count: 3,
+  created_at: iso(-30 * 86_400_000),
+});
 
 function seed(): State {
   return {
@@ -107,6 +149,8 @@ function tables(uid: string): Record<string, Row[]> {
       { id: THIRD, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugadora Dos', average_override: null, is_minor: false },
     ],
     events: [
+      practice(PAST[0], dayAgo(14)),
+      practice(PAST[1], dayAgo(7)),
       {
         id: EVENT,
         league_id: DEMO_LEAGUE,
@@ -126,8 +170,14 @@ function tables(uid: string): Record<string, Row[]> {
         created_at: iso(-86_400_000),
       },
     ],
-    entries: s.entries,
+    entries: [...PAST_ENTRIES, ...s.entries],
     submissions: s.submissions,
+    // Las pistas de hoy, ya publicadas: tú en la 7 con Jugador Uno.
+    event_lanes: [
+      { event_id: EVENT, player_id: ME_PLAYER, lane: 7, position: 1, published_at: iso(-3_600_000) },
+      { event_id: EVENT, player_id: OTHER, lane: 7, position: 2, published_at: iso(-3_600_000) },
+      { event_id: EVENT, player_id: THIRD, lane: 8, position: 1, published_at: iso(-3_600_000) },
+    ],
   };
 }
 

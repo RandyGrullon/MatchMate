@@ -142,3 +142,16 @@ export const hasTeams = (entries: readonly Pick<Entry, 'teamId'>[]) => entries.s
 export function laneChoices(typed: readonly number[] | null, rows: readonly LaneRow[]): number[] {
   return [...new Set([...(typed ?? []), ...rows.map((r) => r.lane)])].sort((a, b) => a - b);
 }
+
+/** «Tu pista: 7 · con Ana y Luis» (el texto, para probarlo sin pantalla). null si no tiene pista o no se han publicado. */
+export function myLaneText(rows: readonly LaneRow[], playerId: string | null | undefined, nameOf: (id: string) => string | undefined): { lane: number; mates: string } | null {
+  const mine = laneOf(rows, playerId);
+  if (!mine || !lanesPublished(rows)) return null;
+  const others = rows
+    .filter((r) => r.lane === mine.lane && r.playerId !== mine.playerId)
+    .sort((a, b) => a.position - b.position)
+    .map((r) => nameOf(r.playerId))
+    .filter((n): n is string => !!n);
+  const mates = others.length ? `con ${others.length > 1 ? `${others.slice(0, -1).join(', ')} y ${others.at(-1)}` : others[0]}` : '';
+  return { lane: mine.lane, mates };
+}

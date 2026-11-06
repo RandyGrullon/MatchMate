@@ -11,6 +11,7 @@ import { boardRows } from '@mm/components/event/board';
 import { gameKey, readGameDraft } from '@mm/components/frames/draftMemory';
 import { ApprovalCard } from '@/components/bowling/ApprovalCard';
 import { EventBoard } from '@/components/bowling/EventBoard';
+import { LaneChip } from '@/components/bowling/LaneChip';
 import { BackBar, Badge, Button, Card, Empty, Loading, Screen, Txt } from '@/components/ui';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketEventBody } from '@/components/racket/RacketEvent';
@@ -134,6 +135,8 @@ function BowlingEventScreen() {
           </Txt>
         </View>
       </View>
+
+      {!!g.playerId && <LaneChip lid={lid} eventId={eventId} playerId={g.playerId} />}
 
       {!g.playerId ? (
         <Empty

@@ -1,21 +1,10 @@
 import { Rows3 } from 'lucide-react';
 import { usePlayers } from '../../lib/data';
 import { useEventLanes } from '../../lib/data/lanes';
-import { laneOf, lanesPublished, type LaneRow } from '../../lib/lanes';
+import { myLaneText } from '../../lib/lanes';
 import { cx } from '../ui';
 
-/** «Tu pista: 7 · con Ana y Luis» (el texto, para probarlo sin pantalla). null si no tiene pista o no se han publicado. */
-export function myLaneText(rows: readonly LaneRow[], playerId: string | null | undefined, nameOf: (id: string) => string | undefined): { lane: number; mates: string } | null {
-  const mine = laneOf(rows, playerId);
-  if (!mine || !lanesPublished(rows)) return null;
-  const others = rows
-    .filter((r) => r.lane === mine.lane && r.playerId !== mine.playerId)
-    .sort((a, b) => a.position - b.position)
-    .map((r) => nameOf(r.playerId))
-    .filter((n): n is string => !!n);
-  const mates = others.length ? `con ${others.length > 1 ? `${others.slice(0, -1).join(', ')} y ${others.at(-1)}` : others[0]}` : '';
-  return { lane: mine.lane, mates };
-}
+export { myLaneText } from '../../lib/lanes';
 
 /**
  * La pista del jugador en ese evento de boliche, cuando el admin ya publicó las pistas: en el evento, en las

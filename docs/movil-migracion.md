@@ -72,10 +72,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (`approvalLogic.ts`, la misma de la web); lo que hay que revisar a fondo abre Organizar › Aprobar en la web.
 - ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla, la
   clasificación del torneo y Organizar › Aprobar completo.
-- ⏳ Pistas; equipos fijos y de torneo; temporadas y ranking; bolas (catálogo, diseño, layout); juegos sueltos; jugador y
-  «Mis números».
+- ✅ La Tabla del boliche por temporada (`/l/<liga>/tabla`, Lite de la web: Promedio, Mejor juego, Mejor serie,
+  Asistencia, tu lugar con su barra y «Tú»; `movil/src/components/bowling/BowlingRanking.tsx`). 🌐 La tabla completa
+  de Pro (columnas, con hcp, récords, el más mejorado) y el historial de temporadas.
+- ✅ Un jugador y «Mis números» (`/l/<liga>/j/<jugador>`): sus números, sus envíos, torneos con su lugar, prácticas y
+  por temporada. 🌐 La tendencia y el análisis por cuadros (gráficas).
+- ✅ «Tu pista: 7 · con …» en el evento y «Pista 7» en Hoy, cuando el admin ya las publicó (`myLaneText`, ahora en
+  `src/lib/lanes.ts`). 🌐 Armar y publicar las pistas.
+- ⏳ Equipos fijos y de torneo; bolas (catálogo, diseño, layout); juegos sueltos.
 - Para probar sin cuenta: `/dev/empresa` › Entrar a la demostración trae una liga de boliche ficticia
-  (`movil/src/platform/demoLeague.ts`: práctica hoy, un envío por aprobar y una planilla).
+  (`movil/src/platform/demoLeague.ts`: práctica hoy con pistas, dos pasadas, un envío por aprobar y una planilla).
 
 ## 4. Raqueta: pádel, tenis, pickleball, ping pong
 
