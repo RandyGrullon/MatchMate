@@ -2,10 +2,10 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Switch, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Baby, Camera, ChevronDown, ChevronLeft, ChevronRight, Globe, Lock, X } from 'lucide-react-native';
+import { Baby, Camera, ChevronDown, ChevronLeft, Globe, Lock, X } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { createLeague, createTournament } from '@mm/lib/data';
-import { parseDate, toIsoDate } from '@mm/lib/format';
+import { toIsoDate } from '@mm/lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '@mm/lib/schedule';
 import { setActiveSport } from '@mm/lib/sportContext';
 import type { LeagueKind } from '@mm/lib/types';
@@ -18,7 +18,6 @@ import {
   createStep,
   defaultSeason,
   emptyForm,
-  longDay,
   scheduleSummary,
   seasonRange,
   wizardInput,
@@ -27,6 +26,7 @@ import {
   type WizardForm,
 } from '@mm/components/create/logic';
 import { timezoneOptions, tzOffset } from '@mm/components/league/logic';
+import { DateStepper } from '@/components/DateStepper';
 import { InvitePanel } from '@/components/invite/InvitePanel';
 import { confirmAsync, toast } from '@/components/feedback';
 import { saveErrorMessage } from '@mm/lib/errorText';
@@ -39,11 +39,6 @@ const FREQUENCIES: { key: Frequency; label: string }[] = [
   { key: 'libre', label: 'Sin día fijo' },
 ];
 
-const addDays = (iso: string, n: number) => {
-  const d = parseDate(iso);
-  d.setDate(d.getDate() + n);
-  return toIsoDate(d);
-};
 
 /**
  * Crear una liga o un torneo sin liga (el asistente de la web, src/components/create/CreateWizard.tsx, con su misma
@@ -400,27 +395,3 @@ function ToggleRow({ icon, title, text, value, onChange }: { icon: ReactNode; ti
   );
 }
 
-/** Una fecha con «‹ ›» (un día) y «−7 / +7» (una semana), sin el calendario del sistema (sirve igual en la vista previa). */
-function DateStepper({ value, onChange, min }: { value: string; onChange: (v: string) => void; min?: string }) {
-  const c = useColors();
-  const move = (n: number) => {
-    const next = addDays(value, n);
-    onChange(min && next < min ? min : next);
-  };
-  const btn = (labelText: string, n: number, child: ReactNode) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={labelText} onPress={() => move(n)} style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface2 }}>
-      {child}
-    </Pressable>
-  );
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, padding: 6, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.surface }}>
-      {btn('Una semana antes', -7, <Txt variant="small">−7</Txt>)}
-      {btn('Un día antes', -1, <ChevronLeft size={20} color={c.fg} />)}
-      <Txt variant="bodyStrong" style={{ flex: 1, textAlign: 'center' }} numberOfLines={1}>
-        {longDay(value) || value}
-      </Txt>
-      {btn('Un día después', 1, <ChevronRight size={20} color={c.fg} />)}
-      {btn('Una semana después', 7, <Txt variant="small">+7</Txt>)}
-    </View>
-  );
-}

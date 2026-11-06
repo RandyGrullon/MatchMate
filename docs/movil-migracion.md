@@ -82,7 +82,23 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   por temporada. 🌐 La tendencia y el análisis por cuadros (gráficas).
 - ✅ «Tu pista: 7 · con …» en el evento y «Pista 7» en Hoy, cuando el admin ya las publicó (`myLaneText`, ahora en
   `src/lib/lanes.ts`). 🌐 Armar y publicar las pistas.
-- ⏳ Equipos fijos y de torneo; bolas (catálogo, diseño, layout); juegos sueltos.
+- ✅ Juegos sueltos (`/juegos-sueltos`, `movil/src/app/juegos-sueltos.tsx`, Lite de la web): tu promedio y tu mejor
+  juego, «Anotar juego suelto» y la lista por mes (el candado si no sale en tu perfil, la nube si falta enviarlo).
+  La hoja (`movil/src/components/solo/SoloGameSheet.tsx`, la lógica de `src/components/solo/logic.ts`, la misma de
+  la web): la fecha, la bolera (con las que ya pusiste), de 1 a 10 juegos con su total o tiro por tiro («cuadros» o
+  «pines» abre el editor de la app con «Listo»), la bola de cada juego o de todos, la nota y «Que salga en mi perfil»;
+  guardar va por la cola (sin señal sale solo) y borrar pregunta antes. En Yo: «Anotar un juego suelto» y «Juegos
+  sueltos». 🌐 Las estadísticas de Pro (tendencia y tiros).
+- ✅ Mis bolas (`/bolas`, `movil/src/app/bolas.tsx`): con cuál tiras mejor, cada bola en su tarjeta dibujada con su
+  diseño (la misma geometría de la web, `src/components/balls/art.ts`, con react-native-svg), sus números, «La pulí
+  hoy», Editar y Retirar o Volver a usarla en su «•••», «Agregar bola» (hasta 30) y las retiradas aparte; «Buscar
+  bolas» en el catálogo con «Agregar a mi arsenal» (la hoja ya llena con el modelo y sus colores).
+  - La hoja de una bola (`BallSheet.tsx`, con `sheet.ts` y `layout.ts` de la web): catálogo, nombre, marca, peso,
+    color, cubierta, fechas, perforación Dual Angle y Borrar. Las fechas van con «‹ ›» y «−7/+7» (`DateStepper`).
+  - La bola de cada juego al anotar (`GameBall.tsx`): dibujada, con «Agregar bola» encima de la hoja (queda elegida).
+  - Yo › «Mis bolas» (`MyBalls.tsx`, Lite).
+  - 🌐 El creador de la bola («Diseñar»: colores, dibujo y figuras; la app lo abre en la web) y Yo › Pro › «Por bola».
+- ⏳ Equipos fijos y de torneo.
 - Para probar sin cuenta: `/dev/empresa` › Entrar a la demostración trae una liga de boliche ficticia
   (`movil/src/platform/demoLeague.ts`: práctica hoy con pistas, dos pasadas, un envío por aprobar y una planilla).
 

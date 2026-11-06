@@ -1,14 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { AlertTriangle, Archive, ChevronRight, MoreHorizontal, Palette, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { catalogBall } from '../../lib/ballCatalog';
-import { RESURFACE_EVERY, ballDetail, ballStats, catalogSpecs, layoutText, pctText, resurfaceText, type Ball, type BallGame, type BallStats } from '../../lib/balls';
-import { useMyBallGames, useMyBalls } from '../../lib/data/balls';
+import { RESURFACE_EVERY, ballDetail, catalogSpecs, layoutText, pctText, resurfaceText, type BallStats } from '../../lib/balls';
 import { formatDate } from '../../lib/format';
 import { EventMenu, type MenuItem } from '../event/EventHeader';
 import { Button, Card, ListRow, SectionHeader, Skeleton, cx, sectionLinkClass } from '../ui';
 import { BallArt } from './BallArt';
 import { BallIcon } from './BallPicker';
+import { ballGamesNote, ballRowLine, ballTitle, useBallSection } from './stats';
+
+// Los números de las listas sin la pantalla están en stats.ts (la app del teléfono usa lo mismo).
+export { ballRowLine, ballTitle, statsForSection, useBallSection } from './stats';
 
 /** Un número de la tarjeta de una bola (sin caja: los cuatro en una fila, como en Yo). */
 function Mini({ label, value }: { label: string; value: string | number }) {
@@ -48,6 +51,7 @@ export function BallCard({
   const specs = model ? catalogSpecs(model) : null;
   const layout = layoutText(b.layout);
   const notes = b.layout?.notes?.trim();
+  const gamesNote = ballGamesNote(s);
   // `busy` dice que la bola espera; la ruedita va en lo que se tocó.
   const [pressed, setPressed] = useState<'resurface' | 'retire' | null>(null);
   const [menu, setMenu] = useState(false);
@@ -137,13 +141,7 @@ export function BallCard({
         <Mini label="Más alto" value={s.high || '—'} />
         <Mini label="Strikes" value={pctText(s.strikePct)} />
       </dl>
-      {(s.framed > 0 || s.pending > 0) && (
-        <p className="-mt-1 text-[13px] text-muted">
-          {s.framed > 0 && `Strikes ${pctText(s.strikePct)} y spares ${pctText(s.sparePct)} con ${s.framed} ${s.framed === 1 ? 'juego anotado' : 'juegos anotados'} por cuadros.`}
-          {s.framed > 0 && s.pending > 0 && ' '}
-          {s.pending > 0 && `${s.pending} ${s.pending === 1 ? 'juego cuenta' : 'juegos cuentan'} cuando se ${s.pending === 1 ? 'verifique' : 'verifiquen'}.`}
-        </p>
-      )}
+      {gamesNote && <p className="-mt-1 text-[13px] text-muted">{gamesNote}</p>}
       {!b.retired ? (
         <div className={cx('flex items-center gap-3 rounded-2xl py-3 pr-3 pl-4 max-[380px]:flex-wrap', s.needsResurface ? 'bg-warn-soft text-warn' : 'bg-surface-2')}>
           <div className="min-w-0 flex-1 max-[380px]:basis-full">
@@ -194,16 +192,6 @@ export function BallCard({
   );
 }
 
-/** «Morada 14 lb»: el nombre con el peso, como en las filas de «Por bola». */
-export const ballTitle = (b: Pick<Ball, 'name' | 'weight'>) => (b.weight ? `${b.name} ${b.weight} lb` : b.name);
-
-/** Debajo del nombre en «Por bola»: «5 juegos · 41% strikes» (y «toca pulirla» cuando ya le toca). */
-export function ballRowLine(s: Pick<BallStats, 'games' | 'strikePct' | 'needsResurface'>): string {
-  return [`${s.games} ${s.games === 1 ? 'juego' : 'juegos'}`, s.strikePct != null && `${s.strikePct}% strikes`, s.needsResurface && 'toca pulirla']
-    .filter(Boolean)
-    .join(' · ');
-}
-
 /** Una fila de «Por bola»: la bola dibujada (30 px), nombre y peso, juegos y strikes, y el promedio grande. Abre esa bola. */
 function BallRow({ stats: s }: { stats: BallStats }) {
   return (
@@ -217,20 +205,6 @@ function BallRow({ stats: s }: { stats: BallStats }) {
       chevron={false}
     />
   );
-}
-
-/** Los números por bola para «Por bola» (las que no están retiradas o ya tienen juegos). */
-export function statsForSection(balls: readonly Ball[], games: readonly BallGame[]): BallStats[] {
-  return ballStats(balls, games).filter((s) => !s.ball.retired || s.games > 0);
-}
-
-/** Las bolas de la cuenta con sus números (las de «Por bola»), si tiene alguna y si todavía se están leyendo. */
-export function useBallSection(): { stats: BallStats[]; has: boolean; loading: boolean } {
-  const mine = useMyBalls();
-  const has = mine.data.balls.length > 0;
-  const games = useMyBallGames(null, has);
-  const stats = useMemo(() => statsForSection(mine.data.balls, games.data), [mine.data.balls, games.data]);
-  return { stats, has, loading: mine.loading && !has };
 }
 
 /**

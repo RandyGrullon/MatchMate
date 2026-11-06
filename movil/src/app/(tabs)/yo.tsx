@@ -10,6 +10,7 @@ import { displayName, logout, useAuth, type AccountMode } from '@mm/lib/auth';
 import { BUSINESS_STATUS_LABEL, businessErrorText, setAccountMode, useMyBusiness } from '@mm/lib/data/business';
 import { unsubscribePush } from '@mm/lib/push';
 import { Button, Card, Divider, ListRow, Loading, RowIcon, Screen, SectionHeader, Segmented, Txt } from '@/components/ui';
+import { YoBowling } from '@/components/solo/YoSolo';
 import { openOnWeb } from '@/lib/web';
 import { useColors, useTheme, type ThemeMode } from '@/theme/theme';
 
@@ -73,6 +74,8 @@ export default function YoScreen() {
       </Card>
 
       <BusinessMode />
+
+      <YoBowling uid={uid} />
 
       <SectionHeader title="Apariencia" />
       <Card style={{ gap: 12 }}>

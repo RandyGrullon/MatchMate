@@ -1,9 +1,13 @@
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { BookOpen, Plus, Search, X } from 'lucide-react';
-import { BALL_BRANDS, BALL_CATALOG, catalogBall, searchBallCatalog, type CatalogBall } from '../../lib/ballCatalog';
-import { BALL_MAX, catalogLine, catalogLook, catalogSpecs } from '../../lib/balls';
+import { BALL_BRANDS, searchBallCatalog, type CatalogBall } from '../../lib/ballCatalog';
+import { BALL_MAX, catalogLine, catalogLook } from '../../lib/balls';
 import { Button, Input, Sheet } from '../ui';
 import { BallArt } from './BallArt';
+import { CATALOG_BROWSE_LIMIT, CATALOG_NO_COLOR, CATALOG_PICK_LIMIT, hasBallCatalog, pickedCatalog } from './catalog';
+
+// Lo del catálogo sin la pantalla está en catalog.ts (la app del teléfono usa lo mismo).
+export { hasBallCatalog } from './catalog';
 
 /**
  * Buscar bolas en el catálogo de marcas y modelos (src/lib/ballCatalog.ts): por marca, por modelo o los dos en
@@ -11,20 +15,10 @@ import { BallArt } from './BallArt';
  * nombre y cubierta) y en Mis bolas («Buscar bolas»: «Agregar a mi arsenal» abre la hoja ya llena).
  */
 
-/** Cuántas salen en la hoja de la bola (ahí se busca una sola) y en «Buscar bolas» (ahí se mira). */
-const PICK_LIMIT = 8;
-const BROWSE_LIMIT = 40;
-
-/** Gris de una bola del catálogo que no dice sus colores. */
-const NO_COLOR = '#6b7280';
-
-/** ¿Hay catálogo? (sin modelos no sale el buscador). */
-export const hasBallCatalog = () => BALL_CATALOG.length > 0;
-
 /** La bola del catálogo dibujada con sus colores (la que se propone al agregarla). */
 export function CatalogBallArt({ ball: c, size, className }: { ball: CatalogBall; size: number; className?: string }) {
   const look = useMemo(() => catalogLook(c), [c]);
-  return <BallArt design={look} color={look?.base ?? NO_COLOR} cover={c.cover} size={size} className={className} />;
+  return <BallArt design={look} color={look?.base ?? CATALOG_NO_COLOR} cover={c.cover} size={size} className={className} />;
 }
 
 /** El campo de búsqueda (con su lupa y la X para borrar lo escrito). */
@@ -136,19 +130,18 @@ export function CatalogPick({
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [searching, setSearching] = useState(fresh && !value);
-  const results = useMemo(() => searchBallCatalog(query, PICK_LIMIT), [query]);
+  const results = useMemo(() => searchBallCatalog(query, CATALOG_PICK_LIMIT), [query]);
   const titleId = useId();
   if (!hasBallCatalog() && !value) return null;
-  const linked = catalogBall(value);
+  const { linked, title, specs } = pickedCatalog(value, brand, name);
 
   if (value && !searching) {
-    const specs = linked ? (catalogSpecs(linked) ?? catalogLine(linked)) : null;
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-line py-2 pr-1 pl-3.5">
         {linked ? <CatalogBallArt ball={linked} size={36} className="shrink-0" /> : <BookOpen aria-hidden="true" className="size-5 shrink-0 text-muted" />}
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-muted">Del catálogo</p>
-          <p className="truncate text-[15px] leading-snug font-semibold">{linked ? `${linked.brand} ${linked.name}` : [brand, name].filter(Boolean).join(' ')}</p>
+          <p className="truncate text-[15px] leading-snug font-semibold">{title}</p>
           {specs && <p className="truncate text-[13px] text-muted">{specs}</p>}
         </div>
         {hasBallCatalog() && (
@@ -237,8 +230,8 @@ export function CatalogSearchSheet({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const found = useMemo(() => searchBallCatalog(query, BROWSE_LIMIT + 1), [query]);
-  const results = found.slice(0, BROWSE_LIMIT);
+  const found = useMemo(() => searchBallCatalog(query, CATALOG_BROWSE_LIMIT + 1), [query]);
+  const results = found.slice(0, CATALOG_BROWSE_LIMIT);
   return (
     <Sheet open onClose={onClose} title="Buscar bolas" subtitle="Marcas y modelos del catálogo">
       <div className="flex flex-col gap-3">
@@ -281,7 +274,7 @@ export function CatalogSearchSheet({
                 />
               )}
             />
-            {found.length > BROWSE_LIMIT && <p className="text-[13px] text-muted">Hay más: escribe también el modelo.</p>}
+            {found.length > CATALOG_BROWSE_LIMIT && <p className="text-[13px] text-muted">Hay más: escribe también el modelo.</p>}
           </>
         )}
         {full ? (

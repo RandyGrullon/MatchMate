@@ -2,7 +2,6 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { CloudUpload, Grid3x3, Loader2, Plus, Target, Trash2 } from 'lucide-react';
 import {
   SOLO_MAX_GAMES,
-  SOLO_MAX_YEARS,
   SOLO_NOTE_MAX,
   SOLO_VENUE_MAX,
   deleteSoloSession,
@@ -16,74 +15,15 @@ import { queuedGameBalls, rememberBall, useMyBallGames } from '../../lib/data/ba
 import { getUserId } from '../../lib/data/client';
 import { uuidv7 } from '../../lib/db/ids';
 import { isValidScore } from '../../lib/stats';
-import type { GameFrames } from '../../lib/types';
 import { AllGamesBall, GameBallChip, GameBallSelect, useBallChoice } from '../balls/BallPicker';
 import { useFeedback } from '../feedback';
 import { clearGameDraft, clearGameDrafts, gameKey, soloPlace } from '../frames/draftMemory';
-import { framesMode, type ScoreValue } from '../frames/FrameEditor';
+import { framesMode } from '../frames/FrameEditor';
 import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Button, Field, Input, Sheet, Textarea, cx } from '../ui';
+import { SOLO_DATE_HINT, initialSlots, slotGame, slotsToGames, soloGamesHint, soloSheetChanged, type SoloSheetValues } from './logic';
 
-/** Casillas con las que arranca uno nuevo (una serie de 3). */
-const NEW_SLOTS = 3;
-
-/** Lo que dicen las casillas: los juegos válidos en orden (sin huecos), sus cuadros y si alguna está mal. */
-export function slotsToGames(values: readonly string[], frames: Readonly<Record<number, GameFrames>>) {
-  const scores: number[] = [];
-  const out: Record<string, GameFrames> = {};
-  let invalid = false;
-  values.forEach((v, i) => {
-    if (!v.trim()) return;
-    const n = Number(v);
-    if (!isValidScore(n)) {
-      invalid = true;
-      return;
-    }
-    if (frames[i]) out[String(scores.length)] = frames[i];
-    scores.push(n);
-  });
-  return { scores, frames: Object.keys(out).length ? out : null, invalid };
-}
-
-/** Las casillas de un juego que ya existe (sus juegos y cuadros; al menos 3). */
-function initialSlots(session: SoloSession | null): { values: string[]; frames: Record<number, GameFrames> } {
-  if (!session) return { values: Array.from({ length: NEW_SLOTS }, () => ''), frames: {} };
-  const values = session.scores.map(String);
-  while (values.length < Math.min(NEW_SLOTS, SOLO_MAX_GAMES)) values.push('');
-  const frames: Record<number, GameFrames> = {};
-  for (const [k, f] of Object.entries(session.frames ?? {})) frames[Number(k)] = f;
-  return { values, frames };
-}
-
-/** Una casilla como juego para la hoja de cuadros: el total (si es válido) y sus cuadros. */
-function slotGame(slots: { values: readonly string[]; frames: Readonly<Record<number, GameFrames>> }, i: number | null): ScoreValue {
-  const v = i != null ? (slots.values[i]?.trim() ?? '') : '';
-  return { score: v && isValidScore(Number(v)) ? Number(v) : null, frames: i != null ? (slots.frames[i] ?? null) : null };
-}
-
-/** Lo que dice la fecha cuando no sirve (vacía, del futuro o de hace más de 10 años). */
-const DATE_HINT = `Elige la fecha (de hoy hacia atrás, hasta ${SOLO_MAX_YEARS} años).`;
-
-/** Lo que se edita en la hoja. */
-export interface SoloSheetValues {
-  date: string;
-  venue: string;
-  note: string;
-  shared: boolean;
-  slots: { values: string[]; frames: Record<number, GameFrames> };
-}
-
-/** ¿Cambió algo desde que se abrió? (Cerrarla así pregunta antes: se perderían los juegos anotados.) */
-export function soloSheetChanged(a: SoloSheetValues, b: SoloSheetValues): boolean {
-  return (
-    a.date !== b.date ||
-    a.venue !== b.venue ||
-    a.note !== b.note ||
-    a.shared !== b.shared ||
-    JSON.stringify(a.slots.values) !== JSON.stringify(b.slots.values) ||
-    JSON.stringify(a.slots.frames) !== JSON.stringify(b.slots.frames)
-  );
-}
+export { slotsToGames, soloSheetChanged, type SoloSheetValues } from './logic';
 
 /**
  * Hoja para anotar o cambiar un juego suelto: la fecha (hoy si es nuevo), la bolera (con las que ya puso), de 1 a 10
@@ -170,7 +110,6 @@ export function SoloGameSheet({
   const minDate = soloMinDate(today);
   const dateOk = !!date && date >= minDate && date <= today;
   const canSave = games.scores.length > 0 && !games.invalid && dateOk && !busy;
-  const series = games.scores.reduce((a, b) => a + b, 0);
   const dirty = soloSheetChanged(start, { date, venue, note, shared, slots }) || Object.keys(picked).length > 0 || bulk !== undefined;
   const had = known ?? {};
   const auto = session ? commonBall(Object.values(had)) : choice.auto;
@@ -181,6 +120,7 @@ export function SoloGameSheet({
   const allBall = sameBall((scored.length ? scored : values.map((_, i) => i)).map(ballOf));
   // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
   const byPins = framesMode() === 'pines';
+  const hint = soloGamesHint(games, dateOk, byPins);
   // Lo que va anotando por cuadros queda en el teléfono (por cuenta, juego suelto y casilla) aunque cierre esa hoja sin
   // «Listo» y también después de «Listo», que solo lo pasa a la casilla: hasta «Guardar», «Borrar» o «Salir». Uno nuevo
   // usa «nuevo»: así lo encuentra también después de cerrar la app.
@@ -310,7 +250,7 @@ export function SoloGameSheet({
           )}
 
           <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
-            <Field label="Fecha" hint={dateOk ? undefined : <span className="text-danger">{DATE_HINT}</span>}>
+            <Field label="Fecha" hint={dateOk ? undefined : <span className="text-danger">{SOLO_DATE_HINT}</span>}>
               <Input type="date" required min={minDate} max={today} value={date} onChange={(e) => setDate(e.target.value)} className="h-11" />
             </Field>
             <Field label="Bolera">
@@ -399,16 +339,8 @@ export function SoloGameSheet({
               )}
             </div>
             {/* Lo que falta para «Guardar» (también la fecha: su aviso queda arriba, fuera de la vista al anotar). */}
-            <span className={cx('text-xs', games.invalid || (games.scores.length > 0 && !dateOk) ? 'text-danger' : 'text-muted')} aria-live="polite">
-              {games.invalid
-                ? 'Cada juego va de 0 a 300.'
-                : !games.scores.length
-                  ? byPins
-                    ? 'Anota al menos un juego. Toca «pines» para anotarlo pino por pino.'
-                    : 'Anota al menos un juego. Toca «cuadros» para anotarlo tiro por tiro.'
-                  : !dateOk
-                    ? DATE_HINT
-                    : `${games.scores.length} ${games.scores.length === 1 ? 'juego' : 'juegos'} · serie ${series} · promedio ${Math.floor(series / games.scores.length)}`}
+            <span className={cx('text-xs', hint.bad ? 'text-danger' : 'text-muted')} aria-live="polite">
+              {hint.text}
             </span>
           </div>
 

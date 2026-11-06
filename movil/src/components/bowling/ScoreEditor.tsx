@@ -30,8 +30,6 @@ const pinos = (n: number) => (n === 1 ? '1 pino' : `${n} pinos`);
  * mitad, «Seguir mi juego N» sigue donde se dejó. Al guardar, el juego pasa a «Tus juegos» (src/lib/draft.ts).
  */
 export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: string; eventId: string; index: number; playerId: string; place: string }) {
-  const c = useColors();
-  const memoryKey = gameKey(place, index);
   const ballChoice = useBallChoice();
   // Lo guardado de ese juego en «Tus juegos» (o nada todavía).
   const initial = useMemo<ScoreValue>(() => {
@@ -39,8 +37,68 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
     const typed = d?.values[index]?.trim();
     return { score: typed ? Number(typed) : null, frames: d?.frames?.[index] ?? null };
   }, [lid, playerId, eventId, index]);
+  // La bola del juego: la que ya tenía (o la del juego anterior, o la última que usó).
+  const startBall = ballChoice.canPick ? ballForGame(loadDraft(lid, playerId, eventId)?.balls, index, ballChoice.auto) : undefined;
+
+  function save(value: { score: number; frames: ScoreValue['frames'] }, picked: string | null | undefined) {
+    const d = loadDraft(lid, playerId, eventId);
+    const count = Math.max(d?.values.length ?? 0, index + 1);
+    const values = Array.from({ length: count }, (_, j) => d?.values[j] ?? '');
+    values[index] = String(value.score);
+    const frames = { ...(d?.frames ?? {}) };
+    if (value.frames) frames[String(index)] = value.frames;
+    else delete frames[String(index)];
+    // La bola solo si salió arriba (con la lista de bolas leída): si no, la de ese juego no se toca.
+    const balls = draftBallsAfter(d?.balls, index, value, picked);
+    saveDraft(lid, playerId, eventId, { values, frames, balls, date: d?.date });
+    toast(`Juego ${index + 1}: ${value.score}. Queda en tu teléfono hasta que lo envíes.`);
+    router.back();
+  }
+
+  return (
+    <ScoreEntry
+      title={`Juego ${index + 1}`}
+      memoryKey={gameKey(place, index)}
+      initial={initial}
+      ball={ballChoice.canPick ? { balls: ballChoice.balls, start: startBall ?? null, game: index } : null}
+      onSave={save}
+      onClose={() => router.back()}
+    />
+  );
+}
+
+/**
+ * La pantalla de anotar un juego (ScoreEntryModal de la web), para cualquier lugar: el boliche de la liga (ScoreEditor)
+ * y los juegos sueltos (con «Listo», que solo pasa el juego a su casilla). `stored`: lo que ya está guardado de ese juego
+ * (si se pasa, lo anotado sigue en el teléfono después de guardar, hasta que el que la abrió lo borre).
+ */
+export function ScoreEntry({
+  title,
+  subtitle,
+  memoryKey,
+  initial,
+  stored,
+  ball,
+  onSave,
+  onClose,
+  saveText = 'Guardar',
+}: {
+  title: string;
+  subtitle?: string;
+  memoryKey: string;
+  initial: ScoreValue;
+  stored?: ScoreValue;
+  /** La bola del juego arriba (null = no sale): las de la cuenta y la que ya tenía. */
+  ball: { balls: ReturnType<typeof useBallChoice>['balls']; start: string | null; game: number } | null;
+  /** Con el juego completo. `picked`: la bola elegida (undefined si no salió la de arriba). */
+  onSave: (value: { score: number; frames: ScoreValue['frames'] }, picked: string | null | undefined) => void;
+  onClose: () => void;
+  saveText?: string;
+}) {
+  const c = useColors();
+  const saved = stored ?? initial;
   const [start] = useState(() => {
-    const pending = pendingDraft(memoryKey, initial);
+    const pending = pendingDraft(memoryKey, saved);
     return { ...startState(initial, undefined, pending?.work ?? null), resumed: !!pending?.work };
   });
   const [mode, setMode] = useState<ScoreMode>(start.mode);
@@ -52,10 +110,9 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
   // 'borrado' = lo borró dejándolo presionado; 'falta' = la corrección pide ese tiro.
   const [sel, setSel] = useState<number | null>(start.sel);
   const [hole, setHole] = useState<'borrado' | 'falta' | null>(start.hole);
-  // La bola del juego: la que ya tenía (o la del juego anterior, o la última que usó). undefined = la lista no se leyó.
-  const [ball, setBall] = useState<string | null | undefined>(undefined);
-  const startBall = ballChoice.canPick ? ballForGame(loadDraft(lid, playerId, eventId)?.balls, index, ballChoice.auto) : undefined;
-  const picked = ball === undefined ? startBall : ball;
+  // La bola que eligió aquí (undefined = la que traía).
+  const [pickedBall, setPickedBall] = useState<string | null | undefined>(undefined);
+  const picked = pickedBall === undefined ? (ball?.start ?? null) : pickedBall;
 
   useEffect(() => {
     if (start.resumed) toast('Seguimos donde lo dejaste.');
@@ -63,8 +120,8 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
 
   // Cada cambio queda en el teléfono (igual a lo guardado o vacío, se borra).
   useEffect(() => {
-    rememberGame(memoryKey, { mode, rolls, masks, total, hole: hole && sel != null ? { roll: sel, kind: hole } : null }, initial);
-  }, [memoryKey, mode, rolls, masks, total, hole, sel, initial]);
+    rememberGame(memoryKey, { mode, rolls, masks, total, hole: hole && sel != null ? { roll: sel, kind: hole } : null }, saved);
+  }, [memoryKey, mode, rolls, masks, total, hole, sel, saved]);
 
   const value = editorValue(mode, { rolls, masks, total, hole: !!hole }, initial);
   const game = scoreGame(rolls);
@@ -138,29 +195,18 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
   }
   function close() {
     if (hasWork && !value.ready) toast('Guardado en tu teléfono: sigue cuando quieras.');
-    router.back();
+    onClose();
   }
   function save() {
     if (!value.ready || value.score == null) return;
-    const d = loadDraft(lid, playerId, eventId);
-    const count = Math.max(d?.values.length ?? 0, index + 1);
-    const values = Array.from({ length: count }, (_, j) => d?.values[j] ?? '');
-    values[index] = String(value.score);
-    const frames = { ...(d?.frames ?? {}) };
-    if (value.frames) frames[String(index)] = value.frames;
-    else delete frames[String(index)];
-    // La bola solo si salió arriba (con la lista de bolas leída): si no, la de ese juego no se toca.
-    const balls = draftBallsAfter(d?.balls, index, value, ballChoice.canPick ? (picked ?? null) : undefined);
-    saveDraft(lid, playerId, eventId, { values, frames, balls, date: d?.date });
-    forgetAfterSave(memoryKey, true);
-    toast(`Juego ${index + 1}: ${value.score}. Queda en tu teléfono hasta que lo envíes.`);
-    router.back();
+    forgetAfterSave(memoryKey, true, stored !== undefined);
+    onSave({ score: value.score, frames: value.frames }, ball ? picked : undefined);
   }
 
   const totalNum = total.trim() === '' ? null : Number(total);
   const totalInvalid = totalNum != null && !isValidScore(totalNum);
   const setTotalNum = (n: number) => setTotal(String(Math.min(300, Math.max(0, Math.round(n)))));
-  const saveLabel = value.ready ? `Guardar ${value.score}` : 'Guardar y salir';
+  const saveLabel = value.ready ? `${saveText} ${value.score}` : 'Guardar y salir';
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -169,11 +215,18 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
           <Pressable accessibilityRole="button" accessibilityLabel="Cerrar (lo anotado queda en tu teléfono)" onPress={close} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -10 }}>
             <X size={24} color={c.fg} />
           </Pressable>
-          <Txt variant="section">Juego {index + 1}</Txt>
+          <View style={{ alignItems: 'center' }}>
+            <Txt variant="section">{title}</Txt>
+            {!!subtitle && (
+              <Txt variant="meta" tone="muted">
+                {subtitle}
+              </Txt>
+            )}
+          </View>
           <View style={{ width: 44 }} />
         </View>
 
-        {ballChoice.canPick && <BallRow balls={ballChoice.balls} value={picked ?? null} initial={startBall ?? null} onPick={setBall} game={index} />}
+        {ball && <BallRow balls={ball.balls} value={picked} initial={ball.start} onPick={setPickedBall} game={ball.game} />}
 
         <Segmented<ScoreMode>
           label="Forma de anotar"
@@ -303,7 +356,7 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
               </Txt>
             )}
             <Button variant="primary" size="xl" full disabled={!value.ready} icon={<Check size={20} color={c.accentFg} />} onPress={save}>
-              {value.ready ? `Guardar ${value.score}` : 'Guardar'}
+              {value.ready ? `${saveText} ${value.score}` : saveText}
             </Button>
           </>
         )}

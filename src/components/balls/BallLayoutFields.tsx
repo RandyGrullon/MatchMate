@@ -13,6 +13,10 @@ import {
   type BallLayout,
 } from '../../lib/balls';
 import { Field, Input, Select } from '../ui';
+import { LAYOUT_WHOLE_INCHES, angleFromText, editLayout } from './layout';
+
+// Lo de la perforación sin la pantalla está en layout.ts (la app del teléfono usa lo mismo).
+export { editLayout } from './layout';
 
 /**
  * «Perforación» en la hoja de una bola: el layout Dual Angle que da quien la perforó (45 × 4½ × 30): el ángulo de
@@ -20,19 +24,6 @@ import { Field, Input, Select } from '../ui';
  * las pulgadas se eligen en enteros y octavos (½, ⅜…), sin escribir fracciones. Abajo, cómo queda en una línea
  * («45° × 4½″ × 30°») y lo que no vale.
  */
-
-/**
- * La perforación con ese valor cambiado: sin la clave si queda vacía; null si no queda nada (así, sin cambios, es igual
- * a la de antes). Las notas se guardan como se escriben (se recortan al guardar).
- */
-export function editLayout(l: BallLayout | null | undefined, k: keyof BallLayout, v: number | string | undefined): BallLayout | null {
-  const next: Record<string, unknown> = { ...(l ?? {}) };
-  if (v === undefined || v === '') delete next[k];
-  else next[k] = v;
-  return Object.keys(next).length ? (next as BallLayout) : null;
-}
-
-const WHOLE_INCHES = Array.from({ length: LAYOUT_INCHES_MAX + 1 }, (_, i) => i);
 
 function AngleField({ label, value, invalid, onChange }: { label: string; value: number | undefined; invalid: boolean; onChange: (v: number | undefined) => void }) {
   return (
@@ -43,10 +34,7 @@ function AngleField({ label, value, invalid, onChange }: { label: string; value:
           pattern="[0-9]*"
           maxLength={2}
           value={typeof value === 'number' ? String(value) : ''}
-          onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, '');
-            onChange(digits ? Number(digits) : undefined);
-          }}
+          onChange={(e) => onChange(angleFromText(e.target.value))}
           placeholder="—"
           autoComplete="off"
           aria-invalid={invalid || undefined}
@@ -78,7 +66,7 @@ function InchesField({ label, value, invalid, onChange }: { label: string; value
           className="h-11 min-w-0 flex-1 pr-1! pl-2.5!"
         >
           <option value="">—</option>
-          {WHOLE_INCHES.map((n) => (
+          {LAYOUT_WHOLE_INCHES.map((n) => (
             <option key={n} value={n}>
               {n}
             </option>

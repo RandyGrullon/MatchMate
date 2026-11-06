@@ -12,7 +12,7 @@ import {
   type BallSticker,
   type BallStickerShape,
 } from '../../lib/ballDesign';
-import { ballArtMetrics } from './BallArt';
+import { ballArtMetrics } from './art';
 
 /**
  * Las cuentas del creador de bolas («Diseñar», BallDesigner.tsx), sin React: qué se guarda, si cambió algo, dónde tocó

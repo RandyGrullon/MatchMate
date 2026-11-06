@@ -11,6 +11,7 @@ import { BackendError, type AuthEvent, type Backend, type Session } from '@mm/li
 import type { Business, BusinessStatus, OwnVenue, Venue, VenueDetail, VenuePhoto } from '@mm/lib/data/business';
 import { uuidv7 } from '@mm/lib/db/ids';
 import { CURRENT_LEGAL } from '@mm/lib/legal';
+import { ballRpc, forgetDemoBalls } from './demoBalls';
 import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
 
 const FLAG = 'mm-demo';
@@ -33,6 +34,7 @@ export function setDemo(on: boolean) {
       sessionStorage.removeItem(DATA);
       sessionStorage.removeItem('mm-demo-invite');
       forgetDemoLeague();
+      forgetDemoBalls();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -406,6 +408,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Las bolas (demoBalls.ts): leen los juegos de la liga y los sueltos de la demostración.
+      const fromBalls = ballRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
+      if (fromBalls !== undefined) return structuredClone(fromBalls) as T;
       const fromLeague = demoLeagueRpc(DEMO_USER, fn, args);
       if (fromLeague !== undefined) return structuredClone(fromLeague) as T;
       const run = rpcs[fn] as ((a: Record<string, unknown>) => unknown) | undefined;

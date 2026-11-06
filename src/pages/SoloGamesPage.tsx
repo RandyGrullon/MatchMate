@@ -11,6 +11,7 @@ import { useIsPro } from '../components/mode';
 import { ScreenTitle, ScreenTop, SignInCard } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
 import { SoloGameSheet } from '../components/solo/SoloGameSheet';
+import { soloScoresLine } from '../components/solo/logic';
 import { NumbersGrid, ShotsCard, TrendCard } from '../components/stats/YoStats';
 import { Button, Card, DateBlock, ListRow, ListSkeleton, Loading, LoadError, SectionHeader, Segmented, Skeleton, StatDuo, cx } from '../components/ui';
 
@@ -26,6 +27,8 @@ type SoloView = 'dias' | 'estadisticas';
  * `?juego=<id>` abre ese (los avisos y el perfil llevan aquí); `?nuevo=1`, uno nuevo (Crear o unirme y «¿Dónde
  * jugaste?» en Hoy). Sin cuenta, invita a entrar y vuelve aquí.
  */
+export { soloScoresLine } from '../components/solo/logic';
+
 export default function SoloGamesPage() {
   const auth = useAuth();
   const location = useLocation();
@@ -215,9 +218,6 @@ function SoloGames() {
     </AppShell>
   );
 }
-
-/** «210 · 180 · 190»: los juegos del día, en una línea. */
-export const soloScoresLine = (s: Pick<SoloSession, 'scores'>): string => s.scores.join(' · ');
 
 /**
  * Un día de juegos sueltos en la lista: la fecha (OCT / 13), la bolera, los juegos y, a la derecha, la serie (o los pinos
