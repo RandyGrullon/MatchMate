@@ -17,7 +17,6 @@ import { addMatchProof, esportsErrorText, useEntries, type EsportsEntry } from '
 import { useLeagueCtx } from '../../../../lib/league';
 import { usePhoto } from '../../../../lib/photos';
 import {
-  GAMES,
   buildSeriesScore,
   parseSeriesScore,
   seriesWinner,
@@ -40,9 +39,10 @@ import { Button, Card, Empty, Field, Input, LoadError, PageSkeleton, Sheet, Skel
 import { BackBar, HideShellBar } from '../../racket/frame';
 import { localParts, zonedIso } from '../../racket/logic/time';
 import { ProofStrip } from '../br/BrGamesList';
-import { canAddGame, entryBySideTeam, resultSummary, rulesFromMatch, sideOfTeams } from '../logic';
+import { canAddGame, canScoreSeries, entryBySideTeam, resultSummary, rulesFromMatch, sideOfTeams } from '../logic';
 import { Initials, useMyTeams } from '../parts';
-import { GameRow, cleanGame, emptyGame, gameWord } from './GameRow';
+import { GameRow } from './GameRow';
+import { cleanGame, emptyGame, finishToast, gameWord, scoringHint, seriesLines } from './game';
 
 type EditMode = 'finish' | 'correct' | 'resolve';
 
@@ -99,7 +99,7 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
   const organizer = isAdmin && pro;
   const mySide = sideOfTeams(m, myTeams.act);
   const known = m.sides.every((s) => !!s.teamId);
-  const canScore = isOpen(m) && known && (isAdmin || !!member?.scorer || mySide !== null);
+  const canScore = canScoreSeries(m, { isAdmin, scorer: !!member?.scorer, mySide });
   const names: [string, string] = [sideName(m.sides[0]), sideName(m.sides[1])];
   const heading = m.stage || 'Serie';
   const when = whenText(m.scheduledAt, league.tz, true);
@@ -240,9 +240,7 @@ function SeriesBoard({
   className?: string;
 }) {
   const score = parseSeriesScore(m.score);
-  const meta = GAMES[rules.game];
-  const word = meta.mapsWord === 'mapas' ? 'Mapa' : 'Juego';
-  const mapName = (id: string | undefined) => (id ? (meta.maps.find((x) => x.id === id)?.name ?? id) : null);
+  const lines = seriesLines(score, rules, names);
   return (
     <Card className={cx('px-[18px] pt-3 pb-4', className)}>
       {m.sides.map((s, i) => {
@@ -263,17 +261,13 @@ function SeriesBoard({
           </div>
         );
       })}
-      {score && !score.wo && score.games.length > 0 && (
+      {lines.length > 0 && (
         <ol className="mt-2 flex flex-col border-t border-line pt-2">
-          {score.games.map((g, i) => (
+          {lines.map((l, i) => (
             <li key={i} className="flex min-h-9 items-center gap-2 text-[14px]">
-              <span className="w-16 shrink-0 text-muted">{`${word} ${i + 1}`}</span>
-              <span className="min-w-0 flex-1 truncate text-fg-2">{mapName(g.map) ?? ''}</span>
-              <span className="num shrink-0 font-semibold">
-                {typeof g.a === 'number' && typeof g.b === 'number' ? `${g.a}-${g.b}` : g.w ? `Gana ${names[g.w - 1]}` : ''}
-                {g.ot ? ' (prórroga)' : ''}
-                {typeof g.pa === 'number' && typeof g.pb === 'number' ? ` (${g.pa}-${g.pb} pen.)` : ''}
-              </span>
+              <span className="w-16 shrink-0 text-muted">{l.label}</span>
+              <span className="min-w-0 flex-1 truncate text-fg-2">{l.map}</span>
+              <span className="num shrink-0 font-semibold">{l.result}</span>
             </li>
           ))}
         </ol>
@@ -361,10 +355,8 @@ function SeriesEditor({
           await resolveDispute(lid, m.id, { score, winner, note: 'Corregido por el organizador' });
           toast('Reclamo resuelto con el marcador nuevo');
         } else {
-          const out = await finishMatch(lid, m.id, { score, winner });
-          if (!out) toast('Guardado: se envía cuando vuelva la señal');
-          else if (out.reason === 'stale') toast('Otro teléfono anotó primero: revisa el resultado.', 'error');
-          else toast(out.status === 'confirmed' ? 'Resultado guardado' : 'Resultado enviado: falta que el rival lo confirme');
+          const said = finishToast(await finishMatch(lid, m.id, { score, winner }));
+          toast(said.text, said.tone);
         }
         onDone();
       } catch (e) {
@@ -389,7 +381,7 @@ function SeriesEditor({
         )}
       </div>
       {mode === 'finish' && !admin && uid && (
-        <p className="mx-1 -mt-1 text-[13.5px] text-muted">{`${word} por ${word.toLowerCase()}, con la regla de ${GAMES[rules.game].name}. El rival lo confirma.`}</p>
+        <p className="mx-1 -mt-1 text-[13.5px] text-muted">{scoringHint(rules)}</p>
       )}
       {games.map((g, i) => (
         <GameRow

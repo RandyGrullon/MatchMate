@@ -6,9 +6,7 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { brPointsOf, type TournamentSettings } from '../../../../sports/esports';
 import { PhotoModal } from '../../../../components/PhotoModal';
 import { Button, Card, Empty, ListRow, RowIcon, SectionHeader, Sheet, Skeleton, cx } from '../../../../components/ui';
-import { brByRound } from '../logic';
-
-const STATUS: Record<BrGame['status'], string> = { scheduled: 'Por jugar', finished: 'Anotada', void: 'Anulada' };
+import { BR_GAME_STATUS, brByRound, brGameLine, brGameRows } from '../logic';
 
 /**
  * Las partidas de battle royale por jornada (§12.8 «Partidas»): cada una con su estado y su mapa; al tocarla, sus
@@ -50,7 +48,7 @@ export function BrGamesList({
                   </RowIcon>
                 }
                 title={`Partida ${g.gameNo}`}
-                subtitle={[STATUS[g.status], g.map, g.results.filter((x) => x.placement != null).length ? `${g.results.filter((x) => x.placement != null).length} con puesto` : null].filter(Boolean).join(' · ')}
+                subtitle={brGameLine(g)}
                 onClick={() => setOpen(g)}
               />
             ))}
@@ -61,7 +59,7 @@ export function BrGamesList({
         open={!!open}
         onClose={() => setOpen(null)}
         title={open ? `Jornada ${open.round} · Partida ${open.gameNo}` : ''}
-        subtitle={open ? [STATUS[open.status], open.map].filter(Boolean).join(' · ') : undefined}
+        subtitle={open ? [BR_GAME_STATUS[open.status], open.map].filter(Boolean).join(' · ') : undefined}
         footer={
           open && onEdit ? (
             <Button
@@ -89,7 +87,7 @@ export function BrGamesList({
 /** Los puestos y las kills de una partida, del 1.º para abajo (los que no jugaron al final), con sus puntos. */
 function GameDetail({ game, settings, nameOf }: { game: BrGame; settings: TournamentSettings; nameOf: (id: string) => string }) {
   const pts = settings.br ?? { placementPoints: [], killPoints: 1 };
-  const rows = [...game.results].sort((a, b) => (a.placement ?? 999) - (b.placement ?? 999) || b.kills - a.kills);
+  const rows = brGameRows(game.results);
   return (
     <div className="flex flex-col gap-4 pb-1">
       {rows.length ? (

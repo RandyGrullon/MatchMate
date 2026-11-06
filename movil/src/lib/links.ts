@@ -27,11 +27,17 @@ export function appRoute(href: string): string | null {
   if (partido && inLeague) return `/l/${inLeague[1]}/partido/${partido}`;
   // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
-  // La tabla y los partidos de la liga (las pestañas de la web).
+  // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
-  if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}`;
+  if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}${query}`;
   if (/^\/l\/[^/]+\/(muro|perfil)$/.test(path)) return path;
   if (/^\/p\/[^/]+$/.test(path)) return path;
+  // Esports: el índice (con su ?crear=), Mi ID de juego, un equipo, unirse a un equipo y la página de un juego. Crear
+  // un torneo (`/esports/<juego>/nuevo-torneo`) sigue en la web.
+  if (path === '/esports' || path === '/d/esports') return '/esports' + query;
+  if (path === '/esports/mi-id') return path + query;
+  if (/^\/esports\/(equipo|unirse)\/[^/]+$/.test(path)) return path;
+  if (/^\/esports\/[^/]+$/.test(path)) return path;
   // Dónde jugar (con su ?deporte=) y la ficha de un espacio.
   if (path === '/canchas') return path + query;
   if (/^\/canchas\/[^/]+$/.test(path)) return path;

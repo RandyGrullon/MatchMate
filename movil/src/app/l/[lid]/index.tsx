@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Medal, Newspaper, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Medal, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
@@ -17,6 +17,7 @@ import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
 import { SwimHome } from '@/components/swimming/SwimHome';
+import { EsportsHome } from '@/components/esports/EsportsLeague';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
@@ -246,6 +247,19 @@ export default function LeagueScreen() {
             ]}
           />
           <SwimHome />
+        </LeagueScope>
+      ) : sport === 'esports' ? (
+        <LeagueScope lid={l.id}>
+          <SportLinks
+            lid={l.id}
+            mine={false}
+            items={[
+              { key: 'juegos', title: 'Partidos', icon: Swords, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid: l.id } }) },
+              { key: 'tabla', title: 'Tabla', icon: ListOrdered, go: () => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } }) },
+              { key: 'perfil', title: 'Lo mío', icon: Target, go: () => router.push({ pathname: '/l/[lid]/perfil', params: { lid: l.id } }) },
+            ]}
+          />
+          <EsportsHome />
         </LeagueScope>
       ) : family === 'racket' ? (
         <LeagueScope lid={l.id}>

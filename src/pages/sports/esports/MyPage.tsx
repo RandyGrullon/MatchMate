@@ -3,15 +3,14 @@ import { Link, useSearchParams } from 'react-router';
 import { Crosshair, Users } from 'lucide-react';
 import { useAuth } from '../../../lib/auth';
 import { useMyEsportsEntries } from '../../../lib/data/esports';
-import { awaitingConfirmation, hasResult, isOpen, useMatches, type Match } from '../../../lib/data/matches';
+import { useMatches, type Match } from '../../../lib/data/matches';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
-import { isIndividualMode } from '../../../sports/esports';
 import { EntryStatusChip, GameMark } from '../../../components/esports/bits';
 import { MatchCard } from '../../../components/match';
 import { useIsPro } from '../../../components/mode';
 import { Card, Empty, ListRow, ListSkeleton, LoadError, SectionHeader } from '../../../components/ui';
-import { cardMatch, sideOfTeams, tournamentPathFor } from './logic';
+import { cardMatch, myLeagueEntryLine, mySeriesGroups, sideOfTeams, tournamentPathFor } from './logic';
 import { MatchSheet } from './match/MatchSheet';
 import { useMyTeams } from './parts';
 
@@ -30,7 +29,8 @@ export default function EsportsMyPage() {
   const myTeams = useMyTeams();
   const now = useNow().getTime();
   const mine = useMemo(() => entries.data.filter((e) => e.leagueId === lid), [entries.data, lid]);
-  const myMatches = useMemo(() => matches.data.filter((m) => m.status !== 'void' && sideOfTeams(m, myTeams.all) !== null), [matches.data, myTeams.all]);
+  const series = useMemo(() => mySeriesGroups(matches.data, myTeams.all, now), [matches.data, myTeams.all, now]);
+  const myMatches = series.all;
   const open = (id: string | null) => {
     const p = new URLSearchParams(params);
     if (id) p.set('partido', id);
@@ -40,8 +40,7 @@ export default function EsportsMyPage() {
   if (matchId) return <MatchSheet matchId={matchId} onBack={() => open(null)} backLabel="Lo mío" shellBar />;
   if (entries.error) return <LoadError error={entries.error} />;
 
-  const todo = myMatches.filter((m) => (isOpen(m) && m.sides.every((s) => !!s.teamId)) || awaitingConfirmation(m, now) || m.status === 'disputed');
-  const done = myMatches.filter((m) => hasResult(m) && !todo.includes(m));
+  const { todo, done } = series;
   const card = (m: Match) => <MatchCard key={m.id} match={cardMatch(m)} mySide={sideOfTeams(m, myTeams.all)} onClick={() => open(m.id)} tz={league.tz} now={now} roundWord="Jornada" />;
 
   return (
@@ -72,7 +71,7 @@ export default function EsportsMyPage() {
                       dense={pro}
                       leading={<GameMark game={e.game} size="md" />}
                       title={e.tournament}
-                      subtitle={[isIndividualMode(e.mode) ? null : e.entryName, e.role === 'captain' ? 'Capitán' : e.role === 'sub' ? 'Suplente' : e.kind === 'free_agent' ? 'Agente libre' : null].filter(Boolean).join(' · ') || undefined}
+                      subtitle={myLeagueEntryLine(e)}
                       trailing={<EntryStatusChip status={e.entryStatus} />}
                       to={tournamentPathFor(lid, e.eventId, league.kind)}
                     />

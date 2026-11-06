@@ -4,4 +4,4 @@
  * movil/scripts/enlaces-universales.mjs lo revisa y arma con esto los archivos de public/.well-known/.
  * El script lo lee como texto: dejarlo así, una lista de textos entre comillas simples.
  */
-export const APP_LINK_PATHS = ['/unirse/', '/l/', '/p/', '/u/', '/canchas/'] as const;
+export const APP_LINK_PATHS = ['/unirse/', '/l/', '/p/', '/u/', '/canchas/', '/esports/unirse/'] as const;

@@ -3,7 +3,7 @@ import { BLOCKED_MESSAGE, isBlockedError } from '../backend/errors';
 import { BackendError, type Backend, type RealtimeMessage } from '../backend/types';
 import { uuidv7 } from '../db/ids';
 import { watchTopic } from '../db/query';
-import { compressImage, type CompressedLogo } from '../image';
+import { compressImage, type CompressedImage, type CompressedLogo } from '../image';
 import { LOGO_BUCKET, logoPath, prepareLogo, removeLogoFile } from '../logos';
 import { uploadScoreboardPhoto } from '../photos';
 import type { Stamp } from '../types';
@@ -1498,6 +1498,14 @@ export async function addMatchProof(lid: string, eventId: string, file: Blob): P
     console.warn('[esports] captura', e);
     throw new BackendError('No se pudo abrir esa imagen.', 'validation', 'imagen');
   }
+  return addMatchProofImage(lid, eventId, img);
+}
+
+/**
+ * La captura ya comprimida (la del teléfono sale así de su selector de fotos, como `compressImage`): se sube y se
+ * registra con `add_photo`. Devuelve el id de la foto.
+ */
+export async function addMatchProofImage(lid: string, eventId: string, img: CompressedImage): Promise<string> {
   const up = await uploadScoreboardPhoto(lid, img, uuidv7());
   const r = await rpc<unknown>('add_photo', {
     p_league: lid,

@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import { Trophy } from 'lucide-react';
 import type { Match } from '../../../../lib/data/matches';
-import { parseSeriesScore, partTitle, type BracketPart, type ResolvedMatch } from '../../../../sports/esports';
+import { parseSeriesScore, type ResolvedMatch } from '../../../../sports/esports';
 import { MatchStatus } from '../../../../components/match/MatchCard';
 import { cellScores } from '../logic';
+import { cellLabel, cellWinnerSide, sections } from './sections';
 import { statusInfo } from '../../../../components/match';
 import { cx } from '../../../../components/ui';
+
+export { sections } from './sections';
 
 /**
  * El cuadro de un torneo de esports (§12.8): columnas por ronda con desplazamiento horizontal **dentro de su caja** (la
@@ -64,56 +67,6 @@ export function EsportsBracket({
   );
 }
 
-interface Column {
-  key: string;
-  title: string;
-  matches: ResolvedMatch[];
-}
-
-interface Part {
-  key: string;
-  title: string;
-  columns: Column[];
-  /** Lleva el campeón al final. */
-  final: boolean;
-}
-
-/** Ganadores (o el cuadro simple), perdedores y la gran final: cada parte con sus columnas por ronda. */
-export function sections(list: readonly ResolvedMatch[]): Part[] {
-  const of = (part: BracketPart) => list.filter((m) => m.part === part);
-  const w = of('W');
-  const l = of('L');
-  const gf = [...of('GF'), ...of('GF2')];
-  const p3 = of('P3');
-  const double = l.length > 0 || gf.length > 0;
-  const byRound = (ms: readonly ResolvedMatch[], part: BracketPart): Column[] => {
-    const rounds = [...new Set(ms.map((m) => m.round))].sort((a, b) => a - b);
-    const last = rounds.at(-1) ?? 1;
-    return rounds.map((r) => ({
-      key: `${part}${r}`,
-      // En la doble, la última de ganadores es «Final de ganadores» (la final es la gran final).
-      title: double && part === 'W' && r === last ? 'Final de ganadores' : partTitle(part, r, last),
-      matches: ms.filter((m) => m.round === r).sort((a, b) => a.index - b.index),
-    }));
-  };
-  const out: Part[] = [];
-  if (w.length) out.push({ key: 'W', title: double ? 'Ganadores' : 'Cuadro', columns: byRound(w, 'W'), final: !double && !p3.length });
-  if (l.length) out.push({ key: 'L', title: 'Perdedores', columns: byRound(l, 'L'), final: false });
-  if (gf.length)
-    out.push({
-      key: 'GF',
-      title: 'Gran final',
-      columns: gf.map((m) => ({ key: m.key, title: partTitle(m.part, 1, 1), matches: [m] })),
-      final: true,
-    });
-  if (p3.length) {
-    // Simple con 3.er lugar: el campeón va después de la final (en la primera parte) y el 3.er lugar aparte.
-    if (out[0]) out[0].final = true;
-    out.push({ key: 'P3', title: '3.er lugar', columns: [{ key: 'P3', title: partTitle('P3', 1, 1), matches: p3 }], final: false });
-  }
-  return out;
-}
-
 function Cell({
   m,
   nameOf,
@@ -132,13 +85,13 @@ function Cell({
   const score = parseSeriesScore(match?.score);
   const nums = cellScores(score);
   const voided = match?.status === 'void';
-  const winnerSide = match?.status === 'walkover' ? (match.walkoverSide === 1 ? 2 : match.walkoverSide === 2 ? 1 : null) : (match?.winner ?? null);
+  const winnerSide = cellWinnerSide(match);
   const line = (i: 0 | 1): ReactNode => {
     const id = m.known[i];
     const won = winnerSide === i + 1;
     const lost = winnerSide !== null && !won;
     const seed = id && seedOf ? seedOf(id) : null;
-    const label = id ? nameOf(id) : m.labels[i] || 'Por definir';
+    const label = cellLabel(m, i, nameOf);
     return (
       <div className={cx('flex min-h-10 items-center gap-2 px-3 py-1.5', i === 0 && 'border-b border-line', id && highlight?.has(id) && 'bg-accent-soft')}>
         {seed != null && <span className="w-4 shrink-0 text-right text-[11px] font-semibold text-faint tabular-nums">{seed}</span>}
@@ -166,7 +119,7 @@ function Cell({
     <button
       type="button"
       onClick={() => onOpen(match)}
-      aria-label={`${m.stage || m.key}: ${m.known[0] ? nameOf(m.known[0]) : m.labels[0] || 'Por definir'} contra ${m.known[1] ? nameOf(m.known[1]) : m.labels[1] || 'Por definir'}`}
+      aria-label={`${m.stage || m.key}: ${cellLabel(m, 0, nameOf)} contra ${cellLabel(m, 1, nameOf)}`}
       className={cx(cls, 'transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-accent')}
     >
       {body}

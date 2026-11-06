@@ -6,17 +6,11 @@ import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { EventMenu, type MenuItem } from '../../../../components/event/EventHeader';
 import { Button, Card, Field, Input, ListRow, SectionHeader, Sheet, Textarea } from '../../../../components/ui';
-import { pendingEntries, rosterCount, rosterText } from '../logic';
+import { entryLine, pendingEntries } from '../logic';
 import { Initials } from '../parts';
 
-/** La línea de un inscrito: «5 titulares · 1 suplente», el individual con su ID, el agente libre con el suyo. */
-export function entryLine(e: EsportsEntry): string {
-  if (e.kind === 'team') {
-    const { starters, subs } = rosterCount(e.members);
-    return rosterText(starters, subs);
-  }
-  return e.members[0]?.gamerTag ?? (e.kind === 'free_agent' ? 'Agente libre' : '');
-}
+/** La línea de un inscrito (en logic.ts: la usa también la app del teléfono). */
+export { entryLine };
 
 /**
  * Lo del organizador en «Equipos» (Pro + admin, §12.8): los pendientes con «Aprobar» y «Rechazar» (con nota). El menú

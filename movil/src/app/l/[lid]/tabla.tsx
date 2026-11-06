@@ -5,6 +5,7 @@ import { useMembership } from '@mm/lib/data/members';
 import { BowlingRanking } from '@/components/bowling/BowlingRanking';
 import { GolfStandings } from '@/components/golf/GolfStandings';
 import { SwimStandings } from '@/components/swimming/SwimStandings';
+import { EsportsStandings } from '@/components/esports/EsportsLeague';
 import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
 import { RacketStandings } from '@/components/racket/RacketStandings';
@@ -27,6 +28,17 @@ export default function LeagueTableScreen() {
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
         <LeagueScope lid={lid}>
           <GolfStandings />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  // Esports: las tablas de grupos, de todos contra todos o de battle royale (`?torneo=`).
+  if (sport === 'esports') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <EsportsStandings />
         </LeagueScope>
       </Screen>
     );

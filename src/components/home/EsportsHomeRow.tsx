@@ -1,23 +1,20 @@
 import { createElement } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import { useMyEsportsEntries, useMyEsportsTeams } from '../../lib/data/esports';
 import { seenIdMove, useMyIdMoves, type IdMove } from '../../lib/data/esportsIds';
-import { LINK_PROVIDER_NAME, gameMeta, isGameId, type GameId } from '../../sports/esports';
+import { LINK_PROVIDER_NAME, gameMeta, type GameId } from '../../sports/esports';
 import type { SportId } from '../../sports/types';
 import { useNotice, type Notice } from '../NoticeSlot';
 import { SportMark } from '../SportMark';
 import { Card, ListRow, cx } from '../ui';
+import { useEsportsPresence } from './esportsPresence';
+
+export { onlyGame, showsEsportsRow, useEsportsPresence } from './esportsPresence';
 
 /**
  * Esports en Hoy y en Ligas (docs/esports.md §11.2): la fila que lleva a `/esports` («Tus equipos y torneos», «Torneos
  * de esports») y, en Hoy, el aviso de «Tu ID pasó a otra cuenta» (alguien entró con esa cuenta de Epic, Steam o Riot
  * en otra cuenta de MatchMate). El mismo aviso sale en Esports y en Mi ID (`useEsportsIdMoveNotice`).
  */
-
-/** ¿Sale la fila de esports? Con el deporte activo en esports, o si la cuenta tiene equipos o inscripciones de esports. */
-export function showsEsportsRow(o: { active: SportId | null; teams: number; entries: number }): boolean {
-  return o.active === 'esports' || o.teams > 0 || o.entries > 0;
-}
 
 /** Marca el aviso como visto en la base (si falla, el aviso ya quedó cerrado en este teléfono). */
 const markSeen = (id: string) => {
@@ -48,26 +45,6 @@ export function esportsIdMoveNotice(moves: readonly IdMove[], onSeen: (id: strin
 export function useEsportsIdMoveNotice(uid: string | null | undefined): void {
   const moves = useMyIdMoves(uid);
   useNotice(esportsIdMoveNotice(moves.data));
-}
-
-/** El juego de todo lo de esports de la cuenta si es uno solo (sus equipos e inscripciones); null si son varios o ninguno. */
-export function onlyGame(games: readonly (string | null | undefined)[]): GameId | null {
-  const set = new Set(games.filter(isGameId));
-  return set.size === 1 ? [...set][0] : null;
-}
-
-/**
- * ¿Juega esports esta cuenta? (sus equipos o inscripciones; las mismas lecturas que la pantalla de esports). `game`: si
- * todo es de un solo juego, ese (la fila lleva su monograma).
- */
-export function useEsportsPresence(uid: string | null | undefined, active: SportId | null): { show: boolean; loading: boolean; game: GameId | null } {
-  const teams = useMyEsportsTeams(uid);
-  const entries = useMyEsportsEntries(uid);
-  return {
-    show: !!uid && showsEsportsRow({ active, teams: teams.data.length, entries: entries.data.length }),
-    loading: teams.loading || entries.loading,
-    game: onlyGame([...teams.data.map((t) => t.game), ...entries.data.map((e) => e.game)]),
-  };
 }
 
 /** Lo de esports en Hoy: si va la fila (y su juego, si es uno solo), y el aviso de un ID que pasó a otra cuenta (al NoticeSlot). */

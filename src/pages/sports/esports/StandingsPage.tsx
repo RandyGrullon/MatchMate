@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { ListOrdered } from 'lucide-react';
 import { useAuth } from '../../../lib/auth';
-import { useLeagueTournaments, type EsportsTournament } from '../../../lib/data/esports';
+import { useLeagueTournaments } from '../../../lib/data/esports';
 import { useLeagueCtx } from '../../../lib/league';
 import { useNow } from '../../../lib/useNow';
 import { tiebreakText } from '../../../sports/esports';
@@ -12,11 +12,8 @@ import { useIsPro } from '../../../components/mode';
 import { Empty, ListSkeleton, LoadError, PageSkeleton, SectionHeader } from '../../../components/ui';
 import { Chips, FinePrint } from '../racket/bits';
 import { BrLeaderboard } from './br/BrLeaderboard';
-import { brTable, competitors, groupTablesOf, myEntryOf, planFromStage, stageMatches, standingsColumns, tableOf } from './logic';
+import { brTable, competitors, groupTablesOf, hasTable, myEntryOf, pickTableTournament, planFromStage, stageMatches, standingsColumns, tableOf } from './logic';
 import { useEntryNames, useTournament } from './parts';
-
-/** Los formatos que tienen tabla (grupos, todos contra todos y battle royale). */
-const hasTable = (t: Pick<EsportsTournament, 'format' | 'status'>) => t.status !== 'cancelled' && (t.format === 'groups_playoffs' || t.format === 'round_robin' || t.format === 'br');
 
 /**
  * «Tabla» de la liga de esports (§12.8 `Standings`, `/l/:lid/ranking`): las tablas de los grupos, la de todos contra
@@ -32,7 +29,7 @@ export default function EsportsStandingsPage() {
   if (list.error) return <LoadError error={list.error} />;
   if (list.loading && !list.data.length) return <PageSkeleton />;
   if (!withTable.length) return <Navigate to=".." replace />;
-  const picked = withTable.find((t) => t.eventId === params.get('torneo')) ?? withTable.find((t) => t.status === 'live') ?? withTable[0];
+  const picked = pickTableTournament(withTable, params.get('torneo'))!;
   return (
     <div className="flex flex-col px-2">
       <h1 className={pro ? 'text-title-pro' : 'text-title'}>Tabla</h1>

@@ -6,6 +6,7 @@
  */
 import { toIsoDate } from '@mm/lib/format';
 import { DEMO_COURSE, DEMO_PARS } from '@mm/sports/golf/demo';
+import { esportsRpc, esportsTables, forgetDemoEsports } from './demoEsports';
 import { forgetDemoSwim, swimRpc, swimTables } from './demoSwim';
 
 const KEY = 'mm-demo-liga';
@@ -113,6 +114,7 @@ function save(s: State) {
 
 export function forgetDemoLeague() {
   forgetDemoSwim();
+  forgetDemoEsports();
   try {
     sessionStorage.removeItem(KEY);
   } catch {
@@ -215,8 +217,11 @@ function tables(uid: string): Record<string, Row[]> {
   const g = golfTables(uid);
   // La liga de natación ficticia (demoSwim.ts): sus tablas propias y sus filas de liga, jugadores y encuentros.
   const { leagues: swimLeagues = [], memberships: swimMembers = [], players: swimPlayers = [], events: swimEvents = [], ...swim } = swimTables(uid);
+  // La de esports (demoEsports.ts): sus torneos, equipos e IDs, y sus series en matches y match_sides.
+  const { leagues: espLeagues = [], memberships: espMembers = [], players: espPlayers = [], events: espEvents = [], ...esp } = esportsTables(uid);
   return {
     ...swim,
+    ...esp,
     golf_courses: g.golf_courses,
     golf_rounds: g.golf_rounds,
     golf_tournaments: g.golf_tournaments,
@@ -243,14 +248,16 @@ function tables(uid: string): Record<string, Row[]> {
       },
       ...g.golfLeague,
       ...swimLeagues,
+      ...espLeagues,
     ],
-    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }, ...g.golfMember, ...swimMembers],
+    memberships: [{ league_id: DEMO_LEAGUE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PLAYER, scorer_only: false }, ...g.golfMember, ...swimMembers, ...espMembers],
     players: [
       { id: ME_PLAYER, league_id: DEMO_LEAGUE, user_id: uid, name: 'Juan Pérez', average_override: null, is_minor: false },
       { id: OTHER, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugador Uno', average_override: null, is_minor: false },
       { id: THIRD, league_id: DEMO_LEAGUE, user_id: null, name: 'Jugadora Dos', average_override: null, is_minor: false },
       ...g.golfPlayers,
       ...swimPlayers,
+      ...espPlayers,
     ],
     events: [
       practice(PAST[0], dayAgo(14)),
@@ -275,6 +282,7 @@ function tables(uid: string): Record<string, Row[]> {
       },
       ...g.golfEvents,
       ...swimEvents,
+      ...espEvents,
     ],
     entries: [...PAST_ENTRIES, ...s.entries],
     submissions: s.submissions,
@@ -311,6 +319,8 @@ const OTHER_LEAGUE = '00000000-0000-7000-8000-00000000f002';
 export function demoLeagueRpc(uid: string, fn: string, a: Record<string, unknown>): unknown {
   const swim = swimRpc(uid, fn, a);
   if (swim !== undefined) return swim;
+  const esp = esportsRpc(uid, fn, a);
+  if (esp !== undefined) return esp;
   if (fn === 'invite_preview' || fn === 'invite_details') {
     if (a.p_code !== DEMO_CODE) return null;
     if (fn === 'invite_preview') return [{ league_id: OTHER_LEAGUE, name: 'Liga de los Jueves', sport: 'bowling', kind: 'liga', visibility: 'private', logo_path: null }];

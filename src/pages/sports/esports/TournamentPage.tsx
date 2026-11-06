@@ -71,6 +71,8 @@ import { EntriesView, TournamentInfo } from './EntriesView';
 import {
   brTable,
   cardMatch,
+  checkinDay,
+  checkinOpensAt,
   competitors,
   countLine,
   freeAgents,
@@ -242,7 +244,7 @@ function Tournament({
       text: 'Te avisamos cuando el organizador la revise.',
     },
   );
-  const checkinAt = t.checkinMinutes ? Date.parse(t.startsAt) - t.checkinMinutes * 60_000 : null;
+  const checkinAt = checkinOpensAt(t);
   useNotice(
     myEntry?.status === 'approved' &&
       checkinAt !== null &&
@@ -506,14 +508,6 @@ function primaryIcon(p: Primary): ReactNode {
     default:
       return null;
   }
-}
-
-/** «sábado 12 oct a las 6:30 p. m.» en la zona de la liga. */
-function checkinDay(ts: number, tz?: string): string {
-  const d = new Date(ts);
-  const day = new Intl.DateTimeFormat('es-DO', { weekday: 'long', day: 'numeric', month: 'short', timeZone: tz || undefined }).format(d).replace(/\./g, '');
-  const time = new Intl.DateTimeFormat('es-DO', { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }).format(d);
-  return `${day} a las ${time}`;
 }
 
 /** Lo de cada vista (Cuadro, Grupos, Playoffs, Tabla, Partidos, Partidas, Equipos, Info). */

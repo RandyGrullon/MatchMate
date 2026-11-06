@@ -3,8 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { IdCard, Plus } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useMyGameIds, useProviders } from '../../lib/data/esportsIds';
-import { GAMES, idPlatforms, type GameId } from '../../sports/esports';
-import { platformsText, type Platform } from '../../sports/esports/platforms';
+import { GAMES, type GameId } from '../../sports/esports';
 import { EsportsTint, GameMark, IdChip, RankChip } from '../../components/esports/bits';
 import { useEsportsIdMoveNotice } from '../../components/home/EsportsHomeRow';
 import { useFeedback } from '../../components/feedback';
@@ -16,18 +15,7 @@ import { AppShell } from '../../components/Shell';
 import { Button, Card, ListRow, ListSkeleton, LoadError, Loading, SectionHeader } from '../../components/ui';
 import { GamePickerSheet } from './GamePickerSheet';
 import { GameIdSheet } from './ids/GameIdSheet';
-import { asksPlatforms, defaultRankKey, gameParam, idFor, idKeyFor, linkBackPath, linkResultToast, safeBack, sortIds, wantedPlatform } from './logic';
-
-/** «PlayStation» (NBA 2K lleva un ID por plataforma). */
-const platformName = (game: GameId, id: string) => idPlatforms(game).find((p) => p.id === id)?.label ?? id;
-
-/** Lo de debajo del ID en la lista: el juego y, si lleva, la plataforma (NBA 2K) o dónde juega («PC y PlayStation»). */
-function idSubtitle(r: { game: GameId; platform: string; platforms?: string[] }): string {
-  const name = GAMES[r.game].name;
-  if (r.platform) return `${name} · ${platformName(r.game, r.platform)}`;
-  if (!asksPlatforms(r.game)) return name;
-  return r.platforms?.length ? `${name} · ${platformsText(r.platforms as Platform[])}` : `${name} · Di dónde juegas`;
-}
+import { gameParam, idFor, idKeyFor, idSubtitle, linkBackPath, linkResultToast, listRank, safeBack, sortIds, wantedPlatform } from './logic';
 
 /** Los parámetros de la vuelta de «Conectar con…» (se quitan después de avisar). */
 const LINK_PARAMS = ['conectado', 'error'];
@@ -166,8 +154,7 @@ function GameIds({ uid }: { uid: string }) {
         <Card className="overflow-hidden">
           {list.map((r) => {
             const meta = GAMES[r.game];
-            const key = defaultRankKey(r.game);
-            const rank = r.ranks[key] ?? Object.values(r.ranks)[0] ?? null;
+            const rank = listRank(r);
             return (
               <ListRow
                 key={`${r.game}:${r.platform}`}

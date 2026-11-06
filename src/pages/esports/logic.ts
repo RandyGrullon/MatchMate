@@ -6,10 +6,13 @@
 import {
   GAMES,
   GAME_IDS,
+  LINK_PROVIDER_NAME,
   canRegister,
   formatLine,
   gameLabel,
+  gameMeta,
   gamesOfKind,
+  idPlatforms,
   isGameId,
   rankKeysOf,
   rlRankFromMmr,
@@ -25,9 +28,9 @@ import {
   type RankMap,
   type RankValue,
 } from '../../sports/esports';
-import { NBA_KEY_PLATFORM, PLATFORM_LABEL, gamePlatforms, isPlatform, type Platform, type TournamentPlatform } from '../../sports/esports/platforms';
+import { NBA_KEY_PLATFORM, PLATFORM_LABEL, gamePlatforms, isPlatform, platformsText, type Platform, type TournamentPlatform } from '../../sports/esports/platforms';
 import type { EsportsTeam, EsportsTeamMember, HubTournament, MyEntry, TeamRole } from '../../lib/data/esports';
-import type { GameIdRecord, LookupResult, ProvidersStatus } from '../../lib/data/esportsIds';
+import type { GameIdRecord, IdMove, LookupResult, ProvidersStatus } from '../../lib/data/esportsIds';
 import type { Notice } from '../../lib/notices';
 
 // ---------- Palabras ----------
@@ -630,3 +633,44 @@ export const isTextRank = (r: RankValue | null | undefined): r is { text: string
 
 /** Un `?juego=` que sirve. */
 export const gameParam = (v: string | null): GameId | null => (v && isGameId(v) ? v : null);
+
+// ---------- Lo que las pantallas tenían adentro (lo comparten la web y la app del teléfono) ----------
+
+/** El nombre de cada clave del rango (Rocket League va por modo). */
+export const RANK_KEY_LABEL: Readonly<Record<RankKey, string>> = { main: 'Rango', '1v1': '1v1', '2v2': '2v2', '3v3': '3v3' };
+
+/** «PlayStation» (NBA 2K lleva un ID por plataforma). */
+const idPlatformName = (game: GameId, id: string) => idPlatforms(game).find((p) => p.id === id)?.label ?? id;
+
+/** Lo de debajo del ID en la lista: el juego y, si lleva, la plataforma (NBA 2K) o dónde juega («PC y PlayStation»). */
+export function idSubtitle(r: { game: GameId; platform: string; platforms?: string[] }): string {
+  const name = GAMES[r.game].name;
+  if (r.platform) return `${name} · ${idPlatformName(r.game, r.platform)}`;
+  if (!asksPlatforms(r.game)) return name;
+  return r.platforms?.length ? `${name} · ${platformsText(r.platforms as Platform[])}` : `${name} · Di dónde juegas`;
+}
+
+/** El rango que se ve en la fila de un ID: el del modo por defecto del juego o, si no, el primero que tenga. */
+export const listRank = (r: Pick<GameIdRecord, 'game' | 'ranks'>): RankValue | null => r.ranks[defaultRankKey(r.game)] ?? Object.values(r.ranks)[0] ?? null;
+
+/**
+ * El aviso de un ID que pasó a otra cuenta (el más nuevo de los que no vio), sin el ícono ni lo que pasa al cerrarlo:
+ * «Tu ID {X} de {Juego} pasó a otra cuenta» · «Alguien entró con esa cuenta de {Epic} en otra cuenta de MatchMate.» ·
+ * «Ver». null = nada. (El de la web, con su ícono, es `esportsIdMoveNotice` de src/components/home/EsportsHomeRow.tsx.)
+ */
+export function idMoveNoticeOf(moves: readonly IdMove[]): (Notice & { moveId: string }) | null {
+  const m = moves.reduce<IdMove | null>((newest, x) => (!newest || x.createdAt > newest.createdAt ? x : newest), null);
+  if (!m) return null;
+  return {
+    id: `esports-id-move:${m.id}`,
+    moveId: m.id,
+    kind: 'admin',
+    title: `Tu ID ${m.idDisplay} de ${gameMeta(m.game)?.name ?? 'juego'} pasó a otra cuenta`,
+    text: `Alguien entró con esa cuenta de ${LINK_PROVIDER_NAME[m.provider] ?? m.provider} en otra cuenta de MatchMate.`,
+    action: { label: 'Ver', to: `/esports/mi-id?juego=${encodeURIComponent(m.game)}` },
+    dismissible: true,
+  };
+}
+
+/** Lo que se ve del perfil de un miembro (el tuyo es Yo). */
+export const memberProfileTarget = (userId: string, me: boolean): { kind: 'me' } | { kind: 'user'; userId: string } => (me ? { kind: 'me' } : { kind: 'user', userId });

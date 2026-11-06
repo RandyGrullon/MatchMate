@@ -59,6 +59,11 @@
               "scheme": "https",
               "host": "matchmate.grullonb.com",
               "pathPrefix": "/canchas/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/esports/unirse/"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

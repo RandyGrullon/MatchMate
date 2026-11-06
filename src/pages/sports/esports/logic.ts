@@ -4,7 +4,7 @@
  * motor, de partidos a `KeyResult`, las tablas de grupos y liga, la plantilla al inscribirse, los agentes libres y las
  * partidas de battle royale. Sin React ni llamadas al backend: lo prueban `logic.test.ts` y las pantallas.
  */
-import { awaitingConfirmation, isFinal, isOpen, type Match } from '../../../lib/data/matchCore';
+import { awaitingConfirmation, hasResult, isFinal, isOpen, type Match } from '../../../lib/data/matchCore';
 import type { BrGame, EntryMember, EsportsEntry, EsportsTournament, StageLink } from '../../../lib/data/esports';
 // Los pasos de partidos a resultados son de la capa de datos (funciones puras: no llaman al backend), para que el cuadro,
 // las tablas y sus pruebas usen una sola regla.
@@ -850,3 +850,100 @@ export function lastStage(created: ReadonlySet<StageKind>): StageKind | null {
   for (const k of ['playoffs', 'bracket', 'league', 'groups'] as const) if (created.has(k)) return k;
   return null;
 }
+
+// ---------- Lo que las pantallas tenían adentro (lo comparten la web y la app del teléfono) ----------
+
+/** La línea de un inscrito: «5 titulares · 1 suplente», el individual con su ID, el agente libre con el suyo. */
+export function entryLine(e: Pick<EsportsEntry, 'kind' | 'members'>): string {
+  if (e.kind === 'team') {
+    const { starters, subs } = rosterCount(e.members);
+    return rosterText(starters, subs);
+  }
+  return e.members[0]?.gamerTag ?? (e.kind === 'free_agent' ? 'Agente libre' : '');
+}
+
+/** Cuándo abre el check-in (ms), o null si el torneo no lleva. */
+export const checkinOpensAt = (t: Pick<EsportsTournament, 'startsAt' | 'checkinMinutes'>): number | null =>
+  t.checkinMinutes ? Date.parse(t.startsAt) - t.checkinMinutes * 60_000 : null;
+
+/** «sábado 12 oct a las 6:30 p. m.» en la zona de la liga. */
+export function checkinDay(ts: number, tz?: string): string {
+  const d = new Date(ts);
+  const day = new Intl.DateTimeFormat('es-DO', { weekday: 'long', day: 'numeric', month: 'short', timeZone: tz || undefined }).format(d).replace(/\./g, '');
+  const time = new Intl.DateTimeFormat('es-DO', { hour: 'numeric', minute: '2-digit', timeZone: tz || undefined }).format(d);
+  return `${day} a las ${time}`;
+}
+
+/** Puede anotar la serie: abierta, con los dos lados sabidos, y es admin, anotador o habla por un lado. */
+export const canScoreSeries = (m: Pick<Match, 'status' | 'sides'>, o: { isAdmin: boolean; scorer: boolean; mySide: Side | null }) =>
+  isOpen(m) && m.sides.every((s) => !!s.teamId) && (o.isAdmin || o.scorer || o.mySide !== null);
+
+/** El estado de una partida de battle royale. */
+export const BR_GAME_STATUS: Readonly<Record<BrGame['status'], string>> = { scheduled: 'Por jugar', finished: 'Anotada', void: 'Anulada' };
+
+/** La línea de una partida: «Anotada · Bermuda · 12 con puesto». */
+export function brGameLine(g: Pick<BrGame, 'status' | 'map' | 'results'>): string {
+  const placed = g.results.filter((x) => x.placement != null).length;
+  return [BR_GAME_STATUS[g.status], g.map, placed ? `${placed} con puesto` : null].filter(Boolean).join(' · ');
+}
+
+/** Los puestos de una partida, del 1.º para abajo (los que no jugaron al final; entre iguales, más kills). */
+export const brGameRows = <R extends Pick<BrGame['results'][number], 'placement' | 'kills'>>(results: readonly R[]): R[] =>
+  [...results].sort((a, b) => (a.placement ?? 999) - (b.placement ?? 999) || b.kills - a.kills);
+
+/** Los formatos que tienen tabla (grupos, todos contra todos y battle royale), sin los cancelados. */
+export const hasTable = (t: Pick<EsportsTournament, 'format' | 'status'>) =>
+  t.status !== 'cancelled' && (t.format === 'groups_playoffs' || t.format === 'round_robin' || t.format === 'br');
+
+/** El torneo de la Tabla: el pedido (`?torneo=`), si no el que está en curso, si no el primero. */
+export function pickTableTournament<T extends Pick<EsportsTournament, 'eventId' | 'status'>>(list: readonly T[], wanted: string | null | undefined): T | undefined {
+  return list.find((t) => t.eventId === wanted) ?? list.find((t) => t.status === 'live') ?? list[0];
+}
+
+/** «Todos» o «Míos» en Partidos. */
+export type SeriesFilter = 'todos' | 'mios';
+
+/** Para ordenar los próximos: la hora, o la ronda si no tiene. */
+const upcomingOrder = (m: Pick<Match, 'scheduledAt' | 'round'>) => (m.scheduledAt ? Date.parse(m.scheduledAt) : (m.round ?? 0) * 1e12);
+/** Para ordenar los resultados: cuándo se anotó (lo último primero). */
+const playedOrder = (m: Pick<Match, 'confirmedAt' | 'proposedAt' | 'scheduledAt'>) => Date.parse(m.confirmedAt ?? m.proposedAt ?? m.scheduledAt ?? '') || 0;
+
+/**
+ * Partidos de la liga de esports: en vivo, por confirmar, próximos (con los dos lados ya sabidos; los demás están en el
+ * cuadro) y resultados. `mios`: solo donde juego (por mis equipos de temporada).
+ */
+export function seriesGroups(matches: readonly Match[], filter: SeriesFilter, myTeams: ReadonlySet<string>, now: number): { live: Match[]; toConfirm: Match[]; upcoming: Match[]; results: Match[] } {
+  const list = matches.filter((m) => m.status !== 'void' && (filter === 'todos' || sideOfTeams(m, myTeams) !== null));
+  const live = list.filter((m) => m.status === 'live');
+  const toConfirm = list.filter((m) => awaitingConfirmation(m, now) || m.status === 'disputed');
+  const upcoming = list
+    .filter((m) => (m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended') && m.sides.every((s) => !!s.teamId))
+    .sort((a, b) => upcomingOrder(a) - upcomingOrder(b));
+  const results = list.filter((m) => hasResult(m) && !toConfirm.includes(m)).sort((a, b) => playedOrder(b) - playedOrder(a));
+  return { live, toConfirm, upcoming, results };
+}
+
+/** Cuántas me toca confirmar (como capitán: el rival anotó): «Míos (2)». */
+export function mineToConfirmCount(matches: readonly Match[], act: ReadonlySet<string>, now: number): number {
+  return matches.filter((m) => {
+    const side = sideOfTeams(m, act);
+    return side !== null && awaitingConfirmation(m, now) && m.proposedSide !== side;
+  }).length;
+}
+
+/** «Lo mío»: mis series (sin las anuladas) en «Te toca» (por jugar, por confirmar o en reclamo) y «Resultados». */
+export function mySeriesGroups(matches: readonly Match[], myTeams: ReadonlySet<string>, now: number): { all: Match[]; todo: Match[]; done: Match[] } {
+  const all = matches.filter((m) => m.status !== 'void' && sideOfTeams(m, myTeams) !== null);
+  const todo = all.filter((m) => (isOpen(m) && m.sides.every((s) => !!s.teamId)) || awaitingConfirmation(m, now) || m.status === 'disputed');
+  const done = all.filter((m) => hasResult(m) && !todo.includes(m));
+  return { all, todo, done };
+}
+
+/** La línea de una inscripción mía en «Lo mío»: el equipo (no en modo individual) y el rol. undefined si no hay nada. */
+export function myLeagueEntryLine(e: { mode: Mode; entryName: string; role: EntryMember['role']; kind: EsportsEntry['kind'] }): string | undefined {
+  const role = e.role === 'captain' ? 'Capitán' : e.role === 'sub' ? 'Suplente' : e.kind === 'free_agent' ? 'Agente libre' : null;
+  return [isIndividualMode(e.mode) ? null : e.entryName, role].filter(Boolean).join(' · ') || undefined;
+}
+
+/** El rol en la plantilla de un inscrito: «Capitán», «Suplente» o «Titular». */
+export const memberRoleText = (role: EntryMember['role']) => (role === 'captain' ? 'Capitán' : role === 'sub' ? 'Suplente' : 'Titular');

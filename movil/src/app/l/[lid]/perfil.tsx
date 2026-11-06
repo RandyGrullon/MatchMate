@@ -3,9 +3,10 @@ import { useLeague } from '@mm/lib/data';
 import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope } from '@/components/league/LeagueScope';
 import { SwimMyProfile } from '@/components/swimming/SwimProfile';
+import { EsportsMine } from '@/components/esports/EsportsLeague';
 import { BackBar, Loading, Screen } from '@/components/ui';
 
-/** Lo mío en la liga (la pestaña de perfil de la web: «Mis marcas» en natación). Lo que la app no tiene: la liga. */
+/** Lo mío en la liga (la pestaña de perfil de la web: «Mis marcas» en natación, «Lo mío» en esports). Lo que la app no tiene: la liga. */
 export default function LeagueMineScreen() {
   const { lid } = useLocalSearchParams<{ lid: string }>();
   const league = useLeague(lid);
@@ -17,6 +18,16 @@ export default function LeagueMineScreen() {
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
         <LeagueScope lid={lid}>
           <SwimMyProfile />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (sport === 'esports') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <EsportsMine />
         </LeagueScope>
       </Screen>
     );

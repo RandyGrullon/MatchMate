@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LADDERS, rankLabel, validateRank, type GameId, type Ladder, type RankMap, type RankValue } from '../../../sports/esports';
 import { Field, Input, Segmented, Select } from '../../../components/ui';
 import {
+  RANK_KEY_LABEL,
   defaultRankKey,
   divsOf,
   isNumberRank,
@@ -15,7 +16,7 @@ import {
   type RankKey,
 } from '../logic';
 
-const KEY_LABEL: Record<RankKey, string> = { main: 'Rango', '1v1': '1v1', '2v2': '2v2', '3v3': '3v3' };
+const KEY_LABEL = RANK_KEY_LABEL;
 
 /**
  * El rango declarado de un juego (opcional, §6.2): la escalera del catálogo (tier y, si tiene, división), un número

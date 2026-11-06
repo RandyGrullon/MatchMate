@@ -17,8 +17,8 @@ import {
 } from '../../../../lib/data/esports';
 import { useGameIdsFor, useMyGameIds, type GameIdRecord } from '../../../../lib/data/esportsIds';
 import { useLeagueCtx } from '../../../../lib/league';
-import { GAMES, isIndividualMode, modeSize, rankKeyFor, type GameId } from '../../../../sports/esports';
-import { gamePlatforms, platformsText, type Platform } from '../../../../sports/esports/platforms';
+import { GAMES, isIndividualMode, modeSize, rankKeyFor } from '../../../../sports/esports';
+import type { Platform } from '../../../../sports/esports/platforms';
 import { EntryStatusChip, IdChip, RankChip, TeamLogo } from '../../../../components/esports/bits';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
@@ -29,6 +29,7 @@ import {
   MEMBER_PROBLEM,
   memberProblem,
   memberRank,
+  memberRoleText,
   myProblemText,
   platformOf,
   platformRequirement,
@@ -37,42 +38,26 @@ import {
   rosterText,
   speaksFor,
   staleMembers,
-  tournamentIdFor,
   tournamentPathFor,
-  type MemberProblem,
   type RosterPick,
 } from '../logic';
+import {
+  FIX_LABEL,
+  idFor,
+  initialRosterPicks,
+  memberProblemLabel,
+  playsOnText,
+  refreshInfo,
+  registerSheetTitle,
+  rosterHeading,
+  soloRegisteredText,
+  teamRegisteredText,
+  toggleRosterPick,
+  withdrawMessage,
+} from './logic';
 
-/**
- * La fila de su ID de juego para el torneo: en NBA 2K, la de la plataforma del torneo (en crossplay, cualquiera; si solo
- * tiene de otra plataforma, esa: así dice «Otra plataforma»); en los demás juegos, la única.
- */
-export function idFor(records: readonly GameIdRecord[], t: Pick<EsportsTournament, 'game' | 'settings'>, userId?: string): GameIdRecord | null {
-  return tournamentIdFor(records, t, userId);
-}
-
-/** Dónde juega un ID, escrito: «PC y PlayStation»; «Sin plataforma» si el juego tiene varias y no lo dijo; '' si es una sola. */
-export function playsOnText(game: GameId, rec: Pick<GameIdRecord, 'platform' | 'platforms'> | null): string {
-  if (!rec || gamePlatforms(game).length < 2) return '';
-  const list = playsOnOf(game, rec);
-  return list.length ? platformsText(list) : 'Sin plataforma';
-}
-
-/** El botón que lleva a Mi ID de juego según lo que falta. */
-const FIX_LABEL: Record<MemberProblem, string> = {
-  [MEMBER_PROBLEM.noId]: 'Poner mi ID',
-  [MEMBER_PROBLEM.otherPlatform]: 'Cambiar mi ID',
-  [MEMBER_PROBLEM.noPlatform]: 'Decir dónde juego',
-  [MEMBER_PROBLEM.unchecked]: 'Ir a Mi ID de juego',
-  [MEMBER_PROBLEM.noRank]: 'Ir a Mi ID de juego',
-};
-
-/** Lo que dice la fila de un miembro que no cumple: «Otra plataforma (PC)», «Sin plataforma», «Sin ID»… */
-export function memberProblemLabel(problem: MemberProblem, game: GameId, rec: Pick<GameIdRecord, 'platform' | 'platforms'> | null): string {
-  if (problem !== MEMBER_PROBLEM.otherPlatform || !rec) return problem;
-  const list = playsOnOf(game, rec);
-  return list.length ? `${problem} (${platformsText(list)})` : problem;
-}
+// Lo puro (el ID que cuenta, dónde juega, la plantilla al abrir…) está en logic.ts: lo usa también la app del teléfono.
+export { idFor, memberProblemLabel, playsOnText } from './logic';
 
 /**
  * Inscribirse (§12.8): en modo individual (y como agente libre) se ve el ID de juego (tocarlo: «Cambiar cuenta» en Mi ID
@@ -86,7 +71,7 @@ export function memberProblemLabel(problem: MemberProblem, game: GameId, rec: Pi
  * «Actualizar mi ID en la inscripción» (si cambió su ID), «Cambiar plantilla» (en la inscripción) y «Retirarme».
  */
 export function RegisterSheet({ open, onClose, t, entry }: { open: boolean; onClose: () => void; t: EsportsTournament; entry: EsportsEntry | null }) {
-  const title = entry ? 'Tu inscripción' : t.entryType === 'teams' && !isIndividualMode(t.mode) ? 'Inscribir mi equipo' : 'Inscribirme';
+  const title = registerSheetTitle(t, entry);
   return (
     <Sheet open={open} onClose={onClose} title={title} subtitle={t.name}>
       {open && (entry ? <MyEntryView t={t} entry={entry} onClose={onClose} /> : <RegisterBody t={t} onDone={onClose} />)}
@@ -150,7 +135,7 @@ function SoloRegister({ t, agent, onDone }: { t: EsportsTournament; agent: boole
     busy.run('inscribir', async () => {
       try {
         await registerSolo(t.eventId);
-        toast(t.settings.autoApprove ? 'Listo: quedaste inscrito' : 'Inscripción enviada: falta que la aprueben');
+        toast(soloRegisteredText(t.settings.autoApprove));
         onDone();
       } catch (e) {
         toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
@@ -295,22 +280,11 @@ function RosterForm({
   const rankKey = rankKeyFor(t.game, t.mode);
   const requirement = platformRequirement(t.game, platformOf(t));
   const problems = useMemo(() => new Map(members.map((m) => [m.userId, memberProblem(idFor(records, t, m.userId), t.settings, rankKey, t.game)])), [members, records, t, rankKey]);
-  const [picks, setPicks] = useState<RosterPick[]>(() => {
-    if (initial?.length) return [...initial];
-    const out: RosterPick[] = [{ userId: captainId, role: 'captain' }];
-    for (const m of members) {
-      if (m.userId === captainId || problems.get(m.userId)) continue;
-      const starters = out.filter((p) => p.role !== 'sub').length;
-      const subs = out.length - starters;
-      if (m.role === 'sub' ? subs < subsMax : starters < size) out.push({ userId: m.userId, role: m.role === 'sub' ? 'sub' : 'member' });
-      else if (subs < subsMax) out.push({ userId: m.userId, role: 'sub' });
-    }
-    return out;
-  });
+  const [picks, setPicks] = useState<RosterPick[]>(() => (initial?.length ? [...initial] : initialRosterPicks(members, captainId, problems, size, subsMax)));
   const check = rosterCheck(picks, { mode: t.mode, subs: subsMax, captainId, problems });
   const toggle = (userId: string) => {
     if (userId === captainId) return;
-    setPicks((list) => (list.some((p) => p.userId === userId) ? list.filter((p) => p.userId !== userId) : [...list, { userId, role: list.filter((p) => p.role !== 'sub').length < size ? 'member' : 'sub' }]));
+    setPicks((list) => toggleRosterPick(list, userId, captainId, size));
   };
   const setRole = (userId: string, role: 'member' | 'sub') => setPicks((list) => list.map((p) => (p.userId === userId ? { ...p, role } : p)));
   const save = () =>
@@ -328,7 +302,7 @@ function RosterForm({
             team.id,
             picks.filter((p) => p.userId !== captainId).map((p) => ({ userId: p.userId, role: p.role === 'sub' ? 'sub' : 'member' })),
           );
-          toast(t.settings.autoApprove ? `Listo: ${team.name} quedó inscrito` : 'Inscripción enviada: falta que la aprueben');
+          toast(teamRegisteredText(t.settings.autoApprove, team.name));
         }
         onDone();
       } catch (e) {
@@ -338,7 +312,7 @@ function RosterForm({
   return (
     <div className="flex flex-col gap-3">
       <p className="mx-1 text-sm font-[650] text-fg-2">
-        {`Plantilla: ${size} ${size === 1 ? 'titular' : 'titulares'}${subsMax ? ` y hasta ${subsMax} ${subsMax === 1 ? 'suplente' : 'suplentes'}` : ''}`}
+        {rosterHeading(size, subsMax)}
         {requirement && <span className="block font-normal text-muted">{requirement}</span>}
       </p>
       <Card className="overflow-hidden">
@@ -416,11 +390,10 @@ function MyEntryView({ t, entry, onClose }: { t: EsportsTournament; entry: Espor
   );
   const live = entry.status === 'pending' || entry.status === 'approved';
   const stale = useMemo(() => staleMembers(entry.members, ids.data, t), [entry.members, ids.data, t]);
-  const mine = !!uid && stale.includes(uid);
-  const others = captain ? stale.filter((u) => u !== uid).length : 0;
-  const canRefresh = open && live && (mine || others > 0);
   const myMember = uid ? entry.members.find((m) => m.userId === uid) : undefined;
   const myNow = uid ? idFor(ids.data, t, uid) : null;
+  const refreshing = refreshInfo({ open, live, stale, uid, captain, myGamerTag: myMember?.gamerTag ?? null, myIdNow: myNow?.idDisplay ?? null });
+  const canRefresh = refreshing.canRefresh;
   const refresh = () =>
     busy.run('actualizar', async () => {
       try {
@@ -431,7 +404,7 @@ function MyEntryView({ t, entry, onClose }: { t: EsportsTournament; entry: Espor
       }
     });
   const withdraw = async () => {
-    if (!(await confirm({ title: '¿Retirarte del torneo?', message: entry.kind === 'team' ? `${entry.name} sale de la inscripción.` : 'Sales de la inscripción.', confirmText: 'Retirarme', danger: true }))) return;
+    if (!(await confirm({ title: '¿Retirarte del torneo?', message: withdrawMessage(entry), confirmText: 'Retirarme', danger: true }))) return;
     await busy.run('retirar', async () => {
       try {
         await withdrawEntry(entry.id);
@@ -477,20 +450,16 @@ function MyEntryView({ t, entry, onClose }: { t: EsportsTournament; entry: Espor
                   <RankChip game={t.game} rank={memberRank(t.game, t.mode, m.ranks)} source={m.rankSource} />
                 </span>
               }
-              trailing={<span className="text-[12px] font-semibold text-muted">{m.role === 'captain' ? 'Capitán' : m.role === 'sub' ? 'Suplente' : 'Titular'}</span>}
+              trailing={<span className="text-[12px] font-semibold text-muted">{memberRoleText(m.role)}</span>}
             />
           ))}
         </Card>
       )}
       {canRefresh && (
         <div className="flex flex-col gap-2 rounded-2xl bg-accent-soft p-4">
-          <p className="text-[14.5px] text-fg-2">
-            {mine && myMember && myNow
-              ? `Ahora tu ID es ${myNow.idDisplay}; en la inscripción quedó ${myMember.gamerTag}.`
-              : `${others === 1 ? 'Alguien de la plantilla cambió su ID' : `${others} de la plantilla cambiaron su ID`} después de inscribirse.`}
-          </p>
+          <p className="text-[14.5px] text-fg-2">{refreshing.text}</p>
           <Button variant="primary" size="lg" className="w-full" icon={<RefreshCw className="size-5" />} loading={busy.isBusy('actualizar')} onClick={() => void refresh()}>
-            {others > 0 ? 'Actualizar los IDs en la inscripción' : 'Actualizar mi ID en la inscripción'}
+            {refreshing.label}
           </Button>
         </div>
       )}

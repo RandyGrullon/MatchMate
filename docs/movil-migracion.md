@@ -149,7 +149,28 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   modo piscina, la tabla completa de Pro y las temporadas cerradas.
 - Para probar natación sin cuenta: la demostración trae «Natación de Ejemplo» (`movil/src/platform/demoSwim.ts`: el
   festival de hoy con la hoja de series, dos encuentros finalizados y uno próximo).
-- ⏳ Esports: juegos, IDs de juego, equipos, torneos (cuadros, battle royale), inscripciones.
+- ✅ Esports, la liga o el torneo (`movil/src/components/esports/EsportsLeague.tsx`, Lite de la web): los torneos de la
+  liga (un torneo suelto abre su página); arriba, Partidos, Tabla y Lo mío.
+- ✅ Esports, un torneo (`/l/<liga>/e/<evento>`, `Tournament.tsx`): fecha, juego y formato, premio, «Anotar
+  resultado» o lo que te toca, tu inscripción, Cuadro (eliminación, `Bracket.tsx`), grupos y todos contra todos,
+  battle royale (tabla y partidas con sus fotos, `Br.tsx`), Equipos e Info.
+- ✅ Esports, la serie (`/l/<liga>/partido/<id>`, `EsportsMatch.tsx`): el marcador mapa por mapa, anotar con la regla
+  del juego (rondas, goles, vidas…) y hasta 3 fotos, confirmar o «No es así» (el mismo `ConfirmResult` de raqueta).
+- ✅ Esports, inscribirse (`RegisterSheet.tsx`): solo, como agente libre o con tu equipo, con tu ID de juego; mi
+  inscripción, la plantilla y salirme. Partidos (Todos · Míos), Tabla (`?torneo=`) y Lo mío (`/l/<liga>/perfil`).
+- ✅ Esports fuera de la liga (`movil/src/app/esports/`): el índice (`/esports`: mis torneos, mis equipos y los juegos),
+  Mi ID de juego (agregar, rango, plataformas, borrar), un equipo (miembros, invitar con el link o el código, roles,
+  salirme), unirse a un equipo con el código (`/esports/unirse/<código>`, también desde un link) y la página de cada
+  juego (torneos abiertos y equipos). La fila «Esports» en Hoy y «Torneos de esports» en Ligas (`esportsPresence.ts`,
+  la misma lógica de la web).
+- 🌐 Esports: crear torneo o liga, lo del organizador (revisar inscripciones, sembrar, armar el cuadro, playoffs,
+  agentes libres, editar, cerrar o cancelar, anotadores), anotar una partida de battle royale, corregir una serie,
+  W.O., cambiar la hora, anular o decidir un reclamo, transmitir, «Conectar con Epic/Steam/Riot» y el logo del equipo.
+- ⏳ Esports: el color violeta en las pantallas de `/esports` (la app sigue con el del deporte activo) y el aviso
+  «Tu ID pasó a otra cuenta» en Hoy.
+- Para probar esports sin cuenta: la demostración trae «Esports de Ejemplo» (`movil/src/platform/demoEsports.ts`: un
+  torneo de eliminación con tu semifinal por anotar, una copa de todos contra todos con una serie por confirmar, un
+  abierto con inscripción, tu equipo y tu ID; el código `UNIR2345` lleva a otro equipo).
 
 ## 7. Social
 

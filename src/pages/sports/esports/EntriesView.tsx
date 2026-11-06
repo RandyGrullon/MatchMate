@@ -10,7 +10,7 @@ import { whenText } from '../../../components/match';
 import { shareLink } from '../../../components/share';
 import { Button, Card, Empty, ListRow, SectionHeader, Sheet } from '../../../components/ui';
 import { EntryAdminSheet, EntryChip, PendingEntries, entryLine } from './admin/EntriesAdmin';
-import { competitors, countLine, formatDetails, freeAgents, memberRank, tournamentPathFor } from './logic';
+import { competitors, countLine, formatDetails, freeAgents, memberRank, memberRoleText, tournamentPathFor } from './logic';
 import { Initials } from './parts';
 import { shareOrigin } from '../../../lib/origin';
 
@@ -123,7 +123,7 @@ function Roster({ t, entry }: { t: EsportsTournament; entry: EsportsEntry }) {
                 <RankChip game={t.game} rank={memberRank(t.game, t.mode, m.ranks)} source={m.rankSource} />
               </span>
             </span>
-            <span className="shrink-0 text-[12px] font-semibold text-muted">{m.role === 'captain' ? 'Capitán' : m.role === 'sub' ? 'Suplente' : 'Titular'}</span>
+            <span className="shrink-0 text-[12px] font-semibold text-muted">{memberRoleText(m.role)}</span>
           </div>
         </li>
       ))}

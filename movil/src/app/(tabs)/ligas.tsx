@@ -5,7 +5,9 @@ import { MapPin, Plus, Search, Trophy } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships, usePublicLeagues } from '@mm/lib/data';
 import { formatDate } from '@mm/lib/format';
+import { leagueSport } from '@mm/sports/registry';
 import { LeagueCard } from '@/components/LeagueCard';
+import { EsportsLeaguesRow } from '@/components/esports/EsportsRow';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 
@@ -21,6 +23,7 @@ export default function LigasScreen() {
   const open = usePublicLeagues({ query: query.trim().length >= 2 ? query.trim() : undefined, limit: 30 });
   const mineIds = new Set(ids);
   const others = open.data.filter((l) => !mineIds.has(l.id));
+  const mySports = useMemo(() => mine.data.map((l) => leagueSport(l)), [mine.data]);
 
   return (
     <Screen>
@@ -62,6 +65,7 @@ export default function LigasScreen() {
           onPress={() => router.push('/canchas')}
         />
       </Card>
+      <EsportsLeaguesRow uid={uid} mySports={mySports} />
       <SectionHeader title="Ligas abiertas" />
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Search size={18} color={c.muted} style={{ position: 'absolute', left: 16, zIndex: 1 }} />

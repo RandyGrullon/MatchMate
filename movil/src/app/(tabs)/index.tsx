@@ -10,6 +10,7 @@ import { IdleCard, LiveMatchesCard, NextMatchCard, NextUpCard, TodayGameCard, Up
 import { LeagueCard } from '@/components/LeagueCard';
 import { LogoLockup } from '@/components/Logo';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
+import { EsportsHomeRow } from '@/components/esports/EsportsRow';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -207,6 +208,7 @@ export default function HoyScreen() {
       ) : leagues.data.length ? (
         <>
           <TodaySection leagues={mine.all} uid={uid!} loading={loading} />
+          <EsportsHomeRow uid={uid} />
           <SectionHeader title="Tus ligas" />
           <View style={{ gap: 10 }}>
             {leagues.data.map((l) => (
