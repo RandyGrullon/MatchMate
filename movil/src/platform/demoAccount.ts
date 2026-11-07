@@ -45,6 +45,8 @@ interface State {
   avatar: string | null;
   /** Las personas bloqueadas, la más nueva primero. */
   blocked: BlockedPerson[];
+  /** Cómo ve la app (profiles.ui_mode: 'lite' | 'pro'; undefined = no lo ha elegido). */
+  uiMode?: 'lite' | 'pro' | null;
 }
 
 const empty = (): State => ({ name: null, username: null, bio: null, avatar: null, blocked: SEED_BLOCKED.map((p) => ({ ...p })) });
@@ -86,7 +88,7 @@ export function demoAccountSelect(table: string, filters: readonly Filter[] = []
   if (table !== 'profiles') return null;
   const s = load();
   return (read(table) ?? [])
-    .map((r) => ({ ...r, name: s.name ?? r.name, username: s.username ?? r.username }))
+    .map((r) => ({ ...r, name: s.name ?? r.name, username: s.username ?? r.username, ...(s.uiMode !== undefined ? { ui_mode: s.uiMode } : {}) }))
     .filter((r) => matches(r, filters));
 }
 
@@ -104,7 +106,7 @@ function statusOf(v: string, current: string): UsernameStatus {
  * nombre y el @usuario de la base). undefined si la función no es de aquí (sigue demoBackend como siempre).
  */
 export function accountRpc(uid: string, fn: string, a: Record<string, unknown>, read: Read): unknown {
-  const FNS = ['rename_profile', 'ensure_profile', 'username_status', 'set_username', 'set_bio', 'set_avatar', 'public_profile', 'my_blocked_users', 'block_user', 'unblock_user'];
+  const FNS = ['rename_profile', 'ensure_profile', 'username_status', 'set_username', 'set_bio', 'set_avatar', 'public_profile', 'my_blocked_users', 'block_user', 'unblock_user', 'set_ui_mode'];
   if (!FNS.includes(fn)) return undefined;
   // Solo el perfil de la cuenta de prueba (el de otras cuentas, como siempre).
   if (fn === 'public_profile' && a.p_user !== uid) return undefined;
@@ -142,6 +144,10 @@ export function accountRpc(uid: string, fn: string, a: Record<string, unknown>, 
       s.bio = bio || null;
       return done(s.bio);
     }
+    // Lite | Pro en la cuenta (set_ui_mode de src/lib/mode.ts): así vuelve igual al abrir la app.
+    case 'set_ui_mode':
+      s.uiMode = a.p_mode === 'lite' || a.p_mode === 'pro' ? a.p_mode : null;
+      return done(s.uiMode);
     case 'set_avatar':
       s.avatar = typeof a.p_path === 'string' && a.p_path ? a.p_path : null;
       return done({ avatar: s.avatar });

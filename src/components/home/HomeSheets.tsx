@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { CalendarSearch, Check, ClipboardCheck, Leaf, Zap, type LucideIcon } from 'lucide-react';
-import { useAuth } from '../../lib/auth';
+import { CalendarSearch, Check, ClipboardCheck } from 'lucide-react';
 import type { CalendarMatch } from '../../lib/calendar';
-import { useLeaguesByIds, useMyMemberships, type LeagueFeed } from '../../lib/data';
+import type { LeagueFeed } from '../../lib/data';
 import type { UiMode } from '../../lib/mode';
 import type { League } from '../../lib/types';
 import { scorePath, type RecentEvent } from '../../lib/useNextGame';
 import { agendaCardNote } from '../agenda/logic';
 import { useMode, useSwitchMode } from '../mode';
+import { MODE_CARDS, useOrganizedLabel } from '../mode/cards';
 import { Button, DateBlock, ListRow, RowIcon, Sheet, cx } from '../ui';
 import { whereTitle } from './where';
 import { WeekAgenda } from './WeekAgenda';
@@ -79,22 +79,8 @@ export function WhereSheet({ open, onClose, recent, today }: { open: boolean; on
   );
 }
 
-/** Qué trae cada modo (las tarjetas de la hoja). */
-export const MODE_CARDS: Record<UiMode, { label: string; tagline: string; items: readonly string[]; icon: LucideIcon }> = {
-  lite: { label: 'Lite', tagline: 'Lo esencial', items: ['Anotar rápido', 'Tu promedio', 'Tus ligas y fechas'], icon: Leaf },
-  pro: { label: 'Pro', tagline: 'Todo el detalle', items: ['Aprobar juegos', 'Planilla y Excel', 'Estadísticas'], icon: Zap },
-};
-
-/** La liga que organizas (dueño o admin) para la línea «Organizas Liga de los martes»: su nombre, «2 ligas» o null. */
-function useOrganizedLabel(): string | null {
-  const { user } = useAuth();
-  const members = useMyMemberships(user?.uid);
-  const ids = members.data.filter((m) => m.role === 'owner' || m.role === 'admin').map((m) => m.leagueId);
-  const leagues = useLeaguesByIds(ids.slice(0, 1));
-  if (!ids.length) return null;
-  if (ids.length > 1) return `${ids.length} ligas`;
-  return leagues.data[0]?.name ?? null;
-}
+/** Qué trae cada modo (las tarjetas de la hoja) y «Organizas …»: los mismos de la app, en ../mode/cards.ts. */
+export { MODE_CARDS };
 
 /**
  * «Elige cómo ver la app» (desde «PRO ▾» de Hoy, y la primera vez que se toca «Pro» en Yo o «Probar Pro»: ModeSheetHost):

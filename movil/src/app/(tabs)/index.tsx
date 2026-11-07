@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { Bell, Plus, QrCode, Search, Ticket } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
+import { queryClient } from '@mm/lib/data/client';
+import { ModeTag } from '@/components/mode/Mode';
 import { codeReady, normalizeCode } from '@mm/components/scanner/logic';
 import { useNotifications } from '@mm/components/notifications/provider';
 import { useActivity, useMyLeagues } from '@mm/components/home/activity';
@@ -208,18 +210,21 @@ export default function HoyScreen() {
   return (
     <Screen
       refreshing={refreshing}
-      onRefresh={async () => {
+      onRefresh={() => {
         setRefreshing(true);
-        const { queryClient } = await import('@mm/lib/data/client');
         queryClient.onReconnect();
         setTimeout(() => setRefreshing(false), 700);
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Txt variant="meta" tone="muted">
-            {today()}
-          </Txt>
+          {/* La fecha y, en Pro, «PRO ▾» (abre la hoja del modo), como HomeHeader de la web. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Txt variant="meta" tone="muted">
+              {today()}
+            </Txt>
+            <ModeTag />
+          </View>
           <Txt variant="title">Hola, {name}</Txt>
         </View>
         <NoticesBell />

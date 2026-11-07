@@ -16,6 +16,7 @@ import { installNotifications, refreshNotifyState } from '@/platform/notificatio
 import { hydrateStorage } from '@/platform/storage';
 import { AccountGates } from '@/components/account/Gates';
 import { BadgeUnlockHost } from '@/components/badges/BadgeUnlockHost';
+import { ModeSheetHost, ModeToastHost } from '@/components/mode/Mode';
 import { ToastHost } from '@/components/feedback';
 import { openLink } from '@/lib/links';
 import { ThemeProvider, useTheme } from '@/theme/theme';
@@ -86,6 +87,9 @@ function Navigator() {
       <AccountGates />
       {/* El aviso al ganar una insignia (BadgeUnlockHost de la web), encima de la app. */}
       <BadgeUnlockHost />
+      {/* El modo de la app: el aviso «Modo Pro activado · Deshacer» y la hoja «Elige cómo ver la app». */}
+      <ModeToastHost />
+      <ModeSheetHost />
       <ToastHost />
     </NoticesProvider>
   );
