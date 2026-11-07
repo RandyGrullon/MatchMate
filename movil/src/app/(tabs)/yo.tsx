@@ -6,6 +6,7 @@ import { usePublicProfile } from '@mm/lib/data/follows';
 import { Avatar } from '@/components/social/Avatar';
 import { Button, Card, ListRow, Loading, RowIcon, Screen, Txt } from '@/components/ui';
 import { YoBowling } from '@/components/solo/YoSolo';
+import { MySquadsRow } from '@/components/squads/SquadEntries';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -87,6 +88,8 @@ export default function YoScreen() {
           onPress={() => router.push({ pathname: '/u/[userId]', params: { userId: uid } })}
         />
       </Card>
+
+      <MySquadsRow uid={uid} />
 
       <YoBowling uid={uid} />
     </Screen>

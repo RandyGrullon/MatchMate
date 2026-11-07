@@ -25,6 +25,8 @@ import { CountBubble } from '@/components/organizer/Organize';
 import { SettingsRow } from '@/components/leagueSettings/SettingsRow';
 import { SuggestionsRow } from '@/components/suggestions/SuggestionsRow';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
+import { SquadRequestsPanel } from '@/components/squads/SquadRequestsPanel';
+import { canEnterLeagues } from '@mm/components/squads/logic';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
@@ -198,6 +200,8 @@ export default function LeagueScreen() {
           a un toque equipos, jugadores y miembros, temporada y fechas, y avisar a toda la liga. */}
       {(membership.data?.role === 'admin' || membership.data?.role === 'owner') && (
         <>
+          {/* Equipos que piden entrar (fútbol, futsal, baloncesto); sin pendientes no sale. */}
+          {canEnterLeagues(leagueSport(l)) && <SquadRequestsPanel lid={l.id} />}
           <SectionHeader title="Organizar" />
           <Card padded={false}>
             <OrganizeRow lid={l.id} bowling={isBowling} />

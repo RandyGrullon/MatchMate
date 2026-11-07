@@ -12,7 +12,6 @@ import {
   type SquadLite,
   type SquadPendingInvite,
 } from '../../lib/data/squads';
-import { relativeTime } from '../../lib/notifications';
 import { useNow } from '../../lib/useNow';
 import { Avatar } from '../../components/Avatar';
 import { useBusy } from '../../components/busy';
@@ -20,7 +19,7 @@ import { useFeedback } from '../../components/feedback';
 import { PeopleList, PeopleSearch, SendBar, ShareRow } from '../../components/invite/InviteSheet';
 import { handleOf, peopleView, personState, selectionAfterSend, sendTone, toggleSelected, type InviteLink } from '../../components/invite/logic';
 import { QrCode } from '../../components/QrCode';
-import { squadInviteErrorText, squadInviteSummary, squadRoom, squadShareText } from '../../components/squads/logic';
+import { pendingInviteLine, squadAsk, squadInviteErrorText, squadInviteSummary, squadRoom, squadShareText } from '../../components/squads/logic';
 import { Badge, Button, Sheet, Skeleton } from '../../components/ui';
 import { shareOrigin } from '../../lib/origin';
 
@@ -138,8 +137,7 @@ export function PendingInvites({ squadId }: { squadId: string }) {
       </h3>
       <ul className="-mx-2 flex flex-col">
         {pending.data.map((inv) => {
-          const at = Date.parse(inv.createdAt);
-          const line = [handleOf(inv.user.username), Number.isFinite(at) ? `invitado ${relativeTime(at, now)}` : null].filter(Boolean).join(' · ');
+          const line = pendingInviteLine(inv, now);
           return (
             <li key={inv.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5">
               <Avatar name={inv.user.name} photo={inv.user.avatar} className="size-10 text-sm" />
@@ -177,11 +175,7 @@ function CodeAndLink({ squad, known }: { squad: SquadLite; known: string | null 
   const link: InviteLink = url ? { kind: 'url', url } : { kind: 'loading' };
 
   async function renew() {
-    const ok = await confirm({
-      title: '¿Cambiar el código?',
-      message: 'El link y el código de ahora dejan de servir. Quien ya está en el equipo sigue igual.',
-      confirmText: 'Código nuevo',
-    });
+    const ok = await confirm(squadAsk.renewCode());
     if (!ok) return;
     await act.run('renovar', async () => {
       try {

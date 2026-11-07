@@ -11,6 +11,9 @@ import { useMyLeagues } from '@mm/components/home/activity';
 import { useOrganizerCtx } from '@mm/components/organizer/hubData';
 import { pickOrganizeLeague, rememberedOrganizeLeague, rememberOrganizeLeague } from '@mm/components/organizer/hubLogic';
 import { LeaguePickerChip, LeaguePickerSheet, OrganizeHub } from '@/components/organizer/Organize';
+import { SquadRequestsPanel } from '@/components/squads/SquadRequestsPanel';
+import { canEnterLeagues } from '@mm/components/squads/logic';
+import { leagueSport } from '@mm/sports/registry';
 import { BackBar, Button, Card, ListRow, LoadError, Loading, RowIcon, Screen, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
@@ -107,6 +110,8 @@ function OrganizeLeague({ lid, leagues, onCreate }: { lid: string; leagues: read
         <LoadError error={new Error('permission-denied')} />
       ) : (
         <LeagueContext.Provider value={ctx}>
+          {/* Equipos que piden entrar (fútbol, futsal, baloncesto): el aviso del teléfono trae aquí. Sin pendientes no sale. */}
+          {canEnterLeagues(leagueSport(ctx.league)) && <SquadRequestsPanel lid={ctx.lid} />}
           <OrganizeHub />
         </LeagueContext.Provider>
       )}

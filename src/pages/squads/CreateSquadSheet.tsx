@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { ChevronLeft, ChevronRight, Shield } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import { createSquad, squadErrorText, squadPath, squadProblem, suggestTag, updateSquad } from '../../lib/data/squads';
+import { createSquad, squadErrorText, squadPath, updateSquad } from '../../lib/data/squads';
 import { useActiveSport } from '../../lib/sportContext';
 import { useIsPro } from '../../lib/useMode';
 import { sportMeta } from '../../sports/registry';
@@ -15,15 +15,10 @@ import { SquadTint } from '../../components/squads/SquadBits';
 import { Button, Sheet, cx } from '../../components/ui';
 import { SportIcon } from '../sports/SportBits';
 import { SportPicker } from '../sports/SportPicker';
-import { SquadFields, emptySquadForm, type SquadForm } from './SquadFields';
+import { SquadFields } from './SquadFields';
+import { changeCreateForm, createGate, createStartStep, initialCreateForm, type SquadForm } from './squadForm';
 
-/** Lo que dice la hoja del formulario: el problema (solo si ya escribió algo) y si se puede crear. */
-export function createGate(form: Pick<SquadForm, 'name' | 'tag'> & Partial<Pick<SquadForm, 'description' | 'city'>>, busy = false): { problem: string | null; shown: string | null; canCreate: boolean } {
-  const problem = squadProblem(form);
-  // Con todo vacío no se regaña: el botón apagado ya lo dice.
-  const shown = problem && (form.name.trim() || form.tag.trim()) ? problem : null;
-  return { problem, shown, canCreate: !problem && !busy };
-}
+export { createGate } from './squadForm';
 
 /**
  * «Crear equipo» (Equipos › «Crear equipo», Crear o unirme › «Un equipo»): primero el deporte (todos los abiertos;
@@ -64,11 +59,8 @@ function CreateSquadBody({ wanted, onEsports, initial }: { wanted: string | null
   const startSport = defaultSquadSport(sports.creatable, wanted, active);
   const [picked, setPicked] = useState<string | null>(null);
   const sport = picked ?? startSport;
-  const [step, setStep] = useState<'deporte' | 'datos'>(() => (wanted && wanted === startSport ? 'datos' : 'deporte'));
-  const [form, setForm] = useState<SquadForm>(() => {
-    const f = { ...emptySquadForm(), ...initial };
-    return { ...f, tag: f.tag || suggestTag(f.name) };
-  });
+  const [step, setStep] = useState<'deporte' | 'datos'>(() => createStartStep(wanted, startSport));
+  const [form, setForm] = useState<SquadForm>(() => initialCreateForm(initial));
   const [tagTyped, setTagTyped] = useState(!!initial?.tag);
   const [busy, setBusy] = useState(false);
 
@@ -109,12 +101,7 @@ function CreateSquadBody({ wanted, onEsports, initial }: { wanted: string | null
 
   const gate = createGate(form, busy);
   const meta = sportMeta(sport);
-  const change = (patch: Partial<SquadForm>) =>
-    setForm((f) => {
-      const next = { ...f, ...patch };
-      if (patch.name !== undefined && !tagTyped) next.tag = suggestTag(patch.name);
-      return next;
-    });
+  const change = (patch: Partial<SquadForm>) => setForm((f) => changeCreateForm(f, patch, tagTyped));
 
   async function create() {
     if (!gate.canCreate || !sport) return;

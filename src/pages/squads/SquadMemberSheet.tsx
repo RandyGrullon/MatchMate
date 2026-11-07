@@ -5,7 +5,7 @@ import { removeSquadMember, setSquadMember, type SquadMember, type SquadPage } f
 import { Avatar } from '../../components/Avatar';
 import { BusyIcon, useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
-import { POSITION_MAX, memberActions, memberErrorText, parseJersey, type SquadViewer } from '../../components/squads/logic';
+import { POSITION_MAX, memberActions, memberEdit, memberErrorText, squadAsk, type SquadViewer } from '../../components/squads/logic';
 import { userPath } from '../../components/social/UserLink';
 import { Button, Field, Input, Sheet, cx } from '../../components/ui';
 
@@ -27,9 +27,7 @@ function MemberBody({ member: m, squad, viewer, onDone }: { member: SquadMember;
   const [position, setPosition] = useState(m.position ?? '');
   const [jersey, setJersey] = useState(m.jersey != null ? String(m.jersey) : '');
   const actions = memberActions(viewer, m);
-  const parsed = parseJersey(jersey);
-  const badJersey = parsed === 'invalid';
-  const changed = position.trim() !== (m.position ?? '') || (!badJersey && parsed !== m.jersey);
+  const { jersey: parsed, badJersey, changed } = memberEdit(m, position, jersey);
 
   async function run(key: 'guardar' | 'capitan' | 'sacar', fn: () => Promise<void>, done: string) {
     await act.run(key, async () => {
@@ -50,21 +48,12 @@ function MemberBody({ member: m, squad, viewer, onDone }: { member: SquadMember;
   }
 
   async function makeCaptain() {
-    const ok = await confirm({
-      title: `¿Pasarle la capitanía a ${m.name}?`,
-      message: 'Va a poder invitar, sacar gente, editar el equipo e inscribirlo en ligas. Tú sigues en el equipo.',
-      confirmText: 'Pasar la capitanía',
-    });
+    const ok = await confirm(squadAsk.makeCaptain(m.name));
     if (ok) await run('capitan', () => setSquadMember(squad.id, m.id, { role: 'captain' }), `${m.name} es el nuevo capitán`);
   }
 
   async function remove() {
-    const ok = await confirm({
-      title: `¿Sacar a ${m.name}?`,
-      message: 'Puede volver a entrar si le mandas el link o el código.',
-      confirmText: 'Sacar',
-      danger: true,
-    });
+    const ok = await confirm(squadAsk.remove(m.name));
     if (ok) await run('sacar', () => removeSquadMember(squad.id, m.id), `${m.name} ya no está en el equipo`);
   }
 

@@ -69,6 +69,11 @@
               "scheme": "https",
               "host": "matchmate.grullonb.com",
               "pathPrefix": "/anotar/"
+            },
+            {
+              "scheme": "https",
+              "host": "matchmate.grullonb.com",
+              "pathPrefix": "/equipos/unirse/"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

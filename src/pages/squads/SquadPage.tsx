@@ -15,7 +15,18 @@ import { DeadInvite } from '../../components/screens/InviteBits';
 import { SignInCard, linkButton } from '../../components/screens/ScreenBits';
 import { Quiet } from '../../components/search/SearchRows';
 import { AppShell } from '../../components/Shell';
-import { SQUAD_TABS, squadMenu, squadTab, squadViewer, type SquadMenuKey, type SquadTab, type SquadViewer } from '../../components/squads/logic';
+import {
+  SQUAD_TABS,
+  pendingSquadInvite,
+  squadAsk,
+  squadMenu,
+  squadTab,
+  squadTabParam,
+  squadViewer,
+  type SquadMenuKey,
+  type SquadTab,
+  type SquadViewer,
+} from '../../components/squads/logic';
 import { SquadTint } from '../../components/squads/SquadBits';
 import { SquadFollowButton } from '../../components/squads/SquadFollowButton';
 import { SquadCounters, SquadFollowersSheet, SquadHeader } from '../../components/squads/SquadHeader';
@@ -67,7 +78,7 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
   const viewer = squadViewer(squad);
   // Una invitación pendiente a este equipo (el push lleva aquí): Aceptar · Rechazar en lugar de Seguir.
   const myInvites = useMySquadInvites();
-  const invite = uid && viewer === 'none' ? myInvites.data.find((i) => i.squad.id === id) : undefined;
+  const invite = pendingSquadInvite(myInvites.data, id, !!uid, viewer);
   const jugador = params.get('jugador');
   const tab = squadTab(params.get('tab'), jugador);
   const [menu, setMenu] = useState(false);
@@ -88,7 +99,7 @@ export function SquadView({ id, uid }: { id: string; uid: string | null }) {
       { replace: true },
     );
   // La pestaña de entrada no va en el link (con `?jugador=` la de entrada es Plantilla).
-  const setTab = (t: SquadTab) => setParam('tab', t === squadTab(null, jugador) ? null : t);
+  const setTab = (t: SquadTab) => setParam('tab', squadTabParam(t, jugador));
 
   if (data.loading && !squad) {
     return (
@@ -265,12 +276,7 @@ function SquadMenu({
         onClick: () =>
           void run(
             k,
-            {
-              title: `¿Borrar ${squad.name}?`,
-              message: 'Se borra para todos: la plantilla, el muro y los seguidores. Si ya juega en ligas, ese equipo se queda en su liga.',
-              confirmText: 'Borrar equipo',
-              danger: true,
-            },
+            squadAsk.delete(squad.name),
             () => deleteSquad(squad.id),
             'Equipo borrado',
             () => navigate('/equipos', { replace: true }),
@@ -293,12 +299,7 @@ function SquadMenu({
       danger: true,
       busy: act.isBusy(k),
       onClick: () =>
-        void run(
-          k,
-          { title: `¿Salir de ${squad.name}?`, message: 'Para volver necesitas el link o el código del equipo.', confirmText: 'Salir', danger: true },
-          () => leaveSquad(squad.id),
-          `Saliste de ${squad.name}`,
-        ),
+        void run(k, squadAsk.leave(squad.name), () => leaveSquad(squad.id), `Saliste de ${squad.name}`),
     };
   });
   return <EventMenu open={open} onClose={onClose} title={squad.name} items={items} />;

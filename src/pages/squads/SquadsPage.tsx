@@ -10,7 +10,7 @@ import { ScreenTitle, SignInCard } from '../../components/screens/ScreenBits';
 import { Quiet } from '../../components/search/SearchRows';
 import { AppShell } from '../../components/Shell';
 import { LeagueTopBar } from '../../components/league/home/LeagueTopBar';
-import { CODE_LENGTH, cleanCode, mySquadLine } from '../../components/squads/logic';
+import { CODE_LENGTH, cleanCode, mySquadLine, squadsHomeState } from '../../components/squads/logic';
 import { SquadRow } from '../../components/squads/SquadBits';
 import { SquadFollowButton } from '../../components/squads/SquadFollowButton';
 import { SquadResultRow } from '../../components/squads/SquadResultRow';
@@ -112,8 +112,7 @@ function SignedIn({ pro, uid }: { pro: boolean; uid: string }) {
   const q = query.trim();
   const searching = q.length >= 2;
 
-  const loadingMine = (mine.loading && !mine.data.length) || (esports.loading && !esports.data.length);
-  const nothing = !loadingMine && !mine.error && !mine.data.length && !esports.data.length && !followed.loading && !followed.data.length;
+  const { loadingMine, nothing } = squadsHomeState({ mine, esports, followed });
 
   return (
     <>

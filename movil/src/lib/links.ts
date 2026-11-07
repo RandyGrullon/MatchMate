@@ -33,6 +33,10 @@ export function appRoute(href: string): string | null {
   const query = cut < 0 || href[cut] === '#' ? '' : href.slice(cut).split('#')[0];
   if (TABS.includes(path) || path === '/auth') return path + query;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
+  // Equipos: el índice (con su ?crear= y ?deporte=), unirse con el código y un equipo (?tab=, ?jugador=, ?invitar=).
+  if (path === '/equipos') return path + query;
+  if (/^\/equipos\/unirse\/[^/]+$/.test(path)) return path;
+  if (/^\/equipos\/[^/]+$/.test(path)) return path + query;
   // El link para anotar (con su ?entrar=1 al volver de entrar).
   if (/^\/anotar\/[^/]+$/.test(path)) return path + query;
   // La campana (con sus ?ver= y ?deporte=) y una invitación a una liga.

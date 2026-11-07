@@ -12,15 +12,20 @@ import type {
   SquadLite,
   SquadMember,
   SquadPage,
+  SquadPendingInvite,
   SquadRecord,
   SquadRequestStatus,
   SquadRole,
   SquadStats,
 } from '../../lib/data/squads';
+import type { LeagueHit } from '../../lib/data/leagueSocial';
 import { SQUAD_MEMBERS_MAX, recordText, squadErrorText } from '../../lib/data/squads';
 import { formatDate } from '../../lib/format';
 import { BLOCKED_MESSAGE, isBlockedError } from '../../lib/backend/errors';
-import { sportMeta } from '../../sports/registry';
+import { relativeTime } from '../../lib/notifications';
+import type { League } from '../../lib/types';
+import { leagueSport, sportMeta } from '../../sports/registry';
+import { handleOf } from '../invite/logic';
 import { SPORT_FAMILY, type SportId } from '../../sports/types';
 
 // ---------- Palabras ----------
@@ -441,3 +446,125 @@ export function squadInviteErrorText(e: unknown): string {
   if (kindOf(e) === 'not_found' || codeOf(e) === 'cerrado') return 'Esa invitación ya no está disponible.';
   return squadErrorText(e);
 }
+
+
+// ---------- Lo que estaba dentro de las pantallas (la web y la app del teléfono lo usan igual) ----------
+
+/**
+ * Equipos (`/equipos`): «Mis equipos» se está leyendo (sin nada que mostrar todavía) y «Todavía no tienes equipo» (ni
+ * equipos, ni de esports, ni seguidos, y nada se está leyendo).
+ */
+export function squadsHomeState(o: {
+  mine: { data: readonly unknown[]; loading: boolean; error: unknown };
+  esports: { data: readonly unknown[]; loading: boolean };
+  followed: { data: readonly unknown[]; loading: boolean };
+}): { loadingMine: boolean; nothing: boolean } {
+  const loadingMine = (o.mine.loading && !o.mine.data.length) || (o.esports.loading && !o.esports.data.length);
+  const nothing = !loadingMine && !o.mine.error && !o.mine.data.length && !o.esports.data.length && !o.followed.loading && !o.followed.data.length;
+  return { loadingMine, nothing };
+}
+
+/** La pestaña para el link (`?tab=`): la de entrada no va (con `?jugador=` la de entrada es Plantilla). */
+export const squadTabParam = (t: SquadTab, jugador?: string | null): SquadTab | null => (t === squadTab(null, jugador) ? null : t);
+
+/** La invitación pendiente a este equipo de quien lo mira (con cuenta y sin ser miembro): Aceptar · Rechazar. */
+export function pendingSquadInvite<T extends { squad: Pick<SquadLite, 'id'> }>(invites: readonly T[], squadId: string, signedIn: boolean, viewer: SquadViewer): T | undefined {
+  return signedIn && viewer === 'none' ? invites.find((i) => i.squad.id === squadId) : undefined;
+}
+
+/** Ligas › los equipos: la lista (los tuyos del deporte), la fila «Equipos» (no tienes ninguno) o nada (leyendo; esports). */
+export function squadsSectionMode(o: { inSport: number; total: number; loading: boolean; sport: string | null }): 'list' | 'row' | null {
+  if (o.inSport > 0) return 'list';
+  return o.loading || o.total > 0 || o.sport === 'esports' ? null : 'row';
+}
+
+/** Lo que el capitán escribió de alguien de la plantilla: el número leído (null si no sirve), si no sirve y si cambió. */
+export function memberEdit(m: Pick<SquadMember, 'position' | 'jersey'>, position: string, jersey: string): { jersey: number | null; badJersey: boolean; changed: boolean } {
+  const parsed = parseJersey(jersey);
+  const badJersey = parsed === 'invalid';
+  const value = parsed === 'invalid' ? null : parsed;
+  const changed = position.trim() !== (m.position ?? '') || (!badJersey && value !== m.jersey);
+  return { jersey: value, badJersey, changed };
+}
+
+/** «@ana · invitado hace 2 h» (lo que falta no sale). */
+export function pendingInviteLine(inv: Pick<SquadPendingInvite, 'user' | 'createdAt'>, now: number): string {
+  const at = Date.parse(inv.createdAt);
+  return [handleOf(inv.user.username), Number.isFinite(at) ? `invitado ${relativeTime(at, now)}` : null].filter(Boolean).join(' · ');
+}
+
+/** La solicitud de un equipo en la liga: «Fútbol · Santo Domingo · 12 miembros · Lo pidió Ana». */
+export function requestLine(r: { squad: Pick<SquadLite, 'sport' | 'city' | 'members'>; requestedBy: { name: string } }): string {
+  return [squadLine(r.squad), r.requestedBy.name ? `Lo pidió ${r.requestedBy.name}` : null].filter(Boolean).join(' · ');
+}
+
+/** Una liga para «Inscribir en una liga» (de la búsqueda o de las mías). */
+export type SquadLeagueChoice = Pick<LeagueHit, 'id' | 'name' | 'sport' | 'kind' | 'visibility' | 'venue' | 'logo' | 'members' | 'isMember'>;
+
+/** «Tus ligas de fútbol»: las mías del deporte del equipo, sin menores, como las de la búsqueda. */
+export function ownSquadLeagues(all: readonly League[], sport: string): SquadLeagueChoice[] {
+  return all
+    .filter((l) => leagueSport(l) === sport && !l.hasMinors)
+    .map((l) => ({
+      id: l.id,
+      name: l.name,
+      sport: leagueSport(l),
+      kind: l.kind === 'torneo' ? 'torneo' : 'liga',
+      visibility: l.visibility === 'public' ? 'public' : 'private',
+      venue: l.venue?.trim() || null,
+      logo: l.logoPath ?? null,
+      members: 0,
+      isMember: true,
+    }));
+}
+
+/** Lo que pregunta cada confirmación de Equipos (el mismo texto en la web y en la app). */
+export interface SquadAsk {
+  title: string;
+  message: string;
+  confirmText: string;
+  danger?: boolean;
+}
+
+export const squadAsk = {
+  /** Borrar el equipo (el capitán). */
+  delete: (name: string): SquadAsk => ({
+    title: `¿Borrar ${name}?`,
+    message: 'Se borra para todos: la plantilla, el muro y los seguidores. Si ya juega en ligas, ese equipo se queda en su liga.',
+    confirmText: 'Borrar equipo',
+    danger: true,
+  }),
+  /** Salir del equipo (un miembro). */
+  leave: (name: string): SquadAsk => ({ title: `¿Salir de ${name}?`, message: 'Para volver necesitas el link o el código del equipo.', confirmText: 'Salir', danger: true }),
+  /** Pasarle la capitanía a alguien de la plantilla. */
+  makeCaptain: (name: string): SquadAsk => ({
+    title: `¿Pasarle la capitanía a ${name}?`,
+    message: 'Va a poder invitar, sacar gente, editar el equipo e inscribirlo en ligas. Tú sigues en el equipo.',
+    confirmText: 'Pasar la capitanía',
+  }),
+  /** Sacar a alguien del equipo. */
+  remove: (name: string): SquadAsk => ({ title: `¿Sacar a ${name}?`, message: 'Puede volver a entrar si le mandas el link o el código.', confirmText: 'Sacar', danger: true }),
+  /** «Código nuevo»: el de ahora deja de servir. */
+  renewCode: (): SquadAsk => ({
+    title: '¿Cambiar el código?',
+    message: 'El link y el código de ahora dejan de servir. Quien ya está en el equipo sigue igual.',
+    confirmText: 'Código nuevo',
+  }),
+  /** Pedir entrar a una liga (el capitán). */
+  request: (league: string, members: number): SquadAsk => ({
+    title: `¿Pedir entrar a ${league}?`,
+    message: `Los admins de la liga deciden. Si aceptan, el equipo entra ${members === 1 ? 'con su único miembro' : `con sus ${countWord(members, 'miembro', 'miembros')}`}.`,
+    confirmText: 'Pedir entrar',
+  }),
+  /** Retirar la solicitud pendiente a una liga (el capitán). */
+  withdraw: (league: string): SquadAsk => ({ title: `¿Retirar la solicitud a ${league}?`, message: 'Puedes volver a pedir cuando quieras.', confirmText: 'Retirar', danger: true }),
+  /** Aceptar a un equipo en la liga (admins). */
+  accept: (name: string, members: number): SquadAsk => ({
+    title: `¿Aceptar a ${name}?`,
+    message: `Se crea el equipo en la liga y ${members === 1 ? 'su único miembro entra como jugador' : `sus ${countWord(members, 'miembro', 'miembros')} entran como jugadores`}. Quien ya está en otro equipo de la temporada se queda donde está.`,
+    confirmText: 'Aceptar equipo',
+  }),
+};
+
+/** Debajo de «¿Quién la ve?» en el muro de un equipo (también en src/components/posts/Composer.tsx). */
+export const SQUAD_AUDIENCE_HINT = 'La ve cualquiera y sale a quien sigue el equipo.';

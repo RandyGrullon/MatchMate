@@ -1,47 +1,17 @@
 import type { ReactNode } from 'react';
 import { Check, Megaphone } from 'lucide-react';
-import { SQUAD_CITY_MAX, SQUAD_DESCRIPTION_MAX, SQUAD_NAME_MAX, cleanTag, type SquadPage, type SquadPatch } from '../../lib/data/squads';
+import { SQUAD_CITY_MAX, SQUAD_DESCRIPTION_MAX, SQUAD_NAME_MAX } from '../../lib/data/squads';
 import { SportTint } from '../../components/home/SportTint';
 import { SQUAD_COLORS, validColor } from '../../components/squads/logic';
 import { Field, Input, Textarea, cx } from '../../components/ui';
+import { typedTag, type SquadForm } from './squadForm';
 
 /**
  * Los datos de un equipo, iguales al crearlo y al editarlo: nombre, tag (sale solo del nombre hasta que escribes el
- * tuyo), ciudad, color (el del deporte o uno de la lista), descripción y «Busca jugadores».
+ * tuyo), ciudad, color (el del deporte o uno de la lista), descripción y «Busca jugadores». Lo puro (el formulario, lo
+ * que cambió) está en squadForm.ts.
  */
-
-export interface SquadForm {
-  name: string;
-  tag: string;
-  city: string;
-  /** null = el color del deporte. */
-  color: string | null;
-  description: string;
-  recruiting: boolean;
-}
-
-export const emptySquadForm = (): SquadForm => ({ name: '', tag: '', city: '', color: null, description: '', recruiting: false });
-
-export const squadFormOf = (s: Pick<SquadPage, 'name' | 'tag' | 'city' | 'color' | 'description' | 'recruiting'>): SquadForm => ({
-  name: s.name,
-  tag: s.tag,
-  city: s.city ?? '',
-  color: validColor(s.color),
-  description: s.description ?? '',
-  recruiting: s.recruiting,
-});
-
-/** Solo lo que cambió (null si nada). */
-export function squadPatchOf(s: Pick<SquadPage, 'name' | 'tag' | 'city' | 'color' | 'description' | 'recruiting'>, f: SquadForm): SquadPatch | null {
-  const patch: SquadPatch = {};
-  if (f.name.trim() !== s.name) patch.name = f.name.trim();
-  if (cleanTag(f.tag) !== s.tag) patch.tag = cleanTag(f.tag);
-  if ((f.city.trim() || null) !== (s.city?.trim() || null)) patch.city = f.city.trim() || null;
-  if (validColor(f.color) !== validColor(s.color)) patch.color = validColor(f.color);
-  if (f.description.trim() !== (s.description ?? '').trim()) patch.description = f.description.trim();
-  if (f.recruiting !== s.recruiting) patch.recruiting = f.recruiting;
-  return Object.keys(patch).length ? patch : null;
-}
+export { emptySquadForm, squadFormOf, squadPatchOf, type SquadForm } from './squadForm';
 
 export function SquadFields({
   form,
@@ -70,7 +40,7 @@ export function SquadFields({
           placeholder="TGR"
           onChange={(e) => {
             onTagTyped?.();
-            onChange({ tag: cleanTag(e.target.value).slice(0, 5) });
+            onChange({ tag: typedTag(e.target.value) });
           }}
         />
       </Field>

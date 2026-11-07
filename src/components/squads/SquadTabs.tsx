@@ -31,6 +31,7 @@ import {
   recordSummary,
   requestErrorText,
   sortRoster,
+  squadAsk,
   squadGameMeta,
   squadGameTitle,
   squadLeagueRows,
@@ -203,7 +204,7 @@ function SquadLeagues({ squad, rows, viewer, pro, onRequest }: { squad: SquadPag
 
   async function withdraw(l: SquadLeagueRow) {
     if (!l.requestId) return;
-    const ok = await confirm({ title: `¿Retirar la solicitud a ${l.name}?`, message: 'Puedes volver a pedir cuando quieras.', confirmText: 'Retirar', danger: true });
+    const ok = await confirm(squadAsk.withdraw(l.name));
     if (!ok) return;
     await act.run(l.requestId, async () => {
       try {

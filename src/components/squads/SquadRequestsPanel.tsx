@@ -4,7 +4,7 @@ import { decideSquadRequest, squadPath, useLeagueSquadRequests, type SquadReques
 import { useBusy } from '../busy';
 import { useFeedback } from '../feedback';
 import { Button, Card, Field, ListRow, SectionHeader, Sheet, Textarea } from '../ui';
-import { adminErrorText, countWord, decisionText, squadLine, squadTitle } from './logic';
+import { adminErrorText, countWord, decisionText, requestLine, squadAsk, squadTitle } from './logic';
 import { RowWithActions, SquadLogo } from './SquadBits';
 
 /** El largo de la nota al rechazar (el mismo de la base). */
@@ -42,11 +42,7 @@ function RequestRow({ lid, request: r, onReject }: { lid: string; request: Squad
   const act = useBusy<'aceptar'>();
 
   async function accept() {
-    const ok = await confirm({
-      title: `¿Aceptar a ${r.squad.name}?`,
-      message: `Se crea el equipo en la liga y ${r.squad.members === 1 ? 'su único miembro entra como jugador' : `sus ${countWord(r.squad.members, 'miembro', 'miembros')} entran como jugadores`}. Quien ya está en otro equipo de la temporada se queda donde está.`,
-      confirmText: 'Aceptar equipo',
-    });
+    const ok = await confirm(squadAsk.accept(r.squad.name, r.squad.members));
     if (!ok) return;
     await act.run('aceptar', async () => {
       try {
@@ -65,7 +61,7 @@ function RequestRow({ lid, request: r, onReject }: { lid: string; request: Squad
           to={squadPath(r.squad.id)}
           leading={<SquadLogo squad={r.squad} />}
           title={squadTitle(r.squad)}
-          subtitle={[squadLine(r.squad), r.requestedBy.name ? `Lo pidió ${r.requestedBy.name}` : null].filter(Boolean).join(' · ')}
+          subtitle={requestLine(r)}
         />
       }
       actions={

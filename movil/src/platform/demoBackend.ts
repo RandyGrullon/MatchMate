@@ -21,6 +21,7 @@ import { accountRpc, demoAccountSelect, demoUpdatePassword, forgetDemoAccount } 
 import { demoSettingsSelect, forgetDemoSettings, settingsRpc } from './demoSettings';
 import { demoScorersSelect, forgetDemoScorers, scorersRpc } from './demoScorers';
 import { forgetDemoReports, reportsRpc } from './demoReports';
+import { demoSquadsSelect, forgetDemoSquads, squadsRpc } from './demoSquads';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -30,7 +31,9 @@ type DemoFilter = { col: string; op: string; value: unknown };
  * la tabla no es de las ligas ficticias.
  */
 const baseLayer = (t: string, f: readonly DemoFilter[] = []) => demoLeagueSelect(DEMO_USER, t, f);
-const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+/** Justo encima de la liga, los equipos (demoSquads.ts): «Fútbol de Ejemplo» y su dueño, para que todas las capas la vean. */
+const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => squadsBase(x)) ?? squadsBase(t, f);
 const membersLayer = (t: string, f: readonly DemoFilter[] = []) => demoMembersSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
 /** Encima de los miembros, la liga de los anotadores invitados por link (demoScorers.ts). */
 const scorersLayer = (t: string, f: readonly DemoFilter[] = []) => demoScorersSelect(t, f, (x) => membersLayer(x)) ?? membersLayer(t, f);
@@ -68,6 +71,7 @@ export function setDemo(on: boolean) {
       forgetDemoSettings();
       forgetDemoScorers();
       forgetDemoReports();
+      forgetDemoSquads();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -445,6 +449,9 @@ export function createDemoBackend(): Backend {
       // Ajustes de la liga y el Buzón (demoSettings.ts): leen todas las capas.
       const fromSettings = settingsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
       if (fromSettings !== undefined) return structuredClone(fromSettings) as T;
+      // Los equipos (demoSquads.ts): sus RPC, publicar en un equipo, buscar personas para el equipo y buscar ligas.
+      const fromSquads = squadsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromSquads !== undefined) return structuredClone(fromSquads) as T;
       // Los anotadores (demoScorers.ts: invitar, el link para anotar) y los reportes de la liga (demoReports.ts).
       const fromScorers = scorersRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
       if (fromScorers !== undefined) return structuredClone(fromScorers) as T;

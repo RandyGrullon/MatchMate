@@ -54,7 +54,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   leído» y las invitaciones sin responder con Aceptar y Rechazar. Tocar un aviso abre lo suyo (en la app si la tiene).
 - ✅ Una invitación (`/invitacion/<id>`): quién invitó, la liga con sus datos, «¿Quién eres?»
   (`movil/src/components/league/WhoAreYou.tsx`) y Aceptar / Rechazar; la de anotador lleva al torneo. Las de equipos
-  abren la web (no hay `/equipos` en la app todavía).
+  llevan al equipo (`/equipos/<equipo>`).
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
 - 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5); ✅ muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
@@ -267,7 +267,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (`/u/<id>/seguidores`); reportar la cuenta, bloquear y desbloquear. 🌐 Estadísticas e insignias.
 - ✅ Buscar (`/buscar`): personas y ligas (Todo · Personas · Ligas), seguir desde la lista; sin cuenta, ligas públicas.
 - 🟡 Un juego compartido sale resumido (sin la tarjeta del juego) y los juegos de «Juegos» todavía sin me gusta.
-- ⏳ Equipos (`/equipos`), compartir un partido desde la app, avisos de lo social (la campana).
+- ✅ Equipos (`/equipos`, `/equipos/<equipo>` y `/equipos/unirse/<código>`, `movil/src/components/squads/`, la lógica de
+  `src/components/squads/logic.ts` y `src/pages/squads/squadForm.ts`): mis equipos, los que sigo, buscar, unirme con
+  código, crear (deporte, datos y logo), y en cada equipo sus publicaciones (publicar en el equipo), juegos, torneos,
+  estadísticas y plantilla (posición, número, pasar la capitanía, sacar), invitar (personas que sigues, @usuario,
+  código y QR), editar, salir, borrar e inscribirlo en una liga; aceptar o rechazar una invitación. «Tus equipos» en
+  Ligas, «Mis equipos» en Yo, y para quien organiza una liga de fútbol, futsal o baloncesto, «Equipos que quieren
+  entrar» (en el inicio de la liga y en Organizar). `/equipos/unirse/` abre la app. Diferencias: compartir el link con
+  la hoja del teléfono, el logo en JPEG y el color del equipo solo en la cabecera. La demo trae «Equipo de Ejemplo»,
+  «Fútbol de Ejemplo» y el código `EQUI2345` (`movil/src/platform/demoSquads.ts`).
+- ⏳ Compartir un partido desde la app, avisos de lo social (la campana).
 
 ## 8. Organizar y crear
 

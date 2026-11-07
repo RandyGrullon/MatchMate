@@ -9,6 +9,7 @@ import { leagueSport } from '@mm/sports/registry';
 import { LeagueCard } from '@/components/LeagueCard';
 import { EsportsLeaguesRow } from '@/components/esports/EsportsRow';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
+import { SquadsLeaguesSection } from '@/components/squads/SquadEntries';
 import { useColors } from '@/theme/theme';
 
 /** Ligas: las tuyas, Dónde jugar y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
@@ -52,6 +53,8 @@ export default function LigasScreen() {
           </View>
         </>
       )}
+      {/* Tus equipos (o «Equipos · Crea tu equipo competitivo»), como Ligas de la web. */}
+      <SquadsLeaguesSection />
       {/* Dónde jugar: las canchas y espacios de las empresas (docs/empresas.md). */}
       <Card padded={false}>
         <ListRow

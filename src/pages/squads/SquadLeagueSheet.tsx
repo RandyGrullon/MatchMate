@@ -1,17 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Search, Send } from 'lucide-react';
-import { useLeagueSearch, type LeagueHit } from '../../lib/data/leagueSocial';
+import { useLeagueSearch } from '../../lib/data/leagueSocial';
 import { requestSquadLeague, type SquadPage } from '../../lib/data/squads';
-import { leagueSport, sportMeta } from '../../sports/registry';
+import { sportMeta } from '../../sports/registry';
 import { useBusy } from '../../components/busy';
 import { useFeedback } from '../../components/feedback';
 import { useMyLeagues } from '../../components/home/useHomeData';
 import { LeagueTile } from '../../components/ligas/LigasRows';
 import { leagueResultLine } from '../../components/search/SearchRows';
-import { countWord, leagueChoices, requestErrorText, takenLeagues } from '../../components/squads/logic';
+import { leagueChoices, ownSquadLeagues, requestErrorText, squadAsk, takenLeagues, type SquadLeagueChoice } from '../../components/squads/logic';
 import { Badge, Button, Card, ListRow, ListSkeleton, Sheet } from '../../components/ui';
 
-type Pickable = Pick<LeagueHit, 'id' | 'name' | 'sport' | 'kind' | 'visibility' | 'venue' | 'logo' | 'members' | 'isMember'>;
+type Pickable = SquadLeagueChoice;
 
 /**
  * «Inscribir en una liga» (el capitán, pestaña Ligas): buscar la liga por nombre o lugar (solo las de su deporte, públicas
@@ -36,32 +36,12 @@ function LeagueBody({ squad, onDone }: { squad: SquadPage; onDone: () => void })
   const lower = sportMeta(squad.sport)?.lower ?? 'este deporte';
   const searching = query.trim().length >= 2;
 
-  const own = useMemo<Pickable[]>(
-    () =>
-      mine.all
-        .filter((l) => leagueSport(l) === squad.sport && !l.hasMinors)
-        .map((l) => ({
-          id: l.id,
-          name: l.name,
-          sport: leagueSport(l),
-          kind: l.kind === 'torneo' ? 'torneo' : 'liga',
-          visibility: l.visibility === 'public' ? 'public' : 'private',
-          venue: l.venue?.trim() || null,
-          logo: l.logoPath ?? null,
-          members: 0,
-          isMember: true,
-        })),
-    [mine.all, squad.sport],
-  );
+  const own = useMemo<Pickable[]>(() => ownSquadLeagues(mine.all, squad.sport), [mine.all, squad.sport]);
   const results = useMemo<Pickable[]>(() => leagueChoices(search.data, squad.sport), [search.data, squad.sport]);
   const list = searching ? results : own;
 
   async function ask(l: Pickable) {
-    const ok = await confirm({
-      title: `¿Pedir entrar a ${l.name}?`,
-      message: `Los admins de la liga deciden. Si aceptan, el equipo entra ${squad.members === 1 ? 'con su único miembro' : `con sus ${countWord(squad.members, 'miembro', 'miembros')}`}.`,
-      confirmText: 'Pedir entrar',
-    });
+    const ok = await confirm(squadAsk.request(l.name, squad.members));
     if (!ok) return;
     await act.run(l.id, async () => {
       try {
