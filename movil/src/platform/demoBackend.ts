@@ -31,6 +31,10 @@ import { yoRpc } from './demoYo';
 import { demoMakerSelect, forgetDemoMaker, makerRpc } from './demoMaker';
 import { forgetDemoLive, liveRpc } from './demoLive';
 import { forgetDemoInvites, invitesRpc } from './demoInvites';
+import { bowlingRpc, demoBowlingSelect, forgetDemoBowling } from './demoBowling';
+import { demoRacketSelect, forgetDemoRacket, racketRpc } from './demoRacket';
+import { demoGolfSelect, forgetDemoGolf, golfRpc } from './demoGolf';
+import { demoTeamSportsSelect, forgetDemoTeamSports, teamSportsRpc } from './demoTeamSports';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -42,9 +46,15 @@ type DemoFilter = { col: string; op: string; value: unknown };
 const baseLayer = (t: string, f: readonly DemoFilter[] = []) => demoLeagueSelect(DEMO_USER, t, f);
 /** Justo encima de la liga, los equipos (demoSquads.ts): «Fútbol de Ejemplo» y su dueño, para que todas las capas la vean. */
 /** Los envíos por aprobar de más (Organizar › Aprobar juegos, demoApprovals.ts), justo encima de la liga. */
-const approvalsLayer = (t: string, f: readonly DemoFilter[] = []) => demoApprovalsSelect(t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
-const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => approvalsLayer(x)) ?? approvalsLayer(t, f);
-const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => squadsBase(x)) ?? squadsBase(t, f);
+/** «Pádel de Ejemplo» y lo de raqueta (demoRacket.ts), justo encima de la liga. */
+const racketBase = (t: string, f: readonly DemoFilter[] = []) => demoRacketSelect(DEMO_USER, t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+const approvalsLayer = (t: string, f: readonly DemoFilter[] = []) => demoApprovalsSelect(t, f, (x) => racketBase(x)) ?? racketBase(t, f);
+/** Lo del organizador del boliche (demoBowling.ts): eventos creados, cambiados o borrados, inscritos y pistas. */
+const bowlingLayer = (t: string, f: readonly DemoFilter[] = []) => demoBowlingSelect(t, f, (x) => approvalsLayer(x)) ?? approvalsLayer(t, f);
+const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => bowlingLayer(x)) ?? bowlingLayer(t, f);
+/** Baloncesto, fútbol y el relámpago (demoTeamSports.ts): equipos, partidos, la mesa, el comité y los playoffs. */
+const teamSportsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamSportsSelect(DEMO_USER, t, f, (x) => squadsBase(x)) ?? squadsBase(t, f);
+const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => teamSportsLayer(x)) ?? teamSportsLayer(t, f);
 const membersLayer = (t: string, f: readonly DemoFilter[] = []) => demoMembersSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
 /** Encima de los miembros, la liga de los anotadores invitados por link (demoScorers.ts). */
 const scorersLayer = (t: string, f: readonly DemoFilter[] = []) => demoScorersSelect(t, f, (x) => membersLayer(x)) ?? membersLayer(t, f);
@@ -60,6 +70,8 @@ const agendaLayer = (t: string, f: readonly DemoFilter[] = []) => demoAgendaSele
 const prizesLayer = (t: string, f: readonly DemoFilter[] = []) => demoPrizesSelect(DEMO_USER, t, f, (x) => agendaLayer(x)) ?? agendaLayer(t, f);
 /** Arriba de todo, el creador de insignias (demoMaker.ts): diseños y «Dar insignia» encima de los premios. */
 const makerLayer = (t: string, f: readonly DemoFilter[] = []) => demoMakerSelect(DEMO_USER, t, f, (x) => prizesLayer(x)) ?? prizesLayer(t, f);
+/** Arriba de todo, lo del organizador de golf (demoGolf.ts): campos, rondas, torneos, tarjetas e inscritos. */
+const golfLayer = (t: string, f: readonly DemoFilter[] = []) => demoGolfSelect(t, f, (x) => makerLayer(x)) ?? makerLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -99,6 +111,10 @@ export function setDemo(on: boolean) {
       forgetDemoMaker();
       forgetDemoLive();
       forgetDemoInvites();
+      forgetDemoBowling();
+      forgetDemoRacket();
+      forgetDemoGolf();
+      forgetDemoTeamSports();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -460,7 +476,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = makerLayer(q.table, q.filters);
+      const league = golfLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -473,6 +489,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // El organizador de golf (demoGolf.ts): campos, rondas y torneos, inscribir, grupos y la tarjeta.
+      const fromGolf = golfRpc(DEMO_USER, fn, args, (t) => makerLayer(t) ?? []);
+      if (fromGolf !== undefined) return structuredClone(fromGolf) as T;
       // El creador de insignias (demoMaker.ts): crear, cambiar, archivar, dar y quitar (antes de los premios: contesta
       // todo save_league_badge).
       const fromMaker = makerRpc(DEMO_USER, fn, args, (t) => prizesLayer(t) ?? []);
@@ -500,6 +519,10 @@ export function createDemoBackend(): Backend {
       // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto y bloqueos.
       const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : null));
       if (fromAccount !== undefined) return structuredClone(fromAccount) as T;
+      // Los deportes de equipo (demoTeamSports.ts): equipos, partidos, la mesa, el resultado, el comité y los playoffs
+      // (antes que los equipos del boliche y la raqueta).
+      const fromTeamSports = teamSportsRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);
+      if (fromTeamSports !== undefined) return structuredClone(fromTeamSports) as T;
       // Los jugadores de la liga ficticia (Organizar › Jugadores): leen la liga con las temporadas y los miembros encima.
       const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => membersLayer(t) ?? []);
       if (fromPlayers !== undefined) return structuredClone(fromPlayers) as T;
@@ -509,6 +532,9 @@ export function createDemoBackend(): Backend {
       // Los equipos del boliche (fijos y de torneo): leen la liga con las temporadas, los miembros y los jugadores encima.
       const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], (x) => membersLayer(x)) ?? membersLayer(t) ?? []);
       if (fromTeams !== undefined) return structuredClone(fromTeams) as T;
+      // El organizador del boliche (demoBowling.ts): crear, cambiar y borrar eventos, la planilla y las pistas.
+      const fromBowling = bowlingRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromBowling !== undefined) return structuredClone(fromBowling) as T;
       // Las temporadas y «Suspender un día» (demoSeasons.ts): leen todas las capas.
       const fromSeasons = seasonsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
       if (fromSeasons !== undefined) return structuredClone(fromSeasons) as T;
@@ -529,6 +555,9 @@ export function createDemoBackend(): Backend {
       // Social (demoSocial.ts): el feed, me gusta, comentarios, los juegos de los que sigues y los avisos sociales.
       const fromSocial = socialRpc(DEMO_USER, fn, args);
       if (fromSocial !== undefined) return structuredClone(fromSocial) as T;
+      // Raqueta (demoRacket.ts): crear eventos, las parejas, los partidos, las cajas, la escalera y sus temporadas.
+      const fromRacket = racketRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromRacket !== undefined) return structuredClone(fromRacket) as T;
       const fromLeague = demoLeagueRpc(DEMO_USER, fn, args);
       if (fromLeague !== undefined) return structuredClone(fromLeague) as T;
       const run = rpcs[fn] as ((a: Record<string, unknown>) => unknown) | undefined;

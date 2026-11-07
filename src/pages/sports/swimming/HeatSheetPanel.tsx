@@ -5,10 +5,9 @@ import { useAction, useFeedback } from '../../../components/feedback';
 import { Badge, Button, Card, SectionHeader, cx, sectionLinkClass } from '../../../components/ui';
 import { EmptyCard, STICKY_ABOVE_NAV } from '../FieldChrome';
 import { ClubTag, TimeText, useSwim } from './bits';
-import { draftHeats, eventHasResults, publishedHeats, raceTitle, sheetAssignments, swapLanes, type SheetHeat } from './logic';
+import { buildDraft, sheetEvents, tapLane, unassignedText, type LanePick } from './admin';
+import { eventHasResults, publishedHeats, raceTitle, sheetAssignments, type SheetHeat } from './logic';
 import type { MeetData } from './MeetPage';
-
-type LanePick = { ev: string; heat: number; lane: number };
 
 /**
  * Hoja de series (rediseño «Calma y foco»): cada prueba con sus series en tarjetas y una fila por carril (el número, el
@@ -25,23 +24,17 @@ export function HeatSheetPanel({ data, manage = true }: { data: MeetData; manage
   const [pick, setPick] = useState<LanePick | null>(null);
   const [busy, setBusy] = useState(false);
   const canEdit = isAdmin && manage && !meet.finalizedAt;
-  const withEntries = events.filter((ev) => entries.some((e) => e.swimEventId === ev.id));
-  const seedable = withEntries.filter((ev) => !eventHasResults(ev.id, entries));
+  const { withEntries, seedable } = sheetEvents(events, entries);
 
   const build = (only?: SwimEventItem) => {
-    const m = new Map<string, SheetHeat[]>();
-    for (const ev of only ? [only] : seedable) m.set(ev.id, draftHeats(ev, entries, meet.lanes));
-    setDraft(m);
+    setDraft(buildDraft(only ? [only] : seedable, entries, meet.lanes));
     setPick(null);
   };
   const tap = (ev: string, heat: number, lane: number) => {
     if (!draft) return;
-    if (!pick || pick.ev !== ev) return setPick({ ev, heat, lane });
-    if (pick.heat === heat && pick.lane === lane) return setPick(null);
-    const next = new Map(draft);
-    next.set(ev, swapLanes(draft.get(ev)!, pick, { heat, lane }));
-    setDraft(next);
-    setPick(null);
+    const next = tapLane(draft, pick, { ev, heat, lane });
+    setDraft(next.draft);
+    setPick(next.pick);
   };
   const publish = async () => {
     if (!draft) return;
@@ -133,7 +126,7 @@ export function HeatSheetPanel({ data, manage = true }: { data: MeetData; manage
             />
             {!draft && pub.unassigned.length > 0 && (
               <p className="mx-1 text-[13px] text-warn">
-                {pub.unassigned.length === 1 ? '1 inscrito sin serie' : `${pub.unassigned.length} inscritos sin serie`} (se inscribieron después).
+                {unassignedText(pub.unassigned.length)}
               </p>
             )}
             {heats.map((h) => (

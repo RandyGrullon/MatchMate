@@ -4,7 +4,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { AlertTriangle, Camera, CheckCircle2, ImagePlus, Send, Sparkles, WifiOff, X } from 'lucide-react-native';
 import { submissionBalls } from '@mm/lib/balls';
-import { clearSent, loadDraft, restoreDraft } from '@mm/lib/draft';
+import { clearSent, draftCount, loadDraft, restoreDraft, saveDraft } from '@mm/lib/draft';
+import { useEvents } from '@mm/lib/data';
+import { getUserId } from '@mm/lib/data/client';
+import { eventTitle, toIsoDate } from '@mm/lib/format';
+import { useNow } from '@mm/lib/useNow';
 import { setSubmissionScan, submitGames } from '@mm/lib/data/submissions';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import type { CompressedImage } from '@mm/lib/image';
@@ -12,9 +16,12 @@ import { rowFor } from '@mm/lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob, waitingText } from '@mm/lib/scanJobs';
 import { isValidScore } from '@mm/lib/stats';
 import { useBallChoice } from '@mm/components/balls/choice';
-import { clearGameDraft, gameKey } from '@mm/components/frames/draftMemory';
+import { clearGameDraft, gameKey, moveGameDrafts, myGamesPlace } from '@mm/components/frames/draftMemory';
+import { BY_DATE, BY_DATE_LABEL, byDateCheck, byDateHint, submitEventChoices } from '@mm/components/submitGames';
+import { DateStepper } from '@/components/DateStepper';
+import { PickField } from '@/components/players/fields';
 import { confirmAsync, toast } from '@/components/feedback';
-import { Button, Card, ChoiceRow, ErrorNote, Loading, Screen, Txt } from '@/components/ui';
+import { Button, Card, ChoiceRow, ErrorNote, Field, Loading, Screen, Txt } from '@/components/ui';
 import { pickPhoto, type PhotoSource } from '@/lib/pickImage';
 import { useMyGames } from '@/lib/useMyGames';
 import { useColors } from '@/theme/theme';
@@ -26,10 +33,12 @@ const BALL_GAMES = 10;
 const showGames = (gs: (number | null)[]) => gs.map((g) => g ?? '–').join(' · ');
 
 /**
- * Enviar mis juegos (SubmitGamesModal de la web, para lo que ya está en el teléfono): los juegos, la foto del marcador
- * (cámara o galería) que se lee con la IA en segundo plano (src/lib/scanJobs.ts: no hace falta esperar para enviar) y
- * Enviar. Si la foto dice otra cosa, se avisa y se puede usar lo de la foto; lo leído va con el envío para que el admin
- * lo compare. Sin foto, en una liga que la pide, se pregunta antes.
+ * Enviar mis juegos (SubmitGamesModal de la web, para lo que ya está en el teléfono): «¿Dónde jugaste?» (este evento,
+ * otro reciente u «Otro día (elegir fecha)», con la misma lógica: src/components/submitGames.ts; lo anotado se pasa al
+ * que se elige, si ese no tiene juegos en el teléfono), los juegos, la foto del marcador (cámara o galería) que se lee
+ * con la IA en segundo plano (src/lib/scanJobs.ts: no hace falta esperar para enviar) y Enviar. Si la foto dice otra
+ * cosa, se avisa y se puede usar lo de la foto; lo leído va con el envío para que el admin lo compare. Sin foto, en
+ * una liga que la pide, se pregunta antes.
  */
 export default function SendGamesScreen() {
   const { lid, eventId } = useLocalSearchParams<{ lid: string; eventId: string }>();
@@ -37,6 +46,11 @@ export default function SendGamesScreen() {
   const g = useMyGames(lid, eventId);
   const choice = useBallChoice();
   const playerId = g.playerId;
+  const events = useEvents(lid);
+  const now = useNow();
+  // «¿Dónde jugaste?»: el evento elegido (al abrir, este) y, en «Otro día», la fecha.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [photo, setPhoto] = useState<CompressedImage | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
   const job = useScanJob(scanId);
@@ -66,7 +80,9 @@ export default function SendGamesScreen() {
 
   if (g.loading && !g.event.data) return <Loading label="Cargando el evento" />;
   const league = g.league.data;
-  const draft = playerId ? loadDraft(lid, playerId, eventId) : null;
+  const selected = picked ?? eventId;
+  const byDate = selected === BY_DATE;
+  const draft = playerId ? loadDraft(lid, playerId, selected) : null;
   if (!league || !playerId || !draft) {
     return (
       <Screen edges={['top', 'bottom']}>
@@ -76,6 +92,16 @@ export default function SendGamesScreen() {
     );
   }
   const requirePhoto = league.requirePhoto !== false;
+  const isAdmin = g.member.data?.role === 'owner' || g.member.data?.role === 'admin';
+  const today = toIsoDate(now);
+  // Lo de «¿Dónde jugaste?» (los recientes, sin las prácticas ya cerradas para quien no es admin) y lo de «Otro día».
+  const recent = submitEventChoices({ events: events.data, myEntries: g.entry ? [g.entry] : [], preferEventId: eventId, leagueToday: g.today, isAdmin, now: now.getTime() });
+  const event = recent.find((e) => e.id === selected) ?? (selected === eventId ? g.event.data : null);
+  const date = pickedDate ?? draft.date ?? today;
+  const dateCheck = byDateCheck({ date, today, leagueToday: g.today, isAdmin, events: events.data });
+  const dateOk = !byDate || dateCheck.ok;
+  const me = playerId;
+  const place = (id: string) => myGamesPlace(getUserId(), lid, me, id);
   const fromDraft = draft.values.map((v) => (v.trim() ? Number(v) : null));
   const typed = [...(override ?? fromDraft)];
   while (typed.length && typed[typed.length - 1] == null) typed.pop();
@@ -100,8 +126,36 @@ export default function SendGamesScreen() {
     cancelScan(scanId);
     setPhoto(img);
     setRowIdx(null);
-    // La lectura se cobra al cupo de la liga y del evento.
-    setScanId(startScan(img.scan, { leagueId: lid, eventId }));
+    // La lectura se cobra al cupo de la liga (y del evento, si ya se eligió).
+    setScanId(startScan(img.scan, { leagueId: lid, eventId: byDate ? null : selected }));
+  }
+
+  /**
+   * Otro evento en «¿Dónde jugaste?»: si ese ya tiene juegos en el teléfono, se muestran esos (los de aquí se quedan en
+   * su evento); si no, lo anotado se pasa al elegido (se había elegido mal), también lo que quedó a medias en cuadros.
+   */
+  function changeEvent(id: string) {
+    if (!draft || id === selected) return;
+    const there = loadDraft(lid, me, id);
+    if (draftCount(there) === 0) {
+      const ev = recent.find((e) => e.id === id);
+      saveDraft(lid, me, selected, null);
+      moveGameDrafts(place(selected), place(id));
+      saveDraft(lid, me, id, {
+        values: Array.from({ length: ev?.games ?? Math.max(3, draft.values.length) }, (_, i) => draft.values[i] ?? ''),
+        frames: draft.frames,
+        balls: draft.balls,
+        date: id === BY_DATE ? date : undefined,
+      });
+    }
+    setOverride(null);
+    setPicked(id);
+  }
+
+  /** «¿Qué día jugaste?»: la fecha queda con los juegos de «Otro día» en el teléfono. */
+  function changeDate(d: string) {
+    setPickedDate(d);
+    if (draft) saveDraft(lid, me, BY_DATE, { values: draft.values, frames: draft.frames, balls: draft.balls, date: d });
   }
 
   /** La foto se terminó de leer después de enviar: lo leído se agrega al envío para que el admin lo compare. */
@@ -118,7 +172,7 @@ export default function SendGamesScreen() {
   }
 
   async function send() {
-    if (sending || !typed.length || invalid || !playerId || !draft) return;
+    if (sending || !typed.length || invalid || !playerId || !draft || (!event && !byDate) || !dateOk) return;
     if (!photo && requirePhoto) {
       const ok = await confirmAsync({
         title: '¿Enviar sin foto?',
@@ -133,10 +187,11 @@ export default function SendGamesScreen() {
     // Lo de la foto reemplaza lo anotado: los cuadros de esos juegos ya no valen.
     const frames = override ? null : draft.frames && Object.keys(draft.frames).length ? draft.frames : null;
     const kept = frames ? Object.fromEntries(Object.entries(frames).filter(([i]) => typed[+i] != null)) : null;
+    const draftId = selected;
     const { id: subId, sent } = submitGames(lid, {
       playerId,
-      eventId,
-      date: null,
+      eventId: byDate ? null : selected,
+      date: byDate ? date : null,
       scores: typed,
       scanned,
       frames: kept && Object.keys(kept).length ? kept : null,
@@ -151,12 +206,12 @@ export default function SendGamesScreen() {
     const result = await Promise.race([sent.then(() => 'ok' as const), new Promise<'cola'>((r) => setTimeout(() => r('cola'), QUEUED_AFTER_MS))]).catch((e: unknown) => e);
     setSending(false);
     if (result === 'ok' || result === 'cola') {
-      clearSent(lid, playerId, eventId, values);
-      values.forEach((v, i) => v.trim() && g.place && clearGameDraft(gameKey(g.place, i)));
+      clearSent(lid, playerId, draftId, values);
+      values.forEach((v, i) => v.trim() && clearGameDraft(gameKey(place(draftId), i)));
       toast(result === 'ok' ? 'Enviado. Un admin lo revisará.' : 'Sin señal: tus juegos se envían solos cuando vuelva la conexión.');
       if (result === 'cola') {
         sent.catch((e: unknown) => {
-          restoreDraft(lid, playerId, eventId, { values, frames: draft.frames, date: draft.date, balls: draft.balls });
+          restoreDraft(lid, playerId, draftId, { values, frames: draft.frames, date: byDate ? date : draft.date, balls: draft.balls });
           toast(`No se pudieron enviar: ${saveErrorMessage(e)} Tus juegos volvieron al teléfono.`, 'error');
         });
       }
@@ -175,6 +230,24 @@ export default function SendGamesScreen() {
         <Txt variant="section">Enviar mis juegos</Txt>
         <View style={{ width: 44 }} />
       </View>
+
+      <Field label="¿Dónde jugaste?">
+        <PickField
+          label="¿Dónde jugaste?"
+          value={selected}
+          onChange={changeEvent}
+          options={[
+            ...recent.map((e) => ({ key: e.id, label: eventTitle(e) })),
+            ...(event && !recent.some((e) => e.id === event.id) ? [{ key: event.id, label: eventTitle(event) }] : []),
+            { key: BY_DATE, label: BY_DATE_LABEL },
+          ]}
+        />
+      </Field>
+      {byDate && (
+        <Field label="¿Qué día jugaste?" hint={byDateHint(dateCheck.closed, dateCheck.sameDay ? eventTitle(dateCheck.sameDay) : null)}>
+          <DateStepper value={date} max={today} onChange={changeDate} />
+        </Field>
+      )}
 
       <Card style={{ gap: 8 }}>
         <Txt variant="cardTitle">{showGames(typed)}</Txt>
@@ -262,7 +335,15 @@ export default function SendGamesScreen() {
       )}
 
       {error && <ErrorNote>{error}</ErrorNote>}
-      <Button variant="primary" size="xl" full loading={sending} disabled={!typed.length || invalid} icon={<Send size={20} color={c.accentFg} />} onPress={() => void send()}>
+      <Button
+        variant="primary"
+        size="xl"
+        full
+        loading={sending}
+        disabled={!typed.length || invalid || (!event && !byDate) || !dateOk}
+        icon={<Send size={20} color={c.accentFg} />}
+        onPress={() => void send()}
+      >
         Enviar
       </Button>
     </Screen>

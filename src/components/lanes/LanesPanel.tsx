@@ -19,6 +19,20 @@ import {
   unpublishedCount,
   type LaneMode,
 } from '../../lib/lanes';
+import {
+  LANES_RATE_LIMITED,
+  clearLanesConfirm,
+  laneCandidatesText,
+  laneModeHint,
+  laneModes,
+  lanesDontFitText,
+  lanesPublishedText,
+  lanesStatus,
+  publishLanesConfirm,
+  readLanePrefs,
+  rebuildLanesConfirm,
+  saveLanePrefs,
+} from './logic';
 import { useLeagueCtx } from '../../lib/league';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { copyText } from '../share/actions';
@@ -26,42 +40,6 @@ import { useBusy } from '../busy';
 import { BusySelect } from '../event/BusySelect';
 import { saveErrorMessage, useAction, useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Select, cx } from '../ui';
-
-// ---------- Lo último que usó el admin (en este teléfono) ----------
-
-interface LanePrefs {
-  lanes: string;
-  perLane: number;
-}
-
-const prefsKey = (lid: string) => `mm:pistas:${lid}`;
-
-function readPrefs(lid: string): LanePrefs {
-  try {
-    const v = JSON.parse(localStorage.getItem(prefsKey(lid)) ?? 'null') as Partial<LanePrefs> | null;
-    const perLane = Number(v?.perLane);
-    return {
-      lanes: typeof v?.lanes === 'string' && parseLanes(v.lanes) ? v.lanes : '',
-      perLane: PER_LANE_OPTIONS.includes(perLane as (typeof PER_LANE_OPTIONS)[number]) ? perLane : 4,
-    };
-  } catch {
-    return { lanes: '', perLane: 4 };
-  }
-}
-
-function savePrefs(lid: string, prefs: LanePrefs) {
-  try {
-    localStorage.setItem(prefsKey(lid), JSON.stringify(prefs));
-  } catch {
-    // sin almacenamiento: la próxima vez se escribe de nuevo
-  }
-}
-
-const MODES: { key: LaneMode; label: string }[] = [
-  { key: 'promedio', label: 'Por promedio' },
-  { key: 'equipo', label: 'Por equipo' },
-  { key: 'azar', label: 'Al azar' },
-];
 
 /**
  * Evento de boliche › Pistas (admin o anotador): arma las pistas con los que dijeron «voy» o están inscritos
@@ -80,7 +58,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
   const candidates = useMemo(() => laneCandidates(event, entries), [event, entries]);
   const teams = hasTeams(entries);
 
-  const [prefs] = useState(() => readPrefs(lid));
+  const [prefs] = useState(() => readLanePrefs(lid));
   const [input, setInput] = useState(prefs.lanes);
   const [perLane, setPerLane] = useState(prefs.perLane);
   const [mode, setMode] = useState<LaneMode>('promedio');
@@ -95,21 +73,17 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
   const unassigned = candidates.filter((id) => !withLane.has(id)).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'es'));
   const published = lanesPublished(rows);
   const changed = unpublishedCount(rows);
-  const modes = MODES.filter((m) => m.key !== 'equipo' || teams);
-  const activeMode = modes.some((m) => m.key === mode) ? mode : 'promedio';
+  const { modes, active: activeMode } = laneModes(mode, teams);
+  const status = lanesStatus(published, changed);
 
   async function generate() {
     if (!typed || !fits || !candidates.length || busy) return;
     if (rows.length) {
-      const ok = await confirm({
-        title: '¿Armar las pistas otra vez?',
-        message: 'Se reemplazan las que hay ahora, también los cambios que hiciste a mano.',
-        confirmText: 'Armar de nuevo',
-      });
+      const ok = await confirm(rebuildLanesConfirm);
       if (!ok) return;
     }
     setBusy('armar');
-    savePrefs(lid, { lanes: formatLanes(typed), perLane });
+    saveLanePrefs(lid, { lanes: formatLanes(typed), perLane });
     await run(async () => {
       let order: string[] | null = null;
       if (activeMode !== 'azar') {
@@ -141,19 +115,15 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
 
   async function publish() {
     if (busy) return;
-    const ok = await confirm({
-      title: published ? '¿Avisar las pistas otra vez?' : '¿Publicar las pistas?',
-      message: 'A cada jugador con cuenta le llega «Tu pista: …» al teléfono, y la ve en el evento y en el inicio de la liga.',
-      confirmText: 'Publicar y avisar',
-    });
+    const ok = await confirm(publishLanesConfirm(published));
     if (!ok) return;
     setBusy('publicar');
     try {
       const r = await publishLanes(event.id);
-      toast(r.pushed ? `Pistas publicadas: le avisamos a ${r.pushed} ${r.pushed === 1 ? 'jugador' : 'jugadores'}` : 'Pistas publicadas (nadie de la lista tiene cuenta)');
+      toast(lanesPublishedText(r.pushed));
     } catch (e) {
       console.error(e);
-      toast(asBackendError(e)?.kind === 'rate_limited' ? 'Ya avisaste varias veces en esta hora. Espera un rato.' : saveErrorMessage(e), 'error');
+      toast(asBackendError(e)?.kind === 'rate_limited' ? LANES_RATE_LIMITED : saveErrorMessage(e), 'error');
     } finally {
       setBusy(null);
     }
@@ -161,12 +131,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
 
   async function clear() {
     if (busy) return;
-    const ok = await confirm({
-      title: '¿Borrar las pistas?',
-      message: published ? 'Los jugadores dejan de ver su pista. Puedes armarlas otra vez cuando quieras.' : 'Puedes armarlas otra vez cuando quieras.',
-      confirmText: 'Borrar',
-      danger: true,
-    });
+    const ok = await confirm(clearLanesConfirm(published));
     if (!ok) return;
     setBusy('borrar');
     await run(() => clearLanes(event.id), 'Pistas borradas');
@@ -205,11 +170,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="font-semibold">Armar las pistas</h3>
-            <p className="text-sm text-muted">
-              {candidates.length
-                ? `${candidates.length} ${candidates.length === 1 ? 'jugador' : 'jugadores'}: los que dijeron «voy» o están inscritos.`
-                : 'Todavía nadie dijo «voy» ni está inscrito.'}
-            </p>
+            <p className="text-sm text-muted">{laneCandidatesText(candidates.length)}</p>
           </div>
         </div>
 
@@ -257,18 +218,9 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
             </button>
           ))}
         </div>
-        <p className="-mt-2 text-xs text-muted">
-          {activeMode === 'promedio'
-            ? 'Los de promedios parecidos juntos.'
-            : activeMode === 'equipo'
-              ? 'Los de un mismo equipo juntos.'
-              : 'Al azar, cada vez distinto.'}
-          {candidates.length > 0 && need > 0 && ` Hacen falta ${need} ${need === 1 ? 'pista' : 'pistas'} de ${perLane}.`}
-        </p>
+        <p className="-mt-2 text-xs text-muted">{laneModeHint(activeMode, candidates.length, need, perLane)}</p>
         {typed && !fits && candidates.length > 0 && (
-          <p className="text-sm text-warn">
-            No caben: son {candidates.length} y hay {typed.length * perLane} lugares. Agrega pistas o sube los jugadores por pista.
-          </p>
+          <p className="text-sm text-warn">{lanesDontFitText(candidates.length, typed.length * perLane)}</p>
         )}
 
         <Button
@@ -295,7 +247,7 @@ export function LanesPanel({ event, entries, players }: { event: BowlingEvent; e
         <>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="min-w-0 flex-1 font-semibold">Pistas</h3>
-            {!published ? <Badge tone="warn">Sin publicar</Badge> : changed ? <Badge tone="warn">{changed === 1 ? '1 cambio sin avisar' : `${changed} cambios sin avisar`}</Badge> : <Badge tone="ok">Publicadas</Badge>}
+            <Badge tone={status.tone}>{status.text}</Badge>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {groups.map((g, gi) => (

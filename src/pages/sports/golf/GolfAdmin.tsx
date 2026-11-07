@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LandPlot, Plus, Trash2 } from 'lucide-react';
-import { validateCourse, type GolfCourse, type GolfTee } from '../../../sports/golf/course';
+import { MAX_TEES, courseDraft, courseErrors, courseLine, coursePar, draftCourse, newTee, parSplit, parseMeritPoints, resizeCourse, shownErrors, teeLine, type TeeDraft } from './courseForm';
 import type { GolfCompetition } from '../../../sports/golf/scoring';
 import { deleteGolfCourse, saveGolfCourse, saveGolfRules, useGolfCourses, useGolfRules, type GolfCourseDoc } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
@@ -54,7 +54,7 @@ export default function GolfAdmin() {
                   </RowIcon>
                 }
                 title={c.name}
-                subtitle={`${c.holes.length} hoyos · par ${c.holes.reduce((a, h) => a + h.par, 0)} · ${c.tees.map((t) => `${t.name} ${t.rating}/${t.slope}`).join(' · ')}`}
+                subtitle={courseLine(c)}
                 onClick={() => setEditing(c)}
                 ariaLabel={`Editar ${c.name}`}
               />
@@ -80,11 +80,7 @@ function RulesCard() {
     setComp(rules.data.competition);
     setPoints(rules.data.meritPoints.join(', '));
   }, [rules.data]);
-  const parsed = points
-    .split(/[,\s]+/)
-    .filter(Boolean)
-    .map(Number);
-  const bad = !parsed.length || parsed.length > 50 || parsed.some((n) => !Number.isFinite(n) || n < 0 || n > 100);
+  const { points: parsed, bad } = parseMeritPoints(points);
 
   async function save() {
     setBusy(true);
@@ -111,55 +107,8 @@ function RulesCard() {
 
 // ---------- Editor de campo ----------
 
-interface TeeDraft {
-  id: string;
-  name: string;
-  rating: string;
-  slope: string;
-  byNine: boolean;
-  front: { rating: string; slope: string };
-  back: { rating: string; slope: string };
-  /** Pares o SI propios de esa salida (se conservan tal cual). */
-  pars?: number[];
-  sis?: number[];
-}
-
-/** SI por defecto: impares en la ida y pares en la vuelta (con 9 hoyos, 1–9). */
-export const defaultSis = (n: number) => (n === 9 ? Array.from({ length: 9 }, (_, i) => i + 1) : [...Array.from({ length: 9 }, (_, i) => i * 2 + 1), ...Array.from({ length: 9 }, (_, i) => i * 2 + 2)]);
-
-const newTee = (name: string, rating = '', slope = ''): TeeDraft => ({
-  id: `t${Math.random().toString(36).slice(2, 8)}`,
-  name,
-  rating,
-  slope,
-  byNine: false,
-  front: { rating: '', slope: '' },
-  back: { rating: '', slope: '' },
-});
-
-const numOrNaN = (s: string) => (s.trim() === '' ? Number.NaN : Number(s.replace(',', '.')));
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-
-/** Borrador del editor → campo del motor (para validar y guardar). */
-export function draftCourse(id: string, name: string, holes: { par: number; si: number }[], tees: TeeDraft[]): GolfCourse {
-  const n = holes.length;
-  return {
-    id,
-    name: name.trim(),
-    holes,
-    tees: tees.map((t): GolfTee => {
-      const pars = t.pars && t.pars.length === n ? t.pars : holes.map((h) => h.par);
-      const tee: GolfTee = { id: t.id, name: t.name.trim(), rating: numOrNaN(t.rating), slope: numOrNaN(t.slope), par: sum(pars) };
-      if (t.pars && t.pars.length === n) tee.pars = t.pars;
-      if (t.sis && t.sis.length === n) tee.sis = t.sis;
-      if (n === 18 && t.byNine) {
-        tee.front9 = { rating: numOrNaN(t.front.rating), slope: numOrNaN(t.front.slope), par: sum(pars.slice(0, 9)) };
-        tee.back9 = { rating: numOrNaN(t.back.rating), slope: numOrNaN(t.back.slope), par: sum(pars.slice(9)) };
-      }
-      return tee;
-    }),
-  };
-}
+// La lógica del editor (el borrador, 9 o 18 hoyos, lo que falta) está en courseForm.ts: la comparte la app.
+export { defaultSis, draftCourse } from './courseForm';
 
 export function CourseEditor({ open, course, onClose }: { open: boolean; course: GolfCourseDoc | null; onClose: () => void }) {
   const { lid } = useLeagueCtx();
@@ -174,53 +123,23 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
 
   useEffect(() => {
     if (!open) return;
-    if (course) {
-      setName(course.name);
-      setHoles(course.holes.map((h) => ({ par: h.par, si: h.si })));
-      setTees(
-        course.tees.map((t) => ({
-          id: t.id,
-          name: t.name,
-          rating: String(t.rating),
-          slope: String(t.slope),
-          byNine: !!(t.front9 || t.back9),
-          front: { rating: t.front9 ? String(t.front9.rating) : '', slope: t.front9 ? String(t.front9.slope) : '' },
-          back: { rating: t.back9 ? String(t.back9.rating) : '', slope: t.back9 ? String(t.back9.slope) : '' },
-          pars: t.pars,
-          sis: t.sis,
-        })),
-      );
-    } else {
-      setName('');
-      const sis = defaultSis(18);
-      setHoles(sis.map((si) => ({ par: 4, si })));
-      setTees([newTee('Blancas'), newTee('Rojas')]);
-    }
+    const d = courseDraft(course);
+    setName(d.name);
+    setHoles(d.holes);
+    setTees(d.tees);
   }, [open, course]);
 
   const n = holes.length;
   const draft = useMemo(() => draftCourse(course?.id ?? 'nuevo', name, holes, tees), [course, name, holes, tees]);
-  const errors = useMemo(() => {
-    const e = validateCourse(draft);
-    if (tees.some((t) => !t.name.trim())) e.push('Cada salida lleva nombre (Azules, Blancas, Rojas…).');
-    return e;
-  }, [draft, tees]);
-  const par = sum(holes.map((h) => h.par));
+  const errors = useMemo(() => courseErrors(draft, tees), [draft, tees]);
+  const par = coursePar(holes);
 
   function setCount(count: 9 | 18) {
-    if (count === n) return;
-    if (count === 9) {
-      // Se quedan los hoyos 1–9 con sus SI en orden (1 al 9).
-      const first = holes.slice(0, 9);
-      const rank = [...first].map((h, i) => ({ si: h.si, i })).sort((a, b) => a.si - b.si);
-      const sis = Array<number>(9);
-      rank.forEach((r, k) => (sis[r.i] = k + 1));
-      setHoles(first.map((h, i) => ({ par: h.par, si: sis[i] })));
-    } else {
-      const sis = defaultSis(18);
-      setHoles(Array.from({ length: 18 }, (_, i) => ({ par: holes[i]?.par ?? 4, si: sis[i] })));
-    }
-    setTees(tees.map((t) => ({ ...t, byNine: count === 18 && t.byNine, pars: undefined, sis: undefined })));
+    // A 9 se quedan los hoyos 1–9 con sus SI en orden (1 al 9).
+    const next = resizeCourse(holes, tees, count);
+    if (!next) return;
+    setHoles(next.holes);
+    setTees(next.tees);
   }
 
   async function save() {
@@ -298,7 +217,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
             <span className="font-medium">Par y SI de cada hoyo</span>
             <span className="text-muted">
               Par total <b className="text-fg">{par}</b>
-              {n === 18 && ` (ida ${sum(holes.slice(0, 9).map((h) => h.par))} · vuelta ${sum(holes.slice(9).map((h) => h.par))})`}
+              {n === 18 && ` (${parSplit(holes)})`}
             </span>
           </div>
           <p className="mb-2 text-xs text-muted">SI = índice de dificultad (1 = el hoyo más difícil), sin repetir. Sale en la tarjeta del club.</p>
@@ -346,7 +265,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Salidas (tees)</span>
-            {tees.length < 10 && (
+            {tees.length < MAX_TEES && (
               <Button size="sm" icon={<Plus className="size-4" />} onClick={() => setTees([...tees, newTee('')])}>
                 Otra salida
               </Button>
@@ -355,11 +274,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
           {tees.map((t, i) => (
             <div key={t.id} className="flex flex-col gap-2 rounded-2xl bg-surface-2 p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted">
-                  Salida {i + 1} · par {draft.tees[i]?.par}
-                  {t.pars ? ' (con pares propios)' : ''}
-                  {t.sis ? ' · SI propios' : ''}
-                </p>
+                <p className="text-xs text-muted">{teeLine(i, draft.tees[i]?.par, t)}</p>
                 <Button size="sm" variant="ghost" aria-label="Quitar salida" icon={<Trash2 className="size-4" />} disabled={tees.length === 1} onClick={() => setTees(tees.filter((_, k) => k !== i))} />
               </div>
               <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_6rem_6rem]">
@@ -401,7 +316,7 @@ export function CourseEditor({ open, course, onClose }: { open: boolean; course:
 
         {errors.length > 0 && (
           <ul className="flex list-disc flex-col gap-0.5 rounded-xl bg-warn-soft py-2 pr-3 pl-7 text-sm text-warn">
-            {[...new Set(errors)].slice(0, 8).map((e) => (
+            {shownErrors(errors).map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>

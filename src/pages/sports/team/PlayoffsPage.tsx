@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ClipboardPen, FileDown, Plus, Trash2, Trophy, X } from 'lucide-react';
-import { asBackendError } from '../../../lib/db/errors';
 import { createPlayoffs, deletePlayoffs, syncPlayoffs, usePlayoffs, type Playoff, type PlayoffSeries } from '../../../lib/data/playoffs';
-import type { Match } from '../../../lib/data/matches';
 import { useNow } from '../../../lib/useNow';
 import type { Season } from '../../../lib/seasons';
 import { BracketView } from '../../../components/match';
@@ -17,19 +15,27 @@ import { roundName } from '../../../sports/formats/knockout';
 import {
   BEST_OF,
   bestOfLabel,
-  byesFor,
+  byesText,
+  createPlayoffError,
   defaultBestOf,
+  gameResult,
+  initialPlayoffSize,
   moveSeed,
   nextGame,
   playoffBracket,
   playoffProblem,
   playoffRounds,
+  playoffSizeKey,
+  playoffSizes,
+  seedOrder,
   seriesGames,
   seriesKey,
+  seriesLabels,
   seriesLine,
   seriesOfKey,
   seriesRoundName,
   seriesScore,
+  shownSeries,
   topSeeds,
   winsNeeded,
 } from './playoffs';
@@ -106,18 +112,11 @@ function PlayoffView({ tl, playoff, season }: { tl: TeamLeague; playoff: Playoff
   const [sheet, setSheet] = useState<'reporte' | 'anotadores' | null>(null);
   const bracket = useMemo(() => playoffBracket(playoff), [playoff]);
   const name = nameFor(tl);
-  const labels = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const s of playoff.series) {
-      if (s.teamA && s.labelA) m.set(s.teamA, s.labelA);
-      if (s.teamB && s.labelB) m.set(s.teamB, s.labelB);
-    }
-    return m;
-  }, [playoff.series]);
+  const labels = useMemo(() => seriesLabels(playoff), [playoff]);
   const mine = tl.myTeams.map((x) => x.team.id);
   const champion = playoff.winner;
   // Las series que ya tienen a los dos equipos, de la ronda más avanzada a la primera (lo que se está jugando arriba).
-  const shown = [...playoff.series].filter((s) => !s.bye && s.teamA && s.teamB).sort((a, b) => b.round - a.round || a.slot - b.slot);
+  const shown = shownSeries(playoff);
 
   // Reporte del playoff (PDF o Excel), para todos: las series, sus juegos y el podio de la app.
   const report = () =>
@@ -260,31 +259,12 @@ function SeriesCard({
       {played.length > 0 && (
         <Card className="mt-4 overflow-hidden shadow-[inset_0_0_0_1px_var(--line)]">
           {played.map((g) => (
-            <ListRow key={g.id} dense title={g.stage || 'Juego'} subtitle={gameResult(tl, g)} to={matchLink(tl.base, g.id)} />
+            <ListRow key={g.id} dense title={g.stage || 'Juego'} subtitle={gameResult(g, (id) => tl.teamOf(id)?.name)} to={matchLink(tl.base, g.id)} />
           ))}
         </Card>
       )}
     </Card>
   );
-}
-
-/** «Tigres 70-64» (el ganador con el marcador), «W.O.» o el estado. */
-function gameResult(tl: TeamLeague, m: Match): string {
-  const text = typeof m.score?.text === 'string' ? m.score.text : '';
-  if (m.status === 'walkover') return 'W.O.';
-  if (!m.winner) return text ? `Empate ${text}` : 'Sin resultado';
-  const side = m.sides[m.winner - 1];
-  return `${tl.teamOf(side.teamId)?.name ?? side.label} ${text}`.trim();
-}
-
-/** Mensaje de un error de create_playoffs. */
-function createError(e: unknown): string | null {
-  const msg = asBackendError(e)?.message ?? (e instanceof Error ? e.message : '');
-  const code = msg.trim().split(/[\s:]/)[0];
-  if (code === 'duplicado') return 'Ya hay un playoff en esta temporada.';
-  if (code === 'cerrado') return 'La temporada está cerrada: los playoffs se arman en la temporada en curso.';
-  if (code === 'invalido') return 'Revisa los equipos (tienen que ser de esta temporada) y al mejor de cuántos va cada ronda.';
-  return null;
 }
 
 /**
@@ -296,17 +276,9 @@ export function PlayoffCreator({ tl, season, tableIds }: { tl: TeamLeague; seaso
   const { toast } = useFeedback();
   const teams = tl.teams.data;
   // La tabla primero; los que no salen en ella (sin partidos), después por nombre.
-  const ordered = useMemo(() => {
-    const known = new Set(teams.map((t) => t.id));
-    const inTable = tableIds.filter((id) => known.has(id));
-    const rest = teams
-      .filter((t) => !inTable.includes(t.id))
-      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-      .map((t) => t.id);
-    return [...inTable, ...rest];
-  }, [teams, tableIds]);
-  const sizes = [2, 4, 8, 16].filter((n) => n <= ordered.length);
-  const initial = sizes.includes(4) ? 4 : (sizes.at(-1) ?? 0);
+  const ordered = useMemo(() => seedOrder(teams, tableIds), [teams, tableIds]);
+  const sizes = playoffSizes(ordered.length);
+  const initial = initialPlayoffSize(sizes);
   const [seeds, setSeeds] = useState<string[]>(() => topSeeds(ordered, initial));
   const [bestOf, setBestOf] = useState<number[]>(() => defaultBestOf(initial));
   const [touched, setTouched] = useState(false);
@@ -332,10 +304,10 @@ export function PlayoffCreator({ tl, season, tableIds }: { tl: TeamLeague; seaso
   };
   const rounds = playoffRounds(seeds.length);
   const problem = playoffProblem(seeds, bestOf);
-  const byes = byesFor(seeds.length);
+  const byes = byesText(seeds.length);
   const left = teams.filter((t) => !seeds.includes(t.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
   // El tamaño elegido, si los que están son exactamente los primeros de la tabla.
-  const sizeKey = sizes.find((n) => seeds.length === n && seeds.every((id, i) => ordered[i] === id));
+  const sizeKey = playoffSizeKey(sizes, seeds, ordered);
 
   if (teams.length < 2) {
     return (
@@ -353,7 +325,7 @@ export function PlayoffCreator({ tl, season, tableIds }: { tl: TeamLeague; seaso
       toast('Playoffs listos. Ponle fecha a cada juego desde Partidos.');
     } catch (e) {
       console.error(e);
-      toast(createError(e) ?? 'No se pudieron armar los playoffs. Intenta de nuevo.', 'error');
+      toast(createPlayoffError(e) ?? 'No se pudieron armar los playoffs. Intenta de nuevo.', 'error');
     } finally {
       setBusy(false);
     }
@@ -408,11 +380,7 @@ export function PlayoffCreator({ tl, season, tableIds }: { tl: TeamLeague; seaso
           </Button>
         </div>
       )}
-      {byes > 0 && seeds.length >= 2 && (
-        <p className="mx-1 text-meta text-muted">
-          {byes === 1 ? 'El 1.º pasa directo' : `Los ${byes} primeros pasan directo`} a la segunda ronda (no son potencia de 2).
-        </p>
-      )}
+      {byes && <p className="mx-1 text-meta text-muted">{byes}</p>}
 
       {rounds > 0 && (
         <Card className="grid gap-3 p-4 sm:grid-cols-2">

@@ -5,27 +5,17 @@ import { LeagueBackBar } from '../../../components/league/home/LeagueTopBar';
 import { useIsPro } from '../../../components/mode';
 import { ListSkeleton, LoadError, Segmented } from '../../../components/ui';
 import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
-import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
+import { LeadersTable } from '../team/LeadersTable';
 import { TeamName } from '../team/TeamBits';
 import { HowItCounts, ScreenTitle, ShareIcon } from '../team/TeamUi';
 import { useTeamLeague } from '../team/useTeamLeague';
-import type { BasketballTotals } from '../../../sports/team/stats';
 import { ExcelButton } from './BasketballHome';
 import { basketballTableFrom } from './rules';
 import { useBasketballSeason } from './season';
+import { SCORER_COLUMNS, basketballRuleLine, basketballRuleText, basketballView, scorerLine } from './standingsView';
 
-/** Columnas de la tabla de anotadores. */
-export const SCORER_COLUMNS: LeaderColumn<BasketballTotals>[] = [
-  { key: 'points', label: 'PTS', title: 'Puntos', value: (r) => r.points },
-  { key: 'avg', label: 'Prom', title: 'Promedio de puntos por partido', value: (r) => r.avg, show: (r) => r.avg.toLocaleString('es-DO', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) },
-  { key: 'games', label: 'PJ', title: 'Partidos jugados (presentes)', value: (r) => r.games },
-  { key: 'high', label: 'Máx', title: 'Máximo en un partido', value: (r) => r.high, wide: true },
-  { key: 'threes', label: '3P', title: 'Triples anotados', value: (r) => r.threes },
-  { key: 'ftm', label: 'TL', title: 'Tiros libres anotados', value: (r) => r.ftm, wide: true },
-  { key: 'fouls', label: 'F', title: 'Faltas', value: (r) => r.fouls, wide: true },
-];
-
-type View = 'tabla' | 'anotadores';
+// Las columnas, qué se ve y la línea de cada anotador están en standingsView.ts (los usa también la app del teléfono).
+export { SCORER_COLUMNS };
 
 /**
  * Tabla FIBA de la temporada y anotadores (/l/:lid/ranking), rediseño «Calma y foco» como la Tabla del boliche: «‹
@@ -40,7 +30,7 @@ export default function BasketballStandings() {
   const picked = useStandingsSeason();
   const season = useBasketballSeason(tl, picked.selected ?? tl.season);
   const [params, setParams] = useSearchParams();
-  const view: View = params.get('ver') === 'anotadores' ? 'anotadores' : 'tabla';
+  const view = basketballView(params.get('ver'));
   const table = basketballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
   const columns = defaultColumns({ forLabel: 'PF', againstLabel: 'PC' });
@@ -132,13 +122,10 @@ export default function BasketballStandings() {
                 highlight={mine}
                 empty="Cuando haya partidos confirmados, la tabla sale aquí."
               />
-              <HowItCounts line={`Ganar ${table.win} · perder ${table.loss} · desempate FIBA`}>
-                <p>
-                  Ganar da {table.win} puntos y perder {table.loss}. Perder por forfeit (no se presentó) da {table.forfeitLoss} y el forfeit se anota {table.forfeitScore}-0. Perder
-                  por default (se quedó sin jugadores) da {table.defaultLoss}.
-                </p>
-                <p>Desempate FIBA: puntos entre los empatados, diferencia entre ellos, puntos a favor entre ellos, diferencia general y puntos a favor.</p>
-                <p>Un resultado por confirmar cuenta a las 48 horas.</p>
+              <HowItCounts line={basketballRuleLine(table)}>
+                {basketballRuleText(table).map((p) => (
+                  <p key={p}>{p}</p>
+                ))}
               </HowItCounts>
             </>
           ) : (
@@ -150,7 +137,7 @@ export default function BasketballStandings() {
               linkOf={(id) => `${tl.base}/j/${id}`}
               highlight={tl.myPlayerId}
               full={pro}
-              line={(r) => `${r.avg.toLocaleString('es-DO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} por partido`}
+              line={scorerLine}
             />
           )}
         </div>

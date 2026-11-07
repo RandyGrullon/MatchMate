@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronRight, Flag } from 'lucide-react-native';
+import { ChevronRight, Flag, LandPlot, PencilLine } from 'lucide-react-native';
 import { useEvents } from '@mm/lib/data';
-import { useGolfEvent, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '@mm/lib/data/golf';
+import { useGolfCourses, useGolfEvent, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '@mm/lib/data/golf';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { eventLabel, toIsoDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
@@ -18,6 +18,8 @@ import { golfNow, meritTop, scoreText } from '@mm/pages/sports/golf/home';
 import { cardHoles, formatLabel, golfRoundOf, holesDone, isComplete, nineLabel, startIndex } from '@mm/pages/sports/golf/logic';
 import { useGolfMerit } from '@mm/pages/sports/golf/seasonTable';
 import { GolfEventBody } from './GolfEvent';
+import { RoundForm } from './RoundForm';
+import { SectionAdd, openCourses, openGolfer, openRound } from './parts';
 import { DateBlock } from '@/components/DateBlock';
 import { Button, Card, Empty, ListRow, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
@@ -26,22 +28,22 @@ import { font } from '@/theme/tokens';
 /** Resultados que se ven antes de «Ver las N» (ShowMore de la web). */
 const SHOWN = 3;
 
-const openRound = (lid: string, eventId: string, tab?: string) =>
-  router.push({ pathname: '/l/[lid]/e/[eventId]', params: tab ? { lid, eventId, tab } : { lid, eventId } });
-
 /**
  * Inicio de la liga de golf (GolfHome de la web, Lite): la ronda de hoy una sola vez, con lo tuyo en una línea y UN
  * botón («Seguir en el hoyo 8», «Inscribirme»); el orden de mérito (los 3 de arriba, con tu lugar) y «Ver toda»;
- * «Próximas rondas» y «Resultados». Crear rondas y campos, en la web. Un torneo sin liga con una sola ronda abre la ronda.
+ * «Próximas rondas» (para el admin, «+ Nueva»; sin nada próximo, «Nueva ronda o torneo») y «Resultados». Sin campo
+ * todavía, primero «Agregar el campo» (Organizar › Campos). Un torneo sin liga con una sola ronda abre la ronda.
  */
 export function GolfHome() {
   const c = useColors();
   const { lid, isAdmin, league } = useLeagueCtx();
   const events = useEvents(lid);
   const rounds = useGolfRounds(lid);
+  const courses = useGolfCourses(lid);
   const tournaments = useGolfTournaments(lid);
   const today = toIsoDate(useNow());
   const [allPast, setAllPast] = useState(false);
+  const [creating, setCreating] = useState(false);
   const byEvent = useMemo(() => new Map(rounds.data.map((r) => [r.eventId, r] as const)), [rounds.data]);
   if (events.error) return <LoadError error={events.error} />;
   if (events.loading && !events.data.length) return <Loading label="Cargando las rondas" />;
@@ -50,6 +52,8 @@ export function GolfHome() {
   const tournamentName = (id: string | null) => (id ? tournaments.data.find((t) => t.id === id)?.name : null);
   const now = upcoming.find((e) => e.date === today) ?? null;
   const next = upcoming.filter((e) => e !== now);
+  const noCourse = isAdmin && !courses.loading && !courses.data.length;
+  const canCreate = isAdmin && courses.data.length > 0;
 
   // Un torneo sin liga con una sola ronda muestra la ronda directo.
   if (league.kind === 'torneo' && events.data.length === 1) return <GolfEventBody eventId={events.data[0].id} embedded />;
@@ -57,9 +61,21 @@ export function GolfHome() {
   return (
     <View style={{ gap: 26 }}>
       {now && <TodayRound event={now} />}
+      {noCourse && (
+        <Empty
+          icon={<LandPlot size={28} color={c.accent} />}
+          title="Primero, el campo"
+          text="El par y el SI de cada hoyo, y el rating y slope de cada salida."
+          action={
+            <Button variant="primary" size="lg" icon={<LandPlot size={20} color={c.accentFg} />} onPress={() => openCourses(lid)}>
+              Agregar el campo
+            </Button>
+          }
+        />
+      )}
       <MeritTop />
       <View style={{ gap: 10 }}>
-        <SectionHeader title="Próximas rondas" />
+        <SectionHeader title="Próximas rondas" action={canCreate && (next.length > 0 || now) ? <SectionAdd label="Nueva" onPress={() => setCreating(true)} /> : undefined} />
         {next.length ? (
           <RoundList events={next} byEvent={byEvent} today={today} tournamentName={tournamentName} />
         ) : now ? (
@@ -71,6 +87,13 @@ export function GolfHome() {
             icon={<Flag size={28} color={c.accent} />}
             title="No hay rondas próximas"
             text={isAdmin ? 'Crea la próxima ronda o un torneo de varias rondas.' : 'Cuando el admin cree la próxima ronda, sale aquí para inscribirte.'}
+            action={
+              canCreate ? (
+                <Button variant="primary" size="lg" icon={<PencilLine size={20} color={c.accentFg} />} onPress={() => setCreating(true)}>
+                  Nueva ronda o torneo
+                </Button>
+              ) : undefined
+            }
           />
         )}
       </View>
@@ -81,6 +104,7 @@ export function GolfHome() {
           {past.length > SHOWN && <Button onPress={() => setAllPast((v) => !v)}>{allPast ? 'Ver menos' : `Ver las ${past.length} rondas`}</Button>}
         </View>
       )}
+      {isAdmin && <RoundForm open={creating} onClose={() => setCreating(false)} />}
     </View>
   );
 }
@@ -217,6 +241,7 @@ function MeritTop() {
               icon={<Txt style={{ width: 22, textAlign: 'center', fontFamily: font.bold, color: me ? c.accent : c.muted }}>{row.rank}</Txt>}
               title={`${nameOf(row.id)}${me ? ' · Tú' : ''}`}
               right={<Txt style={{ fontFamily: font.bold, fontSize: 20 }}>{row.points.toLocaleString('es-DO')}</Txt>}
+              onPress={() => openGolfer(lid, row.id)}
             />
           </View>
         ))}

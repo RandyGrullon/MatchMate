@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, CalendarPlus, Gavel, Plus, Trash2, Trophy, X } from 'lucide-react';
-import { compareMatches, hasResult, type Match } from '../../../lib/data/matches';
+import type { Match } from '../../../lib/data/matches';
 import { saveLeagueRules } from '../../../lib/data/teamSports';
-import { SPORTS } from '../../../sports/registry';
 import type { FootballConfig, FootballVariant } from '../../../sports/team/football';
 import type { DisciplineConfig } from '../../../sports/team/discipline';
 import type { FootballTableConfig, FootballTieBreak } from '../../../sports/team/standings';
@@ -10,8 +9,21 @@ import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Button, Card, Field, Input, SectionHeader, Select } from '../../../components/ui';
 import { AdminActions, AdminSegmented, SettingsCard, TemplateRows, ToggleRow, useAdminPart } from '../team/AdminParts';
-import { rosterOf } from '../team/logic';
 import { OfficialsList } from '../team/OfficialsList';
+import {
+  committeeCandidates,
+  committeeMatches,
+  committeeMatchOption,
+  committeeMatchText,
+  footballDraftOf,
+  footballNum,
+  footballRulesErrors,
+  footballRulesPatch,
+  missingTiebreaks,
+  moveTiebreak,
+  sanctionLine,
+  sanctionTitle,
+} from '../team/rulesAdmin';
 import { ScheduleBuilder, SingleMatchModal } from '../team/ScheduleBuilder';
 import { TeamsManager } from '../team/TeamsManager';
 import { TournamentAdvance, TournamentBuilder } from '../team/TournamentBuilder';
@@ -20,15 +32,10 @@ import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { FOOTBALL_POSITIONS } from './bits';
 import { deleteFootballSanction, saveFootballSanction, useFootballSanctions } from './data';
 import {
-  TIEBREAK_CHOICES,
   TIEBREAK_LABEL,
   describeConfig,
   describeDiscipline,
-  disciplineFrom,
   footballConfigFrom,
-  footballTableFrom,
-  footballTeamRules,
-  formatOf,
   knockoutRules,
   matchMinutes,
   templateOf,
@@ -111,18 +118,8 @@ export function CalendarAdmin({ tl }: { tl: TeamLeague }) {
   );
 }
 
-interface Draft {
-  cfg: FootballConfig;
-  table: FootballTableConfig;
-  discipline: DisciplineConfig;
-  minPlayers: number;
-  reinforcements: number;
-}
-
-const num = (v: string, min: number, max: number, dflt: number) => {
-  const n = Number(v);
-  return v.trim() !== '' && Number.isInteger(n) && n >= min && n <= max ? n : dflt;
-};
+// El borrador, los números, lo que se guarda y las validaciones: ../team/rulesAdmin.ts (los comparte la app).
+const num = footballNum;
 
 /** Reglas: una plantilla de un toque, o ajustar el partido, la tabla (puntos y desempates), la disciplina y la convocatoria. */
 export function RulesAdmin({ tl }: { tl: TeamLeague }) {
@@ -133,15 +130,8 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const variant: FootballVariant = variantOf(tl.league.sport);
   const current = tl.rules.data;
   const tpl = templateOf(current, variant);
-  const teams = footballTeamRules(current, variant);
-  const base: Draft = {
-    cfg: footballConfigFrom(current, variant),
-    table: footballTableFrom(current),
-    discipline: disciplineFrom(current),
-    minPlayers: teams.minPlayers,
-    reinforcements: teams.reinforcements,
-  };
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const base = footballDraftOf(current, variant);
+  const [draft, setDraft] = useState<typeof base | null>(null);
   const d = draft ?? base;
   const setCfg = (patch: Partial<FootballConfig>) => setDraft({ ...d, cfg: { ...d.cfg, ...patch } });
   const setTable = (patch: Partial<FootballTableConfig>) => setDraft({ ...d, table: { ...d.table, ...patch } });
@@ -161,15 +151,9 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
     });
   };
 
-  const oldTeams = typeof current.teams === 'object' && current.teams ? (current.teams as Record<string, unknown>) : {};
-  const patch = {
-    match: { ...d.cfg, variant },
-    table: d.table,
-    discipline: d.discipline,
-    teams: { ...oldTeams, minPlayers: d.minPlayers, reinforcements: d.reinforcements, runningClock: d.cfg.clock !== 'stopped', template: formatOf(current) === 'relampago' ? 'relampago' : null },
-  };
+  const patch = footballRulesPatch(current, d, variant);
   // Las mismas validaciones que el registro del deporte (las que usa el formulario de la liga).
-  const errors = draft ? SPORTS[variant].validateRules({ ...current, ...patch }) : [];
+  const errors = draft ? footballRulesErrors(current, patch, variant) : [];
   const save = () =>
     busy.run('guardar', () =>
       run(async () => {
@@ -180,13 +164,11 @@ export function RulesAdmin({ tl }: { tl: TeamLeague }) {
 
   const tb = d.table.tiebreak;
   const moveTb = (i: number, dir: -1 | 1) => {
-    const next = [...tb];
     const j = i + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[i], next[j]] = [next[j], next[i]];
-    setTable({ tiebreak: next });
+    if (j < 0 || j >= tb.length) return;
+    setTable({ tiebreak: moveTiebreak(tb, i, dir) });
   };
-  const missing = TIEBREAK_CHOICES.filter((k) => !tb.includes(k));
+  const missing = missingTiebreaks(tb);
 
   return (
     <div className="flex flex-col gap-[30px]">
@@ -392,7 +374,7 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   const run = useAction();
   const { confirm } = useFeedback();
   const sanctions = useFootballSanctions(tl.lid);
-  const played = useMemo(() => tl.matches.data.filter((m) => hasResult(m) || m.status === 'live').sort((a, b) => compareMatches(b, a)), [tl.matches.data]);
+  const played = useMemo(() => committeeMatches(tl.matches.data), [tl.matches.data]);
   const [matchId, setMatchId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [playerId, setPlayerId] = useState('');
@@ -403,14 +385,10 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
   const removing = useBusy();
   const match: Match | undefined = played.find((m) => m.id === matchId);
   const side = match?.sides.find((s) => s.teamId === teamId);
-  const candidates = side ? [...new Set([...rosterOf(tl.allTeams.data, teamId).map((r) => r.playerId), ...side.players.map((p) => p.playerId)])] : [];
+  const candidates = committeeCandidates(match, teamId, tl.allTeams.data);
   const n = num(count, 1, 50, 0);
   const valid = !!match && !!side && !!playerId && n > 0;
-  const nm = (m: Match, i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;
-  const matchText = (id: string) => {
-    const m = tl.matches.data.find((x) => x.id === id);
-    return m ? `${m.round != null ? `J${m.round} · ` : ''}${nm(m, 0)} vs. ${nm(m, 1)}` : 'partido borrado';
-  };
+  const matchText = (id: string) => committeeMatchText(tl.matches.data, id, (t) => tl.teamOf(t)?.name);
 
   const save = async () => {
     if (!valid) return;
@@ -447,8 +425,7 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
             <option value="">{played.length ? 'Elige el partido…' : 'Todavía no hay partidos jugados'}</option>
             {played.map((m) => (
               <option key={m.id} value={m.id}>
-                {matchText(m.id)}
-                {typeof m.score?.text === 'string' ? ` (${m.score.text})` : ''}
+                {committeeMatchOption(m, matchText(m.id))}
               </option>
             ))}
           </Select>
@@ -504,13 +481,8 @@ export function CommitteeAdmin({ tl }: { tl: TeamLeague }) {
             {sanctions.data.map((s) => (
               <div key={s.id} className="mm-row relative flex min-h-row items-center gap-3 py-2.5 pr-2 pl-5">
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body font-semibold">
-                    {tl.nameOf(s.playerId)} · {s.matches} {s.matches === 1 ? 'partido' : 'partidos'}
-                  </span>
-                  <span className="mt-0.5 block truncate text-sm text-muted">
-                    {tl.teamOf(s.teamId)?.name ?? 'Equipo'} · desde {matchText(s.matchId)}
-                    {s.note ? ` · ${s.note}` : ''}
-                  </span>
+                  <span className="block truncate text-body font-semibold">{sanctionTitle(tl.nameOf(s.playerId), s.matches)}</span>
+                  <span className="mt-0.5 block truncate text-sm text-muted">{sanctionLine(tl.teamOf(s.teamId)?.name, matchText(s.matchId), s.note)}</span>
                 </span>
                 <DangerButton
                   icon={<Trash2 className="size-5" />}

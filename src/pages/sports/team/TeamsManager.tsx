@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Palette, Plus, Search, Trash2, UserPlus, UserRound } from 'lucide-react';
 import { createPlayer } from '../../../lib/data';
-import { asBackendError } from '../../../lib/db/errors';
 import {
   createSeasonTeam,
   deleteSeasonTeam,
@@ -21,6 +20,7 @@ import { Button, Card, Field, Input, ListRow, ListSkeleton, RowIcon, SectionHead
 import { TEAM_PALETTE, teamColor } from './logic';
 import { Jersey } from './TeamBits';
 import { DangerButton, TeamCrest } from './TeamUi';
+import { addableLine, addablePlayers, ROLE_LABEL, ROLES, rosterEdit, rosterError, rosterSubtitle, teamLine, validTeamName } from './teamsAdmin';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
@@ -31,21 +31,8 @@ import type { TeamLeague } from './useTeamLeague';
  * con su cuenta.
  */
 
-const ROLE_LABEL: Record<TeamRole, string> = { player: 'Jugador', captain: 'Capitán', delegate: 'Delegado' };
-const ROLES: readonly TeamRole[] = ['player', 'captain', 'delegate'];
-
-/** Mensaje de un error al guardar la plantilla (dorsal repetido, sin permiso…). */
-function rosterError(e: unknown): string {
-  if (asBackendError(e)?.kind === 'conflict') return 'Ese dorsal ya lo usa otro jugador del equipo.';
-  return saveErrorMessage(e);
-}
-
-/** «4 jugadores · Capitán: Ana Pérez». */
-const teamLine = (tl: Pick<TeamLeague, 'nameOf'>, t: SeasonTeam) =>
-  `${t.roster.length} ${t.roster.length === 1 ? 'jugador' : 'jugadores'}${t.roster
-    .filter((r) => r.role !== 'player')
-    .map((r) => ` · ${ROLE_LABEL[r.role]}: ${tl.nameOf(r.playerId)}`)
-    .join('')}`;
+// Los roles, la línea de cada equipo, el error de la plantilla y lo que cambió en la hoja de un jugador: teamsAdmin.ts
+// (los comparte la app del teléfono).
 
 /** Organizar › Equipos: todos los equipos como filas; cada uno abre su hoja con la plantilla. */
 export function TeamsManager({ tl, positions, sportWord = 'equipo' }: { tl: TeamLeague; positions: readonly string[]; sportWord?: string }) {
@@ -136,7 +123,7 @@ function TeamForm({ tl, team, open, onClose, onDeleted }: { tl: TeamLeague; team
       setColor(team ? teamColor(team) : TEAM_PALETTE[tl.teams.data.length % TEAM_PALETTE.length]);
     }
   }
-  const valid = name.trim().length > 0 && name.trim().length <= 60;
+  const valid = validTeamName(name);
   const save = async () => {
     const ok = await busy.run('guardar', () =>
       run(async () => {
@@ -255,7 +242,7 @@ export function RosterEditor({ tl, team, canRoles, positions, readOnly, flat }: 
         {!team.roster.length && <p className="px-5 py-4 text-meta text-muted">La plantilla está vacía.</p>}
         {team.roster.map((r) => {
           const name = tl.nameOf(r.playerId);
-          const sub = [r.position, r.role !== 'player' ? ROLE_LABEL[r.role] : null].filter(Boolean).join(' · ');
+          const sub = rosterSubtitle(r);
           return (
             <ListRow
               key={r.playerId}
@@ -333,14 +320,7 @@ function PlayerSheet({
   const [position, setPosition] = useState(entry?.position ?? '');
   const [role, setRole] = useState<TeamRole>(entry?.role ?? 'player');
   if (!entry) return <Sheet open={false} onClose={onClose} title="Jugador">{null}</Sheet>;
-  const n = jersey.trim() === '' ? null : Number(jersey);
-  const badJersey = n !== null && (!Number.isInteger(n) || n < 0 || n > 99);
-  const posOptions = entry.position && !positions.includes(entry.position) ? [...positions, entry.position] : positions;
-  const patch: Partial<Pick<RosterEntry, 'jersey' | 'position' | 'role'>> = {};
-  if (!badJersey && n !== entry.jersey) patch.jersey = n;
-  if ((position || null) !== (entry.position ?? null)) patch.position = position || null;
-  if (canRoles && role !== entry.role) patch.role = role;
-  const changed = Object.keys(patch).length > 0;
+  const { patch, badJersey, posOptions, changed } = rosterEdit(entry, { jersey, position, role }, canRoles, positions);
   const save = () =>
     busy.run('guardar', async () => {
       if (await onSave(patch)) onClose();
@@ -418,16 +398,7 @@ function AddPlayerSheet({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
   const busy = useBusy();
   // Liga con menores: «Es menor de edad» y su tutor debajo del nombre.
   const minor = useQuickMinor(canCreate && !!newName.trim());
-  const inTeam = new Set(team.roster.map((r) => r.playerId));
-  const teamOfPlayer = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const t of tl.teams.data) for (const r of t.roster) if (t.id !== team.id) map.set(r.playerId, t.name);
-    return map;
-  }, [tl.teams.data, team.id]);
-  const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-  const list = tl.players.data
-    .filter((p) => !inTeam.has(p.id) && (!q.trim() || norm(p.name).includes(norm(q.trim()))))
-    .sort((a, b) => Number(teamOfPlayer.has(a.id)) - Number(teamOfPlayer.has(b.id)) || a.name.localeCompare(b.name, 'es'));
+  const { list, teamOf: teamOfPlayer } = useMemo(() => addablePlayers(tl.players.data, team, tl.teams.data, q), [tl.players.data, team, tl.teams.data, q]);
 
   const add = (playerId: string) =>
     busy.run(playerId, async () => {
@@ -473,11 +444,7 @@ function AddPlayerSheet({ tl, team, canCreate, open, onClose }: { tl: TeamLeague
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-semibold">{p.name}</span>
-                  {(teamOfPlayer.has(p.id) || !p.uid) && (
-                    <span className="block truncate text-[13px] text-muted">
-                      {[teamOfPlayer.has(p.id) ? `En ${teamOfPlayer.get(p.id)}` : null, !p.uid ? 'Sin cuenta' : null].filter(Boolean).join(' · ')}
-                    </span>
-                  )}
+                  {(teamOfPlayer.has(p.id) || !p.uid) && <span className="block truncate text-[13px] text-muted">{addableLine(p, teamOfPlayer)}</span>}
                 </span>
                 <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
                   <BusyIcon busy={busy.isBusy(p.id)} icon={<Plus className="size-5" strokeWidth={2.4} />} className="size-5" />

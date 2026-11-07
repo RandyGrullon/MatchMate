@@ -1,13 +1,14 @@
 /**
  * Un partido de raqueta (MatchDetail.tsx de la web, con su misma lógica): el título («Ronda 1 · Cancha 2»), el estado y
  * la hora, el marcador grande, confirmar o reclamar (el rival) y UN botón: «Anotar en la cancha» (con «Solo el
- * resultado» debajo). El admin decide un reclamo en su tarjeta; corregir, W.O., aplazar y lo demás del admin, por ahora
- * en la web. Compartir el resultado (imagen, texto para WhatsApp y «Publicar en Social») e historial.
+ * resultado» debajo). El admin decide un reclamo en su tarjeta; W.O., aplazar, reprogramar, quién juega, corregir,
+ * anular y borrar, en «•••» (MatchAdmin.tsx). Compartir el resultado (imagen, texto para WhatsApp y «Publicar en
+ * Social») e historial.
  */
 import { useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { Gavel, Globe, History, Keyboard, Play, Share2 } from 'lucide-react-native';
+import { Gavel, History, Keyboard, Play, Share2 } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeagueMembers } from '@mm/lib/data';
 import { hasResult, isOpen, resolveDispute, useMatch } from '@mm/lib/data/matches';
@@ -30,9 +31,10 @@ import { ConfirmResult, ResultSheet, Scoreboard } from '../match/ResultParts';
 import { ShareResultSheet } from '../match/ShareResult';
 import { toast } from '../feedback';
 import { PointsCourt, SetsCourt } from './RacketCourt';
+import { MatchAdmin } from './MatchAdmin';
+import { useRacketPhone } from './parts';
 import { Button, Card, Divider, Empty, ListRow, LoadError, RowIcon, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
 export const courtRoute = (lid: string, matchId: string) => ({ pathname: '/l/[lid]/partido/[matchId]/cancha' as const, params: { lid, matchId } });
@@ -40,7 +42,7 @@ export const courtRoute = (lid: string, matchId: string) => ({ pathname: '/l/[li
 export function RacketMatch({ matchId }: { matchId: string }) {
   const c = useColors();
   const { lid, isAdmin, member, league } = useLeagueCtx();
-  const { sport, ext } = useRacket();
+  const { sport, ext } = useRacketPhone();
   const w = courtWords(ext);
   const q = useMatch(lid, matchId);
   const list = useWithPendingPoints(lid, q.data ? [q.data] : []);
@@ -48,7 +50,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
   const mySideOf = useMySide();
   const members = useLeagueMembers(lid);
   const now = useNow().getTime();
-  const [entry, setEntry] = useState<null | 'finish' | 'resolve'>(null);
+  const [entry, setEntry] = useState<null | 'finish' | 'correct' | 'resolve'>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -97,9 +99,13 @@ export function RacketMatch({ matchId }: { matchId: string }) {
   return (
     <View style={{ gap: 16 }}>
       <View style={{ gap: 6 }}>
-        <Txt variant="title" style={{ fontSize: 28, lineHeight: 33 }}>
-          {heading}
-        </Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+          <Txt variant="title" style={{ flex: 1, fontSize: 28, lineHeight: 33 }}>
+            {heading}
+          </Txt>
+          {/* Lo del admin: W.O., aplazar, reprogramar, quién juega, corregir, anular y borrar. */}
+          <MatchAdmin match={m} onDeleted={() => (router.canGoBack() ? router.back() : router.navigate({ pathname: '/l/[lid]', params: { lid } }))} onCorrect={() => setEntry('correct')} />
+        </View>
         {(m.status !== 'scheduled' || when) && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {m.status !== 'scheduled' && <MatchStatus label={status.label} tone={status.tone} live={status.live} />}
@@ -151,6 +157,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
           </View>
         </Card>
       )}
+      {(hasResult(m) || history.length > 0) && (
       <Card padded={false}>
         {hasResult(m) && (
           <ListRow
@@ -179,22 +186,8 @@ export function RacketMatch({ matchId }: { matchId: string }) {
             />
           </>
         )}
-        {isAdmin && (
-          <>
-            {(hasResult(m) || history.length > 0) && <Divider inset={68} />}
-            <ListRow
-              icon={
-                <RowIcon>
-                  <Globe size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title="Opciones del partido"
-              subtitle="Corregir, W.O., aplazar y más (en la web)"
-              onPress={() => openOnWeb(url.replace(/^https?:\/\/[^/]+/, ''))}
-            />
-          </>
-        )}
       </Card>
+      )}
       {sharing && <ShareResultSheet onClose={() => setSharing(false)} match={m} title={league.name} subtitle={heading} roundWord={points ? 'Ronda' : 'Jornada'} url={url} mySide={mySide} />}
       <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Historial" subtitle={heading}>
         {history.map((h, i) => (

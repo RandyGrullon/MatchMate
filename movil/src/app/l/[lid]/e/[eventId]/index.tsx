@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, Globe, Send, SquarePen } from 'lucide-react-native';
@@ -14,7 +15,8 @@ import { EventBoard } from '@/components/bowling/EventBoard';
 import { LaneChip } from '@/components/bowling/LaneChip';
 import { Standings } from '@/components/bowling/Standings';
 import { TourneyAnnouncement } from '@/components/bowling/TourneyAnnouncement';
-import { EventTeamsRow } from '@/components/event/EventTeamsRow';
+import { BowlingEventMenu } from '@/components/event/BowlingEventMenu';
+import { EventToolsRows } from '@/components/event/EventToolsRows';
 import { EventPrizes } from '@/components/prizes/SportPrizes';
 import { BowlingReport } from '@/components/tournamentReport/SportReports';
 import { GolfEventBody } from '@/components/golf/GolfEvent';
@@ -23,8 +25,10 @@ import { EsportsEventBody } from '@/components/esports/EsportsLeague';
 import { leagueSport } from '@mm/sports/registry';
 import { BackBar, Badge, Button, Card, Empty, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
+import { TeamEventBody } from '@/components/team/TeamScreens';
 import { RacketEventBody } from '@/components/racket/RacketEvent';
 import { useLeague } from '@mm/lib/data';
+import { canScoreEvent } from '@mm/lib/league';
 import { useMyGames } from '@/lib/useMyGames';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
@@ -51,7 +55,9 @@ function Cell({ n, cell }: { n: number; cell: GameCell }) {
 
 /**
  * Un evento de boliche (práctica o torneo): «Tus juegos» con lo que sigue (anotar, seguir el que va a medias, enviar),
- * como la web (src/pages/EventPage.tsx + MyGamesPanel). La planilla de todos y los resultados, por ahora en la web.
+ * como la web (src/pages/EventPage.tsx + MyGamesPanel), «•••» (compartir, publicar tus juegos, ajustes y eliminar) y,
+ * para quien organiza o anota, la Planilla y las Pistas (las pestañas de la web, aquí filas). `?anotar=1` (un link de
+ * Hoy o de la liga) abre de una el próximo juego por anotar.
  */
 /** El evento: el de raqueta (o el deporte que tenga sus pantallas en la app) o el del boliche. */
 export default function EventScreen() {
@@ -97,7 +103,17 @@ export default function EventScreen() {
       </Screen>
     );
   }
-  // Lo que la app todavía no tiene (los eventos de equipos): la web. El boliche, aquí abajo.
+  // Los eventos de equipos: el torneo relámpago (torneo suelto, con su barra y «•••») o la jornada especial.
+  if (league.data && sportFamily(league.data) === 'team') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <TeamEventBody eventId={eventId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  // Lo que la app todavía no tiene: la web. El boliche, aquí abajo.
   if (league.data && leagueSport(league.data) !== 'bowling') {
     // Los eventos de equipos (jornadas especiales, el torneo relámpago) y de esports: por ahora en la web.
     return (
@@ -118,7 +134,7 @@ export default function EventScreen() {
 }
 
 function BowlingEventScreen() {
-  const { lid, eventId } = useLocalSearchParams<{ lid: string; eventId: string }>();
+  const { lid, eventId, anotar } = useLocalSearchParams<{ lid: string; eventId: string; anotar?: string }>();
   const c = useColors();
   const g = useMyGames(lid, eventId);
   // Lo de todos: lo enviado (lo que falta por aprobar), la planilla y lo que cada uno lleva en su teléfono.
@@ -126,6 +142,26 @@ function BowlingEventScreen() {
   const entries = useEventEntries(lid, eventId);
   const live = useEventLive(lid, eventId);
   const players = usePlayers(lid);
+
+  // `?anotar=1` (Hoy, la liga, un link): el próximo juego por anotar sale abierto (MyGamesPanel autoStart de la web). Si
+  // se vino de otra pantalla, al cerrar la hoja se vuelve allá (la hoja toma el lugar del evento); si se entró directo,
+  // se queda aquí. Ya listo (o si no hay qué anotar), se quita del link.
+  const autoStarted = useRef(false);
+  const ready = !!g.event.data && !!g.league.data && !!g.playerId && !g.loading && !entries.loading && !subs.loading;
+  useEffect(() => {
+    if (anotar !== '1' || autoStarted.current || !ready || !g.event.data || !g.league.data) return;
+    autoStarted.current = true;
+    const first = g.cells.findIndex((x) => x.kind === 'vacio');
+    const notYet = g.event.data.date > g.today;
+    // En un torneo, quien lo organiza (o anota) juega solo si está inscrito; en una práctica, todos.
+    const admin = g.member.data?.role === 'owner' || g.member.data?.role === 'admin';
+    const plays = g.event.data.type !== 'torneo' || !canScoreEvent({ isAdmin: admin, member: g.member.data ?? null, league: g.league.data }, 'torneo') || !!g.entry;
+    router.setParams({ anotar: undefined });
+    if (!plays || notYet || g.closed || first < 0) return;
+    const to = { pathname: '/l/[lid]/e/[eventId]/anotar' as const, params: { lid, eventId, juego: String(first + 1) } };
+    if (router.canGoBack()) router.replace(to);
+    else router.push(to);
+  }, [anotar, ready, g.cells, g.event.data, g.league.data, g.member.data, g.entry, g.today, g.closed, lid, eventId]);
 
   if (g.loading && !g.event.data) return <Loading label="Cargando el evento" />;
   const ev = g.event.data;
@@ -139,6 +175,9 @@ function BowlingEventScreen() {
   }
   const inPhone = g.cells.filter((x) => x.kind === 'telefono').length;
   const isAdmin = g.member.data?.role === 'owner' || g.member.data?.role === 'admin';
+  // Anota los juegos de todos: el admin y, en un torneo, el anotador de la liga (la Planilla y las Pistas).
+  const canScore = canScoreEvent({ isAdmin, member: g.member.data ?? null, league }, ev.type);
+  const title = eventTitle(ev, 'bowling');
   const pending = subs.data.filter((s) => s.status === 'pendiente');
   // «Cómo van todos»: lo que cuenta suma; lo enviado, lo del teléfono y tu juego a medias se ven aparte.
   const board = boardRows(ev, entries.data, subs.data, live.data, {
@@ -153,19 +192,22 @@ function BowlingEventScreen() {
 
   return (
     <Screen>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Volver a ${league.name}`}
-        onPress={() => (router.canGoBack() ? router.back() : router.navigate({ pathname: '/l/[lid]', params: { lid } }))}
-        style={{ flexDirection: 'row', alignItems: 'center', height: 44, marginLeft: -6 }}
-      >
-        <ChevronLeft size={24} color={c.accent} />
-        <Txt tone="accent" variant="bodyStrong" numberOfLines={1}>
-          {league.name}
-        </Txt>
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Volver a ${league.name}`}
+          onPress={() => (router.canGoBack() ? router.back() : router.navigate({ pathname: '/l/[lid]', params: { lid } }))}
+          style={{ flexDirection: 'row', alignItems: 'center', height: 44, marginLeft: -6, flexShrink: 1 }}
+        >
+          <ChevronLeft size={24} color={c.accent} />
+          <Txt tone="accent" variant="bodyStrong" numberOfLines={1}>
+            {league.name}
+          </Txt>
+        </Pressable>
+        <BowlingEventMenu league={league} member={g.member.data ?? null} event={ev} entries={entries.data} mine={g.entry} title={title} />
+      </View>
       <View style={{ gap: 4 }}>
-        <Txt variant="title">{eventTitle(ev, 'bowling')}</Txt>
+        <Txt variant="title">{title}</Txt>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {ev.date === g.today && <Badge tone="ok">En juego</Badge>}
           <Txt tone="muted">
@@ -237,10 +279,10 @@ function BowlingEventScreen() {
       )}
 
       {isAdmin && <ApprovalCard league={league} event={ev} subs={pending} entries={entries.data} players={players.data} />}
-      {/* Quien organiza un torneo: sus equipos (la pestaña Equipos de la web). */}
-      {isAdmin && ev.type === 'torneo' && (
+      {/* Quien organiza o anota: sus pestañas de la web (Equipos del torneo, Pistas y Planilla). */}
+      {canScore && (
         <Card padded={false}>
-          <EventTeamsRow lid={lid} eventId={eventId} />
+          <EventToolsRows lid={lid} eventId={eventId} torneo={ev.type === 'torneo'} admin={isAdmin} />
         </Card>
       )}
       {/* Un torneo ya jugado: su clasificación (equipos e individual); si no, «Cómo van todos» desde el día del evento. */}
@@ -261,9 +303,11 @@ function BowlingEventScreen() {
         </LeagueScope>
       )}
 
-      <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>
-        Planilla en la web
-      </Button>
+      {!canScore && (
+        <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>
+          Planilla en la web
+        </Button>
+      )}
     </Screen>
   );
 }

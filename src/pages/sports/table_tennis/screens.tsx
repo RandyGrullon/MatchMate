@@ -2,6 +2,7 @@ import type { Match } from '../../../lib/data/matches';
 import { racketResultParser } from '../../../components/match';
 import { needed } from '../../../sports/racket';
 import { racketScreens } from '../racket';
+import { TABLE_TENNIS_BASE } from '../racket/extensions';
 import { isPointsMatch } from '../racket/logic/results';
 import type { RacketExtensions, ResultEntrySpec } from '../racket/sport';
 import { withFormats } from '../racket-formats';
@@ -35,17 +36,13 @@ export function tableTennisEntry(m: Match): ResultEntrySpec {
  * puntos (uno cada uno desde 10-10), cambio de lado en cada juego y a los 5 del decisivo, y la rotación de saque de
  * dobles. Plantillas de «Nuevo»: liga, torneo grupos + eliminatoria, liga por cajas y escalera (sin americano ni
  * mexicano: las parejas que rotan no son de ping pong). Tabla de grupos de la ITTF (ganar 2, perder 1). Nivel de
- * club de 1 a 10. Donde se juega se llama «mesa».
+ * club de 1 a 10. Donde se juega se llama «mesa». Lo que no trae pantallas (plantillas que esconde y sus nombres, las
+ * palabras) está en racket/extensions.ts (lo usa también la app del teléfono).
  */
 export const TABLE_TENNIS_EXT: RacketExtensions = withFormats('table_tennis', {
-  hideTemplates: ['americano', 'mexicano'],
-  templateTitles: (doubles) => ({
-    liga: { title: doubles ? 'Liga de dobles' : 'Liga', text: 'Todos contra todos por jornadas, con mesas, horas y la tabla de la ITTF (ganar 2, perder 1).' },
-    torneo: { title: 'Torneo grupos + eliminatoria', text: 'Categorías por nivel: grupos de 3 o 4 que pasan al cuadro, con 3.er lugar, como en la ITTF.' },
-  }),
+  ...TABLE_TENNIS_BASE,
   court: (m) => (isPointsMatch(m) ? null : TableTennisCourt),
   resultEntry: tableTennisEntry,
-  words: { court: ['mesa', 'mesas'] },
 });
 
 export default racketScreens('table_tennis', TABLE_TENNIS_EXT);

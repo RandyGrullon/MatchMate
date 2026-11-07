@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { ChevronRight, Megaphone, Timer, Trophy, Waves } from 'lucide-react-native';
-import { useSwimHistory, useSwimMeets, type SwimMeet } from '@mm/lib/data/swimming';
+import { ChevronRight, Megaphone, Plus, Timer, Trophy, Waves } from 'lucide-react-native';
+import { useSwimHistory, useSwimMeets, useSwimRules, type SwimMeet } from '@mm/lib/data/swimming';
 import { toIsoDate } from '@mm/lib/format';
 import { useNow } from '@mm/lib/useNow';
 import { latestBests, meetRowLine, nextMeetView } from '@mm/pages/sports/swimming/home';
@@ -11,13 +11,15 @@ import { DateBlock } from '@/components/DateBlock';
 import { Button, Card, Empty, ListRow, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+import { SectionAdd } from './adminParts';
+import { MeetFormSheet } from './MeetForm';
 import { BestTile, Lines, ShowMore, TileGrid, openMeet } from './parts';
 import { SwimEventBody } from './SwimEvent';
 
 /**
  * Inicio de la liga de natación (SwimHome de la web, Lite): el próximo encuentro una sola vez (hoy: con «Cronometrar»
- * para quien toma los tiempos), tus marcas, «Próximos encuentros» con su fecha y los anteriores. Crear encuentros, en la
- * web. Un torneo sin liga abre su encuentro.
+ * para quien toma los tiempos), tus marcas, «Próximos encuentros» con su fecha y «+ Nuevo» para el admin (o «Nuevo
+ * encuentro» si no hay ninguno por venir), y los anteriores. Un torneo sin liga abre su encuentro.
  */
 export function SwimHome() {
   const { league } = useSwim();
@@ -40,7 +42,9 @@ function MeetsCalendar() {
   const c = useColors();
   const { lid, isAdmin, myPlayerId } = useSwim();
   const meets = useSwimMeets(lid);
+  const rules = useSwimRules(lid).data;
   const today = toIsoDate(useNow());
+  const [creating, setCreating] = useState(false);
   if (meets.error) return <LoadError error={meets.error} />;
   if (meets.loading && !meets.data.length) return <Loading label="Cargando los encuentros" />;
   const upcoming = meets.data.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -55,7 +59,7 @@ function MeetsCalendar() {
       {myPlayerId && <MyBestsCard playerId={myPlayerId} />}
 
       <View style={{ gap: 10 }}>
-        <SectionHeader title="Próximos encuentros" />
+        <SectionHeader title="Próximos encuentros" action={isAdmin && next ? <SectionAdd onPress={() => setCreating(true)} /> : undefined} />
         {rest.length ? (
           <MeetList meets={rest} today={today} />
         ) : next ? (
@@ -67,6 +71,13 @@ function MeetsCalendar() {
             icon={<Waves size={28} color={c.accent} />}
             title="No hay encuentros por venir"
             text={isAdmin ? 'Crea el primero: puedes empezar con las pruebas de un encuentro de club.' : 'Cuando el organizador cree el próximo, sale aquí.'}
+            action={
+              isAdmin ? (
+                <Button variant="primary" size="lg" icon={<Plus size={20} color={c.accentFg} />} onPress={() => setCreating(true)}>
+                  Nuevo encuentro
+                </Button>
+              ) : undefined
+            }
           />
         )}
       </View>
@@ -77,6 +88,8 @@ function MeetsCalendar() {
           <ShowMore items={past} noun="encuentros" render={(shown) => <MeetList meets={shown} today={today} />} />
         </View>
       )}
+
+      <MeetFormSheet open={creating} onClose={() => setCreating(false)} lid={lid} defaults={rules} onCreated={(id) => openMeet(lid, id)} />
     </View>
   );
 }

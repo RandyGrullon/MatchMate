@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Ban, CalendarClock, Check, ClipboardPen, Gavel, PauseCircle, Trash2, UserCheck, UserX } from 'lucide-react';
-import { deleteMatch, hasResult, isOpen, postponeMatch, rescheduleMatch, resolveDispute, setWalkover, voidMatch, type Match, type MatchScore } from '../../../lib/data/matches';
+import { deleteMatch, postponeMatch, rescheduleMatch, resolveDispute, setWalkover, voidMatch, type Match, type MatchScore } from '../../../lib/data/matches';
 import { setMatchOfficial, type MatchOfficial } from '../../../lib/data/teamSports';
 import { dayKey } from '../../../components/match/format';
 import { ResultEntryModal, type ResultParser } from '../../../components/match';
@@ -10,6 +10,8 @@ import { useAction, useFeedback } from '../../../components/feedback';
 import { useStartLive } from '../../../components/live/useStartLive';
 import { Badge, Button, Card, Field, Input, Sheet, cx } from '../../../components/ui';
 import { scorerCandidates, type ScorerCandidate } from './logic';
+import { DELETE_ASK, POSTPONE_ASK, VOID_ASK, adminMenuEntries, resultHint, walkoverRows, type AdminMenuKey } from './matchView';
+import { officialChoices } from './calendarAdmin';
 import { isIsoDate, localTime, matchClashes, zonedIso } from './schedule';
 import type { TeamLeague } from './useTeamLeague';
 
@@ -18,32 +20,8 @@ export interface MatchMenuItem extends MenuItem {
   keep?: boolean;
 }
 
-/** Lo del admin en «•••» de un partido. */
-export type AdminMenuKey = 'anotador' | 'reprogramar' | 'aplazar' | 'wo' | 'resolver' | 'corregir' | 'anular' | 'borrar';
-
-/**
- * Qué puede hacer el admin con el partido según cómo está (puro, se prueba solo): el anotador de mesa y reprogramar
- * mientras no se juega, aplazar, W.O. si no tiene resultado, decidir un reclamo, poner o corregir el resultado, anular y
- * borrar (al final, en rojo). `official`: el nombre del anotador designado (o null); `first`: el equipo local.
- */
-export function adminMenuEntries(
-  m: Pick<Match, 'status' | 'scheduledAt'>,
-  { official, first }: { official: string | null; first: string },
-): { key: AdminMenuKey; label: string; hint?: string; danger?: boolean }[] {
-  const open = isOpen(m) || m.status === 'postponed';
-  return [
-    ...(open ? [{ key: 'anotador' as const, label: 'Anotador de mesa', hint: official ?? 'Sin designar' }] : []),
-    ...(m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended'
-      ? [{ key: 'reprogramar' as const, label: m.scheduledAt ? 'Reprogramar' : 'Poner fecha', hint: 'Fecha, hora y cancha' }]
-      : []),
-    ...(m.status === 'scheduled' || m.status === 'suspended' ? [{ key: 'aplazar' as const, label: 'Aplazar', hint: 'Queda sin fecha' }] : []),
-    ...(!hasResult(m) && m.status !== 'void' ? [{ key: 'wo' as const, label: 'W.O.', hint: 'Quién no se presentó' }] : []),
-    ...(m.status === 'disputed' ? [{ key: 'resolver' as const, label: 'Decidir el reclamo', hint: 'Queda confirmado' }] : []),
-    { key: 'corregir' as const, label: hasResult(m) ? 'Corregir resultado' : 'Poner resultado', hint: `Primero ${first}` },
-    ...(m.status !== 'void' ? [{ key: 'anular' as const, label: 'Anular', hint: 'No cuenta para la tabla' }] : []),
-    { key: 'borrar' as const, label: 'Borrar el partido', danger: true },
-  ];
-}
+/** Lo del admin en «•••» de un partido (puro en ./matchView, lo usa también la app). */
+export { adminMenuEntries, type AdminMenuKey } from './matchView';
 
 /**
  * «•••» de un partido de equipos (rediseño «Calma y foco»: lo del admin ya no es una tarjeta llena de botones). Para
@@ -95,17 +73,17 @@ export function MatchMenu({
 
   const postpone = async () => {
     setMenu(false);
-    const yes = await confirm({ title: 'Aplazar el partido', message: 'Queda sin fecha hasta que lo reprogrames. Se avisa a los equipos al abrir la app.', confirmText: 'Aplazar' });
+    const yes = await confirm(POSTPONE_ASK);
     if (yes) await busy.run('aplazar', () => run(() => postponeMatch(tl.lid, m.id), 'Partido aplazado'));
   };
   const voidIt = async () => {
     setMenu(false);
-    const yes = await confirm({ title: 'Anular el partido', message: 'No cuenta para la tabla ni para las estadísticas. Se puede deshacer corrigiendo el resultado.', confirmText: 'Anular', danger: true });
+    const yes = await confirm(VOID_ASK);
     if (yes) await busy.run('anular', () => run(() => voidMatch(tl.lid, m.id), 'Partido anulado'));
   };
   const remove = async () => {
     setMenu(false);
-    const yes = await confirm({ title: 'Borrar el partido', message: 'Se borra con su convocatoria y su marcador. Esto no se puede deshacer.', confirmText: 'Borrar', danger: true });
+    const yes = await confirm(DELETE_ASK);
     if (!yes) return;
     const ok = await busy.run('borrar', () =>
       run(async () => {
@@ -183,7 +161,7 @@ export function MatchMenu({
             parser={parser}
             placeholder={placeholder}
             mode={sheet === 'resolver' ? 'resolve' : 'correct'}
-            hint={`Primero ${name(1)}, después ${name(2)}. Queda confirmado.`}
+            hint={resultHint([name(1), name(2)])}
           />
         </>
       )}
@@ -224,11 +202,7 @@ export function OfficialPicker({
 }) {
   const run = useAction();
   const saving = useBusy();
-  const list: { uid: string; name: string; why: string }[] = [
-    { uid: '', name: 'Sin designar', why: 'Cualquiera que pueda abre la mesa' },
-    ...(official && !candidates.some((c) => c.uid === official.userId) ? [{ uid: official.userId, name: official.name || 'Designado', why: 'Designado' }] : []),
-    ...candidates,
-  ];
+  const list = officialChoices(official, candidates);
   const current = official?.userId ?? '';
   const choose = (uid: string) =>
     saving.run(uid || 'nadie', async () => {
@@ -360,9 +334,9 @@ function WalkoverSheet({ open, onClose, names, onPick }: { open: boolean; onClos
   return (
     <Sheet open={open} onClose={onClose} title="¿Quién no se presentó?" subtitle="Pierde por forfeit (0 puntos en la tabla)">
       <ul className="-mx-2 flex flex-col">
-        {row(1, `No vino ${names[0]}`)}
-        {row(2, `No vino ${names[1]}`)}
-        {row(0, 'No vino ninguno')}
+        {walkoverRows(names).map((r) => (
+          <Fragment key={r.absent}>{row(r.absent, r.label)}</Fragment>
+        ))}
       </ul>
     </Sheet>
   );
@@ -418,7 +392,7 @@ export function DisputeCard({
         parser={parser}
         placeholder={placeholder}
         mode="resolve"
-        hint={`Primero ${name(1)}, después ${name(2)}. Queda confirmado.`}
+        hint={resultHint([name(1), name(2)])}
       />
     </Card>
   );

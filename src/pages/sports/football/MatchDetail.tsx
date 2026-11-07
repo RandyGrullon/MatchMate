@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ClipboardList, ClipboardPen, FileText, Share2 } from 'lucide-react';
-import { isSnapshot } from '../../../court';
 import { hasResult, isOpen, useMatch, type Match } from '../../../lib/data/matches';
-import { football, type FootballEvent, type FootballState, type TimelineItem } from '../../../sports/team/football';
 import { LiveWatchPill } from '../../../components/live/LiveParts';
 import { ConfirmResultBanner, ShareResultCard } from '../../../components/match';
 import { useIsPro } from '../../../components/mode';
@@ -18,20 +16,12 @@ import { decodeLines, decodeTimeline, footballResultParser, walkoverScore } from
 import { CardIcon, LiveStrip, MatchTimeline, PeriodsLine, PlayersTable, SuspendedNotice } from './bits';
 import { FootballCourt } from './FootballCourt';
 import { disciplineFrom, footballConfigFrom, footballTeamRules, matchMinutes, variantOf } from './rules';
+import { actaRows, stateFromSnapshot } from './matchView';
 import { suspendedIn, useFootballSeason } from './season';
 import { shareOrigin } from '../../../lib/origin';
 
-/** El estado del acta desde lo que guardó el anotador (matches.state); null si no hay o no se puede leer. */
-export function stateFromSnapshot(raw: unknown): FootballState | null {
-  if (!isSnapshot(raw)) return null;
-  try {
-    const snap = raw as { config: unknown; base: FootballState | null; log: FootballEvent[] };
-    const start = snap.base ?? football.init(snap.config as never);
-    return snap.log.reduce((s, ev) => football.apply(s, ev), start);
-  } catch {
-    return null;
-  }
-}
+/** El estado del acta desde lo que guardó el anotador (puro en ./matchView, lo usa también la app). */
+export { stateFromSnapshot } from './matchView';
 
 /**
  * Un partido (rediseño «Calma y foco», como el de raqueta): «‹ Partidos» con «•••» (lo del admin, con «Corregir el
@@ -206,19 +196,6 @@ export function FootballMatchDetail({ tl, matchId, table, onTable, onBack }: { t
   );
 }
 
-const ITEM_TEXT: Record<TimelineItem['kind'], string> = {
-  goal: 'Gol',
-  own_goal: 'Autogol',
-  yellow: 'Amarilla',
-  second_yellow: 'Doble amarilla (roja)',
-  red: 'Roja directa',
-  sub: 'Cambio',
-  goalkeeper: 'Portero',
-  timeout: 'Tiempo muerto',
-  period_end: 'Fin del tiempo',
-  shootout: 'Penal',
-};
-
 /** El acta completa (de la lista de jugadas del anotador): goles, tarjetas, cambios, porteros, tiempos muertos y penales. */
 function FullActa({ tl, match: m, names }: { tl: TeamLeague; match: Match; names: [string, string] }) {
   const state = useMemo(() => stateFromSnapshot(m.state), [m.state]);
@@ -232,26 +209,17 @@ function FullActa({ tl, match: m, names }: { tl: TeamLeague; match: Match; names
   if (!items.length) return <p className="text-sm text-muted">Todavía no hay jugadas.</p>;
   return (
     <ol className="flex flex-col divide-y divide-line text-sm">
-      {items.map((it, i) => {
-        const side = it.side;
-        const playerSide = it.kind === 'own_goal' && side ? (side === 1 ? 2 : 1) : side;
-        let detail = '';
-        if (it.kind === 'sub' && side) detail = `sale ${who(side, it.player)}, entra ${who(side, it.in)}`;
-        else if (it.kind === 'shootout' && side) detail = `${who(side, it.player) || names[side - 1]}: ${it.scored ? 'gol' : 'fallado'}`;
-        else if (playerSide && it.player) detail = who(playerSide, it.player);
-        if (it.assist && side) detail += ` (asistencia de ${who(side, it.assist)})`;
-        return (
-          <li key={i} className="flex items-center gap-2 py-1.5">
-            <span className="w-12 shrink-0 text-xs font-semibold tabular-nums text-muted">{it.minute ? `${it.minute}'` : it.kind === 'period_end' ? '' : `${it.period}T`}</span>
-            {(it.kind === 'yellow' || it.kind === 'second_yellow' || it.kind === 'red') && <CardIcon kind={it.kind} />}
-            <span className="min-w-0 flex-1">
-              <b className="font-medium">{ITEM_TEXT[it.kind]}</b>
-              {side ? <span className="text-muted"> · {names[side - 1]}</span> : null}
-              {detail && <span className="block truncate text-xs text-muted">{detail}</span>}
-            </span>
-          </li>
-        );
-      })}
+      {actaRows(items, names, who).map((it, i) => (
+        <li key={i} className="flex items-center gap-2 py-1.5">
+          <span className="w-12 shrink-0 text-xs font-semibold tabular-nums text-muted">{it.when}</span>
+          {(it.kind === 'yellow' || it.kind === 'second_yellow' || it.kind === 'red') && <CardIcon kind={it.kind} />}
+          <span className="min-w-0 flex-1">
+            <b className="font-medium">{it.title}</b>
+            {it.team ? <span className="text-muted"> · {it.team}</span> : null}
+            {it.detail && <span className="block truncate text-xs text-muted">{it.detail}</span>}
+          </span>
+        </li>
+      ))}
     </ol>
   );
 }

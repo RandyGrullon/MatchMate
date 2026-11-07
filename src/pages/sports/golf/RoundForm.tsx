@@ -15,11 +15,12 @@ import { toIsoDate } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { useAction } from '../../../components/feedback';
 import { Button, Field, Input, Modal, Segmented, Select, cx } from '../../../components/ui';
-import { COMPETITION_TEMPLATES, sameCompetition } from './logic';
+import { COMPETITION_TEMPLATES } from './logic';
+import { MAX_TOURNAMENT_ROUNDS, addDate, allowanceOf, courseOption, nineOptions as nineChoices, pickTemplate, roundFormValid, roundPatch, submitLabel, templateOf, type RoundKind } from './roundSetup';
 
 /** Formato de la competencia: plantillas y % de handicap. */
 export function CompetitionPicker({ value, onChange }: { value: GolfCompetition; onChange: (c: GolfCompetition) => void }) {
-  const current = COMPETITION_TEMPLATES.find((t) => t.comp.format === value.format && t.comp.basis === value.basis);
+  const current = templateOf(value);
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
@@ -29,7 +30,7 @@ export function CompetitionPicker({ value, onChange }: { value: GolfCompetition;
             <button
               key={t.key}
               type="button"
-              onClick={() => onChange({ ...t.comp, allowance: t.comp.basis === 'gross' ? 100 : (value.allowance ?? t.comp.allowance) })}
+              onClick={() => onChange(pickTemplate(t, value))}
               aria-pressed={active}
               className={cx(
                 'min-h-14 rounded-2xl px-3 py-2.5 text-left text-sm transition active:scale-[0.98]',
@@ -51,7 +52,7 @@ export function CompetitionPicker({ value, onChange }: { value: GolfCompetition;
             min={0}
             max={100}
             value={value.allowance ?? 95}
-            onChange={(e) => onChange({ ...value, allowance: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            onChange={(e) => onChange({ ...value, allowance: allowanceOf(e.target.value) })}
           />
         </Field>
       )}
@@ -79,7 +80,7 @@ export function RoundForm({
   const courses = useGolfCourses(lid);
   const rules = useGolfRules(lid);
   const today = toIsoDate(new Date());
-  const [kind, setKind] = useState<'ronda' | 'torneo'>('ronda');
+  const [kind, setKind] = useState<RoundKind>('ronda');
   const [name, setName] = useState('');
   const [date, setDate] = useState(today);
   const [dates, setDates] = useState<string[]>([today]);
@@ -113,19 +114,9 @@ export function RoundForm({
   const course = courses.data.find((c) => c.id === courseId);
   const eighteen = (course?.holes.length ?? 18) === 18;
   const lockCourse = !!edit?.started;
-  const valid = !!courseId && (edit ? true : kind === 'ronda' ? !!date : !!name.trim() && dates.length > 0 && dates.every(Boolean));
+  const valid = roundFormValid({ kind, name, date, dates, courseId }, !!edit);
 
-  const nineOptions = useMemo(
-    () =>
-      eighteen
-        ? [
-            { v: 'all' as Nine, l: '18 hoyos' },
-            { v: 'front' as Nine, l: 'Ida 1–9' },
-            { v: 'back' as Nine, l: 'Vuelta 10–18' },
-          ]
-        : [{ v: 'all' as Nine, l: '9 hoyos' }],
-    [eighteen],
-  );
+  const nineOptions = useMemo(() => nineChoices(eighteen), [eighteen]);
 
   async function submit() {
     if (!valid || busy) return;
@@ -133,11 +124,7 @@ export function RoundForm({
     try {
       if (edit) {
         const r = edit.round;
-        const patch: Parameters<typeof updateGolfRound>[2] = {};
-        if (!r || (!lockCourse && courseId !== r.courseId)) patch.courseId = courseId;
-        if (!lockCourse && (!r || nine !== r.nine)) patch.nine = eighteen ? nine : 'all';
-        if (!r || !sameCompetition(comp, r.competition)) patch.competition = comp;
-        if (!r || shotgun !== r.shotgun) patch.shotgun = shotgun;
+        const patch = roundPatch(r, { courseId, nine, comp, shotgun, eighteen }, lockCourse);
         const ok = await run(async () => {
           await updateGolfRound(lid, edit.eventId, patch);
           return true;
@@ -175,7 +162,7 @@ export function RoundForm({
             Cancelar
           </Button>
           <Button variant="primary" className="h-11" onClick={submit} loading={busy} disabled={!valid}>
-            {edit ? 'Guardar' : kind === 'ronda' ? 'Crear ronda' : `Crear torneo (${dates.length} ${dates.length === 1 ? 'ronda' : 'rondas'})`}
+            {submitLabel(!!edit, kind, dates.length)}
           </Button>
         </>
       }
@@ -229,8 +216,8 @@ export function RoundForm({
                   )}
                 </div>
               ))}
-              {dates.length < 6 && (
-                <Button variant="quiet" className="h-11 self-start" icon={<Plus className="size-4" />} onClick={() => setDates([...dates, dates[dates.length - 1] ?? today])}>
+              {dates.length < MAX_TOURNAMENT_ROUNDS && (
+                <Button variant="quiet" className="h-11 self-start" icon={<Plus className="size-4" />} onClick={() => setDates(addDate(dates, today))}>
                   Otra ronda
                 </Button>
               )}
@@ -252,7 +239,7 @@ export function RoundForm({
           <Select className="h-11" value={courseId} onChange={(e) => setCourseId(e.target.value)} disabled={lockCourse}>
             {courses.data.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name} · {c.holes.length} hoyos · par {c.holes.reduce((a, h) => a + h.par, 0)}
+                {courseOption(c)}
               </option>
             ))}
           </Select>
@@ -263,7 +250,7 @@ export function RoundForm({
               full
               label="Hoyos de la ronda"
               className={lockCourse ? 'pointer-events-none opacity-60' : undefined}
-              options={nineOptions.map((o) => ({ key: o.v, label: o.l }))}
+              options={nineOptions}
               value={nine}
               onChange={setNine}
             />

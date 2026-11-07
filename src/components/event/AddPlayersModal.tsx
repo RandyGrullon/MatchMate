@@ -7,6 +7,7 @@ import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { useQuickMinor } from '../players/GuardianFields';
 import { Button, Input, Modal, cx } from '../ui';
+import { addPlayersEmptyText, addPlayersSearch, addPlayersTitle, enrolledText } from './sheet';
 
 /** Inscribe jugadores del club en el evento (o crea uno nuevo al vuelo; en una liga con menores, con su tutor). */
 export function AddPlayersModal({
@@ -43,10 +44,7 @@ export function AddPlayersModal({
     }
   }, [open]);
 
-  const available = players.filter((p) => !entries.some((e) => e.playerId === p.id));
-  const filtered = available.filter((p) => p.name.toLowerCase().includes(q.trim().toLowerCase()));
-  const exact = players.some((p) => p.name.toLowerCase() === q.trim().toLowerCase());
-  const canCreate = !!q.trim() && !exact;
+  const { available, filtered, canCreate } = addPlayersSearch(players, entries, q);
   const minor = useQuickMinor(creating && canCreate);
 
   const toggle = (id: string) =>
@@ -81,7 +79,7 @@ export function AddPlayersModal({
     await run(async () => {
       const averages = await fetchEffectiveAverages(lid, chosen, { date: event.date, eventId: event.id });
       await addEntries(lid, event, chosen.map((p) => ({ id: p.id, average: averages.get(p.id) ?? 0 })));
-    }, `${chosen.length} inscrito${chosen.length === 1 ? '' : 's'}`);
+    }, enrolledText(chosen.length));
     setBusy(false);
     onClose();
   }
@@ -90,7 +88,7 @@ export function AddPlayersModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={event.type === 'torneo' ? 'Inscribir jugadores' : 'Agregar asistentes'}
+      title={addPlayersTitle(event.type)}
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
@@ -132,13 +130,7 @@ export function AddPlayersModal({
             </label>
           ))}
           {filtered.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-muted">
-              {players.length === 0
-                ? 'Todavía no hay jugadores: escribe un nombre arriba para crearlo.'
-                : available.length === 0
-                  ? 'Todos los jugadores ya están en este evento.'
-                  : 'Nadie coincide.'}
-            </p>
+            <p className="px-3 py-6 text-center text-sm text-muted">{addPlayersEmptyText(players.length, available.length)}</p>
           )}
         </div>
         {available.length > 0 && (

@@ -11,11 +11,13 @@ import { initials } from '@/components/social/Avatar';
 import { BackBar, Badge, Card, Empty, ListRow, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+import { SectionAdd } from './adminParts';
 import { BestTile, ClubTag, Lines, ShowMore, StatusBadge, TileGrid, openMeet, openSwimmer, swimTime } from './parts';
+import { SwimmerFormSheet } from './SwimmersAdmin';
 
 /**
- * Mis marcas (SwimMyProfile de la web): las del nadador de la cuenta y, si entrena un club, sus nadadores. Registrar un
- * nadador, en la web.
+ * Mis marcas (SwimMyProfile de la web): las del nadador de la cuenta y, si entrena un club, sus nadadores con «+
+ * Registrar» (uno nuevo, en su club).
  */
 export function SwimMyProfile() {
   const c = useColors();
@@ -193,19 +195,20 @@ function Progression({ best }: { best: PersonalBest }) {
   );
 }
 
-/** Para el entrenador: los nadadores de su club (registrar uno nuevo, en la web). */
+/** Para el entrenador: los nadadores de su club y registrar uno nuevo. */
 function CoachClub({ clubId }: { clubId: string }) {
   const c = useColors();
   const { lid, clubs } = useSwim();
   const { players } = useNames(lid);
   const swimmers = useSwimmers(lid);
+  const [adding, setAdding] = useState(false);
   const club = clubs.data.find((x) => x.id === clubId);
   const mine = swimmers.data.filter((s) => s.clubId === clubId);
   const byId = new Map(players.data.map((p) => [p.id, p] as const));
   if (!club) return null;
   return (
     <View style={{ gap: 10 }}>
-      <SectionHeader title={`Mi club: ${club.name}`} />
+      <SectionHeader title={`Mi club: ${club.name}`} action={<SectionAdd label="Registrar" onPress={() => setAdding(true)} />} />
       {!mine.length ? (
         <Empty
           icon={<Plus size={28} color={c.accent} />}
@@ -233,6 +236,7 @@ function CoachClub({ clubId }: { clubId: string }) {
             ))}
         </Lines>
       )}
+      <SwimmerFormSheet open={adding} onClose={() => setAdding(false)} fixedClub={clubId} />
     </View>
   );
 }

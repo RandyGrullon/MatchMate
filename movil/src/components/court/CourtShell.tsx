@@ -192,6 +192,7 @@ export function CourtShell<C, S, E>({
   onFinished,
   canSuspend = true,
   more = [],
+  actions,
 }: {
   title: string;
   subtitle?: string | null;
@@ -205,6 +206,8 @@ export function CourtShell<C, S, E>({
   onFinished?: (how: 'sent' | 'queued') => void;
   canSuspend?: boolean;
   more?: MoreItem[];
+  /** Los botones del deporte entre Deshacer y Terminar (la mesa de equipos: «Fin del cuarto»). */
+  actions?: ReactNode;
 }) {
   useKeepAwake();
   // El aviso de una insignia nueva espera a que se cierre la mesa (como la web).
@@ -293,6 +296,7 @@ export function CourtShell<C, S, E>({
             {undoLabel ?? 'Deshacer'}
           </Button>
         </View>
+        {actions}
         <View style={{ flex: 1 }}>
           <Button variant="primary" size="xl" full disabled={court.readOnly || !court.snapshot} onPress={() => setFinishing(true)}>
             Terminar

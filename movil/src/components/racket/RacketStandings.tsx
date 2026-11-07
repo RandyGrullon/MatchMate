@@ -1,34 +1,46 @@
 /**
  * Tabla de la temporada de raqueta (Standings.tsx de la web, con su misma lógica: useRacketSeason): las tablas de las
- * ligas de parejas y de los grupos de los torneos, el ranking individual y las noches. La temporada de ahora; ver una
- * temporada cerrada, por ahora en la web.
+ * ligas de parejas y de los grupos de los torneos, el ranking individual y las noches. Arriba, la temporada (la de
+ * ahora, o la de «?temporada=»): una cerrada muestra sus premios y la tabla que se guardó al cerrarla (SeasonView.tsx de
+ * la web); una cerrada sin tabla guardada se calcula con sus partidos, con sus premios arriba.
  */
 import { useMemo, useState } from 'react';
-import { View } from 'react-native';
-import { ListOrdered, Moon } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Award, ChevronDown, History, ListOrdered, Moon, Trophy } from 'lucide-react-native';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
+import { formatDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
-import { pickSeason } from '@mm/lib/seasons';
+import { pickSeason, type Season } from '@mm/lib/seasons';
+import { sortedAwards } from '@mm/components/season/awardOrder';
+import { parseSnapshot, seasonDates } from '@mm/components/season/logic';
 import type { StandingsColumn } from '@mm/components/match/standings';
 import { MODALITY_LABEL, type Modality } from '@mm/pages/sports/racket/logic/modality';
 import { seasonPlayerTable, winPct } from '@mm/pages/sports/racket/logic/results';
 import { rankingNote, tiebreakText } from '@mm/pages/sports/racket/logic/tiebreaks';
 import { useRacketSeason } from '@mm/pages/sports/racket/seasonTable';
-import { hasNights, useRacket } from '@mm/pages/sports/racket/sport';
+import { hasNights } from '@mm/pages/sports/racket/sport';
 import { racketColumns } from '@mm/pages/sports/racket/view';
 import { StandingsTable } from '../match/StandingsTable';
-import { Card, Empty, LoadError, Segmented, Txt } from '../ui';
+import { SnapshotTables } from '../seasonAdmin/SnapshotTables';
+import { Card, ChoiceRow, Empty, LoadError, Segmented, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
+import { useRacketPhone } from './parts';
 import { useColors } from '@/theme/theme';
+import { font } from '@/theme/tokens';
 
 type Tab = 'parejas' | 'ranking' | 'noches';
 
 export function RacketStandings() {
   const c = useColors();
   const { lid, myPlayerId } = useLeagueCtx();
-  const { sport, doubles, ext } = useRacket();
+  const { sport, doubles, ext } = useRacketPhone();
+  const { temporada } = useLocalSearchParams<{ temporada?: string }>();
   const seasons = useLeagueSeasons(lid);
-  const season = pickSeason(seasons.data, null);
+  const [seasonId, setSeasonId] = useState<string | null>(temporada ?? null);
+  const season = pickSeason(seasons.data, seasonId);
+  // Una cerrada con su tabla guardada se ve como se guardó.
+  const saved = season?.status === 'closed' && parseSnapshot(season.standings) ? season : null;
   const { q, all, matches, comps, kinds, split, nights, names, now } = useRacketSeason(season, sport, ext);
   const nightsWord = ext.words?.nights ?? 'Noches';
   const [picked, setPicked] = useState<Tab | null>(null);
@@ -50,6 +62,16 @@ export function RacketStandings() {
   const highlight = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
 
   if (q.error) return <LoadError error={q.error} />;
+  const bar = <SeasonBar seasons={seasons.data} selected={season} onChange={setSeasonId} />;
+  if (saved) {
+    return (
+      <View style={{ gap: 16 }}>
+        <Txt variant="title">Tabla</Txt>
+        {bar}
+        <ClosedSeasonView season={saved} highlight={highlight} />
+      </View>
+    );
+  }
   return (
     <View style={{ gap: 16 }}>
       <Txt variant="title">Tabla</Txt>
@@ -63,11 +85,7 @@ export function RacketStandings() {
           ...(hasNights(sport) ? [{ key: 'noches' as Tab, label: nightsWord }] : []),
         ]}
       />
-      {!!season?.name && seasons.data.length > 1 && (
-        <Txt variant="meta" tone="muted">
-          {season.name}
-        </Txt>
-      )}
+      {bar}
       {q.loading && !all.length ? (
         <View style={{ paddingVertical: 24, alignItems: 'center' }}>
           <LogoSpinner size={32} label="Cargando la tabla" />
@@ -131,6 +149,120 @@ export function RacketStandings() {
       ) : (
         <Empty icon={<Moon size={28} color={c.accent} />} title="Sin noches todavía" text="Los puntos de los americanos y mexicanos de la temporada salen aquí." />
       )}
+    </View>
+  );
+}
+
+/**
+ * Arriba de la tabla: la temporada con sus fechas («Temporada 2026 ▾ · Cerrada · …»), que se cambia al tocarla (con 2 o
+ * más). Una cerrada sin tabla guardada (la de abajo se calcula con sus partidos) muestra debajo sus premios.
+ */
+function SeasonBar({ seasons, selected, onChange }: { seasons: readonly Season[]; selected: Season | null; onChange: (id: string) => void }) {
+  const c = useColors();
+  const [open, setOpen] = useState(false);
+  if (!selected) return null;
+  const many = seasons.length > 1;
+  const unsaved = selected.status === 'closed' && !parseSnapshot(selected.standings);
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Temporada: ${selected.name}`}
+        accessibilityState={{ disabled: !many }}
+        disabled={!many}
+        onPress={() => setOpen(true)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 }}
+      >
+        <Txt variant="bodyStrong" style={{ fontSize: 14 }}>
+          {selected.name}
+        </Txt>
+        {many && <ChevronDown size={16} color={c.muted} />}
+        <Txt tone="muted" numberOfLines={1} style={{ flex: 1, fontSize: 12 }}>
+          {`${selected.status === 'closed' ? 'Cerrada · ' : ''}${seasonDates(selected)}`}
+        </Txt>
+      </Pressable>
+      {unsaved && <SeasonAwardsCard season={selected} />}
+      <Sheet open={open} onClose={() => setOpen(false)} title="Temporada">
+        {seasons.map((x) => (
+          <ChoiceRow
+            key={x.id}
+            title={`${x.name}${x.status === 'active' ? ' (en curso)' : ''}`}
+            subtitle={seasonDates(x)}
+            selected={x.id === selected.id}
+            onPress={() => {
+              onChange(x.id);
+              setOpen(false);
+            }}
+          />
+        ))}
+      </Sheet>
+    </>
+  );
+}
+
+/** Los premios de una temporada cerrada (el campeón arriba) con la fecha del cierre (SeasonAwardsCard de la web). */
+function SeasonAwardsCard({ season }: { season: Season }) {
+  const c = useColors();
+  if (season.status !== 'closed') return null;
+  const { champion, rest } = sortedAwards(season.awards);
+  return (
+    <Card style={{ gap: 12, padding: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accentSoft }}>
+          <Trophy size={20} color={c.accent} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt tone="muted" style={{ fontSize: 12 }}>
+            {`${season.name} · terminó${season.endsOn ? ` el ${formatDate(season.endsOn)}` : ''}`}
+          </Txt>
+          <Txt variant="bodyStrong" numberOfLines={1}>
+            {champion ? `Campeón: ${champion.name}` : 'Temporada cerrada'}
+          </Txt>
+        </View>
+      </View>
+      {rest.map((a) => (
+        <View key={a.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <Award size={16} color={c.muted} style={{ marginTop: 2 }} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt style={{ fontSize: 14 }}>
+              <Txt tone="muted" style={{ fontSize: 14 }}>{`${a.label}: `}</Txt>
+              <Txt style={{ fontSize: 14, fontFamily: font.medium }}>{a.name}</Txt>
+            </Txt>
+            {!!a.note && (
+              <Txt tone="muted" style={{ fontSize: 12 }}>
+                {a.note}
+              </Txt>
+            )}
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+/** Una temporada cerrada: sus premios y la tabla que se guardó al cerrarla (ClosedSeasonView de la web). */
+function ClosedSeasonView({ season, highlight }: { season: Season; highlight: readonly string[] }) {
+  const c = useColors();
+  const { lid } = useLeagueCtx();
+  const snapshot = useMemo(() => parseSnapshot(season.standings), [season.standings]);
+  return (
+    <View style={{ gap: 16 }}>
+      <SeasonAwardsCard season={season} />
+      {snapshot ? (
+        <SnapshotTables snapshot={snapshot} highlight={highlight} />
+      ) : (
+        <Empty icon={<ListOrdered size={28} color={c.accent} />} title="Sin tabla guardada" text="Esta temporada se cerró sin tabla." />
+      )}
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => router.push({ pathname: '/l/[lid]/temporadas', params: { lid } })}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, alignSelf: 'flex-start' }}
+      >
+        <History size={16} color={c.accent} />
+        <Txt tone="accent" style={{ fontSize: 14, fontFamily: font.medium }}>
+          Todas las temporadas
+        </Txt>
+      </Pressable>
     </View>
   );
 }

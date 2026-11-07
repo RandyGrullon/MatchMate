@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Ban, CalendarClock, Check, CircleSlash, Pause, PencilLine, Trash2, UserRoundCog } from 'lucide-react';
 import {
   deleteMatch,
-  hasResult,
   postponeMatch,
   rescheduleMatch,
   setMatchPlayers,
@@ -24,6 +23,7 @@ import { isPointsMatch } from '../logic/results';
 import { localParts, todayIn, zonedIso } from '../logic/time';
 import { useNames } from '../names';
 import { courtWords, useRacket } from '../sport';
+import { matchAdminKeys, matchAdminText, playerOptions, type MatchAdminKey } from './adminMenu';
 
 type Dialog = null | 'walkover' | 'postpone' | 'reschedule' | 'players';
 /** Qué se está guardando: lo del diálogo abierto, anular o borrar (la ruedita va en ese botón). */
@@ -59,7 +59,6 @@ export function MatchAdmin({
   // Mientras se anula o se borra no se abre un diálogo (su Guardar no haría nada).
   const waiting = pending.isBusy();
   const points = isPointsMatch(m);
-  const open = m.status === 'scheduled' || m.status === 'live' || m.status === 'suspended' || m.status === 'postponed';
   const live = useStartLive({ matchId: m.id, title: `${sideName(m.sides[0])} vs. ${sideName(m.sides[1])}`, onPick: () => setMenu(false) });
 
   const act = (fn: () => Promise<unknown>, ok: string, key: Pending = 'dialog') =>
@@ -90,30 +89,32 @@ export function MatchAdmin({
     setDialog(d);
   };
 
+  // Cuáles salen y qué dicen: adminMenu.ts (lo usa también la app del teléfono).
+  const keys = matchAdminKeys(m, { isAdmin, points, canCorrect: !!onCorrect });
+  const ICONS: Record<MatchAdminKey, MenuItem['icon']> = { wo: CircleSlash, aplazar: Pause, fecha: CalendarClock, quien: UserRoundCog, corregir: PencilLine, anular: Ban, borrar: Trash2 };
+  const ACTIONS: Record<MatchAdminKey, () => void> = {
+    wo: () => openDialog('walkover'),
+    aplazar: () => openDialog('postpone'),
+    fecha: () => openDialog('reschedule'),
+    quien: () => openDialog('players'),
+    corregir: () => {
+      setMenu(false);
+      onCorrect?.();
+    },
+    anular: () => void doVoid(),
+    borrar: () => void doDelete(),
+  };
+  const adminItem = (k: MatchAdminKey): MenuItem => ({
+    key: k,
+    icon: ICONS[k],
+    ...matchAdminText(k, m, w.one),
+    onClick: ACTIONS[k],
+    ...(k === 'anular' ? { busy: pending.isBusy('void') } : k === 'borrar' ? { busy: pending.isBusy('delete'), danger: true } : {}),
+  });
+  const tail: MatchAdminKey[] = keys.filter((k) => k === 'anular' || k === 'borrar');
   const items: MenuItem[] = [
     ...(live.item ? [live.item] : []),
-    ...(isAdmin && open && !points ? [{ key: 'wo', icon: CircleSlash, label: 'W.O.', hint: 'Quién no se presentó', onClick: () => openDialog('walkover') }] : []),
-    ...(isAdmin && (m.status === 'scheduled' || m.status === 'suspended')
-      ? [{ key: 'aplazar', icon: Pause, label: 'Aplazar', hint: 'Queda sin fecha hasta reprogramarlo', onClick: () => openDialog('postpone') }]
-      : []),
-    ...(isAdmin && (m.status === 'scheduled' || m.status === 'postponed' || m.status === 'suspended')
-      ? [{ key: 'fecha', icon: CalendarClock, label: m.scheduledAt ? 'Reprogramar' : `Poner fecha y ${w.one}`, hint: `Fecha, hora y ${w.one}`, onClick: () => openDialog('reschedule') }]
-      : []),
-    ...(isAdmin ? [{ key: 'quien', icon: UserRoundCog, label: 'Quién juega', hint: 'Suplentes', onClick: () => openDialog('players') }] : []),
-    ...(isAdmin && onCorrect && (hasResult(m) || m.status === 'void') && m.status !== 'disputed'
-      ? [
-          {
-            key: 'corregir',
-            icon: PencilLine,
-            label: 'Corregir el resultado',
-            hint: 'Queda confirmado',
-            onClick: () => {
-              setMenu(false);
-              onCorrect();
-            },
-          },
-        ]
-      : []),
+    ...keys.filter((k) => !tail.includes(k)).map(adminItem),
     ...extra.map(({ keep, ...it }) => ({
       ...it,
       onClick: () => {
@@ -121,8 +122,7 @@ export function MatchAdmin({
         it.onClick();
       },
     })),
-    ...(isAdmin && m.status !== 'void' ? [{ key: 'anular', icon: Ban, label: 'Anular', hint: 'No cuenta para la tabla', onClick: () => void doVoid(), busy: pending.isBusy('void') }] : []),
-    ...(isAdmin ? [{ key: 'borrar', icon: Trash2, label: 'Borrar el partido', onClick: () => void doDelete(), busy: pending.isBusy('delete'), danger: true }] : []),
+    ...tail.map(adminItem),
   ];
   // La hoja de «Transmitir en vivo» sigue abierta aunque la opción se vaya al empezar («Ya estás en vivo»).
   if (!items.length) return <>{live.sheet}</>;
@@ -328,10 +328,7 @@ function PlayersDialog({ open, match, busy, onClose, onSave }: { open: boolean; 
   }, [open, side, match.sides]);
   const s = match.sides[side - 1];
   const roster = s.teamId ? names.rosterOf(s.teamId) : [];
-  const options = useMemo(() => {
-    const first = new Set([...roster, ...picked]);
-    return [...names.players].sort((a, b) => Number(first.has(b.id)) - Number(first.has(a.id)) || a.name.localeCompare(b.name, 'es'));
-  }, [names.players, roster, picked]);
+  const options = useMemo(() => playerOptions(names.players, [...roster, ...picked]), [names.players, roster, picked]);
   return (
     <Sheet
       open={open}

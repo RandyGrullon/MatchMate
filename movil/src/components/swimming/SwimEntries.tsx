@@ -1,13 +1,13 @@
 /**
- * «Pruebas» del encuentro (EntriesPanel de la web): los inscritos de cada prueba con su siembra. En el teléfono inscribe
- * quien nada con cuenta (a sí mismo) y el entrenador (a los de su club), y antes de nadar cambian la siembra o se
- * sacan; inscribir a cualquiera (lo del admin) se queda en la web. La misma lógica: logic.ts (enterCandidates…).
+ * «Pruebas» del encuentro (EntriesPanel de la web): los inscritos de cada prueba con su siembra. Inscriben el admin (a
+ * cualquiera), el entrenador (a los de su club) y quien nada con cuenta (a sí mismo); antes de nadar se cambia la siembra
+ * o se saca a alguien. La misma lógica: logic.ts (enterCandidates…).
  */
 import { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Check, ChevronDown, Search, UserPlus, Users, X } from 'lucide-react-native';
 import { usePlayers } from '@mm/lib/data';
-import { enterSwimmers, unenterSwimmer, useSwimmers, type SwimEntry, type SwimEventItem, type SwimmerInfo, type SwimmerPrivate } from '@mm/lib/data/swimming';
+import { enterSwimmers, unenterSwimmer, useSwimmers, useSwimmersPrivate, type SwimEntry, type SwimEventItem, type SwimmerInfo } from '@mm/lib/data/swimming';
 import { bySeed, canEnterSome, canManageEntry, enterCandidates, groupLabel, raceDetail, raceName, readSeed, seedText, type EntryWho, type MeetData } from '@mm/pages/sports/swimming/logic';
 import { useSwim } from '@mm/pages/sports/swimming/swim';
 import { confirmAsync } from '@/components/feedback';
@@ -16,12 +16,9 @@ import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { ClubTag, NumBox, TuTag, openSwimmer, runAction, swimTime } from './parts';
 
-/** En el teléfono no se usan los datos privados de los nadadores (solo el admin los lee, en la web). */
-const NO_PRIVATE = new Map<string, SwimmerPrivate>();
-
 export function EntriesPanel({ data }: { data: MeetData }) {
   const c = useColors();
-  const { coachOf, myPlayerId } = useSwim();
+  const { isAdmin, coachOf, myPlayerId } = useSwim();
   const { lid, meet, events, entries, clubs, name } = data;
   const swimmers = useSwimmers(lid);
   const info = useMemo(() => new Map(swimmers.data.map((s) => [s.playerId, s] as const)), [swimmers.data]);
@@ -31,8 +28,7 @@ export function EntriesPanel({ data }: { data: MeetData }) {
   // La inscripción que se está sacando: la ruedita en su botón.
   const [removing, setRemoving] = useState<string | null>(null);
   const closed = !!meet.finalizedAt;
-  // Lo del admin (inscribir o sacar a cualquiera) está en la web.
-  const who: EntryWho = useMemo(() => ({ isAdmin: false, myPlayerId, coachOf }), [myPlayerId, coachOf]);
+  const who: EntryWho = useMemo(() => ({ isAdmin, myPlayerId, coachOf }), [isAdmin, myPlayerId, coachOf]);
   const canEnterAny = canEnterSome(closed, who);
 
   if (!events.length) return <Empty icon={<Users size={28} color={c.accent} />} title="Todavía no hay pruebas" text="Primero se arma el programa." />;
@@ -228,12 +224,15 @@ function EnterSheet({ data, ev, info, who, onClose }: { data: MeetData; ev: Swim
   const c = useColors();
   const { lid, meet, entries, clubs } = data;
   const players = usePlayers(lid);
+  // El año y el sexo (para la categoría y el sexo de la prueba): solo los lee el admin.
+  const priv = useSwimmersPrivate(lid, who.isAdmin);
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<Map<string, number | null>>(new Map());
   const [bad, setBad] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const entered = useMemo(() => new Set(entries.filter((e) => e.swimEventId === ev.id).map((e) => e.playerId)), [entries, ev.id]);
-  const candidates = useMemo(() => enterCandidates({ players: players.data, entered, who, info, privBy: NO_PRIVATE, meet, ev }), [players.data, entered, who, info, meet, ev]);
+  const privBy = useMemo(() => new Map(priv.data.map((p) => [p.playerId, p] as const)), [priv.data]);
+  const candidates = useMemo(() => enterCandidates({ players: players.data, entered, who, info, privBy, meet, ev }), [players.data, entered, who, info, privBy, meet, ev]);
 
   const needle = q.trim().toLowerCase();
   const shown = candidates.filter((x) => x.ok && (!needle || x.name.toLowerCase().includes(needle)));
@@ -329,7 +328,7 @@ function EnterSheet({ data, ev, info, who, onClose }: { data: MeetData; ev: Swim
       </View>
       {hidden > 0 && (
         <Txt tone="muted" style={{ fontSize: 12 }}>
-          {`${hidden === 1 ? '1 nadador no cumple' : `${hidden} nadadores no cumplen`} el sexo o la categoría de la prueba.`}
+          {`${hidden === 1 ? '1 nadador no cumple' : `${hidden} nadadores no cumplen`} el sexo o la categoría de la prueba${who.isAdmin ? ' (revisa su año de nacimiento en Admin › Nadadores).' : '.'}`}
         </Txt>
       )}
     </Sheet>

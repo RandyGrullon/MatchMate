@@ -12,6 +12,7 @@ import { useNames } from '../racket/names';
 import { useRacket, type WizardFormProps } from '../racket/sport';
 import { ModalityPick } from './BoxForm';
 import { setLadder } from './data';
+import { ladderStartOrder } from './info';
 import { entrantLevel } from './logic/box';
 import { DEFAULT_LADDER, ladderConfigJson, type LadderConfig } from './logic/ladder';
 
@@ -61,10 +62,7 @@ export function LadderForm({ onDone, onBack }: WizardFormProps) {
       const rules = { ...leagueRules, match: { ...((leagueRules.match as Record<string, unknown> | undefined) ?? {}), doubles: cfg.doubles } };
       const id = await createRacketEvent(lid, { type: 'escalera', name: title, date: todayIn(league.tz), config: ladderConfigJson({ ...cfg, rules }) });
       // Orden de salida: por nivel (los que no tienen, abajo, en el orden en que se eligieron).
-      const order = picked
-        .map((p, i) => ({ p, i, lv: entrantLevel(names.entrant(p), levels) }))
-        .sort((a, b) => (b.lv ?? -1) - (a.lv ?? -1) || a.i - b.i)
-        .map((x) => x.p);
+      const order = ladderStartOrder(picked, (p) => entrantLevel(names.entrant(p), levels));
       if (order.length) await setLadder(lid, id, order);
       toast('Escalera lista');
       onDone(id);

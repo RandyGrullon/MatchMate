@@ -4,17 +4,20 @@
  * de los cronómetros físicos se escribe con el teclado mm:ss.hh; DQ, DNS y DNF con un toque. Todo queda en el teléfono
  * (lo tocado se guarda al momento: sirve sin señal y si se cierra la app) y «Publicar serie» manda la serie entera en
  * una sola operación por la cola (sin señal, sale sola al volver). Con la pestaña abierta la pantalla no se apaga.
- * El modo piscina (pantalla completa con modo sol) se queda en la web.
+ * «Modo piscina» la pone a pantalla completa con modo sol (PoolScreen.tsx; `?piscina=1` la abre así, como en la web):
+ * la prueba y la serie fijas arriba, los carriles en medio y Deshacer y «Publicar serie» siempre a la vista abajo. Lo
+ * tocado no se pierde al entrar o salir: queda guardado en el teléfono.
  */
 import { useHoldBadgeUnlock } from '@mm/components/badges/hold';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useKeepAwake } from 'expo-keep-awake';
 import { CheckCircle2, RotateCcw, Send, Timer, Undo2 } from 'lucide-react-native';
 import { recordHeat, type SwimEventItem } from '@mm/lib/data/swimming';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { formatSwimTime, type SwimStatus } from '@mm/sports/swimming';
-import { groupLabel, hasResult, raceName, type MeetData } from '@mm/pages/sports/swimming/logic';
+import { groupLabel, hasResult, raceName, raceTitle, type MeetData } from '@mm/pages/sports/swimming/logic';
 import {
   applyTiming,
   elapsedCs,
@@ -45,6 +48,7 @@ import { Badge, Button, Card, Empty, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font, radius, size } from '@/theme/tokens';
 import { ClubTag, PillPicker, swimTime } from './parts';
+import { PoolLayout, PoolModal, PoolModeButton } from './PoolScreen';
 import { TimeKeypad } from './TimeKeypad';
 
 export function TimingPanel({ data }: { data: MeetData }) {
@@ -52,6 +56,9 @@ export function TimingPanel({ data }: { data: MeetData }) {
   const { events, entries } = data;
   const seeded = events.filter((ev) => heatsOf(ev, entries).length > 0);
   const [sel, setSel] = useState<HeatRef | null>(null);
+  // El modo piscina (pantalla completa); `?piscina=1` entra directo, como en la web.
+  const params = useLocalSearchParams<{ piscina?: string }>();
+  const [pool, setPool] = useState(params.piscina === '1');
   // Entre serie y serie la pantalla no se apaga (se cronometra con las manos mojadas).
   useKeepAwake();
   // El aviso de una insignia nueva espera a que se cierre esta pantalla.
@@ -66,8 +73,8 @@ export function TimingPanel({ data }: { data: MeetData }) {
 
   const { ev, heats, heat } = resolveHeat(seeded, entries, sel, auto);
 
-  return (
-    <View style={{ gap: 12 }}>
+  const selectors = (
+    <>
       <PillPicker
         label="Prueba"
         options={seeded.map((e) => ({ key: e.id, label: timingEventLabel(e, entries) }))}
@@ -92,17 +99,30 @@ export function TimingPanel({ data }: { data: MeetData }) {
           );
         })}
       </View>
-      <HeatTimer
-        key={`${ev.id}:${heat}`}
-        data={data}
-        ev={ev}
-        heat={heat}
-        heatCount={heats.length}
-        onDone={() => {
-          const n = nextHeat(seeded, entries, ev, heat);
-          if (n) setSel(n);
-        }}
-      />
+    </>
+  );
+  const timer = (
+    <HeatTimer
+      key={`${ev.id}:${heat}`}
+      data={data}
+      ev={ev}
+      heat={heat}
+      heatCount={heats.length}
+      pool={pool}
+      selectors={selectors}
+      onDone={() => {
+        const n = nextHeat(seeded, entries, ev, heat);
+        if (n) setSel(n);
+      }}
+    />
+  );
+
+  if (pool) return <PoolModal onExit={() => setPool(false)}>{timer}</PoolModal>;
+  return (
+    <View style={{ gap: 12 }}>
+      <PoolModeButton onPress={() => setPool(true)} />
+      {selectors}
+      {timer}
     </View>
   );
 }
@@ -130,7 +150,25 @@ const STATUS_BUTTONS: { s: SwimStatus; label: string }[] = [
   { s: 'dnf', label: 'DNF' },
 ];
 
-function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: SwimEventItem; heat: number; heatCount: number; onDone: () => void }) {
+function HeatTimer({
+  data,
+  ev,
+  heat,
+  heatCount,
+  pool,
+  selectors,
+  onDone,
+}: {
+  data: MeetData;
+  ev: SwimEventItem;
+  heat: number;
+  heatCount: number;
+  /** En el modo piscina (dentro de PoolModal). */
+  pool: boolean;
+  /** Prueba y serie (arriba del modo piscina). */
+  selectors: ReactNode;
+  onDone: () => void;
+}) {
   const c = useColors();
   const { lid, meet, entries, clubs, name } = data;
   const key = timingKey(ev.id, heat);
@@ -205,12 +243,14 @@ function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: 
   const running = state.startedAt != null;
   const keyLane = keypad != null ? lanes.find((e) => e.lane === keypad) : undefined;
 
-  return (
-    <View style={{ gap: 12 }}>
-      <Txt variant="meta" tone="fg2" style={{ fontFamily: font.semibold, marginHorizontal: 4 }}>
-        {`Serie ${heat} de ${heatCount}`}
-        {running && <Txt variant="meta" tone="muted">{' · en marcha'}</Txt>}
-      </Txt>
+  const body = (
+    <>
+      {!pool && (
+        <Txt variant="meta" tone="fg2" style={{ fontFamily: font.semibold, marginHorizontal: 4 }}>
+          {`Serie ${heat} de ${heatCount}`}
+          {running && <Txt variant="meta" tone="muted">{' · en marcha'}</Txt>}
+        </Txt>
+      )}
       {!!meet.finalizedAt && (
         <View style={[styles.note, { backgroundColor: c.warnSoft }]}>
           <Txt tone="warn" style={{ fontSize: 14 }}>
@@ -326,28 +366,58 @@ function HeatTimer({ data, ev, heat, heatCount, onDone }: { data: MeetData; ev: 
         })}
       </View>
 
-      <Bar>
-        <Button size="xl" accessibilityLabel="Deshacer el último toque" icon={<Undo2 size={20} color={c.fg} />} disabled={!log.length} onPress={() => setLog((prev) => prev.slice(0, -1))} />
-        <Button variant="primary" size="xl" loading={busy} disabled={!!meet.finalizedAt} icon={<Send size={20} color={c.accentFg} />} onPress={publish} style={{ flex: 1 }}>
-          {publishedAt || onServer ? 'Publicar de nuevo' : 'Publicar serie'}
-        </Button>
-      </Bar>
-      {!!publishedAt && (
-        <Txt tone="muted" style={{ fontSize: 12, textAlign: 'center' }}>
-          {`Publicada desde este teléfono a las ${new Date(publishedAt).toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })}.`}
-        </Txt>
-      )}
+    </>
+  );
 
-      <TimeKeypad
-        open={keypad != null}
-        title={keyLane ? `Carril ${keypad} · ${name(keyLane.playerId)}` : ''}
-        initial={keypad != null ? (values[keypad]?.time ?? null) : null}
-        onClose={() => setKeypad(null)}
-        onSave={(cs) => {
-          if (keypad != null) push({ t: 'time', lane: keypad, cs });
-          setKeypad(null);
-        }}
-      />
+  const bar = (
+    <>
+      <Button size="xl" accessibilityLabel="Deshacer el último toque" icon={<Undo2 size={20} color={c.fg} />} disabled={!log.length} onPress={() => setLog((prev) => prev.slice(0, -1))} />
+      <Button variant="primary" size="xl" loading={busy} disabled={!!meet.finalizedAt} icon={<Send size={20} color={c.accentFg} />} onPress={publish} style={{ flex: 1 }}>
+        {publishedAt || onServer ? 'Publicar de nuevo' : 'Publicar serie'}
+      </Button>
+    </>
+  );
+
+  const note = !!publishedAt && (
+    <Txt tone="muted" style={{ fontSize: 12, textAlign: 'center' }}>
+      {`Publicada desde este teléfono a las ${new Date(publishedAt).toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })}.`}
+    </Txt>
+  );
+
+  const keypadSheet = (
+    <TimeKeypad
+      open={keypad != null}
+      title={keyLane ? `Carril ${keypad} · ${name(keyLane.playerId)}` : ''}
+      initial={keypad != null ? (values[keypad]?.time ?? null) : null}
+      onClose={() => setKeypad(null)}
+      onSave={(cs) => {
+        if (keypad != null) push({ t: 'time', lane: keypad, cs });
+        setKeypad(null);
+      }}
+    />
+  );
+
+  if (pool) {
+    return (
+      <PoolLayout
+        title={raceTitle(ev)}
+        subtitle={`Serie ${heat} de ${heatCount}${running ? ' · en marcha' : ''}`}
+        top={selectors}
+        footer={<View style={{ flexDirection: 'row', gap: 8 }}>{bar}</View>}
+      >
+        {body}
+        {note}
+        {keypadSheet}
+      </PoolLayout>
+    );
+  }
+
+  return (
+    <View style={{ gap: 12 }}>
+      {body}
+      <Bar>{bar}</Bar>
+      {note}
+      {keypadSheet}
     </View>
   );
 }

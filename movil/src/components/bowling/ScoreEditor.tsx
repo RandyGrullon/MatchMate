@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { Check, Minus, Plus, Undo2, X } from 'lucide-react-native';
@@ -68,9 +68,12 @@ export function ScoreEditor({ lid, eventId, index, playerId, place }: { lid: str
 }
 
 /**
- * La pantalla de anotar un juego (ScoreEntryModal de la web), para cualquier lugar: el boliche de la liga (ScoreEditor)
- * y los juegos sueltos (con «Listo», que solo pasa el juego a su casilla). `stored`: lo que ya está guardado de ese juego
- * (si se pasa, lo anotado sigue en el teléfono después de guardar, hasta que el que la abrió lo borre).
+ * La pantalla de anotar un juego (ScoreEntryModal de la web), para cualquier lugar: el boliche de la liga (ScoreEditor),
+ * la fila de otro en la Planilla (RowScoreEditor) y los juegos sueltos (con «Listo», que solo pasa el juego a su
+ * casilla). `stored`: lo que ya está guardado de ese juego (si se pasa, lo anotado sigue en el teléfono después de
+ * guardar, hasta que el que la abrió lo borre). Si `onSave` devuelve una promesa, se espera (con la ruedita en el botón)
+ * y, si dice `false`, no se guardó: lo anotado se queda en el teléfono. `top` va arriba de las formas de anotar (J1…Jn
+ * en la Planilla) y `note`, debajo (el aviso de un juego ya verificado con foto).
  */
 export function ScoreEntry({
   title,
@@ -82,6 +85,8 @@ export function ScoreEntry({
   onSave,
   onClose,
   saveText = 'Guardar',
+  top,
+  note,
 }: {
   title: string;
   subtitle?: string;
@@ -91,9 +96,11 @@ export function ScoreEntry({
   /** La bola del juego arriba (null = no sale): las de la cuenta y la que ya tenía. */
   ball: { balls: ReturnType<typeof useBallChoice>['balls']; start: string | null; game: number } | null;
   /** Con el juego completo. `picked`: la bola elegida (undefined si no salió la de arriba). */
-  onSave: (value: { score: number; frames: ScoreValue['frames'] }, picked: string | null | undefined) => void;
+  onSave: (value: { score: number; frames: ScoreValue['frames'] }, picked: string | null | undefined) => void | Promise<unknown>;
   onClose: () => void;
   saveText?: string;
+  top?: ReactNode;
+  note?: ReactNode;
 }) {
   const c = useColors();
   const saved = stored ?? initial;
@@ -112,6 +119,8 @@ export function ScoreEntry({
   const [hole, setHole] = useState<'borrado' | 'falta' | null>(start.hole);
   // La bola que eligió aquí (undefined = la que traía).
   const [pickedBall, setPickedBall] = useState<string | null | undefined>(undefined);
+  // Guardando en el servidor (la Planilla): la ruedita en el botón y no se guarda dos veces.
+  const [saving, setSaving] = useState(false);
   const picked = pickedBall === undefined ? (ball?.start ?? null) : pickedBall;
 
   useEffect(() => {
@@ -197,10 +206,17 @@ export function ScoreEntry({
     if (hasWork && !value.ready) toast('Guardado en tu teléfono: sigue cuando quieras.');
     onClose();
   }
-  function save() {
-    if (!value.ready || value.score == null) return;
-    forgetAfterSave(memoryKey, true, stored !== undefined);
-    onSave({ score: value.score, frames: value.frames }, ball ? picked : undefined);
+  async function save() {
+    if (!value.ready || value.score == null || saving) return;
+    const out = onSave({ score: value.score, frames: value.frames }, ball ? picked : undefined);
+    if (!(out instanceof Promise)) {
+      forgetAfterSave(memoryKey, true, stored !== undefined);
+      return;
+    }
+    setSaving(true);
+    const result = await out;
+    setSaving(false);
+    forgetAfterSave(memoryKey, result, stored !== undefined);
   }
 
   const totalNum = total.trim() === '' ? null : Number(total);
@@ -226,6 +242,7 @@ export function ScoreEntry({
           <View style={{ width: 44 }} />
         </View>
 
+        {top}
         {ball && <BallRow balls={ball.balls} value={picked} initial={ball.start} onPick={setPickedBall} game={ball.game} />}
 
         <Segmented<ScoreMode>
@@ -238,6 +255,8 @@ export function ScoreEntry({
             { key: 'total', label: 'Total' },
           ]}
         />
+
+        {note}
 
         {mode !== 'total' ? (
           <>
@@ -324,6 +343,7 @@ export function ScoreEntry({
                 size="xl"
                 icon={<Check size={20} color={c.accentFg} />}
                 disabled={!value.ready && !hasWork}
+                loading={saving}
                 onPress={value.ready ? save : close}
                 style={{ flex: 1.4 }}
               >
@@ -355,7 +375,7 @@ export function ScoreEntry({
                 El puntaje va de 0 a 300.
               </Txt>
             )}
-            <Button variant="primary" size="xl" full disabled={!value.ready} icon={<Check size={20} color={c.accentFg} />} onPress={save}>
+            <Button variant="primary" size="xl" full disabled={!value.ready} loading={saving} icon={<Check size={20} color={c.accentFg} />} onPress={save}>
               {value.ready ? `${saveText} ${value.score}` : saveText}
             </Button>
           </>

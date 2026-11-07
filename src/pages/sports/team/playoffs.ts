@@ -4,6 +4,7 @@
  * dibujarla con BracketView), los juegos de cada serie y cuál sigue. Funciones puras, con pruebas en
  * playoffs.test.ts. Los datos: src/lib/data/playoffs.ts.
  */
+import { asBackendError } from '../../../lib/db/errors';
 import { isFinal, type Match } from '../../../lib/data/matches';
 import type { Playoff, PlayoffSeries } from '../../../lib/data/playoffs';
 import { nextPowerOfTwo, roundName, type Bracket, type BracketMatch } from '../../../sports/formats/knockout';
@@ -141,3 +142,67 @@ export function playoffProblem(seeds: readonly string[], bestOf: readonly number
 
 /** Cuántos pasan directo a la segunda ronda (los mejores sembrados). */
 export const byesFor = (n: number) => (n < 2 ? 0 : nextPowerOfTwo(n) - n);
+
+/**
+ * El orden para proponer la siembra: los equipos de la temporada que salen en la tabla, en su orden; los que no salen
+ * (sin partidos), después por nombre.
+ */
+export function seedOrder(teams: readonly { id: string; name: string }[], tableIds: readonly string[]): string[] {
+  const known = new Set(teams.map((t) => t.id));
+  const inTable = tableIds.filter((id) => known.has(id));
+  const rest = teams
+    .filter((t) => !inTable.includes(t.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .map((t) => t.id);
+  return [...inTable, ...rest];
+}
+
+/** Los tamaños de playoff que se pueden elegir con esos equipos (2, 4, 8 o 16). */
+export const playoffSizes = (teams: number) => [2, 4, 8, 16].filter((n) => n <= teams);
+
+/** El tamaño que se propone: 4 si se puede; si no, el más grande que haya (0 sin equipos). */
+export const initialPlayoffSize = (sizes: readonly number[]) => (sizes.includes(4) ? 4 : (sizes.at(-1) ?? 0));
+
+/** El tamaño elegido, si los que están son exactamente los primeros de la tabla (para marcarlo en el segmentado). */
+export const playoffSizeKey = (sizes: readonly number[], seeds: readonly string[], ordered: readonly string[]) =>
+  sizes.find((n) => seeds.length === n && seeds.every((id, i) => ordered[i] === id));
+
+/** «Los 2 primeros pasan directo…» / «El 1.º pasa directo…» (null si todos juegan la primera ronda). */
+export function byesText(seeds: number): string | null {
+  const byes = byesFor(seeds);
+  if (byes <= 0 || seeds < 2) return null;
+  return `${byes === 1 ? 'El 1.º pasa directo' : `Los ${byes} primeros pasan directo`} a la segunda ronda (no son potencia de 2).`;
+}
+
+/** «Tigres 70-64» (el ganador con el marcador), «W.O.» o el estado. `teamName`: el nombre de ahora del equipo. */
+export function gameResult(m: Pick<Match, 'status' | 'winner' | 'score' | 'sides'>, teamName: (teamId: string | null) => string | null | undefined): string {
+  const text = typeof m.score?.text === 'string' ? m.score.text : '';
+  if (m.status === 'walkover') return 'W.O.';
+  if (!m.winner) return text ? `Empate ${text}` : 'Sin resultado';
+  const side = m.sides[m.winner - 1];
+  return `${teamName(side.teamId) ?? side.label} ${text}`.trim();
+}
+
+/** Mensaje de un error de create_playoffs (null si no es uno de los que se explican). */
+export function createPlayoffError(e: unknown): string | null {
+  const msg = asBackendError(e)?.message ?? (e instanceof Error ? e.message : '');
+  const code = msg.trim().split(/[\s:]/)[0];
+  if (code === 'duplicado') return 'Ya hay un playoff en esta temporada.';
+  if (code === 'cerrado') return 'La temporada está cerrada: los playoffs se arman en la temporada en curso.';
+  if (code === 'invalido') return 'Revisa los equipos (tienen que ser de esta temporada) y al mejor de cuántos va cada ronda.';
+  return null;
+}
+
+/** Las series que ya tienen a los dos equipos, de la ronda más avanzada a la primera (lo que se está jugando arriba). */
+export const shownSeries = (p: Pick<Playoff, 'series'>): PlayoffSeries[] =>
+  [...p.series].filter((s) => !s.bye && s.teamA && s.teamB).sort((a, b) => b.round - a.round || a.slot - b.slot);
+
+/** El nombre de cada equipo copiado en la serie (por si el equipo se borra). */
+export function seriesLabels(p: Pick<Playoff, 'series'>): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const s of p.series) {
+    if (s.teamA && s.labelA) m.set(s.teamA, s.labelA);
+    if (s.teamB && s.labelB) m.set(s.teamB, s.labelB);
+  }
+  return m;
+}

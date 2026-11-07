@@ -6,6 +6,7 @@ import { useAction } from '../../../components/feedback';
 import { Button, Field, Input, Segmented, Select, Sheet, cx } from '../../../components/ui';
 import { rosterOf } from '../team/logic';
 import type { TeamLeague } from '../team/useTeamLeague';
+import { actaCandidates, actaCheck, newActaLine, withYellows } from './acta';
 import { correctedScore, decodeLines, pensFromScore, type ScoreLine } from './adapter';
 
 /**
@@ -32,22 +33,17 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
   const names = m.sides.map((s) => tl.teamOf(s.teamId)?.name ?? s.label);
   const roster = useMemo(() => rosterOf(tl.allTeams.data, m.sides[side - 1].teamId), [tl.allTeams.data, m.sides, side]);
   const mine = lines.filter((l) => l.side === side);
-  const candidates = [...roster.map((r) => r.playerId), ...tl.players.data.map((p) => p.id)].filter((id, i, a) => a.indexOf(id) === i && !lines.some((l) => l.playerId === id));
-  const num = (v: string) => (/^\d{1,2}$/.test(v.trim()) ? Number(v) : null);
-  const a = num(goals[0]);
-  const b = num(goals[1]);
-  const pa = num(pens[0]);
-  const pb = num(pens[1]);
-  const tied = a !== null && a === b;
-  const pensSet = tied && pa !== null && pb !== null;
-  const valid = a !== null && b !== null && (!pensSet || pa !== pb) && (pens[0] === '' || pa !== null) && (pens[1] === '' || pb !== null);
-  const scorerGoals = (s: Side) => lines.filter((l) => l.side === s).reduce((n, l) => n + l.goals, 0) + lines.filter((l) => l.side !== s).reduce((n, l) => n + l.ownGoals, 0);
-  const mismatch = a !== null && b !== null && (scorerGoals(1) > a || scorerGoals(2) > b);
+  const candidates = actaCandidates(
+    roster.map((r) => r.playerId),
+    tl.players.data.map((p) => p.id),
+    lines,
+  );
+  const { a, b, pa, pb, tied, pensSet, valid, mismatch } = actaCheck(goals, pens, lines);
 
   const patch = (id: string, p: Partial<ScoreLine>) => setLines((ls) => ls.map((l) => (l.side === side && l.playerId === id ? { ...l, ...p } : l)));
   const add = (id: string) => {
     if (!id) return;
-    setLines((ls) => [...ls, { playerId: id, side, played: true, goals: 0, assists: 0, ownGoals: 0, yellows: 0, red: null, keeper: false, conceded: 0 }]);
+    setLines((ls) => [...ls, newActaLine(id, side)]);
     setAdding('');
   };
 
@@ -148,7 +144,7 @@ export function ActaEditor({ tl, match: m, open, onClose }: { tl: TeamLeague; ma
                 {stepper('Goles', l.goals, (n) => patch(l.playerId, { goals: n }))}
                 {stepper('Asist.', l.assists, (n) => patch(l.playerId, { assists: n }))}
                 {stepper('Autogol', l.ownGoals, (n) => patch(l.playerId, { ownGoals: n }))}
-                {stepper('Amarillas', l.yellows, (n) => patch(l.playerId, { yellows: n, red: n >= 2 ? 'second_yellow' : l.red === 'second_yellow' ? null : l.red }), 2)}
+                {stepper('Amarillas', l.yellows, (n) => patch(l.playerId, withYellows(l, n)), 2)}
                 <label className={cx('flex min-h-11 items-center gap-1.5 text-sm', l.red === 'second_yellow' && 'text-muted')}>
                   <input
                     type="checkbox"

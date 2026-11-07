@@ -4,7 +4,7 @@
  * pestañas, «•••» con su hoja, «Ver las 8», la ficha de una marca y los puntos por club.
  */
 import { Children, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { ChevronDown, ChevronRight, Ellipsis, type LucideIcon } from 'lucide-react-native';
 import type { SwimClub } from '@mm/lib/data/swimming';
@@ -182,6 +182,10 @@ export interface MenuItem {
   label: string;
   hint?: string;
   onPress: () => void;
+  /** En rojo (Borrar encuentro). */
+  danger?: boolean;
+  /** Esperando: la ruedita en vez de la flecha. */
+  busy?: boolean;
 }
 
 /** La hoja de «•••» (EventMenu de la web): cada opción con su ícono, su nombre y la línea de abajo. */
@@ -196,14 +200,16 @@ export function MenuSheet({ open, onClose, title, items }: { open: boolean; onCl
             key={it.key}
             accessibilityRole="button"
             accessibilityLabel={it.hint ? `${it.label}. ${it.hint}` : it.label}
+            accessibilityState={{ busy: !!it.busy, disabled: !!it.busy }}
+            disabled={it.busy}
             onPress={it.onPress}
             style={({ pressed }) => [styles.menuRow, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}
           >
-            <View style={[styles.menuIcon, { backgroundColor: c.surface2 }]}>
-              <Icon size={20} color={c.fg2} />
+            <View style={[styles.menuIcon, { backgroundColor: it.danger ? c.dangerSoft : c.surface2 }]}>
+              <Icon size={20} color={it.danger ? c.danger : c.fg2} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Txt variant="bodyStrong" numberOfLines={1}>
+              <Txt variant="bodyStrong" tone={it.danger ? 'danger' : 'fg'} numberOfLines={1}>
                 {it.label}
               </Txt>
               {!!it.hint && (
@@ -212,7 +218,7 @@ export function MenuSheet({ open, onClose, title, items }: { open: boolean; onCl
                 </Txt>
               )}
             </View>
-            <ChevronRight size={20} color={c.faint} />
+            {it.busy ? <ActivityIndicator size="small" color={c.faint} /> : <ChevronRight size={20} color={c.faint} />}
           </Pressable>
         );
       })}
@@ -312,16 +318,19 @@ export function ClubPointsCard({
   clubs,
   caption,
   title = 'Puntos por club',
+  action,
 }: {
   rows: (Pick<TeamScore, 'points' | 'gold' | 'silver' | 'bronze' | 'rank'> & { teamId?: string; clubId?: string })[];
   clubs: Map<string, SwimClub>;
   caption?: string;
   title?: string;
+  /** A la derecha del título (compartir la imagen). */
+  action?: ReactNode;
 }) {
   const c = useColors();
   return (
     <View style={{ gap: 10 }}>
-      <SectionHeader title={title} />
+      <SectionHeader title={title} action={action} />
       <Lines>
         {rows.map((r) => {
           const id = r.teamId ?? r.clubId ?? '';

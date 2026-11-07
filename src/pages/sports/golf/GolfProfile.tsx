@@ -9,11 +9,12 @@ import { isValidIndex, MAX_INDEX, MIN_INDEX } from '../../../sports/golf/course'
 import { EventTopBar } from '../../../components/event/EventHeader';
 import { useAction } from '../../../components/feedback';
 import { useIsPro } from '../../../components/mode';
-import { NumbersGrid, type NumberItem } from '../../../components/stats/YoStats';
+import { NumbersGrid } from '../../../components/stats/YoStats';
 import { Button, Card, Field, Input, ListRow, ListSkeleton, LoadError, Modal, SectionHeader, StatsSkeleton, sectionLinkClass } from '../../../components/ui';
 import { EmptyCard, ShowMore } from '../FieldChrome';
 import { indexInput, parseIndex } from './GolfPlayers';
-import { bestRounds, indexText, playedRounds, playerStats, toParText, type PlayedRound } from './logic';
+import { bestRounds, indexText, playedRounds, playerStats, type PlayedRound } from './logic';
+import { fullNumbers, holeNumbers, liteNumbers, recentRounds, roundLine, roundsCount } from './profile';
 
 /** Mi golf en la liga: Index (no oficial), mis números y mis rondas. */
 export function GolfMyProfile() {
@@ -65,10 +66,7 @@ function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
   const stats = useMemo(() => playerStats(rounds), [rounds]);
   const best = useMemo(() => bestRounds(rounds), [rounds]);
   const dateOf = useMemo(() => new Map(events.data.map((e) => [e.id, e] as const)), [events.data]);
-  const recent = useMemo(
-    () => [...rounds].sort((a, b) => (dateOf.get(b.eventId)?.date ?? '').localeCompare(dateOf.get(a.eventId)?.date ?? '')).slice(0, 10),
-    [rounds, dateOf],
-  );
+  const recent = useMemo(() => recentRounds(rounds, (id) => dateOf.get(id)?.date), [rounds, dateOf]);
 
   if (data.error) return <LoadError error={data.error} />;
   const idx = indexes.data[playerId] ?? null;
@@ -78,37 +76,15 @@ function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
     const e = dateOf.get(r.eventId);
     return e ? eventLabel({ type: e.type, name: e.name, date: e.date }, 'golf') : r.round.courseName;
   };
-  const nineOnly = stats.eighteen.rounds === 0;
-  const main = nineOnly ? stats.nine : stats.eighteen;
-  const nine = nineOnly ? ' (9 hoyos)' : '';
-  const dec = (v: number | null | undefined) => v?.toLocaleString('es-DO') ?? '–';
-  const lite: NumberItem[] = [
-    { label: `Mejor bruto${nine}`, value: main.bestGross ?? '–', accent: true },
-    { label: 'Promedio', value: dec(main.avgGross) },
-    { label: 'Birdies', value: stats.birdies },
-  ];
-  const full: NumberItem[] = [
-    { label: `Mejor bruto${nine}`, value: main.bestGross ?? '–', accent: true },
-    { label: `Mejor neto${nine}`, value: main.bestNet ?? '–' },
-    { label: 'Promedio', value: dec(main.avgGross) },
-    { label: 'Stableford medio', value: dec(main.avgPoints) },
-    { label: 'Birdies', value: stats.birdies },
-    { label: 'Pares', value: stats.pars },
-  ];
-  const holes: NumberItem[] = [
-    { label: 'Eagles o mejor', value: stats.eagles + stats.albatrosses },
-    { label: 'Bogeys', value: stats.bogeys },
-    { label: 'Doble o peor', value: stats.doubleBogeys },
-    { label: 'Hoyos en uno', value: stats.holesInOne },
-    { label: 'Putts por ronda', value: dec(stats.avgPutts) },
-    { label: 'Putts por hoyo', value: dec(stats.puttsPerHole) },
-  ];
+  const lite = liteNumbers(stats);
+  const full = fullNumbers(stats);
+  const holes = holeNumbers(stats);
 
   return (
     <div className="flex flex-col">
       <h1 className={pro ? 'mt-0.5 text-title-pro break-words' : 'mt-1 text-title break-words'}>{own ? 'Mi golf' : name}</h1>
       <p className="mt-1.5 text-meta text-muted">
-        {[own && player.data ? name : null, rounds.length === 1 ? '1 ronda firmada o cerrada' : `${rounds.length} rondas firmadas o cerradas`].filter(Boolean).join(' · ')}
+        {[own && player.data ? name : null, roundsCount(rounds.length)].filter(Boolean).join(' · ')}
       </p>
 
       <Card className="mt-5 py-[18px] pr-5 pl-[22px]">
@@ -174,15 +150,7 @@ function RoundRows({ rounds, nameOf, base }: { rounds: readonly PlayedRound[]; n
           key={r.eventId}
           to={`${base}/e/${r.eventId}?tab=leaderboard`}
           title={nameOf(r)}
-          subtitle={[
-            r.round.courseName,
-            `${r.card.strokes.length} hoyos`,
-            `neto ${toParText(r.stableford.netToPar)}`,
-            `${r.stableford.points} pts`,
-            !r.score.complete ? 'sin terminar' : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
+          subtitle={roundLine(r)}
           value={r.stableford.gross ?? '–'}
         />
       ))}

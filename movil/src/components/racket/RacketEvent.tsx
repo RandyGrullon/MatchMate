@@ -1,13 +1,14 @@
 /**
  * Un evento de raqueta (EventPage.tsx de la web): la liga de parejas (jornadas, tabla y parejas), la noche de americano
  * o mexicano (tu cancha, las canchas de la ronda, cómo van todos y las rondas) y el torneo (grupos, cuadro y partidos).
- * Con la misma lógica de la web (logic/league, night, tourney). Lo de organizar (armar el calendario, la siguiente
- * ronda, los grupos), por ahora en la web. La liga por cajas y la escalera, en la web.
+ * Con la misma lógica de la web (logic/league, night, tourney). La liga por cajas (BoxEvent.tsx) y la escalera
+ * (LadderEvent.tsx). Quien organiza tiene «•••» (EventAdmin.tsx); armar el calendario, la siguiente ronda, los grupos y
+ * el cuadro son de Pro en la web: la app (Lite) muestra el mismo aviso y lo abre en la web.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
-import { CalendarDays, Globe, LayoutGrid, Trophy } from 'lucide-react-native';
+import { CalendarDays, LayoutGrid, Trophy } from 'lucide-react-native';
 import { useMatches, type Match } from '@mm/lib/data/matches';
 import { useRacketEvent, useWithPendingPoints, type RacketEvent } from '@mm/lib/data/racket';
 import { useLeagueCtx } from '@mm/lib/league';
@@ -20,20 +21,24 @@ import { isNightType, nightRounds, nightTable, parseNightConfig, type NightRound
 import { matchTime, pairStandings } from '@mm/pages/sports/racket/logic/results';
 import { pointsText, tiebreakText } from '@mm/pages/sports/racket/logic/tiebreaks';
 import { todayIn } from '@mm/pages/sports/racket/logic/time';
-import { categoryBracket, groupStage, groupTables, matchAt, parseTourneyConfig } from '@mm/pages/sports/racket/logic/tourney';
+import { categoryBracket, groupStage, groupTables, matchAt, parseTourneyConfig, tourneyStarted } from '@mm/pages/sports/racket/logic/tourney';
 import { useMySide } from '@mm/pages/sports/racket/match/side';
 import { useNames } from '@mm/pages/sports/racket/names';
-import { courtWords, useRacket } from '@mm/pages/sports/racket/sport';
+import { courtWords } from '@mm/pages/sports/racket/sport';
 import { eventTypeInfo, racketColumns } from '@mm/pages/sports/racket/view';
+import { racketTourneyFinished } from '@mm/prizes/sports';
 import { MatchCard } from '../match/MatchCard';
 import { StandingsTable } from '../match/StandingsTable';
 import { Badge, Button, Card, Divider, Empty, ListRow, LoadError, Segmented, SectionHeader, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { matchRoute } from './RacketHome';
 import { CategoryPrize, NightPrizes, TourneyPrizes } from '@/components/prizes/SportPrizes';
 import { NightReport, TourneyReport } from '@/components/tournamentReport/SportReports';
+import { BoxView } from './BoxEvent';
+import { LeagueMenu, NightMenu, TourneyMenu } from './EventAdmin';
+import { LadderView } from './LadderEvent';
+import { ProNotice, ScreenHead, useRacketPhone } from './parts';
 
 const Spinner = ({ label }: { label: string }) => (
   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -41,20 +46,9 @@ const Spinner = ({ label }: { label: string }) => (
   </View>
 );
 
-function Head({ title, meta, status }: { title: string; meta?: string | null; status?: { text: string; live?: boolean } | null }) {
-  return (
-    <View style={{ gap: 4 }}>
-      {status && <Badge tone={status.live ? 'accent' : 'muted'}>{status.text}</Badge>}
-      <Txt variant="title" style={{ fontSize: 28, lineHeight: 33 }}>
-        {title}
-      </Txt>
-      {!!meta && (
-        <Txt variant="meta" tone="muted">
-          {meta}
-        </Txt>
-      )}
-    </View>
-  );
+/** El título y lo de ahora, con «•••» a la derecha (`right`) para quien organiza. */
+function Head({ title, meta, status, right }: { title: string; meta?: string | null; status?: { text: string; live?: boolean } | null; right?: ReactNode }) {
+  return <ScreenHead title={title} meta={meta} status={status} right={right} />;
 }
 
 /** El evento por su id: elige la vista por su tipo. */
@@ -65,25 +59,11 @@ export function RacketEventBody({ eventId }: { eventId: string }) {
   if (ev.loading && !ev.data) return <Spinner label="Cargando el evento" />;
   if (!ev.data) return <Empty title="Este evento no existe" action={<Button onPress={() => router.navigate({ pathname: '/l/[lid]', params: { lid } })}>Volver</Button>} />;
   const e = ev.data;
-  if (e.type === 'cajas' || e.type === 'escalera') return <OnWeb event={e} />;
+  if (e.type === 'cajas') return <BoxView event={e} />;
+  if (e.type === 'escalera') return <LadderView event={e} />;
   if (isNightType(e.type)) return <NightView event={e} />;
   if (e.type === 'torneo') return <TourneyView event={e} />;
   return <LeagueView event={e} />;
-}
-
-/** La liga por cajas y la escalera: por ahora en la web. */
-function OnWeb({ event }: { event: RacketEvent }) {
-  const c = useColors();
-  const { lid } = useLeagueCtx();
-  const label = eventTypeInfo(event.type).label;
-  return (
-    <View style={{ gap: 16 }}>
-      <Head title={event.name || label} meta={label} />
-      <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${event.id}`)}>
-        Abrir en la web
-      </Button>
-    </View>
-  );
 }
 
 /** Los partidos agrupados por jornada (o ronda), con su título. */
@@ -128,8 +108,8 @@ type LeagueTab = 'jornadas' | 'tabla' | 'parejas';
 
 function LeagueView({ event }: { event: RacketEvent }) {
   const c = useColors();
-  const { lid, league, myPlayerId } = useLeagueCtx();
-  const { sport, ext, doubles, side } = useRacket();
+  const { lid, league, myPlayerId, isAdmin } = useLeagueCtx();
+  const { sport, ext, doubles, side } = useRacketPhone();
   const names = useNames();
   const now = useNow().getTime();
   const q = useMatches({ lid, eventId: event.id });
@@ -152,6 +132,8 @@ function LeagueView({ event }: { event: RacketEvent }) {
           .sort((a, b) => matchTime(a) - matchTime(b))[0]
       : undefined;
 
+  // Lite, quien organiza y todavía no hay calendario: en la web se arma en Pro.
+  const proNotice = isAdmin && !q.loading && !matches.length;
   let body;
   if (q.loading && !matches.length) body = <Spinner label="Cargando las jornadas" />;
   else if (!matches.length)
@@ -208,8 +190,9 @@ function LeagueView({ event }: { event: RacketEvent }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <Head title={title} meta={meta} />
+      <Head title={title} meta={meta} right={<LeagueMenu event={event} title={title} />} />
       {body}
+      {proNotice && <ProNotice title="Falta el calendario" text="Las jornadas se arman en Pro" path={`/l/${lid}/e/${event.id}`} />}
     </View>
   );
 }
@@ -220,7 +203,7 @@ type NightTab = 'canchas' | 'tabla' | 'rondas';
 
 function NightView({ event }: { event: RacketEvent }) {
   const c = useColors();
-  const { lid, myPlayerId } = useLeagueCtx();
+  const { lid, myPlayerId, isAdmin } = useLeagueCtx();
   const names = useNames();
   const now = useNow().getTime();
   const q = useMatches({ lid, eventId: event.id });
@@ -248,7 +231,7 @@ function NightView({ event }: { event: RacketEvent }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <Head title={title} status={status} />
+      <Head title={title} status={status} right={<NightMenu event={event} title={title} cfg={cfg} rounds={rounds} table={table} finished={finished} />} />
       {mine && !finished && current && <MyCourt match={mine.match} round={current.round} />}
       {resting && !finished && current && (
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -292,6 +275,8 @@ function NightView({ event }: { event: RacketEvent }) {
       {/* El reporte de la noche (PDF o Excel) y sus premios, al final (se eligen y se entregan; no son de todos los días). */}
       <NightReport event={event} title={title} cfg={cfg} rounds={rounds} table={table} finished={finished} names={names} loading={q.loading && !matches.length} />
       <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
+      {/* El único aviso de la pantalla, al final (Lite, quien organiza: armar las rondas y poner marcadores está en Pro en la web). */}
+      {isAdmin && !cfg.closed && <ProNotice title="Organizas esta noche" text="Las rondas se arman en Pro" path={`/l/${lid}/e/${event.id}`} />}
     </View>
   );
 }
@@ -368,8 +353,8 @@ type TourneyTab = 'grupos' | 'cuadro' | 'partidos';
 
 function TourneyView({ event }: { event: RacketEvent }) {
   const c = useColors();
-  const { lid, myPlayerId } = useLeagueCtx();
-  const { sport, doubles } = useRacket();
+  const { lid, myPlayerId, isAdmin } = useLeagueCtx();
+  const { sport, doubles } = useRacketPhone();
   const names = useNames();
   const now = useNow().getTime();
   const q = useMatches({ lid, eventId: event.id });
@@ -384,12 +369,18 @@ function TourneyView({ event }: { event: RacketEvent }) {
   const bracket = useMemo(() => (cat ? categoryBracket(cat, matches, now) : null), [cat, matches, now]);
   const title = event.name || eventTypeInfo('torneo').label;
   const highlight = doubles ? names.teamsOf(myPlayerId) : myPlayerId ? [myPlayerId] : [];
+  const finished = racketTourneyFinished(cfg.categories, matches, names, now);
+  const started = tourneyStarted(cfg) || matches.length > 0;
+  const head = <Head title={title} status={finished ? { text: 'Terminado' } : null} right={<TourneyMenu event={event} title={title} cfg={cfg} started={started} />} />;
+  // Lite, quien organiza: los grupos y el cuadro se arman en Pro en la web.
+  const proNotice = isAdmin && !finished ? <ProNotice title="Organizas este torneo" text="Grupos y cuadro se arman en Pro" path={`/l/${lid}/e/${event.id}`} /> : null;
 
   if (!cat) {
     return (
       <View style={{ gap: 20 }}>
-        <Head title={title} />
-        <Empty icon={<Trophy size={28} color={c.accent} />} title="Sin categorías" />
+        {head}
+        <Empty icon={<Trophy size={28} color={c.accent} />} title="Sin categorías" text="El torneo todavía no tiene categorías." />
+        {proNotice}
       </View>
     );
   }
@@ -398,7 +389,7 @@ function TourneyView({ event }: { event: RacketEvent }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <Head title={title} />
+      {head}
       {cfg.categories.length > 1 && <Segmented<string> label="Categoría" value={cat.id} onChange={setCatId} options={cfg.categories.map((x) => ({ key: x.id, label: x.name }))} />}
       {q.loading && !matches.length ? (
         <Spinner label="Cargando el torneo" />
@@ -452,6 +443,8 @@ function TourneyView({ event }: { event: RacketEvent }) {
       {/* El reporte del torneo (PDF o Excel) y los premios, al final. */}
       <TourneyReport event={event} title={title} cfg={cfg} matches={matches} names={names} loading={q.loading && !matches.length} />
       <TourneyPrizes event={event} cfg={cfg} matches={matches} names={names} now={now} />
+      {/* El único aviso de la pantalla, al final. */}
+      {proNotice}
     </View>
   );
 }

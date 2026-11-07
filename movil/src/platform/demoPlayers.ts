@@ -105,7 +105,8 @@ function overlay(s: State, table: string, read: Read): Row[] | null {
       return [owner === r.player_id ? r : { ...r, player_id: owner }];
     });
   }
-  if (table === 'player_private') return Object.values(s.guardians);
+  // Lo de los tutores cambiado aquí encima de lo de fábrica (el año y el sexo de los nadadores, otras ligas).
+  if (table === 'player_private') return [...(read('player_private') ?? []).filter((r) => !(String(r.player_id) in s.guardians)), ...Object.values(s.guardians)];
   return null;
 }
 

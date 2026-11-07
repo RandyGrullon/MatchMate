@@ -2,8 +2,9 @@ import { useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 import { Award, ChevronDown, Trophy } from 'lucide-react';
 import { formatDate } from '../../lib/format';
-import { pickSeason, type Season, type SeasonAward } from '../../lib/seasons';
+import { pickSeason, type Season } from '../../lib/seasons';
 import { Card, cx } from '../ui';
+import { sortedAwards } from './awardOrder';
 
 /** Parámetro de la dirección con la temporada elegida (se comparte el link y se ve la misma). */
 export const SEASON_PARAM = 'temporada';
@@ -62,22 +63,10 @@ export function SeasonSelect({
   );
 }
 
-const awardOrder: Record<SeasonAward['kind'], number> = {
-  campeon: 0,
-  subcampeon: 1,
-  tercero: 2,
-  mvp: 3,
-  mas_mejorado: 4,
-  fair_play: 5,
-  otro: 6,
-};
-
-/** Premios de una temporada cerrada (campeón arriba) con la fecha del cierre. */
+/** Premios de una temporada cerrada (campeón arriba) con la fecha del cierre. El orden, en awardOrder.ts. */
 export function SeasonAwardsCard({ season }: { season: Season }) {
   if (season.status !== 'closed') return null;
-  const awards = [...season.awards].sort((a, b) => awardOrder[a.kind] - awardOrder[b.kind]);
-  const champion = awards.find((a) => a.kind === 'campeon');
-  const rest = awards.filter((a) => a !== champion);
+  const { champion, rest } = sortedAwards(season.awards);
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center gap-3">

@@ -13,7 +13,10 @@ import { effectiveAverage, entryLine, eventPosition, playerStats } from '@mm/lib
 import type { Entry } from '@mm/lib/types';
 import { useNow } from '@mm/lib/useNow';
 import { leagueSport } from '@mm/sports/registry';
-import { LeagueScope } from '@/components/league/LeagueScope';
+import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
+import { RacketPlayer } from '@/components/racket/RacketProfile';
+import { GolfPlayerPage } from '@/components/golf/GolfProfile';
+import { TeamPlayer } from '@/components/team/player/TeamProfile';
 import { LeaguePlayerBadges } from '@/components/badges/LeagueBadges';
 import { LeaguePlayerMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
@@ -40,6 +43,40 @@ export default function PlayerScreen() {
         <LeagueScope lid={lid}>
           <SwimPlayer playerId={playerId} />
           {/* Sus insignias de la liga, abajo (LeaguePlayerBadges de la web). */}
+          <LeaguePlayerBadges playerId={playerId} />
+          <LeaguePlayerMadeBadges playerId={playerId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (league.data && leagueSport(league.data) === 'golf') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <GolfPlayerPage playerId={playerId} />
+          <LeaguePlayerBadges playerId={playerId} />
+          <LeaguePlayerMadeBadges playerId={playerId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (league.data && sportFamily(league.data) === 'team') {
+    return (
+      <Screen>
+        <LeagueScope lid={lid}>
+          <TeamPlayer playerId={playerId} />
+          <LeaguePlayerBadges playerId={playerId} />
+          <LeaguePlayerMadeBadges playerId={playerId} />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (league.data && sportFamily(league.data) === 'racket') {
+    return (
+      <Screen>
+        <BackBar label={league.data.name} fallback={`/l/${lid}/tabla`} />
+        <LeagueScope lid={lid}>
+          <RacketPlayer playerId={playerId} />
           <LeaguePlayerBadges playerId={playerId} />
           <LeaguePlayerMadeBadges playerId={playerId} />
         </LeagueScope>

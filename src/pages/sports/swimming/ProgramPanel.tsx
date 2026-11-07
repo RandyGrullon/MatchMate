@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ListChecks, Plus, Trash2 } from 'lucide-react';
 import { deleteSwimEvent, saveSwimEvents, type SwimEventInput, type SwimEventItem } from '../../../lib/data/swimming';
-import { SWIM_DISTANCES, SWIM_STROKES, STROKE_LABEL, GENDER_LABEL, validateSwimEvent, type SwimGender, type SwimStroke } from '../../../sports/swimming';
+import { SWIM_STROKES, STROKE_LABEL, GENDER_LABEL, type SwimGender, type SwimStroke } from '../../../sports/swimming';
 import { useBusy, type Busy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Button, Card, Field, ListRow, Modal, SectionHeader, Select, cx } from '../../../components/ui';
 import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { Segmented, useSwim } from './bits';
+import { distanceForStroke, enteredText, entryCounts, eventErrors, moveEvent, strokeDistances, toggleAgeGroup } from './admin';
 import { ageGroupsOf, clubMeetTemplate, eventHasResults, raceDetail, raceName, timeTrialTemplate } from './logic';
 import type { MeetData } from './MeetPage';
-
-const toInput = (e: SwimEventItem): SwimEventInput => ({ id: e.id, num: e.num, distance: e.distance, stroke: e.stroke, gender: e.gender, ageGroups: e.ageGroups });
 
 /** El número de la prueba en su caja, al principio de la fila (como el carril en la hoja de series). */
 export function NumBox({ n, on }: { n: number; on?: boolean }) {
@@ -36,18 +35,12 @@ export function ProgramPanel({ data }: { data: MeetData }) {
   // y bajar cambian números de las pruebas de al lado.
   const busy = useBusy();
   const canEdit = isAdmin && !meet.finalizedAt;
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const e of entries) m.set(e.swimEventId, (m.get(e.swimEventId) ?? 0) + 1);
-    return m;
-  }, [entries]);
+  const counts = useMemo(() => entryCounts(entries), [entries]);
 
   const move = (ev: SwimEventItem, dir: -1 | 1) => {
-    const k = events.findIndex((e) => e.id === ev.id);
-    const a = events[k];
-    const b = events[k + dir];
-    if (!a || !b) return;
-    void busy.run(`${a.id}:${dir < 0 ? 'up' : 'down'}`, () => run(() => saveSwimEvents(lid, meet.id, [{ ...toInput(a), num: b.num }, { ...toInput(b), num: a.num }])));
+    const pair = moveEvent(events, ev.id, dir);
+    if (!pair) return;
+    void busy.run(`${ev.id}:${dir < 0 ? 'up' : 'down'}`, () => run(() => saveSwimEvents(lid, meet.id, pair)));
   };
   const remove = async (ev: SwimEventItem) => {
     const n = counts.get(ev.id) ?? 0;
@@ -117,7 +110,7 @@ export function ProgramPanel({ data }: { data: MeetData }) {
               dense
               leading={<NumBox n={ev.num} />}
               title={raceName(ev)}
-              subtitle={`${raceDetail(ev)} · ${n === 1 ? '1 inscrito' : `${n} inscritos`}`}
+              subtitle={`${raceDetail(ev)} · ${enteredText(n)}`}
               onClick={canEdit ? () => setEditing(ev) : undefined}
               ariaLabel={canEdit ? `Cambiar la prueba ${ev.num}: ${raceName(ev)}` : undefined}
             />
@@ -160,8 +153,8 @@ function EventFormModal({
     setGroups(picked?.ageGroups ?? []);
   }, [editing, picked]);
   const locked = !!current && eventHasResults(current.id, entries);
-  const distances = SWIM_DISTANCES.filter((d) => !validateSwimEvent({ distance: d, stroke, pool: meet.pool }).length);
-  const errors = validateSwimEvent({ distance: distance as SwimEventItem['distance'], stroke, pool: meet.pool });
+  const distances = strokeDistances(stroke, meet.pool);
+  const errors = eventErrors(distance, stroke, meet.pool);
   const all = ageGroupsOf(meet.ageGroups);
   const k = current ? events.findIndex((e) => e.id === current.id) : -1;
   const waiting = tools?.busy.isBusy() ?? false;
@@ -203,8 +196,7 @@ function EventFormModal({
               onChange={(e) => {
                 const s = e.target.value as SwimStroke;
                 setStroke(s);
-                const ok = SWIM_DISTANCES.filter((d) => !validateSwimEvent({ distance: d, stroke: s, pool: meet.pool }).length);
-                if (!ok.includes(distance as (typeof SWIM_DISTANCES)[number])) setDistance(ok[0] ?? 50);
+                setDistance(distanceForStroke(s, distance, meet.pool));
               }}
             >
               {SWIM_STROKES.map((s) => (
@@ -243,7 +235,7 @@ function EventFormModal({
                     key={g.id}
                     type="button"
                     aria-pressed={on}
-                    onClick={() => setGroups((x) => (on ? x.filter((y) => y !== g.id) : all.filter((a) => a.id === g.id || x.includes(a.id)).map((a) => a.id)))}
+                    onClick={() => setGroups((x) => toggleAgeGroup(all, x, g.id))}
                     className={cx(
                       'min-h-11 rounded-full px-3.5 text-sm font-medium transition active:scale-95',
                       on ? 'bg-accent text-accent-fg' : 'bg-surface-2 text-muted hover:text-fg',

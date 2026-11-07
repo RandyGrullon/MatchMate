@@ -1,37 +1,17 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Signature, UserPlus, Users } from 'lucide-react-native';
-import { handicapFor, isValidIndex, MAX_INDEX, MIN_INDEX } from '@mm/sports/golf/course';
+import { isValidIndex, MAX_INDEX, MIN_INDEX } from '@mm/sports/golf/course';
 import { pendingGolfSign, registerGolf, setGolfIndex, unregisterGolf, useGolfIndexes, type GolfCardDoc, type GolfRoundFull } from '@mm/lib/data/golf';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
 import type { Player } from '@mm/lib/types';
 import { hcpText, holesDone, indexInput, indexText, isComplete, parseIndex } from '@mm/pages/sports/golf/logic';
 import { confirmAsync, toast } from '@/components/feedback';
-import { Badge, Button, Card, ChoiceRow, Empty, Field, Input, SectionHeader, Txt } from '@/components/ui';
+import { Badge, Button, Card, Empty, Field, Input, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
-
-/** De dónde sale el handicap (HcpExplain de la web): Index → handicap de campo → handicap de juego. */
-function hcpLine(round: GolfRoundFull, teeId: string, index: number | null): string | null {
-  if (index == null) return 'Sin Index: juega con handicap 0 (en neto cuenta como bruto).';
-  try {
-    const info = handicapFor(index, round.course, teeId, { nine: round.nine, allowance: round.competition.allowance });
-    return `Index ${indexText(index)} (no oficial) → handicap de campo ${hcpText(info.courseHcpRounded)} → handicap de juego ${hcpText(info.playingHcp)} (${info.allowance} %)${info.holes === 9 ? ', a 9 hoyos' : ''}${info.estimated ? '. Rating de 9 hoyos estimado.' : '.'}`;
-  } catch {
-    return null;
-  }
-}
-
-/** La salida (tees) para elegir (TeeSelect de la web). */
-function TeePicker({ round, value, onChange, disabled }: { round: GolfRoundFull; value: string; onChange: (id: string) => void; disabled?: boolean }) {
-  return (
-    <Card padded={false}>
-      {round.course.tees.map((t) => (
-        <ChoiceRow key={t.id} title={t.name} subtitle={`${t.rating} / ${t.slope} · par ${t.par}`} selected={t.id === value} onPress={() => !disabled && onChange(t.id)} />
-      ))}
-    </Card>
-  );
-}
+import { AddPlayersSheet, AdminCardSheet, GroupsSheet } from './GolfPlayerSheets';
+import { TeePicker, hcpLine } from './parts';
 
 /** Inscribirme: salida e Index (el del perfil, que se puede cambiar). El Index queda congelado en la tarjeta. */
 function RegisterCard({ round, playerId }: { round: GolfRoundFull; playerId: string }) {
@@ -177,16 +157,22 @@ function MyCard({ round, card, onSign }: { round: GolfRoundFull; card: GolfCardD
   );
 }
 
+type AdminSheet = { kind: 'inscribir' } | { kind: 'grupos' } | { kind: 'tarjeta'; card: GolfCardDoc };
+
 /**
- * Jugadores de la ronda (GolfPlayers de la web, Lite): inscribirme (con salida e Index) o mi tarjeta arriba, y los grupos
- * como filas («Grupo 1 · sale por el hoyo 1»). Inscribir a otros y armar grupos, en la web.
+ * Jugadores de la ronda (GolfPlayers de la web): inscribirme (con salida e Index) o mi tarjeta arriba, y los grupos como
+ * filas («Grupo 1 · sale por el hoyo 1»). Para el admin, «Inscribir» y «Armar grupos», y tocar una fila para cambiar la
+ * salida, quitar la firma, descalificar o sacar (GolfPlayerSheets.tsx). En la web eso es de Pro; en el teléfono no hay
+ * Pro: es de los admins de la liga (como el organizador de esports).
  */
 export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoundFull; cards: GolfCardDoc[]; players: Player[]; onSign: (card: GolfCardDoc) => void }) {
   const c = useColors();
   const { isAdmin, myPlayerId } = useLeagueCtx();
+  const [sheet, setSheet] = useState<AdminSheet | null>(null);
   const nameOf = (pid: string) => players.find((p) => p.id === pid)?.name ?? '(jugador borrado)';
   const myCard = myPlayerId ? (cards.find((x) => x.playerId === myPlayerId) ?? null) : null;
   const open = !round.closed;
+  const manage = isAdmin;
   const groups = useMemo(() => {
     const m = new Map<number | null, GolfCardDoc[]>();
     for (const x of cards) m.set(x.groupNo, [...(m.get(x.groupNo) ?? []), x]);
@@ -195,11 +181,25 @@ export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoun
   const teeName = (id: string) => round.course.tees.find((t) => t.id === id)?.name ?? id;
   const statusOf = (x: GolfCardDoc) =>
     x.dq ? <Badge tone="danger">Descalificado</Badge> : x.signed ? <Badge tone="ok">Firmada</Badge> : holesDone(x) ? <Badge>{isComplete(x) ? 'Sin firmar' : `${holesDone(x)} hoyos`}</Badge> : null;
+  // La tarjeta que se está cambiando, con lo último del servidor.
+  const editing = sheet?.kind === 'tarjeta' ? (cards.find((x) => x.id === sheet.card.id) ?? sheet.card) : null;
 
   return (
     <View style={{ gap: 22 }}>
       {open && myPlayerId && !myCard && <RegisterCard round={round} playerId={myPlayerId} />}
       {myCard && <MyCard round={round} card={myCard} onSign={onSign} />}
+
+      {manage && open && (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button size="lg" icon={<UserPlus size={20} color={c.fg} />} onPress={() => setSheet({ kind: 'inscribir' })} style={{ flex: 1 }}>
+            Inscribir
+          </Button>
+          <Button size="lg" icon={<Users size={20} color={c.fg} />} disabled={!cards.length} onPress={() => setSheet({ kind: 'grupos' })} style={{ flex: 1 }}>
+            Armar grupos
+          </Button>
+        </View>
+      )}
+
       {!cards.length ? (
         <Empty
           icon={<Users size={28} color={c.accent} />}
@@ -225,7 +225,18 @@ export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoun
                 .map((x, i) => {
                   const me = x.playerId === myPlayerId;
                   return (
-                    <View key={x.id} style={[styles.row, { backgroundColor: me ? c.accentSoft : 'transparent' }, i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null]}>
+                    <Pressable
+                      key={x.id}
+                      accessibilityRole={manage ? 'button' : undefined}
+                      accessibilityLabel={manage ? `Cambiar la tarjeta de ${nameOf(x.playerId)}` : undefined}
+                      disabled={!manage}
+                      onPress={() => setSheet({ kind: 'tarjeta', card: x })}
+                      style={({ pressed }) => [
+                        styles.row,
+                        { backgroundColor: pressed ? c.surface2 : me ? c.accentSoft : 'transparent' },
+                        i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null,
+                      ]}
+                    >
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Txt variant="bodyStrong" numberOfLines={1}>
                           {nameOf(x.playerId)}
@@ -234,13 +245,17 @@ export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoun
                         <Txt variant="meta" tone="muted" numberOfLines={1}>{`${teeName(x.teeId)} · Index ${indexText(x.hcpIndex)} · Hcp ${hcpText(x.playingHcp)}`}</Txt>
                       </View>
                       {statusOf(x)}
-                    </View>
+                    </Pressable>
                   );
                 })}
             </Card>
           </View>
         ))
       )}
+
+      {sheet?.kind === 'inscribir' && <AddPlayersSheet onClose={() => setSheet(null)} round={round} cards={cards} players={players} />}
+      {sheet?.kind === 'grupos' && <GroupsSheet onClose={() => setSheet(null)} round={round} cards={cards} nameOf={nameOf} />}
+      {editing && <AdminCardSheet card={editing} onClose={() => setSheet(null)} round={round} name={nameOf(editing.playerId)} />}
     </View>
   );
 }

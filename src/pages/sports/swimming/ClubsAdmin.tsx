@@ -9,8 +9,8 @@ import { leavesOnRemove, removeConfirm } from '../../../components/scorers/logic
 import { Button, Card, Field, Input, ListRow, Modal, RowIcon, SectionHeader, Select, cx } from '../../../components/ui';
 import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { Segmented, useSwim } from './bits';
-import { SCHEME_LABEL, pointsFor } from './logic';
-import { parsePoints } from './MeetFormModal';
+import { LANE_OPTIONS, clubLine, clubValid, clubsTitle, parsePoints, pointsAfterLanes, rulesDirty } from './admin';
+import { SCHEME_LABEL } from './logic';
 
 /**
  * Organizar › Clubes (rediseño «Calma y foco»; el título lo pone Organizar): los clubes como filas (los puntos del
@@ -30,7 +30,7 @@ export function ClubsAdmin() {
   return (
     <div className="flex flex-col gap-[30px]">
       <section aria-labelledby="natacion-clubes">
-        <SectionHeader id="natacion-clubes" title={clubs.data.length === 1 ? '1 club' : `${clubs.data.length} clubes`} action={clubs.data.length > 0 ? <SectionAdd onClick={() => setEditing('new')} /> : undefined} />
+        <SectionHeader id="natacion-clubes" title={clubsTitle(clubs.data.length)} action={clubs.data.length > 0 ? <SectionAdd onClick={() => setEditing('new')} /> : undefined} />
         {!clubs.data.length ? (
           <EmptyCard
             icon={<Shield className="size-5" />}
@@ -58,7 +58,7 @@ export function ClubsAdmin() {
                     {c.short && <span className="shrink-0 text-xs font-medium text-muted">{c.short}</span>}
                   </span>
                 }
-                subtitle={`${count(c.id) === 1 ? '1 nadador' : `${count(c.id)} nadadores`}${c.coachId ? ` · Entrena: ${memberName.get(c.coachId) ?? '—'}` : ''}`}
+                subtitle={clubLine(count(c.id), c.coachId ? (memberName.get(c.coachId) ?? '—') : null)}
                 onClick={() => setEditing(c)}
                 ariaLabel={`Cambiar ${c.name}`}
               />
@@ -94,7 +94,7 @@ function ClubFormModal({ editing, onClose }: { editing: SwimClub | 'new' | null;
     setColor(club?.color ?? null);
     setCoach(club?.coachId ?? '');
   }, [editing, club]);
-  const valid = name.trim().length > 0 && name.trim().length <= 60 && short.trim().length <= 8;
+  const valid = clubValid(name, short);
   const save = async () => {
     setBusy(true);
     const ok = await run(() => saveClub(lid, { id: club?.id, name, short, color, coachId: coach || null }), club ? 'Club guardado' : 'Club creado');
@@ -241,7 +241,7 @@ function RulesSection() {
     setScheme(r.ageGroups);
   }, [r]);
   const parsed = parsePoints(points);
-  const dirty = pool !== r.pool || lanes !== r.lanes || points !== r.points.join('-') || scheme !== r.ageGroups;
+  const dirty = rulesDirty({ pool, lanes, points, ageGroups: scheme }, r);
   const save = async () => {
     if (!parsed) return;
     setBusy(true);
@@ -270,11 +270,11 @@ function RulesSection() {
               className="h-11"
               onChange={(e) => {
                 const n = Number(e.target.value);
-                if (points === pointsFor(lanes).join('-')) setPoints(pointsFor(n).join('-'));
+                setPoints(pointsAfterLanes(points, lanes, n));
                 setLanes(n);
               }}
             >
-              {Array.from({ length: 8 }, (_, k) => k + 3).map((n) => (
+              {LANE_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   {n} carriles
                 </option>

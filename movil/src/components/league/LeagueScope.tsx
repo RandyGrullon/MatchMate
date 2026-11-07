@@ -9,6 +9,7 @@ import { useAuth } from '@mm/lib/auth';
 import { useLeague, useMembership } from '@mm/lib/data';
 import { LeagueContext, leagueCtxOf } from '@mm/lib/league';
 import { RacketProvider } from '@mm/pages/sports/racket/sport';
+import { racketPureExt } from '@mm/pages/sports/racket/extensions';
 import { isSportId, leagueSport } from '@mm/sports/registry';
 import type { RacketSport } from '@mm/sports/racket';
 import { SPORT_FAMILY, type SportFamily } from '@mm/sports/types';
@@ -39,6 +40,6 @@ export function LeagueScope({ lid, children }: { lid: string; children: ReactNod
     );
   }
   const sport = leagueSport(ctx.league);
-  const inner = sportFamily(ctx.league) === 'racket' ? <RacketProvider sport={sport as RacketSport}>{children}</RacketProvider> : children;
+  const inner = sportFamily(ctx.league) === 'racket' ? <RacketProvider sport={sport as RacketSport} ext={racketPureExt(sport as RacketSport)}>{children}</RacketProvider> : children;
   return <LeagueContext.Provider value={ctx}>{inner}</LeagueContext.Provider>;
 }

@@ -1,31 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, CalendarPlus, ChevronRight, QrCode, Shield, Ticket, Trophy, Users, X } from 'lucide-react';
-import type { League, Member } from '../../lib/types';
 import { leagueSport } from '../../sports/registry';
 import { SportIcon } from '../../pages/sports/SportBits';
 import { useMyLeagues } from '../home/useHomeData';
 import { preloadQrScanner, useQrScanner } from '../scanner';
 import { MODAL_OPENED, cx, keyboardInset } from '../ui';
 import { CreateStyles } from './styles';
+import { createChoices, pickLeagueRow, pickLeagueTitle, practiceOptionText, tourneyOptionText, type OrganizedLeague } from './createChoices';
 
-/** Una liga de boliche que organizo (dueño o admin): ahí puedo crear una práctica o un torneo. */
-export interface OrganizedLeague {
-  league: League;
-  member: Member;
-}
-
-/** Lo que la hoja necesita saber de la cuenta: las ligas de boliche que organiza (ahí puede crear una práctica). */
-export function createChoices(leagues: readonly League[], memberships: readonly Member[]): { organized: OrganizedLeague[] } {
-  const organized: OrganizedLeague[] = [];
-  for (const league of leagues) {
-    const member = memberships.find((m) => m.leagueId === league.id);
-    if (!member || (member.role !== 'owner' && member.role !== 'admin')) continue;
-    if (league.kind === 'torneo' || leagueSport(league) !== 'bowling') continue;
-    organized.push({ league, member });
-  }
-  organized.sort((a, b) => a.league.name.localeCompare(b.league.name, 'es', { sensitivity: 'base' }));
-  return { organized };
-}
+// Lo que la hoja necesita saber de la cuenta, sin pantalla (también lo usa la app del teléfono): createChoices.ts.
+export { createChoices, pickLeagueRow, pickLeagueTitle, practiceOptionText, tourneyOptionText, type OrganizedLeague } from './createChoices';
 
 /** Separación entre la hoja y la barra de abajo (y el borde de la pantalla). */
 const GAP = 10;
@@ -285,14 +269,14 @@ function CreateSheetBody({
   if (pick) {
     return (
       <>
-        <SheetHead id="crear-titulo" title={pick === 'torneo' ? '¿Dónde es el torneo?' : '¿En qué liga?'} onClose={onClose} onBack={() => setPick(null)} />
+        <SheetHead id="crear-titulo" title={pickLeagueTitle(pick)} onClose={onClose} onBack={() => setPick(null)} />
         <div className={cx(optionList, 'mt-2')}>
           {organized.map((o) => (
             <OptionRow
               key={o.league.id}
               icon={<SportIcon sport={leagueSport(o.league)} className="size-[21px]" />}
-              title={pick === 'torneo' ? `En ${o.league.name}` : o.league.name}
-              text={pick === 'torneo' ? 'Con los jugadores de la liga' : o.league.schedule || 'Práctica de la liga'}
+              title={pickLeagueRow(pick, o.league).title}
+              text={pickLeagueRow(pick, o.league).text}
               onClick={() => onEvent(o, pick)}
             />
           ))}
@@ -312,14 +296,14 @@ function CreateSheetBody({
         <OptionRow
           icon={<Trophy className="size-[21px]" />}
           title="Un torneo"
-          text={organized.length ? 'Un día, con o sin liga' : 'Un día, con sus inscritos'}
+          text={tourneyOptionText(organized)}
           onClick={torneo}
         />
         {organized.length > 0 && (
           <OptionRow
             icon={<CalendarPlus className="size-[21px]" />}
             title="Una práctica"
-            text={organized.length === 1 ? `En ${organized[0].league.name}` : 'En una de tus ligas'}
+            text={practiceOptionText(organized)}
             onClick={practica}
           />
         )}

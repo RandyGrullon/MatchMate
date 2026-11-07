@@ -4,13 +4,14 @@ import { useSwimSeason } from '../../../lib/data/swimming';
 import { inSeason } from '../../../lib/seasons';
 import { useIsPro } from '../../../components/mode';
 import { PillSelect } from '../../../components/ranking/parts';
-import { ShareButton, medalPointsShare } from '../../../components/share';
+import { ShareButton } from '../../../components/share';
 import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
 import { Badge, Card, DateBlock, ListRow, ListSkeleton, LoadError, SectionHeader } from '../../../components/ui';
 import { EmptyCard, ShowMore } from '../FieldChrome';
 import { ClubTag, clubMap, meetTitle, useSwim } from './bits';
 import { clubsOfMeet, pointsText as pts, seasonTable, seasonYears } from './logic';
 import { ClubPointsCard } from './ResultsPanel';
+import { seasonPointsShare } from './share';
 
 /**
  * Puntos por club de la temporada (rediseño «Calma y foco», como la Tabla del boliche): el título con compartir, la
@@ -34,14 +35,7 @@ export default function SwimStandings() {
   const byId = useMemo(() => clubMap(clubs.data), [clubs.data]);
 
   // Imagen de los puntos de la temporada para mandar al grupo.
-  const shareCard = () =>
-    medalPointsShare({
-      title: league.name,
-      subtitle: sel ? `Puntos · ${shownYear}` : `Puntos de la temporada ${shownYear}`,
-      rows: table.clubs.map((c) => ({ ...c, id: c.clubId })),
-      who: (id) => byId.get(id) ?? { name: '(club borrado)' },
-      note: `Suma de ${table.meets.length} ${table.meets.length === 1 ? 'encuentro' : 'encuentros'}. El control de marcas no cuenta.`,
-    });
+  const shareCard = () => seasonPointsShare({ leagueName: league.name, shown: shownYear, withSeasons: !!sel, table, clubs: byId });
 
   return (
     <div className="flex flex-col px-2">

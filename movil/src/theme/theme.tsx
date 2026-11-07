@@ -67,5 +67,20 @@ export function SportColors({ sport, children }: { sport: string | null; childre
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/**
+ * Una parte de la app con otros colores: claro u oscuro (`dark`) y lo que se quiera cambiar (`colors`), con el acento
+ * del deporte. Para el modo sol de la piscina o del campo (alto contraste bajo el sol), como las variables de la web.
+ */
+export function ColorsOverride({ dark: wantDark, colors, children }: { dark?: boolean; colors?: Partial<Colors>; children: ReactNode }) {
+  const theme = useContext(Ctx);
+  const value = useMemo(() => {
+    const isDark = wantDark ?? theme.isDark;
+    const base: Colors =
+      isDark === theme.isDark ? theme.colors : { ...(isDark ? dark : light), accent: theme.colors.accent, accentFg: theme.colors.accentFg, accentSoft: theme.colors.accentSoft };
+    return { ...theme, isDark, colors: { ...base, ...(colors ?? {}) } };
+  }, [theme, wantDark, colors]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 export const useTheme = () => useContext(Ctx);
 export const useColors = () => useContext(Ctx).colors;

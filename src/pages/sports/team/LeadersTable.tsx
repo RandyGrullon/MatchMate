@@ -2,6 +2,10 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Card, Empty, ListRow, cx } from '../../../components/ui';
 import { Initials, TuTag } from '../../../components/ranking/parts';
+import { rankLeaders, type LeaderColumn } from './leaders';
+
+// Las columnas y el orden están en leaders.ts (los usa también la app del teléfono).
+export type { LeaderColumn };
 
 /**
  * Tabla de líderes de la temporada (anotadores del baloncesto, goleadores del fútbol), rediseño «Calma y foco»:
@@ -11,18 +15,6 @@ import { Initials, TuTag } from '../../../components/ranking/parts';
  *   ordenada va subrayada en el color del deporte.
  * La primera columna de `columns` es la de siempre.
  */
-
-export interface LeaderColumn<R> {
-  key: string;
-  /** Encabezado corto: «PTS», «Prom», «3P». */
-  label: string;
-  title: string;
-  value: (row: R) => number;
-  /** Cómo se muestra (por defecto el número). */
-  show?: (row: R) => ReactNode;
-  /** Se esconde en el teléfono. */
-  wide?: boolean;
-}
 
 const TH = 'py-3 text-[11px] font-bold tracking-[0.05em] text-muted uppercase';
 
@@ -53,15 +45,8 @@ export function LeadersTable<R extends { player: string; team: string }>({
 }) {
   const [by, setBy] = useState(columns[0]?.key ?? '');
   const col = (full && columns.find((c) => c.key === by)) || columns[0];
-  const sorted = useMemo(() => {
-    const list = [...rows].sort((a, b) => col.value(b) - col.value(a) || columns[0].value(b) - columns[0].value(a) || nameOf(a.player).localeCompare(nameOf(b.player), 'es'));
-    // Puesto compartido cuando empatan en la columna elegida.
-    let rank = 0;
-    return list.slice(0, limit ?? list.length).map((r, i) => {
-      if (i === 0 || col.value(r) !== col.value(list[i - 1])) rank = i + 1;
-      return { r, rank };
-    });
-  }, [rows, col, columns, nameOf, limit]);
+  // Puesto compartido cuando empatan en la columna elegida.
+  const sorted = useMemo(() => rankLeaders(rows, columns, col, nameOf, limit), [rows, col, columns, nameOf, limit]);
   if (!rows.length) return <Empty title="Sin estadísticas todavía">{empty}</Empty>;
 
   if (!full) {

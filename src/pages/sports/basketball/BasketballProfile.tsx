@@ -1,6 +1,5 @@
 import { Link, useParams } from 'react-router';
 import { CalendarDays, UserRound } from 'lucide-react';
-import { compareMatches } from '../../../lib/data/matches';
 import { useNow } from '../../../lib/useNow';
 import { useIsPro } from '../../../components/mode';
 import { Card, Empty, ListRow, Loading, SectionHeader, cx } from '../../../components/ui';
@@ -8,16 +7,14 @@ import { upcomingFor } from '../team/logic';
 import { RosterEditor } from '../team/TeamsManager';
 import { HistoryBackBar, MatchRows, NextMatchCard, ScreenTitle, StatTiles, TeamCrest, matchLink } from '../team/TeamUi';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
-import { matchDayLabel, todayIn } from '../team/view';
+import { basketballGames, basketballStatItems, basketballWhen, rivalName, rosterLine, ROLE } from '../team/profileView';
+import { todayIn } from '../team/view';
 import { BASKETBALL_POSITIONS } from './bits';
 import { basketballTeamRules } from './rules';
 import { useBasketballSeason, type BasketballSeason } from './season';
 
-const ROLE: Record<string, string> = { captain: 'Capitán', delegate: 'Delegado', player: 'Jugador' };
-
-/** «Capitán · #8 · Base» de un jugador en un equipo. */
-const rosterLine = (r: { role: string; jersey: number | null; position: string | null }) =>
-  [r.role !== 'player' ? ROLE[r.role] : null, r.jersey != null ? `#${r.jersey}` : null, r.position].filter(Boolean).join(' · ');
+// El rol, la línea del equipo, los partidos y los números de Lite están en ../team/profileView.ts (los usa también la
+// app del teléfono).
 
 /**
  * Mi equipo y mis números (/l/:lid/perfil), rediseño «Calma y foco»: «‹ Liga» arriba (la barra de la liga), el título
@@ -136,20 +133,11 @@ export function BasketballPlayer() {
 export function PlayerStats({ tl, playerId, season, title = 'Temporada', className }: { tl: TeamLeague; playerId: string; season: BasketballSeason; title?: string; className?: string }) {
   const pro = useIsPro();
   const totals = season.leaders.find((l) => l.player === playerId);
-  const byId = new Map(tl.matches.data.map((m) => [m.id, m] as const));
-  const games = season.lines
-    .filter((l) => l.player === playerId)
-    .map((l) => ({ l, m: byId.get(l.matchId)! }))
-    .filter((x) => x.m)
-    .sort((a, b) => compareMatches(b.m, a.m));
+  const games = basketballGames(season, tl.matches.data, playerId);
   const rank = totals ? season.leaders.indexOf(totals) + 1 : null;
   const today = todayIn(tl.tz);
-  const one = (n: number) => n.toLocaleString('es-DO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const rival = (l: (typeof games)[number]['l'], m: (typeof games)[number]['m']) => {
-    const r = m.sides[l.side === 1 ? 1 : 0];
-    return tl.teamOf(r.teamId)?.name ?? r.label;
-  };
-  const when = (m: (typeof games)[number]['m']) => [m.round != null ? `Jornada ${m.round}` : m.stage, matchDayLabel(m.scheduledAt, tl.tz, today)].filter(Boolean).join(' · ');
+  const rival = (l: (typeof games)[number]['l'], m: (typeof games)[number]['m']) => rivalName(m, l.side, (id) => tl.teamOf(id)?.name);
+  const when = (m: (typeof games)[number]['m']) => basketballWhen(m, tl.tz, today);
   return (
     <section aria-labelledby={`bb-numeros-${playerId}`} className={className}>
       <SectionHeader id={`bb-numeros-${playerId}`} title={title} action={rank ? <span className="text-meta font-semibold text-accent">#{rank} en anotadores</span> : undefined} />
@@ -162,10 +150,7 @@ export function PlayerStats({ tl, playerId, season, title = 'Temporada', classNa
           <StatTiles
             dense={pro}
             items={[
-              { label: 'Partidos', value: totals.games },
-              { label: 'Puntos', value: totals.points },
-              { label: 'Por partido', value: one(totals.avg) },
-              { label: 'Máximo', value: totals.high },
+              ...basketballStatItems(totals),
               ...(pro
                 ? [
                     { label: 'Triples', value: totals.threes },

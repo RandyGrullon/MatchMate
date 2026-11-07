@@ -1,27 +1,20 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, CalendarPlus, Coffee } from 'lucide-react';
 import { createMatches } from '../../../lib/data/matches';
-import { toIsoDate } from '../../../lib/format';
 import { useAction } from '../../../components/feedback';
 import { Badge, Button, Field, Input, Select, Sheet, cx } from '../../../components/ui';
 import { whenText } from '../../../components/match/format';
-import { isIsoDate, matchClashes, parseCourts, parseTimes, planClashes, planDrafts, planSchedule, zonedIso, type SchedulePlan } from './schedule';
+import { clashSummary, EVERY_OPTIONS, MAX_BATCH, nextRound, nextWeekday, ROUNDS_OPTIONS, scheduleByRound, schedulePlanOf, singleMatchValid, toggleTeam } from './calendarAdmin';
+import { matchClashes, planClashes, planDrafts, zonedIso } from './schedule';
 import { TeamName } from './TeamBits';
 import type { TeamLeague } from './useTeamLeague';
 
 /**
  * Armar el calendario de la temporada (compartido por baloncesto y fútbol): todos contra todos de ida o de ida y
  * vuelta, una jornada cada N días, con horas y canchas, y aviso de choques antes de guardar. Se guarda en un lote
- * (los ids salen del teléfono). También: un partido suelto (amistoso, final, partido aplazado a otra fecha).
+ * (los ids salen del teléfono). También: un partido suelto (amistoso, final, partido aplazado a otra fecha). Lo que se
+ * decide sin pantalla está en calendarAdmin.ts (lo comparte la app del teléfono).
  */
-
-const MAX_BATCH = 200;
-
-const nextWeekday = (day: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + ((day - d.getDay() + 7) % 7 || 7));
-  return toIsoDate(d);
-};
 
 export function ScheduleBuilder({
   tl,
@@ -43,7 +36,7 @@ export function ScheduleBuilder({
 }) {
   const run = useAction();
   const teams = tl.teams.data;
-  const lastRound = Math.max(0, ...tl.matches.data.map((m) => m.round ?? 0));
+  const lastRound = nextRound(tl.matches.data) - 1;
   const [picked, setPicked] = useState<string[] | null>(null);
   const [double, setDouble] = useState(defaultDouble);
   const [start, setStart] = useState(nextWeekday(6));
@@ -65,33 +58,15 @@ export function ScheduleBuilder({
 
   const ids = picked ?? teams.map((t) => t.id);
   const idsText = ids.join(',');
-  const times = parseTimes(timesText);
-  const everyDays = Math.max(1, Math.min(60, Number(every) || 7));
-  const first = Math.max(1, Math.min(999, Number(firstRound) || 1));
 
-  const plan: SchedulePlan | null = useMemo(() => {
-    const teamIds = idsText ? idsText.split(',') : [];
-    if (teamIds.length < 2 || !isIsoDate(start)) return null;
-    return planSchedule({
-      teams: teamIds,
-      double,
-      startDate: start,
-      everyDays,
-      times: parseTimes(timesText).times,
-      courts: parseCourts(courtsText),
-      firstRound: first,
-      tz: tl.tz,
-      skip: skipText.split(/[,;\s]+/).filter(isIsoDate),
-    });
-  }, [idsText, double, start, everyDays, timesText, courtsText, skipText, first, tl.tz]);
+  const { plan, times } = useMemo(
+    () => schedulePlanOf({ teams: idsText ? idsText.split(',') : [], double, start, every, timesText, courtsText, skipText, firstRound, tz: tl.tz }),
+    [idsText, double, start, every, timesText, courtsText, skipText, firstRound, tl.tz],
+  );
   const clashes = useMemo(() => (plan ? planClashes(plan, tl.matches.data, minutes, tl.tz) : []), [plan, tl.matches.data, minutes, tl.tz]);
-  const byRound = useMemo(() => {
-    const map = new Map<number, SchedulePlan['matches']>();
-    for (const m of plan?.matches ?? []) map.set(m.round, [...(map.get(m.round) ?? []), m]);
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [plan]);
+  const byRound = useMemo(() => scheduleByRound(plan), [plan]);
 
-  const toggle = (id: string) => setPicked((p) => ((p ?? ids).includes(id) ? (p ?? ids).filter((x) => x !== id) : [...(p ?? ids), id]));
+  const toggle = (id: string) => setPicked((p) => toggleTeam(p, ids, id));
 
   const save = async () => {
     if (!plan) return;
@@ -155,8 +130,11 @@ export function ScheduleBuilder({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Vueltas" className="col-span-2">
             <Select value={double ? '2' : '1'} onChange={(e) => setDouble(e.target.value === '2')}>
-              <option value="1">Solo ida (todos contra todos una vez)</option>
-              <option value="2">Ida y vuelta</option>
+              {ROUNDS_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Primera jornada">
@@ -164,10 +142,11 @@ export function ScheduleBuilder({
           </Field>
           <Field label="Una jornada cada">
             <Select value={every} onChange={(e) => setEvery(e.target.value)}>
-              <option value="7">Semana (7 días)</option>
-              <option value="14">Dos semanas</option>
-              <option value="3">3 días</option>
-              <option value="1">Todos los días (torneo)</option>
+              {EVERY_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Empieza en la jornada">
@@ -196,9 +175,7 @@ export function ScheduleBuilder({
               </Warn>
             )}
             {clashes.length > 0 && (
-              <Warn>
-                {clashes.length} choques: {[...new Set(clashes.map((c) => (c.kind === 'court' ? `${c.who} ocupada` : `${name(c.who)} con dos partidos`)))].slice(0, 3).join(' · ')}.
-              </Warn>
+              <Warn>{clashSummary(clashes, name)}</Warn>
             )}
             <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
               {byRound.map(([round, list]) => (
@@ -256,7 +233,7 @@ export function SingleMatchModal({ tl, open, onClose, format, minutes = 90 }: { 
   const [round, setRound] = useState('');
   const [stage, setStage] = useState('');
   const [busy, setBusy] = useState(false);
-  const valid = home && away && home !== away && isIsoDate(date) && /^\d{2}:\d{2}$/.test(time);
+  const valid = singleMatchValid({ home, away, date, time });
   const clashes = valid ? matchClashes({ date, time, court: court.trim() || null, teams: [home, away] }, tl.matches.data, minutes, tl.tz) : [];
   const save = async () => {
     setBusy(true);

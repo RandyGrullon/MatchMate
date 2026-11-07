@@ -1,32 +1,26 @@
 /**
- * Las partes del encuentro que se miran (de la web: ProgramPanel, HeatSheetPanel y ResultsPanel con ScoresPanel), con
- * la misma lógica (src/pages/sports/swimming/logic.ts). Armar el programa y las series, publicarlas y compartir las
- * imágenes de los resultados se quedan en la web.
+ * Los resultados del encuentro (de la web: ResultsPanel con ScoresPanel), con la misma lógica
+ * (src/pages/sports/swimming/logic.ts) y compartir la imagen de cada prueba y de los puntos por club (share.ts). El
+ * programa (ProgramPanel.tsx) y la hoja de series (HeatSheet.tsx) están aparte.
  */
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { ListChecks, ListOrdered, Medal, Rows3 } from 'lucide-react-native';
+import { ListOrdered, Medal } from 'lucide-react-native';
 import type { SwimClub } from '@mm/lib/data/swimming';
 import { useLeagueCtx } from '@mm/lib/league';
 import { GENDER_LABEL, type MedalRow } from '@mm/sports/swimming';
-import {
-  groupLabel,
-  meetScores,
-  pointsText,
-  publishedHeats,
-  raceDetail,
-  raceName,
-  raceTitle,
-  resultsByEvent,
-  scores,
-  type MeetData,
-} from '@mm/pages/sports/swimming/logic';
-import { Card, Empty, ListRow, SectionHeader, Txt } from '@/components/ui';
+import { groupLabel, meetScores, pointsText, raceName, raceTitle, resultsByEvent, scores, type MeetData } from '@mm/pages/sports/swimming/logic';
+import { meetPointsShare, raceShare } from '@mm/pages/sports/swimming/share';
+import { Card, Empty, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
-import { ClubPointsCard, ClubTag, Lines, NumBox, PillPicker, PosNum, StatusBadge, TuTag, openSwimmer, swimTime } from './parts';
+import { ClubPointsCard, ClubTag, PillPicker, PosNum, StatusBadge, TuTag, openSwimmer, swimTime } from './parts';
+import { ShareIconButton } from './ShareImage';
 
-/** El título de una tarjeta de categoría o de serie («FEMENINO · 9-10», «SERIE 1 DE 2»). */
+export { HeatSheetPanel } from './HeatSheet';
+export { ProgramPanel } from './ProgramPanel';
+
+/** El título de una tarjeta de categoría («FEMENINO · 9-10»). */
 function CardLabel({ children }: { children: string }) {
   return (
     <Txt tone="muted" style={styles.cardLabel}>
@@ -35,96 +29,10 @@ function CardLabel({ children }: { children: string }) {
   );
 }
 
-/** El programa: las pruebas en orden (el número, la prueba, para quién y cuántos van). Cambiarlo, en la web. */
-export function ProgramPanel({ data }: { data: MeetData }) {
-  const c = useColors();
-  const { events, entries } = data;
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const e of entries) m.set(e.swimEventId, (m.get(e.swimEventId) ?? 0) + 1);
-    return m;
-  }, [entries]);
-  if (!events.length) return <Empty icon={<ListChecks size={28} color={c.accent} />} title="Todavía no hay pruebas" text="El organizador está armando el programa." />;
-  return (
-    <View style={{ gap: 10 }}>
-      <SectionHeader title={events.length === 1 ? '1 prueba' : `${events.length} pruebas`} />
-      <Lines>
-        {events.map((ev) => {
-          const n = counts.get(ev.id) ?? 0;
-          return <ListRow key={ev.id} chevron={false} icon={<NumBox n={ev.num} />} title={raceName(ev)} subtitle={`${raceDetail(ev)} · ${n === 1 ? '1 inscrito' : `${n} inscritos`}`} />;
-        })}
-      </Lines>
-      <Txt tone="muted" style={{ fontSize: 13, marginHorizontal: 4 }}>
-        Finales por tiempo: en cada serie nadan juntas las categorías; el puesto es por categoría.
-      </Txt>
-    </View>
-  );
-}
-
-/** La hoja de series publicada: cada prueba con sus series y una fila por carril (tu carril, resaltado). */
-export function HeatSheetPanel({ data }: { data: MeetData }) {
-  const c = useColors();
-  const { myPlayerId } = useLeagueCtx();
-  const { meet, events, entries } = data;
-  const withEntries = events.filter((ev) => entries.some((e) => e.swimEventId === ev.id));
-  if (!withEntries.length) {
-    return <Empty icon={<Rows3 size={28} color={c.accent} />} title="Sin inscritos todavía" text="La hoja de series se arma con los inscritos de cada prueba." />;
-  }
-  if (!meet.heatsPublishedAt) {
-    return <Empty icon={<Rows3 size={28} color={c.accent} />} title="La hoja de series todavía no está" text="El organizador la publica antes del encuentro." />;
-  }
-  return (
-    <View style={{ gap: 26 }}>
-      {withEntries.map((ev) => {
-        const pub = publishedHeats(ev, entries, meet.lanes);
-        return (
-          <View key={ev.id} style={{ gap: 10 }}>
-            <SectionHeader title={raceTitle(ev)} />
-            {pub.unassigned.length > 0 && (
-              <Txt tone="warn" style={{ fontSize: 13, marginHorizontal: 4 }}>
-                {`${pub.unassigned.length === 1 ? '1 inscrito sin serie' : `${pub.unassigned.length} inscritos sin serie`} (se inscribieron después).`}
-              </Txt>
-            )}
-            {pub.heats.map((h) => (
-              <Card key={h.n} padded={false}>
-                <CardLabel>{`Serie ${h.n} de ${pub.heats.length}`}</CardLabel>
-                {h.lanes.map((l) => {
-                  const me = !!myPlayerId && l.entry?.playerId === myPlayerId;
-                  return (
-                    <View key={l.lane} style={[styles.row, me && { backgroundColor: c.accentSoft }]}>
-                      <NumBox n={l.lane} strong={me} />
-                      {l.entry ? (
-                        <>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Txt numberOfLines={1} style={{ fontFamily: font.semibold, fontSize: 15 }}>
-                              {data.name(l.entry.playerId)}
-                            </Txt>
-                            <ClubTag club={l.entry.clubId ? data.clubs.get(l.entry.clubId) : null} short />
-                          </View>
-                          <Txt tone="muted" style={{ fontSize: 14, fontVariant: ['tabular-nums'] }}>
-                            {swimTime(l.entry.seed)}
-                          </Txt>
-                        </>
-                      ) : (
-                        <Txt tone="faint" style={{ flex: 1, fontSize: 14 }}>
-                          Libre
-                        </Txt>
-                      )}
-                    </View>
-                  );
-                })}
-              </Card>
-            ))}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 /**
- * Resultados por prueba y categoría: el puesto, el nadador (tú, resaltado), su club y el tiempo con sus puntos (DQ, DNS
- * y DNF al final, sin puesto). Con más de 2 pruebas, «Todas las pruebas ▾» para ver una.
+ * Resultados por prueba y categoría: cada prueba con su título y compartir, y cada categoría con el puesto, el nadador
+ * (tú, resaltado), su club y el tiempo con sus puntos (DQ, DNS y DNF al final, sin puesto). Con más de 2 pruebas,
+ * «Todas las pruebas ▾» para ver una.
  */
 export function ResultsPanel({ data }: { data: MeetData }) {
   const c = useColors();
@@ -157,7 +65,10 @@ export function ResultsPanel({ data }: { data: MeetData }) {
       )}
       {shown.map(({ ev, groups }) => (
         <View key={ev.id} style={{ gap: 10 }}>
-          <SectionHeader title={raceTitle(ev)} />
+          <SectionHeader
+            title={raceTitle(ev)}
+            action={<ShareIconButton label={`Compartir los resultados de ${raceName(ev)}`} path={`/l/${lid}/e/${meet.id}?ver=resultados`} card={() => raceShare(data, ev, groups)} />}
+          />
           {groups.map((g) => (
             <Card key={g.key} padded={false}>
               <CardLabel>{`${GENDER_LABEL[g.gender]} · ${groupLabel(g.ageGroup)}`}</CardLabel>
@@ -212,7 +123,16 @@ export function ScoresPanel({ data }: { data: MeetData }) {
   }
   return (
     <View style={{ gap: 26 }}>
-      <ClubPointsCard rows={s.clubs} clubs={clubs} caption={`Por puesto: ${meet.points.join('-')}. En un empate se reparten.${meet.finalizedAt ? '' : ' Provisional hasta finalizar.'}`} />
+      <ClubPointsCard
+        rows={s.clubs}
+        clubs={clubs}
+        caption={`Por puesto: ${meet.points.join('-')}. En un empate se reparten.${meet.finalizedAt ? '' : ' Provisional hasta finalizar.'}`}
+        action={
+          s.clubs.length > 0 ? (
+            <ShareIconButton label="Compartir los puntos por club" path={`/l/${data.lid}/e/${meet.id}?ver=puntos`} card={() => meetPointsShare(meet, s.clubs, clubs)} />
+          ) : undefined
+        }
+      />
       <MedalsCard rows={s.medals} clubs={clubs} />
     </View>
   );

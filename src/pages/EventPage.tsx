@@ -56,6 +56,7 @@ import { RosterTab } from '../components/event/RosterTab';
 import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
 import { LanesPanel } from '../components/lanes/LanesPanel';
+import { EVENT_DELETED, EVENT_SETTINGS_HINT, canPublishEvent, deleteEventConfirm, deleteEventLabel, eventSettingsLabel, publishableScores } from '../components/event/eventActions';
 import type { Entry } from '../lib/types';
 import { dispatchLeague, SportRoute } from '../sports/screens';
 import { shareOrigin } from '../lib/origin';
@@ -227,16 +228,11 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   async function remove() {
     setMenu(false);
-    const ok = await confirm({
-      title: `¿Eliminar ${eventLabel(ev)}?`,
-      message: 'Se borran sus inscritos, equipos, juegos, fotos y envíos pendientes. No se puede deshacer.',
-      confirmText: 'Eliminar',
-      danger: true,
-    });
+    const ok = await confirm(deleteEventConfirm(eventLabel(ev)));
     if (!ok) return;
     setEditing(false);
     navigate(standalone ? `${base}/admin?tab=liga` : back);
-    await run(() => deleteEvent(lid, ev.id), 'Evento eliminado');
+    await run(() => deleteEvent(lid, ev.id), EVENT_DELETED);
   }
 
   async function exportExcel() {
@@ -281,8 +277,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
 
   // Tus juegos de este evento como publicación: si eres miembro de una liga sin menores y ya anotaste alguno.
   const shareTarget = leagueShareTarget(ctx);
-  const myScores = mine ? mine.scores.filter((s): s is number => s != null) : [];
-  const canPublish = !!shareTarget && !!mine && myScores.length > 0;
+  const myScores = publishableScores(mine);
+  const canPublish = canPublishEvent(shareTarget, mine);
 
   const menuItems: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir', hint: 'Manda el link del evento', onClick: share, busy: sharing.isBusy() },
@@ -365,14 +361,14 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           {
             key: 'ajustes',
             icon: Settings,
-            label: isTorneo ? 'Ajustes del torneo' : 'Ajustes de la práctica',
-            hint: 'Fecha, juegos y más',
+            label: eventSettingsLabel(isTorneo),
+            hint: EVENT_SETTINGS_HINT,
             onClick: () => {
               setMenu(false);
               setEditing(true);
             },
           },
-          { key: 'eliminar', icon: Trash2, label: `Eliminar ${isTorneo ? 'torneo' : 'práctica'}`, onClick: () => void remove(), danger: true },
+          { key: 'eliminar', icon: Trash2, label: deleteEventLabel(isTorneo), onClick: () => void remove(), danger: true },
         ]
       : []),
   ];
@@ -567,7 +563,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       <NoticeSlot className="mt-4" />
 
       <EventMenu open={menu} onClose={() => setMenu(false)} title={title} items={menuItems} />
-      {canPublish && (
+      {canPublish && mine && (
         <PublishGameSheet
           open={publishing}
           onClose={() => setPublishing(false)}

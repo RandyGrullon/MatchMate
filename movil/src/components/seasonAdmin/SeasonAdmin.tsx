@@ -8,18 +8,17 @@ import type { Season } from '@mm/lib/seasons';
 import { leagueSport } from '@mm/sports/registry';
 import { seasonCopiesTeams, seasonsOverview } from '@mm/components/season/adminLogic';
 import { Button, Card, Empty, LoadError, Loading, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
-import { CloseSeason, closesOnPhone } from './CloseSeason';
+import { CloseSeason } from './CloseSeason';
 import { SeasonHead } from './parts';
 import { StartSeasonSheet } from './StartSeasonSheet';
 
 /**
  * Organizar › Temporada (SeasonAdmin de la web, con su misma lógica; todas las ligas, no los torneos sueltos): la
  * temporada en curso con sus fechas, «Cerrar temporada» (la tabla final, los premios propuestos que se pueden cambiar
- * y el aviso a la liga), «Nueva temporada» y «Corregir premios» de la última cerrada. En raqueta, cerrar y corregir
- * abren la web (CloseSeason.tsx). Va dentro de LeagueScope.
+ * y el aviso a la liga), «Nueva temporada» y «Corregir premios» de la última cerrada, con la tabla de cada deporte
+ * (CloseSeason.tsx). Va dentro de LeagueScope.
  */
 export function SeasonAdmin() {
   const c = useColors();
@@ -31,7 +30,7 @@ export function SeasonAdmin() {
   const list = seasons.data;
   const { active, lastClosed } = seasonsOverview(list);
   const teamSport = seasonCopiesTeams(sport);
-  const close = (s: Season) => (closesOnPhone(sport) ? setClosing(s) : void openOnWeb(`/l/${lid}/admin?tab=temporada`));
+  const close = (s: Season) => setClosing(s);
 
   return (
     <View style={{ gap: 16 }}>

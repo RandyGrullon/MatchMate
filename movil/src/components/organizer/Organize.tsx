@@ -29,7 +29,6 @@ import { leagueSport, sportMeta } from '@mm/sports/registry';
 import { leagueOwnTabs, useLeagueRowItems, useToDoItems, useToDoSummary } from '@mm/components/organizer/hubData';
 import { type LeagueRowItem, type LeagueRowKind, type ToDoItem, type ToDoKind } from '@mm/components/organizer/hubLogic';
 import { openLink } from '@/lib/links';
-import { openOnWeb } from '@/lib/web';
 import { ScorersSheet } from '@/components/scorers/ScorersSheet';
 import { Card, Divider, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
@@ -132,9 +131,8 @@ function LeagueSection({ toDo }: { toDo: readonly ToDoItem[] }) {
   const rows = useLeagueRowItems(toDo, own);
   const [scorers, setScorers] = useState(false);
   const open = (r: LeagueRowItem) => {
-    // Las pantallas propias de los otros deportes (Equipos, Campos, Nadadores, Parejas…) todavía son de la web.
-    if (r.kind === 'own' && !own.bowling) void openOnWeb(`/l/${lid}/admin?tab=${r.tab}`);
-    else if (r.tab) openLink(`/l/${lid}/admin?tab=${r.tab}`);
+    // Las pantallas que la app tiene (links.ts, ADMIN_SCREENS) se abren aquí; las demás, en la web.
+    if (r.tab) openLink(`/l/${lid}/admin?tab=${r.tab}`);
     // Anotadores abre su hoja aquí mismo.
     else setScorers(true);
   };

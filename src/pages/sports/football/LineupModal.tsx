@@ -9,12 +9,10 @@ import { rosterOf, teamColor } from '../team/logic';
 import { Jersey, RsvpBadge } from '../team/TeamBits';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { REASON_TEXT } from './bits';
+import { changedSides, lineupEntries, lineupStart, toggleKeeper, toggleStarter, type LineupSide } from './lineup';
 
-export interface LineupSide {
-  /** Titulares (los que arrancan en la cancha). */
-  starters: string[];
-  goalkeeper: string | null;
-}
+// La lógica está en lineup.ts (la comparte la app del teléfono).
+export type { LineupSide } from './lineup';
 
 /**
  * Alineación de cada lado: titulares (hasta los que van en la cancha) y el portero. Cuenta como partido jugado para
@@ -57,17 +55,9 @@ export function LineupModal({
   // Al abrir: lo que ya tiene el acta; si no hay, los que dijeron «Voy» (hasta los que caben) y el portero de la plantilla.
   useEffect(() => {
     if (!open) return;
-    const start = ([0, 1] as const).map((i): LineupSide => {
-      if (current[i].starters.length) return { starters: [...current[i].starters], goalkeeper: current[i].goalkeeper };
-      const yes = rsvps.data.filter((r) => r.matchId === m.id && r.side === i + 1 && r.status === 'yes').map((r) => r.playerId);
-      const gk = rosters[i].find((r) => /^(gk|portero|arquero)$/i.test(r.position ?? '') && yes.includes(r.playerId))?.playerId ?? null;
-      return { starters: yes.slice(0, players), goalkeeper: gk };
-    }) as [LineupSide, LineupSide];
-    setPicked(start);
-    setExtras([
-      start[0].starters.filter((id) => !rosters[0].some((r) => r.playerId === id)),
-      start[1].starters.filter((id) => !rosters[1].some((r) => r.playerId === id)),
-    ]);
+    const start = lineupStart(current, rsvps.data, m.id, rosters, players);
+    setPicked(start.picked);
+    setExtras(start.extras);
     // Solo al abrir (las respuestas que lleguen después no pisan lo que el anotador ya tocó).
   }, [open]);
 
@@ -92,28 +82,16 @@ export function LineupModal({
       return out;
     });
   const toggle = (id: string) => {
-    if (mine.starters.includes(id)) update({ starters: mine.starters.filter((x) => x !== id), goalkeeper: mine.goalkeeper === id ? null : mine.goalkeeper });
-    else if (!full) update({ ...mine, starters: [...mine.starters, id] });
+    const next = toggleStarter(mine, id, players);
+    if (next !== mine) update(next);
   };
   const setKeeper = (id: string) => {
-    const starters = mine.starters.includes(id) ? mine.starters : full ? mine.starters : [...mine.starters, id];
-    if (!starters.includes(id)) return;
-    update({ starters, goalkeeper: mine.goalkeeper === id ? null : id });
+    const next = toggleKeeper(mine, id, players);
+    if (next !== mine) update(next);
   };
 
   const save = () => {
-    ([0, 1] as const).forEach((k) => {
-      const ids = new Set(rosters[k].map((r) => r.playerId));
-      const lu = picked[k];
-      const entries: PlayerDraft[] = lu.starters.map((pid) => ({
-        playerId: pid,
-        jersey: rosters[k].find((r) => r.playerId === pid)?.jersey ?? null,
-        position: pid === lu.goalkeeper ? 'GK' : 'titular',
-        sub: !ids.has(pid),
-      }));
-      const same = JSON.stringify(lu) === JSON.stringify(current[k]);
-      if (!same) onSave((k + 1) as Side, lu, entries);
-    });
+    for (const side of changedSides(picked, current)) onSave(side, picked[side - 1], lineupEntries(picked[side - 1], rosters[side - 1]));
     onClose();
   };
 

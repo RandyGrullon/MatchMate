@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { CalendarPlus, Plus } from 'lucide-react';
 import { saveLeagueRules } from '../../../lib/data/teamSports';
-import { basketballConfig, type BasketballConfig } from '../../../sports/team/basketball';
+import type { BasketballConfig } from '../../../sports/team/basketball';
 import { useBusy } from '../../../components/busy';
 import { useAction, useFeedback } from '../../../components/feedback';
 import { Button, Field, Input, Select, SectionHeader } from '../../../components/ui';
 import { AdminActions, AdminSegmented, SettingsCard, TemplateRows, ToggleRow, useAdminPart } from '../team/AdminParts';
 import { OfficialsList } from '../team/OfficialsList';
 import { ScheduleBuilder, SingleMatchModal } from '../team/ScheduleBuilder';
+import { basketballDraftOf, basketballNum, basketballRulesPatch, periodsNote, type BasketballDraft } from '../team/rulesAdmin';
 import { TeamsManager } from '../team/TeamsManager';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { BASKETBALL_POSITIONS } from './bits';
-import { BASKETBALL_TEMPLATES, basketballConfigFrom, basketballTeamRules, describeConfig, templateOf, templateRules, type BasketballTemplateId } from './rules';
+import { BASKETBALL_TEMPLATES, basketballConfigFrom, describeConfig, templateOf, templateRules, type BasketballTemplateId } from './rules';
 
 type Part = 'equipos' | 'partidos' | 'reglas';
 const PARTS: readonly { key: Part; label: string }[] = [
@@ -72,15 +73,12 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const busy = useBusy<BasketballTemplateId | 'guardar'>();
   const current = tl.rules.data;
   const cfg = basketballConfigFrom(current);
-  const teams = basketballTeamRules(current);
   const tpl = templateOf(current);
-  const [draft, setDraft] = useState<{ cfg: BasketballConfig; reinforcements: number; minPlayers: number; runningClock: boolean } | null>(null);
-  const d = draft ?? { cfg, reinforcements: teams.reinforcements, minPlayers: teams.minPlayers, runningClock: teams.runningClock };
+  const [draft, setDraft] = useState<BasketballDraft | null>(null);
+  const d = draft ?? basketballDraftOf(current);
   const setCfg = (patch: Partial<BasketballConfig>) => setDraft({ ...d, cfg: { ...d.cfg, ...patch } });
-  const num = (v: string, min: number, max: number, dflt: number) => {
-    const n = Number(v);
-    return Number.isInteger(n) && n >= min && n <= max ? n : dflt;
-  };
+  const num = basketballNum;
+  const note = periodsNote(d.cfg, cfg);
 
   const applyTemplate = async (id: BasketballTemplateId) => {
     const t = BASKETBALL_TEMPLATES.find((x) => x.id === id)!;
@@ -99,10 +97,7 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
   const save = () =>
     busy.run('guardar', () =>
       run(async () => {
-        await saveLeagueRules(tl.lid, {
-          match: d.cfg,
-          teams: { reinforcements: d.reinforcements, minPlayers: d.minPlayers, runningClock: d.runningClock, template: null },
-        });
+        await saveLeagueRules(tl.lid, basketballRulesPatch(d));
         setDraft(null);
       }, 'Reglas guardadas'),
     );
@@ -151,12 +146,7 @@ function RulesAdmin({ tl }: { tl: TeamLeague }) {
             Reloj corrido (no se para en cada falta)
           </ToggleRow>
         </div>
-        {d.cfg.variant === '5x5' && d.cfg.periods !== cfg.periods && (
-          <p className="text-[13px] text-muted">
-            Con {d.cfg.periods === 2 ? '2 mitades' : `${d.cfg.periods} periodos`}, las faltas de equipo se cuentan por periodo. FIBA usa 4 cuartos (
-            {describeConfig(basketballConfig('fiba'))}).
-          </p>
-        )}
+        {note && <p className="text-[13px] text-muted">{note}</p>}
       </SettingsCard>
 
       <div className="flex flex-col gap-2.5">

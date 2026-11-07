@@ -1,30 +1,34 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Medal } from 'lucide-react-native';
 import { useSwimSeason } from '@mm/lib/data/swimming';
-import { useLeagueSeasons } from '@mm/lib/data/seasons';
-import { currentSeason, inSeason } from '@mm/lib/seasons';
+import { inSeason } from '@mm/lib/seasons';
 import { useNow } from '@mm/lib/useNow';
 import { clubsOfMeet, pointsText, seasonTable, seasonYears } from '@mm/pages/sports/swimming/logic';
+import { seasonPointsShare } from '@mm/pages/sports/swimming/share';
 import { clubMap, meetTitle, useSwim } from '@mm/pages/sports/swimming/swim';
 import { DateBlock } from '@/components/DateBlock';
+import { ClosedSeasonView, SeasonBar, useSeasonPick } from '@/components/team/standings/parts';
 import { Badge, Empty, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { ClubPointsCard, ClubTag, Lines, PillPicker, ShowMore, openMeet } from './parts';
+import { ShareIconButton } from './ShareImage';
 
 /**
- * Puntos por club de la temporada (StandingsPage de la web, Lite): la temporada de ahora (sin temporadas, por año con
- * «2026 ▾»), los clubes por puntos con sus medallas y lo que sumó cada encuentro (el control de marcas no cuenta). La
- * misma lógica de la web (seasonTable). Otras temporadas, las cerradas y compartir la imagen, en la web.
+ * Puntos por club de la temporada (StandingsPage de la web, Lite): el título con compartir la imagen, la temporada
+ * (`?temporada=`; sin temporadas, por año con «2026 ▾»), los clubes por puntos con sus medallas y lo que sumó cada
+ * encuentro (el control de marcas no cuenta). Una temporada cerrada muestra sus premios y la tabla que se guardó al
+ * cerrarla. La misma lógica de la web (seasonTable).
  */
 export function SwimStandings() {
   const c = useColors();
-  const { lid, clubs } = useSwim();
+  const { lid, clubs, league } = useSwim();
+  const params = useLocalSearchParams<{ temporada?: string }>();
   const season = useSwimSeason(lid);
-  const seasons = useLeagueSeasons(lid);
-  // Como la web sin ?temporada=: la temporada de ahora.
-  const sel = currentSeason(seasons.data);
+  const picked = useSeasonPick(params.temporada ?? null);
+  const sel = picked.selected;
   const years = useMemo(() => seasonYears(season.data), [season.data]);
   const [year, setYear] = useState<string | null>(null);
   const thisYear = String(useNow().getFullYear());
@@ -35,17 +39,30 @@ export function SwimStandings() {
   return (
     <View style={{ gap: 12 }}>
       <View style={{ gap: 6 }}>
-        <Txt variant="title" accessibilityRole="header">
-          Puntos
-        </Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Txt variant="title" accessibilityRole="header">
+            Puntos
+          </Txt>
+          {!picked.closed && !season.loading && table.clubs.length > 0 && (
+            <ShareIconButton
+              round
+              label="Compartir los puntos"
+              path={`/l/${lid}/ranking${sel ? `?temporada=${encodeURIComponent(sel.id)}` : ''}`}
+              card={() => seasonPointsShare({ leagueName: league.name, shown: shownYear, withSeasons: !!sel, table, clubs: byId })}
+            />
+          )}
+        </View>
         <Txt variant="meta" tone="muted">
           Lo que suma cada club en los encuentros de la temporada
         </Txt>
       </View>
       {!sel && years.length > 1 && <PillPicker label="Temporada" options={years.map((y) => ({ key: y, label: y }))} value={shownYear} onChange={setYear} />}
+      <SeasonBar pick={picked} />
 
       <View style={{ marginTop: 8 }}>
-        {season.error ? (
+        {picked.closed ? (
+          <ClosedSeasonView season={picked.closed} />
+        ) : season.error ? (
           <LoadError error={season.error} />
         ) : season.loading && !season.data.meets.length ? (
           <Loading label="Cargando los puntos" />

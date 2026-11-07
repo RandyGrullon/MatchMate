@@ -5,10 +5,10 @@ import { setSubmissionScan, submitGames } from '../lib/data';
 import { getUserId } from '../lib/data/client';
 import { isPracticeClosed, PRACTICE_CLOSED_TEXT } from '../lib/data/events';
 import { clearSent, draftCount, latestDraft, loadDraft, restoreDraft, saveDraft } from '../lib/draft';
-import { eventTitle, parseDate, toIsoDate } from '../lib/format';
+import { eventTitle, toIsoDate } from '../lib/format';
 import type { CompressedImage } from '../lib/image';
 import { useLeagueCtx } from '../lib/league';
-import { leagueClock, practiceClosed } from '../lib/live';
+import { leagueClock } from '../lib/live';
 import { rowFor } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
 import { isValidScore } from '../lib/stats';
@@ -21,19 +21,13 @@ import { ScoreEntryModal } from './frames/ScoreEntryModal';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
 import { Button, Field, Input, Modal, Select, Spinner, cx } from './ui';
+import { BY_DATE, BY_DATE_LABEL, byDateCheck, byDateHint, openingEventId, padded, submitEventChoices } from './submitGames';
 
-/** Opción para subir juegos de un día sin evento creado. */
-const BY_DATE = '__fecha__';
 /** Cuánto se espera la respuesta del servidor antes de dar el envío por guardado (sin señal). */
 const OFFLINE_WAIT_MS = 6000;
 
 /** set_game_balls anota la bola hasta el juego 10 (claves 0 a 9): de ahí en adelante no se elige ni se manda. */
 const BALL_GAMES = 10;
-
-/** Juegos del borrador con al menos los del evento (J1…Jn). */
-function padded(values: string[] | undefined, games = 3): string[] {
-  return Array.from({ length: Math.max(games, values?.length ?? 0) }, (_, i) => values?.[i] ?? '');
-}
 
 /**
  * Las bolas al elegir la de un juego: ese juego queda con la elegida; los que siguen y ya tienen pinos se quedan con la
@@ -79,21 +73,18 @@ export function SubmitGamesModal({
 
   // Una práctica se anota hasta el final del día siguiente (en la zona de la liga); después solo el admin. Por fecha, igual.
   const leagueToday = leagueClock(league, new Date()).date;
-  const recent = useMemo(() => {
-    const cutoff = Date.now() - 120 * 86400_000;
-    const open = (e: BowlingEvent) => isAdmin || e.type !== 'practica' || !practiceClosed(e.date, leagueToday);
-    return events.filter((e) => open(e) && (parseDate(e.date).getTime() >= cutoff || myEntries.some((m) => m.eventId === e.id) || e.id === preferEventId));
-  }, [events, myEntries, preferEventId, leagueToday, isAdmin]);
+  const recent = useMemo(
+    () => submitEventChoices({ events, myEntries, preferEventId, leagueToday, isAdmin, now: Date.now() }),
+    [events, myEntries, preferEventId, leagueToday, isAdmin],
+  );
 
   const today = toIsoDate(new Date());
   /** Con qué se abre: el evento pedido; si no, donde se quedó el último borrador; si no, el más reciente que ya se jugó (o por fecha). */
   function opening() {
     const preferred = preferEventId ? recent.find((e) => e.id === preferEventId) : undefined;
     const last = preferred ? null : latestDraft(lid, player.id);
-    const ev =
-      preferred ??
-      (last?.eventId === BY_DATE ? undefined : (recent.find((e) => e.id === last?.eventId) ?? recent.find((e) => e.date <= today)));
-    const id = ev?.id ?? BY_DATE;
+    const id = openingEventId(recent, { preferEventId, lastDraftEventId: last?.eventId, today });
+    const ev = recent.find((e) => e.id === id);
     const d = loadDraft(lid, player.id, id);
     return { id, date: id === BY_DATE ? (d?.date ?? today) : today, values: padded(d?.values, ev?.games), frames: d?.frames ?? {}, balls: d?.balls ?? {} };
   }
@@ -137,8 +128,9 @@ export function SubmitGamesModal({
 
   const byDate = eventId === BY_DATE;
   const event = recent.find((e) => e.id === eventId);
-  // Si ese día ya hay práctica o torneo, se avisa: el admin lo pondrá ahí.
-  const sameDay = byDate ? events.find((e) => e.date === date) : undefined;
+  // «Otro día»: si ese día ya hay práctica o torneo, se avisa (el admin lo pondrá ahí); quien no es admin, hasta ayer.
+  const dateCheck = byDateCheck({ date, today, leagueToday, isAdmin, events });
+  const sameDay = byDate ? dateCheck.sameDay : undefined;
 
   useEffect(() => {
     if (!open) {
@@ -348,10 +340,9 @@ export function SubmitGamesModal({
     }
   }
 
-  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
   // Por fecha, quien no es admin envía hasta los de ayer (después la base responde `cerrado`).
-  const dateClosed = byDate && !isAdmin && validDate && practiceClosed(date, leagueToday);
-  const dateOk = !byDate || (validDate && date <= today && !dateClosed);
+  const dateClosed = byDate && dateCheck.closed;
+  const dateOk = !byDate || dateCheck.ok;
   // El botón de cada juego abre por cuadros o pino por pino (la forma preferida; el total se escribe en la casilla).
   const byPins = framesMode() === 'pines';
   // No se espera a que se lea la foto: se comprueba sola en segundo plano.
@@ -380,19 +371,13 @@ export function SubmitGamesModal({
                   {eventTitle(e)}
                 </option>
               ))}
-              <option value={BY_DATE}>Otro día (elegir fecha)</option>
+              <option value={BY_DATE}>{BY_DATE_LABEL}</option>
             </Select>
           </Field>
           {byDate && (
             <Field
               label="¿Qué día jugaste?"
-              hint={
-                dateClosed
-                  ? 'Ese día ya cerró: tú envías los juegos de hoy o de ayer. Para otro día, pídeselo al admin.'
-                  : sameDay
-                    ? `Ese día hay ${eventTitle(sameDay)}; el admin pondrá tus juegos ahí.`
-                    : 'El admin pondrá tus juegos en la práctica de ese día (se crea si no existe).'
-              }
+              hint={byDateHint(dateClosed, sameDay ? eventTitle(sameDay) : null)}
             >
               <Input type="date" max={today} required value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>

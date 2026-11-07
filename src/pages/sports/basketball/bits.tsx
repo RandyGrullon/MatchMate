@@ -2,14 +2,14 @@ import { useMemo, type ReactNode } from 'react';
 import type { Match } from '../../../lib/data/matches';
 import { useServerOffset } from '../../../lib/data/teamSports';
 import { formatClock } from '../../../sports/team/clock';
-import { twoNumbersParser } from '../../../components/match';
 import { Card, cx } from '../../../components/ui';
 import { useTicker } from '../team/ScorerPieces';
 import { decodeLines, liveClockMs, liveFromScore, periodsFromScore } from './adapter';
+import { boxRows, periodHeader } from './matchView';
 import type { TeamLeague } from '../team/useTeamLeague';
 
-/** Lector de «solo resultado» del baloncesto: «78-72» (sin empates). */
-export const basketballParser = twoNumbersParser({ allowDraw: false, max: 300, unit: 'puntos' });
+/** Lector de «solo resultado» del baloncesto: «78-72» (sin empates; puro en ./matchView). */
+export { basketballParser } from './matchView';
 
 /** Posiciones del baloncesto para la plantilla. */
 export { BASKETBALL_POSITIONS } from '../../../components/players/positions';
@@ -55,7 +55,7 @@ const TH = 'py-3 text-[11px] font-bold tracking-[0.05em] text-muted uppercase';
 export function PeriodsTable({ match: m, names, periodsPerGame, title }: { match: Pick<Match, 'score'>; names: [string, string]; periodsPerGame: number; title?: ReactNode }) {
   const periods = periodsFromScore(m.score);
   if (periods.length < 2) return null;
-  const label = (i: number) => (i >= periodsPerGame ? `Pr.${i - periodsPerGame > 0 ? i - periodsPerGame + 1 : ''}` : periodsPerGame === 2 ? `${i + 1}T` : `${i + 1}C`);
+  const label = (i: number) => periodHeader(i, periodsPerGame);
   return (
     <>
       {title}
@@ -105,7 +105,7 @@ export function BoxScore({ tl, match: m, full }: { tl: TeamLeague; match: Match;
   return (
     <div className="grid gap-3.5 sm:grid-cols-2">
       {m.sides.map((sd) => {
-        const rows = lines.filter((l) => l.side === sd.side).sort((a, b) => b.points - a.points);
+        const rows = boxRows(lines, sd.side);
         if (!rows.length) return null;
         return (
           <Card key={sd.side} className="overflow-hidden">

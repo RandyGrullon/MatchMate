@@ -25,6 +25,10 @@ const ADMIN_SCREENS: Record<string, string> = {
   insignias: 'insignias',
   confirmar: 'confirmar',
   reportes: 'reportes',
+  nadadores: 'nadadores',
+  clubes: 'clubes',
+  parejas: 'parejas',
+  campos: 'campos',
 };
 
 /** La pantalla de la app para una dirección de la web (con su ?…), o null si la app no la tiene. */
@@ -50,14 +54,24 @@ export function appRoute(href: string): string | null {
   // Los equipos de un torneo (?tab=equipos, también «Armar equipos» de Por hacer).
   const evTeams = /^\/l\/([^/]+)\/e\/([^/]+)$/.exec(path);
   if (evTeams && /[?&]tab=equipos(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/equipos`;
+  // La Planilla (?tab=juegos, también el botón «planilla» de Hoy) y las Pistas del evento (a quien no anota, al evento).
+  if (evTeams && /[?&]tab=juegos(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/planilla`;
+  if (evTeams && /[?&]tab=pistas(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/pistas`;
   // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
   // Un juego de boliche (el «Ver» de Social, el aviso «le gustó tu juego»): su detalle está en la web.
   if (/^\/l\/[^/]+\/juegos$/.test(path) && /[?&]juego=/.test(query)) return null;
   // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
+  // La mesa anotadora de un partido de equipos (`/l/<liga>/juegos?partido=…&mesa=1`).
+  const tbl = /^\/l\/([^/]+)\/juegos$/.exec(path);
+  const tblMatch = /[?&]partido=([^&]+)/.exec(query)?.[1];
+  if (tbl && tblMatch && /[?&]mesa=1(&|$)/.test(query)) return `/l/${tbl[1]}/mesa/${tblMatch}`;
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
   if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}${query}`;
   if (/^\/l\/[^/]+\/(muro|perfil|temporadas)$/.test(path)) return path;
+  // Los playoffs de equipos y la página de un jugador.
+  if (/^\/l\/[^/]+\/playoffs$/.test(path)) return path + query;
+  if (/^\/l\/[^/]+\/j\/[^/]+$/.test(path)) return path;
   // En vivo de la liga (con su ?s=<transmisión>).
   if (/^\/l\/[^/]+\/vivo$/.test(path)) return path + query;
   if (/^\/p\/[^/]+$/.test(path)) return path;
@@ -97,7 +111,9 @@ export function appRoute(href: string): string | null {
     const adminTab = /[?&]tab=([^&]+)/.exec(query)?.[1];
     const screen = adminTab ? ADMIN_SCREENS[adminTab] : undefined;
     if (!adminTab || adminTab === 'pendientes') return `/organizar?liga=${admin[1]}`;
-    return screen ? `/l/${admin[1]}/${screen}` : null;
+    // Con su ?parte= (Organizar › Equipos: Equipos · Partidos · Reglas · Comité).
+    const parte = /[?&]parte=([^&]+)/.exec(query)?.[1];
+    return screen ? `/l/${admin[1]}/${screen}${parte ? `?parte=${parte}` : ''}` : null;
   }
   // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);

@@ -6,33 +6,21 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { Button, Card, Field, Input, ListRow, RowIcon, Sheet, cx } from '../../../../components/ui';
 import { EventIcon, PickList, Stepper, ToggleRow, eventTypeInfo } from '../bits';
-import { parseLeagueConfig, leagueConfigJson } from '../logic/league';
-import { NIGHT_MAX_PLAYERS, newNightConfig, nightConfigJson, parseNightConfig, suggestRounds, type NightConfig, type NightFormat } from '../logic/night';
+import { NIGHT_MAX_PLAYERS, newNightConfig, parseNightConfig, suggestRounds, type NightConfig, type NightFormat } from '../logic/night';
 import { signupCap, type SignupSettings } from '../logic/signup';
-import { CATEGORY_IDS, newCategory, tourneyConfigJson, type TourneyConfig } from '../logic/tourney';
+import { CATEGORY_IDS } from '../logic/tourney';
 import { todayIn } from '../logic/time';
 import { useLevels } from '../levels';
 import { useNames } from '../names';
 import { NightFields, NightPlayers } from '../night/NightForm';
 import { SignupFields } from '../signup/SignupFields';
 import { useRacket, type WizardTemplate } from '../sport';
+import { builtInTemplates, canRepeatNight, defaultName, wizardConfig, type WizardKind } from './wizard';
 
-type Kind = 'americano' | 'mexicano' | 'liga' | 'torneo';
+type Kind = WizardKind;
 
-const weekday = (date: string) => {
-  const [y, m, d] = date.split('-').map(Number);
-  if (!y || !m || !d) return '';
-  return new Intl.DateTimeFormat('es-DO', { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
-};
-
-/** Nombre por defecto: «Americano del jueves», «Liga de parejas», «Torneo de octubre». */
-export function defaultName(kind: Kind, date: string, doubles: boolean): string {
-  if (kind === 'americano' || kind === 'mexicano') return `${eventTypeInfo(kind).label} del ${weekday(date)}`;
-  if (kind === 'liga') return doubles ? 'Liga de parejas' : 'Liga';
-  const [y, m] = date.split('-').map(Number);
-  const month = y && m ? new Intl.DateTimeFormat('es-DO', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1))) : '';
-  return `Torneo de ${month}`;
-}
+// El nombre por defecto, las plantillas y la configuración que se guarda están en wizard.ts (los usa también la app).
+export { defaultName };
 
 /**
  * «Nuevo»: plantillas del deporte (Americano de la noche, Mexicano, Liga de parejas, Torneo por categorías, y las
@@ -107,24 +95,7 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
     if (!kind) return;
     setBusy(true);
     try {
-      let config: Record<string, unknown>;
-      if (kind === 'americano' || kind === 'mexicano') {
-        const lv: Record<string, number> = {};
-        for (const p of night.players) if (levels[p] != null) lv[p] = levels[p];
-        config = nightConfigJson({ ...night, format: kind, levels: lv, seed: `noche:${Date.now().toString(36)}`, ...(signup?.open ? { signup } : {}) });
-      } else if (kind === 'liga') {
-        config = leagueConfigJson(parseLeagueConfig({ pairs, double, startDate: date, times: [time], everyDays: 7, minutes: 90 }, date));
-      } else {
-        const t: TourneyConfig = {
-          v: 1,
-          format: 'torneo',
-          categories: CATEGORY_IDS.slice(0, cats).map((id) => ({ ...newCategory(id), pairs: cats === 1 ? pairs : [] })),
-          courts: [],
-          points: 'standard',
-          ...(signup?.open ? { signup } : {}),
-        };
-        config = tourneyConfigJson(t);
-      }
+      const config = wizardConfig(kind, { night, levels, signup, pairs, double, date, time, cats, seed: `noche:${Date.now().toString(36)}` });
       const id = await createRacketEvent(lid, { type: kind, name: title, date, startTime: time || null, config });
       toast('Listo');
       onClose();
@@ -151,21 +122,10 @@ export function EventWizard({ open, onClose, lastNight }: { open: boolean; onClo
     setNight((c) => (c.rounds === suggestRounds(c.format, before, c.courts.length) ? { ...c, rounds: suggestRounds(c.format, after, c.courts.length) } : c));
   };
 
-  const builtIn: { k: Kind; title: string; text: string }[] = [
-    ...(doubles
-      ? [
-          { k: 'americano' as const, title: 'Americano de la noche', text: 'Las parejas rotan cada ronda y cada quien suma sus puntos. La app arma las rondas.' },
-          { k: 'mexicano' as const, title: 'Mexicano', text: 'Cada ronda se arma con la tabla: 1.º y 4.º contra 2.º y 3.º. Recomendado de 8 jugadores en adelante.' },
-        ]
-      : []),
-    { k: 'liga', title: doubles ? 'Liga de parejas' : 'Liga', text: `Todos contra todos por jornadas, de ida o de ida y vuelta, con canchas, horas y tabla.` },
-    { k: 'torneo', title: 'Torneo por categorías', text: 'Categorías A, B, C…: grupos por nivel, cruces y cuadro con 3.er lugar.' },
-  ];
   // Lo que agrega el deporte: esconde plantillas, les cambia el nombre y suma las suyas.
-  const titles = ext.templateTitles?.(doubles) ?? {};
-  const templates = builtIn.filter((t) => !ext.hideTemplates?.includes(t.k)).map((t) => ({ ...t, ...titles[t.k] }));
+  const templates = builtInTemplates(doubles, ext);
   const extra = ext.templates ?? [];
-  const canRepeat = !!lastNight && doubles && !ext.hideTemplates?.includes(lastNight.type === 'mexicano' ? 'mexicano' : 'americano');
+  const canRepeat = canRepeatNight(lastNight, doubles, ext);
 
   if (custom) {
     const Form = custom.Form;

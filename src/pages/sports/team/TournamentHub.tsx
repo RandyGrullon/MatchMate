@@ -2,12 +2,12 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { Check, ClipboardPen, FileDown, Shirt, Trophy, Zap } from 'lucide-react';
 import type { Match } from '../../../lib/data/matches';
-import { formatDateLong } from '../../../lib/format';
 import { useNow } from '../../../lib/useNow';
 import { teamKoComp, teamKoComplete } from '../../../prizes/sports';
 import { EventMenu, MoreButton, type MenuItem } from '../../../components/event/EventHeader';
 import { useIsPro } from '../../../components/mode';
 import { Button, Card, Empty, ListRow, ListSkeleton, RowIcon, SectionHeader, Sheet, cx } from '../../../components/ui';
+import { teamsStepLine, tournamentMetaLine } from './calendarAdmin';
 import { TeamDot } from './TeamBits';
 import { KnockoutPrizes, teamReportNames, type KoEvent } from './TeamPrizes';
 import { HistoryBackBar, ReportSheet, ScorersSheet } from './TeamUi';
@@ -99,7 +99,7 @@ export function TournamentHub({
   const comp = teamKoComp(tl.lid, { kind: tl.league.kind ?? 'liga', sport: tl.league.sport ?? 'football', event, leagueName: tl.league.name });
   const reportReady = !loading && !tl.players.loading;
   const finished = step === 'play' && teamKoComplete(matches, now);
-  const meta = ['Torneo relámpago', day ? formatDateLong(day) : null].filter(Boolean).join(' · ');
+  const meta = tournamentMetaLine(day);
 
   const open = (s: 'reporte' | 'anotadores') => {
     setMenu(false);
@@ -270,7 +270,7 @@ function Steps({
         <ListRow
           leading={<StepMark n={1} done={n >= 2} />}
           title="Los equipos"
-          subtitle={n >= 2 ? `${n} equipos listos` : n === 1 ? 'Hay 1: hacen falta al menos 2' : 'Cada uno con su color y su plantilla'}
+          subtitle={teamsStepLine(n)}
           onClick={() => setShowTeams(true)}
           ariaLabel={n ? 'Ver los equipos' : 'Crear los equipos'}
         />

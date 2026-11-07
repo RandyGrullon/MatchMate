@@ -7,6 +7,7 @@ import type { Season } from '../../lib/seasons';
 import { Card, Empty, Position, Tabs, cx } from '../ui';
 import { parseSnapshot, seasonDates, type SeasonSnapshot, type SnapshotTable } from './logic';
 import { SeasonAwardsCard, SeasonSelect, useSeasonParam } from './SeasonSelect';
+import { hasSavedTable } from './standingsSeason';
 
 /**
  * Piezas de la temporada en las tablas de cada deporte (baloncesto, fútbol, raqueta, golf y natación; el ranking del
@@ -15,9 +16,8 @@ import { SeasonAwardsCard, SeasonSelect, useSeasonParam } from './SeasonSelect';
  * también una cerrada sin tabla guardada (las de años de antes de las temporadas, que la base armó sola por año).
  */
 
-/** La temporada cerrada tiene una tabla guardada que mostrar. */
-export const hasSavedTable = (s: Pick<Season, 'status' | 'standings'> | null | undefined): boolean =>
-  !!s && s.status === 'closed' && parseSnapshot(s.standings) != null;
+/** La temporada cerrada tiene una tabla guardada que mostrar (la misma de la app: standingsSeason.ts). */
+export { hasSavedTable };
 
 /**
  * Las temporadas de la liga abierta y la elegida en ?temporada= (o la de ahora). `closed` = la elegida, si está

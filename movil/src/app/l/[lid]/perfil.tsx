@@ -1,12 +1,15 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useLeague } from '@mm/lib/data';
 import { leagueSport } from '@mm/sports/registry';
-import { LeagueScope } from '@/components/league/LeagueScope';
+import { LeagueScope, sportFamily } from '@/components/league/LeagueScope';
+import { RacketMyProfile } from '@/components/racket/RacketProfile';
+import { GolfMyProfile } from '@/components/golf/GolfProfile';
+import { TeamMine } from '@/components/team/TeamScreens';
 import { SwimMyProfile } from '@/components/swimming/SwimProfile';
 import { EsportsMine } from '@/components/esports/EsportsLeague';
 import { BackBar, Loading, Screen } from '@/components/ui';
 
-/** Lo mío en la liga (la pestaña de perfil de la web: «Mis marcas» en natación, «Lo mío» en esports). Lo que la app no tiene: la liga. */
+/** Lo mío en la liga (la pestaña de perfil de la web: «Mis marcas» en natación, «Lo mío» en esports, «Mis partidos» en raqueta). Lo que la app no tiene: la liga. */
 export default function LeagueMineScreen() {
   const { lid } = useLocalSearchParams<{ lid: string }>();
   const league = useLeague(lid);
@@ -28,6 +31,36 @@ export default function LeagueMineScreen() {
         <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
         <LeagueScope lid={lid}>
           <EsportsMine />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (sport === 'basketball' || sport === 'football' || sport === 'futsal') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <TeamMine />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (sport === 'golf') {
+    return (
+      <Screen>
+        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <GolfMyProfile />
+        </LeagueScope>
+      </Screen>
+    );
+  }
+  if (league.data && sportFamily(league.data) === 'racket') {
+    return (
+      <Screen>
+        <BackBar label={league.data.name} fallback={`/l/${lid}`} />
+        <LeagueScope lid={lid}>
+          <RacketMyProfile />
         </LeagueScope>
       </Screen>
     );

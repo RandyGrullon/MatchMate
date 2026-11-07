@@ -1,13 +1,15 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, ClipboardList, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, ClipboardList, UsersRound, Trophy, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
 import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
 import { adminScreenTitle, organizeUrl } from '@mm/components/organizer/hubLogic';
 import { useLeagueToDo } from '@mm/components/league/home/useLeagueData';
+import { racketAdminTab } from '@mm/sports/adminTabs';
+import type { RacketSport } from '@mm/sports/racket';
 import { eventTitle, formatDateLong, toIsoDate } from '@mm/lib/format';
 import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
@@ -208,6 +210,21 @@ export default function LeagueScreen() {
           <Card padded={false}>
             <OrganizeRow lid={l.id} bowling={isBowling} />
             <Divider inset={68} />
+            {/* Raqueta: «Parejas y niveles» también en el inicio, para quien organiza (homeRow de la web). */}
+            {family === 'racket' && (
+              <>
+                <ListRow
+                  icon={
+                    <RowIcon>
+                      <UsersRound size={20} color={c.accent} />
+                    </RowIcon>
+                  }
+                  title={racketAdminTab(sport as RacketSport).label}
+                  onPress={() => router.push(`/l/${l.id}/parejas` as never)}
+                />
+                <Divider inset={68} />
+              </>
+            )}
             {isBowling && l.kind !== 'torneo' && (
               <>
                 <TeamsRow lid={l.id} league={l} />
@@ -300,6 +317,14 @@ export default function LeagueScreen() {
         </>
       ) : sport === 'golf' ? (
         <LeagueScope lid={l.id}>
+          <SportLinks
+            lid={l.id}
+            mine={false}
+            items={[
+              { key: 'tabla', title: 'Orden de mérito', icon: Medal, go: () => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } }) },
+              { key: 'perfil', title: 'Mi golf', icon: Target, go: () => router.push({ pathname: '/l/[lid]/perfil', params: { lid: l.id } }) },
+            ]}
+          />
           <GolfHome />
           <SuggestionBox />
         </LeagueScope>
@@ -332,13 +357,22 @@ export default function LeagueScreen() {
         </LeagueScope>
       ) : family === 'racket' ? (
         <LeagueScope lid={l.id}>
-          <SportLinks lid={l.id} mine={!!membership.data?.playerId} />
+          <SportLinks lid={l.id} mine={!!membership.data?.playerId} mineToProfile />
           <RacketHome />
           <SuggestionBox />
         </LeagueScope>
       ) : family === 'team' ? (
         <LeagueScope lid={l.id}>
-          <SportLinks lid={l.id} mine={!!membership.data?.playerId} mineLabel="Mi equipo" />
+          <SportLinks
+            lid={l.id}
+            mine={false}
+            items={[
+              { key: 'juegos', title: 'Partidos', icon: Swords, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid: l.id } }) },
+              { key: 'tabla', title: 'Tabla', icon: ListOrdered, go: () => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } }) },
+              ...(l.kind !== 'torneo' ? [{ key: 'playoffs', title: 'Playoffs', icon: Trophy, go: () => router.push({ pathname: '/l/[lid]/playoffs' as never, params: { lid: l.id } }) }] : []),
+              { key: 'perfil', title: 'Mi equipo', icon: UserRound, go: () => router.push({ pathname: '/l/[lid]/perfil', params: { lid: l.id } }) },
+            ]}
+          />
           <TeamHome />
           <SuggestionBox />
         </LeagueScope>

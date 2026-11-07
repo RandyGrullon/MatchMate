@@ -1,16 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, ArrowRightLeft, Shuffle, Trophy } from 'lucide-react';
-import { createMatches, setMatchSides, type Match } from '../../../lib/data/matches';
+import { createMatches } from '../../../lib/data/matches';
 import { saveLeagueRules } from '../../../lib/data/teamSports';
 import { toIsoDate } from '../../../lib/format';
 import { seededRandom, shuffle } from '../../../sports/formats/random';
 import { useAction } from '../../../components/feedback';
 import { Button, Card, Field, Input, Select, Sheet, cx } from '../../../components/ui';
-import { isPlayoffMatch } from './playoffs';
-import { isIsoDate, parseCourts } from './schedule';
+import { applyTournamentChanges, changeText, defaultGroups, groupOptions, PER_GROUP_OPTIONS, toggleTeam, tournamentChanges, tournamentPlanOf } from './calendarAdmin';
 import { TeamName } from './TeamBits';
-import { advanceTournament, groupName, planTournament, tournamentDrafts, tournamentErrors, tournamentSetupOf, type SideChange, type TournamentPlan } from './tournament';
+import { tournamentDrafts, tournamentErrors, type TournamentPlan } from './tournament';
 import type { TeamLeague } from './useTeamLeague';
+
+// «Pasar a la fase final» sin pantalla está en calendarAdmin.ts (lo comparte la app del teléfono).
+export { tournamentChanges } from './calendarAdmin';
 
 /**
  * Armar un torneo relámpago (compartido por los deportes de equipo): los equipos, cuántos grupos, cuántos
@@ -41,7 +43,7 @@ export function TournamentBuilder({
   const lastRound = Math.max(0, ...tl.matches.data.map((m) => m.round ?? 0));
   const [picked, setPicked] = useState<string[] | null>(null);
   const [seed, setSeed] = useState(0);
-  const [groups, setGroups] = useState(() => String(teams.length >= 6 ? 2 : 1));
+  const [groups, setGroups] = useState(() => String(defaultGroups(teams.length)));
   const [perGroup, setPerGroup] = useState('2');
   const [third, setThird] = useState(false);
   const [date, setDate] = useState(toIsoDate(new Date()));
@@ -53,7 +55,7 @@ export function TournamentBuilder({
   // Al abrir: 1 grupo con pocos equipos (final entre los 2 primeros), 2 grupos desde 6 (semifinales).
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open && !picked) setGroups(String(teams.length >= 6 ? 2 : 1));
+    if (open && !picked) setGroups(String(defaultGroups(teams.length)));
   }
 
   const base = picked ?? teams.map((t) => t.id);
@@ -62,27 +64,12 @@ export function TournamentBuilder({
   const g = Number(groups);
   const q = Number(perGroup);
   const errors = tournamentErrors({ teams: ids, groups: g, perGroup: q });
-  const plan: TournamentPlan | null = useMemo(() => {
-    if (errors.length || !isIsoDate(date) || !/^\d{2}:\d{2}$/.test(start)) return null;
-    try {
-      return planTournament({
-        teams: ids,
-        groups: g,
-        perGroup: q,
-        thirdPlace: third,
-        date,
-        start,
-        slotMinutes: Math.max(5, Math.min(240, Number(slot) || slotMinutes)),
-        courts: parseCourts(courtsText),
-        tz: tl.tz,
-        firstRound: lastRound + 1,
-      });
-    } catch {
-      return null;
-    }
-  }, [ids.join(), g, q, third, date, start, slot, courtsText, tl.tz, lastRound, errors.length]);
+  const plan: TournamentPlan | null = useMemo(
+    () => tournamentPlanOf({ teams: ids, groups: g, perGroup: q, thirdPlace: third, date, start, slot, slotMinutes, courtsText, tz: tl.tz, firstRound: lastRound + 1 }),
+    [ids.join(), g, q, third, date, start, slot, slotMinutes, courtsText, tl.tz, lastRound],
+  );
 
-  const toggle = (id: string) => setPicked((p) => ((p ?? base).includes(id) ? (p ?? base).filter((x) => x !== id) : [...(p ?? base), id]));
+  const toggle = (id: string) => setPicked((p) => toggleTeam(p, base, id));
   const name = (id: string | null, label: string) => (id ? (tl.teamOf(id)?.name ?? '¿?') : label);
 
   const save = async () => {
@@ -100,7 +87,6 @@ export function TournamentBuilder({
     }
   };
 
-  const maxGroups = Math.max(1, Math.min(8, Math.floor(ids.length / 2)));
   return (
     <Sheet
       open={open}
@@ -138,18 +124,18 @@ export function TournamentBuilder({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Grupos">
             <Select value={groups} onChange={(e) => setGroups(e.target.value)}>
-              {Array.from({ length: maxGroups }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>
-                  {n === 1 ? '1 grupo (todos contra todos)' : `${n} grupos`}
+              {groupOptions(ids.length).map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
                 </option>
               ))}
             </Select>
           </Field>
           <Field label="Clasifican por grupo">
             <Select value={perGroup} onChange={(e) => setPerGroup(e.target.value)}>
-              {[1, 2, 3, 4].map((n) => (
-                <option key={n} value={n}>
-                  {n === 1 ? 'El 1.º' : `Los ${n} primeros`}
+              {PER_GROUP_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
                 </option>
               ))}
             </Select>
@@ -226,21 +212,6 @@ function Warn({ children }: { children: ReactNode }) {
   );
 }
 
-/** Los cambios de la eliminatoria que ya se pueden poner (grupos terminados, ganadores que cuentan). */
-export function tournamentChanges(tl: TeamLeague, rankGroup: (stage: string) => string[] | null, now = Date.now()): SideChange[] {
-  const setup = tournamentSetupOf(tl.rules.data);
-  if (!setup) return [];
-  // Solo el cuadro del torneo (los juegos del playoff tienen su propia llave).
-  const knockout = tl.matches.data.filter((m) => !!m.bracketKey && !isPlayoffMatch(m));
-  if (!knockout.length) return [];
-  const rankings = Array.from({ length: setup.groups }, (_, i) => rankGroup(groupName(i)));
-  try {
-    return advanceTournament({ ...setup, rankings, knockout, now });
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Admin: pasar a la fase final a los que ya se saben (los clasificados de los grupos que terminaron y los ganadores
  * de la eliminatoria). `rankGroup(stage)` = la tabla de ese grupo (ids en orden) o null si todavía no termina.
@@ -250,17 +221,10 @@ export function TournamentAdvance({ tl, rankGroup, className }: { tl: TeamLeague
   const [busy, setBusy] = useState(false);
   const changes = tournamentChanges(tl, rankGroup);
   if (!tl.isAdmin || !changes.length) return null;
-  const byId = new Map(tl.matches.data.map((m) => [m.id, m] as const));
-  const text = (c: SideChange) => {
-    const m = byId.get(c.matchId) as Match | undefined;
-    const nm = (i: 0 | 1) => (c.sides[i].teamId ? (tl.teamOf(c.sides[i].teamId)?.name ?? '¿?') : (c.sides[i].label ?? 'Por definir'));
-    return `${m?.stage || c.bracketKey}: ${nm(0)} vs. ${nm(1)}`;
-  };
+  const text = (c: (typeof changes)[number]) => changeText(c, tl.matches.data, (id) => tl.teamOf(id)?.name);
   const apply = async () => {
     setBusy(true);
-    await run(async () => {
-      for (const c of changes) await setMatchSides(tl.lid, c.matchId, c.sides);
-    }, 'Fase final al día');
+    await run(() => applyTournamentChanges(tl.lid, changes), 'Fase final al día');
     setBusy(false);
   };
   return (

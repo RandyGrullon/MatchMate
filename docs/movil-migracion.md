@@ -56,8 +56,8 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   el mismo de la web). Con datos de prueba: `/dev/hoy`.
 - ✅ El Calendario (la hoja de «Lo que viene»), «Anotar un juego» con «¿Dónde jugaste?» y «Seguir mi juego N»
   (`movil/src/components/agenda/HomeSheets.tsx`, la lógica de `src/components/home/where.ts`, la misma de la web).
-  - ⏳ Las filas de «¿Dónde jugaste?» abren el evento con `?anotar=1`; el evento de la app todavía no abre la hoja de
-    anotar con ese parámetro. ⏳ En «Enviar mis juegos», el selector del evento («Otro día (elegir fecha)»).
+  - Las filas de «¿Dónde jugaste?» abren el evento con `?anotar=1` (va al próximo juego por anotar), y «Enviar mis
+    juegos» pregunta «¿Dónde jugaste?» con «Otro día (elegir fecha)».
 - ✅ Campana de avisos en Hoy (con el número de lo nuevo) y Avisos (`/avisos`): los mismos avisos de la web (el
   proveedor `src/components/notifications/provider.tsx` es el mismo en las dos; la vista de la app sale de
   `src/lib/visibility(.native).ts`), por Hoy, Esta semana y Antes, filtros por tipo y por deporte, «Marcar todo como
@@ -85,7 +85,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
     decididos». El segmentado Jugadores · Miembros · Reclamos cambia de pantalla; donde el deporte lleva a su gente en
     su pestaña (natación: Nadadores; raqueta: Parejas y niveles) no sale «Jugadores» y debajo de Miembros van
     «<su gente> y sus cuentas». La demo trae cinco cuentas más y dos reclamos (`movil/src/platform/demoMembers.ts`).
-  - 🌐 «Ver su página» de quien no es de boliche.
+  - ✅ «Ver su página» de cada jugador, en todos los deportes de liga (la de esports, en la web).
 - ✅ Temporadas (`/l/<liga>/temporadas`, `movil/src/components/season/Seasons.tsx`, SeasonsPage de la web): cada
   temporada con sus fechas, el campeón y los demás premios, el campeón del playoff y la tabla final guardada; la en
   curso lleva a su tabla («?temporada=» abre esa temporada en la Tabla del boliche). «Campeones» abajo en el inicio de
@@ -96,7 +96,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   aviso) y, en una liga, «Cerrar temporada» (la tabla final, los premios propuestos que se pueden cambiar, otros
   premios con nota y el aviso), «Corregir premios», «Nueva temporada» (el nombre sigue al año, las fechas y, en las
   ligas de equipos, copiar los equipos) y el historial. En un torneo suelto, «Fechas». En el inicio, la fila.
-  - 🌐 Cerrar y corregir la temporada en raqueta (su tabla usa lo que cada deporte agrega en la web).
+  - ✅ Cerrar y corregir la temporada también en raqueta.
   - «Hoy · Suspender» en el inicio de la liga (SuspendTodayCard) es de Pro en la web; la app es Lite: no va.
 - La demostración trae en «Liga de Ejemplo» la «Temporada de Ejemplo 1» cerrada (tabla final y premios) y la
   «Temporada de Ejemplo 2» en curso (`movil/src/platform/demoSeasons.ts`).
@@ -147,7 +147,15 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   que anotó, corregir los juegos y desde qué juego, quien se inscribe al aprobar, Rechazar con motivo, Aprobar,
   «Aprobar todo» y descartar el envío de un jugador o evento que ya no existe. La demo trae tres envíos más
   (`movil/src/platform/demoApprovals.ts`).
-- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla.
+- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web).
+- ✅ Lo del organizador del boliche (`movil/src/components/event/`, `movil/src/components/lanes/`, la lógica de
+  `src/components/eventForm.ts`, `event/sheet.ts`, `event/eventActions.ts`, `lanes/logic.ts` y `submitGames.ts`, la
+  misma de la web): crear una práctica o un torneo (Ligas › «Una práctica» / «Crear torneo» con «¿Dónde es el
+  torneo?»), «•••» del evento (ajustes, eliminar, anotadores, «Publicar en Social»), la Planilla
+  (`/e/<evento>/planilla`: anotarle a otro, agregar asistentes, otro juego, escribir a mano; `anotar?fila=`) y las
+  Pistas (`/e/<evento>/pistas`: armar y publicar). En la web Planilla y Pistas son pestañas de Pro; en la app son filas
+  del evento para quien organiza o anota. La demo: `movil/src/platform/demoBowling.ts`.
+  - 🌐 «Leer foto» y «Verificar con foto» en la Planilla, y los Inscritos del torneo.
 - ✅ La clasificación de un torneo ya jugado (`movil/src/components/bowling/Standings.tsx`, StandingsTab de la web en
   solo mirar): mejor juego y jugadores, los equipos (con sus jugadores) y lo individual, cada tabla con «Con
   handicap · Scratch» y el aviso si no es el criterio oficial. El anuncio de un torneo que viene con «Escribir a…»
@@ -158,7 +166,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Un jugador y «Mis números» (`/l/<liga>/j/<jugador>`): sus números, sus envíos, torneos con su lugar, prácticas y
   por temporada. 🌐 La tendencia y el análisis por cuadros (gráficas).
 - ✅ «Tu pista: 7 · con …» en el evento y «Pista 7» en Hoy, cuando el admin ya las publicó (`myLaneText`, ahora en
-  `src/lib/lanes.ts`). 🌐 Armar y publicar las pistas.
+  `src/lib/lanes.ts`); armarlas y publicarlas, arriba.
 - ✅ Juegos sueltos (`/juegos-sueltos`, `movil/src/app/juegos-sueltos.tsx`, Lite de la web): tu promedio y tu mejor
   juego, «Anotar juego suelto» y la lista por mes (el candado si no sale en tu perfil, la nube si falta enviarlo).
   La hoja (`movil/src/components/solo/SoloGameSheet.tsx`, la lógica de `src/components/solo/logic.ts`, la misma de
@@ -210,8 +218,17 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   web (`src/court/machine.ts`, `useCourt`, `usePointsCourt`), sets (quién saca y de qué lado, 15/30/40/AD, cambio de
   lado, retiro) y puntos del americano (a cuántos o por tiempo); deshacer, terminar, suspender, otro anotador y sin
   señal. La pantalla no se apaga mientras se anota.
-- 🌐 Crear eventos y lo de organizar (armar jornadas, la siguiente ronda, grupos y cuadro), liga por cajas, escalera,
-  las opciones del admin en un partido (corregir, W.O., aplazar), el perfil del jugador y las temporadas cerradas.
+- ✅ Raqueta, lo del organizador (`movil/src/components/racket/`, la lógica de `src/pages/sports/racket/{extensions,
+  create/wizard,match/adminMenu}.ts` y `racket-formats/info.ts`, la misma de la web): crear eventos
+  (`/l/<liga>/raqueta-nuevo`: Americano, Mexicano, Liga, Torneo, Liga por cajas y Escalera, «Repetir la última noche»,
+  la inscripción), el «•••» del partido (W.O., aplazar, reprogramar, quién juega, corregir, anular, borrar), el de la
+  noche, la liga y el torneo, las cajas del mes y la escalera completa (retar, aceptar, entrar, salir, ordenar),
+  Organizar › Parejas y niveles (`/l/<liga>/parejas`, también en el inicio para quien organiza), «Mis partidos»
+  (`/l/<liga>/perfil`) y la página del jugador (`/l/<liga>/j/<jugador>`), y las temporadas cerradas en la Tabla. La
+  demo trae «Pádel de Ejemplo» (`movil/src/platform/demoRacket.ts`).
+- 🌐 Raqueta: armar las jornadas, la siguiente ronda, los grupos y el cuadro, y el mes de las cajas (son de Pro en la
+  web: la app muestra el aviso de Lite con «Abrir en la web»), el round robin social del pickleball, el Excel de la
+  liga y de las cajas, y el panel «Me apunto» de la noche y el torneo.
 
 ## 5. Equipos: baloncesto, fútbol, futsal
 
@@ -219,8 +236,19 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   vez / No voy y cómo va tu equipo), próximos, resultados y la tabla corta con el máximo anotador o el goleador.
 - ✅ Partidos (Por jugar · Resultados · Mi equipo, por jornada), el partido (marcador, confirmar o reclamar, compartir) y
   la tabla con anotadores (baloncesto) o goleadores (fútbol y sala).
-- 🌐 La mesa anotadora y el acta (el botón abre la web), el detalle por cuarto, goles y tarjetas, la disciplina, los
-  playoffs, los eventos especiales, armar el calendario y los equipos.
+- ✅ Equipos, lo del organizador (`movil/src/components/team/` y `movil/src/components/court/`, la lógica de
+  `src/pages/sports/team/{matchView,calendarAdmin,rulesAdmin,teamsAdmin,presentes,leaders,profileView}.ts`,
+  `basketball/{matchView,court,standingsView}.ts` y `football/{matchView,court,lineup,acta,standingsView}.ts`, la misma
+  de la web): la mesa anotadora (`/l/<liga>/mesa/<partido>`, a pantalla completa: baloncesto rápido o por jugador,
+  fútbol con goles, tarjetas y cambios) y el acta, el detalle del partido (por cuarto, goles y tarjetas, acta
+  completa), el «•••» del admin (anotador de mesa, reprogramar, aplazar, W.O., poner resultado, anular, borrar), la
+  disciplina y la tabla completa, Organizar › Equipos (`/l/<liga>/equipos`: Equipos · Partidos · Reglas · Comité,
+  `?parte=`), el torneo relámpago y la jornada especial (el evento), los playoffs (`/l/<liga>/playoffs`) con sus premios
+  y su reporte, «Mi equipo» (`/l/<liga>/perfil`) y la página del jugador. La demo trae «Baloncesto de Ejemplo», «Fútbol
+  de Ejemplo» con partidos, sanciones y un reclamo, y «Relámpago de Ejemplo» (`movil/src/platform/demoTeamSports.ts`).
+- 🌐 Equipos (es de Pro en la web): el Excel de la temporada, la tabla «Jugadores» del partido de fútbol, triples,
+  tiros libres y faltas en los puntos, compartir la imagen de la tabla, ordenar los líderes y los números del jugador
+  partido por partido. «Otro color» del equipo: los 10 de la paleta.
 
 ## 6. Golf, natación, esports
 
@@ -236,8 +264,15 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
     tarjeta (cambiar la salida antes de anotar, salirme) y los grupos.
 - ✅ Golf, orden de mérito de la temporada (`/l/<liga>/tabla`, `GolfStandings.tsx`, `useGolfMerit`): tu lugar con su
   barra, la lista con «Tú» y las rondas que cuentan.
-- 🌐 Golf: crear rondas y torneos, campos y formato, armar los grupos, inscribir a otros, la tabla de Pro y otras
-  temporadas, el perfil de golf del jugador y lo del admin en la tarjeta.
+- ✅ Golf, lo del organizador (`movil/src/components/golf/`, la lógica de `src/pages/sports/golf/{courseForm,roundSetup,
+  groups,profile}.ts`, la misma de la web): crear rondas y torneos («+ Nueva»: campo, hoyos, formato, salida
+  simultánea), Organizar › Campos (`/l/<liga>/campos`: campos del club, el editor y el formato de la liga), el «•••» de
+  la ronda (campo y formato, anotadores, cerrar, eliminar, «Publicar en Social»), inscribir y armar grupos (en la web
+  Lite son de Pro; en el teléfono los tiene el admin), lo del admin en la tarjeta (salida, Index, descalificar, sacar),
+  «Mi golf» (`/l/<liga>/perfil`), la página del golfista (`/l/<liga>/j/<jugador>`), las otras temporadas en el Orden de
+  mérito y el Modo campo (pantalla completa con modo sol). La demo trae el campo corto, el «Mensual de Ejemplo» y dos
+  temporadas (`movil/src/platform/demoGolf.ts`).
+- 🌐 Golf: la tabla de Pro y la imagen del orden de mérito para compartir.
 - Para probar golf sin cuenta: la demostración (`/dev/empresa`) trae «Golf de Ejemplo» (ronda en juego hoy y una
   cerrada; `demoLeague.ts`).
 - ✅ Natación, inicio de la liga (`movil/src/components/swimming/SwimHome.tsx`, Lite de la web): el próximo encuentro
@@ -252,10 +287,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Natación, Puntos de la temporada por club (`/l/<liga>/tabla`, `SwimStandings.tsx`) y Mis marcas
   (`/l/<liga>/perfil`) o un nadador (`/l/<liga>/j/<jugador>`): marcas personales por piscina, cómo fue bajando, lo
   nadado y los nadadores de tu club si lo entrenas.
-- 🌐 Natación: crear y cambiar encuentros, Admin › Clubes y Nadadores, registrar un nadador, cronometristas,
-  finalizar o volver a abrir, borrar, armar el programa y las series (mover carriles y publicar), inscribir a
-  cualquiera, transmitir y «Ver en vivo», premios del encuentro, compartir las imágenes, el
-  modo piscina, la tabla completa de Pro y las temporadas cerradas.
+- ✅ Natación, lo del organizador (`movil/src/components/swimming/`, la lógica de `src/pages/sports/swimming/admin.ts` y
+  `share.ts`): crear y cambiar encuentros, Organizar › Nadadores (`/l/<liga>/nadadores`: buscar, filtrar por club,
+  registrar y cambiar) y Clubes (`/l/<liga>/clubes`: color y entrenador, cronometristas y lo de cada encuentro nuevo),
+  cronometristas del encuentro, finalizar o volver a abrir, borrar, armar el programa y las series (mover carriles y
+  publicar), inscribir a cualquiera, «Transmitir en vivo» y «Ver en vivo», compartir las imágenes (cada prueba, puntos
+  por club, Puntos), las temporadas cerradas en Puntos, «Mi club › Registrar» y el modo piscina (`PoolScreen.tsx`:
+  cronometrar a pantalla completa, siempre encendida y con modo sol; `?piscina=1` entra directo).
+- 🌐 Natación: la tabla completa de Pro.
 - Para probar natación sin cuenta: la demostración trae «Natación de Ejemplo» (`movil/src/platform/demoSwim.ts`: el
   festival de hoy con la hoja de series, dos encuentros finalizados y uno próximo).
 - ✅ Esports, la liga o el torneo (`movil/src/components/esports/EsportsLeague.tsx`, Lite de la web): los torneos de la
@@ -299,7 +338,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   «Ver» (el detalle de un juego de boliche, en la web). Compartir un partido de raqueta o de equipos: la imagen (sin el
   texto en Android), WhatsApp, texto o «Publicar en Social» (`movil/src/components/match/ShareResult.tsx`). Los avisos
   sociales en la campana. La demo trae publicaciones con juego, me gusta y avisos sociales (`demoSocial.ts`).
-  - ⏳ «Publicar en Social» en el evento de boliche y de golf (`PublishButton` ya está en `ShareToSocial.tsx`).
+  - «Publicar en Social» en el evento de boliche y en la ronda de golf (en su «•••»).
 - ✅ Equipos (`/equipos`, `/equipos/<equipo>` y `/equipos/unirse/<código>`, `movil/src/components/squads/`, la lógica de
   `src/components/squads/logic.ts` y `src/pages/squads/squadForm.ts`): mis equipos, los que sigo, buscar, unirme con
   código, crear (deporte, datos y logo), y en cada equipo sus publicaciones (publicar en el equipo), juegos, torneos,
@@ -371,13 +410,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   ganadores) y «Cerrar premios», en el torneo del boliche, la ronda o el torneo de golf, la noche y el torneo de raqueta
   («Se lleva: …» de cada categoría) y el encuentro de natación. La demo trae la Copa de Ejemplo y la ronda cerrada de
   «Golf de Ejemplo», cada una con un premio dado y otro por dar (`movil/src/platform/demoPrizes.ts`).
-  - 🌐 Los premios del relámpago y de los playoffs de equipos (sus pantallas siguen en la web).
+  - ✅ También los premios del relámpago y de los playoffs de equipos.
 - ✅ Reportes del torneo en PDF y Excel (`movil/src/components/tournamentReport/` y `movil/src/platform/reportFile.ts`,
   los mismos archivos de la web: `src/lib/report/` con jsPDF y write-excel-file), compartidos con la hoja del teléfono:
   «Reporte del torneo» en el boliche, la ronda o el torneo de golf, la noche y el torneo de raqueta, y «Reporte del
   encuentro» en natación; la tarjeta del admin donde la pone la web.
-  - 🌐 Los reportes de playoffs, del relámpago y del round robin de pickleball (sus pantallas siguen en la web) y el
-    Excel de la liga y de la práctica (Pro y «•••» de la web).
+  - ✅ También los reportes de playoffs y del relámpago.
+  - 🌐 El del round robin de pickleball (su pantalla sigue en la web) y el Excel de la liga y de la práctica (Pro y
+    «•••» de la web).
 
 ## 10. Superadmin
 

@@ -2,10 +2,12 @@
  * Cerrar o corregir una temporada con la tabla de su deporte, la misma que la web le pasa a CloseSeasonModal: el
  * boliche, la suya (src/components/season/bowlingTable.ts); golf, natación, baloncesto y fútbol (también sala), la de
  * su `screens.tsx` (`useSeasonTable` de src/pages/sports/<deporte>/seasonTable.ts); los demás (esports), sin tabla
- * (`noSeasonTable`). Raqueta arma su tabla con lo que cada deporte agrega en su `screens.tsx` (las noches del
- * pickleball, los formatos del pádel), que la app no tiene: se cierra en la web (`closesOnPhone`).
+ * (`noSeasonTable`). Raqueta (pádel, tenis, pickleball y ping pong), la de racketScreens (`useRacketSeasonTable` de
+ * src/pages/sports/racket/seasonTable.ts) con lo puro que agrega cada deporte (las cajas, el «Round robin» del
+ * pickleball: src/pages/sports/racket/extensions.ts).
  */
 import type { Season } from '@mm/lib/seasons';
+import type { RacketSport } from '@mm/sports/racket';
 import { sportMeta } from '@mm/sports/registry';
 import { useBowlingSeasonTable } from '@mm/components/season/bowlingTable';
 import { noSeasonTable } from '@mm/components/season/adminLogic';
@@ -13,10 +15,9 @@ import { useBasketballSeasonTable } from '@mm/pages/sports/basketball/seasonTabl
 import { useFootballSeasonTable } from '@mm/pages/sports/football/seasonTable';
 import { useGolfSeasonTable } from '@mm/pages/sports/golf/seasonTable';
 import { useSwimSeasonTable } from '@mm/pages/sports/swimming/seasonTable';
+import { racketPureExt } from '@mm/pages/sports/racket/extensions';
+import { useRacketSeasonTable } from '@mm/pages/sports/racket/seasonTable';
 import { CloseSeasonSheet } from './CloseSeasonSheet';
-
-/** El deporte cierra sus temporadas en el teléfono (raqueta, en la web). */
-export const closesOnPhone = (sport: string): boolean => sportMeta(sport)?.family !== 'racket';
 
 interface Props {
   season: Season;
@@ -48,6 +49,11 @@ function FootballClose({ season, onClose }: Props) {
   return <CloseSeasonSheet season={season} table={table} onClose={onClose} />;
 }
 
+function RacketClose({ season, onClose, sport }: Props & { sport: RacketSport }) {
+  const table = useRacketSeasonTable(season, sport, racketPureExt(sport));
+  return <CloseSeasonSheet season={season} table={table} onClose={onClose} />;
+}
+
 function NoTableClose({ season, onClose }: Props) {
   const table = noSeasonTable(season);
   return <CloseSeasonSheet season={season} table={table} onClose={onClose} />;
@@ -55,6 +61,7 @@ function NoTableClose({ season, onClose }: Props) {
 
 /** La hoja de cerrar (o corregir) esa temporada con la tabla del deporte. Va dentro de LeagueScope. */
 export function CloseSeason({ sport, season, onClose }: Props & { sport: string }) {
+  if (sportMeta(sport)?.family === 'racket') return <RacketClose season={season} onClose={onClose} sport={sport as RacketSport} />;
   switch (sport) {
     case 'bowling':
       return <BowlingClose season={season} onClose={onClose} />;

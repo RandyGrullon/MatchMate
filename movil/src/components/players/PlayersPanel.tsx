@@ -130,10 +130,10 @@ export function PlayersPanel({ variant = 'full', addWhere }: { variant?: 'full' 
     }
   }
 
-  // La página de un jugador de la app es la del boliche (y la del nadador); la de los otros deportes, en la web.
+  // La página de un jugador de la app: boliche, golf, natación, raqueta y los deportes de equipo; la de esports, en la web.
   function openPage(p: Player) {
     setEditingId(null);
-    if (!bowling) {
+    if (sport === 'esports') {
       setTimeout(() => void openOnWeb(`/l/${lid}/j/${p.id}`), SHEET_CLOSE_MS);
       return;
     }

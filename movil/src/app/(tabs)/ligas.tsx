@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
-import { MapPin, Plus, Search, Trophy } from 'lucide-react-native';
+import { CalendarPlus, MapPin, Plus, Search, Trophy } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships, usePublicLeagues } from '@mm/lib/data';
 import { formatDate } from '@mm/lib/format';
@@ -11,6 +11,8 @@ import { EsportsLeaguesRow } from '@/components/esports/EsportsRow';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { SquadsLeaguesSection } from '@/components/squads/SquadEntries';
 import { AgendaLinkRow } from '@/components/agenda/HomeSheets';
+import { NewEventSheet, useOrganizedBowling } from '@/components/event/NewEventSheet';
+import { practiceOptionText } from '@mm/components/create/createChoices';
 import { useColors } from '@/theme/theme';
 
 /** Ligas: las tuyas, Dónde jugar y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
@@ -22,6 +24,9 @@ export default function LigasScreen() {
   const ids = useMemo(() => memberships.data.map((m) => m.leagueId), [memberships.data]);
   const mine = useLeaguesByIds(ids);
   const [query, setQuery] = useState('');
+  // Las ligas de boliche que organizas: «Un torneo» pregunta dónde y «Una práctica» va en una de ellas (como la web).
+  const org = useOrganizedBowling();
+  const [newEvent, setNewEvent] = useState<'practica' | 'torneo' | null>(null);
   const open = usePublicLeagues({ query: query.trim().length >= 2 ? query.trim() : undefined, limit: 30 });
   const mineIds = new Set(ids);
   const others = open.data.filter((l) => !mineIds.has(l.id));
@@ -38,12 +43,31 @@ export default function LigasScreen() {
             </Button>
           </View>
           <View style={{ flex: 1 }}>
-            <Button full icon={<Trophy size={18} color={c.fg} />} onPress={() => router.push({ pathname: '/crear', params: { kind: 'torneo' } })}>
+            <Button
+              full
+              icon={<Trophy size={18} color={c.fg} />}
+              onPress={() => (org.organized.length ? setNewEvent('torneo') : router.push({ pathname: '/crear', params: { kind: 'torneo' } }))}
+            >
               Crear torneo
             </Button>
           </View>
         </View>
       )}
+      {!!uid && org.organized.length > 0 && (
+        <Card padded={false}>
+          <ListRow
+            icon={
+              <RowIcon>
+                <CalendarPlus size={20} color={c.accent} />
+              </RowIcon>
+            }
+            title="Una práctica"
+            subtitle={practiceOptionText(org.organized)}
+            onPress={() => setNewEvent('practica')}
+          />
+        </Card>
+      )}
+      {newEvent && <NewEventSheet pick={newEvent} organized={org.organized} onClose={() => setNewEvent(null)} />}
       {!!uid && mine.data.length > 0 && (
         <>
           <SectionHeader title="Las tuyas" />

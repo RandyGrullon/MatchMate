@@ -23,6 +23,7 @@ import { BigButton, JerseyButton, ScoreHeader, useTicker } from '../team/ScorerP
 import { DangerButton } from '../team/TeamUi';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { basketballAdapter, EJECTION_LABEL, eventLabel, FOUL_LABEL } from './adapter';
+import { courtPlayerIds, finishText as finishLine, lastFoulText as foulLine, parseRemaining, periodEndLabel, pointButtons, readMode, saveMode, type ScoreMode as Mode } from './court';
 import { basketballConfigFrom, basketballTeamRules } from './rules';
 
 /**
@@ -35,33 +36,6 @@ import { basketballConfigFrom, basketballTeamRules } from './rules';
  * Todo se guarda en el teléfono en cada toque y se publica al cambiar de periodo, al parar o arrancar el reloj
  * y como mucho cada 60 s: nunca por canasta.
  */
-
-type Mode = 'quick' | 'players';
-const MODE_KEY = 'mm:bb:modo';
-
-function readMode(): Mode {
-  try {
-    return localStorage.getItem(MODE_KEY) === 'players' ? 'players' : 'quick';
-  } catch {
-    return 'quick';
-  }
-}
-
-function saveMode(m: Mode) {
-  try {
-    localStorage.setItem(MODE_KEY, m);
-  } catch {
-    // sin almacenamiento: solo por esta vez
-  }
-}
-
-/** Botón de fin del periodo según el formato. */
-function periodEndLabel(cfg: BasketballConfig, period: number): string {
-  if (period > cfg.periods) return 'Fin de la prórroga';
-  if (cfg.periods === 4) return 'Fin del cuarto';
-  if (cfg.periods === 2) return 'Fin de la mitad';
-  return 'Fin del tiempo';
-}
 
 interface Selection {
   side: Side;
@@ -143,7 +117,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
   const now = Date.now();
   const left = s && config.clock ? remainingMs(s, now) : null;
   const timeUp = left === 0;
-  const pts = config.variant === '3x3' ? ([1, 2] as const) : ([1, 2, 3] as const);
+  const pts = pointButtons(config);
   const last = court.snapshot?.log.at(-1) as BasketballEvent | undefined;
   const undoLabel = last ? `Deshacer: ${eventLabel(last, (side, p) => who(side, p))}` : 'Deshacer';
   const otNoEnd = !!s && config.overtimeTarget !== null && s.period > config.periods;
@@ -203,8 +177,7 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
     const color = colors[i];
     const tLeft = basketballTimeoutsLeft(s, side, now);
     const roster = rosterOf(tl.allTeams.data, m.sides[i].teamId).map((r) => r.playerId);
-    const ids = [...new Set([...(s.present[i].length ? s.present[i] : roster), ...Object.keys(s.players[i])])];
-    ids.sort((a, b) => (jerseyOf(side, a) ?? 1000) - (jerseyOf(side, b) ?? 1000) || tl.nameOf(a).localeCompare(tl.nameOf(b), 'es'));
+    const ids = courtPlayerIds(s, side, roster, (id) => jerseyOf(side, id), tl.nameOf);
     return (
       <div className="flex min-h-0 flex-col gap-2">
         <div className="flex items-center gap-1.5">
@@ -274,23 +247,9 @@ export function BasketballCourt({ tl, match: m, onExit }: { tl: TeamLeague; matc
   };
 
   const lf = s?.lastFoul;
-  const lastFoulText = lf
-    ? [
-        `Falta ${FOUL_LABEL[lf.kind].toLowerCase()} de ${who(lf.side, lf.player)}`,
-        lf.kind === 'coach_technical' || lf.kind === 'bench_technical' ? '1 tiro libre' : `${lf.teamFouls}.ª del equipo`,
-        lf.kind === 'offensive'
-          ? 'sin tiros libres'
-          : lf.freeThrows && lf.kind === 'personal'
-            ? `bonus: ${lf.freeThrows} tiros libres${lf.possession ? ' + posesión' : ''}`
-            : lf.freeThrows && lf.kind !== 'coach_technical' && lf.kind !== 'bench_technical'
-              ? `${lf.freeThrows} ${lf.freeThrows === 1 ? 'tiro libre' : 'tiros libres'}${lf.possession ? ' + posesión' : ''}`
-              : null,
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : null;
+  const lastFoulText = foulLine(lf, who);
 
-  const finishText = s ? `${s.score[0]}-${s.score[1]}${court.winner ? ` · Gana ${names[court.winner - 1]}` : ''}` : undefined;
+  const finishText = s ? finishLine(s, court.winner, names) : undefined;
 
   return (
     <CourtLayout
@@ -558,9 +517,9 @@ function MoreModal({
     if (act(ev)) onClose();
   };
   const setRemaining = () => {
-    const m = /^(\d{1,2})[:.](\d{2})$/.exec(clock.trim());
-    if (!m) return;
-    doAct({ type: 'clock', action: 'set', remainingMs: (Number(m[1]) * 60 + Number(m[2])) * 1000, at: Date.now() });
+    const remaining = parseRemaining(clock);
+    if (remaining === null) return;
+    doAct({ type: 'clock', action: 'set', remainingMs: remaining, at: Date.now() });
     setClock('');
   };
   const ending = async (kind: 'forfeit' | 'default', side: Side) => {
@@ -618,7 +577,7 @@ function MoreModal({
               <Field label="Lo que falta (mm:ss)" className="flex-1">
                 <Input inputMode="numeric" value={clock} onChange={(e) => setClock(e.target.value)} placeholder="2:00" />
               </Field>
-              <Button variant="quiet" className="mt-auto h-10" onClick={setRemaining} disabled={!/^(\d{1,2})[:.](\d{2})$/.test(clock.trim())}>
+              <Button variant="quiet" className="mt-auto h-10" onClick={setRemaining} disabled={parseRemaining(clock) === null}>
                 Poner
               </Button>
             </div>

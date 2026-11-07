@@ -1,48 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ListOrdered, Medal } from 'lucide-react';
-import { GENDER_LABEL, STATUS_LABEL, formatSwimTime, type MedalRow, type TeamScore } from '../../../sports/swimming';
-import type { SwimEventItem } from '../../../lib/data/swimming';
-import { ShareButton, medalPointsShare, type ShareTableSpec } from '../../../components/share';
+import { GENDER_LABEL, type MedalRow, type TeamScore } from '../../../sports/swimming';
+import { ShareButton } from '../../../components/share';
 import { PillSelect, PosNum, TuTag } from '../../../components/ranking/parts';
 import { Card, SectionHeader, cx } from '../../../components/ui';
 import { EmptyCard } from '../FieldChrome';
-import { ClubTag, StatusBadge, TimeText, meetTitle, useSwim } from './bits';
-import { groupLabel, meetScores, pointsText as pts, raceName, raceTitle, resultsByEvent, scores, type ResultGroup } from './logic';
+import { ClubTag, StatusBadge, TimeText, useSwim } from './bits';
+import { groupLabel, meetScores, pointsText as pts, raceName, raceTitle, resultsByEvent, scores } from './logic';
+import { meetPointsShare, raceShare } from './share';
 import type { MeetData } from './MeetPage';
 
-/**
- * Imagen de una prueba para mandar al grupo: cada categoría con el puesto, el club, el tiempo (o DQ, «No
- * salió») y los puntos (si el encuentro da puntos).
- */
-export function raceShare(data: Pick<MeetData, 'meet' | 'clubs' | 'name'>, ev: SwimEventItem, groups: readonly ResultGroup[]): ShareTableSpec {
-  const { meet, clubs, name } = data;
-  const withPoints = scores(meet);
-  return {
-    kind: 'table',
-    title: meetTitle(meet),
-    subtitle: raceTitle(ev),
-    nameLabel: 'Nadador',
-    columns: [...(withPoints ? [{ label: 'Pts', optional: true }] : []), { label: 'Tiempo', strong: true }],
-    sections: groups.map((g) => ({
-      heading: `${GENDER_LABEL[g.gender]} · ${groupLabel(g.ageGroup)}`,
-      rows: g.rows.map((r) => {
-        const club = r.teamId ? clubs.get(r.teamId) : null;
-        const sub = [club?.name, r.tied ? 'empate' : null].filter(Boolean).join(' · ');
-        return {
-          rank: r.place,
-          name: name(r.swimmerId),
-          ...(sub ? { sub } : {}),
-          dot: club?.color ?? null,
-          dim: r.place == null,
-          values: [...(withPoints ? [r.points > 0 ? pts(r.points) : ''] : []), r.status === 'ok' ? formatSwimTime(r.time) : STATUS_LABEL[r.status]],
-        };
-      }),
-    })),
-    note: meet.finalizedAt ? undefined : 'Resultados provisionales hasta que el organizador finalice el encuentro.',
-    caption: `${meetTitle(meet)} · ${raceName(ev)}`,
-  };
-}
+/** La imagen de cada prueba (en share.ts: la usa también la app del teléfono). */
+export { raceShare };
 
 /**
  * Resultados por prueba y categoría (rediseño «Calma y foco»): cada prueba con su título y compartir, y cada categoría en
@@ -146,14 +116,7 @@ export function ScoresPanel({ data }: { data: MeetData }) {
     return <EmptyCard icon={<Medal className="size-5" />} title="Todavía no hay puntos" text="Los puntos por club salen de los resultados de cada prueba." />;
   }
   // Imagen de los puntos por club (con las medallas) para mandar al grupo.
-  const shareCard = () =>
-    medalPointsShare({
-      title: meetTitle(meet),
-      subtitle: meet.finalizedAt ? 'Puntos por club' : 'Puntos por club · Provisional',
-      rows: s.clubs.map((c) => ({ ...c, id: c.teamId })),
-      who: (id) => clubs.get(id) ?? { name: '(club borrado)' },
-      note: `Puntos por puesto: ${meet.points.join('-')}. En un empate se reparten.`,
-    });
+  const shareCard = () => meetPointsShare(meet, s.clubs, clubs);
   return (
     <div className="flex flex-col gap-[26px]">
       <ClubPointsCard

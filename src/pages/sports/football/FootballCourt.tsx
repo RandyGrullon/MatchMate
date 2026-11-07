@@ -27,6 +27,22 @@ import type { TeamLeague } from '../team/useTeamLeague';
 import { atBreak, eventLabel, footballAdapter, quietAdapter, replaceLastEvent, stageLabel } from './adapter';
 import { CardIcon, REASON_TEXT } from './bits';
 import { LineupModal, type LineupSide } from './LineupModal';
+import {
+  ADDED_MINUTES,
+  benchFor,
+  finishText as finishLine,
+  goalSheetTitle,
+  lastGoalMinute,
+  nextKicker,
+  parseElapsed,
+  periodEndLabel,
+  periodEndNext,
+  pickableIds,
+  sameGoal,
+  sideIds,
+  subsMax,
+  type GoalFlow,
+} from './court';
 import { footballConfigFrom, footballTeamRules } from './rules';
 
 /**
@@ -41,15 +57,6 @@ import { footballConfigFrom, footballTeamRules } from './rules';
  * Todo se guarda en el teléfono en cada toque; se publica en cada gol o roja, en el descanso y al final (y cuando el
  * reloj arranca o se para), nunca por jugada.
  */
-
-interface GoalFlow {
-  side: Side;
-  at: number;
-  step: 'scorer' | 'assist' | 'own';
-  scorer?: string;
-}
-
-const sameGoal = (a: FootballEvent | undefined, side: Side, at: number) => a?.type === 'goal' && a.side === side && a.at === at;
 
 export function FootballCourt({
   tl,
@@ -250,17 +257,8 @@ export function FootballCourt({
   /** Los de un lado: primero los que están en la cancha, después el banco; los que salieron o fueron expulsados al final. */
   const idsOf = (side: Side): string[] => {
     if (!s) return [];
-    const i = side - 1;
-    const roster = rosterOf(tl.allTeams.data, m.sides[i].teamId).map((r) => r.playerId);
-    const all = [...new Set([...(s.onField[i] ?? []), ...s.present[i], ...roster, ...Object.keys(s.players[i])])];
-    const field = s.onField[i];
-    const rank = (id: string) => {
-      const p = s.players[i][id];
-      if (p?.red) return 3;
-      if (field) return field.includes(id) ? 0 : p?.subbedOff ? 2 : 1;
-      return p?.subbedOff ? 2 : 0;
-    };
-    return all.sort((a, b) => rank(a) - rank(b) || (jerseyOf(side, a) ?? 1000) - (jerseyOf(side, b) ?? 1000) || tl.nameOf(a).localeCompare(tl.nameOf(b), 'es'));
+    const roster = rosterOf(tl.allTeams.data, m.sides[side - 1].teamId).map((r) => r.playerId);
+    return sideIds(s, side, roster, (id) => jerseyOf(side, id), tl.nameOf);
   };
 
   const column = (side: Side) => {
@@ -334,11 +332,9 @@ export function FootballCourt({
   };
 
   const lf = s?.lastFoul;
-  const finishText = s
-    ? `${s.score[0]}-${s.score[1]}${pens && pens[0] + pens[1] > 0 ? ` (pen. ${pens[0]}-${pens[1]})` : ''}${court.winner ? ` · Gana ${names[court.winner - 1]}` : s.score[0] === s.score[1] ? ' · Empate' : ''}`
-    : undefined;
+  const finishText = s ? finishLine(s, pens, court.winner, names) : undefined;
   const period = s?.period ?? 1;
-  const endLabel = period === 1 ? 'Fin del 1.er tiempo' : period === 2 ? 'Fin del 2.º tiempo' : `Fin de la prórroga ${period - 2}`;
+  const endLabel = periodEndLabel(period);
 
   return (
     <CourtLayout
@@ -569,11 +565,12 @@ export function FootballCourt({
 /** Lo que pasa al terminar el tiempo. */
 function EndText({ state: s, config, names }: { state: FootballState; config: FootballConfig; names: readonly [string, string] }) {
   const tied = s.score[0] === s.score[1];
+  const kind = periodEndNext(s, config);
   let next: ReactNode;
-  if (s.period === 1) next = <p>Descanso. {config.accumulatedFouls && 'Las faltas acumuladas vuelven a 0.'} El reloj del 2.º tiempo arranca en 0.</p>;
-  else if (s.period === 3) next = <p>Termina la 1.ª parte de la prórroga.</p>;
-  else if (s.period === 2 && tied && config.extraTime) next = <p>Empate: sigue la prórroga de 2 × {config.extraTimeMinutes} minutos.</p>;
-  else if (tied && config.shootout) next = <p>Empate: tanda de penales ({config.shootoutKicks} por equipo y luego muerte súbita). No cuentan en los goles.</p>;
+  if (kind === 'half') next = <p>Descanso. {config.accumulatedFouls && 'Las faltas acumuladas vuelven a 0.'} El reloj del 2.º tiempo arranca en 0.</p>;
+  else if (kind === 'extra_half') next = <p>Termina la 1.ª parte de la prórroga.</p>;
+  else if (kind === 'extra_time') next = <p>Empate: sigue la prórroga de 2 × {config.extraTimeMinutes} minutos.</p>;
+  else if (kind === 'shootout') next = <p>Empate: tanda de penales ({config.shootoutKicks} por equipo y luego muerte súbita). No cuentan en los goles.</p>;
   else
     next = (
       <p>
@@ -608,16 +605,7 @@ function JerseyGrid({
   onPick: (id: string) => void;
   onlyAvailable?: boolean;
 }) {
-  const i = side - 1;
-  const field = s.onField[i];
-  const list = ids.filter((id) => {
-    if (exclude.includes(id)) return false;
-    const p = s.players[i][id];
-    if (p?.red) return false;
-    if (!onlyAvailable) return true;
-    if (field) return field.includes(id);
-    return !(p?.subbedOff && !s.config.subs.reentry);
-  });
+  const list = pickableIds(s, side, ids, { exclude, onlyAvailable });
   if (!list.length) return <p className="py-2 text-center text-sm text-muted">Sin jugadores para elegir.</p>;
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -655,13 +643,7 @@ function GoalSheet({
   onClose: () => void;
 }) {
   const other: Side = flow.side === 1 ? 2 : 1;
-  const minute = [...state.timeline].reverse().find((t) => t.kind === 'goal' || t.kind === 'own_goal')?.minute;
-  const title =
-    flow.step === 'own'
-      ? `Autogol: ¿de quién de ${names[other - 1]}?`
-      : flow.step === 'assist'
-        ? `¿Quién asistió a ${who(flow.side, flow.scorer)}?`
-        : `¡Gol de ${names[flow.side - 1]}!${minute ? ` (${minute}')` : ''} ¿Quién marcó?`;
+  const title = goalSheetTitle(flow, names, who, lastGoalMinute(state));
   return (
     <Sheet
       open
@@ -790,15 +772,8 @@ function SubSheet({
   onPick: (id: string) => void;
 }) {
   const i = out.side - 1;
-  const field = s.onField[i];
-  const max = config.subs.max === null ? null : config.subs.max + (s.period >= 3 ? config.subs.extraTimeBonus : 0);
-  const bench = ids.filter((id) => {
-    if (id === out.playerId) return false;
-    const p = s.players[i][id];
-    if (p?.red) return false;
-    if (p?.subbedOff && !config.subs.reentry) return false;
-    return field ? !field.includes(id) : true;
-  });
+  const max = subsMax(config, s.period);
+  const bench = benchFor(s, config, out, ids);
   return (
     <Sheet open onClose={onClose} title={`Sale ${who(out.side, out.playerId)}: ¿quién entra?`}>
       <div className="flex flex-col gap-3">
@@ -853,7 +828,7 @@ export function Shootout({
   const [kicker, setKicker] = useState<string | null>(null);
   const [first, setFirst] = useState<Side | null>(null);
   const kicks = s.shootout?.kicks ?? [];
-  const nextSide: Side | null = kicks.length ? (kicks.length % 2 === 0 ? kicks[0].side : kicks[0].side === 1 ? 2 : 1) : first;
+  const nextSide: Side | null = nextKicker(kicks, first);
   const score = shootoutScore(s) ?? [0, 0];
   const kick = (scored: boolean) => {
     if (!nextSide) return;
@@ -959,11 +934,10 @@ function MoreSheet({
   const doAct = (ev: FootballEvent) => {
     if (act(ev)) onClose();
   };
-  const CLOCK = /^(\d{1,3})[:.](\d{2})$/;
   const setElapsed = () => {
-    const m = CLOCK.exec(clock.trim());
-    if (!m) return;
-    doAct({ type: 'clock', action: 'set', elapsedMs: (Number(m[1]) * 60 + Number(m[2])) * 1000, at: Date.now() });
+    const elapsedMs = parseElapsed(clock);
+    if (elapsedMs === null) return;
+    doAct({ type: 'clock', action: 'set', elapsedMs, at: Date.now() });
     setClock('');
   };
   const walkover = async (side: Side) => {
@@ -987,7 +961,7 @@ function MoreSheet({
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Añadido de este tiempo</h3>
             <div className="flex flex-wrap gap-1.5">
-              {[0, 1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
+              {ADDED_MINUTES.map((n) => (
                 <Button key={n} size="lg" variant={s.addedTime[s.period - 1] === n ? 'primary' : 'quiet'} onClick={() => doAct({ type: 'added_time', minutes: n })}>
                   +{n}
                 </Button>
@@ -1002,7 +976,7 @@ function MoreSheet({
               <Field label="Tiempo jugado de este tiempo (mm:ss)" className="flex-1">
                 <Input inputMode="numeric" value={clock} onChange={(e) => setClock(e.target.value)} placeholder="23:00" />
               </Field>
-              <Button variant="quiet" className="mt-auto h-10" onClick={setElapsed} disabled={!CLOCK.test(clock.trim())}>
+              <Button variant="quiet" className="mt-auto h-10" onClick={setElapsed} disabled={parseElapsed(clock) === null}>
                 Poner
               </Button>
             </div>

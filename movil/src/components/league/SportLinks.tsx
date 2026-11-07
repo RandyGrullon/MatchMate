@@ -8,12 +8,12 @@ import { useColors } from '@/theme/theme';
 export type SportLink = { key: string; title: string; icon: LucideIcon; go: () => void };
 
 /** Las pestañas de la liga de la web (Partidos, Tabla, Mis partidos) como filas, arriba del inicio de la liga. */
-export function SportLinks({ lid, mine, mineLabel = 'Mis partidos', items }: { lid: string; mine: boolean; mineLabel?: string; items?: readonly SportLink[] }) {
+export function SportLinks({ lid, mine, mineLabel = 'Mis partidos', mineToProfile = false, items }: { lid: string; mine: boolean; mineLabel?: string; mineToProfile?: boolean; items?: readonly SportLink[] }) {
   const c = useColors();
   const rows = items ?? [
     { key: 'partidos', title: 'Partidos', icon: Swords, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid } }) },
     { key: 'tabla', title: 'Tabla', icon: ListOrdered, go: () => router.push({ pathname: '/l/[lid]/tabla', params: { lid } }) },
-    ...(mine ? [{ key: 'mios', title: mineLabel, icon: UserRound, go: () => router.push({ pathname: '/l/[lid]/partidos', params: { lid, ver: 'mios' } }) }] : []),
+    ...(mine ? [{ key: 'mios', title: mineLabel, icon: UserRound, go: () => (mineToProfile ? router.push({ pathname: '/l/[lid]/perfil', params: { lid } }) : router.push({ pathname: '/l/[lid]/partidos', params: { lid, ver: 'mios' } })) }] : []),
   ];
   return (
     <Card padded={false} style={{ marginBottom: 24 }}>

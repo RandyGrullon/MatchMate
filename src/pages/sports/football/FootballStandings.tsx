@@ -1,70 +1,48 @@
 import { useSearchParams } from 'react-router';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
-import { compareMatches } from '../../../lib/data/matches';
-import { StandingsTable, defaultColumns, type StandingsColumn } from '../../../components/match';
+import { StandingsTable } from '../../../components/match';
 import { leadersShare, standingsShare, type ShareTableSpec } from '../../../components/share';
 import { LeagueBackBar } from '../../../components/league/home/LeagueTopBar';
 import { useIsPro } from '../../../components/mode';
 import { PillSelect } from '../../../components/ranking/parts';
 import { Card, ListRow, ListSkeleton, LoadError, RowIcon, Segmented } from '../../../components/ui';
 import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
-import type { FootballTotals } from '../../../sports/team/stats';
-import { LeadersTable, type LeaderColumn } from '../team/LeadersTable';
+import { LeadersTable } from '../team/LeadersTable';
 import { SectionHead, TeamName } from '../team/TeamBits';
 import { HowItCounts, ScreenTitle, ShareIcon } from '../team/TeamUi';
-import { isPlayoffMatch } from '../team/playoffs';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
 import { CardIcon } from './bits';
 import { FootballMatchCard, matchLink } from './FootballGames';
 import { ExcelButton, SuspendedCard } from './FootballHome';
-import { REASON_TEXT, TIEBREAK_LABEL, describeDiscipline, disciplineFrom, footballTableFrom } from './rules';
-import { useFootballSeason, type CardRow, type FootballSeason } from './season';
+import { REASON_TEXT, describeDiscipline, disciplineFrom, footballTableFrom } from './rules';
+import { useFootballSeason, type FootballSeason } from './season';
+import {
+  CARD_COLUMNS,
+  EMPTY_TEXT,
+  KEEPER_COLUMNS,
+  PLAYER_VIEWS,
+  SCORER_COLUMNS,
+  TABLE_COLUMNS,
+  cardLine,
+  disciplineMatchText,
+  footballRuleLine,
+  footballRuleText,
+  footballSegment,
+  footballTab,
+  keeperLine,
+  knockoutMatches,
+  nearSuspension,
+  scorerLine,
+  scorerRows,
+  sortedSanctions,
+  type FootballTab,
+} from './standingsView';
 
-type Tab = 'tabla' | 'goleadores' | 'tarjetas' | 'vallas' | 'disciplina';
+type Tab = FootballTab;
 
-/** Columnas de la tabla de goleadores. */
-export const SCORER_COLUMNS: LeaderColumn<FootballTotals>[] = [
-  { key: 'goals', label: 'G', title: 'Goles', value: (r) => r.goals },
-  { key: 'assists', label: 'A', title: 'Asistencias', value: (r) => r.assists },
-  { key: 'games', label: 'PJ', title: 'Partidos jugados', value: (r) => r.games },
-  {
-    key: 'avg',
-    label: 'Prom',
-    title: 'Goles por partido',
-    value: (r) => (r.games ? r.goals / r.games : 0),
-    show: (r) => (r.games ? (r.goals / r.games).toLocaleString('es-DO', { maximumFractionDigits: 2 }) : '0'),
-    wide: true,
-  },
-  { key: 'ownGoals', label: 'AG', title: 'Autogoles', value: (r) => r.ownGoals, wide: true },
-];
-
-const CARD_COLUMNS: LeaderColumn<CardRow>[] = [
-  { key: 'yellows', label: 'TA', title: 'Amarillas', value: (r) => r.yellows },
-  { key: 'secondYellows', label: '2A', title: 'Rojas por doble amarilla', value: (r) => r.secondYellows },
-  { key: 'reds', label: 'TR', title: 'Rojas directas', value: (r) => r.reds },
-  { key: 'fairPlay', label: 'JL', title: 'Juego limpio (más negativo = más tarjetas)', value: (r) => -r.fairPlay, show: (r) => r.fairPlay },
-];
-
-const KEEPER_COLUMNS: LeaderColumn<FootballTotals>[] = [
-  { key: 'cleanSheets', label: 'VI', title: 'Vallas invictas', value: (r) => r.cleanSheets },
-  { key: 'keeperGames', label: 'PJ', title: 'Partidos de portero', value: (r) => r.keeperGames },
-  { key: 'conceded', label: 'GR', title: 'Goles recibidos', value: (r) => -r.conceded, show: (r) => r.conceded },
-  {
-    key: 'avg',
-    label: 'Prom',
-    title: 'Goles recibidos por partido',
-    value: (r) => (r.keeperGames ? -r.conceded / r.keeperGames : 0),
-    show: (r) => (r.keeperGames ? (r.conceded / r.keeperGames).toLocaleString('es-DO', { maximumFractionDigits: 2 }) : '0'),
-  },
-];
-
-/** Columnas de la tabla de fútbol: PJ G E P GF GC Dif. (y el juego limpio en la computadora). */
-export const TABLE_COLUMNS: StandingsColumn[] = [
-  ...defaultColumns({ draws: true, forLabel: 'GF', againstLabel: 'GC' }),
-  { key: 'fair', label: 'JL', title: 'Juego limpio (tarjetas)', value: (r) => r.extra.fairPlay ?? 0, wide: true },
-];
-
-const TABS: readonly Tab[] = ['tabla', 'goleadores', 'tarjetas', 'vallas', 'disciplina'];
+// Las columnas, qué se ve, las líneas de cada lista y lo de la disciplina están en standingsView.ts (los usa también la
+// app del teléfono).
+export { SCORER_COLUMNS, TABLE_COLUMNS };
 
 /** Imagen de la pestaña que se ve para mandar al grupo (la disciplina no se comparte). */
 function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTableSpec | null {
@@ -86,7 +64,7 @@ function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTable
       });
     }
     case 'goleadores': {
-      const rows = season.scorers.filter((s) => s.goals > 0 || s.assists > 0);
+      const rows = scorerRows(season);
       return rows.length ? leadersShare({ ...leaders, subtitle: 'Goleadores', rows, columns: SCORER_COLUMNS }) : null;
     }
     case 'tarjetas':
@@ -97,13 +75,6 @@ function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTable
       return null;
   }
 }
-
-/** Lo de los jugadores (en «Jugadores»): goleadores, tarjetas o vallas invictas. */
-const PLAYER_VIEWS: readonly { key: Tab; label: string }[] = [
-  { key: 'goleadores', label: 'Goleadores' },
-  { key: 'tarjetas', label: 'Tarjetas' },
-  { key: 'vallas', label: 'Vallas invictas' },
-];
 
 /**
  * Tabla, goleadores, tarjetas, vallas invictas y disciplina de la temporada (/l/:lid/ranking; `?ver=`), rediseño «Calma
@@ -119,8 +90,7 @@ export default function FootballStandings() {
   const picked = useStandingsSeason();
   const season = useFootballSeason(tl, picked.selected ?? tl.season);
   const [params, setParams] = useSearchParams();
-  const asked = params.get('ver') as Tab | null;
-  const tab: Tab = asked && TABS.includes(asked) ? asked : 'tabla';
+  const tab: Tab = footballTab(params.get('ver'));
   const setTab = (k: Tab) =>
     setParams(
       (p) => {
@@ -130,7 +100,7 @@ export default function FootballStandings() {
       },
       { replace: true },
     );
-  const segment: 'tabla' | 'jugadores' | 'disciplina' = tab === 'tabla' || tab === 'disciplina' ? tab : 'jugadores';
+  const segment = footballSegment(tab);
   const canShare = !!shareCard(tl, season, tab);
   const label = picked.seasons.length > 1 ? picked.selected?.name : null;
   const leaders = { nameOf: tl.nameOf, teamOf: (key: string) => tl.teamOf(key)?.name ?? '', linkOf: (id: string) => `${tl.base}/j/${id}`, highlight: tl.myPlayerId, full: pro };
@@ -209,10 +179,10 @@ export default function FootballStandings() {
           {tab === 'goleadores' && (
             <LeadersTable
               {...leaders}
-              rows={season.scorers.filter((s) => s.goals > 0 || s.assists > 0)}
+              rows={scorerRows(season)}
               columns={SCORER_COLUMNS}
-              line={(r) => (r.assists ? `${r.assists} ${r.assists === 1 ? 'asistencia' : 'asistencias'}` : null)}
-              empty="Los goles salen del acta de cada partido (quién marcó)."
+              line={scorerLine}
+              empty={EMPTY_TEXT.goleadores}
             />
           )}
           {tab === 'tarjetas' && (
@@ -220,8 +190,8 @@ export default function FootballStandings() {
               {...leaders}
               rows={season.cards}
               columns={CARD_COLUMNS}
-              line={(r) => [r.secondYellows ? `${r.secondYellows} doble amarilla` : null, r.reds ? `${r.reds} ${r.reds === 1 ? 'roja' : 'rojas'}` : null].filter(Boolean).join(' · ') || null}
-              empty="Nadie tiene tarjetas todavía."
+              line={cardLine}
+              empty={EMPTY_TEXT.tarjetas}
             />
           )}
           {tab === 'vallas' && (
@@ -229,8 +199,8 @@ export default function FootballStandings() {
               {...leaders}
               rows={season.keepers}
               columns={KEEPER_COLUMNS}
-              line={(r) => `${r.keeperGames} ${r.keeperGames === 1 ? 'partido' : 'partidos'} · ${r.conceded} recibidos`}
-              empty="Las vallas invictas salen del portero que marca el anotador en cada partido."
+              line={keeperLine}
+              empty={EMPTY_TEXT.vallas}
             />
           )}
           {tab === 'disciplina' && <DisciplineTab tl={tl} season={season} />}
@@ -244,9 +214,8 @@ function TableTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
   const table = footballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
   // El cuadro del torneo relámpago de la temporada (los juegos del playoff tienen su pestaña).
-  const knockout = season.matches.filter((m) => m.bracketKey && !isPlayoffMatch(m)).sort(compareMatches);
+  const knockout = knockoutMatches(season);
   const name = (id: string) => <TeamName team={tl.teamOf(id)} label="(equipo borrado)" />;
-  const order = table.tiebreak.map((k) => TIEBREAK_LABEL[k].toLowerCase());
   return (
     <>
       {knockout.length > 0 && (
@@ -271,13 +240,10 @@ function TableTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
       ) : (
         <StandingsTable rows={season.standings} nameOf={name} columns={TABLE_COLUMNS} highlight={mine} empty="Cuando haya partidos confirmados, la tabla sale aquí." />
       )}
-      <HowItCounts line={`Ganar ${table.win} · empatar ${table.draw} · perder ${table.loss}`}>
-        <p>
-          Ganar da {table.win} puntos, empatar {table.draw} y perder {table.loss}. W.O.: {table.walkoverScore}-0 y {table.walkoverLoss} puntos para el que no vino.
-        </p>
-        <p>{table.shootout ? `Empate con penales: ${table.shootout.win} al que gana la tanda y ${table.shootout.loss} al otro.` : 'Los penales no cuentan en los goles ni en la tabla.'}</p>
-        <p>Desempate: {order.join(' → ')}. La «i» junto al puesto dice qué regla lo decidió.</p>
-        <p>Un resultado por confirmar cuenta a las 48 horas.</p>
+      <HowItCounts line={footballRuleLine(table)}>
+        {footballRuleText(table).map((p) => (
+          <p key={p}>{p}</p>
+        ))}
       </HowItCounts>
     </>
   );
@@ -286,15 +252,9 @@ function TableTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
 /** Suspendidos, amarillas que van para la próxima suspensión, sanciones y quien jugó suspendido. */
 function DisciplineTab({ tl, season }: { tl: TeamLeague; season: FootballSeason }) {
   const cfg = disciplineFrom(tl.rules.data);
-  const byId = new Map(season.matches.map((m) => [m.id, m] as const));
-  const matchText = (id: string) => {
-    const m = byId.get(id);
-    if (!m) return 'partido borrado';
-    const nm = (i: 0 | 1) => tl.teamOf(m.sides[i].teamId)?.name ?? m.sides[i].label;
-    return `${m.round != null ? `J${m.round} · ` : ''}${nm(0)} vs. ${nm(1)}`;
-  };
-  const close = cfg.yellowsForSuspension > 0 ? season.discipline.yellows.filter((y) => y.pending === cfg.yellowsForSuspension - 1 && y.pending > 0) : [];
-  const sanctions = [...season.discipline.sanctions].sort((a, b) => b.remaining - a.remaining);
+  const matchText = disciplineMatchText(season.matches, (id) => tl.teamOf(id)?.name);
+  const close = nearSuspension(season.discipline, cfg);
+  const sanctions = sortedSanctions(season.discipline);
   return (
     <div className="flex flex-col gap-[30px]">
       <p className="mx-1 text-meta text-muted">{describeDiscipline(cfg)}. La app avisa; el admin decide.</p>

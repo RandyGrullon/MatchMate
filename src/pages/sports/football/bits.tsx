@@ -8,7 +8,8 @@ import { Card, cx } from '../../../components/ui';
 import { useTicker } from '../team/ScorerPieces';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { REASON_TEXT } from './rules';
-import { decodeLines, decodeTimeline, liveFromScore, liveMinute, livePowerPlays, pensFromScore, periodsFromScore, type ScoreEvent, type ScoreLine } from './adapter';
+import { decodeLines, decodeTimeline, liveFromScore, liveMinute, livePowerPlays, pensFromScore, type ScoreLine } from './adapter';
+import { KIND_TEXT, eventPlayerSide, periodsLineParts } from './matchView';
 
 /** Posiciones del fútbol para la plantilla. */
 export { FOOTBALL_POSITIONS } from '../../../components/players/positions';
@@ -86,7 +87,6 @@ export function LiveStrip({ match: m, names, className }: { match: Pick<Match, '
   );
 }
 
-const KIND_TEXT: Record<ScoreEvent['kind'], string> = { goal: 'Gol', own_goal: 'Autogol', yellow: 'Amarilla', second_yellow: 'Doble amarilla (roja)', red: 'Roja' };
 
 /** Goles y tarjetas del acta con su minuto (de lo publicado), local a la izquierda y visita a la derecha. */
 export function MatchTimeline({ tl, match: m, names }: { tl: TeamLeague; match: Pick<Match, 'score' | 'sides'>; names: [string, string] }) {
@@ -103,7 +103,7 @@ export function MatchTimeline({ tl, match: m, names }: { tl: TeamLeague; match: 
     <Card className="px-[18px] py-2">
     <ol className="flex flex-col" aria-label="Goles y tarjetas">
       {events.map((e, i) => {
-        const playerSide: Side = e.kind === 'own_goal' ? (e.side === 1 ? 2 : 1) : e.side;
+        const playerSide: Side = eventPlayerSide(e);
         const right = e.side === 2;
         const icon =
           e.kind === 'goal' || e.kind === 'own_goal' ? <Goal className={cx('size-4 shrink-0', e.kind === 'own_goal' ? 'text-danger' : 'text-ok')} /> : <CardIcon kind={e.kind} />;
@@ -130,22 +130,14 @@ export function MatchTimeline({ tl, match: m, names }: { tl: TeamLeague; match: 
 
 /** Goles por tiempo («1T 2T Pr.») y penales. */
 export function PeriodsLine({ match: m, className }: { match: Pick<Match, 'score'>; className?: string }) {
-  const periods = periodsFromScore(m.score);
-  const pens = pensFromScore(m.score);
-  if (periods.length < 2 && !pens) return null;
-  const label = (i: number) => (i < 2 ? `${i + 1}T` : `Pr.${i - 1}`);
+  const { periods, pens } = periodsLineParts(m.score);
+  if (!periods.length && !pens) return null;
   return (
     <p className={cx('num flex flex-wrap gap-x-3 text-[13px] text-muted', className)}>
       {periods.map((p, i) => (
-        <span key={i}>
-          {label(i)}: {p[0]}-{p[1]}
-        </span>
+        <span key={i}>{p}</span>
       ))}
-      {pens && (
-        <span className="font-semibold text-fg">
-          Penales: {pens[0]}-{pens[1]}
-        </span>
-      )}
+      {pens && <span className="font-semibold text-fg">{pens}</span>}
     </p>
   );
 }

@@ -6,14 +6,11 @@ import type { Side } from '../../../sports/types';
 import { Button, Field, Segmented, Select, Sheet, cx } from '../../../components/ui';
 import { rosterOf, teamColor } from './logic';
 import { Jersey, RsvpBadge } from './TeamBits';
+import { presentEntries, presentStart, reinforcementCandidates, togglePresent, type PresentEntry } from './presentes';
 import type { TeamLeague } from './useTeamLeague';
 
-export interface PresentEntry {
-  playerId: string;
-  jersey: number | null;
-  /** Refuerzo: no es de la plantilla del equipo. */
-  sub: boolean;
-}
+// La lógica está en presentes.ts (la comparte la app del teléfono).
+export type { PresentEntry } from './presentes';
 
 /**
  * Lista de presentes que confirma el anotador (de ahí salen los partidos jugados de cada jugador). Arranca con
@@ -50,12 +47,7 @@ export function PresentesModal({
   // Al abrir: la lista que ya tiene la mesa; si no hay, los que dijeron «Voy».
   useEffect(() => {
     if (!open) return;
-    const start = ([0, 1] as const).map((i) => {
-      if (current[i].length) return [...current[i]];
-      const yes = rsvps.data.filter((r) => r.matchId === m.id && r.side === i + 1 && r.status === 'yes').map((r) => r.playerId);
-      return yes;
-    }) as [string[], string[]];
-    setPicked(start);
+    setPicked(presentStart(current, rsvps.data, m.id));
     setAdding('');
     // Solo al abrir (las respuestas que lleguen después no pisan lo que el anotador ya tocó).
   }, [open]);
@@ -67,16 +59,10 @@ export function PresentesModal({
   const roster = rosters[i];
   const rosterIds = new Set(roster.map((r) => r.playerId));
   const extras = picked[i].filter((id) => !rosterIds.has(id));
-  const taken = new Set([...picked[0], ...picked[1], ...rosters[0].map((r) => r.playerId), ...rosters[1].map((r) => r.playerId)]);
-  const candidates = tl.players.data.filter((p) => !taken.has(p.id)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const candidates = reinforcementCandidates(tl.players.data, picked, rosters);
   const full = extras.length >= reinforcements;
 
-  const toggle = (id: string) =>
-    setPicked((p) => {
-      const next: [string[], string[]] = [[...p[0]], [...p[1]]];
-      next[i] = next[i].includes(id) ? next[i].filter((x) => x !== id) : [...next[i], id];
-      return next;
-    });
+  const toggle = (id: string) => setPicked((p) => togglePresent(p, i, id));
   const setSide = (ids: string[]) =>
     setPicked((p) => {
       const next: [string[], string[]] = [[...p[0]], [...p[1]]];
@@ -86,10 +72,7 @@ export function PresentesModal({
   const statusOf = (pid: string) => rsvps.data.find((r) => r.matchId === m.id && r.playerId === pid)?.status;
 
   const save = () => {
-    ([0, 1] as const).forEach((k) => {
-      const ids = new Set(rosters[k].map((r) => r.playerId));
-      onSave((k + 1) as Side, picked[k].map((pid) => ({ playerId: pid, jersey: rosters[k].find((r) => r.playerId === pid)?.jersey ?? null, sub: !ids.has(pid) })));
-    });
+    for (const [side, list] of presentEntries(picked, rosters)) onSave(side, list);
     onClose();
   };
 

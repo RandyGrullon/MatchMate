@@ -23,6 +23,7 @@ import { Badge, Button, Card, Field, Input, ListRow, Modal, SectionHeader, Selec
 import { EmptyCard, ProLine } from '../FieldChrome';
 import { MAX_INDEX, MIN_INDEX, isValidIndex } from '../../../sports/golf/course';
 import { HcpExplain } from './bits';
+import { autoDraft, groupsDraft, groupsPayload, groupsState, playersToAdd } from './groups';
 import { cardHoles, hcpText, holesDone, indexInput, indexText, isComplete, parseIndex } from './logic';
 
 export { indexInput, parseIndex } from './logic';
@@ -287,8 +288,7 @@ export function AddPlayersModal({ open, onClose, round, cards, players }: { open
       setQ('');
     }
   }, [open]);
-  const inside = new Set(cards.map((c) => c.playerId));
-  const free = players.filter((p) => !inside.has(p.id) && p.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const free = playersToAdd(players, cards, q);
 
   async function save() {
     setBusy(true);
@@ -346,19 +346,8 @@ export function AddPlayersModal({ open, onClose, round, cards, players }: { open
   );
 }
 
-/** Reparte en grupos de hasta 4 por handicap de juego (los de handicap parecido juntos). */
-export function autoGroups<T extends { id: string; playingHcp: number }>(cards: readonly T[]): Map<string, number> {
-  const sorted = [...cards].sort((a, b) => a.playingHcp - b.playingHcp);
-  const count = Math.ceil(sorted.length / 4);
-  const out = new Map<string, number>();
-  // Tamaños parejos: con 10 jugadores, 4 + 3 + 3 (no 4 + 4 + 2).
-  let k = 0;
-  for (let g = 0; g < count; g++) {
-    const size = Math.floor(sorted.length / count) + (g < sorted.length % count ? 1 : 0);
-    for (let i = 0; i < size; i++) out.set(sorted[k++].id, g + 1);
-  }
-  return out;
-}
+// Repartir y armar los grupos (sin React) está en groups.ts: la comparte la app.
+export { autoGroups } from './groups';
 
 /** Admin: grupo de cada jugador (hasta 4) y, con salida simultánea, el hoyo por el que sale cada grupo. */
 export function GroupsModal({ open, onClose, round, cards, nameOf }: { open: boolean; onClose: () => void; round: GolfRoundFull; cards: GolfCardDoc[]; nameOf: (pid: string) => string }) {
@@ -372,28 +361,19 @@ export function GroupsModal({ open, onClose, round, cards, nameOf }: { open: boo
 
   useEffect(() => {
     if (!open) return;
-    setGroupOf(Object.fromEntries(cards.map((c) => [c.id, c.groupNo])));
-    const starts: Record<number, number> = {};
-    for (const c of cards) if (c.groupNo != null) starts[c.groupNo] = c.startHole;
-    setStartOf(starts);
+    const d = groupsDraft(cards);
+    setGroupOf(d.groupOf);
+    setStartOf(d.startOf);
     // Solo al abrir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const maxGroup = Math.max(1, Math.ceil(cards.length / 2), ...Object.values(groupOf).map((g) => g ?? 0));
-  const sizes = new Map<number, number>();
-  for (const g of Object.values(groupOf)) if (g != null) sizes.set(g, (sizes.get(g) ?? 0) + 1);
-  const tooBig = [...sizes.values()].some((n) => n > 4);
-  const used = [...sizes.keys()].sort((a, b) => a - b);
+  const { maxGroup, used, tooBig } = groupsState(cards.length, groupOf);
 
   async function save() {
     setBusy(true);
     const ok = await run(async () => {
-      await setGolfGroups(
-        lid,
-        round.eventId,
-        cards.map((c) => ({ cardId: c.id, groupNo: groupOf[c.id] ?? null, startHole: groupOf[c.id] != null && round.shotgun ? (startOf[groupOf[c.id]!] ?? first) : null })),
-      );
+      await setGolfGroups(lid, round.eventId, groupsPayload(cards, { groupOf, startOf }, round.shotgun, first));
       return true;
     }, 'Grupos guardados');
     setBusy(false);
@@ -418,13 +398,9 @@ export function GroupsModal({ open, onClose, round, cards, nameOf }: { open: boo
         <Button
           icon={<Shuffle className="size-4" />}
           onClick={() => {
-            const auto = autoGroups(cards);
-            setGroupOf(Object.fromEntries(cards.map((c) => [c.id, auto.get(c.id) ?? null])));
-            if (round.shotgun) {
-              const starts: Record<number, number> = {};
-              [...new Set(auto.values())].forEach((g, i) => (starts[g] = holeNumbers[(i * 2) % Math.max(1, holeNumbers.length)] ?? first));
-              setStartOf(starts);
-            }
+            const auto = autoDraft(cards, holeNumbers, round.shotgun);
+            setGroupOf(auto.groupOf);
+            if (auto.startOf) setStartOf(auto.startOf);
           }}
         >
           Repartir de a 4 por handicap

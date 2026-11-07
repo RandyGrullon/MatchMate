@@ -1,13 +1,14 @@
 import { Users } from 'lucide-react';
 import type { Match } from '../../../lib/data/matches';
 import { racketScreens } from '../racket';
+import { PICKLEBALL_BASE, SOCIAL_TEMPLATE_INFO } from '../racket/extensions';
 import { isPointsMatch } from '../racket/logic/results';
 import type { RacketExtensions, ResultEntrySpec } from '../racket/sport';
 import { withFormats } from '../racket-formats';
 import { PickleballCourt, pickleRules } from './court/PickleballCourt';
 import { SocialForm } from './social/SocialForm';
 import { SocialPage } from './social/SocialPage';
-import { gameParser, gameText, isSocialEvent, parseSocialConfig, type GameRules } from './social/logic';
+import { gameParser, gameText, isSocialEvent, type GameRules } from './social/logic';
 
 /** «Solo el resultado» del juego del round robin: «11-7» (final posible a 11 ganando por 2). */
 function gameEntry(m: Match): ResultEntrySpec | null {
@@ -28,32 +29,15 @@ function gameEntry(m: Match): ResultEntrySpec | null {
  * conteo tradicional (solo puntúa el que saca, canto «5-3-2», sacador 1 y 2, 0-0-2 al empezar) o por rally.
  * Plantillas de «Nuevo»: round robin social (compañeros que rotan, juegos a 11), liga de dobles, torneo grupos +
  * eliminatoria, liga por cajas y escalera. Tabla con el orden del round robin de USA Pickleball. Nivel DUPR manual.
+ * Lo que no trae pantallas (plantillas que esconde y sus nombres, la línea del round robin, las palabras) está en
+ * racket/extensions.ts (lo usa también la app del teléfono).
  */
 export const PICKLEBALL_EXT: RacketExtensions = withFormats('pickleball', {
-  hideTemplates: ['americano', 'mexicano'],
-  templates: [
-    {
-      k: 'social',
-      title: 'Round robin social',
-      text: 'Compañeros que rotan cada ronda y cada partido es un juego a 11. La app arma las rondas; también mixto.',
-      icon: Users,
-      Form: SocialForm,
-    },
-  ],
-  templateTitles: (doubles) => ({
-    liga: { title: doubles ? 'Liga de dobles' : 'Liga', text: 'Todos contra todos por jornadas, con canchas, horas y la tabla de USA Pickleball.' },
-    torneo: { title: 'Torneo grupos + eliminatoria', text: 'Categorías por nivel (DUPR): grupos, cruces y cuadro con 3.er lugar.' },
-  }),
+  ...PICKLEBALL_BASE,
+  templates: [{ ...SOCIAL_TEMPLATE_INFO, icon: Users, Form: SocialForm }],
   eventPage: (e) => (isSocialEvent(e) ? SocialPage : null),
-  eventInfo: (e) => {
-    if (!isSocialEvent(e)) return null;
-    const c = parseSocialConfig(e.config, e.type);
-    const state = c.closed ? 'terminado' : c.round ? `ronda ${c.round} de ${c.rounds}` : `${c.rounds} rondas`;
-    return { label: c.mixed ? 'Round robin mixto' : 'Round robin', line: `${c.players.length} jugadores · a ${c.game.to} · ${state}` };
-  },
   court: () => PickleballCourt,
   resultEntry: gameEntry,
-  words: { nights: 'Round robin', nightsLong: 'Round robin social' },
 });
 
 export default racketScreens('pickleball', PICKLEBALL_EXT);

@@ -1,29 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, ShieldCheck, Users } from 'lucide-react';
-import {
-  registerSwimmer,
-  updateSwimmer,
-  useSwimmers,
-  useSwimmersPrivate,
-  type Sex,
-  type SwimmerInfo,
-  type SwimmerPrivate,
-} from '../../../lib/data/swimming';
-import type { Player } from '../../../lib/types';
+import { registerSwimmer, updateSwimmer, useSwimmers, useSwimmersPrivate, type Sex } from '../../../lib/data/swimming';
 import { PillSelect, Initials } from '../../../components/ranking/parts';
 import { useAction } from '../../../components/feedback';
 import { Badge, Button, Card, Field, Input, ListRow, ListSkeleton, LoadError, Modal, SectionHeader, Select } from '../../../components/ui';
 import { EmptyCard, SectionAdd } from '../FieldChrome';
 import { Segmented, clubMap, useNames, useSwim } from './bits';
-import { groupLabel, leagueYear, minorAgeProblem } from './logic';
-
-const SEX_LABEL: Record<Sex, string> = { F: 'Femenino', M: 'Masculino', X: 'Otro' };
-
-interface Editing {
-  player: Player;
-  info: SwimmerInfo | undefined;
-  priv: SwimmerPrivate | undefined;
-}
+import { SEX_LABEL, filterSwimmers, swimmerChanges, swimmerFormCheck, swimmerLine, swimmerTag, swimmersTitle, type SwimmerEditing as Editing } from './admin';
+import { groupLabel, leagueYear } from './logic';
 
 /**
  * Organizar › Nadadores (rediseño «Calma y foco»; el título lo pone Organizar): buscar y filtrar por club, «+ Registrar»
@@ -42,10 +26,7 @@ export function SwimmersAdmin() {
   const infoBy = useMemo(() => new Map(swimmers.data.map((s) => [s.playerId, s] as const)), [swimmers.data]);
   const privBy = useMemo(() => new Map(priv.data.map((p) => [p.playerId, p] as const)), [priv.data]);
   const byClub = useMemo(() => clubMap(clubs.data), [clubs.data]);
-  const needle = q.trim().toLowerCase();
-  const list = players.data
-    .filter((p) => !needle || p.name.toLowerCase().includes(needle))
-    .filter((p) => !club || (club === '-' ? !infoBy.get(p.id)?.clubId : infoBy.get(p.id)?.clubId === club));
+  const list = filterSwimmers(players.data, q, club, infoBy);
 
   if (!isAdmin) return null;
   const error = players.error ?? swimmers.error ?? priv.error;
@@ -72,7 +53,7 @@ export function SwimmersAdmin() {
       <section aria-labelledby="natacion-nadadores">
         <SectionHeader
           id="natacion-nadadores"
-          title={players.loading ? 'Nadadores' : list.length === 1 ? '1 nadador' : `${list.length} nadadores`}
+          title={swimmersTitle(players.loading, list.length)}
           action={<SectionAdd label="Registrar" onClick={() => setAdding(true)} />}
         />
         {players.loading ? (
@@ -89,6 +70,7 @@ export function SwimmersAdmin() {
               const info = infoBy.get(p.id);
               const pr = privBy.get(p.id);
               const clubOf = info?.clubId ? byClub.get(info.clubId) : null;
+              const tag = swimmerTag(p, pr);
               return (
                 <ListRow
                   key={p.id}
@@ -97,15 +79,11 @@ export function SwimmersAdmin() {
                   ariaLabel={`Cambiar a ${p.name}`}
                   leading={<Initials name={p.name} />}
                   title={p.name}
-                  subtitle={[clubOf?.name ?? 'Sin club', pr?.birthYear ? String(pr.birthYear) : null, pr?.sex ? SEX_LABEL[pr.sex] : null].filter(Boolean).join(' · ')}
+                  subtitle={swimmerLine(clubOf?.name, pr)}
                   trailing={
                     <span className="flex flex-col items-end gap-1">
                       {info?.category && <Badge>{groupLabel(info.category)}</Badge>}
-                      {p.isMinor ? (
-                        <Badge tone={pr?.consentAt ? 'accent' : 'danger'}>{pr?.consentAt ? 'Menor' : 'Menor sin permiso'}</Badge>
-                      ) : p.uid ? (
-                        <Badge tone="ok">Con cuenta</Badge>
-                      ) : null}
+                      {tag && <Badge tone={tag.tone}>{tag.label}</Badge>}
                     </span>
                   }
                 />
@@ -155,19 +133,9 @@ export function SwimmerFormModal({ open, onClose, editing, fixedClub }: { open: 
 
   // El año de hoy en la zona de la liga: la base cuenta la edad igual.
   const thisYear = leagueYear(league.tz);
-  const birthYear = year ? Number(year) : null;
-  const badYear = birthYear != null && (!Number.isInteger(birthYear) || birthYear < 1900 || birthYear > thisYear);
+  const form = { name, isMinor, year, sex, club, guardian, consent };
   // Con año de menor tiene que ser menor (sin cuenta); si no, la base lo rechaza.
-  const ageProblem = badYear
-    ? null
-    : minorAgeProblem({ birthYear, year: thisYear, isMinor, editing: !!editing, hasAccount: !!editing?.player.uid, minorsOk });
-  const valid =
-    name.trim().length > 0 &&
-    name.trim().length <= 60 &&
-    !badYear &&
-    !ageProblem &&
-    (!isMinor || (birthYear != null && !!sex && consent)) &&
-    (!fixedClub || club === fixedClub);
+  const { birthYear, badYear, ageProblem, valid } = swimmerFormCheck(form, { thisYear, editing, minorsOk, fixedClub });
 
   const save = async () => {
     setBusy(true);
@@ -183,15 +151,7 @@ export function SwimmerFormModal({ open, onClose, editing, fixedClub }: { open: 
           guardianName: guardian || null,
         });
       } else {
-        const p = editing.priv;
-        await updateSwimmer(lid, editing.player.id, {
-          ...(name.trim() !== editing.player.name ? { name } : {}),
-          ...((club || null) !== (editing.info?.clubId ?? null) ? { clubId: club || null } : {}),
-          ...(birthYear !== (p?.birthYear ?? null) ? { birthYear } : {}),
-          ...((sex || null) !== (p?.sex ?? null) ? { sex: sex || null } : {}),
-          ...((guardian.trim() || null) !== (p?.guardianName ?? null) ? { guardianName: guardian || null } : {}),
-          ...(consent && !p?.consentAt ? { consent: true } : {}),
-        });
+        await updateSwimmer(lid, editing.player.id, swimmerChanges(editing, form, birthYear));
       }
       return true;
     }, editing ? 'Nadador guardado' : 'Nadador registrado');

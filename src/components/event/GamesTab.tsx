@@ -5,7 +5,7 @@ import { addEntries, addEventGame, fetchEffectiveAverages, removeEntry, saveGame
 import { queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../../lib/data/balls';
 import { getUserId } from '../../lib/data/client';
 import { useLeagueCtx } from '../../lib/league';
-import { entryLine, slots, teamRule, type Line } from '../../lib/stats';
+import { entryLine, slots, type Line } from '../../lib/stats';
 import { partialGame, useMemoryTick } from '../../lib/useNextGame';
 import { NO_PHOTO, type BowlingEvent, type Entry, type LiveScore, type Player, type Submission } from '../../lib/types';
 import { BallDot } from '../balls/BallDot';
@@ -20,34 +20,13 @@ import { ScoreEntryModal } from '../frames/ScoreEntryModal';
 import { Badge, Button, Card, Empty, cx } from '../ui';
 import { AddPlayersModal } from './AddPlayersModal';
 import { boardRows, shortName, type BoardCell, type BoardRow, type PartialOf } from './board';
-
-interface Group {
-  key: string;
-  title: string | null;
-  lines: Line[];
-}
+import { cellSpoken, cellText, confirmedText, emptySheetText, groupTotal, isRealPhoto, missingConfirmed, nextOpenGame, removeEntryConfirm, sheetGroups, type SheetGroup } from './sheet';
 
 const NO_SUBS: Submission[] = [];
 const NO_LIVE: LiveScore[] = [];
 
-/**
- * El total del encabezado de un equipo con su regla (docs/premios-torneo.md §5.1): con equipos por scratch (la del
- * dueño) el número grande son los pinos y el total con handicap va al lado, en gris; con equipos por handicap, el
- * total con handicap (como antes). `hcp` null = no hay otro número que mostrar.
- */
-export function groupTotal(event: BowlingEvent, lines: readonly Line[]): { main: number; hcp: number | null } {
-  let scratch = 0;
-  let withHcp = 0;
-  for (const l of lines) {
-    for (const s of l.scores) {
-      if (s == null) continue;
-      scratch += s;
-      withHcp += s + l.hcp;
-    }
-  }
-  if (teamRule(event) === 'hcp' || withHcp === scratch) return { main: withHcp, hcp: null };
-  return { main: scratch, hcp: withHcp };
-}
+// La lógica de la Planilla sin pantalla (también la usa la app del teléfono): sheet.ts.
+export { groupTotal, isRealPhoto } from './sheet';
 
 export function TeamTotal({ total }: { total: { main: number; hcp: number | null } }) {
   return (
@@ -115,8 +94,7 @@ export function GamesTab({
   const lines = entries.map((e) => entryLine(e, event, true)).sort((a, b) => nameOf(a.entry).localeCompare(nameOf(b.entry)));
   const pending = lines.reduce((n, l) => n + l.pending, 0);
   // Confirmados con "Voy" que todavía no están anotados como asistentes.
-  const confirmed = Object.keys(event.rsvp ?? {}).filter((id) => byId.has(id));
-  const missing = confirmed.filter((id) => !entries.some((e) => e.playerId === id));
+  const missing = missingConfirmed(event, entries, new Set(byId.keys()));
   const [addingConfirmed, setAddingConfirmed] = useState(false);
 
   async function addConfirmed() {
@@ -129,14 +107,7 @@ export function GamesTab({
     setAddingConfirmed(false);
   }
 
-  const groups: Group[] = isTorneo
-    ? [
-        ...Object.entries(event.teams ?? {})
-          .sort(([, a], [, b]) => a.order - b.order)
-          .map(([id, t]) => ({ key: id, title: t.name, lines: lines.filter((l) => l.entry.teamId === id) })),
-        { key: '_none', title: 'Sin equipo', lines: lines.filter((l) => !l.entry.teamId || !event.teams?.[l.entry.teamId]) },
-      ].filter((g) => g.lines.length)
-    : [{ key: '_all', title: null, lines }];
+  const groups: SheetGroup[] = sheetGroups(event, lines);
 
   // Sus propios juegos (el dueño, un admin o el anotador que también juega): con qué bola tiró cada uno. Solo en su fila
   // y en su hoja: set_game_balls marca los juegos de la cuenta, no los de la fila que se está anotando.
@@ -255,7 +226,7 @@ export function GamesTab({
   }
 
   async function remove(entry: Entry) {
-    const ok = await confirm({ title: `¿Quitar a ${nameOf(entry)}?`, message: 'Se borran sus juegos de esta práctica.', confirmText: 'Quitar', danger: true });
+    const ok = await confirm(removeEntryConfirm(nameOf(entry)));
     if (ok) await busy.run(`x:${entry.id}`, () => run(() => removeEntry(lid, entry)));
   }
 
@@ -333,7 +304,7 @@ export function GamesTab({
       <CalendarCheck aria-hidden="true" className="size-5 shrink-0 text-accent" />
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-semibold">
-          {missing.length} {missing.length === 1 ? 'confirmó que va' : 'confirmaron que van'}
+          {confirmedText(missing.length)}
         </p>
         <p className="truncate text-[13px] text-muted">{missing.map((id) => byId.get(id)!.name).join(', ')}</p>
       </div>
@@ -346,12 +317,8 @@ export function GamesTab({
   const sheetView = (
     <div className="flex flex-col">
       {board.length === 0 ? (
-        <Empty icon={<Users className="size-8" />} title={isTorneo ? 'Nadie inscrito' : 'Sin asistentes'}>
-          {!isAdmin
-            ? 'El admin todavía no ha inscrito jugadores.'
-            : isTorneo
-              ? 'Inscribe jugadores en la pestaña Inscritos.'
-              : 'Agrega quién vino a practicar, o lee una foto y se agregan solos.'}
+        <Empty icon={<Users className="size-8" />} title={emptySheetText(isAdmin, isTorneo).title}>
+          {emptySheetText(isAdmin, isTorneo).text}
         </Empty>
       ) : (
         <div className="flex flex-col gap-3">
@@ -508,12 +475,8 @@ export function GamesTab({
       </div>
 
       {entries.length === 0 ? (
-        <Empty icon={<Users className="size-8" />} title={isTorneo ? 'Nadie inscrito' : 'Sin asistentes'}>
-          {!isAdmin
-            ? 'El admin todavía no ha inscrito jugadores.'
-            : isTorneo
-              ? 'Inscribe jugadores en la pestaña Inscritos.'
-              : 'Agrega quién vino a practicar, o lee una foto y se agregan solos.'}
+        <Empty icon={<Users className="size-8" />} title={emptySheetText(isAdmin, isTorneo).title}>
+          {emptySheetText(isAdmin, isTorneo).text}
         </Empty>
       ) : (
         groups.map((g) => {
@@ -738,7 +701,7 @@ export function GamesTab({
             // No se guardó: lo anotado sigue en la memoria del teléfono.
             if (!ok) return false;
             // Sigue con el próximo juego sin anotar, o cierra.
-            const next = slots(framesEntry.scores, event.games, null).findIndex((s, i) => i !== framesGame && s == null);
+            const next = nextOpenGame(slots(framesEntry.scores, event.games, null), framesGame);
             setFramesFor(next >= 0 ? { entryId: framesEntry.id, game: next } : null);
           }}
         />
@@ -748,13 +711,6 @@ export function GamesTab({
 }
 
 const EMPTY_CELL: BoardCell = { kind: 'empty', score: null };
-
-/** Lo que dice una casilla al lector de pantalla. */
-function cellSpoken(cell: BoardCell): string {
-  if (cell.kind === 'empty') return 'sin anotar';
-  if (cell.kind === 'play') return cell.partial ? `jugando, lleva ${cell.score ?? 0}` : `${cell.score}, en su teléfono`;
-  return cell.kind === 'pend' ? `${cell.score}, por aprobar` : String(cell.score);
-}
 
 /**
  * Una casilla de la Planilla (38 px; se toca en 46): lo que cuenta en gris (en tu fila, en blanco), «Por aprobar» en ámbar,
@@ -773,7 +729,7 @@ export function SheetCell({
   label: string;
   onClick?: () => void;
 }) {
-  const text = cell.kind === 'empty' ? '' : cell.partial ? `${cell.score ?? ''}…` : String(cell.score);
+  const text = cellText(cell);
   const cls = cx(
     'relative grid h-[38px] min-w-0 place-items-center rounded-[11px] text-base font-semibold tabular-nums',
     cell.kind === 'ok' && (me ? 'mm-ev-mine' : 'bg-surface-2'),
@@ -848,6 +804,3 @@ function QuietToggle({ icon: Icon, onClick, children }: { icon: LucideIcon; onCl
     </button>
   );
 }
-
-/** Foto real (no la marca de "sin foto"). */
-export const isRealPhoto = (p: string | null | undefined) => p != null && p !== NO_PHOTO;

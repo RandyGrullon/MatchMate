@@ -1,7 +1,7 @@
 /**
  * Inicio de la liga de raqueta (Home.tsx de la web, con su misma lógica): lo que está en vivo, mis próximos partidos, y
- * las noches, ligas y torneos en «Próximas fechas» y «Anteriores», como filas con su fecha. Crear un evento («Nuevo»),
- * por ahora en la web. Un torneo sin liga con un solo evento abre directo.
+ * las noches, ligas y torneos en «Próximas fechas» y «Anteriores», como filas con su fecha. «Nuevo» (quien organiza)
+ * abre su pantalla (EventWizard.tsx). Un torneo sin liga con un solo evento abre directo.
  */
 import { useMemo } from 'react';
 import { View } from 'react-native';
@@ -15,22 +15,26 @@ import { isNightType, parseNightConfig } from '@mm/pages/sports/racket/logic/nig
 import { isPointsMatch, matchTime } from '@mm/pages/sports/racket/logic/results';
 import { addDays, timeLabel, todayIn } from '@mm/pages/sports/racket/logic/time';
 import { useMySide } from '@mm/pages/sports/racket/match/side';
-import { useRacket } from '@mm/pages/sports/racket/sport';
 import { eventLine, eventTypeInfo } from '@mm/pages/sports/racket/view';
 import { DateBlock } from '../DateBlock';
 import { MatchCard } from '../match/MatchCard';
 import { Button, Card, Divider, ListRow, LoadError, SectionHeader, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { RacketEventBody } from './RacketEvent';
+import { useRacketPhone } from './parts';
+import { extraTemplates } from '@mm/pages/sports/racket/extensions';
+import type { RacketSport } from '@mm/sports/racket';
+
+/** «Nuevo» (las plantillas de raqueta). */
+const openNew = (lid: string) => router.push({ pathname: '/l/[lid]/raqueta-nuevo' as never, params: { lid } } as never);
 
 export const matchRoute = (lid: string, matchId: string) => ({ pathname: '/l/[lid]/partido/[matchId]' as const, params: { lid, matchId } });
 
 export function RacketHome() {
   const c = useColors();
   const { lid, isAdmin, league, myPlayerId } = useLeagueCtx();
-  const { side, doubles, ext } = useRacket();
+  const { side, doubles, ext, sport } = useRacketPhone();
   const events = useRacketEvents(lid);
   const q = useMatches({ lid });
   const matches = useWithPendingPoints(lid, q.data);
@@ -73,8 +77,10 @@ export function RacketHome() {
   );
   const loading = events.loading && !events.data.length;
   const empty = !loading && !upcoming.length;
-  const createText = ext.templates?.length
-    ? `Crea ${[...(ext.hideTemplates?.includes('americano') ? [] : ['un americano']), ...ext.templates.map((t) => t.title.toLowerCase())].slice(0, 3).join(', ')} o un torneo.`
+  // Las plantillas propias del deporte (cajas, escalera, el round robin social): las de «Nuevo» (extensions.ts).
+  const extra = extraTemplates(sport as RacketSport);
+  const createText = extra.length
+    ? `Crea ${[...(ext.hideTemplates?.includes('americano') ? [] : ['un americano']), ...extra.map((t) => t.title.toLowerCase())].slice(0, 3).join(', ')} o un torneo.`
     : 'Crea un americano para esta noche, una liga de parejas o un torneo.';
 
   return (
@@ -96,7 +102,7 @@ export function RacketHome() {
           title="Próximas fechas"
           action={
             isAdmin && !empty ? (
-              <Txt variant="bodyStrong" tone="accent" onPress={() => void openOnWeb(`/l/${lid}`)}>
+              <Txt variant="bodyStrong" tone="accent" onPress={() => openNew(lid)}>
                 Nuevo
               </Txt>
             ) : undefined
@@ -115,7 +121,7 @@ export function RacketHome() {
               {isAdmin ? createText : 'Cuando el admin cree lo próximo, sale aquí.'}
             </Txt>
             {isAdmin && (
-              <Button variant="primary" size="lg" icon={<Plus size={20} color={c.accentFg} />} onPress={() => void openOnWeb(`/l/${lid}`)}>
+              <Button variant="primary" size="lg" icon={<Plus size={20} color={c.accentFg} />} onPress={() => openNew(lid)}>
                 Nuevo
               </Button>
             )}
@@ -135,7 +141,7 @@ export function RacketHome() {
 /** Las noches, ligas y torneos como filas con su fecha; el de hoy dice «Hoy» en el color del deporte. */
 function EventList({ events, today, side, doubles }: { events: RacketEvent[]; today: string; side: readonly [string, string]; doubles: boolean }) {
   const { lid } = useLeagueCtx();
-  const { ext } = useRacket();
+  const { ext } = useRacketPhone();
   return (
     <Card padded={false}>
       {events.map((e, i) => {

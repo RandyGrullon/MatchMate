@@ -4,17 +4,10 @@ import { toIsoDate } from '../../../lib/format';
 import { useAction } from '../../../components/feedback';
 import { Button, Field, Input, Modal, Select, Textarea } from '../../../components/ui';
 import { Segmented } from './bits';
-import { clubMeetTemplate, pointsFor, SCHEME_LABEL, timeTrialTemplate } from './logic';
+import { LANE_OPTIONS, meetChanges, meetFormValid, parsePoints, pointsAfterLanes, templateEvents, templateOptions, type MeetTemplate } from './admin';
+import { SCHEME_LABEL } from './logic';
 
-type Template = 'club' | 'control' | 'none';
-
-/** «6-4-3-2-1» → [6, 4, 3, 2, 1] (también con comas o espacios). null si no se entiende. */
-export function parsePoints(text: string): number[] | null {
-  const parts = text.split(/[\s,;-]+/).filter(Boolean);
-  if (!parts.length || parts.length > 50) return null;
-  const nums = parts.map((p) => Number(p.replace(',', '.')));
-  return nums.every((n) => Number.isFinite(n) && n >= 0 && n <= 100) ? nums : null;
-}
+type Template = MeetTemplate;
 
 /**
  * Crear o cambiar un encuentro: tipo, nombre, fecha, piscina, carriles, puntos por puesto y categorías.
@@ -67,15 +60,15 @@ export function MeetFormModal({
   }, [open, meet, defaults.pool, defaults.lanes, defaults.points, defaults.ageGroups]);
 
   const parsed = parsePoints(points);
-  const valid = !!date && !!parsed && name.length <= 80;
+  const valid = meetFormValid({ date, points: parsed, name });
 
   const save = async () => {
     if (!parsed) return;
     setBusy(true);
     const input = { type, name, date, startTime: time || null, announcement, pool, lanes, points: parsed, ageGroups: scheme };
-    const tpl = template === 'club' ? clubMeetTemplate(pool, scheme) : template === 'control' ? timeTrialTemplate() : [];
+    const tpl = templateEvents(template, pool, scheme);
     const r = await run(
-      async () => (editing ? (await updateMeet(lid, meet!.id, changes(meet!, input)), meet!.id) : createMeet(lid, input, tpl)),
+      async () => (editing ? (await updateMeet(lid, meet!.id, meetChanges(meet!, input)), meet!.id) : createMeet(lid, input, tpl)),
       editing ? 'Encuentro guardado' : 'Encuentro creado',
     );
     setBusy(false);
@@ -146,11 +139,11 @@ export function MeetFormModal({
               onChange={(e) => {
                 const n = Number(e.target.value);
                 // Los puntos por defecto siguen a los carriles mientras no se cambien a mano.
-                if (points === pointsFor(lanes).join('-')) setPoints(pointsFor(n).join('-'));
+                setPoints(pointsAfterLanes(points, lanes, n));
                 setLanes(n);
               }}
             >
-              {Array.from({ length: 8 }, (_, k) => k + 3).map((n) => (
+              {LANE_OPTIONS.map((n) => (
                 <option key={n} value={n}>
                   {n} carriles
                 </option>
@@ -175,9 +168,11 @@ export function MeetFormModal({
         {!editing && (
           <Field label="Empezar con" hint="Después puedes agregar, cambiar o quitar pruebas.">
             <Select className="h-11" value={template} onChange={(e) => setTemplate(e.target.value as Template)}>
-              <option value="club">Pruebas de un encuentro de club ({clubMeetTemplate(pool, scheme).length})</option>
-              <option value="control">Pruebas de control de marcas ({timeTrialTemplate().length})</option>
-              <option value="none">Sin pruebas</option>
+              {templateOptions(pool, scheme).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </Field>
         )}
@@ -193,19 +188,4 @@ export function MeetFormModal({
       </div>
     </Modal>
   );
-}
-
-/** Solo lo que cambió (para no tocar la piscina si ya hay tiempos, por ejemplo). */
-function changes(m: SwimMeet, input: { type: 'encuentro' | 'control'; name: string; date: string; startTime: string | null; announcement: string; pool: 25 | 50; lanes: number; points: number[]; ageGroups: AgeScheme }) {
-  const out: Parameters<typeof updateMeet>[2] = {};
-  if (input.name.trim() !== m.name) out.name = input.name;
-  if (input.date !== m.date) out.date = input.date;
-  if ((input.startTime || null) !== m.startTime) out.startTime = input.startTime;
-  if (input.announcement !== m.announcement) out.announcement = input.announcement;
-  if (m.type !== 'torneo' && input.type !== m.type) out.type = input.type;
-  if (input.pool !== m.pool) out.pool = input.pool;
-  if (input.lanes !== m.lanes) out.lanes = input.lanes;
-  if (input.points.join(',') !== m.points.join(',')) out.points = input.points;
-  if (input.ageGroups !== m.ageGroups) out.ageGroups = input.ageGroups;
-  return out;
 }

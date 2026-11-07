@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { Flag, Signature, Trophy } from 'lucide-react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
+import { Flag, Settings2, Signature, Trophy } from 'lucide-react-native';
 import { useEvent, usePlayers } from '@mm/lib/data';
 import { pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournaments, type GolfCardDoc, type GolfRoundFull } from '@mm/lib/data/golf';
 import { sentOrQueued } from '@mm/lib/data/client';
+import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { eventLabel, toIsoDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
@@ -13,6 +14,7 @@ import { useNow } from '@mm/lib/useNow';
 import { roundWhs, strokesReceived } from '@mm/sports/golf/course';
 import { scoreRound } from '@mm/sports/golf/scoring';
 import { eventDay } from '@mm/components/event/eventDay';
+import { liveHref } from '@mm/components/live/logic';
 import { cardWire, markSent, mergeCard, sendPending, useCourtLog } from '@mm/pages/sports/golf/courtLog';
 import { cardHoles, formatLabel, golfRoundOf, hcpText, holesDone, indexText, isComplete, nineLabel, toParText } from '@mm/pages/sports/golf/logic';
 import { toast } from '@/components/feedback';
@@ -21,7 +23,9 @@ import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { GolfBoard } from './GolfBoard';
 import { GolfCourt } from './GolfCourt';
+import { GolfEventMenu } from './GolfEventMenu';
 import { GolfPlayers } from './GolfPlayers';
+import { RoundForm } from './RoundForm';
 import { GolfPrizes } from '@/components/prizes/SportPrizes';
 import { GolfReport } from '@/components/tournamentReport/SportReports';
 
@@ -31,8 +35,8 @@ const TAB_LABEL: Record<TabKey, string> = { tarjeta: 'Tarjeta', leaderboard: 'Le
 /**
  * Una ronda de golf (GolfEvent de la web, Lite): el título y una línea con el día, la hora, el campo y el formato (y «En
  * juego» o «Cerrada»), y las partes de la ronda: Tarjeta (la del grupo, en el campo) · Leaderboard · Jugadores. Al
- * terminar, «Revisa y firma tu tarjeta». Abajo, el reporte (PDF o Excel). Campo y formato, grupos y cerrar la ronda, en
- * la web.
+ * terminar, «Revisa y firma tu tarjeta». Abajo, el reporte (PDF o Excel) y los premios. «•••» (GolfEventMenu):
+ * compartir, publicar tu tarjeta, transmitir y, para el admin, campo y formato, anotadores, cerrar la ronda y eliminarla.
  */
 export function GolfEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
@@ -42,10 +46,13 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
   const golf = useGolfEvent(lid, eventId);
   const players = usePlayers(lid);
   const tournaments = useGolfTournaments(lid);
+  const streams = useLeagueStreams(lid).data ?? [];
   const [log, updateLog] = useCourtLog(eventId);
   const [picked, setPicked] = useState<TabKey | null>(null);
   const [signing, setSigning] = useState<GolfCardDoc | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Campo y formato» (o «Elegir campo»), del admin.
+  const [editing, setEditing] = useState(false);
   const today = toIsoDate(useNow());
 
   // Lo anotado en este teléfono se ve en todas las partes aunque no haya llegado al servidor.
@@ -67,6 +74,7 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
   const started = cards.some((x) => holesDone(x) > 0);
   const tournament = round?.tournamentId ? tournaments.data.find((t) => t.id === round.tournamentId) : null;
   const title = eventLabel({ type: ev.type, name: ev.name, date: ev.date }, 'golf');
+  const stream = streamFor(streams, { eventId });
 
   const tabs: TabKey[] = round ? [...(!round.closed && (staff || myCard) ? ['tarjeta' as const] : []), 'leaderboard', 'jugadores'] : [];
   const fallback: TabKey =
@@ -103,29 +111,58 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
   }
 
   const reviewed = signing ? (cards.find((x) => x.id === signing.id) ?? signing) : null;
+  // «•••»: arriba a la derecha (como portada de un torneo sin liga, junto al título).
+  const more = (
+    <GolfEventMenu
+      eventId={eventId}
+      event={ev}
+      title={title}
+      round={round}
+      cards={cards}
+      serverCards={golf.data.cards}
+      myCard={myCard}
+      embedded={embedded}
+      onEdit={() => setEditing(true)}
+    />
+  );
   return (
     <View style={{ gap: 16 }}>
-      {!embedded && <BackBar label={league.name} fallback={`/l/${lid}`} />}
-      <View style={{ gap: 6 }}>
-        {tournament && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Trophy size={16} color={c.accent} />
-            <Txt tone="accent" variant="bodyStrong" numberOfLines={1} style={{ fontSize: 14 }}>{`${tournament.name}${round?.roundNo ? ` · Ronda ${round.roundNo}` : ''}`}</Txt>
-          </View>
-        )}
-        <Txt variant="title">{title}</Txt>
-        <Txt variant="meta" tone="muted">
-          {round?.closed ? (
-            <Txt variant="meta" tone="fg2" style={{ fontFamily: font.semibold }}>
-              {'Cerrada · '}
-            </Txt>
-          ) : started ? (
-            <Txt variant="meta" tone="accent" style={{ fontFamily: font.semibold }}>
-              {'En juego · '}
-            </Txt>
-          ) : null}
-          {meta}
-        </Txt>
+      {!embedded && <BackBar label={league.name} fallback={`/l/${lid}`} right={more} />}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+          {tournament && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Trophy size={16} color={c.accent} />
+              <Txt tone="accent" variant="bodyStrong" numberOfLines={1} style={{ fontSize: 14 }}>{`${tournament.name}${round?.roundNo ? ` · Ronda ${round.roundNo}` : ''}`}</Txt>
+            </View>
+          )}
+          <Txt variant="title">{title}</Txt>
+          <Txt variant="meta" tone="muted">
+            {round?.closed ? (
+              <Txt variant="meta" tone="fg2" style={{ fontFamily: font.semibold }}>
+                {'Cerrada · '}
+              </Txt>
+            ) : started ? (
+              <Txt variant="meta" tone="accent" style={{ fontFamily: font.semibold }}>
+                {'En juego · '}
+              </Txt>
+            ) : null}
+            {meta}
+          </Txt>
+          {/* Si la ronda se está transmitiendo: «Ver en vivo» (LiveWatchPill de la web). */}
+          {!embedded && stream && (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Ver en vivo"
+              onPress={() => router.push(liveHref(lid, stream.id) as Href)}
+              style={({ pressed }) => [styles.live, { backgroundColor: c.danger, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+            >
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.onDanger }} />
+              <Txt style={{ fontSize: 14, fontFamily: font.bold, color: c.onDanger }}>Ver en vivo</Txt>
+            </Pressable>
+          )}
+        </View>
+        {embedded && more}
       </View>
 
       {!round ? (
@@ -133,6 +170,13 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
           icon={<Flag size={28} color={c.accent} />}
           title="Esta ronda todavía no tiene campo"
           text={isAdmin ? 'Elige en qué campo y con qué formato se juega.' : 'El admin tiene que elegir el campo y el formato.'}
+          action={
+            isAdmin ? (
+              <Button variant="primary" size="lg" icon={<Settings2 size={20} color={c.accentFg} />} onPress={() => setEditing(true)}>
+                Elegir campo
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <>
@@ -171,6 +215,7 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
           </Sheet>
         </>
       )}
+      {isAdmin && <RoundForm open={editing} onClose={() => setEditing(false)} edit={{ eventId, round, started }} />}
     </View>
   );
 }
@@ -249,4 +294,5 @@ const styles = StyleSheet.create({
   th: { width: 64, paddingHorizontal: 6, fontSize: 12 },
   td: { width: 34, textAlign: 'center', fontSize: 14, fontVariant: ['tabular-nums'] },
   stat: { flex: 1, borderRadius: 14, padding: 10, alignItems: 'center' },
+  live: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, borderRadius: 18, paddingHorizontal: 14, marginTop: 4 },
 });
