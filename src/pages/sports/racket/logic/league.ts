@@ -134,3 +134,12 @@ export function clashText(c: Clash, nameOf: (id: string) => string): string {
   if (c.kind === 'court') return `${c.who}: dos partidos a la misma hora.`;
   return `${nameOf(c.who)} tiene dos partidos a la misma hora.`;
 }
+
+/** «+ Hora» del calendario: la que sigue a la última, con los minutos de un partido (sin pasar de las 23). */
+export function nextSlotTime(last: string | undefined, minutes: number): string {
+  const [h, m] = (last ?? '19:00').split(':').map(Number);
+  return `${String(Math.min(23, h + Math.floor((m + minutes) / 60))).padStart(2, '0')}:${String((m + minutes) % 60).padStart(2, '0')}`;
+}
+
+/** Las primeras jornadas del calendario (una línea por jornada: su fecha y desde qué hora). */
+export const firstJornadas = (plan: Pick<LeaguePlan, 'fixtures'>, n = 4) => plan.fixtures.filter((f, i, all) => all.findIndex((x) => x.round === f.round) === i).slice(0, n);

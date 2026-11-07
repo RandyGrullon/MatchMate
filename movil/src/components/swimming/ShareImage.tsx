@@ -1,7 +1,8 @@
 /**
- * El botón «Compartir» de las tablas y resultados de natación (ShareButton de la web): arma la imagen al tocar (con la
- * marca de MatchMate y el color del deporte: share/cards.ts, la misma de la web) y abre la hoja para compartirla con el
- * link (ShareImageSheet de la app, la de los partidos).
+ * El botón «Compartir» de las tablas y resultados (ShareButton de la web; lo usan natación, la Tabla de equipos y el
+ * leaderboard y el orden de mérito del golf): arma la imagen al tocar (con la marca de MatchMate y el color del deporte:
+ * share/cards.ts, la misma de la web) y abre la hoja para compartirla con el link (ShareImageSheet de la app, la de los
+ * partidos).
  */
 import { useContext, useState } from 'react';
 import { Pressable } from 'react-native';

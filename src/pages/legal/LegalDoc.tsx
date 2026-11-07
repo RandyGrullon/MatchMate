@@ -1,12 +1,13 @@
-import { useEffect, type ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Fragment, useEffect, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { FilePenLine, ScrollText, ShieldCheck } from 'lucide-react';
 import { BackBar } from '../../components/cuenta/kit';
 import { AppShell } from '../../components/Shell';
 import { Card, ListRow, RowIcon, cx } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import type { LegalDocKey } from '../../lib/legal';
-import { LEGAL_CONTACT, LEGAL_DOCS, LEGAL_DRAFT, isPlaceholder, legalDate, PRIVACY_PATH, TERMS_PATH } from './legal';
+import { LEGAL_CONTACT, LEGAL_DOCS, LEGAL_DRAFT, isPlaceholder, PRIVACY_PATH, TERMS_PATH } from './legal';
+import { LEGAL_DRAFT_NOTE, LEGAL_QUESTIONS, LEGAL_TOC_TITLE, legalVersionLine, type LegalBlock, type LegalInline, type LegalSectionText, type LegalText } from './texts';
 
 export interface LegalSection {
   /** Ancla (#id): el aviso de las fotos lleva a #fotos, Configuración a #derechos… */
@@ -48,6 +49,46 @@ export function Sub({ children }: { children: ReactNode }) {
   return <h3 className="mt-2 font-semibold text-fg">{children}</h3>;
 }
 
+/** La página de cada documento (los links de un texto a la otra página). */
+export const legalPath = (doc: LegalDocKey) => (doc === 'privacidad' ? PRIVACY_PATH : TERMS_PATH);
+
+function inline(part: LegalInline): ReactNode {
+  if (typeof part === 'string') return part;
+  if ('fill' in part) return <Fill>{part.fill}</Fill>;
+  if ('email' in part) return <ContactEmail />;
+  if ('bold' in part) return <b>{part.bold}</b>;
+  return (
+    <Link to={`${legalPath(part.link)}${part.hash ?? ''}`} className="font-medium text-accent underline underline-offset-2">
+      {part.text}
+    </Link>
+  );
+}
+
+/** Un renglón del texto (texts.ts) con sus marcas: lo que falta llenar, el correo, las negritas y los links. */
+export function LegalRich({ text }: { text: LegalText }) {
+  if (typeof text === 'string') return <>{text}</>;
+  return (
+    <>
+      {text.map((part, i) => (
+        <Fragment key={i}>{inline(part)}</Fragment>
+      ))}
+    </>
+  );
+}
+
+function block(b: LegalBlock, key: number): ReactNode {
+  if ('sub' in b) return <Sub key={key}>{b.sub}</Sub>;
+  if ('list' in b) return <Bullets key={key} items={b.list.map((t) => <LegalRich text={t} />)} />;
+  return (
+    <p key={key}>
+      <LegalRich text={b.p} />
+    </p>
+  );
+}
+
+/** Las secciones del texto compartido (texts.ts, el mismo de la app del teléfono) como las pinta la página. */
+export const legalSections = (sections: readonly LegalSectionText[]): LegalSection[] => sections.map((s) => ({ id: s.id, title: s.title, body: <>{s.blocks.map(block)}</> }));
+
 /**
  * Página de un texto legal, rediseño «Calma y foco»: «‹ Volver» (a la pantalla de antes: Entrar, Configuración, la
  * pregunta de los términos…; si se entró directo, a Hoy), el ícono y el título, la versión y desde cuándo rige, el índice
@@ -58,7 +99,7 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
   const { hash, key } = useLocation();
   const navigate = useNavigate();
   const { isSuper } = useAuth();
-  const { title, version, effective } = LEGAL_DOCS[doc];
+  const { title } = LEGAL_DOCS[doc];
   // Se llegó con un link de la app: «Volver» regresa a esa pantalla. Directo (un link de afuera): a Hoy.
   const fromApp = key !== 'default';
 
@@ -92,15 +133,12 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
             {icon}
           </span>
           <h1 className="mt-4 text-title">{title}</h1>
-          <p className="mt-1.5 text-meta text-muted">
-            Versión {legalDate(version)} · vigente desde {legalDate(effective)}
-          </p>
+          <p className="mt-1.5 text-meta text-muted">{legalVersionLine(doc)}</p>
           {LEGAL_DRAFT && isSuper && (
             <div role="note" className="mt-4 flex gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-sm text-warn">
               <FilePenLine className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
               <p>
-                <b>Borrador.</b> Pendiente: revisión por un abogado dominicano. Lo marcado en amarillo falta por completar (la lista está
-                en la consola › Legal). Solo tú ves este aviso.
+                <LegalRich text={LEGAL_DRAFT_NOTE} />
               </p>
             </div>
           )}
@@ -109,7 +147,7 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
 
         <Card className="mt-6 px-5 pt-4 pb-3">
           <nav aria-label="Contenido">
-            <h2 className="mb-1 text-sm font-[650] text-fg-2">Contenido</h2>
+            <h2 className="mb-1 text-sm font-[650] text-fg-2">{LEGAL_TOC_TITLE}</h2>
             <ol className="grid list-decimal gap-x-6 pl-5 text-meta marker:text-faint sm:grid-cols-2">
               {sections.map((s) => (
                 <li key={s.id}>
@@ -133,7 +171,7 @@ export function LegalDoc({ doc, icon, lead, sections }: { doc: LegalDocKey; icon
 
         <footer className="mt-[30px]">
           <p className="mx-1 mb-3 text-meta text-muted">
-            ¿Preguntas? Escríbenos a <ContactEmail />.
+            <LegalRich text={LEGAL_QUESTIONS} />
           </p>
           <Card className="overflow-hidden">
             <ListRow

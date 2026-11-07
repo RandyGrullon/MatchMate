@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { golfNow, holeWord, meritPlace, meritTop, scoreText, type MyRoundState } from './home';
+import { golfNow, holeWord, meritPlace, meritSeasonText, meritShare, meritTop, scoreText, type MyRoundState } from './home';
 
 const mine = (over: Partial<MyRoundState> = {}): MyRoundState => ({ holes: 0, complete: false, signed: false, score: '21 pts', nextHole: 1, ...over });
 
@@ -76,3 +76,31 @@ describe('el orden de mérito en el inicio', () => {
     expect(meritPlace(merit, null, name)).toBeNull();
   });
 });
+
+describe('la imagen del orden de mérito', () => {
+  it('la temporada en palabras', () => {
+    expect(meritSeasonText(null, {})).toBeNull();
+    expect(meritSeasonText({ name: 'Temporada de Ejemplo', startsOn: '2026-01-01', endsOn: null }, {})).toMatch(/^Temporada de Ejemplo \(/);
+    expect(meritSeasonText(null, { seasonStart: null, seasonEnd: '2026-12-31' })).toMatch(/^… – /);
+  });
+
+  it('las columnas, las filas y la nota', () => {
+    const card = meritShare({
+      leagueName: 'Golf de Ejemplo',
+      seasonText: null,
+      merit: [
+        { id: 'p1', points: 1200, events: 3, wins: 2, best: 1, rank: 1 },
+        { id: 'p2', points: 80, events: 1, wins: 0, best: null, rank: 2 },
+      ],
+      nameOf: (id) => (id === 'p1' ? 'Jugador Uno' : 'Jugador Dos'),
+      counted: 1,
+    });
+    expect(card.subtitle).toBe('Orden de mérito');
+    expect(card.columns.map((c) => c.label)).toEqual(['Jugó', 'Ganó', 'Mejor', 'Puntos']);
+    expect(card.sections[0].rows[0]).toEqual({ rank: 1, name: 'Jugador Uno', values: [3, 2, 1, (1200).toLocaleString('es-DO')] });
+    expect(card.sections[0].rows[1].values[2]).toBe('–');
+    expect(card.note).toBe('Puntos por puesto en cada ronda cerrada (1 evento).');
+    expect(meritShare({ leagueName: 'Golf de Ejemplo', seasonText: 'Temporada de Ejemplo', merit: [], nameOf: () => '', counted: 2 }).subtitle).toBe('Orden de mérito · Temporada de Ejemplo');
+  });
+});
+

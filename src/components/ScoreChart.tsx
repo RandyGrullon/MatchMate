@@ -1,36 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  CHART_DEFAULT_WIDTH,
+  CHART_H as H,
+  CHART_PAD as PAD,
+  CHART_PAD_BOTTOM_LABELS as PAD_BOTTOM_LABELS,
+  chartRange,
+  labelStep,
+} from './stats/trendLogic';
+
+// El eje y las etiquetas (sin dibujar) están en stats/trendLogic.ts: los comparte la app del teléfono. Se siguen
+// importando desde aquí.
+export { CHART_DEFAULT_WIDTH, chartRange, labelStep } from './stats/trendLogic';
 
 export interface ChartPoint {
   score: number;
   /** Texto del tooltip: evento y juego. */
   label: string;
-}
-
-/** Ancho con que se dibuja antes de medir la tarjeta (la de un teléfono de 375 px). */
-export const CHART_DEFAULT_WIDTH = 330;
-const H = 200;
-const PAD = { top: 18, right: 16, bottom: 22, left: 34 };
-/** Espacio de abajo cuando hay etiquetas debajo de los puntos (los meses). */
-const PAD_BOTTOM_LABELS = 36;
-/** Lo mínimo entre dos etiquetas de abajo (px): si no caben todas, va una cada dos, tres... */
-const LABEL_GAP = 36;
-
-/**
- * El rango del eje: todo lo que se dibuja (los puntos, la media móvil y el promedio) cabe dentro, redondeado a 50 y
- * entre 0 y 300.
- */
-export function chartRange(scores: readonly number[], trend: readonly number[] | null, average: number | null): { lo: number; hi: number } {
-  const all = [...scores, ...(trend ?? []), ...(average != null ? [average] : [])];
-  const lo = Math.max(0, Math.floor((Math.min(...all) - 20) / 50) * 50);
-  const hi = Math.min(300, Math.ceil((Math.max(...all) + 20) / 50) * 50);
-  return { lo, hi: Math.max(hi, lo + 50) };
-}
-
-/** Cada cuántos puntos va una etiqueta abajo en ese ancho para que no se pisen (1 = todas). */
-export function labelStep(points: number, width: number): number {
-  if (points < 2) return 1;
-  const gap = (width - PAD.left - PAD.right) / (points - 1);
-  return Math.max(1, Math.ceil(LABEL_GAP / gap));
 }
 
 /**

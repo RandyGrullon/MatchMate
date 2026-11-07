@@ -7,13 +7,13 @@ import { upcomingFor } from '../team/logic';
 import { RosterEditor } from '../team/TeamsManager';
 import { HistoryBackBar, MatchRows, NextMatchCard, ScreenTitle, StatTiles, TeamCrest, matchLink } from '../team/TeamUi';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
-import { footballGames, footballScore, footballStatItems, footballWhen, rivalName, rosterLine, ROLE } from '../team/profileView';
+import { footballGames, footballProStatItems, footballScore, footballStatItems, footballWhen, rivalName, rosterLine, ROLE } from '../team/profileView';
 import { todayIn } from '../team/view';
 import { CardIcon, FOOTBALL_POSITIONS } from './bits';
 import { REASON_TEXT, disciplineFrom, footballTeamRules, variantOf } from './rules';
 import { suspendedIn, useFootballSeason, type FootballSeason } from './season';
 
-// El rol, la línea del equipo, los partidos y los números de Lite están en ../team/profileView.ts (los usa también la
+// El rol, la línea del equipo, los partidos y los números de Lite y de Pro están en ../team/profileView.ts (los usa también la
 // app del teléfono).
 
 /**
@@ -180,7 +180,6 @@ export function PlayerStats({ tl, playerId, season, title = 'Temporada', classNa
   const games = footballGames(season, tl.matches.data, playerId);
   const rank = totals && totals.goals > 0 ? season.scorers.indexOf(totals) + 1 : null;
   const today = todayIn(tl.tz);
-  const keeper = !!totals && totals.keeperGames > 0;
   const rival = (g: (typeof games)[number]) => rivalName(g.m, g.l.side, (id) => tl.teamOf(id)?.name);
   const score = footballScore;
   const when = (g: (typeof games)[number]) => footballWhen(g, tl.tz, today);
@@ -195,21 +194,7 @@ export function PlayerStats({ tl, playerId, season, title = 'Temporada', classNa
         <div className="flex flex-col gap-3.5">
           <StatTiles
             dense={pro}
-            items={
-              pro
-                ? [
-                    { label: 'Partidos', value: totals?.games ?? 0 },
-                    { label: 'Goles', value: totals?.goals ?? 0 },
-                    { label: 'Asistencias', value: totals?.assists ?? 0 },
-                    { label: 'Tarjetas', value: (cards?.yellows ?? 0) + (cards?.reds ?? 0) + (cards?.secondYellows ?? 0) },
-                    { label: 'Amarillas', value: cards?.yellows ?? 0 },
-                    { label: 'Rojas', value: (cards?.reds ?? 0) + (cards?.secondYellows ?? 0) },
-                    ...(keeper ? [{ label: 'Vallas invictas', value: totals.cleanSheets }] : []),
-                    ...(keeper ? [{ label: 'Recibidos', value: totals.conceded }] : []),
-                    ...(totals && totals.ownGoals > 0 ? [{ label: 'Autogoles', value: totals.ownGoals }] : []),
-                  ]
-                : footballStatItems(totals, cards)
-            }
+            items={pro ? footballProStatItems(totals, cards) : footballStatItems(totals, cards)}
           />
           {pro ? (
             <Card className="overflow-hidden">

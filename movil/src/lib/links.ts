@@ -37,6 +37,12 @@ export function appRoute(href: string): string | null {
   const path = (cut < 0 ? href : href.slice(0, cut)).replace(/\/+$/, '') || '/';
   const query = cut < 0 || href[cut] === '#' ? '' : href.slice(cut).split('#')[0];
   if (TABS.includes(path) || path === '/auth') return path + query;
+  // Términos y privacidad (el ancla de la web, `#fotos`, es `?seccion=fotos` en la app), Acerca de y Contáctanos.
+  if (path === '/terminos' || path === '/privacidad') {
+    const section = /#([^#]+)$/.exec(href)?.[1];
+    return section ? `${path}?seccion=${encodeURIComponent(section)}` : path;
+  }
+  if (path === '/acerca' || path === '/contacto') return path;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
   // Equipos: el índice (con su ?crear= y ?deporte=), unirse con el código y un equipo (?tab=, ?jugador=, ?invitar=).
   if (path === '/equipos') return path + query;
@@ -91,11 +97,11 @@ export function appRoute(href: string): string | null {
   if (/^\/canchas\/[^/]+$/.test(path)) return path;
   // El perfil (con su ?tab=: Publicaciones, Juegos o Insignias, y ?insignia= abre una).
   // Yo (`/perfil`) y sus partes (`?tab=juegos|publicaciones|insignias`; `&insignia=` abre una y `&quieta=1` sin
-  // animarla): la pestaña Yo y `/yo/<parte>`. «Por liga y temporada» (`?tab=estadisticas`) es de Pro: en la web.
+  // animarla) y «Por liga y temporada» (`?tab=estadisticas`): la pestaña Yo y `/yo/<parte>`.
   if (path === '/perfil') {
     const part = /[?&]tab=([^&]+)/.exec(query)?.[1];
     if (!part) return '/yo';
-    if (part !== 'juegos' && part !== 'publicaciones' && part !== 'insignias') return null;
+    if (part !== 'juegos' && part !== 'publicaciones' && part !== 'insignias' && part !== 'estadisticas') return null;
     const rest = query.slice(1).split('&').filter((kv) => kv && !kv.startsWith('tab=')).join('&');
     return `/yo/${part}${rest ? `?${rest}` : ''}`;
   }

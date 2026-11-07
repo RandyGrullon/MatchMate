@@ -26,6 +26,8 @@ import { LeagueBadgeAwards } from '@/components/badges/LeagueBadges';
 import { LeagueMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
 import { SeasonRow } from '@/components/seasonAdmin/SeasonRow';
 import { CountBubble } from '@/components/organizer/Organize';
+import { LeagueHomeNotice, OrganizesRow, SuspendTodayCard } from '@/components/league/LeagueHomePro';
+import { useIsPro } from '@mm/lib/useMode';
 import { SettingsRow } from '@/components/leagueSettings/SettingsRow';
 import { SuggestionsRow } from '@/components/suggestions/SuggestionsRow';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
@@ -51,6 +53,7 @@ export default function LeagueScreen() {
   const membership = useMembership(lid, auth.user?.uid);
   const events = useEvents(lid);
   const social = useLeagueSocial(auth.user ? lid : null);
+  const pro = useIsPro();
   const sport = league.data ? leagueSport(league.data) : null;
   const meta = sport ? sportMeta(sport) : null;
 
@@ -107,6 +110,8 @@ export default function LeagueScreen() {
       {/* El aviso del admin de los últimos 2 días (lluvia, apagón…), arriba como en la web. */}
       <LeagueScope lid={l.id}>
         <LeagueNotices />
+        {/* Pro, quien organiza y si hoy hay algo: «Hoy · … · Suspender» (SuspendTodayCard de la web). */}
+        <SuspendTodayCard />
       </LeagueScope>
 
       <Card padded={false}>
@@ -208,7 +213,13 @@ export default function LeagueScreen() {
           {canEnterLeagues(leagueSport(l)) && <SquadRequestsPanel lid={l.id} />}
           <SectionHeader title="Organizar" />
           <Card padded={false}>
-            <OrganizeRow lid={l.id} bowling={isBowling} />
+            {pro ? (
+              <LeagueScope lid={l.id}>
+                <OrganizesRow />
+              </LeagueScope>
+            ) : (
+              <OrganizeRow lid={l.id} bowling={isBowling} />
+            )}
             <Divider inset={68} />
             {/* Raqueta: «Parejas y niveles» también en el inicio, para quien organiza (homeRow de la web). */}
             {family === 'racket' && (
@@ -390,6 +401,11 @@ export default function LeagueScreen() {
         <ChampionsSection />
         {/* El estante de las insignias que diseñó la liga (LeagueHomeBottom de la web). */}
         <LeagueMadeBadges />
+      </LeagueScope>
+
+      {/* El aviso de Lite para quien organiza: lo pendiente y «Organizas esta liga · … · Probar Pro». */}
+      <LeagueScope lid={l.id}>
+        <LeagueHomeNotice />
       </LeagueScope>
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${l.id}`)}>

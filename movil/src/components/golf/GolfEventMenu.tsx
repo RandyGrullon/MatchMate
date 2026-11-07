@@ -1,20 +1,22 @@
 /**
  * «•••» de una ronda de golf (el EventMenu de GolfEvent.tsx de la web): Compartir, Publicar en Social (tu tarjeta),
- * Transmitir en vivo y, para el admin, Campo y formato, Anotadores, Cerrar o volver a abrir la ronda y Eliminar ronda.
- * «Inscribir y armar grupos» (en la web, «Están en Pro») no va: en el teléfono el admin los tiene en «Jugadores». El
- * reporte sigue abajo de la ronda (GolfReport). Pone «•••» donde va y, a la vista, sus hojas.
+ * Transmitir en vivo y, para el admin, Campo y formato, en Lite «Inscribir y armar grupos · Están en Pro · Usar Pro»
+ * (cambia a Pro, como la web), Anotadores, Cerrar o volver a abrir la ronda y Eliminar ronda. El reporte sigue abajo de
+ * la ronda (GolfReport). Pone «•••» donde va y, a la vista, sus hojas.
  */
 import { useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 import { router } from 'expo-router';
-import { ClipboardPen, Lock, LockOpen, Newspaper, Radio, Settings2, Share2, Trash2 } from 'lucide-react-native';
+import { ClipboardPen, Lock, LockOpen, Newspaper, Radio, Settings2, Share2, Trash2, Users } from 'lucide-react-native';
 import { deleteEvent } from '@mm/lib/data';
 import { closeGolfRound, type GolfCardDoc, type GolfRoundFull } from '@mm/lib/data/golf';
 import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { useLeagueCtx } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
 import type { BowlingEvent } from '@mm/lib/types';
+import { useIsPro } from '@mm/lib/useMode';
 import { canStartStream } from '@mm/components/live/logic';
+import { useSwitchMode } from '@mm/components/mode/toast';
 import { golfPostText, leagueShareTarget } from '@mm/components/posts/shareGame';
 import { holesDone, isComplete } from '@mm/pages/sports/golf/logic';
 import { confirmAsync, toast } from '@/components/feedback';
@@ -62,6 +64,8 @@ export function GolfEventMenu({
   const streams = useLeagueStreams(lid).data ?? [];
   const canStream = canStartStream(ctx);
   const canLive = canStream && !streamFor(streams, { eventId });
+  const isPro = useIsPro();
+  const switchMode = useSwitchMode();
   const [open, setOpen] = useState<MenuKey | null>(null);
 
   // Tu tarjeta como publicación: miembro de una liga sin menores, con la tarjeta terminada, firmada o la ronda cerrada.
@@ -131,6 +135,18 @@ export function GolfEventMenu({
               label={round ? 'Campo y formato' : 'Elegir campo'}
               hint={round ? 'Campo, hoyos y formato' : 'En qué campo y con qué formato'}
               onPress={() => after(onEdit)}
+            />
+          )}
+          {/* En Lite, las herramientas de «Jugadores» del admin están en Pro: cambia el modo (con «Deshacer»). */}
+          {isAdmin && !isPro && round && !round.closed && (
+            <MenuRow
+              icon={icon(Users)}
+              label="Inscribir y armar grupos"
+              hint="Están en Pro · Usar Pro"
+              onPress={() => {
+                close();
+                void switchMode('pro');
+              }}
             />
           )}
           {isAdmin && <MenuRow icon={icon(ClipboardPen)} label="Anotadores" hint="Quién anota esta ronda" onPress={() => setOpen('anotadores')} />}

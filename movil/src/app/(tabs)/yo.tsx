@@ -19,15 +19,19 @@ import { PlayerPlaces } from '@/components/yo/PlayerPlaces';
 import { StatsTab } from '@/components/yo/SportStats';
 import { Identity, YoTop } from '@/components/yo/YoHeader';
 import { YoRows } from '@/components/yo/YoRows';
+import { YoProBody } from '@/components/yo/YoPro';
+import { useIsPro } from '@mm/lib/useMode';
+import { toIsoDate } from '@mm/lib/format';
+import { useNow } from '@mm/lib/useNow';
 import { YoSignedOut } from '@/components/yo/YoSignedOut';
 
 /**
- * Yo (ProfilePage de la web, `/perfil`, en Lite): arriba la lupa y el engranaje (la cuenta, `/cuenta`); tu foto (tocarla
+ * Yo (ProfilePage de la web, `/perfil`): arriba «Lite | Pro», la lupa y el engranaje (la cuenta, `/cuenta`); tu foto (tocarla
  * lleva a cambiarla en `/cuenta?foto=1`), tu nombre, «@usuario · tu liga» y tu biografía; tu promedio (o cómo empezar),
  * Mis bolas, Insignias, Dónde juego y las filas Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos y
  * Amigos y seguidores. Los números del boliche (y Mis bolas y el juego suelto) salen si juegas boliche, tienes juegos
- * sueltos o todavía no tienes ligas de otro deporte. Las partes se abren en `/yo/<parte>` con «‹ Yo». «Lite | Pro» no
- * sale: la app es Lite. La apariencia, los avisos, tus datos, Mi empresa y salir están en Configuración, como en la web.
+ * sueltos o todavía no tienes ligas de otro deporte. En Pro, lo de Pro (YoProBody). Las partes se abren en
+ * `/yo/<parte>` con «‹ Yo». La apariencia, los avisos, tus datos, Mi empresa y salir están en Configuración, como en la web.
  */
 export default function YoScreen() {
   const auth = useAuth();
@@ -53,6 +57,9 @@ function Yo({ uid }: { uid: string }) {
   const solo = useMySoloSessions();
   const numbers = useBowlingNumbers(bowling, leagues.data, solo.data, solo.loading);
 
+  const pro = useIsPro();
+  const today = toIsoDate(useNow());
+
   const p = profile.data;
   const name = p?.name || displayName(auth);
   const sports = knownSports(p?.sports);
@@ -76,16 +83,23 @@ function Yo({ uid }: { uid: string }) {
   return (
     <Screen onRefresh={refresh} contentStyle={{ gap: 22 }}>
       <YoTop />
-      <Identity name={name} line={line} bio={p?.bio} photo={p?.avatar} />
-      {showBowling && <LiteNumbers state={state} />}
-      {showBowling && <MyBallsSection />}
-      <BadgesPreview userId={uid} sports={sports} />
-      {/* «Dónde juego» y, si no juegas boliche, tu resumen de los otros deportes. */}
-      <View style={{ gap: 14 }}>
-        <PlayerPlaces uid={uid} isMe />
-        {others.length > 0 && !showBowling && <StatsTab userId={uid} skipBowling isMe />}
-      </View>
-      <YoRows uid={uid} profile={p} showBowling={showBowling} />
+      <Identity name={name} line={line} bio={p?.bio} photo={p?.avatar} pro={pro} />
+      {pro ? (
+        // En Pro (como la web): los 6 números, Tendencia, Tus tiros, Por bola, Dónde juego y las filas.
+        <YoProBody uid={uid} profile={p} sports={sports} state={state} showBowling={showBowling} othersAlone={others.length > 0 && !showBowling} today={today} />
+      ) : (
+        <>
+          {showBowling && <LiteNumbers state={state} />}
+          {showBowling && <MyBallsSection />}
+          <BadgesPreview userId={uid} sports={sports} />
+          {/* «Dónde juego» y, si no juegas boliche, tu resumen de los otros deportes. */}
+          <View style={{ gap: 14 }}>
+            <PlayerPlaces uid={uid} isMe />
+            {others.length > 0 && !showBowling && <StatsTab userId={uid} skipBowling isMe />}
+          </View>
+          <YoRows uid={uid} profile={p} showBowling={showBowling} />
+        </>
+      )}
     </Screen>
   );
 }

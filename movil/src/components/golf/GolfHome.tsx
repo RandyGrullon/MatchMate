@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronRight, Flag, LandPlot, PencilLine } from 'lucide-react-native';
+import { ChevronRight, ClipboardPen, Flag, LandPlot, PencilLine } from 'lucide-react-native';
 import { useEvents } from '@mm/lib/data';
-import { useGolfCourses, useGolfEvent, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '@mm/lib/data/golf';
+import { useGolfCardPlayers, useGolfCourses, useGolfEvent, useGolfRounds, useGolfTournaments, type GolfRoundDoc } from '@mm/lib/data/golf';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { eventLabel, toIsoDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
 import { formatTime } from '@mm/lib/schedule';
 import { currentSeason } from '@mm/lib/seasons';
 import type { BowlingEvent } from '@mm/lib/types';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { scoreRound } from '@mm/sports/golf/scoring';
 import { weekdayLabel } from '@mm/components/home/logic';
@@ -21,7 +22,8 @@ import { GolfEventBody } from './GolfEvent';
 import { RoundForm } from './RoundForm';
 import { SectionAdd, openCourses, openGolfer, openRound } from './parts';
 import { DateBlock } from '@/components/DateBlock';
-import { Button, Card, Empty, ListRow, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
+import { ScorersSheet } from '@/components/scorers/ScorersSheet';
+import { Button, Card, Empty, ListRow, LoadError, Loading, RowIcon, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -32,7 +34,8 @@ const SHOWN = 3;
  * Inicio de la liga de golf (GolfHome de la web, Lite): la ronda de hoy una sola vez, con lo tuyo en una línea y UN
  * botón («Seguir en el hoyo 8», «Inscribirme»); el orden de mérito (los 3 de arriba, con tu lugar) y «Ver toda»;
  * «Próximas rondas» (para el admin, «+ Nueva»; sin nada próximo, «Nueva ronda o torneo») y «Resultados». Sin campo
- * todavía, primero «Agregar el campo» (Organizar › Campos). Un torneo sin liga con una sola ronda abre la ronda.
+ * todavía, primero «Agregar el campo» (Organizar › Campos). Un torneo sin liga con una sola ronda abre la ronda; con
+ * varias, en Pro el admin tiene «Anotadores» (anotan en todas las rondas del torneo).
  */
 export function GolfHome() {
   const c = useColors();
@@ -97,6 +100,8 @@ export function GolfHome() {
           />
         )}
       </View>
+      {/* Torneo sin liga con varias rondas (Pro): sus anotadores anotan en todas. */}
+      {isAdmin && league.kind === 'torneo' && <TournamentScorers />}
       {past.length > 0 && (
         <View style={{ gap: 10 }}>
           <SectionHeader title="Resultados" />
@@ -106,6 +111,42 @@ export function GolfHome() {
       )}
       {isAdmin && <RoundForm open={creating} onClose={() => setCreating(false)} />}
     </View>
+  );
+}
+
+/**
+ * «Anotadores» de un torneo sin liga con varias rondas (sus anotadores anotan en todas), como una fila (Pro): la hoja de
+ * anotadores de la liga, con «Juega» para quien tiene tarjeta en alguna ronda (se leen solo aquí, para el admin; mientras
+ * llegan, nadie sale con «Juega»).
+ */
+function TournamentScorers() {
+  const c = useColors();
+  const { lid, league } = useLeagueCtx();
+  const pro = useIsPro();
+  const cards = useGolfCardPlayers(pro ? lid : undefined);
+  const [open, setOpen] = useState(false);
+  if (!pro) return null;
+  return (
+    <Card padded={false}>
+      <ListRow
+        icon={
+          <RowIcon>
+            <ClipboardPen size={20} color={c.accent} />
+          </RowIcon>
+        }
+        title="Anotadores"
+        subtitle="Anotan en todas las rondas del torneo"
+        accessibilityLabel="Anotadores del torneo"
+        onPress={() => setOpen(true)}
+      />
+      <ScorersSheet
+        league={league}
+        open={open}
+        onClose={() => setOpen(false)}
+        target={{ scope: 'liga', refId: null, title: league.name }}
+        participants={cards.loading && !cards.data.length ? undefined : cards.data}
+      />
+    </Card>
   );
 }
 

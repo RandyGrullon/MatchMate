@@ -18,6 +18,7 @@ import { fmtPoints } from './logic/night';
 import { byModality, MODALITY_LABEL, type Modality } from './logic/modality';
 import { isPointsMatch, matchTime, playerRecord, playerSide, winPct, type PeopleLine, type PlayerRecord } from './logic/results';
 import { levelText, useLevels } from './levels';
+import { profileFilters, scopeProfileMatches, type ProfileFilter } from './profileFilters';
 import { useNames } from './names';
 import { hasNights, useRacket } from './sport';
 
@@ -46,7 +47,7 @@ export function RacketPlayerPage() {
   return <PlayerProfile playerId={playerId} />;
 }
 
-type Filter = 'todo' | 'sets' | 'noches' | Modality;
+type Filter = ProfileFilter;
 
 /**
  * Lo del jugador (rediseño «Calma y foco»): el título (su nombre o «Mis partidos») con su nivel y sus parejas, sus
@@ -78,16 +79,7 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
   const split = kinds.individual.length > 0 && kinds.dobles.length > 0;
   // En Lite no hay filtros: se ve todo.
   const shown: Filter = pro ? filter : 'todo';
-  const scoped = useMemo(
-    () =>
-      all.filter((m) => {
-        if (shown === 'sets') return !isPointsMatch(m);
-        if (shown === 'noches') return isPointsMatch(m);
-        if (shown === 'individual' || shown === 'dobles') return kinds[shown].includes(m);
-        return true;
-      }),
-    [all, shown, kinds],
-  );
+  const scoped = useMemo(() => scopeProfileMatches(all, shown, kinds), [all, shown, kinds]);
   const rec = useMemo(() => playerRecord(playerId, scoped, { sport, rosterOf: names.rosterOf, now }), [playerId, scoped, sport, names, now]);
   const bySplit = useMemo(
     () =>
@@ -129,18 +121,7 @@ function PlayerProfile({ playerId, mine }: { playerId: string; mine?: boolean })
   const lv = levels[playerId];
   const meta = [mine ? player?.name : null, lv != null ? levelText(lv, scale) : null, ...pairs.map((t) => t.name)].filter(Boolean).join(' · ');
   const pct = winPct(s.won, s.played);
-  const filters = [
-    { key: 'todo' as Filter, label: 'Todo' },
-    ...(split
-      ? [
-          { key: 'individual' as Filter, label: MODALITY_LABEL.individual },
-          { key: 'dobles' as Filter, label: MODALITY_LABEL.dobles },
-        ]
-      : hasNights(sport)
-        ? [{ key: 'sets' as Filter, label: 'Liga y torneos' }]
-        : []),
-    ...(hasNights(sport) ? [{ key: 'noches' as Filter, label: nightsWord }] : []),
-  ];
+  const filters = profileFilters({ split, nights: hasNights(sport), nightsWord });
   const card = (m: Match) => <MatchCard key={m.id} match={m} mySide={playerSide(m, playerId, names.rosterOf)} to={linkOf(m)} tz={league.tz} now={now} roundWord={isPointsMatch(m) ? 'Ronda' : 'Jornada'} />;
 
   return (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match } from '../../../lib/data/matches';
-import { basketballStatItems, basketballWhen, footballScore, footballStatItems, footballWhen, rivalName, rosterLine, type FootballGame } from './profileView';
+import { basketballProStatItems, basketballStatItems, basketballWhen, footballProStatItems, footballScore, footballStatItems, footballWhen, rivalName, rosterLine, type FootballGame } from './profileView';
 
 const match = (p: Partial<Match>): Match =>
   ({
@@ -46,5 +46,24 @@ describe('la página del jugador de equipos', () => {
     expect(keeper.map((x) => x.label)).toEqual(['Partidos', 'Goles', 'Asistencias', 'Vallas invictas']);
     const field = footballStatItems(undefined, { yellows: 1, reds: 1, secondYellows: 0 });
     expect(field.at(-1)).toEqual({ label: 'Tarjetas', value: 2 });
+  });
+
+  it('los números de Pro', () => {
+    const bb = basketballProStatItems({ games: 4, points: 60, avg: 15, high: 22, threes: 6, ftm: 9, fouls: 7 });
+    expect(bb.map((x) => x.label)).toEqual(['Partidos', 'Puntos', 'Por partido', 'Máximo', 'Triples', 'Tiros libres', 'Faltas', 'Faltas/partido']);
+    expect(bb.at(-1)?.value).toBe((1.8).toLocaleString('es-DO'));
+    const keeper = footballProStatItems({ games: 3, goals: 0, assists: 1, ownGoals: 1, keeperGames: 3, cleanSheets: 2, conceded: 1 }, { yellows: 2, reds: 0, secondYellows: 1 });
+    expect(keeper.map((x) => [x.label, x.value])).toEqual([
+      ['Partidos', 3],
+      ['Goles', 0],
+      ['Asistencias', 1],
+      ['Tarjetas', 3],
+      ['Amarillas', 2],
+      ['Rojas', 1],
+      ['Vallas invictas', 2],
+      ['Recibidos', 1],
+      ['Autogoles', 1],
+    ]);
+    expect(footballProStatItems(undefined, undefined).map((x) => x.label)).toEqual(['Partidos', 'Goles', 'Asistencias', 'Tarjetas', 'Amarillas', 'Rojas']);
   });
 });

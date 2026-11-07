@@ -2,7 +2,7 @@
  * Los partidos de equipos como filas (MatchRow, MatchRows y StatTiles de TeamUi.tsx en la web): el bloque de la fecha
  * («OCT / 10»), «● Tigres vs. ● Leones» y debajo cuándo y qué jornada; con resultado, qué pasó («Ganó Tigres») y el
  * marcador al final («72–65»); en vivo, «● En vivo». La fila de tu equipo va en acento suave. Y los números de un jugador
- * en una tarjeta, de 2 en 2. Los textos salen de src/pages/sports/team/view.ts, los mismos de la web.
+ * en una tarjeta, de 2 en 2 (en Pro, de 4 en 4). Los textos salen de src/pages/sports/team/view.ts, los mismos de la web.
  */
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -134,25 +134,31 @@ export function MatchRows({ tl, matches, now, roundWord, court, round, highlight
   );
 }
 
-/** Los números de un jugador en una tarjeta: de 2 en 2 con el número grande y qué es debajo (StatTiles de Lite). */
-export function StatTiles({ items }: { items: readonly { label: string; value: string | number }[] }) {
+/**
+ * Los números de un jugador en una tarjeta (StatTiles de la web): de 2 en 2 con el número grande y qué es debajo; en Pro
+ * (`dense`), de 4 en 4 y más chicos (caben todos).
+ */
+export function StatTiles({ items, dense }: { items: readonly { label: string; value: string | number }[]; dense?: boolean }) {
   const c = useColors();
+  const cols = dense ? 4 : 2;
   return (
     <Card padded={false} style={{ flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' }}>
       {items.map((it, i) => (
         <View
           key={it.label}
+          accessible={dense}
+          accessibilityLabel={dense ? `${it.label}: ${it.value}` : undefined}
           style={{
-            width: '50%',
-            paddingHorizontal: 18,
-            paddingVertical: 16,
-            borderLeftWidth: i % 2 !== 0 ? StyleSheet.hairlineWidth : 0,
-            borderTopWidth: i >= 2 ? StyleSheet.hairlineWidth : 0,
+            width: dense ? '25%' : '50%',
+            paddingHorizontal: dense ? 12 : 18,
+            paddingVertical: dense ? 14 : 16,
+            borderLeftWidth: i % cols !== 0 ? StyleSheet.hairlineWidth : 0,
+            borderTopWidth: i >= cols ? StyleSheet.hairlineWidth : 0,
             borderColor: c.line,
           }}
         >
-          <Txt variant="stat">{String(it.value)}</Txt>
-          <Txt variant="meta" tone="muted" numberOfLines={1} style={{ marginTop: 6 }}>
+          {dense ? <Txt style={{ fontSize: 24, lineHeight: 26, fontFamily: font.bold, fontVariant: ['tabular-nums'] }}>{String(it.value)}</Txt> : <Txt variant="stat">{String(it.value)}</Txt>}
+          <Txt variant="meta" tone="muted" numberOfLines={1} style={dense ? { marginTop: 6, fontSize: 12.5 } : { marginTop: 6 }}>
             {it.label}
           </Txt>
         </View>

@@ -8,6 +8,7 @@ import { leagueSport } from '@mm/sports/registry';
 import { ComposerCard } from '@/components/social/Composer';
 import { PostList } from '@/components/social/PostList';
 import { BackBar, Button, Card, Empty, Loading, Screen, Txt } from '@/components/ui';
+import { useTitleStyle } from '@/components/home/proLook';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -21,13 +22,16 @@ export default function LeagueWallScreen() {
   const league = useLeague(lid);
   const social = useLeagueSocial(auth.user ? lid : null);
   const posts = useLeaguePosts(auth.user ? lid : null);
+  const titleStyle = useTitleStyle();
   const l = league.data;
   if (auth.loading || (league.loading && !l)) return <Loading />;
   const torneo = l?.kind === 'torneo';
   const back = <BackBar label={l?.name ?? 'Liga'} fallback={`/l/${lid}`} />;
   const head = (
     <>
-      <Txt variant="title">Muro</Txt>
+      <Txt variant="title" style={titleStyle}>
+        Muro
+      </Txt>
       <Txt tone="muted" style={{ marginTop: -10 }}>{`Lo que cuentan ${torneo ? 'en el torneo' : 'en la liga'}`}</Txt>
     </>
   );

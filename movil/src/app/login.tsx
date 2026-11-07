@@ -8,7 +8,7 @@ import { rememberLegalForGoogle } from '@mm/lib/legal';
 import { appleAvailable, signInWithApple } from '@/platform/backend';
 import { LogoLockup } from '@/components/Logo';
 import { Button, Card, ErrorNote, Field, Input, Screen, Segmented, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
+import { openLegal } from '@/components/legal/links';
 import { useColors, useTheme } from '@/theme/theme';
 
 type Mode = 'entrar' | 'registro' | 'recuperar';
@@ -220,11 +220,11 @@ export default function LoginScreen() {
                   <CheckRow checked={terms} onChange={setTerms}>
                     <Txt>
                       Acepto los{' '}
-                      <Txt tone="accent" variant="bodyStrong" onPress={() => openOnWeb('/terminos')}>
+                      <Txt tone="accent" variant="bodyStrong" onPress={() => openLegal('terminos')}>
                         Términos
                       </Txt>{' '}
                       y la{' '}
-                      <Txt tone="accent" variant="bodyStrong" onPress={() => openOnWeb('/privacidad')}>
+                      <Txt tone="accent" variant="bodyStrong" onPress={() => openLegal('privacidad')}>
                         Política de privacidad
                       </Txt>
                       .

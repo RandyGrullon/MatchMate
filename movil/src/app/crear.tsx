@@ -1,10 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Switch, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Switch, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Baby, Camera, ChevronDown, ChevronLeft, Globe, Lock, X } from 'lucide-react-native';
+import { Baby, Camera, ChevronDown, ChevronLeft, Globe, ImagePlus, Lock, X } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { createLeague, createTournament } from '@mm/lib/data';
+import type { CompressedLogo } from '@mm/lib/image';
+import { logoErrorText, uploadLeagueLogo } from '@mm/lib/logos';
+import { useIsPro } from '@mm/lib/useMode';
 import { toIsoDate } from '@mm/lib/format';
 import { WEEKDAY_SHORT, WEEKDAYS } from '@mm/lib/schedule';
 import { setActiveSport } from '@mm/lib/sportContext';
@@ -31,6 +34,7 @@ import { InvitePanel } from '@/components/invite/InvitePanel';
 import { confirmAsync, toast } from '@/components/feedback';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { Button, ChoiceRow, ErrorNote, Field, Input, Segmented, Sheet, Txt } from '@/components/ui';
+import { pickLogo } from '@/components/leagueSettings/logoImage';
 import { useColors } from '@/theme/theme';
 
 const FREQUENCIES: { key: Frequency; label: string }[] = [
@@ -42,7 +46,9 @@ const FREQUENCIES: { key: Frequency; label: string }[] = [
 /**
  * Crear una liga o un torneo sin liga (el asistente de la web, src/components/create/CreateWizard.tsx, con su misma
  * lógica: create/logic.ts): Nombre · Día y lugar · Temporada · Invitar (el torneo, sin temporada). Al crear queda en
- * Invitar con el QR y el código. Los esports van a su asistente (`/esports?crear=`). El logo, por ahora en la web.
+ * Invitar con el QR y el código. Los esports van a su asistente (`/esports?crear=`). En Lite, lo que casi no se toca
+ * (contacto, zona horaria, liga con menores) va en «Más opciones»; en Pro, a la vista, y en el nombre va «Logo
+ * (opcional)», que se sube después de crear.
  */
 export default function CreateScreen() {
   const params = useLocalSearchParams<{ kind?: string; sport?: string }>();
@@ -60,7 +66,10 @@ export default function CreateScreen() {
   const [created, setCreated] = useState<{ lid: string } | null>(null);
   const [timeOpen, setTimeOpen] = useState(false);
   const [tzOpen, setTzOpen] = useState(false);
-  const [more, setMore] = useState(false);
+  const pro = useIsPro();
+  // En Pro «Más opciones» empieza abierto (como la web).
+  const [more, setMore] = useState(pro);
+  const [logo, setLogo] = useState<CompressedLogo | null>(null);
 
   // El deporte: el que se tocó, el pedido (si lo puede crear), el boliche o el primero que pueda crear (sin esports).
   const others: SportId[] = sports.creatable.filter((s) => s !== 'esports');
@@ -101,6 +110,20 @@ export default function CreateScreen() {
       const input = wizardInput(kind, sport, form);
       const lid = torneo ? (await createTournament(owner, input, form.date)).lid : await createLeague(owner, input);
       toast(torneo ? 'Torneo creado' : 'Liga creada');
+      // El logo (Pro), después de crearla y si se puede: si falla, igual queda creada.
+      if (logo) {
+        try {
+          await uploadLeagueLogo(lid, logo);
+        } catch (e) {
+          console.warn('[logo]', e);
+          toast(
+            torneo
+              ? 'El torneo se creó, pero el logo no se pudo subir. Súbelo desde sus ajustes.'
+              : 'La liga se creó, pero el logo no se pudo subir. Súbelo desde Organizar › Ajustes de la liga.',
+            'error',
+          );
+        }
+      }
       setActiveSport(sport);
       setCreated({ lid });
       setIndex(steps.length - 1);
@@ -184,6 +207,7 @@ export default function CreateScreen() {
               selected={form.visibility === 'public'}
               onPress={() => !form.hasMinors && set('visibility', 'public')}
             />
+            {pro && <LogoField value={logo} onChange={setLogo} torneo={torneo} />}
           </>
         )}
 
@@ -350,6 +374,56 @@ export default function CreateScreen() {
         })}
       </Sheet>
     </SafeAreaView>
+  );
+}
+
+/**
+ * «Logo (opcional)» (Pro, LogoField de la web): se elige de la galería, se recorta al cuadrado y se comprime aquí
+ * (pickLogo, el de Ajustes de la liga); se sube después de crear.
+ */
+function LogoField({ value, onChange, torneo }: { value: CompressedLogo | null; onChange: (l: CompressedLogo | null) => void; torneo: boolean }) {
+  const c = useColors();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function pick() {
+    setError(null);
+    setBusy(true);
+    try {
+      const l = await pickLogo('library');
+      if (l) onChange(l);
+    } catch (e) {
+      setError(logoErrorText(e, torneo ? 'torneo' : 'liga'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Field label="Logo (opcional)">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1.5, borderColor: c.line, backgroundColor: c.surface }}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: value ? c.accentSoft : c.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <ImagePlus size={20} color={value ? c.accent : c.muted} />
+        </View>
+        <Txt variant="meta" tone="muted" style={{ flex: 1 }}>
+          {value ? 'Listo: se sube al crear' : 'Cuadrado, se ve en la lista'}
+        </Txt>
+        {value && !busy && (
+          <Txt variant="meta" tone="fg2" accessibilityRole="button" suppressHighlighting onPress={() => onChange(null)} style={{ fontWeight: '600', paddingVertical: 12, paddingHorizontal: 4 }}>
+            Quitar
+          </Txt>
+        )}
+        <Pressable accessibilityRole="button" accessibilityState={{ busy, disabled: busy }} disabled={busy} onPress={() => void pick()} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 4, opacity: busy ? 0.6 : 1 }}>
+          {busy && <ActivityIndicator size="small" color={c.accent} />}
+          <Txt variant="meta" tone="accent" style={{ fontWeight: '600' }}>
+            {busy ? 'Preparando…' : value ? 'Cambiar' : 'Elegir'}
+          </Txt>
+        </Pressable>
+      </View>
+      {!!error && (
+        <Txt variant="meta" tone="danger" accessibilityRole="alert" style={{ marginHorizontal: 4 }}>
+          {error}
+        </Txt>
+      )}
+    </Field>
   );
 }
 

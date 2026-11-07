@@ -1,16 +1,17 @@
 /**
  * Piezas de las pantallas de natación en la app (las de bits.tsx, FieldChrome y ranking/parts de la web, con React
  * Native): el club con su color, el tiempo, DQ/DNS/DNF, «Tú», el número en su caja, el selector en píldora, las
- * pestañas, «•••» con su hoja, «Ver las 8», la ficha de una marca y los puntos por club.
+ * pestañas, «•••» con su hoja, «Ver las 8», la ficha de una marca, los puntos por club y «Esto es de Pro · Usar Pro».
  */
 import { Children, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ChevronDown, ChevronRight, Ellipsis, type LucideIcon } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, Ellipsis, Zap, type LucideIcon } from 'lucide-react-native';
 import type { SwimClub } from '@mm/lib/data/swimming';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { formatDate } from '@mm/lib/format';
 import { formatSwimTime, STATUS_LABEL, STROKE_LABEL, type PersonalBest, type SwimStatus, type TeamScore } from '@mm/sports/swimming';
+import { useSwitchMode } from '@mm/components/mode/toast';
 import { pointsText } from '@mm/pages/sports/swimming/logic';
 import { toast } from '@/components/feedback';
 import { Badge, Card, ChoiceRow, SectionHeader, Sheet, Txt } from '@/components/ui';
@@ -23,6 +24,29 @@ export const openMeet = (lid: string, eventId: string, ver?: string) =>
 
 /** Abre la página de un nadador (/l/<liga>/j/<jugador>, como la web). */
 export const openSwimmer = (lid: string, playerId: string) => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid, playerId } });
+
+/** «Esto es de Pro · Usar Pro» (ProLine de la web): lo de Pro abierto en Lite (con un link de Pro), en una línea con contorno. */
+export function ProLine({ text = 'Esto es de Pro' }: { text?: string }) {
+  const c = useColors();
+  const switchMode = useSwitchMode();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1, borderColor: c.line, paddingLeft: 16, paddingRight: 4, paddingVertical: 4 }}>
+      <Txt variant="meta" style={{ flex: 1, minWidth: 0, fontFamily: font.semibold }}>
+        {text}
+      </Txt>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void switchMode('pro')}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, opacity: pressed ? 0.6 : 1 })}
+      >
+        <Zap size={16} color={c.accent} />
+        <Txt variant="meta" tone="accent" style={{ fontFamily: font.bold }}>
+          Usar Pro
+        </Txt>
+      </Pressable>
+    </View>
+  );
+}
 
 /** Hace algo con el servidor y avisa (useAction de la web): el aviso de listo, o el error con el texto de siempre. */
 export async function runAction<T>(fn: () => Promise<T>, ok?: string): Promise<T | undefined> {

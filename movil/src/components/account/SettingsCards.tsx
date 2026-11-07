@@ -29,7 +29,6 @@ import { unsubscribePush } from "@mm/lib/push";
 import { useIsPro } from "@mm/lib/useMode";
 import type { League } from "@mm/lib/types";
 import { accountErrorMessage } from "@mm/pages/legal/account";
-import { PRIVACY_PATH, TERMS_PATH } from "@mm/pages/legal/legal";
 import { leagueSport, sportMeta } from "@mm/sports/registry";
 import {
   businessSubtitle,
@@ -48,6 +47,7 @@ import {
   Txt,
 } from "../ui";
 import { shareMyData } from "@/lib/myData";
+import { openLegal } from "@/components/legal/links";
 import { openOnWeb } from "@/lib/web";
 import { useOpenModeSheet } from "@/components/mode/Mode";
 import { colorsFor, useColors, useTheme, type ThemeMode } from "@/theme/theme";
@@ -247,8 +247,9 @@ function DangerRow({
 }
 
 /**
- * Tus datos: la política de privacidad y los términos (en la web), «Descargar mis datos» (el mismo JSON de la web, con
- * la hoja de compartir del teléfono) y «Borrar mi cuenta» (la pantalla /cuenta/borrar).
+ * Tus datos: la política de privacidad y los términos (pantallas de la app, con el texto de la web), «Descargar mis
+ * datos» (el mismo JSON de la web, con la hoja de compartir del teléfono) y «Borrar mi cuenta» (la pantalla
+ * /cuenta/borrar).
  */
 export function AccountData() {
   const c = useColors();
@@ -277,7 +278,7 @@ export function AccountData() {
             </RowIcon>
           }
           title="Política de privacidad"
-          onPress={() => openOnWeb(PRIVACY_PATH)}
+          onPress={() => openLegal("privacidad")}
         />
         <ListRow
           icon={
@@ -286,7 +287,7 @@ export function AccountData() {
             </RowIcon>
           }
           title="Términos de uso"
-          onPress={() => openOnWeb(TERMS_PATH)}
+          onPress={() => openLegal("terminos")}
         />
         <ListRow
           icon={
@@ -319,7 +320,7 @@ function PendingProbe({ lid }: { lid: string }) {
 
 /**
  * MatchMate: el panel del superadmin (en la web), Organizar (a quien organiza alguna liga y al superadmin, con el
- * número de lo que espera), Mi empresa, Acerca de y Contáctanos (en la web).
+ * número de lo que espera), Mi empresa, Acerca de y Contáctanos (pantallas de la app).
  */
 export function MatchMateCard({ uid }: { uid: string }) {
   const c = useColors();
@@ -404,7 +405,7 @@ export function MatchMateCard({ uid }: { uid: string }) {
             </RowIcon>
           }
           title="Acerca de MatchMate"
-          onPress={() => openOnWeb("/acerca")}
+          onPress={() => router.push("/acerca" as never)}
         />
         <ListRow
           icon={
@@ -413,7 +414,7 @@ export function MatchMateCard({ uid }: { uid: string }) {
             </RowIcon>
           }
           title="Contáctanos"
-          onPress={() => openOnWeb("/contacto")}
+          onPress={() => router.push("/contacto" as never)}
         />
       </RowGroup>
       {/* Cuentan lo que espera en cada liga que organizas (no dibujan nada). */}

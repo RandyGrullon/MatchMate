@@ -57,6 +57,21 @@ import { StandingsTab } from '../components/event/StandingsTab';
 import { TeamsTab } from '../components/event/TeamsTab';
 import { LanesPanel } from '../components/lanes/LanesPanel';
 import { EVENT_DELETED, EVENT_SETTINGS_HINT, canPublishEvent, deleteEventConfirm, deleteEventLabel, eventSettingsLabel, publishableScores } from '../components/event/eventActions';
+import {
+  EXCEL_DONE,
+  EXCEL_HINT,
+  EXCEL_LABEL,
+  PRO_ONLY_TEXT,
+  PRO_TOOLS_HINT,
+  currentEventTab,
+  eventTabOf,
+  eventTabs,
+  myGamesLook,
+  proToolsLabel,
+  resultsHint,
+  resultsTitle,
+  showsPro,
+} from '../components/event/eventPro';
 import type { Entry } from '../lib/types';
 import { dispatchLeague, SportRoute } from '../sports/screens';
 import { shareOrigin } from '../lib/origin';
@@ -66,8 +81,6 @@ const UpdateAppScreen = lazy(() => import('./sports/UpdateAppScreen'));
 // Las hojas de «•••» se bajan al tocarlas.
 const ScorersSheet = lazy(() => import('../components/scorers/ScorersSheet'));
 const ReportSheet = lazy(() => import('../components/tournamentReport/ReportSheet'));
-
-type TabKey = 'inscritos' | 'equipos' | 'pistas' | 'juegos' | 'clasificacion';
 
 /**
  * Un evento de la liga. Punto de desvío por deporte (el otro es LeagueShell): el boliche ve sus pantallas
@@ -192,39 +205,14 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
   const today = toIsoDate(now);
   const upcoming = ev.date >= today;
   const liveNow = liveInfo(ev, league, now);
-  const requested = params.get('tab') as TabKey | null;
+  const requested = params.get('tab');
   // Pro, o un link de Pro (la Planilla desde un aviso) para quien organiza o anota: lo de Pro se abre igual.
-  const pro = isPro || (canScore && requested != null);
+  const pro = showsPro(isPro, canScore, requested);
 
-  // Pro: quien organiza o anota tiene sus pestañas; los demás, la Planilla (solo mirar) y los resultados.
-  const results: TabKey = 'clasificacion';
-  const tabs: { key: TabKey; label: string }[] = !canScore
-    ? [
-        { key: 'juegos', label: 'Planilla' },
-        { key: results, label: isTorneo ? 'Clasificación' : 'Resultados' },
-      ]
-    : !isAdmin
-      ? [
-          { key: 'juegos', label: 'Planilla' },
-          { key: results, label: 'Clasificación' },
-          { key: 'pistas', label: 'Pistas' },
-        ]
-      : isTorneo
-        ? [
-            { key: 'inscritos', label: 'Inscritos' },
-            { key: 'equipos', label: 'Equipos' },
-            { key: 'pistas', label: 'Pistas' },
-            { key: 'juegos', label: 'Planilla' },
-            { key: results, label: 'Clasificación' },
-          ]
-        : [
-            { key: 'juegos', label: 'Planilla' },
-            { key: results, label: 'Resultados' },
-            { key: 'pistas', label: 'Pistas' },
-          ];
-  // Un torneo se abre en Inscritos antes de jugarse y en la Planilla el día que se juega.
-  const firstTab: TabKey = isAdmin && isTorneo && !liveNow.live ? 'inscritos' : 'juegos';
-  const tab: TabKey = tabs.some((t) => t.key === requested) ? requested! : firstTab;
+  // Pro: quien organiza o anota tiene sus pestañas; los demás, la Planilla (solo mirar) y los resultados. Un torneo se
+  // abre en Inscritos antes de jugarse y en la Planilla el día que se juega (eventPro.ts, lo comparte la app).
+  const tabs = eventTabs({ canScore, isAdmin, isTorneo });
+  const tab = currentEventTab(tabs, eventTabOf(requested), { isAdmin, isTorneo, live: liveNow.live });
 
   async function remove() {
     setMenu(false);
@@ -241,7 +229,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       const { exportEventToExcel } = await import('../lib/exportExcel');
       await exportEventToExcel(ev, entries.data, players.data);
       return true;
-    }, 'Excel descargado');
+    }, EXCEL_DONE);
     setExporting(false);
   }
 
@@ -302,8 +290,8 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
           {
             key: 'resultados',
             icon: ListOrdered,
-            label: isTorneo ? 'Clasificación' : 'Resultados',
-            hint: isTorneo ? 'Con handicap y por equipos' : 'Promedio y total de cada uno',
+            label: resultsTitle(isTorneo),
+            hint: resultsHint(isTorneo),
             onClick: () => {
               setMenu(false);
               setSheet('resultados');
@@ -326,15 +314,15 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         ]
       : []),
     ...(!pro && isAdmin && !isTorneo
-      ? [{ key: 'excel', icon: FileSpreadsheet, label: 'Excel', hint: 'Los juegos de todos', onClick: () => void exportExcel(), busy: exporting }]
+      ? [{ key: 'excel', icon: FileSpreadsheet, label: EXCEL_LABEL, hint: EXCEL_HINT, onClick: () => void exportExcel(), busy: exporting }]
       : []),
     ...(!pro && canScore
       ? [
           {
             key: 'pro',
             icon: Zap,
-            label: isTorneo ? 'Planilla, inscritos y pistas' : 'Planilla, aprobar y pistas',
-            hint: 'Están en Pro · Usar Pro',
+            label: proToolsLabel(isTorneo),
+            hint: PRO_TOOLS_HINT,
             onClick: () => {
               setMenu(false);
               void switchMode('pro');
@@ -399,7 +387,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
       onSend={() => setSubmitting(true)}
       marks={mine ? entryMarks(mine, context.data[mine.id]) : null}
       onAutoDone={backAfterScore ? () => navigate(-1) : undefined}
-      look={!pro ? 'lite' : canScore ? 'sheet' : 'pro'}
+      look={myGamesLook(pro, canScore)}
       openRequest={mineRequest}
       className={pro ? 'mt-4' : 'mt-[22px]'}
     />
@@ -500,7 +488,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         <>
           {!isPro && (
             <p className="mt-3.5 flex items-center gap-3 rounded-[20px] py-1 pr-1 pl-4 text-meta shadow-[inset_0_0_0_1px_var(--line)]">
-              <span className="min-w-0 flex-1 font-semibold">Esto es de Pro</span>
+              <span className="min-w-0 flex-1 font-semibold">{PRO_ONLY_TEXT}</span>
               <button
                 type="button"
                 onClick={() => void switchMode('pro')}
@@ -581,7 +569,7 @@ function BowlingEventPage({ eventId: fixed }: { eventId?: string }) {
         />
       )}
       {streaming.sheet}
-      <Sheet open={sheet === 'resultados'} onClose={() => setSheet(null)} title={isTorneo ? 'Clasificación' : 'Resultados'} subtitle={title}>
+      <Sheet open={sheet === 'resultados'} onClose={() => setSheet(null)} title={resultsTitle(isTorneo)} subtitle={title}>
         {sheet === 'resultados' && <StandingsTab {...props} readOnly onOpen={setDetail} />}
       </Sheet>
       {sheet === 'anotadores' && (

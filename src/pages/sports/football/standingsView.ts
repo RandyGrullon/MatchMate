@@ -1,5 +1,7 @@
 import { compareMatches, type Match } from '../../../lib/data/matches';
 import { defaultColumns, type StandingsColumn } from '../../../components/match/standings';
+import { leadersShare, standingsShare } from '../../../components/share/adapters';
+import type { ShareTableSpec } from '../../../components/share/cards';
 import type { DisciplineConfig, DisciplineReport, Sanction } from '../../../sports/team/discipline';
 import type { FootballTableConfig } from '../../../sports/team/standings';
 import type { FootballTotals } from '../../../sports/team/stats';
@@ -10,8 +12,8 @@ import type { CardRow, FootballSeason } from './season';
 
 /**
  * Lo que no es pantalla de la Tabla del fútbol y la sala (FootballStandings.tsx de la web y la tabla de la app): las
- * columnas de cada lista, qué se ve (`?ver=`), la línea de cada uno en Lite, la regla de la tabla y lo de la disciplina
- * (a una amarilla de la suspensión, las sanciones en orden y el nombre de cada partido).
+ * columnas de cada lista, qué se ve (`?ver=`), la línea de cada uno en Lite, la regla de la tabla, lo de la disciplina
+ * (a una amarilla de la suspensión, las sanciones en orden y el nombre de cada partido) y la imagen para compartir.
  */
 
 export type FootballTab = 'tabla' | 'goleadores' | 'tarjetas' | 'vallas' | 'disciplina';
@@ -128,4 +130,45 @@ export function disciplineMatchText(matches: readonly Match[], teamName: (teamId
     const nm = (i: 0 | 1) => teamName(m.sides[i].teamId) ?? m.sides[i].label;
     return `${m.round != null ? `J${m.round} · ` : ''}${nm(0)} vs. ${nm(1)}`;
   };
+}
+
+/**
+ * La imagen de la pestaña que se ve para mandar al grupo (la de Pro): la tabla (o los grupos) con el color de cada
+ * equipo, o los 20 primeros goleadores, tarjetas o porteros. null = nada que compartir (la disciplina no se comparte).
+ */
+export function footballShareCard(o: {
+  leagueName: string;
+  tab: FootballTab;
+  season: Pick<FootballSeason, 'groups' | 'standings' | 'scorers' | 'cards' | 'keepers'>;
+  teamOf: (teamId: string) => { name: string; color?: string | null } | null | undefined;
+  nameOf: (playerId: string) => string;
+}): ShareTableSpec | null {
+  const { season, teamOf } = o;
+  const title = o.leagueName;
+  const leaders = { title, nameOf: o.nameOf, teamOf, limit: 20 };
+  switch (o.tab) {
+    case 'tabla': {
+      const sections = season.groups.length ? season.groups.map((g) => ({ heading: g.stage, rows: g.rows })) : [{ rows: season.standings }];
+      if (!sections.some((x) => x.rows.length)) return null;
+      return standingsShare({
+        title,
+        subtitle: 'Tabla de posiciones',
+        sections,
+        columns: TABLE_COLUMNS,
+        nameOf: (id) => teamOf(id)?.name ?? '(equipo borrado)',
+        rowExtra: (id) => ({ dot: teamOf(id)?.color ?? null }),
+        nameLabel: 'Equipo',
+      });
+    }
+    case 'goleadores': {
+      const rows = scorerRows(season);
+      return rows.length ? leadersShare({ ...leaders, subtitle: 'Goleadores', rows, columns: SCORER_COLUMNS }) : null;
+    }
+    case 'tarjetas':
+      return season.cards.length ? leadersShare({ ...leaders, subtitle: 'Tarjetas', rows: season.cards, columns: CARD_COLUMNS }) : null;
+    case 'vallas':
+      return season.keepers.length ? leadersShare({ ...leaders, subtitle: 'Vallas invictas', rows: season.keepers, columns: KEEPER_COLUMNS, nameLabel: 'Portero' }) : null;
+    default:
+      return null;
+  }
 }

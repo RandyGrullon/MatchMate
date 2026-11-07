@@ -11,6 +11,7 @@ import { useCurrentSport } from '@mm/components/notifications/bridge';
 import { InvitesCard } from '@/components/notifications/InvitesCard';
 import { Chips, NoticeGroups, type ChipItem } from '@/components/notifications/NoticeList';
 import { BackBar, Button, Empty, LoadError, Loading, Screen, Txt } from '@/components/ui';
+import { useTitleStyle } from '@/components/home/proLook';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -34,6 +35,7 @@ const FILTER_EMPTY: Record<NoticeFilter, string> = {
 export default function NoticesScreen() {
   const auth = useAuth();
   const c = useColors();
+  const titleStyle = useTitleStyle();
   const params = useLocalSearchParams<{ ver?: string; deporte?: string }>();
   const { items, isUnread, markRead, markAllRead, markSeen, loading, error, emptyText, feeds, leagues } = useNotifications();
   const now = useNow().getTime();
@@ -88,7 +90,9 @@ export default function NoticesScreen() {
     return (
       <Screen>
         <BackBar label="Inicio" />
-        <Txt variant="title">Avisos</Txt>
+        <Txt variant="title" style={titleStyle}>
+          Avisos
+        </Txt>
         <Empty
           icon={<Bell size={28} color={c.accent} />}
           title="Entra para ver tus avisos"
@@ -156,7 +160,7 @@ export default function NoticesScreen() {
         }
       />
       <View style={{ gap: 6 }}>
-        <Txt variant="title" accessibilityRole="header">
+        <Txt variant="title" accessibilityRole="header" style={titleStyle}>
           Avisos
         </Txt>
         {!!subtitle && (

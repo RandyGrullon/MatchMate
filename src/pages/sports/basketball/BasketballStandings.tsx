@@ -1,6 +1,5 @@
 import { useSearchParams } from 'react-router';
-import { StandingsTable, defaultColumns } from '../../../components/match';
-import { leadersShare, standingsShare } from '../../../components/share';
+import { StandingsTable } from '../../../components/match';
 import { LeagueBackBar } from '../../../components/league/home/LeagueTopBar';
 import { useIsPro } from '../../../components/mode';
 import { ListSkeleton, LoadError, Segmented } from '../../../components/ui';
@@ -12,9 +11,10 @@ import { useTeamLeague } from '../team/useTeamLeague';
 import { ExcelButton } from './BasketballHome';
 import { basketballTableFrom } from './rules';
 import { useBasketballSeason } from './season';
-import { SCORER_COLUMNS, basketballRuleLine, basketballRuleText, basketballView, scorerLine } from './standingsView';
+import { SCORER_COLUMNS, TABLE_COLUMNS, basketballCanShare, basketballRuleLine, basketballRuleText, basketballShareCard, basketballView, scorerLine } from './standingsView';
 
-// Las columnas, qué se ve y la línea de cada anotador están en standingsView.ts (los usa también la app del teléfono).
+// Las columnas, qué se ve, la línea de cada anotador y la imagen para compartir están en standingsView.ts (los usa también
+// la app del teléfono).
 export { SCORER_COLUMNS };
 
 /**
@@ -33,22 +33,10 @@ export default function BasketballStandings() {
   const view = basketballView(params.get('ver'));
   const table = basketballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
-  const columns = defaultColumns({ forLabel: 'PF', againstLabel: 'PC' });
-  const team = (id: string) => tl.teamOf(id);
+  const columns = TABLE_COLUMNS;
   // Imagen de lo que se ve (tabla o anotadores) para mandar al grupo.
-  const shareCard = () =>
-    view === 'tabla'
-      ? standingsShare({
-          title: tl.league.name,
-          subtitle: 'Tabla de posiciones',
-          sections: [{ rows: season.standings }],
-          columns,
-          nameOf: (id) => team(id)?.name ?? '(equipo borrado)',
-          rowExtra: (id) => ({ dot: team(id)?.color ?? null }),
-          nameLabel: 'Equipo',
-        })
-      : leadersShare({ title: tl.league.name, subtitle: 'Anotadores', rows: season.leaders, columns: SCORER_COLUMNS, nameOf: tl.nameOf, teamOf: team, limit: 20 });
-  const canShare = view === 'tabla' ? season.standings.length > 0 : season.leaders.length > 0;
+  const shareCard = () => basketballShareCard({ leagueName: tl.league.name, view, season, teamOf: (id) => tl.teamOf(id), nameOf: tl.nameOf });
+  const canShare = basketballCanShare(view, season);
   const label = picked.seasons.length > 1 ? picked.selected?.name : null;
   const bar = (excelLabel: string | null | undefined) => (
     <LeagueBackBar

@@ -7,7 +7,6 @@ import { LeagueMadeBadges } from '../badges/maker/LeagueMadeBadges';
 import { ClaimBanner } from '../claims/ClaimBanner';
 import { useProSuggestion } from '../mode';
 import { NoticeSlot, useNotice } from '../NoticeSlot';
-import { pendingNotice } from '../organizer/Pending';
 import { SuspendTodayCard } from '../organizer/SuspendDay';
 import { ReportButton } from '../report/ReportButton';
 import { ChampionsSection } from '../season/ChampionsSection';
@@ -15,6 +14,7 @@ import { LiveBanner } from '../live/LiveBanner';
 import { SuggestionBox } from '../SuggestionBox';
 import { cx } from '../ui';
 import { LeagueNotices } from './Announce';
+import { leaguePendingNotice, leagueProCopy } from './homeNotices';
 import { LeagueIdent, LeagueRows, type LeagueRowDef } from './home/LeagueSections';
 import { JoinLeagueCard, LeagueInfoCard } from './LeagueInfo';
 
@@ -25,15 +25,12 @@ import { JoinLeagueCard, LeagueInfoCard } from './LeagueInfo';
  * permitir los avisos le ganan a la sugerencia y a la pista). A los demás no les pide nada.
  */
 export function useLeagueHomeNotices(pro: boolean): void {
-  const { lid, league, isAdmin, base } = useLeagueCtx();
+  const { lid, league, isAdmin } = useLeagueCtx();
   const p = useLeaguePending(isAdmin && !pro ? lid : null).data;
-  useNotice(isAdmin && !pro && pendingNotice(p, lid, base, league.kind));
-  useProSuggestion({
-    title: league.kind === 'torneo' ? 'Organizas este torneo' : 'Organizas esta liga',
-    // El boliche: «Aprueba juegos en Pro»; los otros deportes confirman resultados en sus partidos.
-    text: leagueSport(league) === 'bowling' ? undefined : 'Resultados y ajustes en Pro',
-    enabled: isAdmin,
-  });
+  // Los textos (y los de la app del teléfono) están en homeNotices.ts.
+  useNotice(isAdmin && !pro && leaguePendingNotice(p, lid, league.kind));
+  // El boliche: «Aprueba juegos en Pro»; los otros deportes confirman resultados en sus partidos.
+  useProSuggestion({ ...leagueProCopy(league.kind, leagueSport(league) === 'bowling'), enabled: isAdmin });
 }
 
 /**

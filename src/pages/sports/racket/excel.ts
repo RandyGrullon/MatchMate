@@ -1,12 +1,14 @@
 import type { SheetData } from 'write-excel-file/browser';
 import type { Match } from '../../../lib/data/matches';
 import { excelHead as head, safeFileName, sheetName, type ExcelSheet } from '../../../lib/report/sheets';
+import type { RacketSport } from '../../../sports/racket';
 import type { StandingRow } from '../../../sports/types';
 import { statusInfo } from '../../../components/match/format';
+import { boxName, monthMatches, type BoxMonth } from '../racket-formats/logic/box';
 import type { NightRound } from './logic/night';
 import { fmtPoints } from './logic/night';
 import { localParts, timeLabel } from './logic/time';
-import { winPct } from './logic/results';
+import { forLabel, seasonPlayerTable, setsLabel, winPct } from './logic/results';
 
 /**
  * Excel de raqueta (write-excel-file, como src/lib/exportExcel.ts; el del boliche no se toca):
@@ -153,8 +155,60 @@ export function competitionSheets(o: CompetitionExcelInput): ExcelSheet[] {
   return sheets;
 }
 
+/** Los nombres que necesita el Excel (los de useNames). */
+type ExcelNames = { entrantName: (id: string) => string; nameOf: (id: string) => string; rosterOf: (teamId: string) => readonly string[] };
+
+/** Lo de cada deporte para el Excel: los nombres de las columnas y del lugar del partido («Cancha» o «Mesa»). */
+interface ExcelSport {
+  sport: RacketSport;
+  names: ExcelNames;
+  tz?: string | null;
+  courtLabel: string;
+  now: number;
+}
+
+/** El Excel de la liga de parejas: sus partidos, la tabla y los jugadores (lo de «•••» › Excel). Puro. */
+export function leagueExcelInput(o: ExcelSport & { title: string; date: string; matches: readonly Match[]; table: readonly StandingRow[] }): CompetitionExcelInput {
+  return {
+    title: o.title,
+    date: o.date,
+    matches: o.matches,
+    tables: [{ name: 'Tabla', rows: o.table }],
+    players: seasonPlayerTable(o.matches, { sport: o.sport, rosterOf: o.names.rosterOf, now: o.now }),
+    entrantName: o.names.entrantName,
+    nameOf: o.names.nameOf,
+    tz: o.tz,
+    forLabel: forLabel(o.sport),
+    setsLabel: setsLabel(o.sport),
+    courtLabel: o.courtLabel,
+  };
+}
+
+/** El Excel del mes de la liga por cajas: los partidos del mes, una tabla por caja y los jugadores. Puro. */
+export function boxMonthExcelInput(
+  o: ExcelSport & { title: string; eventDate: string; month: BoxMonth; matches: readonly Match[]; tables: readonly (readonly StandingRow[])[] },
+): CompetitionExcelInput {
+  const list = monthMatches(o.matches, o.month.n);
+  return {
+    title: `${o.title} · ${o.month.label || `Mes ${o.month.n}`}`,
+    date: o.month.start ?? o.eventDate,
+    matches: list,
+    tables: o.month.boxes.map((_, b) => ({ name: boxName(b), rows: o.tables[b] ?? [] })),
+    players: seasonPlayerTable(list, { sport: o.sport, rosterOf: o.names.rosterOf, now: o.now }),
+    entrantName: o.names.entrantName,
+    nameOf: o.names.nameOf,
+    tz: o.tz,
+    forLabel: forLabel(o.sport),
+    setsLabel: setsLabel(o.sport),
+    courtLabel: o.courtLabel,
+  };
+}
+
+/** «Liga de los jueves - 2026-10-07.xlsx». */
+export const competitionExcelName = (o: Pick<CompetitionExcelInput, 'title' | 'date'>) => `${safeFileName(o.title)} - ${o.date}.xlsx`;
+
 /** Descarga la liga o las cajas en Excel (el torneo por categorías lo trae su reporte). */
 export async function exportCompetitionExcel(o: CompetitionExcelInput) {
   const { default: writeExcelFile } = await import('write-excel-file/browser');
-  await writeExcelFile(competitionSheets(o)).toFile(`${safeFileName(o.title)} - ${o.date}.xlsx`);
+  await writeExcelFile(competitionSheets(o)).toFile(competitionExcelName(o));
 }

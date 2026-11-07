@@ -144,6 +144,32 @@ export function groupDrafts(
   return out;
 }
 
+/**
+ * Los partidos de los grupos que faltan por crear (se borró alguno o falló a medias): los de `groupDrafts` que todavía
+ * no están en su grupo, en cualquier orden de los lados.
+ */
+export function missingGroupDrafts(
+  cat: TourneyCategory,
+  matches: readonly Match[],
+  entrants: ReadonlyMap<string, ScheduleEntrant>,
+  opts: { eventId: string; rules?: Record<string, unknown> },
+): MatchDraft[] {
+  const all = groupDrafts(cat, cat.groupsOf ?? [], entrants, opts);
+  const exists = (a: string, b: string, stage: string) =>
+    matches.some((m) => m.stage === stage && ((entrantKey(m.sides[0]) === a && entrantKey(m.sides[1]) === b) || (entrantKey(m.sides[0]) === b && entrantKey(m.sides[1]) === a)));
+  const idOf = (s: MatchDraft['sides'][number]) => s.teamId ?? s.players?.[0]?.playerId ?? '';
+  return all.filter((d) => !exists(idOf(d.sides[0]), idOf(d.sides[1]), d.stage ?? ''));
+}
+
+/** El nivel de una pareja (la suma de los de sus jugadores) o de un jugador, para sembrar; null si nadie lo tiene. */
+export function seedLevel(ids: readonly string[], levels: Readonly<Record<string, number>>): number | null {
+  const known = ids.map((p) => levels[p]).filter((x): x is number => x != null);
+  return known.length ? Math.round(known.reduce((a, b) => a + b, 0) * 1000) / 1000 : null;
+}
+
+/** «Por nivel»: la siembra con el de más nivel primero (los que no tienen, al final). */
+export const sortBySeedLevel = (pairs: readonly string[], levelOf: (id: string) => number | null) => [...pairs].sort((a, b) => (levelOf(b) ?? -1) - (levelOf(a) ?? -1));
+
 /** Partidos de un grupo (por su fase). */
 export const groupMatches = (cat: TourneyCategory, g: number, matches: readonly Match[]) =>
   matches.filter((m) => m.stage === groupStage(cat, g) && !m.bracketKey && m.status !== 'void');

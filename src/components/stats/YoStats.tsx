@@ -1,28 +1,32 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Minus, TrendingDown, TrendingUp } from 'lucide-react';
-import {
-  LEFT_CUTS,
-  frameRates,
-  hasPins,
-  heatLevel,
-  monthlyAverages,
-  pinReport,
-  type FrameRates,
-  type PinReport,
-  type StatGame,
-} from '../../lib/bowlingStats';
-import { parseDate } from '../../lib/format';
+import { LEFT_CUTS, frameRates, hasPins, heatLevel, pinReport, type PinReport, type StatGame } from '../../lib/bowlingStats';
 import type { GameFrames } from '../../lib/types';
 import { PIN_ROWS } from '../frames/PinDeck';
 import { heatStyle } from '../frames/PinHeatDeck';
 import { Card, Segmented, cx } from '../ui';
 import { FrameStatsPanel } from './FrameStatsPanel';
-import { TREND_LAST } from './TrendSection';
-import { MONTHS_LONG, SPARK_GAMES, monthCompare, sparkline, trendBadge, type TrendBadge } from './yoTrend';
+import {
+  TREND_CHART_H as CHART_H,
+  TREND_DEFAULT_WIDTH,
+  TREND_FIRST_X as FIRST_X,
+  TREND_PLOT_BOTTOM as PLOT_BOTTOM,
+  TREND_PLOT_TOP as PLOT_TOP,
+  frameShares,
+  gamePoints,
+  monthPoints,
+  pinLine,
+  trendLayout,
+  type TrendPoint,
+} from './yoCharts';
+import { SPARK_GAMES, monthCompare, sparkline, trendBadge, type TrendBadge } from './yoTrend';
 
 // Cómo vas, la gráfica corta y el mes anterior contra este (sin dibujar) están en yoTrend.ts: los comparte la app del
 // teléfono. Se siguen importando desde aquí.
 export { MONTHS_LONG, SPARK_GAMES, monthCompare, oneDecimal, sparkline, trendBadge, type MonthCompare, type TrendBadge } from './yoTrend';
+// Los puntos y el lugar de cada cosa de «Tendencia» y lo de «Tus tiros» (sin dibujar) están en yoCharts.ts: los comparte
+// la app del teléfono. Se siguen importando desde aquí.
+export { TREND_DEFAULT_WIDTH, dayLabel, frameShares, gamePoints, monthPoints, pinLine, trendLayout, trendScale, type TrendPoint } from './yoCharts';
 
 /**
  * Los números de Yo (rediseño «Calma y foco», final/6-perfil.png y p6-perfil.png), solo para mostrar (los calcula
@@ -31,8 +35,6 @@ export { MONTHS_LONG, SPARK_GAMES, monthCompare, oneDecimal, sparkline, trendBad
  * - Pro: los 6 números, «Tendencia» (Por juego | Por mes, con fechas y etiquetas) y «Tus tiros» con «Pinos que te
  *   quedan» (y, al tocar «Ver todo», el detalle por cuadros de siempre).
  */
-
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 function TrendLine({ badge }: { badge: TrendBadge }) {
   const Icon = badge.dir === 'up' ? TrendingUp : badge.dir === 'down' ? TrendingDown : Minus;
@@ -148,98 +150,6 @@ export function NumbersGrid({ items, className }: { items: readonly NumberItem[]
 }
 
 // ---------- Tendencia (Pro) ----------
-
-/** «Hoy», «Ayer» o «6 oct» (el día de un grupo de juegos en la gráfica). */
-export function dayLabel(date: string, today: string): string {
-  if (date === today) return 'Hoy';
-  const d = parseDate(date);
-  const t = parseDate(today);
-  if (Math.round((t.getTime() - d.getTime()) / 86_400_000) === 1) return 'Ayer';
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-/** El mes de un 'YYYY-MM' para debajo de la gráfica: «sep», o «ene 26» si los meses son de dos años. */
-const monthShort = (month: string, withYear: boolean) => {
-  const m = MONTHS_SHORT[Number(month.slice(5, 7)) - 1] ?? month;
-  return withYear ? `${m} ${month.slice(2, 4)}` : m;
-};
-
-/** Un punto de la gráfica: el número, su grupo (el día o el mes) y lo que dice al tocarlo. */
-export interface TrendPoint {
-  score: number;
-  group: string;
-  label: string;
-  tip: string;
-}
-
-/** Los puntos «Por juego»: los últimos juegos, en grupos por día («29 sep», «6 oct», «Hoy»). */
-export function gamePoints(games: readonly Pick<StatGame, 'date' | 'score' | 'label'>[], today: string, last = TREND_LAST): TrendPoint[] {
-  return games.slice(-last).map((g) => ({ score: g.score, group: g.date, label: dayLabel(g.date, today), tip: g.label ?? dayLabel(g.date, today) }));
-}
-
-/** Los puntos «Por mes»: el promedio de cada mes (los últimos 12). */
-export function monthPoints(games: readonly Pick<StatGame, 'date' | 'score'>[]): TrendPoint[] {
-  const months = monthlyAverages(games).slice(-12);
-  const years = new Set(months.map((m) => m.month.slice(0, 4)));
-  return months.map((m, i) => ({
-    score: m.average,
-    group: m.month,
-    label: monthShort(m.month, years.size > 1 && (i === 0 || m.month.endsWith('-01'))),
-    tip: `${MONTHS_LONG[Number(m.month.slice(5, 7)) - 1]} ${m.month.slice(0, 4)} · ${m.games} ${m.games === 1 ? 'juego' : 'juegos'} · mejor ${m.high}`,
-  }));
-}
-
-/**
- * El eje: el promedio en el medio y la misma distancia arriba y abajo (de 5 en 5, 25 como mínimo), con aire para que
- * el punto más alejado no quede pegado a la línea.
- */
-export function trendScale(scores: readonly number[], average: number | null): { mid: number; half: number } {
-  const mid = average ?? Math.floor(scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length));
-  const dev = Math.max(0, ...scores.map((s) => Math.abs(s - mid)));
-  return { mid, half: Math.max(25, Math.ceil((dev + 4) / 5) * 5) };
-}
-
-const PLOT_TOP = 10;
-const PLOT_BOTTOM = 114;
-const CHART_H = 146;
-const FIRST_X = 38;
-/** Lo mínimo entre dos fechas de abajo (px). */
-const LABEL_GAP = 46;
-
-/** Dónde va cada cosa de la gráfica a ese ancho (sin dibujar: sirve para probarla). */
-export function trendLayout(points: readonly TrendPoint[], average: number | null, width: number) {
-  const { mid, half } = trendScale(
-    points.map((p) => p.score),
-    average,
-  );
-  const lastX = width - 8;
-  const x = (i: number) => (points.length < 2 ? (FIRST_X + lastX) / 2 : FIRST_X + (i * (lastX - FIRST_X)) / (points.length - 1));
-  const y = (v: number) => PLOT_TOP + ((mid + half - v) * (PLOT_BOTTOM - PLOT_TOP)) / (2 * half);
-  // Los grupos (días o meses): su nombre debajo, al centro de sus puntos, y una línea punteada entre uno y otro.
-  const groups: { label: string; x: number; from: number; to: number }[] = [];
-  points.forEach((p, i) => {
-    const g = groups[groups.length - 1];
-    if (g && points[g.from].group === p.group) g.to = i;
-    else groups.push({ label: p.label, x: 0, from: i, to: i });
-  });
-  groups.forEach((g) => (g.x = (x(g.from) + x(g.to)) / 2));
-  const separators = groups.slice(1).map((g) => (x(g.from - 1) + x(g.from)) / 2);
-  // De la última hacia atrás: la de hoy siempre; las que se pisan con la de su derecha, no.
-  const labels: { label: string; x: number }[] = [];
-  for (let k = groups.length - 1; k >= 0; k--) {
-    const g = groups[k];
-    const right = labels[0];
-    if (right && right.x - g.x < LABEL_GAP) continue;
-    labels.unshift({ label: g.label, x: Math.min(Math.max(g.x, FIRST_X + 4), width - 16) });
-  }
-  const scores = points.map((p) => p.score);
-  const best = scores.lastIndexOf(Math.max(...scores));
-  const last = points.length - 1;
-  return { mid, half, x, y, separators, labels, best, last, ticks: [mid + half, mid, mid - half] as const };
-}
-
-/** El ancho de la gráfica antes de medir la tarjeta (la de un teléfono de 390 px). */
-export const TREND_DEFAULT_WIDTH = 302;
 
 function TrendChart({ points, average, name }: { points: readonly TrendPoint[]; average: number | null; name: string }) {
   const box = useRef<HTMLDivElement>(null);
@@ -445,26 +355,6 @@ export function TrendCard({
 }
 
 // ---------- Tus tiros (Pro) ----------
-
-/**
- * De cada 100 cuadros, cuántos fueron strike, spare y abiertos (suman 100: es la barra). El cuadro 10 cuenta por cómo
- * empezó, como los demás.
- */
-export function frameShares(rates: Pick<FrameRates, 'frames' | 'spares' | 'opens'>): { strikes: number; spares: number; opens: number } | null {
-  if (!rates.frames) return null;
-  const strikeFrames = Math.max(0, rates.frames - rates.spares - rates.opens);
-  const strikes = Math.round((strikeFrames * 100) / rates.frames);
-  const opens = Math.round((rates.opens * 100) / rates.frames);
-  return { strikes, spares: Math.max(0, 100 - strikes - opens), opens };
-}
-
-/** «El 10 se te queda 7 veces y lo conviertes el 43%.»: el pino que más se queda parado (null sin pinos anotados). */
-export function pinLine(report: PinReport): { pin: number; left: number; converted: number | null } | null {
-  if (!report.racks) return null;
-  const top = [...report.pins].sort((a, b) => b.left - a.left || b.pin - a.pin)[0];
-  if (!top || !top.left) return null;
-  return { pin: top.pin, left: top.left, converted: top.convertedPct };
-}
 
 /** Los 10 pinos chiquitos con su color (más color = se queda parado más veces). Solo para ver. */
 export function MiniPinDeck({ report }: { report: PinReport }) {

@@ -5,6 +5,13 @@ import { Bell, Plus, QrCode, Search, Ticket } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { queryClient } from '@mm/lib/data/client';
 import { ModeTag } from '@/components/mode/Mode';
+import { useIsPro } from '@mm/lib/useMode';
+import type { Notice } from '@mm/lib/notices';
+import { homePendingNotice } from '@mm/components/home/homeNotices';
+import { toDoOf } from '@mm/components/home/proHome';
+import { LiveSectionPro, ToDoSection, WeekStrip } from '@/components/home/ProSections';
+import { useProSuggestion } from '@/components/home/useProSuggestion';
+import { openLink } from '@/lib/links';
 import { codeReady, normalizeCode } from '@mm/components/scanner/logic';
 import { useNotifications } from '@mm/components/notifications/provider';
 import { useActivity, useMyLeagues } from '@mm/components/home/activity';
@@ -133,11 +140,17 @@ function JoinCard() {
 /**
  * Lo de hoy, una sola vez (como Hoy de la web, src/pages/HomePage.tsx): el juego de boliche en juego (o los partidos en
  * vivo); si no, tu próximo partido o lo próximo; si no hay nada, «Nada programado». La práctica de anoche va arriba.
- * Después «Lo que viene» sin lo que ya salió arriba.
+ * Después, en Lite, «Lo que viene» sin lo que ya salió arriba y el aviso de la pantalla (los juegos por aprobar o
+ * «Probar Pro» a quien organiza). En Pro, la tarjeta más densa, el aviso, «Por hacer», «En vivo» y «Esta semana».
  */
 function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof useMyLeagues>['leagues']; uid: string; loading: boolean }) {
   const act = useActivity(leagues, uid);
   const notices = useNotifications();
+  const pro = useIsPro();
+  // El aviso de Hoy (useHomeNotices de la web): en Lite, los juegos por aprobar y la sugerencia de Pro.
+  const pending = homePendingNotice(act.feeds, act.leagues);
+  const suggestion = useProSuggestion();
+  const notice = <HomeNotice uid={uid} extra={[!pro && pending && { ...pending, action: pending.action && { label: pending.action.label, onClick: () => openLink(pending.action!.to!) } }, suggestion]} />;
   // Las hojas de Hoy: el Calendario («Lo que viene») y «¿Dónde jugaste?» («Anotar un juego»).
   const [sheet, setSheet] = useState<'calendario' | 'donde' | null>(null);
   const anotar = useAnotar({ feeds: act.feeds, leagues: act.leagues, today: act.today, uid, skip: act.games[0]?.event.id });
@@ -151,7 +164,7 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
     today = (
       <>
         {act.games.map((g) => (
-          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} />
+          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} pro={pro} />
         ))}
         <LiveMatchesCard items={act.liveItems} />
       </>
@@ -164,7 +177,7 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
     today = (
       <>
         {late.map((g) => (
-          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} />
+          <TodayGameCard key={`${g.feed.lid}:${g.event.id}`} game={g} today={act.today} pro={pro} />
         ))}
         {today}
       </>
@@ -173,10 +186,25 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
   // «Lo que viene» sin lo que ya sale arriba.
   const shownKeys = new Set([...act.games.map((g) => `${g.feed.lid}:${g.event.id}`), ...(nextEvent && !live ? [nextEvent.key] : [])]);
   const upcoming = act.upcoming.filter((it) => !shownKeys.has(it.key) && !(nextMatch && !live && it.matchId === nextMatch.match.id));
+  const featured = act.games[0] ?? null;
   return (
     <>
       <View style={{ gap: 14 }}>{today}</View>
-      <UpNext items={upcoming} today={act.today} showLeague={leagues.length > 1} action={<CalendarLink onPress={() => setSheet('calendario')} />} />
+      {pro ? (
+        <>
+          {/* El único aviso de la pantalla, a la vista: justo debajo de lo de hoy. */}
+          {notice}
+          <ToDoSection todo={toDoOf(act.feeds, act.today)} leagues={act.leagues} />
+          {/* «En vivo» es lo de hoy: la práctica de anoche no. */}
+          {featured && !featured.late && <LiveSectionPro game={featured} today={act.today} />}
+          <WeekStrip feeds={act.feeds} leagues={act.leagues} matches={act.mine} today={act.today} onOpen={() => setSheet('calendario')} />
+        </>
+      ) : (
+        <>
+          <UpNext items={upcoming} today={act.today} showLeague={leagues.length > 1} action={<CalendarLink onPress={() => setSheet('calendario')} />} />
+          {notice}
+        </>
+      )}
       <CalendarSheet
         open={sheet === 'calendario'}
         onClose={() => setSheet(null)}
@@ -199,6 +227,8 @@ export default function HoyScreen() {
   const memberships = mine.memberships;
   const [refreshing, setRefreshing] = useState(false);
   const c = useColors();
+  // Sin ligas todavía, «Probar Pro» solo le toca a un superadmin (useHomeNotices de la web).
+  const suggestion = useProSuggestion();
 
   if (auth.loading) return <Loading />;
   if (!auth.user) return <Landing />;
@@ -233,9 +263,8 @@ export default function HoyScreen() {
         <Loading label="Cargando tus ligas" />
       ) : leagues.data.length ? (
         <>
+          {/* Lo de hoy con el único aviso de la pantalla (y, en Pro, «Por hacer», «En vivo» y «Esta semana»). */}
           <TodaySection leagues={mine.all} uid={uid!} loading={loading} />
-          {/* El único aviso de la pantalla, a la vista: justo debajo de lo de hoy. */}
-          <HomeNotice uid={uid ?? null} />
           <EsportsHomeRow uid={uid} />
           <SectionHeader title="Tus ligas" />
           <View style={{ gap: 10 }}>
@@ -247,7 +276,7 @@ export default function HoyScreen() {
         </>
       ) : (
         <>
-          <HomeNotice uid={uid ?? null} />
+          <HomeNotice uid={uid ?? null} extra={[suggestion]} />
           <JoinCard />
           <Card padded={false}>
             <ListRow
@@ -286,8 +315,11 @@ const styles = StyleSheet.create({
   ticket: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });
 
-/** El aviso de Hoy (NoticeSlot de la web): el de un ID de esports tuyo que pasó a otra cuenta, si hay. */
-function HomeNotice({ uid }: { uid: string | null }) {
+/**
+ * El aviso de Hoy (NoticeSlot de la web): el de un ID de esports tuyo que pasó a otra cuenta y lo que proponga Hoy
+ * (`extra`: los juegos por aprobar, «Probar Pro»). Sale uno solo, el más importante que no se haya cerrado.
+ */
+function HomeNotice({ uid, extra = [] }: { uid: string | null; extra?: readonly (Notice | null | false | undefined)[] }) {
   const moved = useIdMoveNotice(uid);
-  return <ScreenNotice notices={[moved]} />;
+  return <ScreenNotice notices={[moved, ...extra]} />;
 }

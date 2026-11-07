@@ -1,26 +1,26 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { Flag, Settings2, Signature, Trophy } from 'lucide-react-native';
 import { useEvent, usePlayers } from '@mm/lib/data';
-import { pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournaments, type GolfCardDoc, type GolfRoundFull } from '@mm/lib/data/golf';
+import { pendingGolfSign, queueGolfSign, useGolfEvent, useGolfTournaments, type GolfCardDoc } from '@mm/lib/data/golf';
 import { sentOrQueued } from '@mm/lib/data/client';
 import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { eventLabel, toIsoDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
 import { formatTime } from '@mm/lib/schedule';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
-import { roundWhs, strokesReceived } from '@mm/sports/golf/course';
-import { scoreRound } from '@mm/sports/golf/scoring';
 import { eventDay } from '@mm/components/event/eventDay';
 import { liveHref } from '@mm/components/live/logic';
 import { cardWire, markSent, mergeCard, sendPending, useCourtLog } from '@mm/pages/sports/golf/courtLog';
-import { cardHoles, formatLabel, golfRoundOf, hcpText, holesDone, indexText, isComplete, nineLabel, toParText } from '@mm/pages/sports/golf/logic';
+import { formatLabel, holesDone, isComplete, nineLabel } from '@mm/pages/sports/golf/logic';
 import { toast } from '@/components/feedback';
-import { Badge, BackBar, Button, Empty, LoadError, Loading, Segmented, Sheet, Txt } from '@/components/ui';
+import { BackBar, Button, Empty, LoadError, Loading, Segmented, Sheet, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+import { CardReview } from './CardReview';
 import { GolfBoard } from './GolfBoard';
 import { GolfCourt } from './GolfCourt';
 import { GolfEventMenu } from './GolfEventMenu';
@@ -33,14 +33,16 @@ type TabKey = 'tarjeta' | 'leaderboard' | 'jugadores';
 const TAB_LABEL: Record<TabKey, string> = { tarjeta: 'Tarjeta', leaderboard: 'Leaderboard', jugadores: 'Jugadores' };
 
 /**
- * Una ronda de golf (GolfEvent de la web, Lite): el título y una línea con el día, la hora, el campo y el formato (y «En
- * juego» o «Cerrada»), y las partes de la ronda: Tarjeta (la del grupo, en el campo) · Leaderboard · Jugadores. Al
+ * Una ronda de golf (GolfEvent de la web): el título y una línea con el día, la hora, el campo (en Lite, si no es el de
+ * siempre de la liga; en Pro, siempre), el formato y, en Pro, «salida simultánea» (y «En juego» o «Cerrada»), y las
+ * partes de la ronda: Tarjeta (la del grupo, en el campo) · Leaderboard · Jugadores. Al
  * terminar, «Revisa y firma tu tarjeta». Abajo, el reporte (PDF o Excel) y los premios. «•••» (GolfEventMenu):
  * compartir, publicar tu tarjeta, transmitir y, para el admin, campo y formato, anotadores, cerrar la ronda y eliminarla.
  */
 export function GolfEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
   const { lid, league, isAdmin, member, myPlayerId } = useLeagueCtx();
+  const isPro = useIsPro();
   const params = useLocalSearchParams<{ tab?: string }>();
   const event = useEvent(lid, eventId);
   const golf = useGolfEvent(lid, eventId);
@@ -83,10 +85,12 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
   const tab: TabKey = requested && tabs.includes(requested) ? requested : tabs.includes(fallback) ? fallback : 'leaderboard';
 
   const meta = [
-    eventDay(ev.date, today, false),
+    eventDay(ev.date, today, isPro),
     ev.startTime ? formatTime(ev.startTime.slice(0, 5)) : null,
-    round && round.courseName !== league.venue ? round.courseName : null,
+    // El campo, si no es el de siempre de la liga (o en Pro).
+    round && (isPro || round.courseName !== league.venue) ? round.courseName : null,
     round ? (round.nine === 'all' ? formatLabel(round.competition) : `${nineLabel(round.nine, round.holes)} · ${formatLabel(round.competition)}`) : null,
+    isPro && round?.shotgun ? 'salida simultánea' : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -220,79 +224,6 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
   );
 }
 
-/** La tarjeta para revisarla antes de firmar (CardModal + ScoreTable de la web): hoyo, par y golpes por vuelta. */
-function CardReview({ round, card }: { round: GolfRoundFull; card: GolfCardDoc }) {
-  const c = useColors();
-  const holes = cardHoles(round, card.teeId);
-  const received = strokesReceived(card.playingHcp, holes.map((h) => h.si));
-  const score = scoreRound(golfRoundOf(round, card), round.competition);
-  const tee = round.course.tees.find((t) => t.id === card.teeId);
-  const halves = holes.length === 18 ? [holes.slice(0, 9), holes.slice(9)] : [holes];
-  const sum = (xs: (number | null)[]) => (xs.every((x) => x == null) ? null : xs.reduce<number>((a, b) => a + (b ?? 0), 0));
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <Badge tone="muted">{tee?.name ?? card.teeId}</Badge>
-        <Badge tone="muted">{`Index ${indexText(card.hcpIndex)}`}</Badge>
-        <Badge tone="muted">{`Hcp de campo ${hcpText(roundWhs(card.courseHcp))}`}</Badge>
-        <Badge>{`Hcp de juego ${hcpText(card.playingHcp)}`}</Badge>
-        {card.signed ? <Badge tone="ok">Firmada</Badge> : <Badge tone="warn">Sin firmar</Badge>}
-      </View>
-      {halves.map((part, h) => {
-        const offset = h * 9;
-        const strokes = part.map((_, k) => card.strokes[offset + k]);
-        return (
-          <ScrollView key={h} horizontal showsHorizontalScrollIndicator={false}>
-            <View>
-              {[
-                { label: 'Hoyo', cells: part.map((x) => String(x.number)), total: h === 0 ? (halves.length > 1 ? 'Ida' : 'Total') : 'Vuelta' },
-                { label: 'Par', cells: part.map((x) => String(x.par)), total: String(part.reduce((a, x) => a + x.par, 0)) },
-                {
-                  label: 'Golpes',
-                  cells: part.map((_, k) => (card.pickedUp[offset + k] ? '×' : (card.strokes[offset + k] ?? '·').toString() + ('•'.repeat(Math.max(0, received[offset + k] ?? 0))))),
-                  total: String(sum(strokes) ?? '–'),
-                },
-              ].map((row, r) => (
-                <View key={row.label} style={[styles.tr, r === 0 && { backgroundColor: c.surface2 }]}>
-                  <Txt style={[styles.th, { color: c.muted }]}>{row.label}</Txt>
-                  {row.cells.map((v, k) => (
-                    <Txt key={k} style={[styles.td, r === 2 && { fontFamily: font.bold }]}>
-                      {v}
-                    </Txt>
-                  ))}
-                  <Txt style={[styles.td, { width: 52, fontFamily: font.bold }]}>{row.total}</Txt>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
-        );
-      })}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {[
-          { label: 'Bruto', value: String(score.gross ?? '–'), sub: toParText(score.toPar) },
-          { label: 'Neto', value: String(score.net ?? '–'), sub: toParText(score.netToPar) },
-          ...(round.competition.format === 'stableford' ? [{ label: 'Stableford', value: String(score.points), sub: 'pts' }] : []),
-        ].map((s) => (
-          <View key={s.label} style={[styles.stat, { backgroundColor: c.surface2 }]}>
-            <Txt tone="muted" style={{ fontSize: 12 }}>
-              {s.label}
-            </Txt>
-            <Txt style={{ fontFamily: font.bold, fontSize: 24 }}>{s.value}</Txt>
-            <Txt tone="muted" style={{ fontSize: 12 }}>
-              {s.sub}
-            </Txt>
-          </View>
-        ))}
-      </View>
-      <Txt tone="muted" style={{ fontSize: 12 }}>{`${formatLabel(round.competition)} · los puntos (•) son golpes de ventaja en ese hoyo.`}</Txt>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  tr: { flexDirection: 'row', alignItems: 'center', minHeight: 34 },
-  th: { width: 64, paddingHorizontal: 6, fontSize: 12 },
-  td: { width: 34, textAlign: 'center', fontSize: 14, fontVariant: ['tabular-nums'] },
-  stat: { flex: 1, borderRadius: 14, padding: 10, alignItems: 'center' },
   live: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, borderRadius: 18, paddingHorizontal: 14, marginTop: 4 },
 });

@@ -2,11 +2,11 @@ import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { CircleHelp } from 'lucide-react';
 import { useMySoloSessions, type SoloSession } from '../lib/data/solo';
-import type { PlayerStats } from '../lib/stats';
 import type { League, Member } from '../lib/types';
 import { sportMeta } from '../sports/registry';
 import { splitBySport, useBowlingNumbers, type SportLeagueLink } from './bowlingNumbers';
 import { LeagueIcon } from './home/LeagueCard';
+import { SPORT_LEAGUES_TEXT, globalPendingNote, globalWhatLine, sportLeaguesTitle, statsLine } from './profileNumbers';
 import { Card, ListRow, LoadError, RowIcon, SectionHeader, StatsSkeleton, cx } from './ui';
 
 // Lo que suma los números del boliche (sin pantallas) está en bowlingNumbers.ts: lo comparte la app del teléfono. Se
@@ -56,8 +56,8 @@ export function ProfileStats({ memberships, leagues }: { memberships: Member[]; 
 export function SportLeagues({ leagues, alone, className }: { leagues: SportLeagueLink[]; alone: boolean; className?: string }) {
   return (
     <section className={className} aria-label={alone ? 'Mis ligas' : 'Mis ligas de otros deportes'}>
-      <SectionHeader title={alone ? 'Mis ligas' : 'Otros deportes'} />
-      <p className="mx-1 -mt-1.5 mb-3 text-sm text-muted">Cada deporte lleva sus números en la liga: toca una para ver los tuyos.</p>
+      <SectionHeader title={sportLeaguesTitle(alone)} />
+      <p className="mx-1 -mt-1.5 mb-3 text-sm text-muted">{SPORT_LEAGUES_TEXT}</p>
       <Card className="overflow-hidden">
         {leagues.map((l) => {
           const meta = sportMeta(l.sport);
@@ -80,8 +80,6 @@ export function SportLeagues({ leagues, alone, className }: { leagues: SportLeag
     </section>
   );
 }
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Perfil global del boliche, por liga y por año: el total de todas sus ligas (y torneos sin liga) y sus juegos sueltos,
@@ -110,14 +108,6 @@ export function GlobalStats({
   if (state.status === 'error') return <LoadError error={state.error} />;
   if (state.status === 'loading') return <StatsSkeleton />;
   const n = state.data;
-  const leaguesCount = n.perLeague.length;
-  const what = [
-    plural(n.all.games, 'juego', 'juegos'),
-    leaguesCount > 0 && plural(leaguesCount, 'liga', 'ligas'),
-    leaguesCount > 0 && plural(n.practices, 'práctica', 'prácticas'),
-    leaguesCount > 0 && plural(n.tournaments, 'torneo', 'torneos'),
-    n.solo && plural(n.solo.games, 'juego suelto', 'juegos sueltos'),
-  ].filter(Boolean);
 
   return (
     <div className="flex flex-col gap-[26px]">
@@ -134,11 +124,8 @@ export function GlobalStats({
               <p className="num mt-1 text-row-num">{n.all.pins ? n.all.pins.toLocaleString('es-DO') : '—'}</p>
             </div>
           </div>
-          <p className="mt-3 text-sm text-fg-2">{what.join(' · ')}</p>
-          <p className="mt-1 text-[13px] text-muted">
-            Solo cuentan los juegos que ya cuentan en cada liga.
-            {n.all.pending > 0 && ` ${plural(n.all.pending, 'juego', 'juegos')} por aprobar todavía no ${n.all.pending === 1 ? 'suma' : 'suman'}.`}
-          </p>
+          <p className="mt-3 text-sm text-fg-2">{globalWhatLine(n)}</p>
+          <p className="mt-1 text-[13px] text-muted">{globalPendingNote(n.all.pending)}</p>
         </Card>
       </section>
 
@@ -202,15 +189,3 @@ export function GlobalStats({
 
 /** El cuadrito de «Juegos sueltos» en «Por liga»: el del boliche (no hay liga con logo). */
 const SOLO_ICON = { id: 'juegos-sueltos', sport: 'bowling', kind: 'liga' } as const;
-
-/** Debajo del nombre en «Por liga»: juegos, puntaje, mejor juego y lo que falta aprobar. */
-function statsLine(stats: PlayerStats): string {
-  return [
-    plural(stats.games, 'juego', 'juegos'),
-    stats.pins > 0 && `puntaje ${stats.pins.toLocaleString('es-DO')}`,
-    stats.high > 0 && `mejor ${stats.high}`,
-    stats.pending > 0 && `${stats.pending} por aprobar`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}

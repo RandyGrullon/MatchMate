@@ -165,3 +165,33 @@ export function signupErrorText(e: unknown): string | null {
 export function joinedText(r: { status: SignupStatus; position: number }): string {
   return r.status === 'in' ? `¡Listo! Estás en la lista (n.º ${r.position})` : `La lista está llena: quedaste n.º ${r.position} en la espera. Si se libera un cupo, entras solo y te avisamos.`;
 }
+
+/** Lo que dice el panel cuando ya no se puede apuntar (según en qué está la inscripción). */
+export const PHASE_NOTE: Record<Exclude<SignupPhase, 'open'>, string> = {
+  closed: 'El organizador cerró la inscripción.',
+  deadline: 'Pasó la fecha límite para apuntarse.',
+  started: 'Ya empezó: la lista quedó así.',
+  past: 'Este evento ya pasó.',
+};
+
+/** «Americano del jueves: apúntate en MatchMate. Quedan 3 cupos. Se cierra el jue 8 oct, 6:00 pm. <link>» (WhatsApp). */
+export function signupInviteText(o: { title: string; settings: Pick<SignupSettings, 'cap' | 'until'>; left: number; tz?: string | null; url: string }): string {
+  return [
+    `${o.title}: apúntate en MatchMate.`,
+    o.settings.cap != null ? (o.left > 0 ? `${o.left === 1 ? 'Queda 1 cupo' : `Quedan ${o.left} cupos`}.` : 'La lista está llena: hay lista de espera.') : '',
+    o.settings.until ? `Se cierra el ${deadlineText(o.settings.until, o.tz)}.` : '',
+    o.url,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Quien ya está en el evento (en la lista o en la espera, solo o en pareja): no se puede elegir de compañero al
+ * apuntarse en dobles.
+ */
+export function signupTaken(lists: readonly { listed: readonly string[]; view: Pick<SignupList, 'waiting'> }[], rosterOf: (id: string) => readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const l of lists) for (const id of [...l.listed, ...l.view.waiting.map((w) => w.entrantId)]) for (const p of [id, ...rosterOf(id)]) out.add(p);
+  return out;
+}

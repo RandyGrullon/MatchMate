@@ -15,10 +15,10 @@ import { NoticeSlot } from '../../../../components/NoticeSlot';
 import { TuTag } from '../../../../components/ranking/parts';
 import { Card, Empty, ListRow, ListSkeleton, RowIcon, Segmented, SectionHeader, Sheet, cx } from '../../../../components/ui';
 import { FinePrint, RankRows, eventTypeInfo, racketColumns } from '../bits';
-import { exportCompetitionExcel } from '../excel';
+import { exportCompetitionExcel, leagueExcelInput } from '../excel';
 import { ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../frame';
 import { parseLeagueConfig } from '../logic/league';
-import { forLabel, matchTime, pairStandings, seasonPlayerTable, setsLabel } from '../logic/results';
+import { matchTime, pairStandings } from '../logic/results';
 import { pointsText, tiebreakText } from '../logic/tiebreaks';
 import { todayIn } from '../logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../match/MatchDetail';
@@ -99,19 +99,7 @@ export function LeaguePage({ event }: { event: RacketEvent }) {
 
   const excel = () =>
     exporting.run('excel', () =>
-      exportCompetitionExcel({
-        title,
-        date: event.date,
-        matches,
-        tables: [{ name: 'Tabla', rows: table }],
-        players: seasonPlayerTable(matches, { sport, rosterOf: names.rosterOf, now }),
-        entrantName: names.entrantName,
-        nameOf: names.nameOf,
-        tz: league.tz,
-        forLabel: forLabel(sport),
-        setsLabel: setsLabel(sport),
-        courtLabel: courtWords(ext).One,
-      }).catch((e) => {
+      exportCompetitionExcel(leagueExcelInput({ title, date: event.date, matches, table, sport, names, tz: league.tz, courtLabel: courtWords(ext).One, now })).catch((e) => {
         console.error(e);
         toast('No se pudo hacer el Excel', 'error');
       }),

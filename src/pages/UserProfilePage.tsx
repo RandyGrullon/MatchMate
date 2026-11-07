@@ -18,16 +18,14 @@ import { FollowersSheet } from '../components/social/FollowersSheet';
 import { GamesTab, StatsTab } from '../components/social/ProfileView';
 import { compactCount, knownSports, profileLine } from '../components/social/socialFormat';
 import { Card, Empty, LoadError, Loading, Skeleton, Tabs, cx } from '../components/ui';
+import { PROFILE_TABS, profileTab, type ProfileTab } from './userProfileTabs';
 
 // Las insignias traen el catálogo y el dibujo: se cargan aparte (la vitrina y las destacadas debajo del nombre).
 const ProfileBadgesTab = lazy(() => import('../components/badges/ProfileBadges'));
 const FeaturedBadges = lazy(() => import('../components/badges/ProfileBadges').then((m) => ({ default: m.FeaturedBadges })));
 
-type ProfileTab = 'publicaciones' | 'juegos' | 'estadisticas' | 'insignias';
-
-/** `?tab=` → la parte que se ve (Publicaciones si no dice otra). */
-export const profileTab = (raw: string | null): ProfileTab =>
-  raw === 'juegos' || raw === 'estadisticas' || raw === 'insignias' ? raw : 'publicaciones';
+// Las pestañas y qué parte abre `?tab=`: userProfileTabs.ts (los comparte la app del teléfono).
+export { profileTab };
 
 // La línea de abajo del nombre está en socialFormat.ts (la usa también la app del teléfono).
 export { profileLine };
@@ -231,12 +229,7 @@ function PublicProfile({ userId }: { userId: string }) {
 
           <div className="mt-[30px]">
             <Tabs<ProfileTab>
-              items={[
-                { key: 'publicaciones', label: 'Publicaciones' },
-                { key: 'juegos', label: 'Juegos' },
-                { key: 'estadisticas', label: 'Estadísticas' },
-                { key: 'insignias', label: 'Insignias' },
-              ]}
+              items={[...PROFILE_TABS]}
               active={tab}
               onChange={setTab}
             />

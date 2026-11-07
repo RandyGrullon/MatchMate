@@ -6,6 +6,7 @@ import { todayIn } from '@mm/badges/rules/periods';
 import { useBadgeStats, useEventAwards, useLeagueAwards, usePlayerAwards, useTitleAwards, type BadgeAward } from '@mm/lib/data/badges';
 import { usePlayers } from '@mm/lib/data/players';
 import { useLeagueCtx } from '@mm/lib/league';
+import { shareOrigin } from '@mm/lib/origin';
 import { useNow } from '@mm/lib/useNow';
 import { countText, eventAwards, groupTiles, monthAwards, seasonAwards, viewAward, type WinnerGroup } from '@mm/components/badges/logic';
 import { attendanceText, badgesHiddenIn, currentTitle, hasEventAwards } from '@mm/components/badges/league';
@@ -168,6 +169,7 @@ function LeagueAwardsPanel({ awards }: { awards: readonly BadgeAward[] }) {
   const stats = useBadgeStats(!!month || !!season);
   const sheet = useAwardSheet(awards, now);
   if (!month && !season) return null;
+  const owner = sheet.subject?.kind === 'award' ? sheet.subject.tile.top.award.playerId : null;
   return (
     <View style={{ gap: 20 }}>
       {season && (
@@ -187,7 +189,14 @@ function LeagueAwardsPanel({ awards }: { awards: readonly BadgeAward[] }) {
           </Card>
         </View>
       )}
-      <BadgeSheet subject={sheet.subject} onClose={sheet.close} stats={stats.data} announce={isAdmin && !league.hasMinors} webPath={() => base} />
+      <BadgeSheet
+        subject={sheet.subject}
+        onClose={sheet.close}
+        stats={stats.data}
+        playerName={owner ? (names.get(owner) ?? '') : ''}
+        announce={isAdmin && !league.hasMinors}
+        shareLink={`${shareOrigin()}${base}`}
+      />
     </View>
   );
 }
@@ -265,9 +274,10 @@ export function LeaguePlayerBadges({ playerId }: { playerId: string }) {
         subject={subject}
         onClose={() => setSubject(null)}
         stats={stats.data}
+        playerName={player?.name ?? ''}
         canShare={mine && !league.hasMinors}
         announce={isAdmin && !mine && !league.hasMinors}
-        webPath={() => `${base}/j/${playerId}`}
+        shareLink={`${shareOrigin()}${base}/j/${playerId}`}
       />
     </View>
   );
@@ -284,13 +294,21 @@ export function EventBadges({ eventId, date }: { eventId: string; date: string }
   const stats = useBadgeStats(groups.length > 0);
   const sheet = useAwardSheet(awards.data, now);
   if (hide || !hasEventAwards(awards.data, eventId) || !groups.length) return null;
+  const owner = sheet.subject?.kind === 'award' ? sheet.subject.tile.top.award.playerId : null;
   return (
     <View style={{ gap: 8 }}>
       <SectionTitle icon={Award}>Insignias del evento</SectionTitle>
       <Card padded={false}>
         <WinnersList groups={groups} names={names} lid={lid} onOpen={sheet.openAward} />
       </Card>
-      <BadgeSheet subject={sheet.subject} onClose={sheet.close} stats={stats.data} announce={isAdmin && !league.hasMinors} webPath={() => `${base}/e/${eventId}`} />
+      <BadgeSheet
+        subject={sheet.subject}
+        onClose={sheet.close}
+        stats={stats.data}
+        playerName={owner ? (names.get(owner) ?? '') : ''}
+        announce={isAdmin && !league.hasMinors}
+        shareLink={`${shareOrigin()}${base}`}
+      />
     </View>
   );
 }

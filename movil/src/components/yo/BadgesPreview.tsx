@@ -7,7 +7,7 @@ import { useBadgeProgress, useBadgeStats, useProfileBadges } from '@mm/lib/data/
 import { useNow } from '@mm/lib/useNow';
 import { featuredIsAuto, featuredModel } from '@mm/components/badges/logic';
 import { useOpened } from '@mm/components/badges/opened';
-import { canFeature, previewBadges, tabModel, type PreviewBadge } from '@mm/components/badges/tab';
+import { badgesLine, canFeature, previewBadges, tabModel, type PreviewBadge } from '@mm/components/badges/tab';
 import { badgeLinkId } from '@mm/pages/yoParts';
 import { FeaturedPicker, FeaturedRow } from '@/components/badges/ProfileBadges';
 import { Insignia } from '@/components/badges/Insignia';
@@ -23,6 +23,20 @@ import { font } from '@/theme/tokens';
 /** Abre Yo › Insignias (la vitrina), con esa insignia abierta si se pasa. */
 export function openMyBadges(insignia?: string | null) {
   router.push({ pathname: '/yo/[parte]', params: insignia ? { parte: 'insignias', insignia } : { parte: 'insignias' } } as never);
+}
+
+/**
+ * La línea de la fila «Insignias» de Yo › Pro (BadgesLineText de la web): cuántas tienes y lo que va en camino; «Tu
+ * vitrina» mientras se lee.
+ */
+export function useBadgesLine(userId: string, sports: readonly string[]): string {
+  const data = useProfileBadges(userId);
+  const own = !!data.data?.isMe || userId === getUserId();
+  const progress = useBadgeProgress(own);
+  const now = useNow().getTime();
+  const [opened] = useOpened(own ? userId : null);
+  const model = data.data ? tabModel(data.data, progress.data, sports, now, opened) : null;
+  return model ? badgesLine(model) : 'Tu vitrina';
 }
 
 /** Yo › Lite › «Insignias»: 3 (las ganadas y las que van en camino) y «Ver todas» (la vitrina, Yo › Insignias). */

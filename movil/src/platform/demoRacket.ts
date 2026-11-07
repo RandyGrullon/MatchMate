@@ -3,10 +3,15 @@
  * para probar lo del organizador de raqueta sin el Supabase real: «Nuevo» (crear la noche, la liga, el torneo, la liga
  * por cajas y la escalera), Organizar › Parejas y niveles, «•••» de un partido (W.O., aplazar, reprogramar, quién juega,
  * corregir, anular y borrar), «•••» de la noche, la liga y el torneo, las cajas del mes, la escalera (retar, aceptar,
- * cancelar), la página del jugador y cerrar o corregir la temporada. La cuenta de prueba es la dueña y juega.
+ * cancelar), la página del jugador y cerrar o corregir la temporada. Y lo de Pro: armar el calendario de la liga
+ * (create_matches), las rondas de la noche (save_night_round, save_points_result), los grupos y el cuadro del torneo
+ * (create_matches, set_match_sides) y el mes de las cajas. Además, «Pickleball de Ejemplo» con su round robin social
+ * (sin empezar). Y «Me apunto» (join_signup, leave_signup, set_signup y la tabla event_signups, como
+ * 20260927001400_inscripciones.sql): la Copa de Ejemplo tiene la inscripción abierta (4 de 6 cupos, tu pareja ya está) y
+ * el round robin, llena (7 de 7, con Jugador Ocho en la espera y tú fuera). La cuenta de prueba es la dueña y juega.
  *
  * Contesta las RPC de src/lib/data/racket.ts, matches.ts y seasonTeams.ts, y las de racket-formats/data.ts, con la
- * misma forma que la base (solo para esta liga: undefined con lo demás). Lo cambiado se guarda en sessionStorage y se
+ * misma forma que la base (solo para estas ligas: undefined con lo demás). Lo cambiado se guarda en sessionStorage y se
  * borra al salir de la demostración (forgetDemoRacket). Todos los datos son ficticios.
  */
 import { BackendError, type BackendErrorKind } from '@mm/lib/backend/types';
@@ -18,6 +23,7 @@ import { leagueConfigJson, parseLeagueConfig } from '@mm/pages/sports/racket/log
 import { newNightConfig, nightConfigJson, parseNightConfig, isNightType } from '@mm/pages/sports/racket/logic/night';
 import { addDays, todayIn, zonedIso } from '@mm/pages/sports/racket/logic/time';
 import { newCategory, parseTourneyConfig, tourneyConfigJson } from '@mm/pages/sports/racket/logic/tourney';
+import { newSocialConfig, socialConfigJson } from '@mm/pages/sports/pickleball/social/logic';
 
 type Row = Record<string, unknown>;
 type Filter = { col: string; op: string; value: unknown };
@@ -54,6 +60,26 @@ const T = PAIRS.map((t) => t[0]);
 const EV = { liga: rid('0301'), noche: rid('0302'), torneo: rid('0303'), cajas: rid('0304'), escalera: rid('0305') };
 const SEASON = rid('0401');
 
+/** La liga de pickleball ficticia: el round robin social (individual, compañeros que rotan). */
+export const DEMO_PICKLE = rid('1001');
+const ME_PK = rid('1101');
+const PICKLE_PLAYERS: [string, string, number | null][] = [
+  [ME_PK, 'Juan Pérez', 3.5],
+  [rid('1102'), 'Jugadora Uno', 3.75],
+  [rid('1103'), 'Jugador Dos', 3.25],
+  [rid('1104'), 'Jugadora Tres', 4],
+  [rid('1105'), 'Jugador Cuatro', 3],
+  [rid('1106'), 'Jugadora Cinco', null],
+  [rid('1107'), 'Jugador Seis', 2.75],
+  [rid('1108'), 'Jugadora Siete', 3.5],
+  [rid('1109'), 'Jugador Ocho', null],
+];
+/** Los de la lista del round robin: todos menos tú y Jugador Ocho (que espera). */
+const SOCIAL_LISTED = PICKLE_PLAYERS.map((p) => p[0]).filter((id) => id !== ME_PK && id !== rid('1109'));
+const EV_SOCIAL = rid('1301');
+/** Las ligas ficticias de raqueta de este archivo. */
+const LEAGUES = new Set([DEMO_RACKET, DEMO_PICKLE]);
+
 const iso = (ms = 0) => new Date(Date.now() + ms).toISOString();
 const fail = (message: string, kind: BackendErrorKind, code: string | null = null): never => {
   throw new BackendError(message, kind, code);
@@ -70,6 +96,8 @@ interface State {
   rungs: Row[];
   challenges: Row[];
   seasons: Season[];
+  /** «Me apunto»: la tabla event_signups (la lista misma va en events.config). */
+  signups: Row[];
 }
 
 // ---------- Lo de fábrica ----------
@@ -77,8 +105,8 @@ interface State {
 const today = () => todayIn(TZ);
 const at = (date: string, time: string) => zonedIso(date, time, TZ) ?? iso();
 
-function eventRow(id: string, type: string, name: string, date: string, config: Row, startTime: string | null = null): Row {
-  return { id, league_id: DEMO_RACKET, type, name, date, start_time: startTime, config, player_count: countOf(type, config), created_at: iso(-30 * DAY), updated_at: iso(-DAY) };
+function eventRow(id: string, type: string, name: string, date: string, config: Row, startTime: string | null = null, league = DEMO_RACKET): Row {
+  return { id, league_id: league, type, name, date, start_time: startTime, config, player_count: countOf(type, config), created_at: iso(-30 * DAY), updated_at: iso(-DAY) };
 }
 
 /** Lo que cuenta la base: jugadores de la noche o parejas de la liga, el torneo, las cajas o la escalera. */
@@ -91,21 +119,37 @@ function countOf(type: string, config: Row): number {
 }
 
 /** Un partido como lo guarda la base. */
-function matchRow(o: { id: string; eventId: string; round?: number | null; stage?: string; court?: string; scheduledAt?: string | null; status?: string; score?: Row | null; winner?: number | null; proposedSide?: number | null; rules?: Row }): Row {
+function matchRow(o: {
+  id: string;
+  eventId: string;
+  league?: string;
+  round?: number | null;
+  stage?: string;
+  bracketKey?: string | null;
+  court?: string;
+  scheduledAt?: string | null;
+  status?: string;
+  format?: string;
+  requireConfirm?: boolean;
+  score?: Row | null;
+  winner?: number | null;
+  proposedSide?: number | null;
+  rules?: Row;
+}): Row {
   const status = o.status ?? 'scheduled';
   const done = status === 'confirmed' || status === 'finished';
   return {
     id: o.id,
-    league_id: DEMO_RACKET,
+    league_id: o.league ?? DEMO_RACKET,
     event_id: o.eventId,
     round: o.round ?? null,
     stage: o.stage ?? '',
-    bracket_key: null,
+    bracket_key: o.bracketKey ?? null,
     court: o.court ?? '',
     scheduled_at: o.scheduledAt ?? null,
     status,
-    format: 'sets',
-    require_confirm: true,
+    format: o.format ?? 'sets',
+    require_confirm: o.requireConfirm ?? true,
     score: o.score ?? null,
     seq: done ? 1 : 0,
     version: 1,
@@ -135,7 +179,7 @@ function matchRow(o: { id: string; eventId: string; round?: number | null; stage
 const sets = (text: string): Row => ({ text, sets: text.split(' ').map((s) => s.split('-').map(Number)) });
 
 function seed(): State {
-  const s: State = { events: [], matches: [], sides: [], mplayers: [], teams: [], roster: [], rungs: [], challenges: [], seasons: [] };
+  const s: State = { events: [], matches: [], sides: [], mplayers: [], teams: [], roster: [], rungs: [], challenges: [], seasons: [], signups: [] };
   PAIRS.forEach(([id, name, players], i) => {
     s.teams.push({ id, league_id: DEMO_RACKET, name, sort_order: i, color: null, season_id: null, event_id: null, created_at: iso(-40 * DAY), updated_at: iso(-40 * DAY) });
     players.forEach((p) => s.roster.push({ league_id: DEMO_RACKET, team_id: id, player_id: p, jersey: null, position: null, role: 'player' }));
@@ -163,7 +207,18 @@ function seed(): State {
   s.events.push(eventRow(EV.noche, 'americano', 'Americano del jueves', d, nightConfigJson({ ...newNightConfig('americano', { players: P, courts: ['Cancha 1', 'Cancha 2'] }), seed: 'noche:demo' }), '19:00'));
 
   // El torneo de la semana que viene: una categoría con las cuatro parejas (los grupos y el cuadro se arman en Pro).
-  s.events.push(eventRow(EV.torneo, 'torneo', 'Copa de Ejemplo', addDays(d, 7), tourneyConfigJson({ v: 1, format: 'torneo', categories: [{ ...newCategory('A'), pairs: T }], courts: [], points: 'standard' }), '09:00'));
+  s.events.push(
+    eventRow(
+      EV.torneo,
+      'torneo',
+      'Copa de Ejemplo',
+      addDays(d, 7),
+      tourneyConfigJson({ v: 1, format: 'torneo', categories: [{ ...newCategory('A'), pairs: T }], courts: [], points: 'standard', signup: { open: true, cap: 6, until: null, rev: 0 } }),
+      '09:00',
+    ),
+  );
+  // Tu pareja se apuntó en la app (las otras las puso el admin a mano).
+  s.signups.push(signupRow(EV.torneo, DEMO_RACKET, T[0], 'A', 'in', 1, true));
 
   // La liga por cajas del mes: una caja de cuatro parejas, todos contra todos (dos ya jugados).
   const month = monthRange(d);
@@ -207,9 +262,41 @@ function seed(): State {
     created_at: iso(-DAY),
   });
 
+  // El round robin social de hoy en la liga de pickleball (sin ronda 1: se arma en Pro).
+  s.events.push(
+    eventRow(
+      EV_SOCIAL,
+      'americano',
+      'Round robin de Ejemplo',
+      d,
+      socialConfigJson({ ...newSocialConfig({ players: SOCIAL_LISTED, courts: ['Cancha 1', 'Cancha 2'], rounds: 7, seed: 'rr:demo' }), signup: { open: true, cap: 7, until: null, rev: 0 } }),
+      '18:00',
+      DEMO_PICKLE,
+    ),
+  );
+  // La lista está llena: Jugador Ocho espera su turno.
+  s.signups.push(signupRow(EV_SOCIAL, DEMO_PICKLE, rid('1109'), null, 'wait', 2, false));
+
   // La temporada en curso (se cierra en Organizar › Temporada y fechas).
   s.seasons.push({ id: SEASON, name: 'Temporada de Ejemplo', startsOn: addDays(d, -60), endsOn: null, status: 'active', closedAt: null, closedBy: null, standings: null, awards: [], playoffs: [] });
   return s;
+}
+
+/** Una fila de event_signups (el inscrito es una pareja si `team`). */
+function signupRow(eventId: string, league: string, entrant: string, category: string | null, status: 'in' | 'wait', queue: number, team: boolean): Row {
+  return {
+    event_id: eventId,
+    league_id: league,
+    entrant_id: entrant,
+    player_id: team ? null : entrant,
+    team_id: team ? entrant : null,
+    category,
+    status,
+    queue_no: queue,
+    queued_at: iso(-DAY),
+    promoted_at: null,
+    created_by: null,
+  };
 }
 
 const rungRow = (eventId: string, entrant: string, position: number): Row => ({
@@ -237,7 +324,12 @@ function addSides(s: State, matchId: string, ids: [string, string], names?: (id:
 function load(): State {
   try {
     const raw = sessionStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as State;
+    if (raw) {
+      const s = JSON.parse(raw) as State;
+      // Lo guardado antes de «Me apunto» no trae la tabla.
+      s.signups ??= [];
+      return s;
+    }
   } catch {
     // sin sessionStorage: lo de fábrica
   }
@@ -265,6 +357,26 @@ export function forgetDemoRacket() {
 const fixed = (uid: string): Record<string, Row[]> => ({
   leagues: [
     {
+      id: DEMO_PICKLE,
+      sport: 'pickleball',
+      kind: 'liga',
+      visibility: 'private',
+      name: 'Pickleball de Ejemplo',
+      owner_id: uid,
+      venue: 'Club de Ejemplo',
+      schedule: 'Martes 6:00 p. m.',
+      season_start: null,
+      season_end: null,
+      contact_name: 'Juan Pérez',
+      contact_phone: '809-000-0000',
+      require_photo: false,
+      has_minors: false,
+      tz: TZ,
+      logo_path: null,
+      rules: {},
+      created_at: iso(-60 * DAY),
+    },
+    {
       id: DEMO_RACKET,
       sport: 'padel',
       kind: 'liga',
@@ -285,8 +397,14 @@ const fixed = (uid: string): Record<string, Row[]> => ({
       created_at: iso(-90 * DAY),
     },
   ],
-  memberships: [{ league_id: DEMO_RACKET, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME, scorer_only: false }],
-  players: PLAYERS.map(([id, name, level]) => ({ id, league_id: DEMO_RACKET, user_id: id === ME ? uid : null, name, average_override: null, is_minor: false, attrs: level != null ? { level } : null })),
+  memberships: [
+    { league_id: DEMO_RACKET, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME, scorer_only: false },
+    { league_id: DEMO_PICKLE, user_id: uid, role: 'owner', is_scorer: false, display_name: 'Juan Pérez', player_id: ME_PK, scorer_only: false },
+  ],
+  players: [
+    ...PLAYERS.map(([id, name, level]) => ({ id, league_id: DEMO_RACKET, user_id: id === ME ? uid : null, name, average_override: null, is_minor: false, attrs: level != null ? { level } : null })),
+    ...PICKLE_PLAYERS.map(([id, name, level]) => ({ id, league_id: DEMO_PICKLE, user_id: id === ME_PK ? uid : null, name, average_override: null, is_minor: false, attrs: level != null ? { level } : null })),
+  ],
 });
 
 function mine(s: State, table: string): Row[] | null {
@@ -308,7 +426,7 @@ function mine(s: State, table: string): Row[] | null {
     case 'ladder_challenges':
       return s.challenges;
     case 'event_signups':
-      return [];
+      return s.signups;
     default:
       return null;
   }
@@ -364,6 +482,17 @@ const RPCS = new Set([
   'accept_challenge',
   'cancel_challenge',
   'sync_ladder',
+  'join_signup',
+  'leave_signup',
+  'set_signup',
+  'create_matches',
+  'save_night_round',
+  'save_points_result',
+  'set_match_sides',
+  'claim_scorer',
+  'release_scorer',
+  'publish_match',
+  'suspend_match',
   'league_seasons',
   'league_champions',
   'close_season',
@@ -405,46 +534,143 @@ export function racketRpc(uid: string, fn: string, a: Record<string, unknown>, r
   const setOrder = (eventId: string, order: string[]) => {
     s.rungs = [...s.rungs.filter((r) => r.event_id !== eventId), ...order.map((id, i) => rungRow(eventId, id, i + 1))];
   };
-  const addMatch = (eventId: string, draft: Row): string => {
-    const id = typeof draft.id === 'string' ? draft.id : uuidv7();
-    s.matches.push(
-      matchRow({
-        id,
-        eventId,
-        round: typeof draft.round === 'number' ? draft.round : null,
-        stage: typeof draft.stage === 'string' ? draft.stage : '',
-        court: typeof draft.court === 'string' ? draft.court : '',
-        scheduledAt: typeof draft.scheduled_at === 'string' ? draft.scheduled_at : null,
-        rules: isObj(draft.rules) ? draft.rules : {},
-      }),
-    );
-    const sides = (Array.isArray(draft.sides) ? draft.sides : []) as Row[];
+  /** Los dos lados de un partido como los manda la app (create_matches, set_match_sides). */
+  const putSides = (id: string, sides: Row[]) => {
     sides.forEach((side) => {
       const team = typeof side.team_id === 'string' ? s.teams.find((t) => t.id === side.team_id) : undefined;
       const players = (Array.isArray(side.players) ? side.players : []) as Row[];
       const label = typeof side.label === 'string' && side.label ? side.label : team ? String(team.name) : players.map((p) => playerName(String(p.player_id))).join(' / ') || 'Por definir';
-      s.sides.push({ match_id: id, side: side.side, team_id: team ? team.id : null, label, seed: null });
+      s.sides.push({ match_id: id, side: side.side, team_id: team ? team.id : null, label, seed: typeof side.seed === 'number' ? side.seed : null });
       players.forEach((p) => s.mplayers.push({ match_id: id, player_id: p.player_id, side: side.side, position: null, jersey: null, sub: false }));
     });
+  };
+  const addMatch = (eventId: string, draft: Row): string => {
+    const id = typeof draft.id === 'string' ? draft.id : uuidv7();
+    const e = event(eventId);
+    s.matches.push(
+      matchRow({
+        id,
+        eventId,
+        league: e ? String(e.league_id) : DEMO_RACKET,
+        round: typeof draft.round === 'number' ? draft.round : null,
+        stage: typeof draft.stage === 'string' ? draft.stage : '',
+        bracketKey: typeof draft.bracket_key === 'string' ? draft.bracket_key : null,
+        court: typeof draft.court === 'string' ? draft.court : '',
+        scheduledAt: typeof draft.scheduled_at === 'string' ? draft.scheduled_at : null,
+        format: typeof draft.format === 'string' ? draft.format : undefined,
+        requireConfirm: draft.require_confirm === false ? false : undefined,
+        rules: isObj(draft.rules) ? draft.rules : {},
+      }),
+    );
+    putSides(id, (Array.isArray(draft.sides) ? draft.sides : []) as Row[]);
     return id;
+  };
+  // ---------- «Me apunto» (como 20260927001400_inscripciones.sql) ----------
+  const kindOf = (e: Row): 'night' | 'tourney' | null => (e.type === 'torneo' ? 'tourney' : isNightType(String(e.type)) ? 'night' : null);
+  const cats = (cfg: Row): Row[] => ((Array.isArray(cfg.categories) ? cfg.categories : []) as Row[]).filter(isObj);
+  /** La lista: (inscrito, categoría) en su orden. */
+  const roster = (kind: 'night' | 'tourney', cfg: Row): { entrant: string; category: string | null }[] =>
+    kind === 'night'
+      ? ((Array.isArray(cfg.players) ? cfg.players : []) as unknown[]).map((x) => ({ entrant: String(x), category: null }))
+      : cats(cfg).flatMap((c) => ((Array.isArray(c.pairs) ? c.pairs : []) as unknown[]).map((x) => ({ entrant: String(x), category: String(c.id) })));
+  const rosterKey = (kind: 'night' | 'tourney', cfg: Row) => roster(kind, cfg).map((r) => `${r.category ?? ''}:${r.entrant}`).join(',');
+  /** La categoría que sirve: la pedida si existe; si no, la primera; null en la noche. */
+  const catOf = (kind: 'night' | 'tourney', cfg: Row, wanted: unknown): string | null => {
+    if (kind !== 'tourney') return null;
+    const list = cats(cfg);
+    return String(list.find((c) => c.id === wanted)?.id ?? list[0]?.id ?? '') || null;
+  };
+  const addTo = (kind: 'night' | 'tourney', cfg: Row, entrant: string, category: string | null): Row =>
+    kind === 'night'
+      ? { ...cfg, players: [...((Array.isArray(cfg.players) ? cfg.players : []) as unknown[]), entrant] }
+      : { ...cfg, categories: cats(cfg).map((c) => (c.id === catOf(kind, cfg, category) ? { ...c, pairs: [...((Array.isArray(c.pairs) ? c.pairs : []) as unknown[]), entrant] } : c)) };
+  const removeFrom = (kind: 'night' | 'tourney', cfg: Row, entrant: string): Row =>
+    kind === 'night'
+      ? { ...cfg, players: ((Array.isArray(cfg.players) ? cfg.players : []) as unknown[]).filter((x) => x !== entrant) }
+      : { ...cfg, categories: cats(cfg).map((c) => ({ ...c, pairs: ((Array.isArray(c.pairs) ? c.pairs : []) as unknown[]).filter((x) => x !== entrant) })) };
+  /** Ya empezó: la noche publicó una ronda o se cerró; el torneo armó grupos o cuadro; o el evento ya tiene partidos. */
+  const startedOf = (e: Row, kind: 'night' | 'tourney'): boolean => {
+    const cfg = (e.config ?? {}) as Row;
+    if (s.matches.some((m) => m.event_id === e.id)) return true;
+    if (kind === 'night') return Number(cfg.round ?? 0) > 0 || cfg.closed === true;
+    return cats(cfg).some((c) => (Array.isArray(c.groupsOf) && c.groupsOf.length > 0) || (Array.isArray(c.seeds) && c.seeds.length > 0));
+  };
+  const capOf = (cfg: Row) => (isObj(cfg.signup) && typeof cfg.signup.cap === 'number' ? cfg.signup.cap : 64);
+  const nextQueue = () => s.signups.reduce((n, r) => Math.max(n, Number(r.queue_no) || 0), 0) + 1;
+  const signupsOf = (eventId: unknown) => s.signups.filter((r) => r.event_id === eventId);
+  /**
+   * Lo que hace la base al cambiar la lista (signup_sync): quien estaba apuntado y salió de la lista, sale; con cupos
+   * libres entra el primero de la espera (en el torneo, por categoría); la versión de la lista sube si cambió.
+   */
+  const sync = (e: Row, before: Row) => {
+    const kind = kindOf(e);
+    let cfg = (e.config ?? {}) as Row;
+    if (!kind || !isObj(cfg.signup)) return;
+    const listed = new Set(roster(kind, cfg).map((r) => r.entrant));
+    s.signups = s.signups.filter((r) => !(r.event_id === e.id && r.status === 'in' && !listed.has(String(r.entrant_id))));
+    if (!startedOf(e, kind) && String(e.date) >= today()) {
+      for (const w of signupsOf(e.id)
+        .filter((r) => r.status === 'wait')
+        .sort((x, y) => Number(x.queue_no) - Number(y.queue_no))) {
+        const cat = catOf(kind, cfg, w.category);
+        if (kind === 'tourney' && !cat) continue;
+        if (roster(kind, cfg).filter((r) => kind === 'night' || r.category === cat).length >= capOf(cfg)) continue;
+        Object.assign(w, { status: 'in', category: cat, promoted_at: iso(), queue_no: nextQueue() });
+        cfg = addTo(kind, cfg, String(w.entrant_id), cat);
+      }
+    }
+    const su = cfg.signup as Row;
+    const rev = Number(su.rev ?? 0);
+    e.config = { ...cfg, signup: { ...su, rev: rosterKey(kind, cfg) !== rosterKey(kind, before) ? rev + 1 : rev } };
+    e.player_count = countOf(String(e.type), e.config as Row);
+  };
+  /** Mi jugador en la liga del evento (y mis parejas). */
+  const myPlayerIn = (league: unknown) => (league === DEMO_PICKLE ? ME_PK : ME);
+  const myEntrantsIn = (league: unknown) => {
+    const me = myPlayerIn(league);
+    return [me, ...s.roster.filter((r) => r.player_id === me && r.league_id === league).map((r) => String(r.team_id))];
+  };
+  const playersOfEntrant = (id: string) => {
+    const team = s.roster.filter((r) => r.team_id === id).map((r) => String(r.player_id));
+    return team.length ? team : [id];
+  };
+
+  /** Quita los lados y los jugadores de un partido (set_match_sides los vuelve a poner). */
+  const dropSides = (id: unknown) => {
+    s.sides = s.sides.filter((x) => x.match_id !== id);
+    s.mplayers = s.mplayers.filter((x) => x.match_id !== id);
+  };
+  /** Quita los partidos (con sus lados y jugadores). */
+  const dropMatches = (gone: Set<unknown>) => {
+    s.matches = s.matches.filter((m) => !gone.has(m.id));
+    s.sides = s.sides.filter((x) => !gone.has(x.match_id));
+    s.mplayers = s.mplayers.filter((x) => !gone.has(x.match_id));
   };
 
   switch (fn) {
     // ---------- Eventos ----------
     case 'create_event': {
-      if (a.p_league !== DEMO_RACKET) return undefined;
+      if (!LEAGUES.has(String(a.p_league))) return undefined;
       const config = isObj(a.p_config) ? a.p_config : {};
       const type = String(a.p_type);
-      s.events.push({ ...eventRow(String(a.p_id ?? uuidv7()), type, String(a.p_name ?? '').trim().slice(0, 80), String(a.p_date), config, (a.p_start_time as string | null) ?? null), created_at: iso(), updated_at: iso() });
+      s.events.push({
+        ...eventRow(String(a.p_id ?? uuidv7()), type, String(a.p_name ?? '').trim().slice(0, 80), String(a.p_date), config, (a.p_start_time as string | null) ?? null, String(a.p_league)),
+        created_at: iso(),
+        updated_at: iso(),
+      });
       return done(null);
     }
     case 'update_event': {
       const e = event(a.p_event);
       if (!e) return undefined;
       const p = isObj(a.p_patch) ? a.p_patch : {};
+      const before = (e.config ?? {}) as Row;
       for (const k of ['name', 'date', 'start_time', 'config'] as const) if (k in p) e[k] = p[k];
+      // Los ajustes de la inscripción no se quitan (se cierran con open = false).
+      if (isObj(before.signup) && isObj(e.config) && !isObj((e.config as Row).signup)) e.config = { ...(e.config as Row), signup: before.signup };
       e.player_count = countOf(String(e.type), (e.config ?? {}) as Row);
       e.updated_at = iso();
+      sync(e, before);
       return done(null);
     }
     case 'delete_event': {
@@ -460,14 +686,148 @@ export function racketRpc(uid: string, fn: string, a: Record<string, unknown>, r
       return done(null);
     }
 
+    // ---------- «Me apunto» ----------
+    case 'join_signup': {
+      const e = event(a.p_event);
+      if (!e) return undefined;
+      const kind = kindOf(e);
+      const cfg = (e.config ?? {}) as Row;
+      if (!kind || !isObj(cfg.signup)) return fail('invalido', 'validation', 'invalido');
+      const su = cfg.signup;
+      const me = myPlayerIn(e.league_id);
+      // Quién se apunta: mi jugador; en el torneo de dobles, mi pareja (la elegida, la única o una nueva con el compañero).
+      const doubles = kind === 'tourney' && e.league_id === DEMO_RACKET;
+      let entrant: string | null = me;
+      if (doubles) {
+        const mineTeams = myEntrantsIn(e.league_id).slice(1);
+        if (typeof a.p_team === 'string') entrant = mineTeams.includes(a.p_team) ? a.p_team : fail('invalido', 'validation', 'invalido');
+        else if (typeof a.p_partner === 'string') entrant = mineTeams.find((t) => playersOfEntrant(t).includes(String(a.p_partner)) && playersOfEntrant(t).length === 2) ?? null;
+        else entrant = mineTeams.length === 1 ? mineTeams[0] : fail('invalido', 'validation', 'invalido');
+      } else if (a.p_team || a.p_partner) fail('invalido', 'validation', 'invalido');
+      const had = entrant ? signupsOf(e.id).find((r) => r.entrant_id === entrant) : undefined;
+      let row = had;
+      if (!row) {
+        if (su.open !== true || (typeof su.until === 'string' && Date.parse(su.until) <= Date.now()) || startedOf(e, kind) || String(e.date) < today()) fail('cerrado', 'conflict', 'cerrado');
+        let cat: string | null = null;
+        if (kind === 'tourney') {
+          cat = a.p_category == null ? (cats(cfg).length === 1 ? catOf(kind, cfg, null) : null) : cats(cfg).some((c) => c.id === a.p_category) ? String(a.p_category) : null;
+          if (!cat) fail('invalido', 'validation', 'invalido');
+        }
+        // La pareja nueva (con el compañero elegido).
+        if (!entrant) {
+          const partner = String(a.p_partner);
+          const id = uuidv7();
+          s.teams.push({ id, league_id: e.league_id, name: `${playerName(me)} / ${playerName(partner)}`.slice(0, 60), sort_order: s.teams.length, color: null, season_id: null, event_id: null, created_at: iso(), updated_at: iso() });
+          for (const pl of [me, partner]) s.roster.push({ league_id: e.league_id, team_id: id, player_id: pl, jersey: null, position: null, role: 'player' });
+          entrant = id;
+        }
+        // Nadie del inscrito puede estar dos veces en el evento.
+        const mine = playersOfEntrant(entrant);
+        const others = [...signupsOf(e.id).map((r) => String(r.entrant_id)), ...roster(kind, cfg).map((r) => r.entrant)].filter((x) => x !== entrant);
+        if (others.some((o) => mine.includes(o) || playersOfEntrant(o).some((pl) => mine.includes(pl)))) fail('duplicado', 'conflict', 'duplicado');
+        const listedAt = roster(kind, cfg).find((r) => r.entrant === entrant);
+        const status = listedAt ? 'in' : roster(kind, cfg).filter((r) => kind === 'night' || r.category === cat).length < capOf(cfg) ? 'in' : 'wait';
+        row = signupRow(String(e.id), String(e.league_id), entrant, listedAt ? listedAt.category : cat, status, nextQueue(), doubles);
+        row.created_by = uid;
+        row.queued_at = iso();
+        s.signups.push(row);
+        if (status === 'in' && !listedAt) {
+          e.config = addTo(kind, cfg, entrant, cat);
+          sync(e, cfg);
+        }
+      }
+      const now = (e.config ?? {}) as Row;
+      const position =
+        row.status === 'in'
+          ? roster(kind, now).findIndex((r) => r.entrant === row!.entrant_id) + 1
+          : signupsOf(e.id).filter((r) => r.status === 'wait' && r.category === row!.category && Number(r.queue_no) <= Number(row!.queue_no)).length;
+      return done({ status: row.status, entrant_id: row.entrant_id, category: row.category, position });
+    }
+    case 'leave_signup': {
+      const e = event(a.p_event);
+      if (!e) return undefined;
+      const kind = kindOf(e);
+      if (!kind) return fail('invalido', 'validation', 'invalido');
+      const cfg = (e.config ?? {}) as Row;
+      const mineIds = myEntrantsIn(e.league_id);
+      const entrant =
+        typeof a.p_entrant === 'string'
+          ? a.p_entrant
+          : ([...signupsOf(e.id).map((r) => String(r.entrant_id)), ...roster(kind, cfg).map((r) => r.entrant)].find((x) => mineIds.includes(x)) ?? null);
+      if (!entrant) return done(false);
+      const hadRow = signupsOf(e.id).some((r) => r.entrant_id === entrant);
+      const listed = roster(kind, cfg).some((r) => r.entrant === entrant);
+      s.signups = s.signups.filter((r) => !(r.event_id === e.id && r.entrant_id === entrant));
+      if (listed) {
+        e.config = removeFrom(kind, cfg, entrant);
+        sync(e, cfg);
+      }
+      return done(hadRow || listed);
+    }
+    case 'set_signup': {
+      const e = event(a.p_event);
+      if (!e) return undefined;
+      const kind = kindOf(e);
+      const cfg = (e.config ?? {}) as Row;
+      if (!kind || !isObj(cfg.signup) || typeof a.p_entrant !== 'string') return fail('invalido', 'validation', 'invalido');
+      const entrant = String(a.p_entrant);
+      const row = signupsOf(e.id).find((r) => r.entrant_id === entrant);
+      const at = roster(kind, cfg).find((r) => r.entrant === entrant);
+      const cat = catOf(kind, cfg, a.p_category ?? at?.category ?? row?.category ?? null);
+      const team = kind === 'tourney' && e.league_id === DEMO_RACKET;
+      let next = cfg;
+      if (a.p_status == null) {
+        s.signups = s.signups.filter((r) => !(r.event_id === e.id && r.entrant_id === entrant));
+        next = removeFrom(kind, cfg, entrant);
+      } else if (a.p_status === 'wait') {
+        if (row) Object.assign(row, { status: 'wait', category: cat, ...(row.status === 'wait' ? {} : { queued_at: iso(), queue_no: nextQueue(), promoted_at: null }) });
+        else s.signups.push({ ...signupRow(String(e.id), String(e.league_id), entrant, cat, 'wait', nextQueue(), team), created_by: uid, queued_at: iso() });
+        next = removeFrom(kind, cfg, entrant);
+      } else {
+        if (!row) s.signups.push({ ...signupRow(String(e.id), String(e.league_id), entrant, cat, 'in', nextQueue(), team), created_by: uid, queued_at: iso() });
+        else Object.assign(row, { status: 'in', category: cat, promoted_at: row.status === 'wait' ? iso() : row.promoted_at, queue_no: row.status === 'wait' ? nextQueue() : row.queue_no });
+        if (!at || at.category !== cat) next = addTo(kind, removeFrom(kind, cfg, entrant), entrant, cat);
+      }
+      if (next !== cfg) {
+        e.config = next;
+        sync(e, cfg);
+      }
+      return done((signupsOf(e.id).find((r) => r.entrant_id === entrant)?.status as string | undefined) ?? null);
+    }
+
+    // ---------- Partidos en lote (el calendario de la liga, los grupos y el cuadro del torneo) ----------
+    case 'create_matches': {
+      if (!LEAGUES.has(String(a.p_league))) return undefined;
+      const ids = ((Array.isArray(a.p_matches) ? a.p_matches : []) as Row[]).map((d) => addMatch(String(d.event_id ?? ''), d));
+      return done(ids);
+    }
+
+    // ---------- La ronda de la noche (y del round robin) ----------
+    case 'save_night_round': {
+      const e = event(a.p_event);
+      if (!e) return undefined;
+      const n = Number(a.p_round);
+      const list = s.matches.filter((m) => m.event_id === e.id && m.round === n);
+      if (list.some((m) => m.status !== 'scheduled' || Number(m.seq) > 0)) fail('cerrado', 'conflict', 'cerrado');
+      dropMatches(new Set(list.map((m) => m.id)));
+      const cfg = (e.config ?? {}) as Row;
+      const format = typeof cfg.format === 'string' && cfg.format ? cfg.format : String(e.type);
+      const ids = ((Array.isArray(a.p_matches) ? a.p_matches : []) as Row[]).map((d) => addMatch(String(e.id), { ...d, round: n, format, require_confirm: false }));
+      const rests = isObj(cfg.rests) ? cfg.rests : {};
+      e.config = { ...cfg, rests: { ...rests, [String(n)]: Array.isArray(a.p_rests) ? a.p_rests : [] }, round: Math.max(Number(cfg.round ?? 0), n) };
+      e.updated_at = iso();
+      return done(ids);
+    }
+
     // ---------- Parejas de la temporada ----------
     case 'create_season_team': {
-      if (a.p_league !== DEMO_RACKET) return undefined;
+      if (!LEAGUES.has(String(a.p_league))) return undefined;
+      const lid = String(a.p_league);
       const id = String(a.p_id ?? uuidv7());
       const name = String(a.p_name ?? '').trim();
       if (!name) fail('invalido', 'validation', 'invalido');
-      s.teams.push({ id, league_id: DEMO_RACKET, name, sort_order: s.teams.length, color: null, season_id: null, event_id: null, created_at: iso(), updated_at: iso() });
-      for (const p of (Array.isArray(a.p_players) ? a.p_players : []) as Row[]) s.roster.push({ league_id: DEMO_RACKET, team_id: id, player_id: p.player_id, jersey: null, position: null, role: 'player' });
+      s.teams.push({ id, league_id: lid, name, sort_order: s.teams.length, color: null, season_id: null, event_id: null, created_at: iso(), updated_at: iso() });
+      for (const p of (Array.isArray(a.p_players) ? a.p_players : []) as Row[]) s.roster.push({ league_id: lid, team_id: id, player_id: p.player_id, jersey: null, position: null, role: 'player' });
       return done(id);
     }
     case 'update_season_team':
@@ -487,7 +847,7 @@ export function racketRpc(uid: string, fn: string, a: Record<string, unknown>, r
         // Sus partidos se quedan con el nombre de la pareja.
         for (const side of s.sides) if (side.team_id === t.id) side.team_id = null;
       } else {
-        s.roster = [...s.roster.filter((r) => r.team_id !== t.id), ...((Array.isArray(a.p_players) ? a.p_players : []) as Row[]).map((p) => ({ league_id: DEMO_RACKET, team_id: t.id, player_id: p.player_id, jersey: null, position: null, role: 'player' }))];
+        s.roster = [...s.roster.filter((r) => r.team_id !== t.id), ...((Array.isArray(a.p_players) ? a.p_players : []) as Row[]).map((p) => ({ league_id: t.league_id, team_id: t.id, player_id: p.player_id, jersey: null, position: null, role: 'player' }))];
       }
       return done(null);
     }
@@ -602,6 +962,8 @@ export function racketRpc(uid: string, fn: string, a: Record<string, unknown>, r
     // ---------- Temporadas de esta liga ----------
     case 'league_seasons':
     case 'league_champions': {
+      // La liga de pickleball no tiene temporadas guardadas.
+      if (a.p_league === DEMO_PICKLE) return [];
       if (a.p_league !== DEMO_RACKET) return undefined;
       const sorted = [...s.seasons].sort((x, y) => y.startsOn.localeCompare(x.startsOn));
       if (fn === 'league_seasons') return sorted;
@@ -648,7 +1010,59 @@ export function racketRpc(uid: string, fn: string, a: Record<string, unknown>, r
   // ---------- Partidos de esta liga ----------
   const m = match(a.p_match);
   if (!m) return undefined;
+  const OPEN = ['scheduled', 'live', 'suspended'];
+  const LEASE_MS = 90_000;
   switch (fn) {
+    case 'save_points_result': {
+      // Lo que anota quien organiza queda confirmado (como en la base); el marcador, «14-10» con los puntos de cada lado.
+      const p1 = Number(a.p_score1);
+      const p2 = Number(a.p_score2);
+      const correct = !OPEN.includes(String(m.status));
+      if (!correct && typeof a.p_seq === 'number' && a.p_seq < Number(m.seq)) return done({ ok: false, reason: 'stale', status: m.status, seq: m.seq });
+      bump(m, {
+        status: 'confirmed',
+        score: { text: `${p1}-${p2}`, sides: [p1, p2] },
+        winner_side: p1 > p2 ? 1 : p2 > p1 ? 2 : null,
+        walkover_side: null,
+        state: a.p_state ?? m.state,
+        seq: Math.max(Number(m.seq), typeof a.p_seq === 'number' ? a.p_seq : Number(m.seq)),
+        scorer_id: null,
+        lease_until: null,
+        proposed_by: uid,
+        proposed_at: iso(),
+        confirmed_by: uid,
+        confirmed_at: iso(),
+        note: typeof a.p_note === 'string' && a.p_note.trim() ? a.p_note.trim() : m.note,
+      });
+      return done({ ok: true, status: 'confirmed' });
+    }
+    case 'set_match_sides': {
+      dropSides(m.id);
+      putSides(String(m.id), (Array.isArray(a.p_sides) ? a.p_sides : []) as Row[]);
+      bump(m, {});
+      return done(null);
+    }
+    case 'claim_scorer': {
+      if (!OPEN.includes(String(m.status))) fail('cerrado', 'conflict', 'cerrado');
+      const ok = !m.scorer_id || m.scorer_id === uid || a.p_force === true;
+      if (ok) bump(m, { scorer_id: uid, lease_until: iso(LEASE_MS) });
+      return done({ ok, scorer_id: m.scorer_id, scorer_name: m.scorer_id === uid ? 'Juan Pérez' : 'Anotador', lease_until: m.lease_until, expired: false, status: m.status, seq: m.seq, version: m.version, ...(ok ? { state: m.state } : {}) });
+    }
+    case 'release_scorer':
+      bump(m, { scorer_id: a.p_to ?? null, lease_until: a.p_to ? iso(LEASE_MS) : null });
+      return done(null);
+    case 'publish_match': {
+      const seq = Number(a.p_seq);
+      if (!OPEN.includes(String(m.status))) return done({ ok: false, reason: 'cerrado', status: m.status, seq: m.seq });
+      if (seq < Number(m.seq)) return done({ ok: false, reason: 'stale', status: m.status, seq: m.seq });
+      const live = (m.status === 'scheduled' || m.status === 'suspended') && seq > Number(m.seq);
+      bump(m, { state: a.p_state ?? null, score: a.p_score ?? null, seq, scorer_id: uid, lease_until: iso(LEASE_MS), ...(live ? { status: 'live' } : {}) });
+      return done({ ok: true, status: m.status, seq: m.seq, version: m.version, lease_until: m.lease_until });
+    }
+    case 'suspend_match':
+      if (!OPEN.includes(String(m.status))) fail('cerrado', 'conflict', 'cerrado');
+      bump(m, { status: 'suspended', ...(a.p_state ? { state: a.p_state } : {}), ...(a.p_score ? { score: a.p_score } : {}), ...(typeof a.p_seq === 'number' ? { seq: Math.max(Number(m.seq), a.p_seq) } : {}), scorer_id: null, lease_until: null });
+      return done(null);
     case 'set_walkover': {
       const absent = Number(a.p_absent);
       bump(m, { status: 'walkover', walkover_side: absent, winner_side: absent === 1 ? 2 : absent === 2 ? 1 : null, score: a.p_score ?? null, note: a.p_note ?? null, seq: Number(m.seq) + 1 });

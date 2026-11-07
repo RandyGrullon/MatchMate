@@ -1,46 +1,77 @@
 /**
- * La liga por cajas en Lite (BoxPage.tsx de la web, con su misma lógica: racket-formats/logic/box.ts): cómo va el mes
- * (partidos jugados con su barra y cuándo se cierra), las cajas (la mía primero) con su tabla, quién sube y quién baja
- * si el mes cerrara hoy y sus partidos; los meses cerrados y los participantes en filas. Quien organiza: participantes,
- * reglas y borrar en «•••». Armar y cerrar el mes son de Pro en la web (el mismo aviso, abre la web); el Excel, en la web.
+ * La liga por cajas (BoxPage.tsx de la web, con su misma lógica: racket-formats/logic/box.ts): cómo va el mes (partidos
+ * jugados con su barra y cuándo se cierra), las cajas (la mía primero) con su tabla, quién sube y quién baja si el mes
+ * cerrara hoy y sus partidos. Lite: los meses cerrados y los participantes en filas; Pro: Cajas · Meses · Jugadores.
+ * Quien organiza: Excel, participantes, reglas y borrar en «•••»; en Pro arma el primer mes, lo rehace si nadie ha
+ * jugado y lo cierra (anula lo no jugado, guarda subidas y bajadas y abre el siguiente con sus partidos). En Lite, lo de
+ * armar y cerrar el mes va con «Usar Pro».
  */
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowDown, ArrowUp, Boxes, History, Settings2, Trash2, Users } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Boxes, CalendarCheck2, FileSpreadsheet, History, RefreshCw, Settings2, Trash2, Users } from 'lucide-react-native';
 import { useMatches, type Match } from '@mm/lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '@mm/lib/data/racket';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { isGameSport } from '@mm/sports/racket/rules';
 import type { StandingRow } from '@mm/sports/types';
 import type { StandingsColumn } from '@mm/components/match/standings';
-import { boxConfigJson, boxName, boxTables, closeMonth, entrantLevel, monthMatches, monthProgress, openMonth, parseBoxConfig, type BoxConfig, type BoxMonth, type CloseResult } from '@mm/pages/sports/racket-formats/logic/box';
+import { saveBoxMonth } from '@mm/pages/sports/racket-formats/data';
+import {
+  boxConfigJson,
+  boxName,
+  boxTables,
+  closeMonth,
+  entrantLevel,
+  firstBoxes,
+  monthDrafts,
+  monthMatches,
+  monthProgress,
+  moveText,
+  nextMonthRange,
+  openMonth,
+  parseBoxConfig,
+  type BoxConfig,
+  type BoxMonth,
+  type CloseResult,
+} from '@mm/pages/sports/racket-formats/logic/box';
+import { boxMonthExcelInput } from '@mm/pages/sports/racket/excel';
 import { levelText, useLevels } from '@mm/pages/sports/racket/levels';
 import { tiebreakText } from '@mm/pages/sports/racket/logic/tiebreaks';
+import { todayIn } from '@mm/pages/sports/racket/logic/time';
 import { useMySide } from '@mm/pages/sports/racket/match/side';
 import { useNames } from '@mm/pages/sports/racket/names';
+import { courtWords } from '@mm/pages/sports/racket/sport';
 import { racketColumns } from '@mm/pages/sports/racket/view';
+import { ScreenNotice } from '../esports/bits';
 import { ChoiceChips, FinePrint } from '../esports/inputs';
 import { MatchCard } from '../match/MatchCard';
 import { StandingsTable } from '../match/StandingsTable';
-import { toast } from '../feedback';
-import { Badge, Card, Divider, Empty, ListRow, RowIcon, SectionHeader, Sheet, Txt } from '../ui';
+import { confirmAsync, toast } from '../feedback';
+import { Badge, Button, Card, Divider, Empty, ListRow, RowIcon, Segmented, SectionHeader, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
 import { BoxRulesFields } from './FormatForms';
 import { useDeleteEvent } from './EventAdmin';
-import { EventMenu, PickList, ProNotice, SaveFooter, ScreenHead, useRacketPhone, type MenuItem } from './parts';
+import { shareCompetitionExcel } from './excel';
+import { EventMenu, PickList, SaveFooter, ScreenHead, useOrganizePro, useRacketPhone, type MenuItem } from './parts';
 import { matchRoute } from './RacketHome';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
-type SheetKey = 'historial' | 'participantes' | 'editar-participantes' | 'reglas';
+type SheetKey = 'historial' | 'participantes' | 'editar-participantes' | 'reglas' | 'cerrar';
+type Tab = 'cajas' | 'historial' | 'participantes';
+/** Lo que se está guardando: la ruedita va en ese botón y los demás esperan. */
+type Pending = 'primero' | 'rehacer' | 'cerrar' | 'config' | 'excel';
 
 export function BoxView({ event }: { event: RacketEvent }) {
   const c = useColors();
-  const { lid, isAdmin, myPlayerId } = useLeagueCtx();
-  const { sport } = useRacketPhone();
+  const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
+  const { sport, ext, leagueRules } = useRacketPhone();
+  const pro = useIsPro();
+  const { levels } = useLevels();
   const names = useNames();
   const now = useNow(60_000).getTime();
   const q = useMatches({ lid, eventId: event.id });
@@ -50,21 +81,99 @@ export function BoxView({ event }: { event: RacketEvent }) {
   const tables = useMemo(() => (month ? boxTables(sport, month, matches, { scheme: cfg.points, now, lotSeed: event.id }) : []), [sport, month, matches, cfg.points, now, event.id]);
   const preview = useMemo(() => (month && !month.closed ? closeMonth(cfg, month, tables) : null), [cfg, month, tables]);
   const [sheet, setSheet] = useState<SheetKey | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<Tab>('cajas');
+  const [pending, setPending] = useState<Pending | null>(null);
   const title = event.name || 'Liga por cajas';
   const mine = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
   const remove = useDeleteEvent(event, { title, message: 'Se borran sus meses, partidos y resultados. No se puede deshacer.', ok: 'Liga por cajas borrada' });
+  // Lite, quien organiza: el mes se arma y se cierra en Pro (el aviso de la pantalla y «•••»).
+  const proItem = useOrganizePro(isAdmin, {
+    id: `raqueta-cajas-pro:${event.id}`,
+    title: 'Organizas las cajas',
+    text: 'El mes se arma y se cierra en Pro',
+    menu: month && !month.closed ? 'Cerrar el mes' : 'Armar el mes',
+  });
+  const organize = isAdmin && pro;
+  const busy = pending !== null && pending !== 'excel';
+  const matchRules = { ...leagueRules, match: { ...((leagueRules.match as Record<string, unknown> | undefined) ?? {}), doubles: cfg.doubles } };
+  const started = month ? monthMatches(matches, month.n).some((m) => m.status !== 'scheduled' || m.seq > 0) : false;
 
-  const saveConfig = async (next: BoxConfig, ok: string) => {
-    setSaving(true);
+  /** Lo hace con su ruedita y avisa; con error, el aviso del error. true si salió bien. */
+  const run = async (key: Pending, fn: () => Promise<unknown>, ok: string) => {
+    setPending(key);
     try {
-      await updateRacketEvent(lid, event.id, { config: boxConfigJson(next) });
+      await fn();
       toast(ok);
-      setSheet(null);
+      return true;
     } catch (e) {
       toast(saveErrorMessage(e), 'error');
+      return false;
     } finally {
-      setSaving(false);
+      setPending(null);
+    }
+  };
+
+  const saveConfig = async (next: BoxConfig, ok: string) => {
+    if (await run('config', () => updateRacketEvent(lid, event.id, { config: boxConfigJson(next) }), ok)) setSheet(null);
+  };
+
+  const openFirst = () =>
+    run(
+      'primero',
+      () => {
+        const boxes = firstBoxes(
+          cfg.entrants.map((id) => names.entrant(id)),
+          levels,
+          cfg.rules,
+        );
+        const r = nextMonthRange(null, todayIn(league.tz));
+        return saveBoxMonth(lid, event.id, { month: 1, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: r.label, start: r.start, end: r.end });
+      },
+      'Mes armado: a cada quien le tocan sus partidos',
+    );
+
+  const redoMonth = async () => {
+    if (!month) return;
+    if (!(await confirmAsync({ title: `¿Rehacer ${month.label || `el mes ${month.n}`}?`, message: 'Se arman las cajas otra vez con los participantes de ahora (nadie ha jugado).', confirmText: 'Rehacer' }))) return;
+    await run(
+      'rehacer',
+      () => {
+        const boxes = month.n === 1 ? firstBoxes(cfg.entrants.map((id) => names.entrant(id)), levels, cfg.rules) : month.boxes;
+        return saveBoxMonth(lid, event.id, { month: month.n, boxes, drafts: monthDrafts(boxes, names.entrant, { rules: matchRules }), label: month.label, start: month.start, end: month.end });
+      },
+      'Mes rehecho',
+    );
+  };
+
+  const closeAndOpen = async (result: CloseResult) => {
+    if (!month) return;
+    const r = nextMonthRange(month.end, todayIn(league.tz));
+    const done = await run(
+      'cerrar',
+      () =>
+        saveBoxMonth(lid, event.id, {
+          month: month.n + 1,
+          boxes: result.boxes,
+          drafts: monthDrafts(result.boxes, names.entrant, { rules: matchRules }),
+          moves: result.moves,
+          label: r.label,
+          start: r.start,
+          end: r.end,
+        }),
+      `${r.label}: cajas y partidos listos`,
+    );
+    if (done) setSheet(null);
+  };
+
+  const excel = async (m: BoxMonth) => {
+    setPending('excel');
+    try {
+      await shareCompetitionExcel(boxMonthExcelInput({ title, eventDate: event.date, month: m, matches, tables, sport, names, tz: league.tz, courtLabel: courtWords(ext).One, now }));
+    } catch (e) {
+      console.error(e);
+      toast('No se pudo hacer el Excel', 'error');
+    } finally {
+      setPending(null);
     }
   };
 
@@ -72,14 +181,36 @@ export function BoxView({ event }: { event: RacketEvent }) {
   const myBox = month ? month.boxes.findIndex((b) => b.some((id) => mine.includes(id))) : -1;
   const order = month ? [...month.boxes.keys()].sort((a, b) => (a === myBox ? -1 : b === myBox ? 1 : a - b)) : [];
   const unit = cfg.doubles ? 'parejas' : 'jugadores';
-  const meta = [`${cfg.entrants.length} ${unit}`, `suben ${cfg.rules.up} y bajan ${cfg.rules.down}`].join(' · ');
-  const items: MenuItem[] = isAdmin
-    ? [
-        { key: 'participantes', icon: Users, label: 'Participantes', hint: 'Entran y salen al cerrar el mes', onPress: () => setSheet('editar-participantes') },
-        { key: 'reglas', icon: Settings2, label: 'Reglas de las cajas', hint: 'Tamaños, subidas y bajadas', onPress: () => setSheet('reglas') },
-        { key: 'borrar', icon: Trash2, label: 'Borrar la liga por cajas', onPress: () => void remove(), danger: true },
-      ]
-    : [];
+  const meta = [`${cfg.entrants.length} ${unit}`, `suben ${cfg.rules.up} y bajan ${cfg.rules.down}`, pro ? `cajas de ${cfg.rules.min} a ${cfg.rules.max}` : null].filter(Boolean).join(' · ');
+  const items: MenuItem[] = [
+    ...(proItem.item ? [proItem.item] : []),
+    ...(isAdmin && month ? [{ key: 'excel', icon: FileSpreadsheet, label: 'Excel', hint: 'Las cajas y los partidos del mes', onPress: () => void excel(month), busy: pending === 'excel' }] : []),
+    ...(organize && month && !month.closed && !started
+      ? [{ key: 'rehacer', icon: RefreshCw, label: 'Rehacer el mes', hint: 'Nadie ha jugado todavía', onPress: () => void redoMonth(), busy: pending === 'rehacer' }]
+      : []),
+    ...(isAdmin
+      ? [
+          { key: 'participantes', icon: Users, label: 'Participantes', hint: 'Entran y salen al cerrar el mes', onPress: () => setSheet('editar-participantes') },
+          { key: 'reglas', icon: Settings2, label: 'Reglas de las cajas', hint: 'Tamaños, subidas y bajadas', onPress: () => setSheet('reglas') },
+          { key: 'borrar', icon: Trash2, label: 'Borrar la liga por cajas', onPress: () => void remove(), danger: true },
+        ]
+      : []),
+  ];
+  const boxesView =
+    q.loading && !matches.length ? (
+      <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+        <LogoSpinner size={32} label="Cargando las cajas" />
+      </View>
+    ) : (
+      month && (
+        <View style={{ gap: 30 }}>
+          {order.map((b) => (
+            <BoxCard key={b} b={b} month={month} rows={tables[b] ?? []} matches={matches} preview={preview} mine={mine} last={b === month.boxes.length - 1} minToStay={cfg.rules.minToStay} />
+          ))}
+          <FinePrint>{`${tiebreakText(sport)} ↑ sube y ↓ baja si el mes cerrara hoy. Un resultado por confirmar cuenta a las 48 h.`}</FinePrint>
+        </View>
+      )
+    );
 
   return (
     <View style={{ gap: 22 }}>
@@ -89,29 +220,51 @@ export function BoxView({ event }: { event: RacketEvent }) {
         meta={meta}
         right={
           <EventMenu title={title} items={items}>
-            {sheet === 'editar-participantes' && <ParticipantsSheet cfg={cfg} busy={saving} onClose={() => setSheet(null)} onSave={(x) => void saveConfig(x, 'Participantes guardados')} />}
-            {sheet === 'reglas' && <RulesSheet cfg={cfg} busy={saving} onClose={() => setSheet(null)} onSave={(x) => void saveConfig(x, 'Reglas guardadas')} />}
+            {sheet === 'editar-participantes' && <ParticipantsSheet cfg={cfg} busy={pending === 'config'} onClose={() => setSheet(null)} onSave={(x) => void saveConfig(x, 'Participantes guardados')} />}
+            {sheet === 'reglas' && <RulesSheet cfg={cfg} busy={pending === 'config'} onClose={() => setSheet(null)} onSave={(x) => void saveConfig(x, 'Reglas guardadas')} />}
           </EventMenu>
         }
       />
 
       {!month ? (
-        <Empty icon={<Boxes size={28} color={c.accent} />} title="Todavía no empieza" text="Cuando se arme el primer mes, aquí sale tu caja y tus partidos." />
+        organize ? (
+          <Card style={{ gap: 6 }}>
+            <Txt variant="cardTitle">Armar el primer mes</Txt>
+            <Txt variant="meta" tone="fg2">
+              {`${cfg.entrants.length} ${unit}. Las cajas salen por nivel y cada caja juega todos contra todos.`}
+            </Txt>
+            <View style={{ marginTop: 10 }}>
+              <Button variant="primary" size="xl" full loading={pending === 'primero'} disabled={cfg.entrants.length < 2 || busy} onPress={() => void openFirst()}>
+                Armar el mes
+              </Button>
+            </View>
+          </Card>
+        ) : (
+          <Empty icon={<Boxes size={28} color={c.accent} />} title="Todavía no empieza" text="Cuando se arme el primer mes, aquí sale tu caja y tus partidos." />
+        )
+      ) : pro ? (
+        <>
+          {progress && !month.closed && (
+            <MonthCard month={month} done={progress.done} total={progress.total} minToStay={cfg.rules.minToStay} onClose={organize ? () => setSheet('cerrar') : undefined} />
+          )}
+          <Segmented<Tab>
+            label="Qué ver de las cajas"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { key: 'cajas', label: 'Cajas' },
+              { key: 'historial', label: 'Meses' },
+              { key: 'participantes', label: cfg.doubles ? 'Parejas' : 'Jugadores' },
+            ]}
+          />
+          {tab === 'cajas' && boxesView}
+          {tab === 'historial' && <MonthsHistory cfg={cfg} />}
+          {tab === 'participantes' && <Participants cfg={cfg} month={month} />}
+        </>
       ) : (
         <>
           {progress && !month.closed && <MonthCard month={month} done={progress.done} total={progress.total} minToStay={cfg.rules.minToStay} />}
-          {q.loading && !matches.length ? (
-            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-              <LogoSpinner size={32} label="Cargando las cajas" />
-            </View>
-          ) : (
-            <View style={{ gap: 30 }}>
-              {order.map((b) => (
-                <BoxCard key={b} b={b} month={month} rows={tables[b] ?? []} matches={matches} preview={preview} mine={mine} last={b === month.boxes.length - 1} minToStay={cfg.rules.minToStay} />
-              ))}
-              <FinePrint>{`${tiebreakText(sport)} ↑ sube y ↓ baja si el mes cerrara hoy. Un resultado por confirmar cuenta a las 48 h.`}</FinePrint>
-            </View>
-          )}
+          {boxesView}
           <Card padded={false}>
             <ListRow
               icon={
@@ -138,8 +291,8 @@ export function BoxView({ event }: { event: RacketEvent }) {
         </>
       )}
 
-      {/* El único aviso de la pantalla, al final (Lite, quien organiza: el mes se arma y se cierra en Pro en la web). */}
-      {isAdmin && <ProNotice title="Organizas las cajas" text="El mes se arma y se cierra en Pro" path={`/l/${lid}/e/${event.id}`} />}
+      {/* El único aviso de la pantalla, al final (Lite, quien organiza: el mes se arma y se cierra en Pro). */}
+      <ScreenNotice notices={[proItem.notice]} />
 
       <Sheet open={sheet === 'historial'} onClose={() => setSheet(null)} title="Meses anteriores" subtitle={title}>
         <MonthsHistory cfg={cfg} />
@@ -147,12 +300,74 @@ export function BoxView({ event }: { event: RacketEvent }) {
       <Sheet open={sheet === 'participantes'} onClose={() => setSheet(null)} title={cfg.doubles ? 'Parejas' : 'Jugadores'} subtitle={title}>
         {month && <Participants cfg={cfg} month={month} />}
       </Sheet>
+      {sheet === 'cerrar' && month && preview && (
+        <CloseSheet month={month} preview={preview} pending={(progress?.total ?? 0) - (progress?.done ?? 0)} busy={pending === 'cerrar'} disabled={busy} onClose={() => setSheet(null)} onConfirm={() => void closeAndOpen(preview)} />
+      )}
     </View>
   );
 }
 
-/** Cómo va el mes: «Octubre 2026 · 1 de 12 partidos jugados» con su barra y cuándo se cierra. */
-function MonthCard({ month, done, total, minToStay }: { month: BoxMonth; done: number; total: number; minToStay: number }) {
+/** «Cerrar el mes» (Pro): así quedan las cajas del mes que viene, con quién sube y quién baja; lo no jugado queda anulado. */
+function CloseSheet({
+  month,
+  preview,
+  pending,
+  busy,
+  disabled,
+  onClose,
+  onConfirm,
+}: {
+  month: BoxMonth;
+  preview: CloseResult;
+  pending: number;
+  busy: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const c = useColors();
+  const names = useNames();
+  const byId = new Map(preview.moves.map((m) => [m.id, m] as const));
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title={`Cerrar ${month.label || `el mes ${month.n}`}`}
+      subtitle="Así quedan las cajas del mes que viene"
+      footer={<SaveFooter onClose={onClose} busy={busy} disabled={disabled} onSave={onConfirm} label="Cerrar y abrir el que sigue" />}
+    >
+      {pending > 0 && (
+        <View style={{ borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: c.dangerSoft }}>
+          <Txt tone="danger" style={{ fontSize: 14 }}>
+            {`Quedan ${pending} ${pending === 1 ? 'partido' : 'partidos'} sin jugar o sin confirmar: los que no han empezado quedan anulados.`}
+          </Txt>
+        </View>
+      )}
+      {preview.boxes.map((box, i) => (
+        <Card key={i} padded={false}>
+          <Txt style={{ fontSize: 15, fontFamily: font.bold, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 4 }}>{boxName(i)}</Txt>
+          {box.map((id, j) => {
+            const mv = byId.get(id);
+            return (
+              <View key={id}>
+                {j > 0 && <Divider inset={20} />}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 20, paddingVertical: 8 }}>
+                  <Txt numberOfLines={1} style={{ flex: 1, fontSize: 15, fontFamily: font.medium }}>
+                    {names.entrantName(id)}
+                  </Txt>
+                  {mv && mv.move !== 'queda' && <Txt style={{ fontSize: 13, fontFamily: font.semibold, color: mv.move === 'baja' ? c.danger : c.accent }}>{moveText(mv)}</Txt>}
+                </View>
+              </View>
+            );
+          })}
+        </Card>
+      ))}
+    </Sheet>
+  );
+}
+
+/** Cómo va el mes: «Octubre 2026 · 1 de 12 partidos jugados» con su barra, cuándo se cierra y (quien organiza, en Pro) «Cerrar el mes». */
+function MonthCard({ month, done, total, minToStay, onClose }: { month: BoxMonth; done: number; total: number; minToStay: number; onClose?: () => void }) {
   const c = useColors();
   const pct = total ? Math.round((done / total) * 100) : 0;
   return (
@@ -167,6 +382,13 @@ function MonthCard({ month, done, total, minToStay }: { month: BoxMonth; done: n
       <Txt tone="fg2" style={{ fontSize: 13.5, marginTop: 4 }}>
         {`${month.end ? `Se cierra el ${month.end.split('-').reverse().slice(0, 2).join('/')} · ` : ''}con menos de ${minToStay} partidos se baja`}
       </Txt>
+      {onClose && (
+        <View style={{ marginTop: 10 }}>
+          <Button variant="primary" size="lg" full icon={<CalendarCheck2 size={20} color={c.accentFg} />} onPress={onClose}>
+            Cerrar el mes
+          </Button>
+        </View>
+      )}
     </Card>
   );
 }

@@ -3,45 +3,26 @@ import { useLocation, useNavigate } from 'react-router';
 import { ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { usePlayers } from '../../lib/data';
 import { useEventLanes } from '../../lib/data/lanes';
-import type { BowlingEvent, League } from '../../lib/types';
 import { BusyIcon } from '../busy';
 import { myLaneText } from '../lanes/MyLane';
 import { Sheet, cx } from '../ui';
 import { eventDay, eventTime } from './eventDay';
+import { liveWhenText } from './eventPro';
 import { LiveDot } from '../home/TodayCard';
 
 // El día y la hora del evento están en eventDay.ts (sin React: los usa también la app del teléfono).
 export { eventDay, eventTime };
 
-/**
- * La línea debajo del título. Lite: «Miércoles 7 oct · 7:30 pm · Bolera Sambil». Pro: «Mié 7 oct · 7:30 pm · 3 juegos».
- * Un torneo dice además su handicap y el tamaño de los equipos.
- */
-export function eventMeta(
-  event: Pick<BowlingEvent, 'date' | 'startTime' | 'type' | 'games' | 'hcpPercent' | 'hcpBase' | 'teamSize'>,
-  league: Pick<League, 'schedule' | 'venue'>,
-  today: string,
-  pro: boolean,
-): string {
-  const torneo = event.type === 'torneo';
-  const venue = league.venue?.trim() || null;
-  return [
-    eventDay(event.date, today, pro),
-    eventTime(event, league),
-    pro || torneo || !venue ? `${event.games} juegos` : venue,
-    torneo ? (event.hcpPercent > 0 ? `Hcp ${event.hcpPercent} % de ${event.hcpBase}` : 'Sin handicap') : null,
-    torneo && event.teamSize ? `Equipos de ${event.teamSize}` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
+// La línea debajo del título y el texto de «En juego» (sin React) están en eventPro.ts: los usa también la app del
+// teléfono. Se siguen importando desde aquí.
+export { eventMeta } from './eventPro';
 
 /** «En juego» o «Empieza a las 7:30 pm» (Pro: delante de la fecha), con el punto del deporte. */
 export function LiveWhen({ startsSoon, startLabel }: { startsSoon: boolean; startLabel: string | null }) {
   return (
     <span className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-accent">
       <LiveDot />
-      {startsSoon && startLabel ? `Empieza a las ${startLabel}` : 'En juego'}
+      {liveWhenText(startsSoon, startLabel)}
     </span>
   );
 }

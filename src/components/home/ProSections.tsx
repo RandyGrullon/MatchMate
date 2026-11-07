@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ClipboardCheck, Inbox } from 'lucide-react';
-import { upcomingCalendar, weekStart, type CalendarMatch } from '../../lib/calendar';
+import type { CalendarMatch } from '../../lib/calendar';
 import { usePlayers, type LeagueFeed } from '../../lib/data';
-import { parseDate, toIsoDate } from '../../lib/format';
+import { parseDate } from '../../lib/format';
 import type { LiveGame } from '../../lib/live';
 import type { League, Submission } from '../../lib/types';
 import { useNextGame } from '../../lib/useNextGame';
@@ -12,61 +12,17 @@ import { initials } from '../Avatar';
 import type { BoardRow } from '../event/board';
 import { SportCorner, SportMark } from '../SportMark';
 import { Card, ListRow, RowIcon, SectionHeader, cx, sectionLinkClass } from '../ui';
-import { namesLine } from './logic';
+import { WEEK_LETTERS, approveLine, liveGames, liveShownRows, suggestionsText, teamsLine, weekBusy, weekDays, weekTitle, type ToDo } from './proHome';
 import { useLiveTable } from './TodayCard';
 
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
-const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const DAY_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-const WEEK_LETTERS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+// Lo que no es pantalla (qué espera, las líneas, la semana) está en proHome.ts: lo usa también la app del teléfono.
+export { TEAMS_AHEAD_DAYS, toDoOf, type ToDo } from './proHome';
 
 const Count = ({ n }: { n: number }) => (
   <span className="grid h-[26px] min-w-[26px] place-items-center rounded-full bg-accent px-2 text-[13px] font-bold text-accent-fg" aria-hidden="true">
     {n}
   </span>
 );
-
-/** «sáb 24 oct». */
-const shortDay = (iso: string) => {
-  const d = parseDate(iso);
-  return `${DAY_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-};
-
-/** Días hacia adelante en que un torneo sin equipos sale en «Por hacer». */
-const TEAMS_AHEAD_DAYS = 30;
-
-/** Lo que el organizador tiene pendiente en una liga (lo que sale en «Por hacer»). */
-export interface ToDo {
-  lid: string;
-  /** Envíos de otros jugadores por aprobar (los propios los ve igual en Aprobar). */
-  pending: Submission[];
-  approvals: number;
-  suggestions: number;
-  /** Torneos que vienen con equipos por armar. */
-  teams: { id: string; name: string; date: string }[];
-}
-
-/** Lo pendiente de cada liga que organizas (envíos por aprobar de otros, buzón y torneos sin equipos). */
-export function toDoOf(feeds: readonly LeagueFeed[], today: string): ToDo[] {
-  const until = parseDate(today);
-  until.setDate(until.getDate() + TEAMS_AHEAD_DAYS);
-  const last = toIsoDate(until);
-  return feeds
-    .filter((f) => f.isAdmin)
-    .map((f) => {
-      const pending = f.pending.filter((s) => s.playerId !== f.playerId);
-      return {
-        lid: f.lid,
-        pending,
-        approvals: pending.length,
-        suggestions: f.suggestions.length,
-        teams: f.events
-          .filter((e) => e.type === 'torneo' && e.date >= today && e.date <= last && (e.teamSize ?? 0) > 0 && !Object.keys(e.teams ?? {}).length)
-          .map((e) => ({ id: e.id, name: e.name?.trim() || 'Torneo', date: e.date })),
-      };
-    })
-    .filter((t) => t.approvals || t.suggestions || t.teams.length);
-}
 
 /**
  * Pro · «Por hacer»: lo que espera al organizador en sus ligas, en una lista con contadores (aprobar juegos, torneos sin
@@ -131,7 +87,7 @@ function ToDoRows({ todo, league, sport }: { todo: ToDo; league: string | null; 
           // El torneo con su deporte (y el trofeo chico), como en «Tus torneos».
           leading={<SportMark sport={sport.sport} game={sport.game} torneo />}
           title={t.name}
-          subtitle={['Faltan los equipos', shortDay(t.date), league].filter(Boolean).join(' · ')}
+          subtitle={teamsLine(t.date, league)}
           to={`/l/${todo.lid}/e/${t.id}?tab=equipos`}
         />
       ))}
@@ -146,9 +102,9 @@ function ToDoRows({ todo, league, sport }: { todo: ToDo; league: string | null; 
             </TaskIcon>
           }
           title={league ? `Buzón · ${league}` : 'Buzón de la liga'}
-          subtitle={todo.suggestions === 1 ? '1 sugerencia nueva' : `${todo.suggestions} sugerencias nuevas`}
+          subtitle={suggestionsText(todo.suggestions)}
           to={`/l/${todo.lid}/admin?tab=buzon`}
-          ariaLabel={`Buzón de la liga: ${todo.suggestions === 1 ? '1 sugerencia nueva' : `${todo.suggestions} sugerencias nuevas`}`}
+          ariaLabel={`Buzón de la liga: ${suggestionsText(todo.suggestions)}`}
           trailing={<Count n={todo.suggestions} />}
         />
       )}
@@ -161,8 +117,7 @@ function ApproveRow({ lid, pending, league, sport }: { lid: string; pending: rea
   const players = usePlayers(lid);
   const count = pending.length;
   const names = pending.map((s) => players.data.find((p) => p.id === s.playerId)?.name ?? '');
-  const photos = pending.filter((s) => s.photoId).length;
-  const sub = [namesLine(names), photos === count ? 'con foto' : photos ? `${photos} con foto` : 'sin foto', league].filter(Boolean).join(' · ');
+  const sub = approveLine(pending, names, league);
   return (
     <ListRow
       dense
@@ -192,15 +147,9 @@ export function LiveSectionPro({ game, today, className }: { game: LiveGame; tod
   const mine = useNextGame(game, today);
   if (!rows.length) return null;
   const me = game.feed.playerId;
-  const top = rows.slice(0, 3);
-  const myAt = me ? rows.findIndex((r) => r.playerId === me) : -1;
-  const shown = myAt >= 3 ? [...top, rows[myAt]] : top;
-  const gamesLine = (r: BoardRow) => {
-    const known: { text: string; pend: boolean }[] = r.cells
-      .filter((c) => c.score != null && !c.partial)
-      .map((c) => ({ text: String(c.score), pend: c.kind === 'pend' }));
-    if (r.playerId === me && mine?.partial?.score != null) known.push({ text: `${mine.partial.score}…`, pend: false });
-    return known.map((g, i) => (
+  const shown = liveShownRows(rows, me);
+  const gamesLine = (r: BoardRow) =>
+    liveGames(r, me, mine?.partial?.score).map((g, i) => (
       <span key={i}>
         {i > 0 && ' · '}
         {g.pend ? (
@@ -213,7 +162,6 @@ export function LiveSectionPro({ game, today, className }: { game: LiveGame; tod
         )}
       </span>
     ));
-  };
   return (
     <section aria-labelledby="en-vivo" className={className}>
       <SectionHeader
@@ -285,20 +233,13 @@ export function WeekStrip({
   onOpen: () => void;
   className?: string;
 }) {
-  const from = weekStart(today);
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = parseDate(from);
-    d.setDate(d.getDate() + i);
-    return toIsoDate(d);
-  });
-  const items = upcomingCalendar([...feeds], [...leagues], from, 7, matches);
-  const busy = new Set(items.map((i) => i.date));
-  const month = MONTHS_LONG[parseDate(today).getMonth()];
+  const days = weekDays(today);
+  const busy = weekBusy(feeds, leagues, matches, today);
   return (
     <section aria-labelledby="esta-semana" className={className}>
       <SectionHeader
         id="esta-semana"
-        title={`Esta semana · ${month}`}
+        title={weekTitle(today)}
         action={
           <button type="button" onClick={onOpen} className={sectionLinkClass}>
             Calendario

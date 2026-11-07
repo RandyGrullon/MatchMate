@@ -13,7 +13,10 @@ import {
   signupErrorText,
   signupJson,
   signupList,
+  PHASE_NOTE,
+  signupInviteText,
   signupPhase,
+  signupTaken,
   waitlistMoves,
 } from './signup';
 import { newCategory, parseTourneyConfig, tourneyConfigJson, tourneyStarted, type TourneyConfig } from './tourney';
@@ -123,5 +126,23 @@ describe('textos', () => {
     expect(signupErrorText(new Error('invalido: algo'))).toContain('pareja o categoría');
     expect(signupErrorText(new Error('otra cosa'))).toBeNull();
     expect(signupErrorText(null)).toBeNull();
+  });
+});
+
+describe('el panel «Me apunto»', () => {
+  it('la invitación por WhatsApp dice los cupos y la fecha límite', () => {
+    const url = 'https://matchmate.ejemplo/l/L/e/E';
+    expect(signupInviteText({ title: 'Americano de Ejemplo', settings: { cap: 16, until: null }, left: 3, url })).toBe('Americano de Ejemplo: apúntate en MatchMate. Quedan 3 cupos. https://matchmate.ejemplo/l/L/e/E');
+    expect(signupInviteText({ title: 'Americano de Ejemplo', settings: { cap: 16, until: null }, left: 1, url })).toContain('Queda 1 cupo.');
+    expect(signupInviteText({ title: 'Americano de Ejemplo', settings: { cap: 16, until: null }, left: 0, url })).toContain('La lista está llena: hay lista de espera.');
+    expect(signupInviteText({ title: 'Americano de Ejemplo', settings: { cap: null, until: '2030-10-07T22:00:00.000Z' }, left: 0, tz: 'America/Santo_Domingo', url })).toMatch(/Se cierra el .*6:00 pm\. https/);
+    expect(PHASE_NOTE.started).toBe('Ya empezó: la lista quedó así.');
+  });
+
+  it('quien ya está (en la lista o en la espera, o en una pareja) no se elige de compañero', () => {
+    const waiting: EventSignup[] = [{ eventId: 'E', entrantId: 'T2', playerId: null, teamId: 'T2', category: 'A', status: 'wait', queue: 1, queuedAt: '', promotedAt: null, createdBy: null }];
+    const roster: Record<string, string[]> = { T1: ['a', 'b'], T2: ['c', 'd'] };
+    const taken = signupTaken([{ listed: ['T1'], view: { waiting } }], (id) => roster[id] ?? []);
+    expect([...taken].sort()).toEqual(['T1', 'T2', 'a', 'b', 'c', 'd']);
   });
 });

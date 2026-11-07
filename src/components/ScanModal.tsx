@@ -1,38 +1,47 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Plus, ScanLine, Sparkles, Trash2 } from 'lucide-react';
-import { ballsByGame, knownBalls, lastBall, type Ball } from '../lib/balls';
+import { lastBall } from '../lib/balls';
 import { fetchEffectiveAverages, saveVerifiedGames, type VerifiedWrite } from '../lib/data';
-import { ballAddedHere, queueGameBalls, queuedBallsByGame, rememberBall, useMyBallGames } from '../lib/data/balls';
+import { queueGameBalls, rememberBall } from '../lib/data/balls';
 import type { CompressedImage } from '../lib/image';
 import { useLeagueCtx } from '../lib/league';
-import { scanBallUpdate, scanGameBall } from '../lib/scanBalls';
 import { ScanError } from '../lib/scan-result';
 import { cancelScan, scanDone, startScan, useScanJob } from '../lib/scanJobs';
-import { bestMatch, firstFreeSlot, isValidScore, slots } from '../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../lib/types';
-import { GameBallChip, useBallChoice } from './balls/BallPicker';
+import { GameBallChip } from './balls/BallPicker';
 import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
 import { PhotoPicker } from './PhotoPicker';
 import { PhotoView } from './PhotoModal';
 import { Badge, Button, Card, Modal, Select, Spinner, cx } from './ui';
 import { PRIVACY_PATH } from '../pages/legal/legal';
+import {
+  SCAN_ENROLLS,
+  SCAN_FAILED,
+  SCAN_NO_PHOTO_NOTE,
+  SCAN_OWN_BALLS,
+  SCAN_PRIVACY_NOTE,
+  SCAN_READING,
+  SCAN_REVIEW,
+  SCAN_TITLE,
+  manualScanRow,
+  retargetScanRow,
+  scanErrorText,
+  scanGameCells,
+  scanGamesToSave,
+  scanProblems,
+  scanRowsFrom,
+  scanSaveLabel,
+  scanSavedText,
+  scanValuesOf,
+  useOwnBalls,
+  type OwnBalls,
+  type RowDraft,
+} from './scanLogic';
 
-interface RowDraft {
-  key: string;
-  /** Nombre leído en la pantalla (null = fila agregada a mano). */
-  screenName: string | null;
-  screenHcp: number | null;
-  /** Total que muestra la pantalla y si la suma leída cuadra con él. */
-  screenTotal: number | null;
-  matchesTotal: boolean | null;
-  playerId: string;
-  start: number;
-  values: string[];
-  include: boolean;
-}
-
-let rowSeq = 0;
+// Las filas, emparejar con los jugadores, lo que falta para guardar, los textos y la bola de quien verifica (sin
+// pantallas) están en scanLogic.ts: los comparte la app del teléfono. Se siguen importando desde aquí.
+export { useOwnBalls, type OwnBalls } from './scanLogic';
 
 /**
  * Admin: sube la foto del marcador, la IA lee los juegos, se emparejan con los jugadores
@@ -87,22 +96,7 @@ export function ScanModal({
   const others = isAdmin ? players.filter((p) => !entries.some((e) => e.playerId === p.id)) : [];
 
   /** Fila a mano: arranca en el primer juego sin verificar, con lo que ya estaba anotado como borrador. */
-  function manualRow(playerId = ''): RowDraft {
-    const entry = entryOf(playerId);
-    const start = firstFreeSlot(entry, event.games, 1);
-    const draft = slots(entry?.scores, event.games, null).slice(start);
-    return {
-      key: `r${rowSeq++}`,
-      screenName: null,
-      screenHcp: null,
-      screenTotal: null,
-      matchesTotal: null,
-      playerId,
-      start,
-      values: draft.map((v) => (v == null ? '' : String(v))),
-      include: true,
-    };
-  }
+  const manualRow = (playerId = ''): RowDraft => manualScanRow(entryOf(playerId), event.games, playerId);
 
   async function onPicked(img: CompressedImage) {
     setPhoto(img);
@@ -115,29 +109,11 @@ export function ScanModal({
     try {
       const found = await scanDone(id);
       if (current.current !== id) return;
-      const used = new Set<string>();
-      const next = found.map((r) => {
-        const match = bestMatch(r.name, participants.filter((p) => !used.has(p.id))) ?? bestMatch(r.name, others.filter((p) => !used.has(p.id)));
-        let playerId = match?.id ?? '';
-        if (!playerId && found.length === 1 && focusPlayerId) playerId = focusPlayerId;
-        if (playerId) used.add(playerId);
-        const count = Math.min(r.games.length, event.games);
-        return {
-          key: `r${rowSeq++}`,
-          screenName: r.name,
-          screenHcp: r.handicap,
-          screenTotal: r.total,
-          matchesTotal: r.matchesTotal,
-          playerId,
-          start: firstFreeSlot(entryOf(playerId), event.games, count),
-          values: r.games.map((g) => (g == null ? '' : String(g))),
-          include: !focusPlayerId || playerId === focusPlayerId || found.length === 1,
-        };
-      });
+      const next = scanRowsFrom(found, { participants, others, entryOf, games: event.games, focusPlayerId });
       setRows(next);
     } catch (e) {
       if (current.current !== id) return;
-      setScanError(e instanceof ScanError ? e.message : 'No se pudo escanear la foto.');
+      setScanError(e instanceof ScanError ? e.message : SCAN_FAILED);
       setRows([manualRow(focusPlayerId ?? '')]);
     }
   }
@@ -145,24 +121,10 @@ export function ScanModal({
   const update = (key: string, patch: Partial<RowDraft>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const included = rows.filter((r) => r.include);
-  const duplicated = included.filter((r, i) => r.playerId && included.findIndex((x) => x.playerId === r.playerId) !== i);
-  const problems: string[] = [];
-  if (included.some((r) => !r.playerId)) problems.push('Elige el jugador de cada fila marcada.');
-  if (duplicated.length) problems.push('Hay un jugador repetido en dos filas.');
-  if (included.some((r) => r.values.some((v) => v.trim() !== '' && !isValidScore(Number(v))))) problems.push('Los juegos van de 0 a 300.');
-  const gamesToSave = included.reduce(
-    (n, r) => n + r.values.filter((v, k) => v.trim() !== '' && r.start + k < event.games).length,
-    0,
-  );
-
+  const problems = scanProblems(rows);
+  const gamesToSave = scanGamesToSave(rows, event.games);
   /** Los juegos de la fila que se guardan (juego del evento → pinos): los escritos que caben en el evento. */
-  function valuesOf(r: RowDraft): Record<number, number> {
-    const values: Record<number, number> = {};
-    r.values.forEach((v, k) => {
-      if (v.trim() !== '' && r.start + k < event.games) values[r.start + k] = Number(v);
-    });
-    return values;
-  }
+  const valuesOf = (r: RowDraft) => scanValuesOf(r, event.games);
 
   async function save() {
     if (!photo || problems.length || !gamesToSave) return;
@@ -188,7 +150,7 @@ export function ScanModal({
         queueGameBalls('event', event.id, balls, lid);
         rememberBall(lastBall(Object.values(balls)));
       }
-      toast(`${gamesToSave} ${gamesToSave === 1 ? 'juego aprobado' : 'juegos aprobados'}`);
+      toast(scanSavedText(gamesToSave));
       onClose();
     }
   }
@@ -200,7 +162,7 @@ export function ScanModal({
       wide
       title={
         <span className="flex items-center gap-2">
-          <ScanLine className="size-5 text-accent" /> Verificar juegos con foto
+          <ScanLine className="size-5 text-accent" /> {SCAN_TITLE}
         </span>
       }
       footer={
@@ -209,7 +171,7 @@ export function ScanModal({
             <PhotoPicker compact label="Otra foto" onPicked={onPicked} />
             <Button onClick={onClose}>Cancelar</Button>
             <Button variant="primary" onClick={save} loading={saving.isBusy()} disabled={scanning || !!problems.length || !gamesToSave}>
-              Guardar {gamesToSave ? `${gamesToSave} ${gamesToSave === 1 ? 'juego' : 'juegos'}` : ''}
+              {scanSaveLabel(gamesToSave)}
             </Button>
           </>
         )
@@ -218,15 +180,12 @@ export function ScanModal({
       {!photo ? (
         <div className="flex flex-col gap-3">
           <PhotoPicker onPicked={onPicked} />
-          <p className="text-xs text-muted">
-            Sin foto los juegos quedan como borrador (vista previa) y no cuentan en promedio ni clasificación.
-          </p>
+          <p className="text-xs text-muted">{SCAN_NO_PHOTO_NOTE}</p>
           {/* Aviso de privacidad: la foto la lee Google en su plan gratis (Ley 172-13: decir a quién va y para qué). */}
           <p className="flex gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-xs text-muted">
             <Sparkles className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden="true" />
             <span>
-              La foto la lee la IA de Google (Gemini, plan gratis), y Google puede usarla para mejorar sus productos. Toma solo la pantalla del
-              marcador, sin personas.{' '}
+              {SCAN_PRIVACY_NOTE}{' '}
               <a href={`${PRIVACY_PATH}#fotos`} target="_blank" rel="noopener noreferrer" className="font-medium text-accent underline underline-offset-2">
                 Más en Privacidad
               </a>
@@ -239,20 +198,18 @@ export function ScanModal({
           <div className="flex flex-col gap-3">
             {scanning && (
               <div className="flex items-center gap-2 rounded-xl bg-accent-soft px-3 py-3 text-sm text-accent">
-                <Spinner className="text-accent" /> Leyendo la foto con IA…
+                <Spinner className="text-accent" /> {SCAN_READING}
               </div>
             )}
             {scanError && (
               <div className="flex gap-2 rounded-xl bg-warn-soft px-3 py-2.5 text-sm text-warn">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>
-                  {scanError} Puedes anotar los juegos a mano mirando la foto; la foto queda como comprobante.
-                </span>
+                <span>{scanErrorText(scanError)}</span>
               </div>
             )}
             {!scanning && !scanError && rows.length > 0 && (
               <p className="flex items-center gap-1.5 text-sm text-muted">
-                <Sparkles className="size-4 text-accent" /> Revisa lo leído antes de guardar.
+                <Sparkles className="size-4 text-accent" /> {SCAN_REVIEW}
               </p>
             )}
             {rows.map((r) => {
@@ -295,14 +252,7 @@ export function ScanModal({
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <Select
                       value={r.playerId}
-                      onChange={(e) =>
-                        r.screenName
-                          ? update(r.key, {
-                              playerId: e.target.value,
-                              start: firstFreeSlot(entryOf(e.target.value), event.games, Math.min(r.values.length, event.games)),
-                            })
-                          : update(r.key, { ...manualRow(e.target.value), key: r.key })
-                      }
+                      onChange={(e) => update(r.key, retargetScanRow(r, e.target.value, entryOf(e.target.value), event.games))}
                       aria-label="Jugador"
                       className={cx(!r.playerId && r.include && 'border-warn')}
                     >
@@ -338,7 +288,7 @@ export function ScanModal({
                     </Select>
                   </div>
                   <ScanGames row={r} games={event.games} entry={entry} own={ownBalls} onValues={(values) => update(r.key, { values })} />
-                  {r.playerId && !entry && <Badge tone="accent">Se inscribe en el evento al guardar</Badge>}
+                  {r.playerId && !entry && <Badge tone="accent">{SCAN_ENROLLS}</Badge>}
                 </Card>
               );
             })}
@@ -361,77 +311,6 @@ export function ScanModal({
   );
 }
 
-/** La bola de los juegos de quien verifica (useOwnBalls). */
-export interface OwnBalls {
-  /**
-   * La fila con sus juegos (su key), si se puede anotar la bola de cada uno; null si no: no juega aquí, no marcó su fila
-   * o no se saben las bolas que ya tenían esos juegos (guardar podría pisarlas).
-   */
-  row: string | null;
-  /** Todas las de la cuenta (también las retiradas). */
-  balls: readonly Ball[];
-  /** La bola que se ve en un juego del evento (desde 0). */
-  ballOf: (game: number) => string | null;
-  /** Eligió una para ese juego (siempre la misma función: el botón de la bola es `memo`). */
-  onPick: (game: number | 'all', id: string | null) => void;
-  /** Lo que va a la cola al guardar sus juegos (juego del evento → pinos); null si no cambia ninguna bola. */
-  update: (values: Readonly<Record<number, number>>) => Record<string, string | null> | null;
-}
-
-/**
- * La bola de cada juego de la fila de quien verifica, si también juega aquí (`myPlayerId`): set_game_balls anota los de
- * la cuenta, así que nunca sale en la fila de otro. Lo elegido va por juego del evento y se olvida si esa fila cambia de
- * jugador. Solo si se saben las bolas que ya tenían esos juegos: las del servidor (o ninguna, si la cuenta no tenía bolas
- * al abrir) con lo que está en la cola encima (lo mismo que ve la hoja del evento).
- */
-export function useOwnBalls(
-  open: boolean,
-  event: BowlingEvent,
-  entries: readonly Entry[],
-  rows: readonly Pick<RowDraft, 'key' | 'playerId' | 'include'>[],
-  myPlayerId: string | null,
-): OwnBalls {
-  const choice = useBallChoice();
-  // Su fila (la marcada, si está en dos).
-  const mine = myPlayerId ? (rows.find((r) => r.include && r.playerId === myPlayerId) ?? rows.find((r) => r.playerId === myPlayerId)) : undefined;
-  const mineKey = mine?.key ?? null;
-  const [picked, setPicked] = useState<{ row: string; balls: Record<number, string | null> } | null>(null);
-  // Otro jugador en esa fila (o se quitó): lo elegido se olvida, aunque después vuelva a ser suya.
-  useEffect(() => {
-    setPicked((p) => (p && p.row !== mineKey ? null : p));
-  }, [mineKey]);
-  // La cuenta no tenía bolas (ni retiradas) al abrir: sus juegos de aquí no tenían ninguna. Se fija en cada apertura (la
-  // hoja vive con la pestaña): al agregar la primera aquí mismo no se vuelven a leer y lo elegido no se pierde.
-  const noneAtOpen = useRef<boolean | null>(null);
-  if (!open) noneAtOpen.current = null;
-  else if (noneAtOpen.current == null && choice.canPick) noneAtOpen.current = choice.balls.length === 0;
-  // Sin bolas al abrir (y las de ahora se agregaron aquí) no se piden: ninguno tenía bola. Si llega una de otro teléfono,
-  // la lista del teléfono estaba vieja: se piden.
-  const noneYet = noneAtOpen.current === true && choice.balls.every((b) => ballAddedHere(b.id));
-  const evBalls = useMyBallGames(event.id, open && !!mine && noneAtOpen.current != null && !noneYet);
-  const server = noneYet ? {} : !evBalls.loading && !evBalls.error ? ballsByGame(evBalls.data, 'event', event.id) : null;
-  // null = no se sabe (sin la lista de bolas, o sin leer sus juegos y sin señal): la bola no sale ni se guarda.
-  const had = noneAtOpen.current == null ? null : knownBalls(event.games, server, queuedBallsByGame('event', event.id));
-  const row = mine?.include && had ? mine.key : null;
-  const scored = slots(entries.find((e) => e.playerId === myPlayerId)?.scores, event.games, null);
-  const own = picked && picked.row === mineKey ? picked.balls : {};
-  const ballOf = (game: number) => scanGameBall(had ?? {}, own, game, scored[game] != null, choice.auto);
-  const onPick = useCallback(
-    (game: number | 'all', id: string | null) => {
-      if (game === 'all' || !mineKey) return;
-      setPicked((p) => ({ row: mineKey, balls: { ...(p?.row === mineKey ? p.balls : {}), [game]: id } }));
-    },
-    [mineKey],
-  );
-  return {
-    row,
-    balls: choice.balls,
-    ballOf,
-    onPick,
-    update: (values) => (row && had ? scanBallUpdate(had, values, event.games, ballOf) : null),
-  };
-}
-
 /**
  * Los juegos de una fila: el puntaje de cada juego del evento (desde «Desde J»; los que no caben, tachados) y, en la de
  * quien verifica (`own.row`), la bola de cada uno debajo.
@@ -449,20 +328,16 @@ export function ScanGames({
   own?: OwnBalls | null;
   onValues: (values: string[]) => void;
 }) {
-  const draft = slots(entry?.scores, games, null);
-  const verified = slots(entry?.photos, games, null);
+  const cells = scanGameCells(row, games, entry);
   const ball = own && own.row === row.key ? own : null;
   return (
     <>
       <div className="flex flex-wrap gap-2">
         {row.values.map((v, k) => {
-          const slot = row.start + k;
-          const out = slot >= games;
-          const typed = out ? null : draft[slot];
-          const differs = typed != null && v.trim() !== '' && Number(v) !== typed;
+          const { slot, out, label, differs, replaces } = cells[k];
           return (
             <div key={k} className="flex w-16 flex-col items-center gap-1">
-              <span className="text-[11px] text-muted">{out ? 'fuera' : `J${slot + 1}`}</span>
+              <span className="text-[11px] text-muted">{label}</span>
               <input
                 type="number"
                 inputMode="numeric"
@@ -476,8 +351,8 @@ export function ScanGames({
                 )}
               />
               {ball && !out && <GameBallChip game={slot} balls={ball.balls} value={ball.ballOf(slot)} onPick={ball.onPick} />}
-              {differs && <span className="text-[10px] text-warn">anotado {typed}</span>}
-              {!out && verified[slot] && <span className="text-[10px] text-muted">reemplaza ✓</span>}
+              {differs && <span className="text-[10px] text-warn">{differs}</span>}
+              {replaces && <span className="text-[10px] text-muted">reemplaza ✓</span>}
             </div>
           );
         })}
@@ -490,7 +365,7 @@ export function ScanGames({
           <Plus className="size-4" />
         </button>
       </div>
-      {ball && <p className="text-xs text-muted">Son tus juegos: debajo de cada uno, anota con qué bola lo tiraste.</p>}
+      {ball && <p className="text-xs text-muted">{SCAN_OWN_BALLS}</p>}
     </>
   );
 }

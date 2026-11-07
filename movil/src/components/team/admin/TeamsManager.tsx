@@ -8,7 +8,7 @@
  * del equipo y, al cerrarlas, vuelve la del equipo.
  */
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { Palette, Plus, Search, Trash2, UserPlus, UserRound } from 'lucide-react-native';
 import { createPlayer } from '@mm/lib/data/players';
@@ -17,6 +17,7 @@ import { saveErrorMessage } from '@mm/lib/errorText';
 import { TEAM_PALETTE, teamColor } from '@mm/pages/sports/team/logic';
 import { addableLine, addablePlayers, ROLE_LABEL, ROLES, rosterEdit, rosterError, rosterSubtitle, teamLine, validTeamName, type RosterPatch } from '@mm/pages/sports/team/teamsAdmin';
 import type { TeamLeague } from '@mm/pages/sports/team/useTeamLeague';
+import { ColorBoard } from '@/components/balls/DesignControls';
 import { useBusy } from '@/components/bowlingTeams/parts';
 import { confirmAsync, toast } from '@/components/feedback';
 import { PickField } from '@/components/players/fields';
@@ -106,11 +107,15 @@ export function TeamsManager({ tl, positions, sportWord = 'equipo' }: { tl: Team
   );
 }
 
-/** Nombre y color del equipo (crear o cambiar); borrar. Los 10 colores de la paleta (en el teléfono no hay «Otro color»). */
+/**
+ * Nombre y color del equipo (crear o cambiar); borrar. Los 10 colores de la paleta y «Otro color» (el selector del
+ * navegador de la web): el círculo con el color de ahora abre el tablero de colores de las bolas (ColorBoard).
+ */
 function TeamForm({ tl, team, onClose, onDeleted }: { tl: TeamLeague; team: SeasonTeam | null; onClose: () => void; onDeleted: () => void }) {
   const c = useColors();
   const [name, setName] = useState(team?.name ?? '');
   const [color, setColor] = useState(team ? teamColor(team) : TEAM_PALETTE[tl.teams.data.length % TEAM_PALETTE.length]);
+  const [board, setBoard] = useState(false);
   const busy = useBusy<'guardar' | 'borrar'>();
   const valid = validTeamName(name);
   const save = async () => {
@@ -160,17 +165,38 @@ function TeamForm({ tl, team, onClose, onDeleted }: { tl: TeamLeague; team: Seas
         <Input value={name} maxLength={60} onChangeText={setName} placeholder="Tigres del Ensanche" autoFocus accessibilityLabel="Nombre" />
       </Field>
       <Field label="Color de la camiseta">
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {TEAM_PALETTE.map((hex) => (
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+            {TEAM_PALETTE.map((hex) => (
+              <Pressable
+                key={hex}
+                accessibilityRole="radio"
+                accessibilityLabel={`Color ${hex}`}
+                accessibilityState={{ selected: color === hex }}
+                onPress={() => setColor(hex)}
+                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: hex, borderWidth: color === hex ? 3 : 1, borderColor: color === hex ? c.fg : 'rgba(0,0,0,0.1)' }}
+              />
+            ))}
+            {/* «Otro color» (el <input type="color"> de la web): muestra el color de ahora y abre o cierra el tablero. */}
             <Pressable
-              key={hex}
-              accessibilityRole="radio"
-              accessibilityLabel={`Color ${hex}`}
-              accessibilityState={{ selected: color === hex }}
-              onPress={() => setColor(hex)}
-              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: hex, borderWidth: color === hex ? 3 : 1, borderColor: color === hex ? c.fg : 'rgba(0,0,0,0.1)' }}
-            />
-          ))}
+              accessibilityRole="button"
+              accessibilityLabel="Otro color"
+              accessibilityState={{ expanded: board }}
+              onPress={() => setBoard((b) => !b)}
+              style={({ pressed }) => ({
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                padding: 3,
+                borderWidth: board ? 2 : 1,
+                borderColor: board ? c.accent : c.line,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <View style={{ flex: 1, borderRadius: 20, backgroundColor: color, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.2)' }} />
+            </Pressable>
+          </View>
+          {board && <ColorBoard value={color} onChange={setColor} />}
         </View>
       </Field>
     </Sheet>

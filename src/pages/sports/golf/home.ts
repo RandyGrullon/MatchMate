@@ -1,8 +1,13 @@
 /**
  * Lo que no es pantalla del inicio y de la ronda del golf (rediseño «Calma y foco»): qué dice la tarjeta «Hoy» y qué hace
- * su único botón, los 3 de arriba del orden de mérito y la línea debajo del título de una ronda. Funciones puras, con
- * pruebas en golf-home.test.ts.
+ * su único botón, los 3 de arriba del orden de mérito, la línea debajo del título de una ronda y la imagen del orden de
+ * mérito. Funciones puras, con pruebas en golf-home.test.ts.
  */
+import { formatDate } from '../../../lib/format';
+import type { Season } from '../../../lib/seasons';
+import { seasonDates } from '../../../components/season/logic';
+import type { ShareTableSpec } from '../../../components/share/cards';
+import type { MeritRow } from '../../../sports/golf/leaderboard';
 import { toParText } from './logic';
 
 /** Lo tuyo en la ronda de hoy (null si no tienes tarjeta). */
@@ -103,3 +108,27 @@ export function meritPlace<T extends { id: string; rank: number; points: number 
         : `${nameOf((ahead ?? first).id)} te lleva ${pts((ahead ?? first).points - mine.points)}`,
   };
 }
+
+/**
+ * La temporada del orden de mérito en palabras: la elegida con sus fechas («Temporada 2026 (1 ene – 31 dic)») o, sin
+ * temporadas (datos de antes), las fechas de la liga. null si no hay ni lo uno ni lo otro.
+ */
+export function meritSeasonText(selected: Pick<Season, 'name' | 'startsOn' | 'endsOn'> | null | undefined, league: { seasonStart?: string | null; seasonEnd?: string | null }): string | null {
+  if (selected) return `${selected.name} (${seasonDates(selected)})`;
+  if (!league.seasonStart && !league.seasonEnd) return null;
+  return `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}`;
+}
+
+/** La imagen del orden de mérito para mandar al grupo: Jugó, Ganó, Mejor y Puntos de cada uno, y cuántos eventos cuentan. */
+export function meritShare(o: { leagueName: string; seasonText: string | null; merit: readonly MeritRow[]; nameOf: (id: string) => string; counted: number }): ShareTableSpec {
+  return {
+    kind: 'table',
+    title: o.leagueName,
+    subtitle: o.seasonText ? `Orden de mérito · ${o.seasonText}` : 'Orden de mérito',
+    nameLabel: 'Jugador',
+    columns: [{ label: 'Jugó' }, { label: 'Ganó' }, { label: 'Mejor', optional: true }, { label: 'Puntos', strong: true }],
+    sections: [{ rows: o.merit.map((m) => ({ rank: m.rank, name: o.nameOf(m.id), values: [m.events, m.wins, m.best ?? '–', m.points.toLocaleString('es-DO')] })) }],
+    note: `Puntos por puesto en cada ronda cerrada (${o.counted} ${o.counted === 1 ? 'evento' : 'eventos'}).`,
+  };
+}
+

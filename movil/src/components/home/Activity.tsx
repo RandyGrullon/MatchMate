@@ -7,7 +7,7 @@ import type { Match } from '@mm/lib/data/matches';
 import { startsInText, type CalendarItem, type NextMatchInfo } from '@mm/lib/calendar';
 import { isPlannedEvent, type LiveGame, type LiveMatchItem } from '@mm/lib/live';
 import { formatTime } from '@mm/lib/schedule';
-import { nextGameLabel, useNextGame, type NextGame } from '@mm/lib/useNextGame';
+import { nextGameLabel, sheetPath, useNextGame, type NextGame } from '@mm/lib/useNextGame';
 import { LATE_WHEN, lateTitle, openPracticeErrorText, todayTitle, upNextSubtitle, weekdayLabel } from '@mm/components/home/logic';
 import { sportMeta } from '@mm/sports/registry';
 import { DateBlock } from '@/components/DateBlock';
@@ -15,6 +15,7 @@ import { toast } from '@/components/feedback';
 import { Badge, Button, Card, SectionHeader, Txt } from '@/components/ui';
 import { useMyLane } from '@/components/bowling/LaneChip';
 import { openLink } from '@/lib/links';
+import { TodayCardPro } from './ProSections';
 import { useColors } from '@/theme/theme';
 
 /** Fechas que se ven en «Lo que viene» (UP_NEXT_SHOWN de la web). */
@@ -46,7 +47,7 @@ function openNext(lid: string, eventId: string, next: NextGame) {
  * el título, liga · bolera y UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1», «Enviar mis juegos»). La
  * práctica del horario sin evento se abre al tocar (openPractice). La de anoche: «Cierra hoy».
  */
-export function TodayGameCard({ game, today }: { game: LiveGame; today: string }) {
+export function TodayGameCard({ game, today, pro = false }: { game: LiveGame; today: string; pro?: boolean }) {
   const c = useColors();
   const { feed, league, event, info, late } = game;
   const planned = isPlannedEvent(event);
@@ -65,14 +66,15 @@ export function TodayGameCard({ game, today }: { game: LiveGame; today: string }
   // La de anoche ya no tiene nada que hacer: no ocupa Hoy.
   if (late && mine && !mine.loading && mine.next.kind === 'ver') return null;
 
-  async function act() {
-    if (!mine) return;
-    const next = mine.next;
+  // `next`: lo que hace el botón (el principal o, en Pro, «Planilla»).
+  async function act(next: NextGame) {
     if (planned && (next.kind === 'anotar' || next.kind === 'planilla')) {
       setBusy(true);
       try {
         const id = await openPractice(feed.lid, event.date);
-        openNext(feed.lid, id, next);
+        // Quien anota los de todos va a la planilla de la práctica que se acaba de abrir (goToPractice de la web).
+        if (next.kind === 'planilla') openLink(sheetPath(feed.lid, id));
+        else openNext(feed.lid, id, next);
       } catch (e) {
         toast(openPracticeErrorText(e, event.date === today), 'error');
       } finally {
@@ -83,6 +85,9 @@ export function TodayGameCard({ game, today }: { game: LiveGame; today: string }
     if (next.kind === 'planilla' || next.kind === 'preparar') openLink(next.to);
     else openNext(feed.lid, event.id, next);
   }
+
+  // Pro: la tarjeta más densa (J1 J2 J3 Serie, «Seguir juego 3» y «Planilla» al lado), en ProSections.tsx.
+  if (pro) return <TodayCardPro game={game} title={title} lane={lane} mine={mine} busy={busy} onAct={(next) => void act(next)} />;
 
   return (
     <Card style={{ gap: 12 }}>
@@ -105,7 +110,7 @@ export function TodayGameCard({ game, today }: { game: LiveGame; today: string }
         )}
       </Pressable>
       {mine && (
-        <Button variant="primary" size="xl" full loading={busy} disabled={busy} onPress={() => void act()}>
+        <Button variant="primary" size="xl" full loading={busy} disabled={busy} onPress={() => void act(mine.next)}>
           {nextGameLabel(mine.next)}
         </Button>
       )}

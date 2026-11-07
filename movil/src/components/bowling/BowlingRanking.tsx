@@ -3,30 +3,69 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { Medal } from 'lucide-react-native';
 import { useEntriesOfEvents, useEvents, usePlayers } from '@mm/lib/data';
+import { useIsPro } from '@mm/lib/useMode';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { rankingRows, readBowlingSnapshot, seasonEvents } from '@mm/lib/bowlingSeason';
 import { pickSeason } from '@mm/lib/seasons';
 import { MIN_RANK_GAMES, rank } from '@mm/lib/stats';
-import { METRICS, eligibleFor, metricDef, myPlace, placeCopy, seasonRangeLabel, type Metric } from '@mm/components/ranking/logic';
-import { Card, ChoiceRow, LoadError, Loading, RowIcon, Sheet, Txt } from '@/components/ui';
+import { METRICS, eligibleFor, metricDef, metricOf, myPlace, placeCopy, seasonRangeLabel, type Metric } from '@mm/components/ranking/logic';
+import { TitleMark, useCurrentTitle } from '@/components/badges/LeagueBadges';
+import { initials } from '@/components/social/Avatar';
+import { BackBar, Card, LoadError, Loading, RowIcon, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+import { RankingPro } from './RankingPro';
+import { SeasonAwardsCard } from './SeasonExtras';
+import { TuTag } from './StandingsTable';
 
 /**
- * La tabla del boliche (Lite de RankingPage de la web): «Tabla» con la métrica (Promedio, Mejor juego, Mejor serie,
- * Asistencia), la temporada con sus fechas (se cambia tocándola), tu lugar («Vas 2.º de 6, con 195…» con su barra, o
- * cuántos juegos te faltan) y la lista con «Tú». Solo cuentan los juegos aprobados. La lógica es la de la web
- * (src/lib/bowlingSeason.ts y src/components/ranking/logic.ts). La tabla completa de Pro, en la web.
+ * La tabla del boliche (RankingPage de la web) con su «‹ Liga» arriba: en Pro, la tabla completa (RankingPro, con Excel
+ * y compartir); en Lite, la de abajo. Va dentro de LeagueScope (lo de Pro lee la liga de ahí).
  */
-export function BowlingRanking({ lid, myPlayerId, initialSeasonId }: { lid: string; myPlayerId: string | null; initialSeasonId?: string | null }) {
+export function BowlingRanking({
+  lid,
+  myPlayerId,
+  initialSeasonId,
+  initialSort,
+  initialHcp,
+  backLabel,
+  backFallback,
+}: {
+  lid: string;
+  myPlayerId: string | null;
+  initialSeasonId?: string | null;
+  /** `?ver=` y `?hcp=1` de la dirección (lo de Pro). */
+  initialSort?: string | null;
+  initialHcp?: boolean;
+  backLabel: string;
+  backFallback: string;
+}) {
+  const pro = useIsPro();
+  if (pro) return <RankingPro backLabel={backLabel} backFallback={backFallback} initialSeasonId={initialSeasonId} initialSort={initialSort} initialHcp={initialHcp} />;
+  return (
+    <>
+      <BackBar label={backLabel} fallback={backFallback} />
+      <LiteRanking lid={lid} myPlayerId={myPlayerId} initialSeasonId={initialSeasonId} initialMetric={initialSort} />
+    </>
+  );
+}
+
+/**
+ * La tabla del boliche en Lite (Lite de RankingPage de la web): «Tabla» con la métrica (Promedio, Mejor juego, Mejor
+ * serie, Asistencia; `?ver=`), la temporada con sus fechas (la de `?temporada=`, que ponen Temporadas y los links; si no,
+ * la de ahora), los premios de una temporada cerrada, tu lugar («Vas 2.º de 6, con 195…» con su barra, o cuántos juegos
+ * te faltan) y la lista: el puesto, las iniciales, el nombre con «Tú» y el escudo del título vigente, y el número. Solo
+ * cuentan los juegos aprobados. La lógica es la de la web (src/lib/bowlingSeason.ts y src/components/ranking/logic.ts).
+ */
+function LiteRanking({ lid, myPlayerId, initialSeasonId, initialMetric }: { lid: string; myPlayerId: string | null; initialSeasonId?: string | null; initialMetric?: string | null }) {
   const c = useColors();
   const events = useEvents(lid);
   const players = usePlayers(lid);
   const seasons = useLeagueSeasons(lid);
-  const [seasonId, setSeasonId] = useState<string | null>(initialSeasonId ?? null);
-  const [metric, setMetric] = useState<Metric>('promedio');
-  const [picking, setPicking] = useState(false);
-  const season = pickSeason(seasons.data, seasonId);
+  const [metric, setMetric] = useState<Metric>(metricOf(initialMetric));
+  // El campeón de la última temporada cerrada lleva el escudo «Título vigente».
+  const title = useCurrentTitle();
+  const season = pickSeason(seasons.data, initialSeasonId ?? null);
   const seasonIds = useMemo(() => seasonEvents(events.data, season).map((e) => e.id), [events.data, season]);
   const entries = useEntriesOfEvents(lid, seasonIds);
 
@@ -72,32 +111,13 @@ export function BowlingRanking({ lid, myPlayerId, initialSeasonId }: { lid: stri
         })}
       </ScrollView>
       {season && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Temporada: ${season.name}. ${seasons.data.length > 1 ? 'Toca para cambiarla' : ''}`}
-          disabled={seasons.data.length < 2}
-          onPress={() => setPicking(true)}
-        >
-          <Txt variant="meta" tone="muted">{`${season.name} · ${seasonRangeLabel(season)}${seasons.data.length > 1 ? '  ▾' : ''}`}</Txt>
-        </Pressable>
+        <Txt variant="meta" tone="muted">
+          {`${season.name} · ${seasonRangeLabel(season)}`}
+        </Txt>
       )}
 
-      <Sheet open={picking} onClose={() => setPicking(false)} title="Temporada">
-        <Card padded={false}>
-          {seasons.data.map((s) => (
-            <ChoiceRow
-              key={s.id}
-              title={`${s.name}${s.status === 'active' ? ' (en curso)' : ''}`}
-              subtitle={seasonRangeLabel(s)}
-              selected={s.id === season?.id}
-              onPress={() => {
-                setSeasonId(s.id);
-                setPicking(false);
-              }}
-            />
-          ))}
-        </Card>
-      </Sheet>
+      {/* Una temporada cerrada: su campeón y sus premios. */}
+      {closed && season && <SeasonAwardsCard season={season} />}
 
       {error ? (
         <LoadError error={error} />
@@ -152,12 +172,18 @@ export function BowlingRanking({ lid, myPlayerId, initialSeasonId }: { lid: stri
                       i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null,
                     ]}
                   >
-                    <Txt style={{ width: 24, textAlign: 'center', fontFamily: font.bold, color: isMe ? c.accent : c.muted }}>{pos}</Txt>
-                    <Txt variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
-                      {row.name}
-                      {isMe ? <Txt tone="accent" style={{ fontSize: 13 }}>{'  Tú'}</Txt> : null}
-                    </Txt>
-                    <Txt style={{ fontFamily: font.bold, fontSize: 20, fontVariant: ['tabular-nums'] }}>{def.value(row)}</Txt>
+                    <Txt style={{ width: 18, textAlign: 'center', fontFamily: font.semibold, fontSize: 15, color: c.muted, fontVariant: ['tabular-nums'] }}>{pos}</Txt>
+                    <View style={[styles.initials, { backgroundColor: isMe ? c.accent : c.surface2 }]}>
+                      <Txt style={{ fontSize: 14, fontFamily: font.semibold, color: isMe ? c.accentFg : c.fg2 }}>{initials(row.name)}</Txt>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Txt variant="bodyStrong" numberOfLines={1} style={{ flexShrink: 1 }}>
+                        {row.name}
+                      </Txt>
+                      {isMe && <TuTag />}
+                      <TitleMark title={title} playerId={row.playerId} />
+                    </View>
+                    <Txt style={{ fontFamily: font.bold, fontSize: 22, lineHeight: 25, letterSpacing: -0.44, fontVariant: ['tabular-nums'] }}>{def.value(row)}</Txt>
                   </Pressable>
                 );
               })}
@@ -189,4 +215,5 @@ const styles = StyleSheet.create({
   place: { borderRadius: 24, paddingHorizontal: 22, paddingVertical: 20 },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 16, paddingVertical: 10 },
+  initials: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 });

@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { ArrowDownRight, Medal, Plus, TrendingDown, Waves } from 'lucide-react-native';
 import { useSwimHistory, useSwimmers } from '@mm/lib/data/swimming';
 import { formatDate } from '@mm/lib/format';
+import { useIsPro } from '@mm/lib/useMode';
 import { personalBests, STROKE_LABEL, type PersonalBest } from '@mm/sports/swimming';
 import { groupLabel, pctText, raceName } from '@mm/pages/sports/swimming/logic';
 import { clubMap, useNames, useSwim } from '@mm/pages/sports/swimming/swim';
@@ -58,11 +59,12 @@ export function SwimPlayer({ playerId }: { playerId: string }) {
 
 /**
  * Las marcas de un nadador: el título con su club y categoría, sus marcas personales por piscina como fichas (tocar una
- * muestra cómo fue bajando) y lo que ha nadado (lo último, con «Ver las 8»).
+ * muestra cómo fue bajando) y lo que ha nadado (en Lite, lo último con «Ver las 8»; en Pro, todo y con la categoría).
  */
 function SwimmerProfile({ playerId, mine }: { playerId: string; mine?: boolean }) {
   const c = useColors();
   const { lid, clubs } = useSwim();
+  const pro = useIsPro();
   const { name, players } = useNames(lid);
   const swimmers = useSwimmers(lid);
   const history = useSwimHistory(lid, playerId);
@@ -85,7 +87,7 @@ function SwimmerProfile({ playerId, mine }: { playerId: string; mine?: boolean }
           key={s.entryId}
           icon={<DateBlock date={s.date} />}
           title={`${raceName(s)} · ${s.pool} m`}
-          subtitle={s.meetName || (s.meetType === 'control' ? 'Control de marcas' : 'Encuentro')}
+          subtitle={[s.meetName || (s.meetType === 'control' ? 'Control de marcas' : 'Encuentro'), pro && s.ageGroup ? groupLabel(s.ageGroup) : null].filter(Boolean).join(' · ')}
           chevron={false}
           onPress={() => openMeet(lid, s.meetId, 'resultados')}
           right={
@@ -149,7 +151,7 @@ function SwimmerProfile({ playerId, mine }: { playerId: string; mine?: boolean }
       {swims.length > 0 && (
         <View style={{ marginTop: 30, gap: 10 }}>
           <SectionHeader title={mine ? 'Lo que has nadado' : 'Lo que ha nadado'} />
-          <ShowMore items={swims} max={5} noun="pruebas" render={(shown) => swimRows(shown)} />
+          {pro ? swimRows(swims) : <ShowMore items={swims} max={5} noun="pruebas" render={(shown) => swimRows(shown)} />}
         </View>
       )}
     </View>

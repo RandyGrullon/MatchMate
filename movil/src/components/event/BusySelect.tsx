@@ -9,7 +9,8 @@ import { font } from '@/theme/tokens';
 /**
  * El Select que guarda al elegir (BusySelect de la web: equipo, pista). En el teléfono, la elegida en una caja y, al
  * tocarla, las opciones debajo (como PickField de Jugadores). Mientras guarda, la ruedita va donde la flecha y no deja
- * elegir otra vez; cada uno lleva su propia espera (los de las otras filas se siguen usando).
+ * elegir otra vez; cada uno lleva su propia espera (los de las otras filas se siguen usando). Una opción `disabled` (un
+ * equipo lleno) se ve pero no se elige, como el <option disabled> de la web.
  */
 export function BusySelect({
   label,
@@ -19,7 +20,7 @@ export function BusySelect({
 }: {
   /** Para el lector de pantalla (el aria-label de la web). */
   label: string;
-  options: readonly { key: string; label: string }[];
+  options: readonly { key: string; label: string; disabled?: boolean }[];
   value: string;
   onPick: (value: string) => Promise<unknown> | void;
 }) {
@@ -47,15 +48,16 @@ export function BusySelect({
       {open && !busy && (
         <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ gap: 6 }}>
           {options.map((o) => (
-            <ChoiceRow
-              key={o.key || '-'}
-              title={o.label}
-              selected={o.key === value}
-              onPress={() => {
-                setOpen(false);
-                void run('elegir', async () => onPick(o.key));
-              }}
-            />
+            <View key={o.key || '-'} pointerEvents={o.disabled ? 'none' : 'auto'} accessibilityState={{ disabled: !!o.disabled }} style={o.disabled ? { opacity: 0.45 } : undefined}>
+              <ChoiceRow
+                title={o.label}
+                selected={o.key === value}
+                onPress={() => {
+                  setOpen(false);
+                  void run('elegir', async () => onPick(o.key));
+                }}
+              />
+            </View>
           ))}
         </View>
       )}

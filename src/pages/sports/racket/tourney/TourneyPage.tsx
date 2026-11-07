@@ -18,7 +18,6 @@ import { NoticeSlot } from '../../../../components/NoticeSlot';
 import { Button, Card, Empty, Field, Input, ListSkeleton, Segmented, SectionHeader, Sheet, cx } from '../../../../components/ui';
 import { Chips, PickList, Stepper, ToggleRow, racketColumns } from '../bits';
 import { ReportSheet, ScorersSheet, ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../frame';
-import { entrantKey } from '../logic/results';
 import {
   CATEGORY_IDS,
   bracketDrafts,
@@ -31,9 +30,12 @@ import {
   groupTables,
   groupsDone,
   makeGroups,
+  missingGroupDrafts,
   newCategory,
   parseTourneyConfig,
   qualifiers,
+  seedLevel,
+  sortBySeedLevel,
   suggestGroups,
   tourneyConfigJson,
   tourneyStarted,
@@ -345,10 +347,7 @@ function CategoryView({
 
   const missingGroupMatches = () =>
     onRun('faltan', async () => {
-      const all = groupDrafts(cat, cat.groupsOf ?? [], entrants, { eventId: event.id, rules });
-      const exists = (a: string, b: string, stage: string) =>
-        matches.some((m) => m.stage === stage && ((entrantKey(m.sides[0]) === a && entrantKey(m.sides[1]) === b) || (entrantKey(m.sides[0]) === b && entrantKey(m.sides[1]) === a)));
-      const missing = all.filter((d) => !exists(d.sides[0].teamId ?? d.sides[0].players?.[0]?.playerId ?? '', d.sides[1].teamId ?? d.sides[1].players?.[0]?.playerId ?? '', d.stage ?? ''));
+      const missing = missingGroupDrafts(cat, matches, entrants, { eventId: event.id, rules });
       if (missing.length) await createMatches(lid, missing);
     }, 'Partidos creados');
 
@@ -579,11 +578,7 @@ function CategoryEditor({
   const [rev] = useState(cfg.signup?.rev);
   const locked = !!cat.groupsOf?.length || !!cat.seeds?.length;
   const taken = new Set(cfg.categories.filter((c) => c.id !== cat.id).flatMap((c) => c.pairs));
-  const levelOf = (id: string) => {
-    const ids = doubles ? names.rosterOf(id) : [id];
-    const known = ids.map((p) => levels[p]).filter((x): x is number => x != null);
-    return known.length ? Math.round(known.reduce((a, b) => a + b, 0) * 1000) / 1000 : null;
-  };
+  const levelOf = (id: string) => seedLevel(doubles ? names.rosterOf(id) : [id], levels);
   const items = (doubles ? names.teams.map((t) => ({ id: t.id, name: t.name })) : names.players.map((p) => ({ id: p.id, name: p.name })))
     .filter((x) => !taken.has(x.id))
     .map((x) => ({ ...x, sub: levelOf(x.id) != null ? levelText(levelOf(x.id)!, scale) : undefined }));
@@ -594,7 +589,7 @@ function CategoryEditor({
     [p[i], p[j]] = [p[j], p[i]];
     setDraft({ ...draft, pairs: p });
   };
-  const byLevel = () => setDraft({ ...draft, pairs: [...draft.pairs].sort((a, b) => (levelOf(b) ?? -1) - (levelOf(a) ?? -1)) });
+  const byLevel = () => setDraft({ ...draft, pairs: sortBySeedLevel(draft.pairs, levelOf) });
   const n = draft.pairs.length;
 
   return (

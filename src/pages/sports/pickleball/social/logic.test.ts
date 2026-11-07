@@ -9,6 +9,7 @@ import {
   gameParser,
   gameText,
   isSocialEvent,
+  mixedReady,
   mixedRound,
   newSocialConfig,
   nextSocialRound,
@@ -16,7 +17,10 @@ import {
   parseSocialConfig,
   redoSocialRound,
   socialConfigJson,
+  socialDefaultName,
   socialDrafts,
+  socialEntry,
+  socialFirstSummary,
   socialShareText,
   socialTable,
 } from './logic';
@@ -169,5 +173,22 @@ describe('partidos y tabla', () => {
     expect(tryParse(parse, '12-7').ok).toBe(false);
     expect(tryParse(parse, 'once').ok).toBe(false);
     expect(gameParser({ to: 11, winBy: 1, scoring: 'sideout' })('11-10').winner).toBe(1);
+  });
+});
+
+describe('lo de la pantalla del round robin', () => {
+  it('el nombre de «Nuevo», el resumen de la ronda 1, el marcador y el mixto', () => {
+    expect(socialDefaultName('2026-10-08')).toBe('Round robin del jueves');
+    const cfg = newSocialConfig({ players: ['a', 'b', 'c', 'd', 'e'], courts: ['Cancha 1'], rounds: 5 });
+    expect(socialFirstSummary(cfg)).toBe('5 jugadores en 1 cancha · 5 rondas · sin repetir compañero');
+    expect(socialFirstSummary({ ...cfg, mixed: ['a', 'b'] })).toBe('5 jugadores en 1 cancha · 5 rondas · cada pareja con uno de cada grupo');
+    const e = socialEntry({ to: 15, winBy: 2, scoring: 'rally' });
+    expect(e.placeholder).toBe('15-7');
+    expect(e.examples).toEqual(['15-9', '15-5']);
+    expect(e.hint).toBe('Juego a 15, ganando por 2, conteo por rally');
+    expect(e.parser('15-9').winner).toBe(1);
+    expect(mixedReady(['a', 'b', 'c', 'd'], null)).toBe(true);
+    expect(mixedReady(['a', 'b', 'c', 'd'], ['a', 'b'])).toBe(true);
+    expect(mixedReady(['a', 'b', 'c', 'd'], ['a'])).toBe(false);
   });
 });

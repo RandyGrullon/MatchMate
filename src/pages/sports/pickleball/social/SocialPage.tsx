@@ -32,13 +32,14 @@ import { FirstRound, MyCourt, PlayersList, Podium, RestCard, RoundCourts, RoundL
 import { useRacket } from '../../racket/sport';
 import { GameFields, MixedGroups } from './SocialForm';
 import {
-  gameParser,
   gameText,
   nextSocialRound,
   parseSocialConfig,
   redoSocialRound,
   socialConfigJson,
   socialDrafts,
+  socialEntry,
+  socialFirstSummary,
   socialShareText,
   socialTable,
   type SocialConfig,
@@ -197,7 +198,7 @@ export function SocialPage({ event }: { event: RacketEvent }) {
   const meta = [eventDay(event.date, today, pro), event.startTime ? timeLabel(event.startTime) : null, gameText(cfg.game)].filter(Boolean).join(' · ');
   const played = table.filter((r) => r.played > 0);
   const first = nextSocialRound(cfg, []);
-  const entry = () => ({ parser: gameParser(cfg.game), placeholder: `${cfg.game.to}-7`, examples: [`${cfg.game.to}-9`, `${cfg.game.to}-5`], hint: gameText(cfg.game) });
+  const entry = () => socialEntry(cfg.game);
   const open = (k: SheetKey) => setSheet(k);
   const label = cfg.mixed ? 'Round robin mixto' : 'Round robin';
 
@@ -227,9 +228,7 @@ export function SocialPage({ event }: { event: RacketEvent }) {
     ) : !current ? (
       <FirstRound
         organize={organize}
-        summary={`${cfg.players.length} jugadores en ${cfg.courts.length} ${cfg.courts.length === 1 ? 'cancha' : 'canchas'} · ${cfg.rounds} rondas · ${
-          cfg.mixed ? 'cada pareja con uno de cada grupo' : 'sin repetir compañero'
-        }`}
+        summary={socialFirstSummary(cfg)}
         problem={first.ok ? null : first.reason}
         busy={pending.isBusy('ronda')}
         onStart={() => void nextRound()}

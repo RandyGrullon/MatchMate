@@ -11,13 +11,7 @@ import { todayIn } from '../../racket/logic/time';
 import { NightFields, NightPlayers } from '../../racket/night/NightForm';
 import type { WizardFormProps } from '../../racket/sport';
 import { useNames } from '../../racket/names';
-import { GAME_TARGETS, gameText, isSocialEvent, newSocialConfig, parseSocialConfig, socialConfigJson, type GameRules, type SocialConfig } from './logic';
-
-const weekday = (date: string) => {
-  const [y, m, d] = date.split('-').map(Number);
-  if (!y || !m || !d) return '';
-  return new Intl.DateTimeFormat('es-DO', { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
-};
+import { GAME_TARGETS, gameText, isSocialEvent, mixedReady, newSocialConfig, parseSocialConfig, socialConfigJson, socialDefaultName, type GameRules, type SocialConfig } from './logic';
 
 /** El juego de cada partido: a 11, 15 o 21, ganando por 2 o por 1, conteo tradicional o por rally. */
 export function GameFields({ value, onChange }: { value: GameRules; onChange: (g: GameRules) => void }) {
@@ -109,9 +103,9 @@ export function SocialForm({ onDone, onBack, last }: WizardFormProps) {
     });
   });
   const info = useMemo(() => nightInfo(cfg.players.length, cfg.courts.length), [cfg.players.length, cfg.courts.length]);
-  const title = name.trim() || `Round robin del ${weekday(date)}`;
+  const title = name.trim() || socialDefaultName(date);
   const recommended = suggestRounds('americano', cfg.players.length, cfg.courts.length);
-  const mixedOk = !cfg.mixed || (cfg.players.filter((p) => cfg.mixed!.includes(p)).length >= 2 && cfg.players.filter((p) => !cfg.mixed!.includes(p)).length >= 2);
+  const mixedOk = mixedReady(cfg.players, cfg.mixed);
 
   const create = async () => {
     setBusy(true);

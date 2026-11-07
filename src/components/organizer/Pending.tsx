@@ -4,8 +4,7 @@ import type { Notice } from '../../lib/notices';
 import type { LeagueKind } from '../../lib/types';
 import { useProSuggestion } from '../mode';
 import { NoticeSlot, useNotice } from '../NoticeSlot';
-import { organizeUrl } from './hubLogic';
-import { pendingLine, showPendingCard } from './logic';
+import { leaguePendingNotice } from '../league/homeNotices';
 
 /**
  * El aviso del inicio de la liga para quien la organiza (va al NoticeSlot, nunca como cartel aparte): lo que espera
@@ -14,17 +13,8 @@ import { pendingLine, showPendingCard } from './logic';
  * más, vuelve a salir. null = nada que decir.
  */
 export function pendingNotice(p: LeaguePending | null | undefined, lid: string, _base: string, kind: LeagueKind | undefined): Notice | null {
-  if (!p || !showPendingCard(p)) return null;
-  // A Organizar de esta liga, con «Por hacer» arriba.
-  const to = organizeUrl(lid);
-  if (p.total > 0) return { id: `pendientes:${lid}:${p.total}`, kind: 'admin', title: pendingLine(p), action: { label: 'Ver', to } };
-  return {
-    id: `primeros-pasos:${lid}:${p.checklist?.done ?? 0}`,
-    kind: 'tip',
-    title: kind === 'torneo' ? 'Tu torneo nuevo' : 'Tu liga nueva',
-    text: pendingLine(p),
-    action: { label: 'Seguir', to },
-  };
+  // Lo que dice (y la app del teléfono) está en league/homeNotices.ts.
+  return leaguePendingNotice(p, lid, kind);
 }
 
 /**

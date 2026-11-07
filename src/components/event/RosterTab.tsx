@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshCw, UserPlus, Users, X } from 'lucide-react';
 import { fetchEffectiveAverages, removeEntry, updateEntries, updateEntry } from '../../lib/data';
 import { useLeagueCtx } from '../../lib/league';
-import { calcHandicap, category, MIN_RANK_GAMES } from '../../lib/stats';
+import { calcHandicap, category } from '../../lib/stats';
 import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
@@ -12,6 +12,17 @@ import { Badge, Button, Card, Empty, cx } from '../ui';
 import { BusySelect } from './BusySelect';
 import { CategoryBadge } from './CategoryBadge';
 import { AddPlayersModal } from './AddPlayersModal';
+import {
+  ROSTER_EMPTY,
+  SYNC_AVERAGES_CONFIRM,
+  SYNC_AVERAGES_DONE,
+  enrolledCount,
+  hcpRuleText,
+  removeFromTourneyConfirm,
+  removedFromTourneyText,
+  rosterOrder,
+  rosterTeamOptions,
+} from './roster';
 
 /** Los botones de 40 px (y la X de 32) se tocan en 44: su ::after sale un poco por fuera. */
 const HIT_40 = "relative after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
@@ -26,31 +37,20 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
   const [syncing, setSyncing] = useState(false);
   const removing = useBusy();
   const byId = new Map(players.map((p) => [p.id, p]));
-  const teams = Object.entries(event.teams ?? {}).sort(([, a], [, b]) => a.order - b.order);
-  const sorted = [...entries].sort((a, b) => (byId.get(a.playerId)?.name ?? '').localeCompare(byId.get(b.playerId)?.name ?? ''));
+  const sorted = rosterOrder(entries, (id) => byId.get(id)?.name);
 
   async function remove(entry: Entry) {
     const name = byId.get(entry.playerId)?.name ?? 'jugador';
     const played = entry.scores?.some((s) => s != null);
-    const ok = await confirm({
-      title: `¿Sacar a ${name} del torneo?`,
-      message: played ? 'Tiene juegos anotados en este torneo; se borran también.' : undefined,
-      confirmText: 'Sacar',
-      danger: true,
-    });
-    if (ok) await removing.run(entry.id, () => run(() => removeEntry(lid, entry), `${name} fuera del torneo`));
+    const ok = await confirm(removeFromTourneyConfirm(name, !!played));
+    if (ok) await removing.run(entry.id, () => run(() => removeEntry(lid, entry), removedFromTourneyText(name)));
   }
 
   // true si se guardó: la casilla deja lo escrito hasta que llega el número nuevo.
   const saveEntry = (id: string, patch: Parameters<typeof updateEntry>[2]) => run(() => updateEntry(lid, id, patch).then(() => true));
 
   async function syncAverages() {
-    const ok = await confirm({
-      title: 'Actualizar promedios',
-      message:
-        `Se toma el promedio de la temporada de cada inscrito (con menos de ${MIN_RANK_GAMES} juegos: el de la temporada anterior o el fijo). Úsalo antes de empezar el torneo; el handicap se recalcula.`,
-      confirmText: 'Actualizar',
-    });
+    const ok = await confirm(SYNC_AVERAGES_CONFIRM);
     if (!ok) return;
     setSyncing(true);
     await run(async () => {
@@ -60,7 +60,7 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
         { date: event.date, eventId: event.id },
       );
       await updateEntries(lid, entries.map((e) => ({ id: e.id, patch: { average: avgs.get(e.playerId) ?? 0 } })));
-    }, 'Promedios actualizados');
+    }, SYNC_AVERAGES_DONE);
     setSyncing(false);
   }
 
@@ -75,12 +75,12 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
             Actualizar promedios
           </Button>
         )}
-        <span className="ml-auto text-sm text-muted">{entries.length} inscritos</span>
+        <span className="ml-auto text-sm text-muted">{enrolledCount(entries.length)}</span>
       </div>
 
       {entries.length === 0 ? (
-        <Empty icon={<Users className="size-8" />} title="Nadie inscrito todavía">
-          Inscribe a los jugadores; entran con su promedio actual para calcular el handicap.
+        <Empty icon={<Users className="size-8" />} title={ROSTER_EMPTY.title}>
+          {ROSTER_EMPTY.text}
         </Empty>
       ) : (
         <Card className="divide-y divide-line overflow-hidden">
@@ -120,18 +120,11 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
                       className="h-9 min-w-32"
                       aria-label="Equipo"
                     >
-                      <option value="">Sin equipo</option>
-                      {teams.map(([id, t]) => {
-                        const size = entries.filter((x) => x.teamId === id).length;
-                        const full = !!event.teamSize && size >= event.teamSize && e.teamId !== id;
-                        return (
-                          <option key={id} value={id} disabled={full}>
-                            {t.name}
-                            {event.teamSize ? ` (${size}/${event.teamSize})` : ''}
-                            {full ? ' · lleno' : ''}
-                          </option>
-                        );
-                      })}
+                      {rosterTeamOptions(event, entries, e.teamId ?? null).map((o) => (
+                        <option key={o.key} value={o.key} disabled={o.disabled}>
+                          {o.label}
+                        </option>
+                      ))}
                     </BusySelect>
                   </label>
                   <label className="flex flex-col items-center gap-1 md:contents">
@@ -160,9 +153,7 @@ export function RosterTab({ event, entries, players }: { event: BowlingEvent; en
           })}
         </Card>
       )}
-      <p className="text-xs text-muted">
-        El handicap vacío se calcula solo: ({event.hcpBase} − promedio) × {event.hcpPercent}%. Escribe un número para fijarlo a mano.
-      </p>
+      <p className="text-xs text-muted">{hcpRuleText(event)}</p>
 
       <AddPlayersModal open={adding} onClose={() => setAdding(false)} event={event} entries={entries} players={players} />
     </div>

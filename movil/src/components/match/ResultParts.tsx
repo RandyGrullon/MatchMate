@@ -82,6 +82,7 @@ export function ResultSheet({
   placeholder = '6-4 3-6 10-7',
   hint,
   examples = [],
+  title,
   onSubmit,
 }: {
   open: boolean;
@@ -93,6 +94,8 @@ export function ResultSheet({
   placeholder?: string;
   hint?: string;
   examples?: string[];
+  /** El título de la hoja, si no es el de siempre (p. ej. «Marcador de Cancha 1» en la noche de raqueta). */
+  title?: string;
   onSubmit?: (r: ParsedResult) => Promise<void>;
 }) {
   const c = useColors();
@@ -125,7 +128,7 @@ export function ResultSheet({
     }
   }
 
-  const heading = mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo';
+  const heading = title ?? (mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo');
   return (
     <Sheet
       open={open}

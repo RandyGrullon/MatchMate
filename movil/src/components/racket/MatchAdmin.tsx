@@ -1,15 +1,18 @@
 /**
- * «•••» de un partido de raqueta para quien organiza (MatchAdmin.tsx de la web, con su misma lógica:
- * match/adminMenu.ts): W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), quién jugó (suplente), corregir el
- * resultado, anular y borrar. Cada cosa en su hoja, con los mismos textos y avisos. «Transmitir en vivo» desde aquí,
- * todavía en la web (En vivo).
+ * «•••» de un partido de raqueta (MatchAdmin.tsx de la web, con su misma lógica: match/adminMenu.ts y
+ * src/components/live/logic.ts): «Transmitir en vivo» (admins y anotadores, con la liga en vivo activada, si el partido
+ * no se transmite ya) y, para quien organiza, W.O., aplazar, reprogramar (fecha, hora y cancha o mesa), quién jugó
+ * (suplente), corregir el resultado, anular y borrar. Cada cosa en su hoja, con los mismos textos y avisos.
  */
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Ban, CalendarClock, CircleSlash, Pause, PencilLine, Trash2, UserRoundCog } from 'lucide-react-native';
+import { Ban, CalendarClock, CircleSlash, Pause, PencilLine, Radio, Trash2, UserRoundCog } from 'lucide-react-native';
 import { deleteMatch, postponeMatch, rescheduleMatch, setMatchPlayers, setWalkover, voidMatch, type Match } from '@mm/lib/data/matches';
+import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
+import { canStartStream } from '@mm/components/live/logic';
+import { sideName } from '@mm/components/match/format';
 import type { Side } from '@mm/sports/types';
 import { walkoverScore } from '@mm/pages/sports/racket/court/adapters';
 import { matchAdminKeys, matchAdminText, playerOptions, type MatchAdminKey } from '@mm/pages/sports/racket/match/adminMenu';
@@ -18,6 +21,7 @@ import { localParts, todayIn, zonedIso } from '@mm/pages/sports/racket/logic/tim
 import { useNames } from '@mm/pages/sports/racket/names';
 import { courtWords } from '@mm/pages/sports/racket/sport';
 import { DateStepper } from '../DateStepper';
+import { StartStreamSheet } from '../live/StartStreamSheet';
 import { TimeStepper } from '../esports/fields';
 import { PickField } from '../players/fields';
 import { confirmAsync, toast } from '../feedback';
@@ -27,20 +31,26 @@ import { MenuSheet, MoreButton, SaveFooter, useRacketPhone, type MenuItem } from
 /** Lo que tarda en irse una hoja antes de abrir otra cosa encima (la pregunta del sistema, la hoja del resultado). */
 const SHEET_CLOSE_MS = 400;
 
-type Dialog = 'walkover' | 'postpone' | 'reschedule' | 'players';
+type Dialog = 'walkover' | 'postpone' | 'reschedule' | 'players' | 'live';
 
 const ICONS: Record<MatchAdminKey, MenuItem['icon']> = { wo: CircleSlash, aplazar: Pause, fecha: CalendarClock, quien: UserRoundCog, corregir: PencilLine, anular: Ban, borrar: Trash2 };
 
-/** «•••» del partido y sus hojas. Sin nada que mostrar (quien no organiza), no sale. */
+/** «•••» del partido y sus hojas. Sin nada que mostrar (ni transmitir ni organizar), no sale. */
 export function MatchAdmin({ match: m, onDeleted, onCorrect }: { match: Match; onDeleted: () => void; onCorrect?: () => void }) {
-  const { lid, league, isAdmin } = useLeagueCtx();
+  const ctx = useLeagueCtx();
+  const { lid, league, isAdmin } = ctx;
   const { sport, ext } = useRacketPhone();
   const w = courtWords(ext);
   const [menu, setMenu] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busy, setBusy] = useState<null | 'dialog' | 'void' | 'delete'>(null);
   const keys = matchAdminKeys(m, { isAdmin, points: isPointsMatch(m), canCorrect: !!onCorrect });
-  if (!keys.length) return null;
+  // «Transmitir en vivo» (useStartLive de la web): solo si el partido no tiene ya su transmisión («Ver en vivo»).
+  const streams = useLeagueStreams(lid).data;
+  const canLive = canStartStream(ctx) && !streamFor(streams, { matchId: m.id });
+  // La hoja de «Transmitir en vivo» sigue abierta aunque la opción se vaya al empezar («Ya estás en vivo»).
+  const liveSheet = <StartStreamSheet lid={lid} matchId={m.id} defaultTitle={`${sideName(m.sides[0])} vs. ${sideName(m.sides[1])}`} open={dialog === 'live'} onClose={() => setDialog(null)} />;
+  if (!keys.length && !canLive) return liveSheet;
 
   const act = async (fn: () => Promise<unknown>, ok: string, key: 'dialog' | 'void' | 'delete' = 'dialog') => {
     setBusy(key);
@@ -81,14 +91,17 @@ export function MatchAdmin({ match: m, onDeleted, onCorrect }: { match: Match; o
     anular: doVoid,
     borrar: doDelete,
   };
-  const items: MenuItem[] = keys.map((k) => ({
-    key: k,
-    icon: ICONS[k],
-    ...matchAdminText(k, m, w.one),
-    onPress: actions[k],
-    danger: k === 'borrar',
-    busy: (k === 'anular' && busy === 'void') || (k === 'borrar' && busy === 'delete'),
-  }));
+  const items: MenuItem[] = [
+    ...(canLive ? [{ key: 'en-vivo', icon: Radio, label: 'Transmitir en vivo', hint: 'Pon el link de YouTube, Twitch, Facebook…', onPress: () => open('live') }] : []),
+    ...keys.map((k) => ({
+      key: k,
+      icon: ICONS[k],
+      ...matchAdminText(k, m, w.one),
+      onPress: actions[k],
+      danger: k === 'borrar',
+      busy: (k === 'anular' && busy === 'void') || (k === 'borrar' && busy === 'delete'),
+    })),
+  ];
   const close = () => setDialog(null);
   const saving = busy === 'dialog';
 
@@ -96,6 +109,7 @@ export function MatchAdmin({ match: m, onDeleted, onCorrect }: { match: Match; o
     <>
       <MoreButton onPress={() => !busy && setMenu(true)} />
       <MenuSheet open={menu} onClose={() => setMenu(false)} title="Partido" items={items} />
+      {liveSheet}
       {dialog === 'walkover' && (
         <WalkoverSheet
           match={m}

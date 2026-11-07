@@ -20,6 +20,7 @@ import { seasonPlayerTable, winPct } from '@mm/pages/sports/racket/logic/results
 import { rankingNote, tiebreakText } from '@mm/pages/sports/racket/logic/tiebreaks';
 import { useRacketSeason } from '@mm/pages/sports/racket/seasonTable';
 import { hasNights } from '@mm/pages/sports/racket/sport';
+import { useIsPro } from '@mm/lib/useMode';
 import { racketColumns } from '@mm/pages/sports/racket/view';
 import { StandingsTable } from '../match/StandingsTable';
 import { SnapshotTables } from '../seasonAdmin/SnapshotTables';
@@ -35,6 +36,7 @@ export function RacketStandings() {
   const c = useColors();
   const { lid, myPlayerId } = useLeagueCtx();
   const { sport, doubles, ext } = useRacketPhone();
+  const pro = useIsPro();
   const { temporada } = useLocalSearchParams<{ temporada?: string }>();
   const seasons = useLeagueSeasons(lid);
   const [seasonId, setSeasonId] = useState<string | null>(temporada ?? null);
@@ -51,22 +53,25 @@ export function RacketStandings() {
     () => seasonPlayerTable(split ? kinds[modo] : matches, { sport, rosterOf: names.rosterOf, lotSeed: lid, now }),
     [split, kinds, modo, matches, sport, names, lid, now],
   );
-  // Como Lite en la web: jugados, ganados y el % de victorias; las tablas de ligas y grupos, jugados, ganados y perdidos.
-  const rankingColumns: StandingsColumn[] = [
-    ...racketColumns(sport).slice(0, 2),
-    { key: 'pct', label: '% G', title: 'Porcentaje de victorias', value: (r) => `${winPct(r.won, r.played) ?? 0}%` },
-  ];
-  const compColumns = racketColumns(sport).slice(0, 3);
+  // Lite: jugados, ganados y el % de victorias; Pro: también perdidos y las diferencias (el % no cabe en el teléfono).
+  const pct: StandingsColumn = { key: 'pct', label: '% G', title: 'Porcentaje de victorias', value: (r) => `${winPct(r.won, r.played) ?? 0}%`, wide: pro };
+  const rankingColumns: StandingsColumn[] = pro ? [...racketColumns(sport).slice(0, 4), pct, racketColumns(sport)[6]] : [...racketColumns(sport).slice(0, 2), pct];
+  // Las tablas de las ligas y los grupos: en Lite, jugados, ganados y perdidos; en Pro, completas.
+  const compColumns = pro ? racketColumns(sport) : racketColumns(sport).slice(0, 3);
   const tab: Tab = picked ?? (comps.length ? 'parejas' : ranking.length ? 'ranking' : nights.length ? 'noches' : 'parejas');
   const comp = comps.find((x) => x.key === compKey) ?? comps[0];
   const highlight = [...(myPlayerId ? [myPlayerId] : []), ...names.teamsOf(myPlayerId)];
+
+  const head = { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.5, color: c.muted };
 
   if (q.error) return <LoadError error={q.error} />;
   const bar = <SeasonBar seasons={seasons.data} selected={season} onChange={setSeasonId} />;
   if (saved) {
     return (
       <View style={{ gap: 16 }}>
-        <Txt variant="title">Tabla</Txt>
+        <Txt variant="title" style={pro ? { fontSize: 28, lineHeight: 34 } : undefined}>
+          Tabla
+        </Txt>
         {bar}
         <ClosedSeasonView season={saved} highlight={highlight} />
       </View>
@@ -74,7 +79,9 @@ export function RacketStandings() {
   }
   return (
     <View style={{ gap: 16 }}>
-      <Txt variant="title">Tabla</Txt>
+      <Txt variant="title" style={pro ? { fontSize: 28, lineHeight: 34 } : undefined}>
+        Tabla
+      </Txt>
       <Segmented<Tab>
         label="Qué tabla ver"
         value={tab}
@@ -131,15 +138,33 @@ export function RacketStandings() {
         </>
       ) : nights.length ? (
         <Card padded={false}>
+          {/* Pro: con encabezado, por la columna de las noches. */}
+          {pro && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }}>
+              <Txt style={[head, { width: 28 }]}>#</Txt>
+              <Txt style={[head, { flex: 1 }]}>JUGADOR</Txt>
+              <Txt accessibilityLabel="Noches" style={[head, { width: 44, textAlign: 'right' }]}>
+                NOCHES
+              </Txt>
+              <Txt accessibilityLabel="Partidos jugados" style={[head, { width: 34, textAlign: 'right' }]}>
+                PJ
+              </Txt>
+              <Txt accessibilityLabel="Ganados" style={[head, { width: 34, textAlign: 'right' }]}>
+                G
+              </Txt>
+              <Txt style={[head, { width: 44, textAlign: 'right' }]}>PTS</Txt>
+            </View>
+          )}
           {nights.map((r, i) => (
             <View
               key={r.id}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: c.line, backgroundColor: r.id === myPlayerId ? c.accentSoft : 'transparent' }}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: i > 0 || pro ? 1 : 0, borderTopColor: c.line, backgroundColor: r.id === myPlayerId ? c.accentSoft : 'transparent' }}
             >
               <Txt style={{ width: 28, fontSize: 15, fontWeight: '600', color: c.muted }}>{r.rank}</Txt>
               <Txt numberOfLines={1} style={{ flex: 1, fontSize: 15, fontWeight: '600' }}>
                 {names.nameOf(r.id)}
               </Txt>
+              {pro && <Txt style={{ width: 44, textAlign: 'right', color: c.fg2 }}>{r.nights}</Txt>}
               <Txt style={{ width: 34, textAlign: 'right', color: c.fg2 }}>{r.played}</Txt>
               <Txt style={{ width: 34, textAlign: 'right', color: c.fg2 }}>{r.won}</Txt>
               <Txt style={{ width: 44, textAlign: 'right', fontSize: 17, fontWeight: '700' }}>{r.points}</Txt>

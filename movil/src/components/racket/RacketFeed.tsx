@@ -10,6 +10,7 @@ import { Swords } from 'lucide-react-native';
 import { awaitingConfirmation, useMatches, type Match } from '@mm/lib/data/matches';
 import { useWithPendingPoints } from '@mm/lib/data/racket';
 import { useLeagueCtx } from '@mm/lib/league';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { isPointsMatch } from '@mm/pages/sports/racket/logic/results';
 import { useMySide } from '@mm/pages/sports/racket/match/side';
@@ -33,6 +34,7 @@ export function RacketFeed({ initial = 'todos' }: { initial?: FeedFilter }) {
   const now = useNow().getTime();
   const [filter, setFilter] = useState<FeedFilter>(myPlayerId || initial !== 'mios' ? initial : 'todos');
   const [shown, setShown] = useState(PAGE);
+  const pro = useIsPro();
   const groups = useMemo(() => feedGroups(all, filter, mySideOf, now), [all, filter, mySideOf, now]);
 
   if (q.error) return <LoadError error={q.error} />;
@@ -62,7 +64,10 @@ export function RacketFeed({ initial = 'todos' }: { initial?: FeedFilter }) {
 
   return (
     <View style={{ gap: 20 }}>
-      <Txt variant="title">Partidos</Txt>
+      {/* En Pro, el título más chico (text-title-pro de la web). */}
+      <Txt variant="title" style={pro ? { fontSize: 28, lineHeight: 34 } : undefined}>
+        Partidos
+      </Txt>
       {filters.length > 1 &&
         (filters.length <= 3 ? (
           <Segmented<FeedFilter> label="Qué partidos ver" value={filter} onChange={pick} options={filters} />

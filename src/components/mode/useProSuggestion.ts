@@ -1,28 +1,12 @@
 import { useAuth } from '../../lib/auth';
 import { useMode } from '../../lib/useMode';
-import type { Notice } from '../../lib/notices';
 import { useNotice } from '../NoticeSlot';
 import { modeSheetSeen, openModeSheet } from './modeSheet';
 import { announceMode } from './ModeToast';
+import { proSuggestion } from './proSuggestion';
 
-/** id fijo: se sugiere Pro una sola vez (cerrado en una pantalla, no vuelve en ninguna). */
-export const PRO_SUGGESTION_ID = 'sugerir-pro';
-
-/** El aviso «Organizas esta liga · Probar Pro» (sin React, para probarlo). null = no toca sugerirlo. */
-export function proSuggestion(
-  state: { mode: string; suggestedPro: boolean },
-  copy: { title?: string; text?: string } = {},
-  onTry?: () => unknown,
-): Notice | null {
-  if (state.mode !== 'lite' || !state.suggestedPro) return null;
-  return {
-    id: PRO_SUGGESTION_ID,
-    kind: 'pro',
-    title: copy.title ?? 'Organizas una liga',
-    text: copy.text ?? 'Aprueba juegos en Pro',
-    action: { label: 'Probar Pro', onClick: onTry },
-  };
-}
+// El aviso sin React (lo usa también la app del teléfono) está en proSuggestion.ts.
+export { PRO_SUGGESTION_ID, proSuggestion } from './proSuggestion';
 
 /**
  * Propone (al NoticeSlot de la pantalla) sugerir Pro a quien organiza una liga y está en Lite: la Liga lo llama con

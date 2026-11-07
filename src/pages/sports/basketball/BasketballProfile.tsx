@@ -7,13 +7,13 @@ import { upcomingFor } from '../team/logic';
 import { RosterEditor } from '../team/TeamsManager';
 import { HistoryBackBar, MatchRows, NextMatchCard, ScreenTitle, StatTiles, TeamCrest, matchLink } from '../team/TeamUi';
 import { useTeamLeague, type TeamLeague } from '../team/useTeamLeague';
-import { basketballGames, basketballStatItems, basketballWhen, rivalName, rosterLine, ROLE } from '../team/profileView';
+import { basketballGames, basketballProStatItems, basketballStatItems, basketballWhen, rivalName, rosterLine, ROLE } from '../team/profileView';
 import { todayIn } from '../team/view';
 import { BASKETBALL_POSITIONS } from './bits';
 import { basketballTeamRules } from './rules';
 import { useBasketballSeason, type BasketballSeason } from './season';
 
-// El rol, la línea del equipo, los partidos y los números de Lite están en ../team/profileView.ts (los usa también la
+// El rol, la línea del equipo, los partidos y los números de Lite y de Pro están en ../team/profileView.ts (los usa también la
 // app del teléfono).
 
 /**
@@ -149,17 +149,7 @@ export function PlayerStats({ tl, playerId, season, title = 'Temporada', classNa
         <div className="flex flex-col gap-3.5">
           <StatTiles
             dense={pro}
-            items={[
-              ...basketballStatItems(totals),
-              ...(pro
-                ? [
-                    { label: 'Triples', value: totals.threes },
-                    { label: 'Tiros libres', value: totals.ftm },
-                    { label: 'Faltas', value: totals.fouls },
-                    { label: 'Faltas/partido', value: (Math.round((totals.fouls / totals.games) * 10) / 10).toLocaleString('es-DO') },
-                  ]
-                : []),
-            ]}
+            items={pro ? basketballProStatItems(totals) : basketballStatItems(totals)}
           />
           {pro ? (
             <Card className="overflow-hidden">

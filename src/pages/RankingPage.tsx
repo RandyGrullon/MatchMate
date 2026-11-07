@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { Medal } from 'lucide-react';
 import { useEntriesOfEvents, useEvents, usePlayers } from '../lib/data';
 import { useLeagueSeasons } from '../lib/data/seasons';
-import { mostImproved, rankingRows, readBowlingSnapshot, seasonEvents, totalsByPlayer } from '../lib/bowlingSeason';
+import { readBowlingSnapshot, seasonEvents } from '../lib/bowlingSeason';
 import { useLeagueCtx } from '../lib/league';
 import { previousSeason } from '../lib/seasons';
 import { MIN_RANK_GAMES, rank } from '../lib/stats';
@@ -11,12 +11,11 @@ import { Card, ListSkeleton, LoadError, RowIcon, Segmented, Skeleton, cx } from 
 import { LeagueExcelButton } from '../components/LeagueExcelButton';
 import { useIsPro } from '../components/mode';
 import { SeasonAwardsCard, useSeasonParam } from '../components/season/SeasonSelect';
-import { ShareButton, type ShareTableSpec } from '../components/share';
+import { ShareButton } from '../components/share';
 import { TitleMark, useCurrentTitle } from '../components/badges/LeagueBadges';
 import { LeagueBackBar } from '../components/league/home/LeagueTopBar';
 import {
   METRICS,
-  cellText,
   eligibleFor,
   hcpFormula,
   leagueHcp,
@@ -24,33 +23,22 @@ import {
   metricOf,
   myPlace,
   placeCopy,
-  playedEvents,
   seasonRangeLabel,
   seasonRecords,
   sortOf,
   standingsTable,
   withSnapshot,
   type Metric,
-  type SortKey,
 } from '../components/ranking/logic';
 import { MyPlaceCard } from '../components/ranking/MyPlaceCard';
 import { PillSelect } from '../components/ranking/parts';
 import { RankList } from '../components/ranking/RankList';
 import { MostImprovedCard, SeasonRecordsCard } from '../components/ranking/SeasonExtras';
 import { StandingsTable } from '../components/ranking/StandingsTable';
+import { ALL_SEASONS, byMinimumOf, emptyRankingText, rankingShareCard, seasonPillOptions, seasonTables } from './rankingPro';
 
-/** Las columnas que van en la imagen para compartir la tabla de Pro (las que no caben se quitan, menos la ordenada). */
-const SHARE_COLUMNS: readonly { key: SortKey; label: string }[] = [
-  { key: 'juegos', label: 'J' },
-  { key: 'promedio', label: 'Prom.' },
-  { key: 'hcp', label: 'Hcp' },
-  { key: 'juego', label: 'Alto' },
-  { key: 'serie', label: 'Serie' },
-  { key: 'asistencia', label: 'Asist.' },
-];
-
-/** La última opción de «Temporada 2026 ▾»: lleva al historial de temporadas (campeones y tablas guardadas). */
-const ALL_SEASONS = 'todas';
+// Las columnas de la imagen para compartir, la píldora «Temporada ▾», los números de la temporada y el vacío están en
+// rankingPro.ts: los comparte la app del teléfono.
 
 /**
  * Tabla de la liga (`/l/:lid/ranking`) por temporada: la elegida en la dirección (`?temporada=`; por defecto la de
@@ -80,18 +68,10 @@ export default function RankingPage() {
   const prevIds = useMemo(() => (prev ? seasonEvents(events.data, prev).map((e) => e.id) : []), [events.data, prev]);
   const entries = useEntriesOfEvents(lid, useMemo(() => [...seasonIds, ...prevIds], [seasonIds, prevIds]));
 
-  const { rows, improved, played } = useMemo(() => {
-    const inSeason = new Set(seasonIds);
-    const inPrev = new Set(prevIds);
-    const current = entries.data.filter((e) => inSeason.has(e.eventId));
-    const names = new Map(players.data.map((p) => [p.id, p.name]));
-    const up = prev ? mostImproved(totalsByPlayer(current), totalsByPlayer(entries.data.filter((e) => inPrev.has(e.eventId)))) : [];
-    return {
-      rows: rankingRows(current, players.data),
-      improved: up.filter((u) => names.has(u.playerId)).map((u) => ({ ...u, name: names.get(u.playerId)! })),
-      played: playedEvents(current),
-    };
-  }, [entries.data, players.data, seasonIds, prevIds, prev]);
+  const { rows, improved, played } = useMemo(
+    () => seasonTables({ entries: entries.data, players: players.data, seasonIds, prevIds, hasPrev: !!prev }),
+    [entries.data, players.data, seasonIds, prevIds, prev],
+  );
   // El handicap de la tabla de Pro: el del último torneo con handicap de la temporada (o de la liga; o 80 % de 230).
   const hcp = useMemo(() => leagueHcp(events.data, new Set(seasonIds)), [events.data, seasonIds]);
 
@@ -124,23 +104,9 @@ export default function RankingPage() {
   const seasonName = season?.name ?? 'la temporada';
 
   // Imagen de la tabla que se ve (temporada, columna ordenada y con o sin hcp) para mandar al grupo.
-  const shareCard = (): ShareTableSpec => {
-    const strong: SortKey = sort === 'nombre' ? 'promedio' : sort;
-    const byAverage = strong === 'promedio' || strong === 'hcp';
-    return {
-      kind: 'table',
-      title: league.name,
-      subtitle: `Tabla${season ? ` · ${season.name}` : ''}${withHcp ? ' · Con hcp' : ''}`,
-      nameLabel: 'Jugador',
-      columns: SHARE_COLUMNS.map((c) => ({ label: c.label, strong: c.key === strong, optional: c.key !== strong && c.key !== 'juegos' })),
-      sections: [{ rows: table.map((t) => ({ rank: t.pos, name: t.row.name, values: SHARE_COLUMNS.map((c) => cellText(t, c.key, played)) })) }],
-      note: ['Solo juegos aprobados.', byAverage ? `Mínimo ${MIN_RANK_GAMES} juegos en la temporada.` : null, withHcp ? `${hcpFormula(hcp)}.` : null]
-        .filter(Boolean)
-        .join(' '),
-    };
-  };
+  const shareCard = () => rankingShareCard({ leagueName: league.name, season, sort, withHcp, hcp, table, played });
 
-  const byMinimum = isPro ? sort === 'promedio' || sort === 'hcp' || sort === 'nombre' : metric === 'promedio';
+  const byMinimum = byMinimumOf(isPro, sort, metric);
   const empty = (className: string) => (
     <Card className={cx('flex items-center gap-3.5 px-5 py-[18px]', className)}>
       <RowIcon>
@@ -148,9 +114,7 @@ export default function RankingPage() {
       </RowIcon>
       <div className="min-w-0">
         <p className="font-semibold">Todavía no sale nadie</p>
-        <p className="mt-0.5 text-sm text-muted">
-          {byMinimum ? `Hace falta tener al menos ${MIN_RANK_GAMES} juegos aprobados en ${seasonName}.` : 'Aún no hay juegos aprobados.'}
-        </p>
+        <p className="mt-0.5 text-sm text-muted">{emptyRankingText(byMinimum, seasonName)}</p>
       </div>
     </Card>
   );
@@ -186,10 +150,7 @@ export default function RankingPage() {
                 <PillSelect
                   label="Temporada"
                   className="max-w-full"
-                  options={[
-                    ...seasons.data.map((s) => ({ key: s.id, label: s.name, option: `${s.name}${s.status === 'active' ? ' (en curso)' : ''}` })),
-                    { key: ALL_SEASONS, label: 'Temporadas', option: 'Ver todas las temporadas…' },
-                  ]}
+                  options={seasonPillOptions(seasons.data)}
                   value={season.id}
                   onChange={(id) => (id === ALL_SEASONS ? navigate(`${base}/temporadas`) : setSeason(id))}
                 />

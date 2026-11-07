@@ -28,6 +28,7 @@ import { agendaRpc, demoAgendaSelect, forgetDemoAgenda } from './demoAgenda';
 import { forgetDemoSocial, socialRpc } from './demoSocial';
 import { demoPrizesSelect, forgetDemoPrizes, prizesRpc } from './demoPrizes';
 import { yoRpc } from './demoYo';
+import { statsRpc } from './demoStats';
 import { demoMakerSelect, forgetDemoMaker, makerRpc } from './demoMaker';
 import { forgetDemoLive, liveRpc } from './demoLive';
 import { forgetDemoInvites, invitesRpc } from './demoInvites';
@@ -35,6 +36,7 @@ import { bowlingRpc, demoBowlingSelect, forgetDemoBowling } from './demoBowling'
 import { demoRacketSelect, forgetDemoRacket, racketRpc } from './demoRacket';
 import { demoGolfSelect, forgetDemoGolf, golfRpc } from './demoGolf';
 import { demoTeamSportsSelect, forgetDemoTeamSports, teamSportsRpc } from './demoTeamSports';
+import { demoEventProInvoke, demoEventProSelect, eventProRpc, forgetDemoEventPro } from './demoEventPro';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -51,7 +53,9 @@ const racketBase = (t: string, f: readonly DemoFilter[] = []) => demoRacketSelec
 const approvalsLayer = (t: string, f: readonly DemoFilter[] = []) => demoApprovalsSelect(t, f, (x) => racketBase(x)) ?? racketBase(t, f);
 /** Lo del organizador del boliche (demoBowling.ts): eventos creados, cambiados o borrados, inscritos y pistas. */
 const bowlingLayer = (t: string, f: readonly DemoFilter[] = []) => demoBowlingSelect(t, f, (x) => approvalsLayer(x)) ?? approvalsLayer(t, f);
-const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => bowlingLayer(x)) ?? bowlingLayer(t, f);
+/** Lo de Pro del evento de boliche (demoEventPro.ts): inscritos, promedios y la lectura de la foto en la Planilla. */
+const eventProLayer = (t: string, f: readonly DemoFilter[] = []) => demoEventProSelect(t, f, (x) => bowlingLayer(x)) ?? bowlingLayer(t, f);
+const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => eventProLayer(x)) ?? eventProLayer(t, f);
 /** Baloncesto, fútbol y el relámpago (demoTeamSports.ts): equipos, partidos, la mesa, el comité y los playoffs. */
 const teamSportsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamSportsSelect(DEMO_USER, t, f, (x) => squadsBase(x)) ?? squadsBase(t, f);
 const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => teamSportsLayer(x)) ?? teamSportsLayer(t, f);
@@ -115,6 +119,7 @@ export function setDemo(on: boolean) {
       forgetDemoRacket();
       forgetDemoGolf();
       forgetDemoTeamSports();
+      forgetDemoEventPro();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -519,6 +524,9 @@ export function createDemoBackend(): Backend {
       // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto y bloqueos.
       const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : null));
       if (fromAccount !== undefined) return structuredClone(fromAccount) as T;
+      // Lo de Pro del evento de boliche (demoEventPro.ts): los inscritos, sus promedios y los juegos verificados con foto.
+      const fromEventPro = eventProRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromEventPro !== undefined) return structuredClone(fromEventPro) as T;
       // Los deportes de equipo (demoTeamSports.ts): equipos, partidos, la mesa, el resultado, el comité y los playoffs
       // (antes que los equipos del boliche y la raqueta).
       const fromTeamSports = teamSportsRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);
@@ -549,6 +557,9 @@ export function createDemoBackend(): Backend {
       if (fromLive !== undefined) return structuredClone(fromLive) as T;
       const fromInvites = invitesRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
       if (fromInvites !== undefined) return structuredClone(fromInvites) as T;
+      // Las estadísticas del perfil de la cuenta de prueba (demoStats.ts: profile_stats).
+      const fromStats = statsRpc(DEMO_USER, fn, args, (t) => prizesLayer(t) ?? []);
+      if (fromStats !== undefined) return structuredClone(fromStats) as T;
       // Yo (demoYo.ts): «Dónde juego», Mis publicaciones y Mis juegos de la cuenta de prueba (leen todas las capas y Social).
       const fromYo = yoRpc(DEMO_USER, fn, args, (t) => prizesLayer(t) ?? []);
       if (fromYo !== undefined) return structuredClone(fromYo) as T;
@@ -583,7 +594,7 @@ export function createDemoBackend(): Backend {
     },
     // Solo la lectura de la foto del marcador con IA (demoApprovals.ts), con su espera.
     invoke: async <T,>(fn: string, body: unknown) => {
-      const scan = demoApprovalsInvoke(fn, body);
+      const scan = demoApprovalsInvoke(fn, body) ?? demoEventProInvoke(fn, body, (t) => demoLayer(t) ?? []);
       if (scan === undefined) return notInDemo();
       await new Promise((r) => setTimeout(r, 900));
       return structuredClone(scan) as T;

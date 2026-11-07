@@ -11,6 +11,7 @@ import { Button, Card, Sheet, cx } from '../../../../components/ui';
 import { PickList, appOrigin } from '../bits';
 import { SaveFooter } from '../night/parts';
 import {
+  PHASE_NOTE,
   PHASE_TEXT,
   deadlineText,
   joinedText,
@@ -18,7 +19,9 @@ import {
   signupCount,
   signupErrorText,
   signupList,
+  signupInviteText,
   signupPhase,
+  signupTaken,
   waitlistMoves,
   type SignupList,
   type SignupSettings,
@@ -143,14 +146,7 @@ export function SignupPanel({
   const counts = views.length === 1 ? signupCount(views[0].view, settings, unit) : views.map((v) => `${v.name}: ${signupCount(v.view, settings, unit)}`).join(' · ');
   const left = views.reduce((n, v) => n + v.view.free, 0);
   const url = `${appOrigin()}${base}/e/${event.id}`;
-  const invite = [
-    `${title}: apúntate en MatchMate.`,
-    settings.cap != null ? (left > 0 ? `${left === 1 ? 'Queda 1 cupo' : `Quedan ${left} cupos`}.` : 'La lista está llena: hay lista de espera.') : '',
-    settings.until ? `Se cierra el ${deadlineText(settings.until, league.tz)}.` : '',
-    url,
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const invite = signupInviteText({ title, settings, left, tz: league.tz, url });
 
   return (
     <Card className={cx('flex flex-col gap-4 px-5 pt-[18px] pb-5', className)}>
@@ -217,15 +213,7 @@ export function SignupPanel({
           {auth.user && !member && <p className="text-center text-[13px] text-muted">Al apuntarte entras a {league.name}.</p>}
         </div>
       ) : (
-        <p className="text-meta text-muted">
-          {phase === 'closed'
-            ? 'El organizador cerró la inscripción.'
-            : phase === 'deadline'
-              ? 'Pasó la fecha límite para apuntarse.'
-              : phase === 'started'
-                ? 'Ya empezó: la lista quedó así.'
-                : 'Este evento ya pasó.'}
-        </p>
+        <p className="text-meta text-muted">{PHASE_NOTE[phase]}</p>
       )}
 
       {views.map((v) => (
@@ -350,11 +338,7 @@ function JoinModal({
   const [partner, setPartner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Quien ya está en el torneo (en la lista o en la espera, solo o en pareja) no se puede elegir de compañero.
-  const taken = useMemo(() => {
-    const out = new Set<string>();
-    for (const l of lists) for (const id of [...l.listed, ...l.view.waiting.map((w) => w.entrantId)]) for (const p of [id, ...names.rosterOf(id)]) out.add(p);
-    return out;
-  }, [lists, names]);
+  const taken = useMemo(() => signupTaken(lists, names.rosterOf), [lists, names]);
   const others = names.players.filter((p) => p.id !== myPlayerId && !taken.has(p.id)).map((p) => ({ id: p.id, name: p.name }));
   const ready = !!category && (!pairs || (choice === 'otro' ? !!partner : !!choice));
   const chosen = lists.find((l) => l.category === category);

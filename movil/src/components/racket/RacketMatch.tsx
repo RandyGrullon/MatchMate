@@ -2,8 +2,8 @@
  * Un partido de raqueta (MatchDetail.tsx de la web, con su misma lógica): el título («Ronda 1 · Cancha 2»), el estado y
  * la hora, el marcador grande, confirmar o reclamar (el rival) y UN botón: «Anotar en la cancha» (con «Solo el
  * resultado» debajo). El admin decide un reclamo en su tarjeta; W.O., aplazar, reprogramar, quién juega, corregir,
- * anular y borrar, en «•••» (MatchAdmin.tsx). Compartir el resultado (imagen, texto para WhatsApp y «Publicar en
- * Social») e historial.
+ * anular y borrar, en «•••» (MatchAdmin.tsx, con «Transmitir en vivo»; si se transmite, «Ver en vivo» debajo de la
+ * hora). Compartir el resultado (imagen, texto para WhatsApp y «Publicar en Social») e historial.
  */
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -16,6 +16,7 @@ import { savePointsResult, useWithPendingPoints } from '@mm/lib/data/racket';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { roundLabel, statusInfo, whenText } from '@mm/components/match/format';
 import { pointsResultParser, racketResultParser, type ParsedResult } from '@mm/components/match/parsers';
@@ -29,6 +30,7 @@ import { courtWords, useRacket } from '@mm/pages/sports/racket/sport';
 import { MatchStatus } from '../match/MatchCard';
 import { ConfirmResult, ResultSheet, Scoreboard } from '../match/ResultParts';
 import { ShareResultSheet } from '../match/ShareResult';
+import { LiveWatchPill } from '../team/MatchParts';
 import { toast } from '../feedback';
 import { PointsCourt, SetsCourt } from './RacketCourt';
 import { MatchAdmin } from './MatchAdmin';
@@ -54,6 +56,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const pro = useIsPro();
 
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) {
@@ -103,7 +106,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
           <Txt variant="title" style={{ flex: 1, fontSize: 28, lineHeight: 33 }}>
             {heading}
           </Txt>
-          {/* Lo del admin: W.O., aplazar, reprogramar, quién juega, corregir, anular y borrar. */}
+          {/* «Transmitir en vivo» y lo del admin: W.O., aplazar, reprogramar, quién juega, corregir, anular y borrar. */}
           <MatchAdmin match={m} onDeleted={() => (router.canGoBack() ? router.back() : router.navigate({ pathname: '/l/[lid]', params: { lid } }))} onCorrect={() => setEntry('correct')} />
         </View>
         {(m.status !== 'scheduled' || when) && (
@@ -121,12 +124,14 @@ export function RacketMatch({ matchId }: { matchId: string }) {
             )}
           </View>
         )}
+        {/* Si el partido se está transmitiendo: «Ver en vivo» (LiveWatchPill de la web). */}
+        <LiveWatchPill lid={lid} matchId={m.id} />
       </View>
       <Scoreboard match={m} mySide={mySide} rules={points ? null : rulesText(rules)} />
       <ConfirmResult lid={lid} match={m} mySide={mySide} isAdmin={isAdmin} now={now} />
       {open && canScore && (
         <View style={{ gap: 10 }}>
-          <Button variant="primary" size="xl" full icon={<Play size={20} color={c.accentFg} />} onPress={() => router.push(courtRoute(lid, m.id))}>
+          <Button variant="primary" size={pro ? 'lg' : 'xl'} full icon={<Play size={20} color={c.accentFg} />} onPress={() => router.push(courtRoute(lid, m.id))}>
             {m.status === 'live' ? `Seguir anotando en la ${w.one}` : m.status === 'suspended' ? `Retomar en la ${w.one}` : `Anotar en la ${w.one}`}
           </Button>
           <Button size="lg" full icon={<Keyboard size={20} color={c.fg} />} onPress={() => setEntry('finish')}>

@@ -16,6 +16,7 @@ import { LeagueIdent, LeagueRows, NextDates, NowCard, ROW_ICONS, TableTop, type 
 import { nextDates, pastLine, peopleLine, tableTop } from '../components/league/home/logic';
 import { useLeagueFeed, useLeagueToDo, useSeasonTable } from '../components/league/home/useLeagueData';
 import { LeagueHomeBottom, LeagueHomeTop, useLeagueHomeNotices } from '../components/league/LeagueHome';
+import { organizesRow } from '../components/league/homeNotices';
 import { LiveBanner } from '../components/live/LiveBanner';
 import { useJoinFlow } from '../components/league/WhoAreYou';
 import { useMode } from '../components/mode';
@@ -109,19 +110,8 @@ function LeagueScreen() {
     { key: 'resultados', icon: ROW_ICONS.results, title: 'Resultados anteriores', subtitle: pastLine(data.events, today), to: `${base}/juegos` },
     ...(member ? [{ key: 'numeros', icon: ROW_ICONS.numbers, title: MY_NUMBERS, to: `${base}/perfil` }] : []),
     // Pro: lo de la antigua pestaña Admin, con lo que espera.
-    ...(isPro && isAdmin
-      ? [
-          {
-            key: 'organizar',
-            icon: ROW_ICONS.organize,
-            title: 'Organizas esta liga',
-            subtitle: toDo.line || 'Jugadores, fechas y ajustes',
-            to: `${base}/admin`,
-            count: toDo.count,
-            accent: true,
-          },
-        ]
-      : []),
+    // Los textos (y los de la app del teléfono) están en league/homeNotices.ts.
+    ...(isPro && isAdmin ? [{ key: 'organizar', icon: ROW_ICONS.organize, ...organizesRow(league.kind, true, toDo.line, base), count: toDo.count, accent: true }] : []),
   ];
 
   return (

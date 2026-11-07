@@ -4,28 +4,16 @@ import type { LeagueFeed } from '../../lib/data';
 import type { League } from '../../lib/types';
 import { useProSuggestion } from '../mode';
 import { useNotice, type Notice } from '../NoticeSlot';
+import { homePendingNotice } from './homeNotices';
 
 /**
  * El aviso de juegos por aprobar en Hoy (Lite: en Pro eso sale en «Por hacer»). Un solo aviso para todas las ligas que
  * organizas; el id cambia con lo que hay, así vuelve a salir si llegan más después de cerrarlo. null = nada pendiente.
  */
 export function pendingNotice(feeds: readonly LeagueFeed[], leagues: readonly Pick<League, 'id' | 'name'>[]): Notice | null {
-  // Sus propios envíos no cuentan (los ve igual en Aprobar, marcados «Tú»).
-  const withPending = feeds
-    .filter((f) => f.isAdmin)
-    .map((f) => ({ lid: f.lid, n: f.pending.filter((s) => s.playerId !== f.playerId).length }))
-    .filter((x) => x.n > 0);
-  if (!withPending.length) return null;
-  const total = withPending.reduce((a, x) => a + x.n, 0);
-  const first = withPending[0];
-  return {
-    id: `pendientes:${withPending.map((x) => `${x.lid}:${x.n}`).join(',')}`,
-    kind: 'admin',
-    title: total === 1 ? '1 envío por aprobar' : `${total} envíos por aprobar`,
-    text: withPending.length > 1 ? `En ${withPending.length} ligas` : leagues.find((l) => l.id === first.lid)?.name,
-    icon: createElement(ClipboardCheck, { className: 'size-[18px]' }),
-    action: { label: 'Ver', to: `/l/${first.lid}/admin?tab=aprobar` },
-  };
+  // Lo que dice (y la app del teléfono) está en homeNotices.ts; aquí se le pone el ícono.
+  const n = homePendingNotice(feeds, leagues);
+  return n && { ...n, icon: createElement(ClipboardCheck, { className: 'size-[18px]' }) };
 }
 
 /**

@@ -1,54 +1,15 @@
 import { useState } from 'react';
 import { AlertTriangle, CircleDashed, Flame, Slash, Sparkles, Target, ThumbsUp, Zap } from 'lucide-react';
-import {
-  CONVERT_CUTS,
-  LEFT_CUTS,
-  MIN_PIN_RACKS,
-  frameRates,
-  hasPins,
-  heatLevel,
-  leaveName,
-  leaveStats,
-  pinInsights,
-  pinReport,
-  spareSummary,
-  type PinReport,
-  type Tally,
-} from '../../lib/bowlingStats';
+import { CONVERT_CUTS, LEFT_CUTS, MIN_PIN_RACKS, frameRates, hasPins, leaveName, leaveStats, pinInsights, pinReport, spareSummary } from '../../lib/bowlingStats';
 import type { GameFrames } from '../../lib/types';
 import { Stat } from '../event/StandingsTab';
-import { HeatLegend, PinHeatDeck, type HeatPin } from '../frames/PinHeatDeck';
+import { HeatLegend, PinHeatDeck } from '../frames/PinHeatDeck';
 import { Card, cx } from '../ui';
+import { LEAVES_SHOWN, heatPins, ofText, pct, type PinView } from './trendLogic';
 
-/** Lo que te quedó que se ve de una vez en la tabla (el resto con «Ver todos»). */
-const LEAVES_SHOWN = 8;
-
-type PinView = 'quedan' | 'spare';
-
-const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
-const ofText = (t: Pick<Tally, 'converted' | 'faced'>) => `${t.converted} de ${t.faced}`;
-
-/** Los pinos del mapa según lo que se mira: cuánto se queda parado cada uno, o cuánto spare se hace cuando queda. */
-export function heatPins(report: PinReport, view: PinView): HeatPin[] {
-  return report.pins.map((p) =>
-    view === 'quedan'
-      ? {
-          pin: p.pin,
-          value: p.leftPct == null ? null : `${p.leftPct}%`,
-          level: heatLevel(p.leftPct, LEFT_CUTS),
-          label: p.leftPct == null ? `Pino ${p.pin}: sin datos` : `Pino ${p.pin}: se queda parado el ${p.leftPct}% (${p.left} de ${report.racks})`,
-        }
-      : {
-          pin: p.pin,
-          value: p.convertedPct == null ? null : `${p.convertedPct}%`,
-          level: heatLevel(p.convertedPct, CONVERT_CUTS),
-          label:
-            p.convertedPct == null
-              ? `Pino ${p.pin}: todavía no le ha quedado para el spare`
-              : `Pino ${p.pin}: spare el ${p.convertedPct}% de las veces que queda (${p.converted} de ${p.inLeave})`,
-        },
-  );
-}
+// Los pinos del mapa según lo que se mira (sin dibujar) están en trendLogic.ts: los comparte la app del teléfono. Se
+// siguen importando desde aquí.
+export { heatPins } from './trendLogic';
 
 /**
  * Lo que sale de los cuadros: porcentajes (strikes, spares, abiertos), primera bola, racha y juegos limpios; y, con los

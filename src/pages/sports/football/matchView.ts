@@ -2,7 +2,7 @@ import { isSnapshot } from '../../../court/session';
 import type { MatchScore } from '../../../lib/data/matchCore';
 import { football, type FootballEvent, type FootballState, type TimelineItem } from '../../../sports/team/football';
 import type { Side } from '../../../sports/types';
-import { pensFromScore, periodsFromScore, type ScoreEvent } from './adapter';
+import { pensFromScore, periodsFromScore, type ScoreEvent, type ScoreLine } from './adapter';
 
 /**
  * Lo puro del partido de fútbol y sala (MatchDetail.tsx y bits.tsx): el acta completa desde lo que guardó el anotador,
@@ -78,3 +78,17 @@ export function periodsLineParts(score: MatchScore | null | undefined): { period
   const label = (i: number) => (i < 2 ? `${i + 1}T` : `Pr.${i - 1}`);
   return { periods: periods.map((p, i) => `${label(i)}: ${p[0]}-${p[1]}`), pens: pens ? `Penales: ${pens[0]}-${pens[1]}` : null };
 }
+
+/**
+ * Los jugadores de un lado en la tabla «Jugadores» del partido (Pro: goles, asistencias y tarjetas de cada uno), por
+ * dorsal; sin dorsal, al final. `jersey`: el dorsal del partido o el de su equipo.
+ */
+export function sidePlayerLines(lines: readonly ScoreLine[], side: Side, jersey: (l: ScoreLine) => number | null | undefined): ScoreLine[] {
+  return lines.filter((l) => l.side === side).sort((a, b) => (jersey(a) ?? 1000) - (jersey(b) ?? 1000));
+}
+
+/** Lo de un jugador junto a su nombre en esa tabla: «(portero, 2 rec.)» o «(portero)» si no jugó, y «(banco)». */
+export function playerLineNotes(l: Pick<ScoreLine, 'keeper' | 'played' | 'conceded'>): string[] {
+  return [l.keeper ? `(portero${l.played ? `, ${l.conceded} rec.` : ''})` : null, !l.played ? '(banco)' : null].filter((x): x is string => !!x);
+}
+

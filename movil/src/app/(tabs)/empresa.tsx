@@ -24,6 +24,7 @@ import { BusinessFields } from '@/components/business/BusinessFields';
 import { FeaturedBadge, VenuePhotoImg } from '@/components/venues/VenueBits';
 import { confirmAsync, toast } from '@/components/feedback';
 import { Badge, Button, Card, Divider, Empty, ErrorNote, ListRow, Loading, RowIcon, Screen, SectionHeader, Sheet, Txt } from '@/components/ui';
+import { useBigButton, useTitleStyle } from '@/components/home/proLook';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -54,9 +55,13 @@ export default function EmpresaScreen() {
 }
 
 function Title() {
+  // Pro: el título un poco más chico (ScreenTitle de la web con `pro`).
+  const titleStyle = useTitleStyle();
   return (
     <View style={{ gap: 2 }}>
-      <Txt variant="title">Mi empresa</Txt>
+      <Txt variant="title" style={titleStyle}>
+        Mi empresa
+      </Txt>
       <Txt variant="meta" tone="muted">
         Tus canchas y espacios en MatchMate
       </Txt>
@@ -93,6 +98,7 @@ function Register() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const problem = businessProblem(form);
+  const big = useBigButton();
 
   async function register() {
     if (problem) return;
@@ -119,7 +125,7 @@ function Register() {
       </Card>
       <BusinessFields value={form} onChange={setForm} />
       {error && <ErrorNote>{error}</ErrorNote>}
-      <Button variant="primary" size="xl" full icon={<Building2 size={20} color={c.accentFg} />} loading={busy} disabled={!!problem} onPress={() => void register()}>
+      <Button variant="primary" size={big} full icon={<Building2 size={20} color={c.accentFg} />} loading={busy} disabled={!!problem} onPress={() => void register()}>
         Registrar mi empresa
       </Button>
       <Txt variant="small" tone="muted" style={{ textAlign: 'center' }}>

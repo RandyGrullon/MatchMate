@@ -8,7 +8,8 @@ import { Card, ListRow, Segmented, cx } from '../../../components/ui';
 import { ShareButton, golfBoardShare } from '../../../components/share';
 import { EmptyCard } from '../FieldChrome';
 import { CardModal, ToPar } from './bits';
-import { boardModes, modeCompetition, modeLabel, roundBoard, thruText, tournamentBoard, type BoardMode, type BoardRow } from './logic';
+import { boardColumns, boardFootnote, boardLiteLine, boardProNote, boardShareSubtitle, boardStatus, boardThru } from './board';
+import { boardModes, modeCompetition, modeLabel, roundBoard, tournamentBoard, type BoardMode, type BoardRow } from './logic';
 
 /** El puesto (o «–» sin puesto: no terminó, recogió o descalificado). */
 function Pos({ rank }: { rank: number | null }) {
@@ -56,11 +57,11 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
 
   const modes = boardModes(round.competition);
   const main = (r: BoardRow): ReactNode => (stableford ? r.points : <ToPar value={net ? r.netToPar : r.toPar} />);
-  const thru = (r: BoardRow) => thruText(r.thru && whole ? r.holesPlayed : r.thru, whole ? holes : round.holes);
-  const status = (r: BoardRow) => (r.unfinished ? 'No terminó' : r.dq ? (r.card?.dq ? 'Descalificado' : 'Recogió') : null);
+  // Lo que dice cada fila, la nota de Pro y la línea de abajo están en board.ts (los usa también la app del teléfono).
+  const shown = { whole, stableford, net, holes, roundHoles: round.holes };
+  const thru = (r: BoardRow) => boardThru(r, whole, holes, round.holes);
   const openCard = (r: BoardRow) => r.card && setOpen({ card: r.card, round: roundsOf.find((x) => x.eventId === r.card!.eventId) ?? round });
-  const perRound = (r: BoardRow) =>
-    whole ? r.rounds.map((s, i) => (s && s.thru ? `R${i + 1} ${stableford ? s.points : ((net ? s.net : s.gross) ?? '–')}` : null)).filter(Boolean).join(' · ') : '';
+  const heads = boardColumns(shown);
 
   const share = (
     <ShareButton
@@ -72,16 +73,14 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
       card={() =>
         golfBoardShare({
           title: league.name,
-          subtitle: [whole ? `Torneo (${tournament.data.rounds.length} rondas)` : round.roundNo ? `Ronda ${round.roundNo}` : null, round.courseName, modeLabel(round.competition, mode)]
-            .filter(Boolean)
-            .join(' · '),
+          subtitle: boardShareSubtitle({ whole, rounds: tournament.data.rounds.length, roundNo: round.roundNo, courseName: round.courseName, mode: modeLabel(round.competition, mode) }),
           rows,
           nameOf,
           stableford,
           net,
           holes: whole ? holes : round.holes,
           total: whole,
-          statusOf: (r) => status(r) ?? undefined,
+          statusOf: (r) => boardStatus(r) ?? undefined,
         })
       }
     />
@@ -117,17 +116,17 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
           <div className="grid grid-cols-[1.5rem_1fr_3.25rem_3rem_3.25rem] items-center gap-2 border-b border-line px-4 py-2.5 text-xs font-semibold tracking-[0.06em] text-muted uppercase sm:grid-cols-[1.5rem_1fr_4rem_4rem_4rem_4rem]">
             <span>#</span>
             <span>Jugador</span>
-            <span className="text-right">{stableford ? 'Pts' : net ? 'Neto' : 'Total'}</span>
+            <span className="text-right">{heads.main}</span>
             <span className="text-right" title="Hoyos jugados">
               Hoyos
             </span>
             <span className="text-right">Bruto</span>
-            <span className="hidden text-right sm:block">{stableford ? 'Neto' : 'Pts'}</span>
+            <span className="hidden text-right sm:block">{heads.last}</span>
           </div>
           <ul>
             {rows.map((r) => {
               const me = !!myPlayerId && r.id === myPlayerId;
-              const note = [status(r), r.decidedBy ? `desempate: ${r.decidedBy}` : null, perRound(r)].filter(Boolean).join(' · ');
+              const note = boardProNote(r, shown);
               return (
                 <li key={r.id} className="border-t border-line first:border-t-0">
                   <button
@@ -161,8 +160,7 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
         <Card className="overflow-hidden">
           {rows.map((r) => {
             const me = !!myPlayerId && r.id === myPlayerId;
-            const t = thru(r);
-            const sub = [status(r) ?? (t === 'F' ? 'Terminó' : t === '–' ? 'Sin empezar' : `${t} ${t === '1' ? 'hoyo' : 'hoyos'}`), perRound(r)].filter(Boolean).join(' · ');
+            const sub = boardLiteLine(r, shown);
             return (
               <ListRow
                 key={r.id}
@@ -200,9 +198,7 @@ export function GolfBoard({ round, cards, nameOf }: { round: GolfRoundFull; card
         </Card>
       )}
       <p className="mx-1 text-[12.5px] leading-[1.4] text-muted">
-        {pro
-          ? `Empates: countback (últimos 9, 6, 3 y 1 hoyos${net && !stableford ? ', con la parte del handicap' : ''}). F = terminó.`
-          : 'Toca un jugador para ver su tarjeta.'}
+        {boardFootnote(pro, shown)}
       </p>
       <CardModal open={!!open} onClose={() => setOpen(null)} name={open ? nameOf(open.card.playerId) : ''} round={open?.round ?? round} card={open?.card ?? null} />
     </div>

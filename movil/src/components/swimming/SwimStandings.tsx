@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Medal } from 'lucide-react-native';
 import { useSwimSeason } from '@mm/lib/data/swimming';
 import { inSeason } from '@mm/lib/seasons';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { clubsOfMeet, pointsText, seasonTable, seasonYears } from '@mm/pages/sports/swimming/logic';
 import { seasonPointsShare } from '@mm/pages/sports/swimming/share';
@@ -17,14 +18,15 @@ import { ClubPointsCard, ClubTag, Lines, PillPicker, ShowMore, openMeet } from '
 import { ShareIconButton } from './ShareImage';
 
 /**
- * Puntos por club de la temporada (StandingsPage de la web, Lite): el título con compartir la imagen, la temporada
+ * Puntos por club de la temporada (StandingsPage de la web): el título con compartir la imagen, la temporada
  * (`?temporada=`; sin temporadas, por año con «2026 ▾»), los clubes por puntos con sus medallas y lo que sumó cada
- * encuentro (el control de marcas no cuenta). Una temporada cerrada muestra sus premios y la tabla que se guardó al
+ * encuentro (el control de marcas no cuenta; en Lite, 3 y «Ver los N»; en Pro, todos). Una temporada cerrada muestra sus premios y la tabla que se guardó al
  * cerrarla. La misma lógica de la web (seasonTable).
  */
 export function SwimStandings() {
   const c = useColors();
   const { lid, clubs, league } = useSwim();
+  const pro = useIsPro();
   const params = useLocalSearchParams<{ temporada?: string }>();
   const season = useSwimSeason(lid);
   const picked = useSeasonPick(params.temporada ?? null);
@@ -79,7 +81,7 @@ export function SwimStandings() {
               <SectionHeader title="Por encuentro" />
               <ShowMore
                 items={table.meets}
-                max={3}
+                max={pro ? table.meets.length : 3}
                 noun="encuentros"
                 render={(shown) => (
                   <Lines>

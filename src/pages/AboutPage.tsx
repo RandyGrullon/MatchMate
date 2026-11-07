@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { BellRing, Camera, ChartLine, ClipboardPen, Info, MessageCircle, ScrollText, ShieldCheck, Trophy, Users, type LucideIcon } from 'lucide-react';
+import { Info, MessageCircle, ScrollText, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { appVersion } from '../lib/errorReport';
 import { sportHomePath } from '../lib/sportContext';
@@ -12,30 +12,11 @@ import { BackBar, linkButton } from '../components/cuenta/kit';
 import { Card, ListRow, RowIcon, SectionHeader } from '../components/ui';
 import { SportIcon } from './sports/SportBits';
 import { PRIVACY_PATH, TERMS_PATH } from './legal/legal';
+import { ABOUT_FEATURES, ABOUT_HEADINGS, ABOUT_NOTE, ABOUT_STEPS, ABOUT_TAGLINE, sportFullName, sportGridCols } from './aboutText';
 
-export const ABOUT_TAGLINE = 'Tus ligas, tus juegos y tus estadísticas en un solo lugar';
-
-/** Qué se puede hacer en la app (corto: se lee en el teléfono). */
-export const ABOUT_FEATURES: readonly { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: Trophy, title: 'Crear ligas y torneos', text: 'De tu deporte, con su calendario, sus tablas y su ranking.' },
-  { icon: Users, title: 'Invitar a tu gente', text: 'Con un link, un código o buscándolos por su @usuario.' },
-  { icon: ClipboardPen, title: 'Anotar juegos y resultados', text: 'Desde la cancha o la bolera, y todos lo ven al momento.' },
-  { icon: ChartLine, title: 'Estadísticas y promedios', text: 'Tu promedio, tu mejor juego y cómo vas en cada liga.' },
-  { icon: Camera, title: 'Leer la foto del marcador', text: 'En el boliche le tomas foto a la pantalla y la app pone los pinos.' },
-  { icon: BellRing, title: 'Avisos en tu teléfono', text: 'Tu próximo partido, resultados por confirmar e invitaciones.' },
-];
-
-export const ABOUT_STEPS: readonly { title: string; text: string }[] = [
-  { title: 'Crea tu cuenta', text: 'Con tu correo o con Google. Es gratis.' },
-  { title: 'Crea tu liga o únete a una', text: 'Con el link o el código que te pasen, o entra a una liga pública.' },
-  { title: 'Anota y compite', text: 'Tus juegos, la tabla, tus estadísticas y los avisos, todo en el celular.' },
-];
-
-/**
- * Columnas de la grilla de deportes: 4 cuando llenan las filas; si no, 3 cuando esas sí (9 grupos = 3 × 3, sin un
- * cuadro solo en la última fila). Clases enteras para que Tailwind las vea.
- */
-export const sportGridCols = (n: number): string => (n % 4 !== 0 && n % 3 === 0 ? 'grid-cols-3' : 'grid-cols-4');
+// Lo que dice la página (la frase, qué puedes hacer, cómo empezar, la grilla de deportes): aboutText.ts (lo comparte la
+// app del teléfono).
+export { ABOUT_FEATURES, ABOUT_STEPS, ABOUT_TAGLINE, sportGridCols };
 
 /** Un número en círculo, en el color del deporte (los pasos de «Cómo empezar»). */
 function StepNumber({ n }: { n: number }) {
@@ -64,15 +45,15 @@ export default function AboutPage() {
           Acerca de <Wordmark />
         </h1>
         <p className="mt-2 text-body text-fg-2">{ABOUT_TAGLINE}</p>
-        <p className="mt-1 text-meta text-muted">Ligas y torneos entre amigos, en español y gratis.</p>
+        <p className="mt-1 text-meta text-muted">{ABOUT_NOTE}</p>
 
         <section className="mt-[30px]" aria-labelledby="acerca-deportes">
-          <SectionHeader id="acerca-deportes" title="Los deportes" />
+          <SectionHeader id="acerca-deportes" title={ABOUT_HEADINGS.sports} />
           <ul className={`grid ${sportGridCols(SPORT_GROUPS.length)} gap-2.5`}>
             {SPORT_GROUPS.map((g) => {
               const sport = g.sports[0] as SportId;
               // El otro nombre («Tenis de mesa») va en el nombre accesible y en el título: en 12 px solo cabe «Ping pong».
-              const full = g.alias ? `${g.name} (${g.alias.toLowerCase()})` : undefined;
+              const full = sportFullName(g);
               return (
                 <li key={g.id}>
                   <SportTint sport={sport} className="h-full">
@@ -95,7 +76,7 @@ export default function AboutPage() {
         </section>
 
         <section className="mt-[30px]" aria-labelledby="acerca-que">
-          <SectionHeader id="acerca-que" title="Qué puedes hacer" />
+          <SectionHeader id="acerca-que" title={ABOUT_HEADINGS.features} />
           <Card className="overflow-hidden">
             {ABOUT_FEATURES.map(({ icon: Icon, title, text }) => (
               <ListRow
@@ -113,7 +94,7 @@ export default function AboutPage() {
         </section>
 
         <section className="mt-[30px]" aria-labelledby="acerca-empezar">
-          <SectionHeader id="acerca-empezar" title="Cómo empezar" />
+          <SectionHeader id="acerca-empezar" title={ABOUT_HEADINGS.steps} />
           <Card className="overflow-hidden">
             <ol>
               {ABOUT_STEPS.map((s, i) => (

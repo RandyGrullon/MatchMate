@@ -7,7 +7,7 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
 import { Button, Card, Field, Input, Select } from '../../../../components/ui';
 import { PickList, Stepper, ToggleRow } from '../bits';
-import { buildLeagueSchedule, clashText, leagueConfigJson, type PairsLeagueConfig } from '../logic/league';
+import { buildLeagueSchedule, clashText, firstJornadas, leagueConfigJson, nextSlotTime, type PairsLeagueConfig } from '../logic/league';
 import { localParts, timeLabel } from '../logic/time';
 import { useNames } from '../names';
 import { isGameSport } from '../../../../sports/racket/rules';
@@ -58,7 +58,7 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
     }
   };
 
-  const firstDates = plan.fixtures.filter((f, i, all) => all.findIndex((x) => x.round === f.round) === i).slice(0, 4);
+  const firstDates = firstJornadas(plan);
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,12 +125,7 @@ export function ScheduleBuilder({ event, cfg }: { event: RacketEvent; cfg: Pairs
             variant="soft"
             className="h-11 self-start rounded-full"
             icon={<Plus className="size-4" />}
-            onClick={() => {
-              const last = draft.times.at(-1) ?? '19:00';
-              const [h, m] = last.split(':').map(Number);
-              const next = `${String(Math.min(23, h + Math.floor((m + draft.minutes) / 60))).padStart(2, '0')}:${String((m + draft.minutes) % 60).padStart(2, '0')}`;
-              set({ times: [...draft.times, next] });
-            }}
+            onClick={() => set({ times: [...draft.times, nextSlotTime(draft.times.at(-1), draft.minutes)] })}
           >
             Hora
           </Button>

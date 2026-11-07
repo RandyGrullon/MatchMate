@@ -3,7 +3,7 @@
  * (Americano de la noche, Mexicano, Liga de parejas, Torneo por categorías, liga por cajas y escalera; «Repetir la última
  * noche») y en 1–2 pasos más la noche queda lista (jugadores, canchas, puntos y rondas) o la liga y el torneo listos para
  * armar su calendario. La noche y el torneo pueden abrir la inscripción «Me apunto». El round robin social del
- * pickleball, en la web. En la web es una hoja; aquí, su pantalla (`/l/<liga>/raqueta-nuevo`).
+ * pickleball (SocialForm.tsx). En la web es una hoja; aquí, su pantalla (`/l/<liga>/raqueta-nuevo`).
  */
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
@@ -30,7 +30,7 @@ import { Button, Card, Divider, Field, Input, ListRow, RowIcon, Txt } from '../u
 import { BoxForm, LadderForm, NoEntrants } from './FormatForms';
 import { NightFields, NightPlayers, SignupFields } from './NightForm';
 import { Note, PickList, Stepper, useRacketPhone } from './parts';
-import { openOnWeb } from '@/lib/web';
+import { SocialForm } from './SocialForm';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -48,7 +48,7 @@ export function EventWizard() {
   const { levels } = useLevels();
   const events = useRacketEvents(lid);
   const lastNight = useMemo(() => events.data.find((e) => isNightType(e.type)) ?? null, [events.data]);
-  const [custom, setCustom] = useState<'cajas' | 'escalera' | null>(null);
+  const [custom, setCustom] = useState<'cajas' | 'escalera' | 'social' | null>(null);
   const [kind, setKind] = useState<WizardKind | null>(null);
   const [step, setStep] = useState(0);
   const [date, setDate] = useState(() => todayIn(league.tz));
@@ -137,11 +137,16 @@ export function EventWizard() {
 
   if (custom) {
     const info = extra.find((t) => t.k === custom)!;
-    const Form = custom === 'cajas' ? BoxForm : LadderForm;
     return (
       <View style={{ gap: 20 }}>
         <Txt variant="title">{info.title}</Txt>
-        <Form onBack={() => setCustom(null)} onDone={openEvent} />
+        {custom === 'social' ? (
+          <SocialForm onBack={() => setCustom(null)} onDone={openEvent} last={lastNight} />
+        ) : custom === 'cajas' ? (
+          <BoxForm onBack={() => setCustom(null)} onDone={openEvent} />
+        ) : (
+          <LadderForm onBack={() => setCustom(null)} onDone={openEvent} />
+        )}
       </View>
     );
   }
@@ -196,8 +201,7 @@ export function EventWizard() {
                   }
                   title={t.title}
                   subtitle={t.text}
-                  // El round robin social del pickleball, todavía en la web.
-                  onPress={() => (t.k === 'cajas' || t.k === 'escalera' ? setCustom(t.k) : void openOnWeb(`/l/${lid}`))}
+                  onPress={() => (t.k === 'cajas' || t.k === 'escalera' || t.k === 'social' ? setCustom(t.k) : undefined)}
                 />
               </View>
             );

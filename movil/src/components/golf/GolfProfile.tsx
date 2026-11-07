@@ -5,9 +5,10 @@ import { useEvents, usePlayer } from '@mm/lib/data';
 import { setGolfIndex, useGolfIndexes, useGolfPlayer } from '@mm/lib/data/golf';
 import { eventLabel, formatDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
+import { useIsPro } from '@mm/lib/useMode';
 import { isValidIndex, MAX_INDEX, MIN_INDEX } from '@mm/sports/golf/course';
-import { indexInput, indexText, parseIndex, playedRounds, playerStats, type PlayedRound } from '@mm/pages/sports/golf/logic';
-import { liteNumbers, recentRounds, roundLine, roundsCount } from '@mm/pages/sports/golf/profile';
+import { bestRounds, indexInput, indexText, parseIndex, playedRounds, playerStats, type PlayedRound } from '@mm/pages/sports/golf/logic';
+import { fullNumbers, holeNumbers, liteNumbers, recentRounds, roundLine, roundsCount } from '@mm/pages/sports/golf/profile';
 import { BackBar, Button, Card, Divider, Empty, Field, Input, ListRow, LoadError, Loading, SectionHeader, Sheet, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -43,13 +44,16 @@ export function GolfPlayerPage({ playerId }: { playerId: string }) {
 }
 
 /**
- * Los números de golf de un jugador (GolfPlayerView de la web, Lite, con su misma lógica: profile.ts): el título, su
- * Handicap Index con «Cambiar» (él o el admin), Mejor bruto · Promedio · Birdies y sus últimas rondas (3 y «Ver las
- * 10»; tocar una abre su leaderboard). Solo cuentan las tarjetas firmadas o de rondas cerradas.
+ * Los números de golf de un jugador (GolfPlayerView de la web, con su misma lógica: profile.ts): el título, su Handicap
+ * Index con «Cambiar» (él o el admin) y
+ * - Lite: Mejor bruto · Promedio · Birdies y sus últimas rondas (3 y «Ver las 10»);
+ * - Pro: los 6 números, «Hoyo por hoyo» (eagles, bogeys, putts…), «Mejores rondas» y las últimas 10.
+ * Tocar una ronda abre su leaderboard. Solo cuentan las tarjetas firmadas o de rondas cerradas.
  */
 function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
   const c = useColors();
   const { lid, isAdmin } = useLeagueCtx();
+  const pro = useIsPro();
   const player = usePlayer(lid, playerId);
   const data = useGolfPlayer(lid, playerId);
   const indexes = useGolfIndexes(lid);
@@ -69,7 +73,8 @@ function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
     const e = byEvent.get(r.eventId);
     return e ? eventLabel({ type: e.type, name: e.name, date: e.date }, 'golf') : r.round.courseName;
   };
-  const shown = all ? recent : recent.slice(0, SHOWN);
+  // En Pro, todas las últimas (hasta 10); en Lite, 3 y «Ver las N».
+  const shown = all || pro ? recent : recent.slice(0, SHOWN);
 
   return (
     <View style={{ gap: 14 }}>
@@ -104,27 +109,27 @@ function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
         <Empty icon={<Target size={28} color={c.accent} />} title="Todavía no hay rondas" text="Cuentan cuando la tarjeta está firmada o la ronda se cerró." />
       ) : (
         <>
-          <NumbersGrid items={liteNumbers(stats)} />
+          <NumbersGrid items={pro ? fullNumbers(stats) : liteNumbers(stats)} />
+          {pro && (
+            <View style={{ gap: 8, marginTop: 12 }}>
+              <SectionHeader title="Hoyo por hoyo" />
+              <NumbersGrid items={holeNumbers(stats)} />
+            </View>
+          )}
+          {pro && bestRounds(rounds).length > 0 && (
+            <View style={{ gap: 8, marginTop: 12 }}>
+              <SectionHeader title="Mejores rondas" />
+              <RoundRows rounds={bestRounds(rounds)} nameOf={nameOfRound} lid={lid} />
+            </View>
+          )}
           <View style={{ gap: 8, marginTop: 12 }}>
             <SectionHeader title="Últimas rondas" />
             {events.loading && !events.data.length ? (
               <Loading label="Cargando las rondas" />
             ) : (
               <>
-                <Card padded={false}>
-                  {shown.map((r, i) => (
-                    <View key={r.eventId}>
-                      {i > 0 && <Divider inset={16} />}
-                      <ListRow
-                        title={nameOfRound(r)}
-                        subtitle={roundLine(r)}
-                        right={<Txt style={{ fontFamily: font.bold, fontSize: 20 }}>{String(r.stableford.gross ?? '–')}</Txt>}
-                        onPress={() => openRound(lid, r.eventId, 'leaderboard')}
-                      />
-                    </View>
-                  ))}
-                </Card>
-                {recent.length > SHOWN && <Button onPress={() => setAll((v) => !v)}>{all ? 'Ver menos' : `Ver las ${recent.length} rondas`}</Button>}
+                <RoundRows rounds={shown} nameOf={nameOfRound} lid={lid} />
+                {!pro && recent.length > SHOWN && <Button onPress={() => setAll((v) => !v)}>{all ? 'Ver menos' : `Ver las ${recent.length} rondas`}</Button>}
               </>
             )}
           </View>
@@ -132,6 +137,25 @@ function GolfPlayerView({ playerId, own }: { playerId: string; own: boolean }) {
       )}
       {canEdit && editing && <IndexSheet onClose={() => setEditing(false)} playerId={playerId} current={idx?.index ?? null} />}
     </View>
+  );
+}
+
+/** Las rondas como filas (RoundRows de la web): el nombre, el campo y el neto, y los golpes brutos en grande (abre su leaderboard). */
+function RoundRows({ rounds, nameOf, lid }: { rounds: readonly PlayedRound[]; nameOf: (r: PlayedRound) => string; lid: string }) {
+  return (
+    <Card padded={false}>
+      {rounds.map((r, i) => (
+        <View key={r.eventId}>
+          {i > 0 && <Divider inset={16} />}
+          <ListRow
+            title={nameOf(r)}
+            subtitle={roundLine(r)}
+            right={<Txt style={{ fontFamily: font.bold, fontSize: 20 }}>{String(r.stableford.gross ?? '–')}</Txt>}
+            onPress={() => openRound(lid, r.eventId, 'leaderboard')}
+          />
+        </View>
+      ))}
+    </Card>
   );
 }
 

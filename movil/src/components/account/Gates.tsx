@@ -12,14 +12,18 @@ import { acceptLegalOrSkip, legalErrorMessage } from '@mm/lib/data/legal';
 import { reportClientError } from '@mm/lib/errorReport';
 import { unsubscribePush } from '@mm/lib/push';
 import { accountBeforeLegal, LEGAL_DOCS, legalChangesFor, legalDate, legalPending, neverAccepted, takeLegalPending, type LegalDocKey } from '@mm/lib/legal';
+import { LEGAL_PATHS } from '@mm/pages/legal/legal';
 import { LogoLockup } from '../Logo';
 import { toast } from '../feedback';
 import { Button, Card, Divider, ErrorNote, ListRow, RowIcon, Screen, Txt } from '../ui';
-import { openOnWeb } from '@/lib/web';
+import { openLegal } from '@/components/legal/links';
 import { useColors } from '@/theme/theme';
 
-/** Rutas donde no se tapa nada: borrar la cuenta (se llega desde las puertas). */
-const OPEN_PATHS = ['/cuenta/borrar'];
+/**
+ * Rutas donde no se tapa nada: borrar la cuenta (se llega desde las puertas) y los Términos y la Privacidad (se leen
+ * aunque falte decir «tengo 18 años o más» o aceptar los nuevos, como LEGAL_PATHS en la web).
+ */
+const OPEN_PATHS = ['/cuenta/borrar', ...LEGAL_PATHS];
 
 /** Va sobre la navegación (en _layout.tsx). */
 export function AccountGates() {
@@ -97,11 +101,11 @@ function AdultQuestion({ uid, createdAt }: { uid: string; createdAt: string | nu
             </Card>
             <Txt variant="meta" tone="muted" style={{ textAlign: 'center' }}>
               Al seguir aceptas los{' '}
-              <Txt variant="meta" tone="accent" onPress={() => openOnWeb('/terminos')}>
+              <Txt variant="meta" tone="accent" onPress={() => openLegal('terminos')}>
                 Términos de uso
               </Txt>{' '}
               y la{' '}
-              <Txt variant="meta" tone="accent" onPress={() => openOnWeb('/privacidad')}>
+              <Txt variant="meta" tone="accent" onPress={() => openLegal('privacidad')}>
                 Política de privacidad
               </Txt>
               .
@@ -215,7 +219,7 @@ function LegalQuestion({ uid, accepted, createdAt, onSkip }: { uid: string; acce
                 icon={<RowIcon>{k === 'terminos' ? <FileText size={20} color={c.accent} /> : <Shield size={20} color={c.accent} />}</RowIcon>}
                 title={LEGAL_DOCS[k].title}
                 subtitle={`Versión ${legalDate(LEGAL_DOCS[k].version)}`}
-                onPress={() => openOnWeb(k === 'terminos' ? '/terminos' : '/privacidad')}
+                onPress={() => openLegal(k)}
               />
             </View>
           ))}

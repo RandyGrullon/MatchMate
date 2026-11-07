@@ -5,13 +5,10 @@ import { Insignia, UnlockInsignia, tierDot } from '../../badges/visual';
 import { reportBadge, setBadgeHidden, setFeaturedBadges, setLeagueBadgeHidden, type BadgeStat } from '../../lib/data/badges';
 import { useAction, useFeedback } from '../feedback';
 import { ShareImageModal } from '../share/ShareImageModal';
-import { shareFrame } from '../share/ShareButton';
-import { shareFileName } from '../share/actions';
-import { badgeShare } from '../share/badge';
-import type { CardFrame, ShareCard } from '../share/cards';
 import { Button, Modal } from '../ui';
 import { makerErrorText } from './maker/design';
-import { leagueShareInputOf, levelLine, shareInputOf, statFor, type AwardView, type ProgressModel } from './logic';
+import { levelLine, type AwardView, type ProgressModel } from './logic';
+import { sheetSharing, type BadgeSharing } from './share';
 import { FEATURED_FULL } from './tab';
 import {
   MAX_TIMES,
@@ -278,13 +275,6 @@ export function BadgeSheetBody({
   );
 }
 
-interface Sharing {
-  card: ShareCard;
-  frame: CardFrame;
-  url?: string;
-  filename: string;
-}
-
 export interface BadgeSheetProps {
   subject: SheetSubject | null;
   onClose: () => void;
@@ -334,7 +324,7 @@ export function BadgeSheet({
   const run = useAction();
   const { toast, confirm } = useFeedback();
   const [busy, setBusy] = useState<string | null>(null);
-  const [sharing, setSharing] = useState<Sharing | null>(null);
+  const [sharing, setSharing] = useState<BadgeSharing | null>(null);
   // El menú ⋯ (Reportar) se cierra al cambiar de insignia.
   const [more, setMore] = useState(false);
   const subjectId = subject?.kind === 'award' ? subject.tile.top.award.id : subject?.kind === 'league' ? subject.tile.top.award.id : null;
@@ -372,22 +362,11 @@ export function BadgeSheet({
     if (ok) onClose();
   };
 
+  // La tarjeta, el marco, el link y el archivo: share.ts (los arma igual la app del teléfono).
   const share = () => {
     const here = typeof location !== 'undefined' ? location : undefined;
-    const url = shareLink ?? here?.href;
-    if (tile) {
-      const v = tile.top;
-      const input = shareInputOf(v, playerName, statFor(stats, v.award), !!announce && !own && !mayShare);
-      setSharing({
-        card: badgeShare(input),
-        frame: shareFrame(v.award.sport === 'all' ? null : v.award.sport, url),
-        url,
-        filename: shareFileName(['insignia', v.name, playerName]),
-      });
-    } else if (leagueTile) {
-      const v = leagueTile.top;
-      setSharing({ card: badgeShare(leagueShareInputOf(v, playerName)), frame: shareFrame(v.award.sport, url), url, filename: shareFileName(['insignia', v.name, playerName]) });
-    }
+    const next = sheetSharing(subject, { playerName, stats, url: shareLink ?? here?.href, own, mayShare, announce });
+    if (next) setSharing(next);
   };
 
   const report = async () => {

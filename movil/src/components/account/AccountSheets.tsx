@@ -14,6 +14,7 @@ import { PASSWORD_MISMATCH_HINT, PASSWORD_SHORT_HINT, passwordCheck, passwordShe
 import { usernameHint, type UsernameCheck } from '@mm/components/social/socialFormat';
 import { toast } from '../feedback';
 import { Button, Card, ErrorNote, Field, Input, ListRow, RowIcon, Sheet, Txt } from '../ui';
+import { useBigButton } from '@/components/home/proLook';
 import { PasswordInput } from './PasswordInput';
 import { useColors } from '@/theme/theme';
 
@@ -35,6 +36,8 @@ async function saveName(user: Pick<AppUser, 'uid'>, hasProfile: boolean, name: s
 export function NeedsProfileCard({ user }: { user: Pick<AppUser, 'uid'> }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  // Pro: el botón de 48 (AccountPage de la web).
+  const big = useBigButton();
   async function save() {
     if (busy || !name.trim()) return;
     setBusy(true);
@@ -57,7 +60,7 @@ export function NeedsProfileCard({ user }: { user: Pick<AppUser, 'uid'> }) {
           onSubmitEditing={() => void save()}
         />
       </Field>
-      <Button variant="primary" size="xl" full loading={busy} disabled={!name.trim()} onPress={save}>
+      <Button variant="primary" size={big} full loading={busy} disabled={!name.trim()} onPress={save}>
         Guardar
       </Button>
     </Card>

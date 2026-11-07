@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { StandingsTable } from '../../../components/match';
-import { leadersShare, standingsShare, type ShareTableSpec } from '../../../components/share';
+import type { ShareTableSpec } from '../../../components/share';
 import { LeagueBackBar } from '../../../components/league/home/LeagueTopBar';
 import { useIsPro } from '../../../components/mode';
 import { PillSelect } from '../../../components/ranking/parts';
@@ -28,6 +28,7 @@ import {
   footballRuleLine,
   footballRuleText,
   footballSegment,
+  footballShareCard,
   footballTab,
   keeperLine,
   knockoutMatches,
@@ -40,41 +41,13 @@ import {
 
 type Tab = FootballTab;
 
-// Las columnas, qué se ve, las líneas de cada lista y lo de la disciplina están en standingsView.ts (los usa también la
-// app del teléfono).
+// Las columnas, qué se ve, las líneas de cada lista, lo de la disciplina y la imagen para compartir están en
+// standingsView.ts (los usa también la app del teléfono).
 export { SCORER_COLUMNS, TABLE_COLUMNS };
 
-/** Imagen de la pestaña que se ve para mandar al grupo (la disciplina no se comparte). */
-function shareCard(tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTableSpec | null {
-  const title = tl.league.name;
-  const team = (id: string) => tl.teamOf(id);
-  const leaders = { title, nameOf: tl.nameOf, teamOf: team, limit: 20 };
-  switch (tab) {
-    case 'tabla': {
-      const sections = season.groups.length ? season.groups.map((g) => ({ heading: g.stage, rows: g.rows })) : [{ rows: season.standings }];
-      if (!sections.some((x) => x.rows.length)) return null;
-      return standingsShare({
-        title,
-        subtitle: 'Tabla de posiciones',
-        sections,
-        columns: TABLE_COLUMNS,
-        nameOf: (id) => team(id)?.name ?? '(equipo borrado)',
-        rowExtra: (id) => ({ dot: team(id)?.color ?? null }),
-        nameLabel: 'Equipo',
-      });
-    }
-    case 'goleadores': {
-      const rows = scorerRows(season);
-      return rows.length ? leadersShare({ ...leaders, subtitle: 'Goleadores', rows, columns: SCORER_COLUMNS }) : null;
-    }
-    case 'tarjetas':
-      return season.cards.length ? leadersShare({ ...leaders, subtitle: 'Tarjetas', rows: season.cards, columns: CARD_COLUMNS }) : null;
-    case 'vallas':
-      return season.keepers.length ? leadersShare({ ...leaders, subtitle: 'Vallas invictas', rows: season.keepers, columns: KEEPER_COLUMNS, nameLabel: 'Portero' }) : null;
-    default:
-      return null;
-  }
-}
+/** Imagen de la pestaña que se ve para mandar al grupo (la disciplina no se comparte): footballShareCard de standingsView.ts. */
+const shareCard = (tl: TeamLeague, season: FootballSeason, tab: Tab): ShareTableSpec | null =>
+  footballShareCard({ leagueName: tl.league.name, tab, season, teamOf: (id) => tl.teamOf(id), nameOf: tl.nameOf });
 
 /**
  * Tabla, goleadores, tarjetas, vallas invictas y disciplina de la temporada (/l/:lid/ranking; `?ver=`), rediseño «Calma

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useEffectEvent, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Ban, Flag, Globe, MoreHorizontal, Newspaper, Trophy, UserCheck, UserRound, UserX } from 'lucide-react-native';
+import { Ban, Flag, MoreHorizontal, Newspaper, Trophy, UserCheck, UserRound, UserX } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { invalidate } from '@mm/lib/data/client';
 import { peopleTags, usePublicProfile, type PublicProfile } from '@mm/lib/data/follows';
@@ -10,6 +10,7 @@ import { useProfileGames } from '@mm/lib/data/profileGames';
 import { setBlocked } from '@mm/lib/data/profileSocial';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { BLOCK_EXPLAIN, compactCount, knownSports, profileLine } from '@mm/components/social/socialFormat';
+import { PROFILE_TABS, profileTab, type ProfileTab } from '@mm/pages/userProfileTabs';
 import { FeaturedBadges, ProfileBadgesTab } from '@/components/badges/ProfileBadges';
 import { Avatar } from '@/components/social/Avatar';
 import { ReportSheet } from '@/components/social/ContentMenu';
@@ -17,18 +18,19 @@ import { FollowButton } from '@/components/social/People';
 import { GameList } from '@/components/social/GameCard';
 import { PostList } from '@/components/social/PostList';
 import { confirmAsync, toast } from '@/components/feedback';
-import { BackBar, Button, Card, Empty, ErrorNote, ListRow, Loading, RowIcon, Screen, Segmented, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
+import { StatsTab } from '@/components/yo/SportStats';
+import { BackBar, Button, Card, Empty, ErrorNote, Loading, Screen, Sheet, Txt } from '@/components/ui';
+import { useIsPro } from '@mm/lib/useMode';
 import { useColors } from '@/theme/theme';
-
-type ProfileTab = 'publicaciones' | 'juegos' | 'insignias';
+import { font } from '@/theme/tokens';
 
 /**
  * El perfil de una cuenta (/u/:userId de la web): foto, nombre y «@usuario · deportes · desde cuándo» (y «Te sigue»),
  * su biografía, Seguir, Publicaciones · Seguidores · Siguiendo · Me gusta (tocar abre la lista o la parte) y
- * «Publicaciones | Juegos | Insignias» (con sus destacadas debajo del nombre; `?tab=insignias` abre la vitrina y
- * `&insignia=<id>` esa insignia, como en la web). «⋯»: reportar la cuenta y bloquear o desbloquear. Si la bloqueaste,
- * «Bloqueaste a …» con «Desbloquear». Estadísticas, por ahora en la web.
+ * «Publicaciones | Juegos | Estadísticas | Insignias» (`?tab=`, como en la web: userProfileTabs.ts; con sus destacadas
+ * debajo del nombre, `?tab=insignias` abre la vitrina y `&insignia=<id>` esa insignia). Estadísticas: el resumen por
+ * deporte (StatsTab, el mismo de Yo). «⋯»: reportar la cuenta y bloquear o desbloquear. Si la bloqueaste, «Bloqueaste
+ * a …» con «Desbloquear».
  */
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -73,9 +75,11 @@ function useBlockToggle(person: { id: string; name: string }) {
 function Profile({ userId }: { userId: string }) {
   const c = useColors();
   const profile = usePublicProfile(userId);
+  // Pro: lo de arriba más denso (la foto, el nombre y la biografía un poco más chicos, como la web).
+  const pro = useIsPro();
   // Las insignias se abren por link (`?tab=insignias`, `&insignia=<id>` y `&quieta=1`: Avisos, los push, el aviso al ganar).
   const params = useLocalSearchParams<{ tab?: string; insignia?: string; quieta?: string }>();
-  const [tab, setTab] = useState<ProfileTab>(() => (params.tab === 'insignias' ? 'insignias' : 'publicaciones'));
+  const [tab, setTab] = useState<ProfileTab>(() => profileTab(params.tab));
   // La insignia que se abre en Insignias (la del link, o una destacada que se tocó); null al cerrarla.
   const [badgeLink, setBadgeLink] = useState<{ id: string; still: boolean } | null>(() => (params.insignia ? { id: params.insignia, still: params.quieta === '1' } : null));
   const [menu, setMenu] = useState(false);
@@ -136,10 +140,10 @@ function Profile({ userId }: { userId: string }) {
   return (
     <Screen onRefresh={() => invalidate(peopleTags.user(userId))}>
       {top}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-        <Avatar name={p.name} photo={p.avatar} size={72} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: pro ? 14 : 16 }}>
+        <Avatar name={p.name} photo={p.avatar} size={pro ? 60 : 72} />
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <Txt variant="cardTitle" numberOfLines={1} style={{ fontSize: 26, lineHeight: 30 }}>
+          <Txt variant="cardTitle" numberOfLines={1} style={pro ? { fontSize: 22, lineHeight: 26 } : { fontSize: 26, lineHeight: 30 }}>
             {p.name}
           </Txt>
           {!!line && (
@@ -157,7 +161,11 @@ function Profile({ userId }: { userId: string }) {
         </View>
       </View>
 
-      {!!bio && !blocked && <Txt tone="fg2">{bio}</Txt>}
+      {!!bio && !blocked && (
+        <Txt tone="fg2" style={pro ? { fontSize: 14, lineHeight: 20 } : undefined}>
+          {bio}
+        </Txt>
+      )}
 
       {/* Sus insignias destacadas (hasta 3): tocar una la abre en Insignias. */}
       {!blocked && (
@@ -215,20 +223,13 @@ function Profile({ userId }: { userId: string }) {
         </Card>
       ) : (
         <>
-          <Segmented<ProfileTab>
-            label="Qué ver"
-            value={tab}
-            onChange={setTab}
-            options={[
-              { key: 'publicaciones', label: 'Publicaciones' },
-              { key: 'juegos', label: 'Juegos' },
-              { key: 'insignias', label: 'Insignias' },
-            ]}
-          />
+          <ProfileTabs active={tab} onChange={setTab} />
           {tab === 'publicaciones' ? (
             <UserPosts userId={p.id} name={p.name} />
           ) : tab === 'juegos' ? (
             <UserGames userId={p.id} name={p.name} isMe={p.isMe} />
+          ) : tab === 'estadisticas' ? (
+            <StatsTab userId={p.id} isMe={p.isMe} />
           ) : (
             <ProfileBadgesTab
               userId={p.id}
@@ -241,18 +242,6 @@ function Profile({ userId }: { userId: string }) {
               }}
             />
           )}
-          <Card padded={false}>
-            <ListRow
-              icon={
-                <RowIcon>
-                  <Globe size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title="Estadísticas"
-              subtitle="En la web, por ahora"
-              onPress={() => openOnWeb(`/u/${p.id}?tab=estadisticas`)}
-            />
-          </Card>
         </>
       )}
 
@@ -310,6 +299,67 @@ function ProfileMenu({
         );
       })}
     </Sheet>
+  );
+}
+
+/**
+ * «Publicaciones | Juegos | Estadísticas | Insignias» (Tabs de la web): en el teléfono no caben las cuatro, así que la
+ * barra se desliza de lado y la pestaña elegida queda siempre a la vista.
+ */
+function ProfileTabs({ active, onChange }: { active: ProfileTab; onChange: (tab: ProfileTab) => void }) {
+  const c = useColors();
+  const bar = useRef<ComponentRef<typeof ScrollView>>(null);
+  const width = useRef(0);
+  const offset = useRef(0);
+  const spots = useRef(new Map<ProfileTab, { x: number; w: number }>());
+  // La pestaña elegida a la vista (al abrir con `?tab=insignias` está al final): al medirse la barra y al cambiar.
+  const reveal = (tab: ProfileTab, animated: boolean) => {
+    const spot = spots.current.get(tab);
+    if (!spot || !width.current) return;
+    if (spot.x < offset.current || spot.x + spot.w > offset.current + width.current) bar.current?.scrollTo({ x: Math.max(0, spot.x - 16), animated });
+  };
+  const onActive = useEffectEvent((tab: ProfileTab) => reveal(tab, true));
+  useEffect(() => onActive(active), [active]);
+  return (
+    <ScrollView
+      ref={bar}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onLayout={(e) => {
+        width.current = e.nativeEvent.layout.width;
+        reveal(active, false);
+      }}
+      onScroll={(e) => (offset.current = e.nativeEvent.contentOffset.x)}
+      scrollEventThrottle={32}
+      contentContainerStyle={{ flexGrow: 1 }}
+    >
+      <View accessibilityRole="tablist" style={{ flexGrow: 1, flexDirection: 'row', gap: 4, borderRadius: 12, padding: 4, backgroundColor: c.surface2 }}>
+        {PROFILE_TABS.map((t) => {
+          const on = t.key === active;
+          return (
+            <Pressable
+              key={t.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              hitSlop={{ top: 4, bottom: 4 }}
+              onLayout={(e) => {
+                spots.current.set(t.key, { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width });
+                if (on) reveal(t.key, false);
+              }}
+              onPress={() => onChange(t.key)}
+              style={[
+                { flexGrow: 1, height: 36, borderRadius: 8, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+                on && { backgroundColor: c.segOn, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+              ]}
+            >
+              <Txt numberOfLines={1} style={{ fontSize: 14, lineHeight: 18, fontFamily: font.medium, color: on ? c.fg : c.muted }}>
+                {t.label}
+              </Txt>
+            </Pressable>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
 

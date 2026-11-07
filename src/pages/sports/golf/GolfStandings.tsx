@@ -1,17 +1,16 @@
 import { Link } from 'react-router';
 import { Medal } from 'lucide-react';
 import { useGolfTournaments } from '../../../lib/data/golf';
-import { eventLabel, formatDate } from '../../../lib/format';
+import { eventLabel } from '../../../lib/format';
 import { useLeagueCtx } from '../../../lib/league';
 import { useIsPro } from '../../../components/mode';
 import { MyPlaceCard } from '../../../components/ranking/MyPlaceCard';
 import { Initials, PosNum, TuTag } from '../../../components/ranking/parts';
 import { ShareButton, type ShareTableSpec } from '../../../components/share';
 import { ClosedSeasonView, SeasonBar, useStandingsSeason } from '../../../components/season/SeasonView';
-import { seasonDates } from '../../../components/season/logic';
 import { Card, ListRow, ListSkeleton, LoadError, SectionHeader, cx } from '../../../components/ui';
 import { EmptyCard, ShowMore } from '../FieldChrome';
-import { meritPlace } from './home';
+import { meritPlace, meritSeasonText, meritShare } from './home';
 import { useGolfMerit } from './seasonTable';
 
 /**
@@ -47,24 +46,12 @@ export default function GolfStandings() {
     const e = events.data.find((x) => x.id === id);
     return e ? eventLabel({ type: e.type, name: e.name, date: e.date }, 'golf') : 'Ronda';
   };
-  const season$ = picked.selected
-    ? `${picked.selected.name} (${seasonDates(picked.selected)})`
-    : league.seasonStart || league.seasonEnd
-      ? `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}`
-      : null;
+  const season$ = meritSeasonText(picked.selected, league);
   const place = pro ? null : meritPlace(merit, myPlayerId, nameOf);
   const leader = merit[0];
 
-  // Imagen del orden de mérito para mandar al grupo.
-  const shareCard = (): ShareTableSpec => ({
-    kind: 'table',
-    title: league.name,
-    subtitle: season$ ? `Orden de mérito · ${season$}` : 'Orden de mérito',
-    nameLabel: 'Jugador',
-    columns: [{ label: 'Jugó' }, { label: 'Ganó' }, { label: 'Mejor', optional: true }, { label: 'Puntos', strong: true }],
-    sections: [{ rows: merit.map((m) => ({ rank: m.rank, name: nameOf(m.id), values: [m.events, m.wins, m.best ?? '–', m.points.toLocaleString('es-DO')] })) }],
-    note: `Puntos por puesto en cada ronda cerrada (${counted.length} ${counted.length === 1 ? 'evento' : 'eventos'}).`,
-  });
+  // Imagen del orden de mérito para mandar al grupo (meritShare de home.ts, la usa también la app del teléfono).
+  const shareCard = (): ShareTableSpec => meritShare({ leagueName: league.name, seasonText: season$, merit, nameOf, counted: counted.length });
 
   return (
     <div className="flex flex-col px-2">

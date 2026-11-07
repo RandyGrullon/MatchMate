@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Award, ChevronLeft, ChevronRight, Eye, Lock, Share2, X } from 'lucide-react-native';
 import { tierDot } from '@mm/badges/visual/palette';
-import { useAuth } from '@mm/lib/auth';
+import { displayName, useAuth } from '@mm/lib/auth';
 import {
   markBadgesSeen,
   markLeagueBadgesSeen,
@@ -17,11 +17,13 @@ import {
   type LeagueBadgeAward,
 } from '@mm/lib/data/badges';
 import { unlockGateOpen, useBadgeUnlockHeld } from '@mm/components/badges/hold';
-import { levelLine, myBadgesPath, unlockPlan, yearRecap, type UnlockItem, type UnlockPlan, type YearRecapModel } from '@mm/components/badges/logic';
+import { shareOrigin } from '@mm/lib/origin';
+import { levelLine, unlockPlan, yearRecap, type UnlockItem, type UnlockPlan, type YearRecapModel } from '@mm/components/badges/logic';
+import { unlockShareLink, unlockSharing, type BadgeSharing } from '@mm/components/badges/share';
 import { HISTORY_SHOWN, canShareUnlock, historyTitle, isPrivateUnlock, recapFacts, unlockHeader, unlockMoreLine, unlockTarget } from '@mm/components/badges/unlock';
+import { ShareImageSheet } from '@/components/match/ShareResult';
 import { runAction } from '@/components/swimming/parts';
 import { Button, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { Insignia, UnlockInsignia } from './Insignia';
@@ -277,7 +279,8 @@ export function UnlockContent({
 /**
  * El aviso al ganar sobre las insignias sin ver (UnlockModal de la web): al cerrarlo (o «Ver mis insignias») se marcan
  * vistas (`mark_badges_seen`, `mark_league_badges_seen`). «Ver mis insignias» abre tu perfil en Insignias (con esa
- * abierta si es una sola, sin repetir la animación). «Compartir» abre esa insignia en la web, donde sale la imagen.
+ * abierta si es una sola, sin repetir la animación). «Compartir» abre la hoja de la imagen de esa insignia (la misma
+ * tarjeta de la web, share.ts), con el link de tu perfil.
  */
 export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: readonly BadgeAward[]; leagueAwards?: readonly LeagueBadgeAward[]; onDone: () => void }) {
   const c = useColors();
@@ -295,6 +298,7 @@ export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: rea
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
   const [showing, setShowing] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<BadgeSharing | null>(null);
   const closed = useRef(false);
 
   const finish = (go?: boolean) => {
@@ -319,6 +323,10 @@ export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: rea
 
   const current = plan.items[Math.min(index, plan.items.length - 1)];
   const canShare = canShareUnlock(current, revealed);
+  const share = () => {
+    if (!current) return;
+    setSharing(unlockSharing(current, { name: displayName(auth), url: unlockShareLink(shareOrigin(), uid) }));
+  };
 
   const show = async (it: UnlockItem) => {
     if (it.kind !== 'app') return;
@@ -354,7 +362,7 @@ export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: rea
           </ScrollView>
           <View style={[styles.footer, { borderTopColor: c.line }]}>
             {canShare && current && (
-              <Button icon={<Share2 size={18} color={c.fg} />} onPress={() => void openOnWeb(myBadgesPath(current.id, { still: true }))}>
+              <Button icon={<Share2 size={18} color={c.fg} />} onPress={share}>
                 Compartir
               </Button>
             )}
@@ -364,6 +372,8 @@ export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: rea
           </View>
         </View>
       </Animated.View>
+      {/* La imagen para compartir (la hoja sale encima del aviso; al cerrarla, sigue el aviso). */}
+      {sharing && <ShareImageSheet onClose={() => setSharing(null)} card={sharing.card} frame={sharing.frame} url={sharing.url} filename={sharing.filename} caption={sharing.caption} />}
     </View>
   );
 }

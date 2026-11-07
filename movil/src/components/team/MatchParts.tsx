@@ -4,8 +4,8 @@
  * - «Ver en vivo» si el partido se transmite.
  * - En vivo: el cuarto, el reloj de referencia y las faltas con BONUS (baloncesto); el tiempo y el minuto, el añadido,
  *   las faltas de sala, las rojas y los 2 minutos con uno menos (fútbol y sala).
- * - «Por cuarto» y «Puntos» (baloncesto, en Lite solo los puntos); los goles por tiempo, «Goles y tarjetas» y el acta
- *   completa (fútbol y sala); los suspendidos para el partido.
+ * - «Por cuarto» y «Puntos» (baloncesto; en Pro, también triples, tiros libres y faltas); los goles por tiempo, «Goles y
+ *   tarjetas», la tabla «Jugadores» de Pro y el acta completa (fútbol y sala); los suspendidos para el partido.
  * - La convocatoria: «¿Vas a este partido?» y cada equipo con cómo va y su «Lista» (el capitán o delegado marca a los
  *   de su equipo; el admin, a todos).
  */
@@ -24,7 +24,7 @@ import type { Side } from '@mm/sports/types';
 import { decodeLines as decodeBasketballLines, liveClockMs, liveFromScore as basketballLive, periodsFromScore as basketballPeriods } from '@mm/pages/sports/basketball/adapter';
 import { boxRows, periodHeader } from '@mm/pages/sports/basketball/matchView';
 import { decodeLines as decodeFootballLines, decodeTimeline, liveFromScore as footballLive, liveMinute, livePowerPlays, pensFromScore } from '@mm/pages/sports/football/adapter';
-import { KIND_TEXT, actaRows, eventPlayerSide, periodsLineParts, stateFromSnapshot } from '@mm/pages/sports/football/matchView';
+import { KIND_TEXT, actaRows, eventPlayerSide, periodsLineParts, playerLineNotes, sidePlayerLines, stateFromSnapshot } from '@mm/pages/sports/football/matchView';
 import { REASON_TEXT } from '@mm/pages/sports/football/rules';
 import { rosterOf, rosterSide, rsvpTargets } from '@mm/pages/sports/team/logic';
 import { convocatoriaLine, flaggedCalled } from '@mm/pages/sports/team/matchView';
@@ -253,8 +253,14 @@ export function PeriodsTable({ match: m, names, periodsPerGame }: { match: Pick<
   );
 }
 
-/** Los puntos de cada presente (de lo publicado por la mesa), un equipo por tarjeta, del que más anotó al que menos. */
-export function BoxScore({ tl, match: m }: { tl: TeamLeague; match: Match }) {
+/** El ancho de cada columna de números de «Puntos» y «Jugadores» (Pro). */
+const NUM = 34;
+
+/**
+ * Los puntos de cada presente (de lo publicado por la mesa), un equipo por tarjeta, del que más anotó al que menos. En Pro
+ * (`full`), también triples (3P), tiros libres anotados (TL) y faltas (F; con 5, en rojo).
+ */
+export function BoxScore({ tl, match: m, full }: { tl: TeamLeague; match: Match; full?: boolean }) {
   const c = useColors();
   const lines = useMemo(() => decodeBasketballLines(m.score?.lines), [m.score]);
   if (!lines.length) return null;
@@ -269,9 +275,22 @@ export function BoxScore({ tl, match: m }: { tl: TeamLeague; match: Match }) {
               <Txt style={{ flex: 1, fontSize: 15, fontFamily: font.bold }} numberOfLines={1}>
                 {tl.teamOf(sd.teamId)?.name ?? sd.label}
               </Txt>
-              <Txt tone="muted" style={TH} accessibilityLabel="Puntos">
+              <Txt tone="muted" style={full ? [TH, { width: NUM, textAlign: 'right' }] : TH} accessibilityLabel="Puntos">
                 PTS
               </Txt>
+              {full && (
+                <>
+                  <Txt tone="muted" style={[TH, { width: NUM, textAlign: 'right' }]} accessibilityLabel="Triples">
+                    3P
+                  </Txt>
+                  <Txt tone="muted" style={[TH, { width: NUM, textAlign: 'right' }]} accessibilityLabel="Tiros libres anotados">
+                    TL
+                  </Txt>
+                  <Txt tone="muted" style={[TH, { width: NUM, textAlign: 'right' }]} accessibilityLabel="Faltas">
+                    F
+                  </Txt>
+                </>
+              )}
             </View>
             {rows.map((l) => {
               const j = sd.players.find((p) => p.playerId === l.playerId)?.jersey ?? tl.jerseyOf(l.playerId, sd.teamId);
@@ -283,7 +302,20 @@ export function BoxScore({ tl, match: m }: { tl: TeamLeague; match: Match }) {
                   <Txt numberOfLines={1} style={{ flex: 1, fontSize: 15, fontFamily: font.medium }}>
                     {tl.nameOf(l.playerId)}
                   </Txt>
-                  <Txt style={{ fontSize: 17, fontFamily: font.bold }}>{l.points}</Txt>
+                  <Txt style={full ? { width: NUM, textAlign: 'right', fontSize: 17, fontFamily: font.bold } : { fontSize: 17, fontFamily: font.bold }}>{l.points}</Txt>
+                  {full && (
+                    <>
+                      <Txt tone="muted" style={{ width: NUM, textAlign: 'right', fontSize: 15 }}>
+                        {l.threes}
+                      </Txt>
+                      <Txt tone="muted" style={{ width: NUM, textAlign: 'right', fontSize: 15 }}>
+                        {l.ones}
+                      </Txt>
+                      <Txt tone={l.fouls >= 5 ? 'danger' : 'muted'} style={{ width: NUM, textAlign: 'right', fontSize: 15, fontFamily: l.fouls >= 5 ? font.bold : font.regular }}>
+                        {l.fouls}
+                      </Txt>
+                    </>
+                  )}
                 </View>
               );
             })}
@@ -358,6 +390,77 @@ export function MatchTimeline({ tl, match: m, names }: { tl: TeamLeague; match: 
         );
       })}
     </Card>
+  );
+}
+
+/**
+ * «Jugadores» (Pro, PlayersTable de la web): los de cada lado por dorsal con goles (y autogoles), asistencias y tarjetas
+ * del acta publicada, un equipo por tarjeta; el portero con sus recibidos y los del banco, apagados.
+ */
+export function PlayersTable({ tl, match: m }: { tl: TeamLeague; match: Match }) {
+  const c = useColors();
+  const lines = useMemo(() => decodeFootballLines(m.score?.lines), [m.score]);
+  if (!lines.length) return null;
+  const jersey = (l: (typeof lines)[number]) => m.sides[l.side - 1].players.find((p) => p.playerId === l.playerId)?.jersey ?? tl.jerseyOf(l.playerId, m.sides[l.side - 1].teamId);
+  return (
+    <View style={{ gap: 14 }}>
+      {m.sides.map((sd) => {
+        const rows = sidePlayerLines(lines, sd.side, jersey);
+        if (!rows.length) return null;
+        return (
+          <Card key={sd.side} padded={false}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+              <Txt style={{ flex: 1, fontSize: 15, fontFamily: font.bold }} numberOfLines={1}>
+                {tl.teamOf(sd.teamId)?.name ?? sd.label}
+              </Txt>
+              <Txt tone="muted" style={[TH, { width: NUM, textAlign: 'right' }]} accessibilityLabel="Goles">
+                G
+              </Txt>
+              <Txt tone="muted" style={[TH, { width: NUM, textAlign: 'right' }]} accessibilityLabel="Asistencias">
+                A
+              </Txt>
+              <Txt tone="muted" style={[TH, { width: NUM + 10, textAlign: 'right' }]} accessibilityLabel="Tarjetas">
+                T
+              </Txt>
+            </View>
+            {rows.map((l) => {
+              const j = jersey(l);
+              const notes = playerLineNotes(l);
+              return (
+                <View key={l.playerId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: c.line }}>
+                  <Txt tone="faint" style={{ width: 30, fontSize: 13, fontFamily: font.semibold }}>
+                    {j != null ? `#${j}` : ''}
+                  </Txt>
+                  <Txt numberOfLines={1} tone={l.played ? 'fg' : 'muted'} style={{ flex: 1, fontSize: 15, fontFamily: font.medium }}>
+                    {tl.nameOf(l.playerId)}
+                    {notes.length > 0 && <Txt tone="muted" style={{ fontSize: 13, fontFamily: font.regular }}>{` ${notes.join(' ')}`}</Txt>}
+                  </Txt>
+                  <Txt style={{ width: NUM, textAlign: 'right', fontSize: 17, fontFamily: font.bold }}>
+                    {l.goals || ''}
+                    {l.ownGoals ? <Txt tone="danger" style={{ fontSize: 12, fontFamily: font.regular }}>{` (${l.ownGoals} AG)`}</Txt> : null}
+                  </Txt>
+                  <Txt tone="muted" style={{ width: NUM, textAlign: 'right', fontSize: 15 }}>
+                    {l.assists || ''}
+                  </Txt>
+                  <View style={{ width: NUM + 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
+                    {l.red === 'second_yellow' ? (
+                      <CardIcon kind="second_yellow" />
+                    ) : (
+                      <>
+                        {Array.from({ length: l.yellows }, (_, k) => (
+                          <CardIcon key={k} kind="yellow" />
+                        ))}
+                        {l.red === 'direct' && <CardIcon kind="red" />}
+                      </>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </Card>
+        );
+      })}
+    </View>
   );
 }
 

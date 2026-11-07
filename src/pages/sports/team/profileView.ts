@@ -7,7 +7,7 @@ import { matchDayLabel } from './view';
 /**
  * Lo que no es pantalla de «Mi equipo» y de la página de un jugador de equipos (BasketballProfile.tsx y
  * FootballProfile.tsx de la web, y las mismas pantallas de la app): el rol, la línea de su equipo, sus partidos de la
- * temporada con el rival, cuándo y el marcador, y los números de Lite.
+ * temporada con el rival, cuándo y el marcador, y los números de Lite y de Pro.
  */
 
 export const ROLE: Record<string, string> = { captain: 'Capitán', delegate: 'Delegado', player: 'Jugador' };
@@ -53,6 +53,17 @@ export function basketballStatItems(t: { games: number; points: number; avg: num
   ];
 }
 
+/** Lo que se ve de los números en Pro: los de Lite y además triples, tiros libres, faltas y faltas por partido. */
+export function basketballProStatItems(t: { games: number; points: number; avg: number; high: number; threes: number; ftm: number; fouls: number }): { label: string; value: string | number }[] {
+  return [
+    ...basketballStatItems(t),
+    { label: 'Triples', value: t.threes },
+    { label: 'Tiros libres', value: t.ftm },
+    { label: 'Faltas', value: t.fouls },
+    { label: 'Faltas/partido', value: (Math.round((t.fouls / t.games) * 10) / 10).toLocaleString('es-DO') },
+  ];
+}
+
 // ---------- Fútbol y sala ----------
 
 export type FootballGame = { l: FootballSeason['lines'][number]; m: Match };
@@ -88,5 +99,27 @@ export function footballStatItems(
     { label: 'Asistencias', value: totals?.assists ?? 0 },
     ...(!keeper ? [{ label: 'Tarjetas', value: (cards?.yellows ?? 0) + (cards?.reds ?? 0) + (cards?.secondYellows ?? 0) }] : []),
     ...(keeper ? [{ label: 'Vallas invictas', value: totals.cleanSheets }] : []),
+  ];
+}
+
+/**
+ * Lo que se ve de los números en Pro: partidos, goles, asistencias, tarjetas, amarillas y rojas y, si atajó, vallas
+ * invictas y goles recibidos (y los autogoles, si tiene).
+ */
+export function footballProStatItems(
+  totals: { games: number; goals: number; assists: number; ownGoals: number; keeperGames: number; cleanSheets: number; conceded: number } | undefined,
+  cards: { yellows: number; reds: number; secondYellows: number } | undefined,
+): { label: string; value: number }[] {
+  const keeper = !!totals && totals.keeperGames > 0;
+  return [
+    { label: 'Partidos', value: totals?.games ?? 0 },
+    { label: 'Goles', value: totals?.goals ?? 0 },
+    { label: 'Asistencias', value: totals?.assists ?? 0 },
+    { label: 'Tarjetas', value: (cards?.yellows ?? 0) + (cards?.reds ?? 0) + (cards?.secondYellows ?? 0) },
+    { label: 'Amarillas', value: cards?.yellows ?? 0 },
+    { label: 'Rojas', value: (cards?.reds ?? 0) + (cards?.secondYellows ?? 0) },
+    ...(keeper ? [{ label: 'Vallas invictas', value: totals.cleanSheets }] : []),
+    ...(keeper ? [{ label: 'Recibidos', value: totals.conceded }] : []),
+    ...(totals && totals.ownGoals > 0 ? [{ label: 'Autogoles', value: totals.ownGoals }] : []),
   ];
 }

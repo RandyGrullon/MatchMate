@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { Flame, Trophy, Users } from 'lucide-react-native';
+import { CheckSquare, Eye, Flame, Square, Trophy, Users } from 'lucide-react-native';
 import { entryLine, individualRule, rank, teamLines, teamRule, type Line } from '@mm/lib/stats';
 import type { BowlingEvent, Entry, Player, RankBy } from '@mm/lib/types';
 import { bowlingTitle } from '@mm/prizes/catalog';
@@ -73,18 +73,34 @@ function Header({ title, mode, onMode, hasHcp, unofficial }: { title: string; mo
  * La clasificación de un torneo de boliche (o los resultados de una práctica): StandingsTab de la web en solo mirar,
  * como se ve en el teléfono (el puesto, el nombre con sus juegos debajo y el total). En un torneo, primero los
  * equipos (sus jugadores debajo) y después lo individual; cada tabla parte de la regla del torneo y se puede alternar
- * entre «Con handicap» y «Scratch» para mirar. Tocar un jugador abre su página.
+ * entre «Con handicap» y «Scratch» para mirar. Tocar un jugador abre su página. `readOnly = false` (la pestaña de Pro de
+ * quien organiza): con juegos sin foto, «Vista previa» los cuenta para mirar.
  */
-export function Standings({ lid, event, entries, players, me }: { lid: string; event: BowlingEvent; entries: Entry[]; players: Player[]; me: string | null }) {
+export function Standings({
+  lid,
+  event,
+  entries,
+  players,
+  me,
+  readOnly = true,
+}: {
+  lid: string;
+  event: BowlingEvent;
+  entries: Entry[];
+  players: Player[];
+  me: string | null;
+  readOnly?: boolean;
+}) {
   const c = useColors();
   const isTorneo = event.type === 'torneo';
   const hasHcp = isTorneo && event.hcpPercent > 0;
   const [indMode, setIndMode] = useState<RankBy>(individualRule(event));
   const [teamMode, setTeamMode] = useState<RankBy>(teamRule(event));
+  const [preview, setPreview] = useState(false);
   const byId = new Map(players.map((p) => [p.id, p]));
   const nameOf = (l: Line) => byId.get(l.entry.playerId)?.name ?? '(jugador borrado)';
 
-  const lines = entries.map((e) => entryLine(e, event)).filter((l) => l.games > 0);
+  const lines = entries.map((e) => entryLine(e, event, preview && !readOnly)).filter((l) => l.games > 0);
   const pending = entries.reduce((n, e) => n + entryLine(e, event).pending, 0);
   const useHcp = hasHcp && indMode === 'hcp';
   const teamHcp = hasHcp && teamMode === 'hcp';
@@ -93,18 +109,40 @@ export function Standings({ lid, event, entries, players, me }: { lid: string; e
   const teams = isTorneo ? rank(teamLines(event, lines).filter((t) => t.members.length), (t) => (teamHcp ? t.total : t.scratch)) : [];
   const best = lines.reduce<{ score: number; line: Line | null }>((acc, l) => (l.high > acc.score ? { score: l.high, line: l } : acc), { score: 0, line: null });
 
+  // «Vista previa (incluye 2 sin foto)» (la casilla de la web).
+  const previewToggle = !readOnly && pending > 0 && (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: preview }}
+      onPress={() => setPreview(!preview)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, alignSelf: 'flex-start' }}
+    >
+      {preview ? <CheckSquare size={20} color={c.accent} /> : <Square size={20} color={c.muted} />}
+      <Eye size={16} color={c.muted} />
+      <Txt variant="meta" tone="muted">{`Vista previa (incluye ${pending} sin foto)`}</Txt>
+    </Pressable>
+  );
+
   if (!lines.length) {
     return (
-      <Empty
-        icon={<Trophy size={28} color={c.accent} />}
-        title={pending > 0 ? 'Sin juegos verificados' : 'Todavía no hay juegos'}
-        text={pending > 0 ? 'La clasificación cuenta solo juegos verificados.' : 'Cuando se anoten los juegos, la clasificación se actualiza sola.'}
-      />
+      <View style={{ gap: 12 }}>
+        {previewToggle}
+        <Empty
+          icon={<Trophy size={28} color={c.accent} />}
+          title={pending > 0 ? 'Sin juegos verificados' : 'Todavía no hay juegos'}
+          text={
+            pending > 0
+              ? `La clasificación cuenta solo juegos verificados.${readOnly ? '' : ' Activa la vista previa para ver los borradores.'}`
+              : 'Cuando se anoten los juegos, la clasificación se actualiza sola.'
+          }
+        />
+      </View>
     );
   }
 
   return (
     <View style={{ gap: 16 }}>
+      {previewToggle}
       {best.line && (
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Stat icon={<Flame size={16} color={c.accent} />} label="Mejor juego" value={best.score} sub={nameOf(best.line)} />

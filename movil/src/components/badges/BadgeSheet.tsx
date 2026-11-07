@@ -5,6 +5,7 @@ import { CalendarDays, Eye, EyeOff, Flag, Hourglass, Lock, MapPin, MessageSquare
 import { tierDot } from '@mm/badges/visual/palette';
 import { reportBadge, setBadgeHidden, setFeaturedBadges, setLeagueBadgeHidden, type BadgeStat } from '@mm/lib/data/badges';
 import { levelLine, type AwardView, type ProgressModel } from '@mm/components/badges/logic';
+import { sheetSharing, type BadgeSharing } from '@mm/components/badges/share';
 import { FEATURED_FULL } from '@mm/components/badges/tab';
 import {
   MAX_TIMES,
@@ -23,9 +24,9 @@ import {
   type SheetSubject,
 } from '@mm/components/badges/sheet';
 import { confirmAsync, toast } from '@/components/feedback';
+import { ShareImageSheet } from '@/components/match/ShareResult';
 import { runAction } from '@/components/swimming/parts';
 import { Button, Divider, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { Insignia, UnlockInsignia } from './Insignia';
@@ -359,15 +360,14 @@ export interface BadgeSheetProps {
   featuredAuto?: boolean;
   stats?: readonly BadgeStat[];
   progress?: ReadonlyMap<string, ProgressModel>;
+  /** Quién la ganó (sale en la tarjeta para compartir). */
+  playerName?: string;
   /** Puede compartir sin las acciones del dueño (su propio jugador en la página de la liga). */
   canShare?: boolean;
   /** Un admin de la liga la comparte para anunciarla. */
   announce?: boolean;
-  /**
-   * Dónde se comparte en la web (la tarjeta con la imagen se arma con canvas: en la app, «Compartir» abre esa página
-   * de la web con la insignia, ahí sale la imagen). Recibe la fila de la insignia.
-   */
-  webPath: (awardId: string) => string;
+  /** Link que va con la imagen. */
+  shareLink?: string;
   /** Quien mira puede reportarla (`canReportAward`): «Reportar» en el menú ⋯ (§6.3). */
   canReport?: boolean;
   animate?: boolean;
@@ -376,11 +376,27 @@ export interface BadgeSheetProps {
 /**
  * El detalle de una insignia en una hoja (BadgeSheet de la web, §6.3), con las acciones del dueño: «Compartir»,
  * «Destacar en mi perfil» o «Quitar de destacadas», «Ocultar de mi perfil» o «Mostrar en mi perfil». Un admin de la
- * liga puede «Compartir». Quien mira otra cuenta puede «Reportar» en ⋯.
+ * liga puede «Compartir». Quien mira otra cuenta puede «Reportar» en ⋯. «Compartir» abre la hoja de la imagen (la misma
+ * tarjeta de la web, share.ts: en el teléfono se pasa de SVG a PNG) en lugar del detalle; al cerrarla, vuelve el detalle.
  */
-export function BadgeSheet({ subject, onClose, own, featured = [], featuredAuto = false, stats = [], progress, canShare: mayShare, announce, webPath, canReport, animate }: BadgeSheetProps) {
+export function BadgeSheet({
+  subject,
+  onClose,
+  own,
+  featured = [],
+  featuredAuto = false,
+  stats = [],
+  progress,
+  playerName = '',
+  canShare: mayShare,
+  announce,
+  shareLink,
+  canReport,
+  animate,
+}: BadgeSheetProps) {
   const c = useColors();
   const [busy, setBusy] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<BadgeSharing | null>(null);
   // El menú ⋯ (Reportar) se cierra al cambiar de insignia.
   const subjectId = subject?.kind === 'award' ? subject.tile.top.award.id : subject?.kind === 'league' ? subject.tile.top.award.id : null;
   const [more, setMore] = useState<string | null>(null);
@@ -422,10 +438,7 @@ export function BadgeSheet({ subject, onClose, own, featured = [], featuredAuto 
     if (ok) onClose();
   };
 
-  const share = () => {
-    const id = tile?.top.award.id ?? leagueTile?.top.award.id;
-    if (id) void openOnWeb(webPath(id));
-  };
+  const share = () => setSharing(sheetSharing(subject, { playerName, stats, url: shareLink, own, mayShare, announce }));
 
   const report = async () => {
     if (!tile) return;
@@ -505,6 +518,11 @@ export function BadgeSheet({ subject, onClose, own, featured = [], featuredAuto 
       </>
     );
   } else footer = closeButton;
+
+  // Una hoja a la vez (en el iPhone no se ven dos): la de la imagen va en lugar del detalle.
+  if (sharing && subject) {
+    return <ShareImageSheet onClose={() => setSharing(null)} card={sharing.card} frame={sharing.frame} url={sharing.url} filename={sharing.filename} caption={sharing.caption} />;
+  }
 
   return (
     <Sheet open={!!subject} onClose={onClose} title="Insignia" footer={<View style={styles.footer}>{footer}</View>}>

@@ -4,6 +4,7 @@ import { Award, ChevronDown, Lock, Pencil, Save, Sparkles } from 'lucide-react-n
 import { getUserId, invalidate } from '@mm/lib/data/client';
 import { useMyMemberships } from '@mm/lib/data/members';
 import { badgeTags, setFeaturedBadges, useBadgeProgress, useBadgeStats, useProfileBadges, type ProfileBadges } from '@mm/lib/data/badges';
+import { shareOrigin } from '@mm/lib/origin';
 import { useNow } from '@mm/lib/useNow';
 import {
   canReportAward,
@@ -15,7 +16,6 @@ import {
   groupTiles,
   leagueTileSub,
   levelLine,
-  myBadgesPath,
   shelfOf,
   type BadgeTileModel,
   type FeaturedModel,
@@ -348,7 +348,8 @@ export function ProfileBadgesTab({
         featuredAuto={!!shown?.auto}
         stats={stats.data}
         progress={model.progress}
-        webPath={(id) => (model.own ? myBadgesPath(id, { still: true }) : `/u/${userId}?tab=insignias&insignia=${encodeURIComponent(id)}&quieta=1`)}
+        playerName={name}
+        shareLink={`${shareOrigin()}/u/${userId}`}
         canReport={current?.kind === 'award' && canReportAward(current.tile.top.award, model.own, memberLeagues)}
         animate={!!active?.animate}
       />

@@ -28,10 +28,10 @@ import { useBusy } from '@/components/bowlingTeams/parts';
 import { confirmAsync } from '@/components/feedback';
 import { runAction } from '@/components/swimming/parts';
 import { Badge, Button, Card, Empty, Loading, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { AddPlayersSheet } from './AddPlayersSheet';
+import { ScanSheet } from './ScanSheet';
 
 const NO_SUBS: Submission[] = [];
 const NO_LIVE: LiveScore[] = [];
@@ -46,9 +46,10 @@ const openScore = (lid: string, eventId: string, game: number, entryId?: string)
  * cada uno, que es a la vez donde se anotan los juegos de todos. Cada casilla: lo que cuenta (gris), «Por aprobar»
  * (ámbar: enviado o sin la foto que la liga exige; no suma), «Jugando» (contorno del deporte: en el teléfono del jugador,
  * o «74…» a medias) o vacía. Tocar una casilla abre la hoja de anotar de esa fila y ese juego (tu juego a medias sigue
- * en tu hoja). Debajo, Jugador · Juego 4 · Leer foto y «Escribir los puntajes a mano»: una casilla por juego para
- * escribir de corrido, verificar y quitar jugadores. Leer la foto del marcador (verificar con foto) es en la web.
- * El anotador del torneo solo anota: no agrega ni quita jugadores. Va dentro de LeagueScope.
+ * en tu hoja). Debajo, Jugador · Juego 4 · Leer foto (verificar con la foto del marcador: ScanSheet) y «Escribir los
+ * puntajes a mano»: una casilla por juego para escribir de corrido, verificar y quitar jugadores.
+ * El anotador del torneo solo anota: no agrega ni quita jugadores. `readOnly` (la Planilla de Pro de quien no organiza
+ * ni anota): solo mirar, sin herramientas; tu juego a medias sigue en tu hoja. Va dentro de LeagueScope.
  */
 export function EventSheet({
   event,
@@ -56,12 +57,15 @@ export function EventSheet({
   players,
   subs = NO_SUBS,
   live = NO_LIVE,
+  readOnly = false,
 }: {
   event: BowlingEvent;
   entries: Entry[];
   players: Player[];
   subs?: readonly Submission[];
   live?: readonly LiveScore[];
+  /** Solo mirar (quien no organiza ni anota este evento). */
+  readOnly?: boolean;
 }) {
   const c = useColors();
   const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
@@ -77,8 +81,8 @@ export function EventSheet({
   const nameOf = (e: Entry) => byId.get(e.playerId)?.name ?? '(jugador borrado)';
   const isTorneo = event.type === 'torneo';
   const empty = emptySheetText(isAdmin, isTorneo);
-  // Leer la foto del marcador (y verificar con ella) es en la Planilla de la web.
-  const scanOnWeb = () => openOnWeb(`/l/${lid}/e/${event.id}?tab=juegos`);
+  // Verificar con la foto del marcador: la hoja (undefined = cerrada; un jugador = desde su fila).
+  const [scanFor, setScanFor] = useState<string | null | undefined>(undefined);
 
   // En la grilla se ven también los borradores (vista previa).
   const lines = entries.map((e) => entryLine(e, event, true)).sort((a, b) => nameOf(a.entry).localeCompare(nameOf(b.entry)));
@@ -154,7 +158,7 @@ export function EventSheet({
   /** Tocar una casilla: tu juego a medias sigue en tu hoja; lo demás, la hoja de anotar de esa fila y ese juego. */
   function openCell(r: BoardRow, game: number) {
     if (r.playerId === myPlayerId && myPlace && readGameDraft(gameKey(myPlace, game))) return openScore(lid, event.id, game);
-    if (!r.entry) return;
+    if (!r.entry || readOnly) return;
     openScore(lid, event.id, Math.min(game, event.games - 1), r.entry.id);
   }
 
@@ -168,13 +172,13 @@ export function EventSheet({
       icon: ScanLine,
       label: 'Leer foto',
       aria: requirePhoto ? 'Leer y verificar con la foto del marcador' : 'Leer la foto del marcador',
-      onPress: scanOnWeb,
+      onPress: () => setScanFor(null),
       disabled: !players.length,
     },
   ];
 
   // Confirmaron «Voy» y todavía no están en la planilla: una fila para agregarlos (solo si falta alguno).
-  const confirmedNotice = !isTorneo && isAdmin && missing.length > 0 && (
+  const confirmedNotice = !readOnly && !isTorneo && isAdmin && missing.length > 0 && (
     <View style={[styles.notice, { borderColor: c.line }]}>
       <CalendarCheck size={20} color={c.accent} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -241,7 +245,7 @@ export function EventSheet({
                       </View>
                       {Array.from({ length: shown }, (_, k) => {
                         const cell = r.cells[k] ?? EMPTY_CELL;
-                        const can = !!r.entry || (me && !!cell.partial);
+                        const can = (!!r.entry && !readOnly) || (me && !!cell.partial);
                         return (
                           <View key={k} style={cellW ? { width: cellW } : { flex: 1 }}>
                             <SheetCell cell={cell} me={me} label={`${name}, juego ${k + 1}`} onPress={can ? () => openCell(r, k) : undefined} />
@@ -275,24 +279,28 @@ export function EventSheet({
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {tools.map((t) => {
-          const Icon = t.icon;
-          return (
-            <View key={t.key} style={{ flex: 1 }}>
-              <Button full accessibilityLabel={t.aria} icon={<Icon size={16} color={c.fg} />} loading={t.busy} disabled={t.disabled} onPress={t.onPress}>
-                {t.label}
-              </Button>
-            </View>
-          );
-        })}
-      </View>
-      <Pressable accessibilityRole="button" onPress={() => setQuick(true)} style={styles.quiet}>
-        <Keyboard size={18} color={c.fg2} />
-        <Txt tone="fg2" style={{ fontFamily: font.medium }}>
-          Escribir los puntajes a mano
-        </Txt>
-      </Pressable>
+      {!readOnly && (
+        <>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {tools.map((t) => {
+              const Icon = t.icon;
+              return (
+                <View key={t.key} style={{ flex: 1 }}>
+                  <Button full accessibilityLabel={t.aria} icon={<Icon size={16} color={c.fg} />} loading={t.busy} disabled={t.disabled} onPress={t.onPress}>
+                    {t.label}
+                  </Button>
+                </View>
+              );
+            })}
+          </View>
+          <Pressable accessibilityRole="button" onPress={() => setQuick(true)} style={styles.quiet}>
+            <Keyboard size={18} color={c.fg2} />
+            <Txt tone="fg2" style={{ fontFamily: font.medium }}>
+              Escribir los puntajes a mano
+            </Txt>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 
@@ -309,7 +317,7 @@ export function EventSheet({
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        <Button icon={<ScanLine size={16} color={c.fg} />} onPress={scanOnWeb} disabled={!players.length}>
+        <Button icon={<ScanLine size={16} color={c.fg} />} onPress={() => setScanFor(null)} disabled={!players.length}>
           {requirePhoto ? 'Verificar con foto' : 'Leer foto'}
         </Button>
         {isAdmin && event.games < 10 && (
@@ -386,7 +394,7 @@ export function EventSheet({
                       variant="ghost"
                       accessibilityLabel={`Verificar juegos de ${name} con foto`}
                       icon={requirePhoto && l.pending > 0 ? <Camera size={16} color={c.warn} /> : <CheckCircle2 size={16} color={c.muted} />}
-                      onPress={scanOnWeb}
+                      onPress={() => setScanFor(l.entry.playerId)}
                     />
                   </View>
                 </View>
@@ -430,7 +438,9 @@ export function EventSheet({
   return (
     <View style={{ gap: 12 }}>
       {confirmedNotice}
-      {quick ? quickView : sheetView}
+      {quick && !readOnly ? quickView : sheetView}
+      {/* Se monta al abrirse: empieza sin foto. */}
+      {scanFor !== undefined && <ScanSheet event={event} entries={entries} players={players} focusPlayerId={scanFor} onClose={() => setScanFor(undefined)} />}
       {adding && !isTorneo && isAdmin && <AddPlayersSheet event={event} entries={entries} players={players} onClose={() => setAdding(false)} />}
       <PhotoWithUnverify
         lid={lid}

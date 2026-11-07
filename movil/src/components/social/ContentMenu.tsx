@@ -12,9 +12,11 @@ import { REPORT_KIND_THIS, REPORT_NOTE_MAX, REPORT_REASONS, reportContent, repor
 import { contentMenuKeys, shortName } from '@mm/components/posts/postFormat';
 import { confirmAsync, toast } from '../feedback';
 import { Button, ChoiceRow, ErrorNote, Field, Input, Sheet, Txt } from '../ui';
-import { TERMS_PATH } from '@mm/pages/legal/legal';
-import { openOnWeb } from '@/lib/web';
+import { openLegal } from '@/components/legal/links';
 import { useColors } from '@/theme/theme';
+
+/** Lo que tarda en irse una hoja antes de abrir otra pantalla (los Términos, desde la hoja de reportar). */
+const SHEET_CLOSE_MS = 400;
 
 type Key = 'borrar' | 'reportar' | 'bloquear';
 
@@ -194,7 +196,15 @@ export function ReportSheet({ kind, targetId, onClose }: { kind: ReportKind; tar
         Lo revisa el equipo de MatchMate
         {inLeague ? ' y los admins de la liga (sin saber quién lo reportó)' : maybeLeague ? ' y, si es de una liga, sus admins (sin saber quién lo reportó)' : ''}. La persona
         reportada no sabe que fuiste tú. Mira lo que no se permite en los{' '}
-        <Txt variant="meta" tone="accent" onPress={() => void openOnWeb(TERMS_PATH)}>
+        <Txt
+          variant="meta"
+          tone="accent"
+          onPress={() => {
+            // La hoja se cierra primero (otra pantalla no se ve encima de una hoja abierta).
+            onClose();
+            setTimeout(() => openLegal('terminos'), SHEET_CLOSE_MS);
+          }}
+        >
           Términos de uso
         </Txt>
         .

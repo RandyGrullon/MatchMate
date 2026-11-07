@@ -1,19 +1,21 @@
 /**
  * Piezas chicas de lo que organiza el admin en raqueta (bits.tsx y night/parts.tsx de la web): «•••» y su hoja, el pie
  * Cancelar / Guardar, el número con − y +, la lista para elegir con búsqueda, «Es menor de edad» al agregar a alguien y
- * el aviso de lo que en Lite se organiza en Pro. Y el deporte con lo puro que agrega (extensions.ts de la web).
+ * el aviso «Usar Pro» de lo que en Lite se organiza en Pro. Y el deporte con lo puro que agrega (extensions.ts de la web).
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { Check, ChevronRight, Ellipsis, Globe, Minus, Plus, Search, type LucideIcon } from 'lucide-react-native';
+import { Check, ChevronRight, Ellipsis, Minus, Plus, Search, Zap, type LucideIcon } from 'lucide-react-native';
 import type { MinorInput } from '@mm/lib/data/players';
 import { useLeagueCtx } from '@mm/lib/league';
+import type { Notice } from '@mm/lib/notices';
+import { useSwitchMode } from '@mm/components/mode/toast';
 import { emptyGuardian, guardianProblem, type GuardianDraft } from '@mm/components/players/logic';
 import { racketPureExt } from '@mm/pages/sports/racket/extensions';
 import { useRacket, type RacketContext } from '@mm/pages/sports/racket/sport';
+import { useProUpsell } from '../mode/Mode';
 import { GuardianFields, MinorCheck } from '../players/fields';
 import { Button, Card, Input, Sheet, Txt } from '../ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -338,25 +340,16 @@ function Minor({ isMinor, setIsMinor, guardian, setGuardian, error }: { isMinor:
 // ---------- Lo de Pro ----------
 
 /**
- * Lite, quien organiza: lo de organizar (armar las rondas, el calendario, los grupos y el cuadro, cerrar el mes) en la
- * web está en Pro («Organizas esta noche · Las rondas se arman en Pro · Usar Pro»). La app es Lite y no tiene Pro: el
- * mismo aviso, y se abre en la web.
+ * Lite, quien organiza: lo de organizar (armar las rondas, el calendario, los grupos y el cuadro, cerrar el mes) está en
+ * Pro (useOrganizePro de la web, frame.tsx). Da el único aviso de la pantalla («Organizas esta noche · Las rondas se
+ * arman en Pro · Usar Pro», para ScreenNotice al final) y la opción de «•••» que hace lo mismo (el aviso se puede
+ * cerrar; el menú queda). En Pro, o para quien no organiza, nada.
  */
-export function ProNotice({ title, text, path }: { title: string; text: string; path: string }) {
-  const c = useColors();
-  return (
-    <Card style={{ gap: 10, backgroundColor: c.accentSoft }}>
-      <View style={{ gap: 2 }}>
-        <Txt variant="bodyStrong">{title}</Txt>
-        <Txt tone="fg2" style={{ fontSize: 14 }}>
-          {text}
-        </Txt>
-      </View>
-      <Button size="lg" full icon={<Globe size={18} color={c.fg} />} onPress={() => void openOnWeb(path)}>
-        Abrir en la web
-      </Button>
-    </Card>
-  );
+export function useOrganizePro(on: boolean, notice: { id: string; title: string; text: string; menu: string }): { notice: Notice | null; item: MenuItem | null } {
+  const upsell = useProUpsell(on, notice);
+  const switchMode = useSwitchMode();
+  if (!upsell) return { notice: null, item: null };
+  return { notice: upsell, item: { key: 'pro', icon: Zap, label: notice.menu, hint: 'Está en Pro · Usar Pro', onPress: () => void switchMode('pro') } };
 }
 
 const styles = StyleSheet.create({

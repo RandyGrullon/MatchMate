@@ -9,7 +9,8 @@ import { EventTeamsRow } from './EventTeamsRow';
  * Las pestañas de quien organiza o anota un evento de boliche en la web (EventPage: Equipos, Pistas y Planilla) como
  * filas del evento en la app, en el orden de la web: en un torneo, Equipos (solo el admin) · Pistas · Planilla; en una
  * práctica, Planilla · Pistas. Abren `/l/<liga>/e/<evento>/equipos`, `…/pistas` y `…/planilla`. Quien la pone revisa
- * que pueda anotar el evento (canScoreEvent). Va dentro de una Card sin relleno.
+ * que pueda anotar el evento (canScoreEvent). Va dentro de una Card sin relleno. Es lo de Lite: en Pro las pestañas van
+ * en el mismo evento (EventProTabs).
  */
 export function EventToolsRows({ lid, eventId, torneo, admin }: { lid: string; eventId: string; torneo: boolean; admin: boolean }) {
   const c = useColors();

@@ -1,9 +1,11 @@
 import type { CSSProperties } from 'react';
+import { HEAT_MIX, heatIndex, heatLegendLabels, type HeatPin } from '../stats/trendLogic';
 import { cx } from '../ui';
 import { PIN_ROWS } from './PinDeck';
 
-/** Cuánto color lleva cada nivel (0 a 4): un solo tono, de claro a oscuro, mezclado con la superficie. */
-const MIX = [10, 28, 46, 80, 92] as const;
+// Los niveles del mapa, su leyenda y cómo es cada pino (sin dibujar) están en stats/trendLogic.ts: los comparte la app
+// del teléfono. Se siguen importando desde aquí.
+export type { HeatPin } from '../stats/trendLogic';
 
 /**
  * Color de un nivel del mapa de calor con los tokens del tema. Los tres primeros llevan el texto normal y los dos
@@ -11,22 +13,11 @@ const MIX = [10, 28, 46, 80, 92] as const;
  * eso el salto de 46 a 80).
  */
 export function heatStyle(level: number): CSSProperties {
-  const l = Math.max(0, Math.min(MIX.length - 1, Math.round(level)));
+  const l = heatIndex(level);
   return {
-    background: `color-mix(in oklab, var(--accent) ${MIX[l]}%, var(--surface))`,
+    background: `color-mix(in oklab, var(--accent) ${HEAT_MIX[l]}%, var(--surface))`,
     color: l >= 3 ? 'var(--accent-fg)' : 'var(--fg)',
   };
-}
-
-export interface HeatPin {
-  /** 1 a 10. */
-  pin: number;
-  /** Lo que se escribe en el pino («35%»); null = sin datos. */
-  value: string | null;
-  /** 0 a 4. */
-  level: number;
-  /** Lo que dice el lector de pantalla («Pino 7: se queda parado 35%, 14 de 40»). */
-  label: string;
 }
 
 /**
@@ -66,7 +57,7 @@ export function PinHeatDeck({ pins, label }: { pins: readonly HeatPin[]; label: 
 
 /** La leyenda del mapa: los 5 niveles con sus cortes («<5%», «5–15%»…). */
 export function HeatLegend({ cuts, caption }: { cuts: readonly [number, number, number, number]; caption: string }) {
-  const labels = [`<${cuts[0]}%`, `${cuts[0]}–${cuts[1]}%`, `${cuts[1]}–${cuts[2]}%`, `${cuts[2]}–${cuts[3]}%`, `${cuts[3]}%+`];
+  const labels = heatLegendLabels(cuts);
   return (
     <div className="flex flex-col items-center gap-1.5 text-[11px] text-muted">
       <span>{caption}</span>

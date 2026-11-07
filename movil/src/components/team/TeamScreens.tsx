@@ -8,8 +8,9 @@
  * - TeamGames (GamesList): Por jugar | Resultados | Mi equipo, por jornada.
  * - TeamMatch (MatchDetail de cada deporte): el «•••» del admin, «Ver en vivo», el marcador con el en vivo, confirmar o
  *   reclamar, el reclamo para el admin, la mesa anotadora o el acta (a pantalla completa en `/l/<liga>/mesa/<partido>`),
- *   el anotador designado, los suspendidos, la convocatoria, por cuarto y los puntos (baloncesto), goles y tarjetas y el
- *   acta completa (fútbol y sala) y compartir el resultado.
+ *   el anotador designado, los suspendidos, la convocatoria, por cuarto y los puntos (baloncesto; en Pro, con triples,
+ *   tiros libres y faltas), goles y tarjetas, los jugadores (Pro) y el acta completa (fútbol y sala) y compartir el
+ *   resultado.
  * - TeamStandings: la tabla completa (standings/TeamStandingsView), con el `?ver=` y la `?temporada=` de la dirección.
  * - TeamMine (Mi equipo) y TeamEventBody (una jornada especial o el torneo relámpago), listos para sus rutas.
  */
@@ -23,6 +24,7 @@ import { rsvpSummary, setMatchRsvp, useMatchRsvps, type RsvpStatus } from '@mm/l
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { formatDateLong } from '@mm/lib/format';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { groupSchedule } from '@mm/components/match/schedule';
 import { statusInfo, whenText } from '@mm/components/match/format';
@@ -47,7 +49,7 @@ import { Button, Card, Divider, Empty, ListRow, LoadError, RowIcon, SectionHeade
 import { LogoSpinner } from '../Logo';
 import { FootballHomeAdvance, HomeBuildSheet, homeBuild } from './admin/HomeBuild';
 import { RosterEditor } from './admin/TeamsManager';
-import { BoxScore, Convocatoria, FullActa, LiveStrip, LiveWatchPill, MatchTimeline, PeriodsLine, PeriodsTable, RsvpButtons, SuspendedNotice } from './MatchParts';
+import { BoxScore, Convocatoria, FullActa, LiveStrip, LiveWatchPill, MatchTimeline, PeriodsLine, PeriodsTable, PlayersTable, RsvpButtons, SuspendedNotice } from './MatchParts';
 import { DisputeCard, MatchMenu } from './MatchMenu';
 import { MatchRows, VsTitle } from './player/MatchRows';
 import { TeamMyProfile } from './player/TeamProfile';
@@ -523,9 +525,10 @@ const leaveMatch = (lid: string) => (router.canGoBack() ? router.back() : router
 /**
  * Un partido de baloncesto (MatchDetail.tsx de la web): el «•••», el marcador y, en vivo, el cuarto, el reloj y las
  * faltas; confirmar o reclamar; UN botón para quien puede anotar; la convocatoria; los puntos por cuarto y por jugador
- * (en Lite, solo los puntos) y «Compartir el resultado».
+ * (en Lite, solo los puntos; en Pro, también triples, tiros libres y faltas) y «Compartir el resultado».
  */
 function BasketballMatch({ tl, match: m, full }: { tl: TeamLeague; match: Match; full: Match | null }) {
+  const pro = useIsPro();
   const [sharing, setSharing] = useState(false);
   const rules = full?.rules ?? tl.rules.data;
   const config = basketballConfigFrom(rules);
@@ -558,7 +561,7 @@ function BasketballMatch({ tl, match: m, full }: { tl: TeamLeague; match: Match;
           <PeriodsTable match={m} names={names} periodsPerGame={config.periods} />
           <View style={{ gap: 10 }}>
             <SectionHeader title="Puntos" />
-            <BoxScore tl={tl} match={m} />
+            <BoxScore tl={tl} match={m} full={pro} />
             {!m.score?.lines && hasResult(m) && (
               <Txt variant="meta" tone="muted" style={{ paddingHorizontal: 4 }}>
                 Sin puntos por jugador: el resultado se anotó sin la mesa.
@@ -580,11 +583,12 @@ function BasketballMatch({ tl, match: m, full }: { tl: TeamLeague; match: Match;
 /**
  * Un partido de fútbol o sala (FootballMatchDetail de la web): el «•••» (con «Corregir el acta»), el marcador y, en vivo,
  * el minuto, las faltas y las rojas (si no, los goles por tiempo); confirmar o reclamar; UN botón para quien puede anotar;
- * los suspendidos; la convocatoria; goles y tarjetas con su minuto (en Lite, sin la tabla de jugadores); el acta completa
- * y «Compartir el resultado».
+ * los suspendidos; la convocatoria; goles y tarjetas con su minuto (en Pro, también los jugadores con goles, asistencias y
+ * tarjetas); el acta completa y «Compartir el resultado».
  */
 function FootballMatch({ tl, match: m, full }: { tl: TeamLeague; match: Match; full: Match | null }) {
   const c = useColors();
+  const pro = useIsPro();
   const [sheet, setSheet] = useState<'acta' | 'editar' | 'compartir' | null>(null);
   const variant = variantOf(tl.league.sport);
   const rules = full?.rules ?? tl.rules.data;
@@ -638,6 +642,12 @@ function FootballMatch({ tl, match: m, full }: { tl: TeamLeague; match: Match; f
               Sin goles ni tarjetas.
             </Txt>
           )}
+        </View>
+      )}
+      {showActa && pro && hasLines && (
+        <View style={{ gap: 10 }}>
+          <SectionHeader title="Jugadores" />
+          <PlayersTable tl={tl} match={m} />
         </View>
       )}
       {(fullRow || hasResult(m)) && (

@@ -1,32 +1,36 @@
 /**
- * «•••» de los eventos de raqueta para quien organiza, en Lite (NightPage, LeaguePage y TourneyPage de la web): la
- * noche (compartir la tabla, ajustes, jugadores, inscripción, terminar o volver a abrir, anotadores y borrar), la liga
- * de parejas (borrar) y el torneo (inscripción, anotadores y borrar). Armar las rondas, el calendario, los grupos y el
- * cuadro son de Pro en la web: la app (Lite) muestra el mismo aviso y lo abre en la web (ProNotice). El Excel y
- * «Rehacer el calendario» (Pro), en la web.
+ * «•••» de los eventos de raqueta para quien organiza (NightPage, LeaguePage y TourneyPage de la web): la noche
+ * (compartir la tabla, ajustes, jugadores, inscripción, terminar o volver a abrir, anotadores y borrar), la liga de
+ * parejas (Excel, «Rehacer el calendario» en Pro y borrar) y el torneo («Nueva categoría» en Pro, inscripción, anotadores
+ * y borrar). En Lite, lo de organizar va con «Usar Pro» (la opción `extra`, de useOrganizePro).
  */
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { ClipboardList, ClipboardPen, Lock, LockOpen, MessageCircle, Settings2, Share2, Trash2, Users } from 'lucide-react-native';
+import { CalendarX2, ClipboardList, ClipboardPen, FileSpreadsheet, Lock, LockOpen, MessageCircle, Plus, Settings2, Share2, Trash2, Users } from 'lucide-react-native';
 import { deleteEvent } from '@mm/lib/data/events';
+import { deleteMatch, type Match } from '@mm/lib/data/matches';
 import { updateRacketEvent, type RacketEvent } from '@mm/lib/data/racket';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { formatDateLong } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
+import { useNow } from '@mm/lib/useNow';
 import type { StandingRow } from '@mm/sports/types';
 import { whatsappShareUrl } from '@mm/components/match/format';
 import { useLevels } from '@mm/pages/sports/racket/levels';
 import { NIGHT_MAX_PLAYERS, nightConfigJson, nightShareText, type NightConfig, type NightRound } from '@mm/pages/sports/racket/logic/night';
 import type { SignupSettings } from '@mm/pages/sports/racket/logic/signup';
-import { tourneyConfigJson, type TourneyConfig } from '@mm/pages/sports/racket/logic/tourney';
+import { leagueExcelInput } from '@mm/pages/sports/racket/excel';
+import { CATEGORY_IDS, tourneyConfigJson, type TourneyConfig } from '@mm/pages/sports/racket/logic/tourney';
 import { entrantPlayers, useNames } from '@mm/pages/sports/racket/names';
-import { useRacket } from '@mm/pages/sports/racket/sport';
+import { courtWords, useRacket } from '@mm/pages/sports/racket/sport';
 import { ScorersSheet } from '../scorers/ScorersSheet';
 import { confirmAsync, toast } from '../feedback';
 import { Button, Sheet, Txt } from '../ui';
+import { shareCompetitionExcel } from './excel';
 import { NightFields, NightPlayers, SignupSettingsSheet } from './NightForm';
 import { EventMenu, SaveFooter, type MenuItem } from './parts';
 import { useColors } from '@/theme/theme';
@@ -60,10 +64,51 @@ async function saveEventConfig(lid: string, eventId: string, config: Record<stri
 
 // ---------- Liga de parejas ----------
 
-export function LeagueMenu({ event, title }: { event: RacketEvent; title: string }) {
-  const { isAdmin } = useLeagueCtx();
+export function LeagueMenu({ event, title, matches, table, extra }: { event: RacketEvent; title: string; matches: readonly Match[]; table: readonly StandingRow[]; extra?: MenuItem | null }) {
+  const { lid, league, isAdmin } = useLeagueCtx();
+  const { sport, ext } = useRacket();
+  const names = useNames();
+  const pro = useIsPro();
+  const now = useNow().getTime();
+  const [busy, setBusy] = useState<'excel' | 'rehacer' | null>(null);
   const remove = useDeleteEvent(event, { title, message: 'Se borran sus partidos y resultados. No se puede deshacer.', ok: 'Liga borrada' });
-  const items: MenuItem[] = isAdmin ? [{ key: 'borrar', icon: Trash2, label: 'Borrar la liga', onPress: () => void remove(), danger: true }] : [];
+  const started = matches.some((m) => m.status !== 'scheduled' || m.seq > 0);
+  const organize = isAdmin && pro;
+
+  const removeSchedule = async () => {
+    if (!(await confirmAsync({ title: '¿Borrar el calendario?', message: 'Se borran todos los partidos (ninguno ha empezado). Luego lo armas de nuevo.', confirmText: 'Borrar calendario', danger: true })))
+      return;
+    setBusy('rehacer');
+    try {
+      for (const m of matches) await deleteMatch(lid, m.id);
+      toast('Calendario borrado');
+    } catch (e) {
+      toast(saveErrorMessage(e), 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const excel = async () => {
+    setBusy('excel');
+    try {
+      await shareCompetitionExcel(leagueExcelInput({ title, date: event.date, matches, table, sport, names, tz: league.tz, courtLabel: courtWords(ext).One, now }));
+    } catch (e) {
+      console.error(e);
+      toast('No se pudo hacer el Excel', 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const items: MenuItem[] = [
+    ...(extra ? [extra] : []),
+    ...(isAdmin && matches.length ? [{ key: 'excel', icon: FileSpreadsheet, label: 'Excel', hint: 'Partidos, tabla y jugadores', onPress: () => void excel(), busy: busy === 'excel' }] : []),
+    ...(organize && matches.length > 0 && !started
+      ? [{ key: 'rehacer', icon: CalendarX2, label: 'Rehacer el calendario', hint: 'Ningún partido ha empezado', onPress: () => void removeSchedule(), busy: busy === 'rehacer' }]
+      : []),
+    ...(isAdmin ? [{ key: 'borrar', icon: Trash2, label: 'Borrar la liga', onPress: () => void remove(), danger: true }] : []),
+  ];
   return <EventMenu title={title} items={items} />;
 }
 
@@ -71,10 +116,36 @@ export function LeagueMenu({ event, title }: { event: RacketEvent; title: string
 
 type NightSheet = 'compartir' | 'ajustes' | 'jugadores' | 'inscripcion' | 'anotadores';
 
-export function NightMenu({ event, title, cfg, rounds, table, finished }: { event: RacketEvent; title: string; cfg: NightConfig; rounds: readonly NightRound[]; table: readonly StandingRow[]; finished: boolean }) {
+export function NightMenu({
+  event,
+  title,
+  cfg,
+  rounds,
+  table,
+  finished,
+  extra,
+  sheet: asked,
+  onSheetClosed,
+}: {
+  event: RacketEvent;
+  title: string;
+  cfg: NightConfig;
+  rounds: readonly NightRound[];
+  table: readonly StandingRow[];
+  finished: boolean;
+  extra?: MenuItem | null;
+  /** La hoja que pide la pantalla (el podio: «Compartir la tabla»; «Cambiar jugadores»; «Ajustes» de «Me apunto»). */
+  sheet?: 'compartir' | 'jugadores' | 'inscripcion' | null;
+  onSheetClosed?: () => void;
+}) {
   const { lid, league, isAdmin } = useLeagueCtx();
   const names = useNames();
-  const [sheet, setSheet] = useState<NightSheet | null>(null);
+  const [own, setOwn] = useState<NightSheet | null>(null);
+  const sheet = own ?? asked ?? null;
+  const setSheet = (s: NightSheet | null) => {
+    setOwn(s);
+    if (!s) onSheetClosed?.();
+  };
   const [busy, setBusy] = useState<string | null>(null);
   const current = rounds.at(-1) ?? null;
   // Como la base: la noche empezó al publicar una ronda o al cerrarse (ya nadie se apunta ni sube de la espera).
@@ -105,6 +176,7 @@ export function NightMenu({ event, title, cfg, rounds, table, finished }: { even
 
   const items: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir la tabla', hint: 'Por WhatsApp o copiada', onPress: () => setSheet('compartir') },
+    ...(extra ? [extra] : []),
     ...(isAdmin
       ? [
           { key: 'ajustes', icon: Settings2, label: 'Ajustes de la noche', hint: 'Canchas, puntos, rondas y descansos', onPress: () => setSheet('ajustes') },
@@ -150,7 +222,7 @@ export function NightMenu({ event, title, cfg, rounds, table, finished }: { even
 }
 
 /** La tabla en texto: por WhatsApp o copiada (la hoja «Compartir la tabla»). */
-function ShareSheet({ title, text, onClose }: { title: string; text: string; onClose: () => void }) {
+export function ShareSheet({ title, text, onClose }: { title: string; text: string; onClose: () => void }) {
   const c = useColors();
   const [copying, setCopying] = useState(false);
   const copy = async () => {
@@ -242,21 +314,52 @@ function NightPlayersSheet({ cfg, busy, onClose, onSave }: { cfg: NightConfig; b
 
 type TourneySheet = 'inscripcion' | 'anotadores';
 
-export function TourneyMenu({ event, title, cfg, started }: { event: RacketEvent; title: string; cfg: TourneyConfig; started: boolean }) {
+export function TourneyMenu({
+  event,
+  title,
+  cfg,
+  started,
+  extra,
+  onNewCategory,
+  adding,
+  sheet: asked,
+  onSheetClosed,
+}: {
+  event: RacketEvent;
+  title: string;
+  cfg: TourneyConfig;
+  started: boolean;
+  extra?: MenuItem | null;
+  /** Pro, quien organiza: «Nueva categoría» (A, B, C…). */
+  onNewCategory?: () => void;
+  adding?: boolean;
+  /** La hoja que pide la pantalla («Ajustes» de «Me apunto»). */
+  sheet?: 'inscripcion' | null;
+  onSheetClosed?: () => void;
+}) {
   const { lid, league, isAdmin } = useLeagueCtx();
   const names = useNames();
-  const [sheet, setSheet] = useState<TourneySheet | null>(null);
+  const [own, setOwn] = useState<TourneySheet | null>(null);
+  const sheet = own ?? asked ?? null;
+  const setSheet = (x: TourneySheet | null) => {
+    setOwn(x);
+    if (!x) onSheetClosed?.();
+  };
   const [busy, setBusy] = useState(false);
   const remove = useDeleteEvent(event, { title, message: 'Se borran sus partidos y resultados. No se puede deshacer.', ok: 'Torneo borrado' });
   const n = cfg.categories.length;
   const { side } = useRacket();
-  const items: MenuItem[] = isAdmin
-    ? [
-        ...(!started && n > 0 ? [{ key: 'inscripcion', icon: ClipboardList, label: 'Inscripción', hint: 'Me apunto por categoría', onPress: () => setSheet('inscripcion') }] : []),
-        { key: 'anotadores', icon: ClipboardPen, label: 'Anotadores', hint: 'Quién anota este torneo', onPress: () => setSheet('anotadores') },
-        { key: 'borrar', icon: Trash2, label: 'Borrar el torneo', onPress: () => void remove(), danger: true },
-      ]
-    : [];
+  const items: MenuItem[] = [
+    ...(extra ? [extra] : []),
+    ...(isAdmin
+      ? [
+          ...(onNewCategory && n < CATEGORY_IDS.length ? [{ key: 'categoria', icon: Plus, label: 'Nueva categoría', hint: 'A, B, C…', onPress: onNewCategory, busy: adding }] : []),
+          ...(!started && n > 0 ? [{ key: 'inscripcion', icon: ClipboardList, label: 'Inscripción', hint: 'Me apunto por categoría', onPress: () => setSheet('inscripcion') }] : []),
+          { key: 'anotadores', icon: ClipboardPen, label: 'Anotadores', hint: 'Quién anota este torneo', onPress: () => setSheet('anotadores') },
+          { key: 'borrar', icon: Trash2, label: 'Borrar el torneo', onPress: () => void remove(), danger: true },
+        ]
+      : []),
+  ];
   const saveSignup = async (s: SignupSettings | null) => {
     setBusy(true);
     const ok = s?.open ? 'Inscripción abierta' : 'Inscripción cerrada';

@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarCheck, CheckCircle2, Clock, Flame, Globe, Hash, Layers, Sigma, Target, Trophy, XCircle } from 'lucide-react-native';
+import { CalendarCheck, CheckCircle2, Clock, Flame, Hash, Layers, Sigma, Target, Trophy, XCircle } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEntriesOfEvents, useEvents, useLeague, usePlayer, usePlayerEntries, usePlayerSubmissions } from '@mm/lib/data';
 import { useMembership } from '@mm/lib/data/members';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { averageForDay, averageSourceLabel } from '@mm/lib/bowlingSeason';
+import { byDate, countedFrames, entryStatGames } from '@mm/lib/bowlingStats';
 import { eventLabel, formatDate, formatDateLong, toIsoDate } from '@mm/lib/format';
 import { currentSeason, inSeason } from '@mm/lib/seasons';
 import { effectiveAverage, entryLine, eventPosition, playerStats } from '@mm/lib/stats';
@@ -21,16 +22,17 @@ import { LeaguePlayerBadges } from '@/components/badges/LeagueBadges';
 import { LeaguePlayerMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
 import { SwimPlayer } from '@/components/swimming/SwimProfile';
+import { FrameStatsPanel } from '@/components/bowling/FrameStats';
+import { TrendSection } from '@/components/bowling/TrendSection';
 import { BackBar, Badge, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
 /**
  * Un jugador de una liga de boliche (`/l/<liga>/j/<jugador>`, PlayerPage de la web): su nombre, juegos aprobados y por
  * aprobar, sus números (promedio, puntaje total, juegos, mejor juego, mejor serie y asistencia), sus envíos (si es el
- * tuyo), los torneos con su lugar, las prácticas y los números por temporada. La tendencia y el análisis por cuadros,
- * en la web.
+ * tuyo), la tendencia y el análisis por cuadros (TrendSection y FrameStatsPanel de la web, en los dos modos), los torneos
+ * con su lugar, las prácticas y los números por temporada.
  */
 /** Un jugador de la liga: el nadador en natación; el del boliche, aquí abajo. */
 export default function PlayerScreen() {
@@ -157,6 +159,14 @@ function BowlingPlayerScreen() {
     .filter((s) => s.status !== 'aprobado' || (s.createdAt && now.getTime() - s.createdAt.toMillis() < 7 * 86400_000))
     .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
     .slice(0, 6);
+  // Los juegos verificados, del más viejo al más nuevo: la tendencia y, con los cuadros que cuadran, el análisis.
+  const games = byDate(
+    [...mine].reverse().flatMap((e) => {
+      const ev = eventById.get(e.eventId)!;
+      return entryStatGames(e, ev.date, (i) => `${eventLabel(ev)} · J${i + 1} · ${formatDate(ev.date)}`);
+    }),
+  );
+  const frames = countedFrames(games);
   const gamesOf = (e: Entry) => (e.scores ?? []).filter((s): s is number => s != null).join(' · ') || '—';
   const openEvent = (eventId: string) => router.push({ pathname: '/l/[lid]/e/[eventId]', params: { lid, eventId } });
 
@@ -222,6 +232,10 @@ function BowlingPlayerScreen() {
           </Card>
         </View>
       )}
+
+      <TrendSection games={games} average={average || null} mine={isOwner} />
+
+      <FrameStatsPanel frames={frames} games={stats.games} mine={isOwner} />
 
       <View style={{ gap: 8 }}>
         <SectionHeader title="Torneos" />
@@ -351,9 +365,6 @@ function BowlingPlayerScreen() {
         <LeaguePlayerMadeBadges playerId={p.id} />
       </LeagueScope>
 
-      <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/j/${p.id}`)}>
-        Tendencia y análisis por cuadros en la web
-      </Button>
     </Screen>
   );
 }

@@ -15,6 +15,8 @@ import { PublicProfileSection } from '@/components/account/PublicProfile';
 import { AccountData, AppearanceCard, MatchMateCard, MyLeagues, RowGroup, SignOutCard } from '@/components/account/SettingsCards';
 import { Avatar } from '@/components/social/Avatar';
 import { BackBar, Badge, ListRow, Loading, RowIcon, Screen, Txt } from '@/components/ui';
+import { TITLE_PRO } from '@/components/home/proLook';
+import { useIsPro } from '@mm/lib/useMode';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -29,6 +31,8 @@ export default function AccountScreen() {
   const auth = useAuth();
   const me = usePublicProfile(auth.user?.uid);
   const [sheet, setSheet] = useState<'nombre' | 'usuario' | null>(null);
+  // Pro: lo mismo más denso (el título, tu foto y tu nombre un poco más chicos, como la web).
+  const pro = useIsPro();
 
   if (auth.loading) return <Loading />;
   if (!auth.user) return <Redirect href="/login" />;
@@ -45,14 +49,16 @@ export default function AccountScreen() {
     <Screen onRefresh={() => invalidate(tags.profile(user.uid), peopleTags.user(user.uid), blockKeys.mine)}>
       {/* Se llega con el engranaje de Yo: «‹ Yo» vuelve ahí. */}
       <BackBar label="Yo" fallback="/yo" />
-      <Txt variant="title">Configuración</Txt>
+      <Txt variant="title" style={pro ? TITLE_PRO : undefined}>
+        Configuración
+      </Txt>
 
       {/* Quién eres, como arriba de Yo. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-        <Avatar name={name} photo={me.data?.avatar} size={60} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: pro ? 14 : 16 }}>
+        <Avatar name={name} photo={me.data?.avatar} size={pro ? 52 : 60} />
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Txt variant="cardTitle" numberOfLines={1} style={{ flexShrink: 1, fontSize: 24, lineHeight: 28 }}>
+            <Txt variant="cardTitle" numberOfLines={1} style={{ flexShrink: 1, fontSize: pro ? 22 : 24, lineHeight: pro ? 26 : 28 }}>
               {name}
             </Txt>
             {auth.isSuper && <Badge>Superadmin</Badge>}

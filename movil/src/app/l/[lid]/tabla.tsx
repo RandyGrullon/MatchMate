@@ -14,7 +14,7 @@ import { BackBar, Loading, Screen } from '@/components/ui';
 
 /** La tabla de la liga (la pestaña Tabla de la web). */
 export default function LeagueTableScreen() {
-  const { lid, temporada } = useLocalSearchParams<{ lid: string; temporada?: string }>();
+  const { lid, temporada, ver, hcp } = useLocalSearchParams<{ lid: string; temporada?: string; ver?: string; hcp?: string }>();
   const auth = useAuth();
   const league = useLeague(lid);
   const member = useMembership(lid, auth.user?.uid);
@@ -54,12 +54,21 @@ export default function LeagueTableScreen() {
       </Screen>
     );
   }
-  // El boliche: su tabla por temporada (promedios).
+  // El boliche: su tabla por temporada (promedios; en Pro, la tabla completa con Excel y compartir).
   if (sport === 'bowling') {
     return (
       <Screen>
-        <BackBar label={league.data?.name ?? 'Liga'} fallback={`/l/${lid}`} />
-        <BowlingRanking lid={lid} myPlayerId={member.data?.playerId ?? null} initialSeasonId={temporada ?? null} />
+        <LeagueScope lid={lid}>
+          <BowlingRanking
+            lid={lid}
+            myPlayerId={member.data?.playerId ?? null}
+            initialSeasonId={temporada ?? null}
+            initialSort={ver ?? null}
+            initialHcp={hcp === '1'}
+            backLabel={league.data?.name ?? 'Liga'}
+            backFallback={`/l/${lid}`}
+          />
+        </LeagueScope>
       </Screen>
     );
   }

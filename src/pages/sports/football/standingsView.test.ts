@@ -7,6 +7,7 @@ import {
   footballRuleLine,
   footballRuleText,
   footballSegment,
+  footballShareCard,
   footballTab,
   keeperLine,
   nearSuspension,
@@ -63,5 +64,20 @@ describe('la Tabla del fútbol', () => {
     const text = disciplineMatchText([m], (id) => (id === 't1' ? 'Tigres de Ejemplo' : null));
     expect(text('m1')).toBe('J3 · Tigres de Ejemplo vs. Equipo Dos');
     expect(text('otro')).toBe('partido borrado');
+  });
+
+  it('la imagen para compartir (Pro)', () => {
+    const row = { id: 't1', played: 1, won: 1, drawn: 0, lost: 0, points: 3, for: 2, against: 1, diff: 1, extra: {}, rank: 1 };
+    const scorer = { player: 'p1', team: 't1', games: 1, goals: 2, assists: 0, ownGoals: 0, yellows: 0, reds: 0, keeperGames: 0, cleanSheets: 0, conceded: 0 };
+    const season = { groups: [], standings: [row], scorers: [scorer], cards: [], keepers: [] };
+    const teamOf = () => ({ name: 'Equipo Uno', color: null });
+    const share = (tab: Parameters<typeof footballShareCard>[0]['tab']) => footballShareCard({ leagueName: 'Liga de Ejemplo', tab, season, teamOf, nameOf: () => 'Jugador Uno' });
+    expect(share('tabla')?.sections[0].rows[0]).toMatchObject({ name: 'Equipo Uno' });
+    expect(share('goleadores')?.subtitle).toBe('Goleadores');
+    expect(share('tarjetas')).toBeNull();
+    expect(share('vallas')).toBeNull();
+    expect(share('disciplina')).toBeNull();
+    const groups = footballShareCard({ leagueName: 'Liga de Ejemplo', tab: 'tabla', season: { ...season, groups: [{ stage: 'Grupo A', rows: [row] }] }, teamOf, nameOf: () => '' });
+    expect(groups?.sections[0].heading).toBe('Grupo A');
   });
 });

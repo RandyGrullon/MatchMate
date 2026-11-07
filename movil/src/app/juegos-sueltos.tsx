@@ -3,22 +3,28 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CloudUpload, Heart, Lock, Plus } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { soloByMonth, soloHigh, soloSeries, soloSummary, soloVenues, useMySoloSessions, type SoloSession } from '@mm/lib/data/solo';
+import { countedFrames, soloStatGames } from '@mm/lib/bowlingStats';
+import { soloByMonth, soloHigh, soloOldestFirst, soloSeries, soloSummary, soloVenues, useMySoloSessions, type SoloSession } from '@mm/lib/data/solo';
 import { formatDate, toIsoDate } from '@mm/lib/format';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { sportMeta } from '@mm/sports/registry';
 import { soloScoresLine } from '@mm/components/solo/logic';
 import { DateBlock } from '@/components/DateBlock';
+import { NumbersGrid, ShotsCard, TrendCard } from '@/components/bowling/ProStats';
+import { TITLE_PRO } from '@/components/home/proLook';
 import { SoloGameSheet } from '@/components/solo/SoloGameSheet';
-import { BackBar, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
+import { BackBar, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Segmented, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
 /**
- * Juegos sueltos (`/juegos-sueltos`, SoloGamesPage de la web, Lite): «‹ Yo», el título y una línea, tu promedio y tu
- * mejor juego, un solo botón «Anotar juego suelto» y la lista por mes (la fecha, la bolera, los juegos y la serie; el
- * candado si no sale en tu perfil y la nube si falta enviarlo). Tocar uno lo abre para cambiarlo o borrarlo.
- * `?juego=<id>` abre ese; `?nuevo=1`, uno nuevo. Sin cuenta, invita a entrar. Las estadísticas (Pro), en la web.
+ * Juegos sueltos (`/juegos-sueltos`, SoloGamesPage de la web): «‹ Yo», el título y una línea, tus números (Lite: el
+ * promedio y el mejor juego; Pro: los 6 de siempre), un solo botón «Anotar juego suelto» y la lista por mes (la fecha, la
+ * bolera, los juegos y la serie; el candado si no sale en tu perfil y la nube si falta enviarlo). Tocar uno lo abre para
+ * cambiarlo o borrarlo. En Pro, «Por día | Estadísticas» (`?ver=estadisticas`) cambia la lista por la tendencia y tus
+ * tiros, como en Yo (un link con `?ver=estadisticas` las abre también en Lite, con el segmentado para volver).
+ * `?juego=<id>` abre ese; `?nuevo=1`, uno nuevo. Sin cuenta, invita a entrar.
  */
 export default function SoloGamesScreen() {
   const auth = useAuth();
@@ -49,17 +55,24 @@ export default function SoloGamesScreen() {
 function SoloGames() {
   const c = useColors();
   const sessions = useMySoloSessions();
-  const { juego, nuevo } = useLocalSearchParams<{ juego?: string; nuevo?: string }>();
+  const { juego, nuevo, ver } = useLocalSearchParams<{ juego?: string; nuevo?: string; ver?: string }>();
   const today = toIsoDate(useNow());
   const summary = useMemo(() => soloSummary(sessions.data), [sessions.data]);
   const months = useMemo(() => soloByMonth(sessions.data), [sessions.data]);
   const venues = useMemo(() => soloVenues(sessions.data), [sessions.data]);
+  // Todos los juegos, del más viejo al más nuevo (la tendencia; el mismo día, en el orden en que se jugaron) y los
+  // cuadros que cuadran (el análisis).
+  const games = soloOldestFirst(sessions.data).flatMap((s) => soloStatGames(s, (i) => `${s.venue || 'Juego suelto'} · J${i + 1} · ${formatDate(s.playedOn)}`));
+  const frames = countedFrames(games);
+  const pro = useIsPro();
+  const statsView = ver === 'estadisticas';
   const editing = juego ? (sessions.data.find((s) => s.id === juego) ?? null) : null;
   const isNew = nuevo === '1';
   const setOpen = (id: string | 'nuevo' | null) => router.setParams({ juego: id && id !== 'nuevo' ? id : undefined, nuevo: id === 'nuevo' ? '1' : undefined });
+  const setStatsView = (on: boolean) => router.setParams({ ver: on ? 'estadisticas' : undefined });
 
   const add = (
-    <Button variant="primary" size="xl" full icon={<Plus size={20} color={c.accentFg} />} onPress={() => setOpen('nuevo')}>
+    <Button variant="primary" size={pro ? 'lg' : 'xl'} full icon={<Plus size={20} color={c.accentFg} />} onPress={() => setOpen('nuevo')}>
       Anotar juego suelto
     </Button>
   );
@@ -70,30 +83,68 @@ function SoloGames() {
   else if (!sessions.data.length) {
     content = <Empty icon={Icon ? <Icon size={28} color={c.accent} /> : undefined} title="Todavía no tienes juegos sueltos" text="Tu promedio y tus mejores juegos salen aquí y en tu perfil." action={add} />;
   } else {
+    // En Lite la lista; «Estadísticas» es de Pro (si llega un link con ?ver=estadisticas, se ve y se puede volver).
+    const showViews = pro || statsView;
     content = (
       <>
-        <View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Stat value={summary.average ?? '—'} label="Promedio" accent />
-            <Stat value={summary.high || '—'} label="Más alto" />
+        {pro ? (
+          <NumbersGrid
+            items={[
+              { label: 'Promedio', value: summary.average ?? '—', accent: true },
+              { label: 'Más alto', value: summary.high || '—' },
+              { label: 'Mejor serie', value: summary.bestSeries || '—' },
+              { label: 'Juegos', value: summary.games },
+              { label: summary.sessions === 1 ? 'Día' : 'Días', value: summary.sessions },
+              { label: 'Por cuadros', value: frames.length },
+            ]}
+          />
+        ) : (
+          <View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Stat value={summary.average ?? '—'} label="Promedio" accent />
+              <Stat value={summary.high || '—'} label="Más alto" />
+            </View>
+            <Txt variant="meta" tone="muted" style={{ marginHorizontal: 4, marginTop: 10 }}>
+              {`${summary.games} ${summary.games === 1 ? 'juego' : 'juegos'} en ${summary.sessions} ${summary.sessions === 1 ? 'día' : 'días'}${summary.bestSeries ? ` · mejor serie ${summary.bestSeries}` : ''}`}
+            </Txt>
           </View>
-          <Txt variant="meta" tone="muted" style={{ marginHorizontal: 4, marginTop: 10 }}>
-            {`${summary.games} ${summary.games === 1 ? 'juego' : 'juegos'} en ${summary.sessions} ${summary.sessions === 1 ? 'día' : 'días'}${summary.bestSeries ? ` · mejor serie ${summary.bestSeries}` : ''}`}
-          </Txt>
-        </View>
+        )}
         {add}
-        {months.map((m) => (
-          <View key={m.month} style={{ gap: 8 }}>
-            <SectionHeader title={m.label.charAt(0).toUpperCase() + m.label.slice(1)} />
-            <Card padded={false} style={{ overflow: 'hidden' }}>
-              {m.sessions.map((s, i) => (
-                <View key={s.id} style={i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null}>
-                  <SoloRow session={s} onOpen={() => setOpen(s.id)} />
-                </View>
-              ))}
-            </Card>
+        {showViews && (
+          <Segmented<'dias' | 'estadisticas'>
+            label="Qué ver"
+            options={[
+              { key: 'dias', label: 'Por día' },
+              { key: 'estadisticas', label: 'Estadísticas' },
+            ]}
+            value={statsView ? 'estadisticas' : 'dias'}
+            onChange={(k) => setStatsView(k === 'estadisticas')}
+          />
+        )}
+        {statsView ? (
+          <View style={{ gap: 14 }}>
+            <TrendCard games={games} average={summary.average} today={today} />
+            {games.length < 2 && (
+              <Txt variant="meta" tone="muted" style={{ marginHorizontal: 4 }}>
+                Con dos juegos o más aquí ves cómo vas.
+              </Txt>
+            )}
+            <ShotsCard frames={frames} games={summary.games} />
           </View>
-        ))}
+        ) : (
+          months.map((m) => (
+            <View key={m.month} style={{ gap: 8 }}>
+              <SectionHeader title={m.label.charAt(0).toUpperCase() + m.label.slice(1)} />
+              <Card padded={false} style={{ overflow: 'hidden' }}>
+                {m.sessions.map((s, i) => (
+                  <View key={s.id} style={i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null}>
+                    <SoloRow session={s} dense={pro} onOpen={() => setOpen(s.id)} />
+                  </View>
+                ))}
+              </Card>
+            </View>
+          ))
+        )}
       </>
     );
   }
@@ -102,12 +153,14 @@ function SoloGames() {
     <Screen>
       <BackBar label="Yo" fallback="/yo" />
       <View style={{ gap: 4 }}>
-        <Txt variant="title">Juegos sueltos</Txt>
+        <Txt variant="title" accessibilityRole="header" style={pro ? TITLE_PRO : undefined}>
+          Juegos sueltos
+        </Txt>
         <Txt variant="meta" tone="muted">
           Boliche sin liga ni torneo
         </Txt>
       </View>
-      <View style={{ gap: 22, marginTop: 6 }}>{content}</View>
+      <View style={{ gap: pro ? 14 : 22, marginTop: 6 }}>{content}</View>
       {(isNew || editing) && <SoloGameSheet key={editing?.id ?? 'nuevo'} session={editing} venues={venues} today={today} onClose={() => setOpen(null)} />}
     </Screen>
   );
@@ -130,7 +183,7 @@ function Stat({ value, label, accent }: { value: string | number; label: string;
  * Un día de juegos sueltos en la lista (SoloRow de la web): la fecha, la bolera, los juegos y, a la derecha, la serie (o
  * los pinos de un solo juego). El candado dice que no sale en tu perfil y la nube, que falta enviarlo.
  */
-function SoloRow({ session: s, onOpen }: { session: SoloSession; onOpen: () => void }) {
+function SoloRow({ session: s, onOpen, dense }: { session: SoloSession; onOpen: () => void; dense?: boolean }) {
   const c = useColors();
   const many = s.scores.length > 1;
   const label = [
@@ -142,7 +195,7 @@ function SoloRow({ session: s, onOpen }: { session: SoloSession; onOpen: () => v
     .filter(Boolean)
     .join(' · ');
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onOpen} style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onOpen} style={({ pressed }) => [styles.row, dense && styles.dense, { opacity: pressed ? 0.7 : 1 }]}>
       <DateBlock date={s.playedOn} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Txt variant="bodyStrong" numberOfLines={1}>
@@ -171,4 +224,6 @@ function SoloRow({ session: s, onOpen }: { session: SoloSession; onOpen: () => v
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingHorizontal: 16, paddingVertical: 10 },
+  // Pro: la fila un poco más baja (ListRow dense de la web).
+  dense: { minHeight: 56, paddingVertical: 8 },
 });

@@ -7,12 +7,9 @@ import { markBadgesSeen, markLeagueBadgesSeen, setBadgeHidden, useBadgeStats, us
 import { useBusy } from '../busy';
 import { useAction } from '../feedback';
 import { ShareImageModal } from '../share/ShareImageModal';
-import { shareFrame } from '../share/ShareButton';
-import { shareFileName } from '../share/actions';
-import { badgeShare } from '../share/badge';
-import type { CardFrame, ShareCard } from '../share/cards';
 import { Button, cx } from '../ui';
-import { leagueShareInputOf, levelLine, myBadgesPath, shareInputOf, unlockPlan, yearRecap, type UnlockItem, type UnlockPlan, type YearRecapModel } from './logic';
+import { levelLine, myBadgesPath, unlockPlan, yearRecap, type UnlockItem, type UnlockPlan, type YearRecapModel } from './logic';
+import { unlockShareLink, unlockSharing, type BadgeSharing } from './share';
 import { HISTORY_SHOWN, canShareUnlock, historyTitle, isPrivateUnlock as isPrivate, recapFacts, unlockHeader, unlockMoreLine, unlockTarget } from './unlock';
 
 /** Botón de solo ícono de 44 px (flechas y cerrar). */
@@ -174,13 +171,6 @@ export function YearRecapCard({ recap }: { recap: YearRecapModel }) {
   );
 }
 
-interface Sharing {
-  card: ShareCard;
-  frame: CardFrame;
-  url?: string;
-  filename: string;
-}
-
 /**
  * El aviso al ganar (§6.4) sobre las insignias sin ver: al cerrarlo (o «Ver mis insignias») se marcan vistas en el
  * servidor (`mark_badges_seen`, `mark_league_badges_seen`), así no vuelve a salir en otro teléfono. Lo monta
@@ -213,7 +203,7 @@ export default function UnlockModal({
   // Las privadas que ya contestó (la pregunta no sale más) y las que mostró (esas sí se pueden compartir).
   const [shown, setShown] = useState<ReadonlySet<string>>(new Set());
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
-  const [sharing, setSharing] = useState<Sharing | null>(null);
+  const [sharing, setSharing] = useState<BadgeSharing | null>(null);
   const closed = useRef(false);
 
   const finish = (go?: boolean) => {
@@ -248,15 +238,11 @@ export default function UnlockModal({
 
   const current = plan.items[Math.min(index, plan.items.length - 1)];
 
+  // La tarjeta de la que se ve, con tu nombre y el link de tu perfil: share.ts (los arma igual la app del teléfono).
   const share = () => {
     if (!current) return;
-    const name = displayName(auth);
-    const uid = auth.user?.uid;
     const here = typeof location !== 'undefined' ? location : undefined;
-    const url = uid && here ? `${here.origin}/u/${uid}` : here?.href;
-    const input = current.kind === 'app' ? shareInputOf(current.view, name) : leagueShareInputOf(current.view, name);
-    const sport = current.kind === 'app' ? (current.view.award.sport === 'all' ? null : current.view.award.sport) : current.view.award.sport;
-    setSharing({ card: badgeShare(input), frame: shareFrame(sport, url), url, filename: shareFileName(['insignia', input.name, name]) });
+    setSharing(unlockSharing(current, { name: displayName(auth), url: unlockShareLink(here?.origin, auth.user?.uid, here?.href) }));
   };
 
   const show = async (it: UnlockItem) => {

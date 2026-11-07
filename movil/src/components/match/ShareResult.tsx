@@ -233,7 +233,8 @@ export function ShareImageSheet({
   // Si no se pudo sacar la imagen (o compartirla), lo dice y queda el link.
   const [failed, setFailed] = useState(false);
   const scene = buildScene(card, frame);
-  const xml = sceneToSvg(scene);
+  // Sin aria-hidden: en la vista previa web React lo avisa como atributo inválido dentro del SVG.
+  const xml = sceneToSvg(scene).replace(/ aria-hidden="true"/g, '');
 
   async function share() {
     if (!svg.current || busy) return;

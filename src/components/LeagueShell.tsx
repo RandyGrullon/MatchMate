@@ -33,6 +33,7 @@ import { LeaguePlayerMadeBadges } from './badges/maker/LeagueMadeBadges';
 import { PlayerAccountLink } from './places/PlayerAccountLink';
 import { LeagueHomeFrame } from './league/LeagueHome';
 import { ROW_ICONS, type LeagueRowDef } from './league/home/LeagueSections';
+import { organizesRow } from './league/homeNotices';
 import { LeagueHomeActions } from './league/home/LeagueSocialActions';
 import { InvitePill, LeagueBarProvider, LeagueTopBar, ShellBackBar } from './league/home/LeagueTopBar';
 import { OWN_BAR, OWN_BAR_BOWLING, leagueBar } from './league/home/logic';
@@ -189,19 +190,8 @@ export default function LeagueShell() {
               .map((t) => ({ key: `admin-${t.key}`, icon: rowIcon(t.icon ?? Users), title: t.label, to: `${base}/admin?tab=${t.key}` }))
           : []),
         // Pro: lo de la antigua pestaña Admin, con lo que espera (en Lite, el aviso «Organizas esta liga · Probar Pro»).
-        ...(ctx.isAdmin && pro
-          ? [
-              {
-                key: 'organizar',
-                icon: ROW_ICONS.organize,
-                title: standalone ? 'Organizas este torneo' : 'Organizas esta liga',
-                subtitle: toDo.line || 'Gente, fechas y ajustes',
-                to: `${base}/admin`,
-                count: toDo.count,
-                accent: true,
-              },
-            ]
-          : []),
+        // Los textos (y los de la app del teléfono) están en league/homeNotices.ts.
+        ...(ctx.isAdmin && pro ? [{ key: 'organizar', icon: ROW_ICONS.organize, ...organizesRow(ctx.league.kind, false, toDo.line, base), count: toDo.count, accent: true }] : []),
       ];
   const bar = leagueBar(pathname, base, bowling ? OWN_BAR_BOWLING : OWN_BAR);
   const home = bar === 'home';

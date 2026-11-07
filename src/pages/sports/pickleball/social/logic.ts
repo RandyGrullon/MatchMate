@@ -261,3 +261,29 @@ export function gameParser(game: GameRules): ResultParser {
     return { score: { text: `${a}-${b}`, sides: [a, b] }, winner: w, summary: `Gana el lado ${w}, ${Math.max(a, b)} a ${Math.min(a, b)}` };
   };
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Lo de la pantalla (SocialPage y SocialForm; la app del teléfono lo usa igual)
+
+/** «Round robin del jueves» (el nombre de «Nuevo» si no se escribe otro). */
+export function socialDefaultName(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  const day = y && m && d ? new Intl.DateTimeFormat('es-DO', { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d))) : '';
+  return `Round robin del ${day}`;
+}
+
+/** «12 jugadores en 3 canchas · 6 rondas · sin repetir compañero» (lo de «Todo listo para la ronda 1»). */
+export function socialFirstSummary(cfg: Pick<SocialConfig, 'players' | 'courts' | 'rounds' | 'mixed'>): string {
+  return `${cfg.players.length} jugadores en ${cfg.courts.length} ${cfg.courts.length === 1 ? 'cancha' : 'canchas'} · ${cfg.rounds} rondas · ${
+    cfg.mixed ? 'cada pareja con uno de cada grupo' : 'sin repetir compañero'
+  }`;
+}
+
+/** El marcador de un juego de la ronda: «11-7», con dos ejemplos y cómo se juega. */
+export function socialEntry(game: GameRules): { parser: ResultParser; placeholder: string; examples: string[]; hint: string } {
+  return { parser: gameParser(game), placeholder: `${game.to}-7`, examples: [`${game.to}-9`, `${game.to}-5`], hint: gameText(game) };
+}
+
+/** Mixto: los dos grupos se pueden armar (al menos 2 de cada uno) o no es mixto. */
+export const mixedReady = (players: readonly string[], mixed: readonly string[] | null) =>
+  !mixed || (players.filter((p) => mixed.includes(p)).length >= 2 && players.filter((p) => !mixed.includes(p)).length >= 2);

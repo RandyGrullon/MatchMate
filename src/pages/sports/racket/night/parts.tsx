@@ -6,10 +6,11 @@ import { useLeagueCtx } from '../../../../lib/league';
 import type { StandingRow } from '../../../../sports/types';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
-import { MatchCard, ResultEntryModal, whatsappShareUrl, type ResultParser } from '../../../../components/match';
+import { MatchCard, ResultEntryModal, whatsappShareUrl } from '../../../../components/match';
 import { useIsPro } from '../../../../components/mode';
 import { Badge, Button, Card, Empty, SectionHeader, cx } from '../../../../components/ui';
 import type { NightRound } from '../logic/night';
+import type { PointsEntry } from './entry';
 import { useMySide } from '../match/MatchDetail';
 import { useNames } from '../names';
 
@@ -113,13 +114,7 @@ export function FirstRound({
   );
 }
 
-/** Cómo se pone el marcador de un partido de la ronda («14-10», «11-7»). */
-export interface PointsEntry {
-  parser: ResultParser;
-  placeholder: string;
-  hint?: string;
-  examples?: string[];
-}
+export type { PointsEntry } from './entry';
 
 /**
  * La ronda de ahora: una tarjeta por cancha con su marcador; tocarla abre el partido. «Anotar» y «Marcador» salen en tu

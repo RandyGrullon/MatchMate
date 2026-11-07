@@ -5,6 +5,7 @@ import { ClipboardPen, FileDown, ListChecks, Lock, LockOpen, Medal, Megaphone, P
 import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { deleteMeet, finalizeMeet, useSwimEntries, useSwimEvents, useSwimMeets, useSwimRules } from '@mm/lib/data/swimming';
 import { toIsoDate } from '@mm/lib/format';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { canStartStream, liveHref } from '@mm/components/live/logic';
 import { meetMeta } from '@mm/pages/sports/swimming/home';
@@ -18,7 +19,7 @@ import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { useBusy } from './adminParts';
 import { MeetFormSheet } from './MeetForm';
-import { MenuSheet, MoreButton, TabStrip, runAction, type MenuItem } from './parts';
+import { MenuSheet, MoreButton, ProLine, TabStrip, runAction, type MenuItem } from './parts';
 import { EntriesPanel } from './SwimEntries';
 import { HeatSheetPanel, ProgramPanel, ResultsPanel, ScoresPanel } from './SwimPanels';
 import { TimingPanel } from './SwimTiming';
@@ -34,10 +35,11 @@ type SheetKey = 'menu' | 'puntos' | 'reporte' | 'cambiar' | 'anotadores' | 'vivo
 const SHEET_CLOSE_MS = 400;
 
 /**
- * Un encuentro de natación (MeetPage de la web, Lite): «‹ Club Acuático» y «•••» arriba, el título grande y una línea
- * con en qué va, el día, la hora y la piscina; «Ver en vivo» si se transmite; el anuncio, si hay. Las partes son las de
- * la web (meetTabs): Pruebas (inscribirse) · Series · Resultados y, para quien organiza o cronometra, lo de Pro
- * (Programa, Inscritos, Series, Cronometrar, Resultados y Puntos) desde «•••», como un link de Pro en la web.
+ * Un encuentro de natación (MeetPage de la web): «‹ Club Acuático» y «•••» arriba, el título grande y una línea con en qué
+ * va, el día, la hora y la piscina (en Pro, también los carriles y cuántas pruebas); «Ver en vivo» si se transmite; el
+ * anuncio, si hay. Las partes son las de la web (meetTabs): en Lite, Pruebas (inscribirse) · Series · Resultados; en Pro,
+ * Programa, Inscritos, Series, Cronometrar, Resultados y Puntos. En Lite, quien organiza o cronometra abre lo de Pro
+ * desde «•••» (como un link de Pro en la web), con «Esto es de Pro · Usar Pro».
  * «•••»: «Transmitir en vivo», el reporte (PDF o Excel), los puntos por club, «Cronometrar» y, para el admin, «Programa
  * y series», «Cambiar el encuentro», «Cronometristas», «Finalizar el encuentro» o «Volver a abrir» y «Borrar
  * encuentro». El reporte del admin al finalizar y los premios del encuentro, abajo. `?ver=` abre una parte (como en la
@@ -46,6 +48,7 @@ const SHEET_CLOSE_MS = 400;
 export function SwimEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
   const ctx = useSwim();
+  const isPro = useIsPro();
   const { lid, isAdmin, isTimer, league, clubs } = ctx;
   const params = useLocalSearchParams<{ ver?: string }>();
   const meets = useSwimMeets(lid);
@@ -76,8 +79,8 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
   const data: MeetData = { lid, meet, events: events.data, entries: entries.data, clubs: clubById, clubList: clubs.data, name };
   const stage = meetStage(meet, events.data.length);
   const standalone = league.kind === 'torneo';
-  // En el teléfono no hay Pro: lo de Pro se abre con un link de Pro (cronometrar, el programa), como en Lite en la web.
-  const { tabs, tab, pro, timing } = meetTabs({ meet, events: events.data, entries: entries.data, isPro: false, isAdmin, isTimer, requested: picked ?? params.ver ?? null });
+  // Las partes (Lite o Pro, o un link de Pro para quien organiza o cronometra) y cuál se ve: meetTabs de la web.
+  const { tabs, tab, pro, timing } = meetTabs({ meet, events: events.data, entries: entries.data, isPro, isAdmin, isTimer, requested: picked ?? params.ver ?? null });
   // En vivo: «Transmitir en vivo» en «•••» (admins y cronometristas, con la liga en vivo) y, en vivo, «Ver en vivo».
   const stream = streamFor(streams, { eventId: meet.id });
   const canStart = canStartStream(ctx);
@@ -155,7 +158,7 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
           {STAGE_LABEL[stage]}
         </Txt>
       )}
-      {` · ${meetMeta(meet, today, false, events.data.length)}`}
+      {` · ${meetMeta(meet, today, isPro, events.data.length)}`}
     </Txt>
   );
 
@@ -209,6 +212,9 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
           <Txt style={{ flex: 1, minWidth: 0, fontSize: 14 }}>{meet.announcement}</Txt>
         </Card>
       )}
+
+      {/* Lo de Pro abierto en Lite (desde «•••» o un link de Pro). */}
+      {pro && !isPro && <ProLine />}
 
       {tabs.length <= 3 ? (
         <Segmented<MeetTabKey> label="Partes del encuentro" options={tabs} value={tab} onChange={setPicked} />

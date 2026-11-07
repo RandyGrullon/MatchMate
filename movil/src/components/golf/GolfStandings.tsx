@@ -7,10 +7,13 @@ import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { eventLabel, formatDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
 import { pickSeason, type Season, type SeasonAward } from '@mm/lib/seasons';
+import { useIsPro } from '@mm/lib/useMode';
 import { parseSnapshot, seasonDates } from '@mm/components/season/logic';
-import { meritPlace } from '@mm/pages/sports/golf/home';
+import { meritPlace, meritSeasonText, meritShare } from '@mm/pages/sports/golf/home';
 import { useGolfMerit } from '@mm/pages/sports/golf/seasonTable';
 import { SnapshotTables } from '@/components/seasonAdmin/SnapshotTables';
+import { ShareIconButton } from '@/components/swimming/ShareImage';
+import { TuTag } from '@/components/swimming/parts';
 import { Button, Card, ChoiceRow, Empty, ListRow, LoadError, Loading, SectionHeader, Sheet, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -23,15 +26,16 @@ const SHOWN = 3;
 const hasSavedTable = (s: Pick<Season, 'status' | 'standings'> | null | undefined) => !!s && s.status === 'closed' && parseSnapshot(s.standings) != null;
 
 /**
- * Orden de mérito de la temporada (GolfStandings de la web, Lite): puntos por puesto en cada ronda cerrada, la temporada
- * (`?temporada=`: la activa con las rondas de sus fechas; una cerrada muestra sus premios y la tabla que se guardó al
- * cerrarla), tu lugar («Vas 3.º de 6, con 41 pts…») y la lista con «Tú» (tocar a uno abre su página de golf), y las
- * rondas que cuentan con quién ganó cada una. La misma lógica de la web (useGolfMerit). La tabla de Pro y la imagen
- * para compartir, en la web.
+ * Orden de mérito de la temporada (GolfStandings de la web): puntos por puesto en cada ronda cerrada; arriba, el título
+ * con compartir la imagen (meritShare de la web) y la temporada (`?temporada=`: la activa con las rondas de sus fechas;
+ * una cerrada muestra sus premios y la tabla que se guardó al cerrarla). En Lite, tu lugar («Vas 3.º de 6, con 41
+ * pts…») y la lista con «Tú»; en Pro, la tabla con Puntos, Jugó y Ganó (tocar a uno abre su página de golf). Debajo,
+ * las rondas que cuentan con quién ganó cada una. La misma lógica de la web (useGolfMerit).
  */
 export function GolfStandings() {
   const c = useColors();
   const { lid, league, myPlayerId } = useLeagueCtx();
+  const pro = useIsPro();
   const params = useLocalSearchParams<{ temporada?: string }>();
   const seasons = useLeagueSeasons(lid);
   const [seasonId, setSeasonId] = useState<string | null>(null);
@@ -62,24 +66,36 @@ export function GolfStandings() {
     const e = events.data.find((x) => x.id === id);
     return e ? eventLabel({ type: e.type, name: e.name, date: e.date }, 'golf') : 'Ronda';
   };
-  // Sin temporadas (datos de antes): las fechas de la liga.
-  const leagueDates = league.seasonStart || league.seasonEnd ? `${league.seasonStart ? formatDate(league.seasonStart) : '…'} – ${league.seasonEnd ? formatDate(league.seasonEnd) : '…'}` : null;
-  const place = meritPlace(merit, myPlayerId, nameOf);
+  // La temporada en palabras (sin temporadas, datos de antes: las fechas de la liga).
+  const seasonText = meritSeasonText(selected, league);
+  const place = pro ? null : meritPlace(merit, myPlayerId, nameOf);
   const leader = merit[0];
   const minePts = merit.find((m) => m.id === myPlayerId)?.points ?? 0;
   const shown = allCounted ? counted : counted.slice(0, SHOWN);
 
   return (
     <View style={{ gap: 14 }}>
-      {title}
-      {!selected && leagueDates && (
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        {title}
+        {merit.length > 0 && (
+          <ShareIconButton
+            round
+            label="Compartir el orden de mérito"
+            path={`/l/${lid}/ranking${selected && selected.status !== 'active' ? `?temporada=${encodeURIComponent(selected.id)}` : ''}`}
+            card={() => meritShare({ leagueName: league.name, seasonText, merit, nameOf, counted: counted.length })}
+          />
+        )}
+      </View>
+      {!selected && seasonText && (
         <Txt variant="meta" tone="muted">
-          {`Temporada ${leagueDates}`}
+          {`Temporada ${seasonText}`}
         </Txt>
       )}
       {bar}
       {!merit.length ? (
         <Empty icon={<Medal size={28} color={c.accent} />} title="Todavía no hay rondas cerradas" text="Cuando el admin cierre una ronda, sus resultados suman aquí." />
+      ) : pro ? (
+        <MeritTable merit={merit} nameOf={nameOf} />
       ) : (
         <>
           {place && leader && (
@@ -147,6 +163,50 @@ export function GolfStandings() {
         </View>
       )}
     </View>
+  );
+}
+
+/**
+ * El orden de mérito en Pro (la tabla de la web): el puesto, el jugador con «Tú», Puntos (en grande), Jugó y Ganó («Mejor»
+ * no cabe en el teléfono, como en la web). Tocar a uno abre su página de golf.
+ */
+function MeritTable({ merit, nameOf }: { merit: ReturnType<typeof useGolfMerit>['merit']; nameOf: (id: string) => string }) {
+  const c = useColors();
+  const { lid, myPlayerId } = useLeagueCtx();
+  const th = { fontSize: 12, fontFamily: font.semibold, letterSpacing: 0.7, textTransform: 'uppercase' as const, color: c.muted };
+  return (
+    <Card padded={false} style={{ overflow: 'hidden' }}>
+      <View style={[styles.proRow, { minHeight: 0, paddingVertical: 10 }]}>
+        <Txt style={[th, { width: 24 }]}>#</Txt>
+        <Txt style={[th, { flex: 1 }]}>Jugador</Txt>
+        <Txt style={[th, styles.points]}>Puntos</Txt>
+        <Txt style={[th, styles.cell]}>Jugó</Txt>
+        <Txt style={[th, styles.cell]}>Ganó</Txt>
+      </View>
+      {merit.map((m) => {
+        const me = !!myPlayerId && m.id === myPlayerId;
+        return (
+          <Pressable
+            key={m.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${m.rank}. ${nameOf(m.id)}${me ? ' (tú)' : ''}: ${m.points} puntos. Jugó ${m.events}, ganó ${m.wins}`}
+            onPress={() => openGolfer(lid, m.id)}
+            style={({ pressed }) => [styles.proRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line, backgroundColor: pressed ? c.surface2 : me ? c.accentSoft : 'transparent' }]}
+          >
+            <Txt style={{ width: 24, fontSize: 15, fontFamily: font.semibold, color: me ? c.accent : c.muted, fontVariant: ['tabular-nums'] }}>{m.rank}</Txt>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Txt numberOfLines={1} style={{ flexShrink: 1, fontSize: 15, fontFamily: font.semibold }}>
+                {nameOf(m.id)}
+              </Txt>
+              {me && <TuTag />}
+            </View>
+            <Txt style={[styles.points, { fontSize: 18, fontFamily: font.bold, fontVariant: ['tabular-nums'] }]}>{m.points.toLocaleString('es-DO')}</Txt>
+            <Txt style={[styles.cell, { fontSize: 14, fontVariant: ['tabular-nums'] }]}>{m.events}</Txt>
+            <Txt style={[styles.cell, { fontSize: 14, fontVariant: ['tabular-nums'] }]}>{m.wins}</Txt>
+          </Pressable>
+        );
+      })}
+    </Card>
   );
 }
 
@@ -270,4 +330,7 @@ const styles = StyleSheet.create({
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 44, borderRadius: 12, borderWidth: 1, flexShrink: 0, maxWidth: 200 },
   trophy: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  proRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 16, paddingVertical: 8 },
+  points: { width: 60, textAlign: 'right' },
+  cell: { width: 44, textAlign: 'right' },
 });

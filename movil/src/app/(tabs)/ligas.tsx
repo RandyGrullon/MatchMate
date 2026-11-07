@@ -5,7 +5,12 @@ import { CalendarPlus, MapPin, Plus, Search, Trophy } from 'lucide-react-native'
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships, usePublicLeagues } from '@mm/lib/data';
 import { formatDate } from '@mm/lib/format';
-import { leagueSport } from '@mm/sports/registry';
+import { leagueSport, sportMeta } from '@mm/sports/registry';
+import { roleLabel } from '@mm/lib/league';
+import type { League } from '@mm/lib/types';
+import { useIsPro } from '@mm/lib/useMode';
+import { useNotifications } from '@mm/components/notifications/provider';
+import { TITLE_PRO } from '@/components/home/proLook';
 import { LeagueCard } from '@/components/LeagueCard';
 import { EsportsLeaguesRow } from '@/components/esports/EsportsRow';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
@@ -31,10 +36,22 @@ export default function LigasScreen() {
   const mineIds = new Set(ids);
   const others = open.data.filter((l) => !mineIds.has(l.id));
   const mySports = useMemo(() => mine.data.map((l) => leagueSport(l)), [mine.data]);
+  // Pro: en la tarjeta de una liga que organizas, tu papel y lo que espera por ti (MyLeagueCard de la web).
+  const pro = useIsPro();
+  const { feeds } = useNotifications();
+  const proLine = (l: League) => {
+    const role = memberships.data.find((m) => m.leagueId === l.id)?.role;
+    if (!pro || !role || role === 'member') return undefined;
+    const feed = feeds.find((f) => f.lid === l.id);
+    const pending = feed?.isAdmin ? feed.pending.length : 0;
+    return [sportMeta(leagueSport(l))?.label, l.venue || l.schedule, roleLabel(role), pending > 0 ? `${pending} por aprobar` : null].filter(Boolean).join(' · ');
+  };
 
   return (
     <Screen>
-      <Txt variant="title">Ligas</Txt>
+      <Txt variant="title" style={pro ? TITLE_PRO : undefined}>
+        Ligas
+      </Txt>
       {!!uid && (
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
@@ -73,7 +90,7 @@ export default function LigasScreen() {
           <SectionHeader title="Las tuyas" />
           <View style={{ gap: 10 }}>
             {mine.data.map((l) => (
-              <LeagueCard key={l.id} league={l} />
+              <LeagueCard key={l.id} league={l} line={proLine(l)} />
             ))}
           </View>
         </>

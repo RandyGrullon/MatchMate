@@ -9,7 +9,7 @@ import { useTicker } from '../team/ScorerPieces';
 import type { TeamLeague } from '../team/useTeamLeague';
 import { REASON_TEXT } from './rules';
 import { decodeLines, decodeTimeline, liveFromScore, liveMinute, livePowerPlays, pensFromScore, type ScoreLine } from './adapter';
-import { KIND_TEXT, eventPlayerSide, periodsLineParts } from './matchView';
+import { KIND_TEXT, eventPlayerSide, periodsLineParts, sidePlayerLines } from './matchView';
 
 /** Posiciones del fútbol para la plantilla. */
 export { FOOTBALL_POSITIONS } from '../../../components/players/positions';
@@ -152,7 +152,7 @@ export function PlayersTable({ tl, match: m }: { tl: TeamLeague; match: Match })
   return (
     <div className="grid gap-3.5 sm:grid-cols-2">
       {m.sides.map((sd) => {
-        const rows = lines.filter((l) => l.side === sd.side).sort((a, b) => (jersey(a) ?? 1000) - (jersey(b) ?? 1000));
+        const rows = sidePlayerLines(lines, sd.side, jersey);
         if (!rows.length) return null;
         return (
           <Card key={sd.side} className="overflow-hidden">

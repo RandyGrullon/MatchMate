@@ -13,6 +13,7 @@ import { useMatches, type Match } from '@mm/lib/data/matches';
 import { updateRacketEvent, useWithPendingPoints, type RacketEvent } from '@mm/lib/data/racket';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { acceptChallenge, cancelChallenge, createChallenge, joinLadder, leaveLadder, setLadder, syncLadder, useLadderChallenges, useLadderRungs } from '@mm/pages/sports/racket-formats/data';
 import {
@@ -31,6 +32,8 @@ import {
   type LadderChallenge,
   type LadderConfig,
 } from '@mm/pages/sports/racket-formats/logic/ladder';
+import { entrantLevel } from '@mm/pages/sports/racket-formats/logic/box';
+import { levelText, useLevels } from '@mm/pages/sports/racket/levels';
 import { todayIn, zonedIso } from '@mm/pages/sports/racket/logic/time';
 import { useMySide } from '@mm/pages/sports/racket/match/side';
 import { useNames } from '@mm/pages/sports/racket/names';
@@ -61,6 +64,8 @@ async function run(fn: () => Promise<unknown>, ok: string) {
 export function LadderView({ event }: { event: RacketEvent }) {
   const c = useColors();
   const { lid, isAdmin, myPlayerId, member } = useLeagueCtx();
+  const pro = useIsPro();
+  const { levels, scale } = useLevels();
   const names = useNames();
   const now = useNow(60_000).getTime();
   const cfg = useMemo(() => parseLadderConfig(event.config), [event.config]);
@@ -133,7 +138,14 @@ export function LadderView({ event }: { event: RacketEvent }) {
 
   const recent = all.filter((x) => !isOpenChallenge(x)).slice(0, 10);
   const unit = cfg.doubles ? 'parejas' : 'jugadores';
-  const meta = [`${order.length} ${unit}`, `retas hasta ${cfg.maxUp} ${cfg.maxUp === 1 ? 'puesto' : 'puestos'} arriba`].join(' · ');
+  // Pro: también los plazos para aceptar y para jugar.
+  const meta = [
+    `${order.length} ${unit}`,
+    `retas hasta ${cfg.maxUp} ${cfg.maxUp === 1 ? 'puesto' : 'puestos'} arriba`,
+    pro ? `${cfg.acceptDays} días para aceptar y ${cfg.playDays} para jugar` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const items: MenuItem[] = [
     ...(isAdmin
       ? [
@@ -179,7 +191,7 @@ export function LadderView({ event }: { event: RacketEvent }) {
                 <Button
                   key={t}
                   variant="primary"
-                  size="xl"
+                  size={pro ? 'lg' : 'xl'}
                   full
                   icon={<Swords size={20} color={c.accentFg} />}
                   loading={pending === `retar:${t}`}
@@ -229,7 +241,9 @@ export function LadderView({ event }: { event: RacketEvent }) {
             {order.map((id, i) => {
               const canHit = targets.includes(id) && !myOpen;
               const isMe = mine.includes(id);
-              const sub = cfg.doubles ? names.rosterOf(id).map(names.nameOf).join(' / ') : null;
+              // Pro: también su nivel.
+              const lv = entrantLevel(names.entrant(id), levels);
+              const sub = [cfg.doubles ? names.rosterOf(id).map(names.nameOf).join(' / ') : null, pro && lv != null ? levelText(lv, scale) : null].filter(Boolean).join(' · ');
               return (
                 <View
                   key={id}

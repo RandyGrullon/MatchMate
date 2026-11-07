@@ -8,6 +8,7 @@ import { ComposerCard } from '@/components/social/Composer';
 import { FollowingGames } from '@/components/social/GameCard';
 import { PostList } from '@/components/social/PostList';
 import { Button, Card, Empty, Loading, Screen, Segmented, Txt } from '@/components/ui';
+import { useTitleStyle } from '@/components/home/proLook';
 import { useColors } from '@/theme/theme';
 
 type SocialTab = 'siguiendo' | 'descubrir' | 'juegos';
@@ -26,11 +27,14 @@ export default function SocialScreen() {
   const c = useColors();
   const auth = useAuth();
   const [tab, setTab] = useState<SocialTab>('siguiendo');
+  const titleStyle = useTitleStyle();
   if (auth.loading) return <Loading />;
   return (
     <Screen>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Txt variant="title">Social</Txt>
+        <Txt variant="title" style={titleStyle}>
+          Social
+        </Txt>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Buscar personas y ligas"

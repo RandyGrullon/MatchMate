@@ -6,14 +6,16 @@
  *   convocatoria (y los suspendidos de tu equipo), tus números, la plantilla y los partidos que siguen.
  * - TeamPlayer (`/l/<liga>/j/<jugador>`, trae su barra «‹ Liga»): su nombre con su equipo, dorsal y posición, si está
  *   suspendido y sus números.
- * Los números de Pro (todos y partido por partido) no van: la app es Lite.
+ * Los números: en Lite, los cuatro de siempre y los últimos partidos como filas; en Pro, todos (de 4 en 4) y la tabla
+ * partido por partido (baloncesto: puntos, triples, tiros libres y faltas; fútbol: goles, asistencias y tarjetas).
  */
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { CalendarDays, ShieldAlert, UserRound } from 'lucide-react-native';
 import type { Match } from '@mm/lib/data/matches';
 import type { SeasonTeam } from '@mm/lib/data/seasonTeams';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { BASKETBALL_POSITIONS, FOOTBALL_POSITIONS } from '@mm/components/players/positions';
 import { basketballTeamRules } from '@mm/pages/sports/basketball/rules';
@@ -24,9 +26,11 @@ import { upcomingFor, teamColor } from '@mm/pages/sports/team/logic';
 import {
   ROLE,
   basketballGames,
+  basketballProStatItems,
   basketballStatItems,
   basketballWhen,
   footballGames,
+  footballProStatItems,
   footballScore,
   footballStatItems,
   footballWhen,
@@ -333,14 +337,87 @@ function StatsHead({ title, rank, rankWord }: { title: string; rank: number | nu
   );
 }
 
-/** Los números del baloncesto en Lite: partidos, puntos, por partido y máximo, y los últimos partidos con sus puntos. */
+/** El ancho de cada columna de números de la tabla de Pro. */
+const CELL = 38;
+
+/**
+ * La tabla partido por partido de Pro (la `<table>` de la web): «Partido» y las columnas de números a la derecha; cada
+ * partido con «vs. Rival», cuándo debajo y sus números. Tocar uno abre el partido.
+ */
+function GamesTable({
+  heads,
+  rows,
+}: {
+  heads: readonly string[];
+  rows: readonly { key: string; title: ReactNode; sub: string; cells: readonly ReactNode[]; label: string; onPress: () => void }[];
+}) {
+  const c = useColors();
+  const th = { fontSize: 11, fontFamily: font.bold, letterSpacing: 0.55, textTransform: 'uppercase' as const, color: c.muted };
+  return (
+    <Card padded={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Txt style={[th, { flex: 1 }]}>Partido</Txt>
+        {heads.map((h) => (
+          <Txt key={h} style={[th, { width: CELL, textAlign: 'right' }]}>
+            {h}
+          </Txt>
+        ))}
+      </View>
+      {rows.map((r) => (
+        <Pressable
+          key={r.key}
+          accessibilityRole="button"
+          accessibilityLabel={r.label}
+          onPress={r.onPress}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderTopWidth: 1,
+            borderTopColor: c.line,
+            backgroundColor: pressed ? c.surface2 : 'transparent',
+          })}
+        >
+          <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+            {r.title}
+            <Txt tone="muted" numberOfLines={1} style={{ fontSize: 13 }}>
+              {r.sub}
+            </Txt>
+          </View>
+          {r.cells.map((cell, i) => (
+            <View key={heads[i]} style={{ width: CELL, alignItems: 'flex-end' }}>
+              {cell}
+            </View>
+          ))}
+        </Pressable>
+      ))}
+    </Card>
+  );
+}
+
+/** Un número de la tabla de Pro: el primero en grande; los demás, apagados (o en rojo y negrita con `danger`). */
+function Num({ v, big, danger }: { v: string | number; big?: boolean; danger?: boolean }) {
+  return (
+    <Txt tone={danger ? 'danger' : big ? 'fg' : 'muted'} style={{ fontSize: big ? 17 : 15, fontFamily: big || danger ? font.bold : font.regular, fontVariant: ['tabular-nums'] }}>
+      {String(v)}
+    </Txt>
+  );
+}
+
+/**
+ * Los números del baloncesto: en Lite, partidos, puntos, por partido y máximo, y los últimos 5 partidos con sus puntos;
+ * en Pro, también triples, tiros libres y faltas, y la tabla de todos los partidos (PTS, 3P, TL y F; 5 faltas en rojo).
+ */
 function BasketballStats({ tl, playerId, season, title }: { tl: TeamLeague; playerId: string; season: BasketballSeason; title: string }) {
   const c = useColors();
+  const pro = useIsPro();
   const now = useNow(60_000).getTime();
   const totals = season.leaders.find((l) => l.player === playerId);
   const games = basketballGames(season, tl.matches.data, playerId);
   const rank = totals ? season.leaders.indexOf(totals) + 1 : null;
   const today = todayIn(tl.tz, now);
+  const rival = (g: (typeof games)[number]) => rivalName(g.m, g.l.side, (id) => tl.teamOf(id)?.name);
   return (
     <View style={{ gap: 10 }}>
       <StatsHead title={title} rank={rank} rankWord="anotadores" />
@@ -348,25 +425,40 @@ function BasketballStats({ tl, playerId, season, title }: { tl: TeamLeague; play
         <Empty icon={<CalendarDays size={28} color={c.accent} />} title="Todavía sin partidos" text="Salen de los partidos confirmados donde la mesa marcó los presentes." />
       ) : (
         <View style={{ gap: 14 }}>
-          <StatTiles items={basketballStatItems(totals)} />
-          <Card padded={false}>
-            {games.slice(0, 5).map(({ l, m }, i) => {
-              const rival = rivalName(m, l.side, (id) => tl.teamOf(id)?.name);
-              return (
-                <View key={l.matchId}>
+          <StatTiles dense={pro} items={pro ? basketballProStatItems(totals) : basketballStatItems(totals)} />
+          {pro ? (
+            <GamesTable
+              heads={['PTS', '3P', 'TL', 'F']}
+              rows={games.map((g) => ({
+                key: g.l.matchId,
+                title: (
+                  <Txt numberOfLines={1} style={{ fontSize: 15, fontFamily: font.semibold }}>
+                    {`vs. ${rival(g)}`}
+                  </Txt>
+                ),
+                sub: basketballWhen(g.m, tl.tz, today),
+                cells: [<Num key="pts" v={g.l.points} big />, <Num key="3p" v={g.l.threes} />, <Num key="tl" v={g.l.ones} />, <Num key="f" v={g.l.fouls} danger={g.l.fouls >= 5} />],
+                label: `vs. ${rival(g)}: ${g.l.points} puntos, ${g.l.threes} triples, ${g.l.ones} tiros libres, ${g.l.fouls} faltas`,
+                onPress: () => openMatch(tl.lid, g.m.id),
+              }))}
+            />
+          ) : (
+            <Card padded={false}>
+              {games.slice(0, 5).map((g, i) => (
+                <View key={g.l.matchId}>
                   {i > 0 && <Divider inset={16} />}
                   <ListRow
-                    title={`vs. ${rival}`}
-                    subtitle={basketballWhen(m, tl.tz, today)}
-                    right={<Txt style={{ fontSize: 19, fontFamily: font.bold }}>{l.points}</Txt>}
+                    title={`vs. ${rival(g)}`}
+                    subtitle={basketballWhen(g.m, tl.tz, today)}
+                    right={<Txt style={{ fontSize: 19, fontFamily: font.bold }}>{g.l.points}</Txt>}
                     chevron={false}
-                    accessibilityLabel={`vs. ${rival}: ${l.points} puntos`}
-                    onPress={() => openMatch(tl.lid, m.id)}
+                    accessibilityLabel={`vs. ${rival(g)}: ${g.l.points} puntos`}
+                    onPress={() => openMatch(tl.lid, g.m.id)}
                   />
                 </View>
-              );
-            })}
-          </Card>
+              ))}
+            </Card>
+          )}
         </View>
       )}
     </View>
@@ -386,15 +478,20 @@ function Cards({ yellows, red }: { yellows: number; red: 'direct' | 'second_yell
   );
 }
 
-/** Los números del fútbol en Lite: los cuatro de siempre y los últimos partidos con sus goles y tarjetas. */
+/**
+ * Los números del fútbol: en Lite, los cuatro de siempre y los últimos 5 partidos con sus goles y tarjetas; en Pro, todos
+ * (amarillas, rojas y, si atajó, vallas invictas y recibidos) y la tabla de todos los partidos (G, A y T).
+ */
 function FootballStats({ tl, playerId, season, title }: { tl: TeamLeague; playerId: string; season: FootballSeason; title: string }) {
   const c = useColors();
+  const pro = useIsPro();
   const now = useNow(60_000).getTime();
   const totals = season.scorers.find((l) => l.player === playerId);
   const cards = season.cards.find((x) => x.player === playerId);
   const games = footballGames(season, tl.matches.data, playerId);
   const rank = totals && totals.goals > 0 ? season.scorers.indexOf(totals) + 1 : null;
   const today = todayIn(tl.tz, now);
+  const rival = (g: (typeof games)[number]) => rivalName(g.m, g.l.side, (id) => tl.teamOf(id)?.name);
   return (
     <View style={{ gap: 10 }}>
       <StatsHead title={title} rank={rank} rankWord="goleadores" />
@@ -402,31 +499,52 @@ function FootballStats({ tl, playerId, season, title }: { tl: TeamLeague; player
         <Empty icon={<CalendarDays size={28} color={c.accent} />} title="Todavía sin partidos" text="Salen de los partidos confirmados donde el anotador marcó la alineación." />
       ) : (
         <View style={{ gap: 14 }}>
-          <StatTiles items={footballStatItems(totals, cards)} />
-          <Card padded={false}>
-            {games.slice(0, 5).map((g, i) => {
-              const rival = rivalName(g.m, g.l.side, (id) => tl.teamOf(id)?.name);
-              const score = footballScore(g);
-              return (
-                <View key={g.l.matchId}>
-                  {i > 0 && <Divider inset={16} />}
-                  <ListRow
-                    title={`vs. ${rival}${score ? ` · ${score}` : ''}`}
-                    subtitle={footballWhen(g, tl.tz, today)}
-                    right={
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        {(g.l.yellows > 0 || !!g.l.red) && <Cards yellows={g.l.yellows} red={g.l.red} />}
-                        {g.l.goals > 0 && <Txt style={{ fontSize: 19, fontFamily: font.bold }}>{g.l.goals}</Txt>}
-                      </View>
-                    }
-                    chevron={false}
-                    accessibilityLabel={`vs. ${rival}: ${g.l.goals} ${g.l.goals === 1 ? 'gol' : 'goles'}`}
-                    onPress={() => openMatch(tl.lid, g.m.id)}
-                  />
-                </View>
-              );
-            })}
-          </Card>
+          <StatTiles dense={pro} items={pro ? footballProStatItems(totals, cards) : footballStatItems(totals, cards)} />
+          {pro ? (
+            <GamesTable
+              heads={['G', 'A', 'T']}
+              rows={games.map((g) => {
+                const score = footballScore(g);
+                return {
+                  key: g.l.matchId,
+                  title: (
+                    <Txt numberOfLines={1} style={{ fontSize: 15, fontFamily: font.semibold }}>
+                      {`vs. ${rival(g)}`}
+                      {!!score && <Txt tone="muted" style={{ fontSize: 15 }}>{` ${score}`}</Txt>}
+                    </Txt>
+                  ),
+                  sub: footballWhen(g, tl.tz, today),
+                  cells: [<Num key="g" v={g.l.goals || ''} big />, <Num key="a" v={g.l.assists || ''} />, <Cards key="t" yellows={g.l.yellows} red={g.l.red} />],
+                  label: `vs. ${rival(g)}: ${g.l.goals} ${g.l.goals === 1 ? 'gol' : 'goles'}, ${g.l.assists} ${g.l.assists === 1 ? 'asistencia' : 'asistencias'}`,
+                  onPress: () => openMatch(tl.lid, g.m.id),
+                };
+              })}
+            />
+          ) : (
+            <Card padded={false}>
+              {games.slice(0, 5).map((g, i) => {
+                const score = footballScore(g);
+                return (
+                  <View key={g.l.matchId}>
+                    {i > 0 && <Divider inset={16} />}
+                    <ListRow
+                      title={`vs. ${rival(g)}${score ? ` · ${score}` : ''}`}
+                      subtitle={footballWhen(g, tl.tz, today)}
+                      right={
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          {(g.l.yellows > 0 || !!g.l.red) && <Cards yellows={g.l.yellows} red={g.l.red} />}
+                          {g.l.goals > 0 && <Txt style={{ fontSize: 19, fontFamily: font.bold }}>{g.l.goals}</Txt>}
+                        </View>
+                      }
+                      chevron={false}
+                      accessibilityLabel={`vs. ${rival(g)}: ${g.l.goals} ${g.l.goals === 1 ? 'gol' : 'goles'}`}
+                      onPress={() => openMatch(tl.lid, g.m.id)}
+                    />
+                  </View>
+                );
+              })}
+            </Card>
+          )}
         </View>
       )}
     </View>

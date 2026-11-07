@@ -1,23 +1,39 @@
 /**
- * La Tabla de las ligas de equipos en la app (BasketballStandings.tsx y FootballStandings.tsx de la web, en Lite), con
- * la lógica de la web (useBasketballSeason, useFootballSeason, standingsView.ts de cada deporte y leaders.ts):
+ * La Tabla de las ligas de equipos en la app (BasketballStandings.tsx y FootballStandings.tsx de la web), con la lógica
+ * de la web (useBasketballSeason, useFootballSeason, standingsView.ts y excel.ts de cada deporte y leaders.ts):
  * - el título «Tabla» y la temporada (elegirla; una cerrada muestra sus premios y la tabla que se guardó al cerrarla);
  * - baloncesto: Tabla | Anotadores (`?ver=anotadores`), la regla en una línea y «Cómo se cuenta»;
  * - fútbol y sala: Tabla | Jugadores | Disciplina (`?ver=`); en Tabla, la fase final del relámpago y los grupos; en
  *   Jugadores, «Goleadores ▾» elige goleadores, tarjetas o vallas invictas; en Disciplina, los suspendidos para la
  *   próxima jornada, quien jugó estando suspendido, los que están a una amarilla y las sanciones de la temporada.
- * Lo de Pro (Excel, compartir la imagen, las columnas para ordenar) no va: la app es Lite.
+ * En Pro, junto al título, «Excel» (la temporada con el calendario, la tabla, los resultados y los líderes, para
+ * compartir) y compartir la imagen de lo que se ve (no en una temporada cerrada ni en la disciplina), y los líderes con
+ * todas las columnas para ordenar (en Lite, la lista).
  */
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { AlertTriangle, ShieldAlert } from 'lucide-react-native';
 import type { Match } from '@mm/lib/data/matches';
-import { defaultColumns } from '@mm/components/match/standings';
-import { SCORER_COLUMNS as BB_SCORERS, basketballRuleLine, basketballRuleText, basketballView, scorerLine as bbScorerLine, type BasketballView } from '@mm/pages/sports/basketball/standingsView';
+import { saveErrorMessage } from '@mm/lib/errorText';
+import { useIsPro } from '@mm/lib/useMode';
+import type { ShareCard } from '@mm/components/share/cards';
+import { basketballSheets } from '@mm/pages/sports/basketball/excel';
+import {
+  SCORER_COLUMNS as BB_SCORERS,
+  TABLE_COLUMNS as BB_TABLE,
+  basketballCanShare,
+  basketballRuleLine,
+  basketballRuleText,
+  basketballShareCard,
+  basketballView,
+  scorerLine as bbScorerLine,
+  type BasketballView,
+} from '@mm/pages/sports/basketball/standingsView';
 import { basketballTableFrom } from '@mm/pages/sports/basketball/rules';
 import { useBasketballSeason } from '@mm/pages/sports/basketball/season';
 import { REASON_TEXT, describeDiscipline, disciplineFrom, footballTableFrom } from '@mm/pages/sports/football/rules';
+import { footballSheets } from '@mm/pages/sports/football/excel';
 import { useFootballSeason, type FootballSeason } from '@mm/pages/sports/football/season';
 import {
   CARD_COLUMNS,
@@ -31,6 +47,7 @@ import {
   footballRuleLine,
   footballRuleText,
   footballSegment,
+  footballShareCard,
   footballTab,
   keeperLine,
   knockoutMatches,
@@ -41,15 +58,19 @@ import {
   type FootballSegment,
   type FootballTab,
 } from '@mm/pages/sports/football/standingsView';
+import type { LeaderColumn } from '@mm/pages/sports/team/leaders';
 import { sideNames } from '@mm/pages/sports/team/lists';
 import { rosterSide } from '@mm/pages/sports/team/logic';
 import { useTeamLeague, type TeamLeague } from '@mm/pages/sports/team/useTeamLeague';
 import { leagueSport } from '@mm/sports/registry';
 import { MatchCard } from '../../match/MatchCard';
 import { StandingsTable } from '../../match/StandingsTable';
+import { toast } from '../../feedback';
 import { Card, Divider, ListRow, LoadError, Loading, RowIcon, Segmented, SectionHeader, Txt } from '../../ui';
+import { ShareIconButton } from '../../swimming/ShareImage';
 import { TeamCrest } from '../TeamBits';
-import { CardIcon, ClosedSeasonView, HowItCounts, LeadersList, PillPick, SeasonBar, useSeasonPick, type SeasonPick } from './parts';
+import { CardIcon, ClosedSeasonView, ExcelPill, HowItCounts, LeadersList, LeadersTable, PillPick, SeasonBar, useSeasonPick, type SeasonPick } from './parts';
+import { shareSeasonExcel } from './shareExcel';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -66,16 +87,22 @@ export function TeamStandingsView({ ver, temporada }: { ver?: string | null; tem
 /** Mis equipos de esa temporada (y yo): salen resaltados en la tabla guardada. */
 const mineThen = (tl: TeamLeague) => [...tl.allTeams.data.filter((t) => t.roster.some((r) => r.playerId === tl.myPlayerId)).map((t) => t.id), ...(tl.myPlayerId ? [tl.myPlayerId] : [])];
 
-/** Lo de arriba (el título y la temporada) y, si la temporada está cerrada con su tabla, esa tabla. */
-function Frame({ tl, pick, children }: { tl: TeamLeague; pick: SeasonPick; children: ReactNode }) {
+/**
+ * Lo de arriba (el título, en Pro con «Excel» y compartir a la derecha, y la temporada) y, si la temporada está cerrada
+ * con su tabla, esa tabla.
+ */
+function Frame({ tl, pick, actions, children }: { tl: TeamLeague; pick: SeasonPick; actions?: ReactNode; children: ReactNode }) {
   // Sin las temporadas no se sabe qué partidos son de cuál: nada de una tabla con todas mezcladas.
   if (pick.error) return <LoadError error={pick.error} />;
   if (pick.loading) return <Loading label="Cargando la tabla" />;
   return (
     <View style={{ gap: 16 }}>
-      <Txt variant="title" accessibilityRole="header">
-        Tabla
-      </Txt>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <Txt variant="title" accessibilityRole="header">
+          Tabla
+        </Txt>
+        {actions}
+      </View>
       <SeasonBar pick={pick} />
       {pick.closed ? <ClosedSeasonView season={pick.closed} highlight={mineThen(tl)} /> : children}
     </View>
@@ -84,15 +111,69 @@ function Frame({ tl, pick, children }: { tl: TeamLeague; pick: SeasonPick; child
 
 const teamName = (tl: TeamLeague) => (id: string) => tl.teamOf(id)?.name ?? '(equipo borrado)';
 
+/** La temporada que va en el nombre del Excel: la cerrada que se ve o, con varias temporadas, la elegida. */
+const excelLabel = (pick: SeasonPick) => (pick.closed ? pick.closed.name : pick.seasons.length > 1 ? (pick.selected?.name ?? null) : null);
+
+/** La Tabla de la web que va con la imagen (lo que se ve y, si no es la temporada en curso, cuál). */
+const tablePath = (tl: TeamLeague, pick: SeasonPick, ver: string) =>
+  `/l/${tl.lid}/ranking?ver=${ver}${pick.selected && pick.selected.status !== 'active' ? `&temporada=${encodeURIComponent(pick.selected.id)}` : ''}`;
+
+/**
+ * «Excel» y compartir la imagen (lo de Pro de arriba de la Tabla, LeagueBackBar de la web): `excel` arma las hojas de la
+ * temporada al tocar (null = sin partidos); `share`, la imagen de lo que se ve (null = nada que compartir).
+ */
+function TableActions({ tl, excel, share }: { tl: TeamLeague; excel: { label: string | null; sheets: (leagueName: string) => Parameters<typeof shareSeasonExcel>[1] } | null; share: { card: () => ShareCard | null; path: string } | null }) {
+  const [busy, setBusy] = useState(false);
+  if (!excel && !share) return null;
+  const run = async () => {
+    if (!excel || busy) return;
+    setBusy(true);
+    try {
+      const leagueName = excel.label ? `${tl.league.name} - ${excel.label}` : tl.league.name;
+      await shareSeasonExcel(leagueName, excel.sheets(leagueName));
+    } catch (e) {
+      toast(saveErrorMessage(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {excel && <ExcelPill busy={busy} onPress={() => void run()} />}
+      {share && <ShareIconButton round label="Compartir la tabla" path={share.path} card={share.card} />}
+    </View>
+  );
+}
+
 // ---------- Baloncesto ----------
 
 function BasketballTable({ tl, pick, ver }: { tl: TeamLeague; pick: SeasonPick; ver?: string | null }) {
+  const pro = useIsPro();
   const season = useBasketballSeason(tl, pick.selected ?? tl.season);
   const [view, setView] = useState<BasketballView>(basketballView(ver));
   const table = basketballTableFrom(tl.rules.data);
   const mine = tl.myTeams.map((x) => x.team.id);
+  const leaders = { rows: season.leaders, columns: BB_SCORERS, nameOf: tl.nameOf, teamOf: (key: string) => tl.teamOf(key)?.name ?? '', onOpen: (id: string) => openPlayer(tl.lid, id), highlight: tl.myPlayerId };
+  const actions = pro ? (
+    <TableActions
+      tl={tl}
+      excel={
+        season.matches.length > 0
+          ? {
+              label: excelLabel(pick),
+              sheets: (leagueName) => basketballSheets({ leagueName, matches: season.matches, season, teamName: teamName(tl), playerName: tl.nameOf, tz: tl.tz }),
+            }
+          : null
+      }
+      share={
+        basketballCanShare(view, season) && !pick.closed
+          ? { path: tablePath(tl, pick, view), card: () => basketballShareCard({ leagueName: tl.league.name, view, season, teamOf: (id) => tl.teamOf(id), nameOf: tl.nameOf }) }
+          : null
+      }
+    />
+  ) : null;
   return (
-    <Frame tl={tl} pick={pick}>
+    <Frame tl={tl} pick={pick} actions={actions}>
       <Segmented<BasketballView>
         label="Qué ver"
         value={view}
@@ -107,22 +188,16 @@ function BasketballTable({ tl, pick, ver }: { tl: TeamLeague; pick: SeasonPick; 
           <StandingsTable
             rows={season.standings}
             nameOf={teamName(tl)}
-            columns={defaultColumns({ forLabel: 'PF', againstLabel: 'PC' })}
+            columns={BB_TABLE}
             highlight={mine}
             empty="Cuando haya partidos confirmados, la tabla sale aquí."
           />
           <HowItCounts line={basketballRuleLine(table)} paragraphs={basketballRuleText(table)} />
         </View>
+      ) : pro ? (
+        <LeadersTable {...leaders} />
       ) : (
-        <LeadersList
-          rows={season.leaders}
-          columns={BB_SCORERS}
-          nameOf={tl.nameOf}
-          teamOf={(key) => tl.teamOf(key)?.name ?? ''}
-          onOpen={(id) => openPlayer(tl.lid, id)}
-          highlight={tl.myPlayerId}
-          line={bbScorerLine}
-        />
+        <LeadersList {...leaders} line={bbScorerLine} />
       )}
     </Frame>
   );
@@ -131,13 +206,33 @@ function BasketballTable({ tl, pick, ver }: { tl: TeamLeague; pick: SeasonPick; 
 // ---------- Fútbol y sala ----------
 
 function FootballTable({ tl, pick, ver }: { tl: TeamLeague; pick: SeasonPick; ver?: string | null }) {
+  const pro = useIsPro();
   const season = useFootballSeason(tl, pick.selected ?? tl.season);
   const [tab, setTab] = useState<FootballTab>(footballTab(ver));
   const segment = footballSegment(tab);
   const suspended = season.suspendedNext.length;
   const leaders = { nameOf: tl.nameOf, teamOf: (key: string) => tl.teamOf(key)?.name ?? '', onOpen: (id: string) => openPlayer(tl.lid, id), highlight: tl.myPlayerId };
+  // La imagen de la pestaña que se ve (la disciplina no se comparte).
+  const shareCard = () => footballShareCard({ leagueName: tl.league.name, tab, season, teamOf: (id) => tl.teamOf(id), nameOf: tl.nameOf });
+  const actions = pro ? (
+    <TableActions
+      tl={tl}
+      excel={
+        season.matches.length > 0
+          ? {
+              label: excelLabel(pick),
+              sheets: (leagueName) => footballSheets({ leagueName, matches: season.matches, season, teamName: teamName(tl), playerName: tl.nameOf, tz: tl.tz }),
+            }
+          : null
+      }
+      share={shareCard() && !pick.closed ? { path: tablePath(tl, pick, tab), card: shareCard } : null}
+    />
+  ) : null;
+  // Los líderes: en Pro, la tabla con todas las columnas para ordenar; en Lite, la lista con lo de cada uno en una línea.
+  const list = <R extends { player: string; team: string }>(o: { rows: readonly R[]; columns: LeaderColumn<R>[]; line: (r: R) => string | null; empty: string }) =>
+    pro ? <LeadersTable {...leaders} rows={o.rows} columns={o.columns} empty={o.empty} /> : <LeadersList {...leaders} rows={o.rows} columns={o.columns} line={o.line} empty={o.empty} />;
   return (
-    <Frame tl={tl} pick={pick}>
+    <Frame tl={tl} pick={pick} actions={actions}>
       <Segmented<FootballSegment>
         label="Qué ver"
         value={segment}
@@ -151,9 +246,9 @@ function FootballTable({ tl, pick, ver }: { tl: TeamLeague; pick: SeasonPick; ve
       />
       {segment === 'jugadores' && <PillPick label="Qué números ver" options={PLAYER_VIEWS} value={tab} onChange={setTab} />}
       {tab === 'tabla' && <TableTab tl={tl} season={season} />}
-      {tab === 'goleadores' && <LeadersList {...leaders} rows={scorerRows(season)} columns={SCORER_COLUMNS} line={scorerLine} empty={EMPTY_TEXT.goleadores} />}
-      {tab === 'tarjetas' && <LeadersList {...leaders} rows={season.cards} columns={CARD_COLUMNS} line={cardLine} empty={EMPTY_TEXT.tarjetas} />}
-      {tab === 'vallas' && <LeadersList {...leaders} rows={season.keepers} columns={KEEPER_COLUMNS} line={keeperLine} empty={EMPTY_TEXT.vallas} />}
+      {tab === 'goleadores' && list({ rows: scorerRows(season), columns: SCORER_COLUMNS, line: scorerLine, empty: EMPTY_TEXT.goleadores })}
+      {tab === 'tarjetas' && list({ rows: season.cards, columns: CARD_COLUMNS, line: cardLine, empty: EMPTY_TEXT.tarjetas })}
+      {tab === 'vallas' && list({ rows: season.keepers, columns: KEEPER_COLUMNS, line: keeperLine, empty: EMPTY_TEXT.vallas })}
       {tab === 'disciplina' && <DisciplineTab tl={tl} season={season} />}
     </Frame>
   );

@@ -1,33 +1,15 @@
 import { useState } from 'react';
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
 import { monthlyAverages, movingAverage, recentTrend, trendText, TREND_STEP, type StatGame } from '../../lib/bowlingStats';
-import { parseDate } from '../../lib/format';
 import { ScoreChart, type ChartPoint } from '../ScoreChart';
 import { Card, cx } from '../ui';
+import { MONTHS_SHOWN, TREND_LAST, TREND_WINDOW, monthLabels, monthName } from './trendLogic';
 
-/** Juegos que se ven en la gráfica y de cuántos es la media móvil. */
-export const TREND_LAST = 30;
-export const TREND_WINDOW = 5;
-/** Meses que se ven en «Por mes». */
-const MONTHS_SHOWN = 12;
+// Cuántos juegos y meses se ven y lo que va debajo de cada mes (sin dibujar) están en trendLogic.ts: los comparte la
+// app del teléfono. Se siguen importando desde aquí.
+export { TREND_LAST, TREND_WINDOW, monthLabels } from './trendLogic';
 
 type View = 'juegos' | 'meses';
-
-const monthName = (month: string) => parseDate(`${month}-01`).toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
-
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-/**
- * Lo que va debajo de cada mes en la gráfica: «sep»; enero (o el primero, si los meses son de dos años) con el año
- * corto, «ene 26», para saber de qué año es cada uno.
- */
-export function monthLabels(months: readonly string[]): string[] {
-  const years = new Set(months.map((m) => m.slice(0, 4)));
-  return months.map((m, i) => {
-    const short = MONTHS_SHORT[Number(m.slice(5, 7)) - 1] ?? m;
-    return years.size > 1 && (i === 0 || m.endsWith('-01')) ? `${short} ${m.slice(2, 4)}` : short;
-  });
-}
 
 /**
  * La tendencia de los juegos que cuentan (del más viejo al más nuevo): los últimos 30 con la media móvil de 5 y el

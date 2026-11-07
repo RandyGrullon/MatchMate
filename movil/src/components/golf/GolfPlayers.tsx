@@ -6,8 +6,10 @@ import { pendingGolfSign, registerGolf, setGolfIndex, unregisterGolf, useGolfInd
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
 import type { Player } from '@mm/lib/types';
+import { useIsPro } from '@mm/lib/useMode';
 import { hcpText, holesDone, indexInput, indexText, isComplete, parseIndex } from '@mm/pages/sports/golf/logic';
 import { confirmAsync, toast } from '@/components/feedback';
+import { ProLine } from '@/components/swimming/parts';
 import { Badge, Button, Card, Empty, Field, Input, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { AddPlayersSheet, AdminCardSheet, GroupsSheet } from './GolfPlayerSheets';
@@ -161,18 +163,20 @@ type AdminSheet = { kind: 'inscribir' } | { kind: 'grupos' } | { kind: 'tarjeta'
 
 /**
  * Jugadores de la ronda (GolfPlayers de la web): inscribirme (con salida e Index) o mi tarjeta arriba, y los grupos como
- * filas («Grupo 1 · sale por el hoyo 1»). Para el admin, «Inscribir» y «Armar grupos», y tocar una fila para cambiar la
- * salida, quitar la firma, descalificar o sacar (GolfPlayerSheets.tsx). En la web eso es de Pro; en el teléfono no hay
- * Pro: es de los admins de la liga (como el organizador de esports).
+ * filas («Grupo 1 · sale por el hoyo 1»). Para el admin, en Pro: «Inscribir» y «Armar grupos», y tocar una fila para
+ * cambiar la salida, quitar la firma, descalificar o sacar (GolfPlayerSheets.tsx); en Lite, «Inscribir y armar grupos ·
+ * Usar Pro» (solo mirar), como la web.
  */
 export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoundFull; cards: GolfCardDoc[]; players: Player[]; onSign: (card: GolfCardDoc) => void }) {
   const c = useColors();
   const { isAdmin, myPlayerId } = useLeagueCtx();
+  const pro = useIsPro();
   const [sheet, setSheet] = useState<AdminSheet | null>(null);
   const nameOf = (pid: string) => players.find((p) => p.id === pid)?.name ?? '(jugador borrado)';
   const myCard = myPlayerId ? (cards.find((x) => x.playerId === myPlayerId) ?? null) : null;
   const open = !round.closed;
-  const manage = isAdmin;
+  // Las herramientas del admin son de Pro (en Lite, solo mirar).
+  const manage = isAdmin && pro;
   const groups = useMemo(() => {
     const m = new Map<number | null, GolfCardDoc[]>();
     for (const x of cards) m.set(x.groupNo, [...(m.get(x.groupNo) ?? []), x]);
@@ -189,6 +193,7 @@ export function GolfPlayers({ round, cards, players, onSign }: { round: GolfRoun
       {open && myPlayerId && !myCard && <RegisterCard round={round} playerId={myPlayerId} />}
       {myCard && <MyCard round={round} card={myCard} onSign={onSign} />}
 
+      {isAdmin && open && !pro && <ProLine text="Inscribir y armar grupos" />}
       {manage && open && (
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Button size="lg" icon={<UserPlus size={20} color={c.fg} />} onPress={() => setSheet({ kind: 'inscribir' })} style={{ flex: 1 }}>

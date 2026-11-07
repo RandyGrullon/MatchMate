@@ -28,6 +28,7 @@ import {
   type Platform,
   type Quad,
 } from './logic';
+import { PHOTO_BUTTON, PHOTO_FAILED, PHOTO_NO_QR, PHOTO_READING, SCAN_NOTE_MS } from './photo';
 import { OLD_ORIGINS } from '../../lib/origin';
 
 /**
@@ -73,7 +74,7 @@ const appOrigins = () => [typeof location !== 'undefined' ? location.origin : PR
 
 /** Lo que dice la línea de abajo del marco (y lo que se anuncia al lector de pantalla). */
 export function scanHint(camera: CameraState, phase: ScanPhase): string {
-  if (phase === 'photo') return 'Leyendo la foto…';
+  if (phase === 'photo') return PHOTO_READING;
   if (phase === 'lock') return 'Código encontrado';
   if (phase === 'done') return 'Abriendo…';
   if (camera.status === 'starting') return 'Abriendo la cámara…';
@@ -301,7 +302,7 @@ export default function QrScanner({ onClose, onNavigate }: { onClose: () => void
   // Los avisos de abajo se van solos.
   useEffect(() => {
     if (!note) return;
-    const id = window.setTimeout(() => setNote(null), 4000);
+    const id = window.setTimeout(() => setNote(null), SCAN_NOTE_MS);
     return () => clearTimeout(id);
   }, [note]);
 
@@ -322,9 +323,9 @@ export default function QrScanner({ onClose, onNavigate }: { onClose: () => void
         img.release();
       }
       if (hit) return accept(hit.text, true);
-      setNote('No encontramos un QR en esa foto. Prueba con otra más de cerca.');
+      setNote(PHOTO_NO_QR);
     } catch {
-      setNote('No pudimos leer esa foto. Prueba con otra.');
+      setNote(PHOTO_FAILED);
     }
     setPhase('scan');
   }
@@ -575,7 +576,7 @@ export function ScannerView({
           <div className="flex w-full max-w-sm gap-2.5">
             {/* Cada uno con el ancho de su texto (en 360 px caben los dos sin cortar). */}
             <button type="button" onClick={on.photo} disabled={phase === 'photo'} className={cx(pillBtn, glass, 'flex-auto max-[389px]:gap-1.5 max-[389px]:px-3 max-[389px]:text-[14px]')}>
-              <ImageIcon aria-hidden="true" className="size-[19px] shrink-0" /> Elegir foto
+              <ImageIcon aria-hidden="true" className="size-[19px] shrink-0" /> {PHOTO_BUTTON}
             </button>
             <button type="button" onClick={on.openCode} className={cx(pillBtn, glass, 'flex-auto max-[389px]:gap-1.5 max-[389px]:px-3 max-[389px]:text-[14px]')}>
               <Keyboard aria-hidden="true" className="size-[19px] shrink-0" /> <span className="truncate">Escribir el código</span>

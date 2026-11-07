@@ -1,14 +1,15 @@
 /**
  * Piezas de la Tabla de los deportes de equipo en la app (LeadersTable.tsx, HowItCounts de TeamUi.tsx, PillSelect,
- * SeasonView.tsx y SeasonSelect.tsx de la web, en Lite): la lista de líderes con «Tú», la regla en una línea con «Cómo
- * se cuenta», la píldora para elegir qué números ver, la tarjeta amarilla o roja, y la temporada (elegirla, sus premios
- * y la tabla que se guardó al cerrarla). La lógica es la de la web (src/pages/sports/team/leaders.ts,
+ * SeasonView.tsx, SeasonSelect.tsx y el botón «Excel» de EventHeader.tsx de la web): la lista de líderes con «Tú» (Lite)
+ * y la tabla con todas las columnas para ordenar (Pro), la regla en una línea con «Cómo se cuenta», la píldora para
+ * elegir qué números ver, la tarjeta amarilla o roja, «Excel» y la temporada (elegirla, sus premios y la tabla que se
+ * guardó al cerrarla). La lógica es la de la web (src/pages/sports/team/leaders.ts,
  * src/components/season/standingsSeason.ts y logic.ts).
  */
 import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
-import { Award, ChevronDown, History, ListOrdered, Trophy } from 'lucide-react-native';
+import { Award, ChevronDown, Download, History, ListOrdered, Trophy } from 'lucide-react-native';
 import { useLeagueSeasons } from '@mm/lib/data/seasons';
 import { formatDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
@@ -100,6 +101,156 @@ export function LeadersList<R extends { player: string; team: string }>({
         );
       })}
     </Card>
+  );
+}
+
+/**
+ * Los líderes de la temporada en Pro (LeadersTable de la web con `full`): la tabla con el puesto, el jugador (con «Tú» y
+ * su equipo debajo) y todas las columnas (las «anchas» no caben en el teléfono, como en la web). Tocar un encabezado
+ * ordena por esa columna, de mayor a menor (la ordenada va subrayada en el color del deporte y su número en grande); los
+ * que empatan en ella comparten el puesto. Tocar una fila abre al jugador.
+ */
+export function LeadersTable<R extends { player: string; team: string }>({
+  rows,
+  columns,
+  nameOf,
+  teamOf,
+  onOpen,
+  highlight,
+  empty = 'Todavía no hay partidos con la lista de presentes.',
+  limit,
+}: {
+  rows: readonly R[];
+  columns: LeaderColumn<R>[];
+  nameOf: (playerId: string) => string;
+  teamOf?: (teamKey: string) => string;
+  onOpen?: (playerId: string) => void;
+  highlight?: string | null;
+  empty?: string;
+  limit?: number;
+}) {
+  const c = useColors();
+  const [by, setBy] = useState(columns[0]?.key ?? '');
+  const col = columns.find((x) => x.key === by) ?? columns[0];
+  if (!rows.length || !col) return <Empty title="Sin estadísticas todavía" text={empty} />;
+  const sorted = rankLeaders(rows, columns, col, nameOf, limit);
+  const cols = columns.filter((x) => !x.wide);
+  const th = { fontSize: 11, fontFamily: font.bold, letterSpacing: 0.55, textTransform: 'uppercase' as const };
+  const cell = (r: R, x: LeaderColumn<R>) => shown(x.show ? x.show(r) : x.value(r));
+  return (
+    <Card padded={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingHorizontal: 16 }}>
+        <Txt tone="muted" style={[th, { width: 30 }]}>
+          #
+        </Txt>
+        <Txt tone="muted" style={[th, { flex: 1 }]}>
+          Jugador
+        </Txt>
+        {cols.map((x) => {
+          const on = x.key === col.key;
+          return (
+            <Pressable
+              key={x.key}
+              accessibilityRole="button"
+              accessibilityLabel={`Ordenar por ${x.title}`}
+              accessibilityState={{ selected: on }}
+              hitSlop={{ top: 10, bottom: 10 }}
+              onPress={() => setBy(x.key)}
+              style={{ width: LEADER_CELL, alignItems: 'flex-end' }}
+            >
+              <View style={{ minHeight: 24, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: on ? c.accent : 'transparent' }}>
+                <Txt style={[th, { color: on ? c.accent : c.muted }]}>{x.label}</Txt>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      {sorted.map(({ r, rank }, i) => {
+        const me = highlight === r.player;
+        const prevMe = i > 0 && highlight === sorted[i - 1].r.player;
+        const team = teamOf?.(r.team);
+        return (
+          <Pressable
+            key={r.player}
+            accessibilityRole={onOpen ? 'button' : undefined}
+            accessibilityLabel={`${rank}.º ${nameOf(r.player)}${me ? ' (tú)' : ''}: ${cols.map((x) => `${cell(r, x)} ${x.title.toLowerCase()}`).join(', ')}`}
+            disabled={!onOpen}
+            onPress={() => onOpen?.(r.player)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              minHeight: 56,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderTopWidth: !me && !prevMe ? 1 : 0,
+              borderTopColor: c.line,
+              backgroundColor: pressed ? c.surface2 : me ? c.accentSoft : 'transparent',
+            })}
+          >
+            <Txt tone="muted" style={{ width: 30, fontSize: 15, fontFamily: font.semibold, fontVariant: ['tabular-nums'] }}>
+              {rank}
+            </Txt>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Txt numberOfLines={1} style={{ flexShrink: 1, fontSize: 15, fontFamily: font.semibold }}>
+                  {nameOf(r.player)}
+                </Txt>
+                {me && <TuTag />}
+              </View>
+              {!!team && (
+                <Txt tone="muted" numberOfLines={1} style={{ fontSize: 13 }}>
+                  {team}
+                </Txt>
+              )}
+            </View>
+            {cols.map((x) => {
+              const on = x.key === col.key;
+              return (
+                <Txt
+                  key={x.key}
+                  tone={on ? 'fg' : 'muted'}
+                  style={{ width: LEADER_CELL, textAlign: 'right', fontSize: on ? 17 : 15, fontFamily: on ? font.bold : font.regular, fontVariant: ['tabular-nums'] }}
+                >
+                  {cell(r, x)}
+                </Txt>
+              );
+            })}
+          </Pressable>
+        );
+      })}
+    </Card>
+  );
+}
+
+/** El ancho de cada columna de números de la tabla de líderes de Pro. */
+const LEADER_CELL = 42;
+
+/** «Excel» (la píldora de arriba de la Tabla en Pro, ExcelButton de la web): mientras se arma, la ruedita. */
+export function ExcelPill({ busy, onPress }: { busy: boolean; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Descargar Excel"
+      accessibilityState={{ busy, disabled: busy }}
+      disabled={busy}
+      hitSlop={4}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        height: 36,
+        paddingHorizontal: 13,
+        borderRadius: radius.pill,
+        backgroundColor: c.surface2,
+        opacity: busy ? 0.7 : 1,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
+      })}
+    >
+      {busy ? <ActivityIndicator size="small" color={c.fg} /> : <Download size={16} color={c.fg} />}
+      <Txt style={{ fontSize: 14, fontFamily: font.semibold }}>Excel</Txt>
+    </Pressable>
   );
 }
 

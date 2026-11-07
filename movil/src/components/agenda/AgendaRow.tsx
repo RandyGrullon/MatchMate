@@ -21,6 +21,7 @@ export function AgendaRow({
   joined,
   onJoin,
   first,
+  dense,
 }: {
   item: AgendaItem;
   today: string;
@@ -30,13 +31,15 @@ export function AgendaRow({
   onJoin: () => void;
   /** La primera de la tarjeta (sin la raya de arriba). */
   first?: boolean;
+  /** Pro: la fila más baja (min-h-row-pro de la web). */
+  dense?: boolean;
 }) {
   const c = useColors();
   const mine = joined ?? (item.mine ? mineLabel(item) : null);
   const title = agendaTitle(item);
   const line = agendaLine(item, today);
   return (
-    <View style={[styles.row, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line }]}>
+    <View style={[styles.row, dense && styles.dense, !first && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${title}, ${item.leagueName}`}
@@ -82,6 +85,7 @@ export function AgendaRow({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 72, paddingHorizontal: 16, paddingVertical: 12 },
+  dense: { minHeight: 64, paddingVertical: 9 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 36, borderRadius: 18, paddingHorizontal: 12 },
   join: { height: 36, borderRadius: 18, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
 });

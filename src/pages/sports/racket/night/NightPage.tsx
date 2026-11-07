@@ -11,7 +11,7 @@ import { racketNightComp } from '../../../../prizes/sports';
 import { useBusy } from '../../../../components/busy';
 import type { Match } from '../../../../lib/data/matches';
 import { useFeedback, saveErrorMessage } from '../../../../components/feedback';
-import { StandingsTable, pointsResultParser, type StandingsColumn } from '../../../../components/match';
+import { StandingsTable, type StandingsColumn } from '../../../../components/match';
 import { eventDay } from '../../../../components/event/EventHeader';
 import { useIsPro } from '../../../../components/mode';
 import { NoticeSlot } from '../../../../components/NoticeSlot';
@@ -26,7 +26,6 @@ import {
   nightShareText,
   nightTable,
   parseNightConfig,
-  parsePoints,
   pointsLabel,
   redoNightRound,
   roundDrafts,
@@ -38,6 +37,7 @@ import { levelText, useLevels } from '../levels';
 import { MatchDetail, useMatchParam } from '../match/MatchDetail';
 import { useNames } from '../names';
 import { useRacket } from '../sport';
+import { nightFirstSummary, nightPointsEntry } from './entry';
 import { NightPrizes } from './NightPrizes';
 import { RankRows, appOrigin, eventTypeInfo } from '../bits';
 import { ReportSheet, ScorersSheet, ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../frame';
@@ -217,10 +217,7 @@ export function NightPage({ event }: { event: RacketEvent }) {
   const open = (k: SheetKey) => setSheet(k);
   const first = nextNightRound(cfg, []);
   // El marcador de un partido de la ronda: los puntos de cada lado (con lo que suman, si es a un total).
-  const pointsEntry = (m: Match) => {
-    const pts = parsePoints((m.rules as Record<string, unknown> | undefined)?.points);
-    return { parser: pointsResultParser(pts), placeholder: '14-10', hint: pts.mode === 'total' ? `suman ${pts.target}` : undefined };
-  };
+  const pointsEntry = (m: Match) => nightPointsEntry(m);
 
   const menu: RacketMenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir la tabla', hint: 'Por WhatsApp o copiada', onClick: () => open('compartir') },
@@ -249,9 +246,7 @@ export function NightPage({ event }: { event: RacketEvent }) {
     ) : !current ? (
       <FirstRound
         organize={organize}
-        summary={`${cfg.players.length} jugadores en ${cfg.courts.length} ${cfg.courts.length === 1 ? 'cancha' : 'canchas'} · ${cfg.rounds} rondas · ${
-          cfg.format === 'mexicano' ? (cfg.firstRound === 'level' ? 'la 1 por nivel' : 'la 1 al azar') : 'sin repetir compañero'
-        }`}
+        summary={nightFirstSummary(cfg)}
         problem={first.ok ? null : first.reason}
         note={cfg.signup?.open ? 'Al empezar la ronda 1 se cierra la inscripción.' : null}
         busy={pending.isBusy('ronda')}

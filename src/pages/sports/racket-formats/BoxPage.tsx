@@ -17,8 +17,7 @@ import { Badge, Button, Card, Empty, ListRow, ListSkeleton, RowIcon, Segmented, 
 import { FinePrint, PickList, choiceClass, racketColumns } from '../racket/bits';
 import { ScreenHead, useEventBack, useOrganizePro, type RacketMenuItem } from '../racket/frame';
 import { levelText, useLevels } from '../racket/levels';
-import { exportCompetitionExcel } from '../racket/excel';
-import { forLabel, seasonPlayerTable, setsLabel } from '../racket/logic/results';
+import { boxMonthExcelInput, exportCompetitionExcel } from '../racket/excel';
 import { tiebreakText } from '../racket/logic/tiebreaks';
 import { todayIn } from '../racket/logic/time';
 import { MatchDetail, useMatchParam, useMySide } from '../racket/match/MatchDetail';
@@ -171,19 +170,7 @@ export function BoxPage({ event }: { event: RacketEvent }) {
 
   const excel = (m: BoxMonth) =>
     exporting.run('excel', () =>
-      exportCompetitionExcel({
-        title: `${title} · ${m.label || `Mes ${m.n}`}`,
-        date: m.start ?? event.date,
-        matches: monthMatches(matches, m.n),
-        tables: m.boxes.map((_, b) => ({ name: boxName(b), rows: tables[b] ?? [] })),
-        players: seasonPlayerTable(monthMatches(matches, m.n), { sport, rosterOf: names.rosterOf, now }),
-        entrantName: names.entrantName,
-        nameOf: names.nameOf,
-        tz: league.tz,
-        forLabel: forLabel(sport),
-        setsLabel: setsLabel(sport),
-        courtLabel: courtWords(ext).One,
-      }).catch((e) => {
+      exportCompetitionExcel(boxMonthExcelInput({ title, eventDate: event.date, month: m, matches, tables, sport, names, tz: league.tz, courtLabel: courtWords(ext).One, now })).catch((e) => {
         console.error(e);
         toast('No se pudo hacer el Excel', 'error');
       }),

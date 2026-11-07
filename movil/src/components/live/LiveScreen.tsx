@@ -23,6 +23,8 @@ import { LogoSpinner } from '@/components/Logo';
 import { Button, Card, Divider, ListRow, LoadError, RowIcon, SectionHeader, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+import { useIsPro } from '@mm/lib/useMode';
+import { TITLE_PRO } from '@/components/home/proLook';
 import { PlatformMark } from './PlatformMark';
 import { StartStreamSheet } from './StartStreamSheet';
 import { StreamPlayer, playerHost } from './StreamPlayer';
@@ -35,9 +37,11 @@ export function LiveScreen({ wanted }: { wanted: string | null }) {
   const [starting, setStarting] = useState(false);
   const can = canStartStream(ctx);
   const { current, others } = pickStream(streams.data, wanted);
+  // Pro: el botón de 48 y el título un poco más chico (LiveStreamPage de la web).
+  const pro = useIsPro();
 
   const startButton = can && (
-    <Button variant={current ? 'quiet' : 'primary'} size="xl" full icon={<Radio size={20} color={current ? c.fg : c.accentFg} />} onPress={() => setStarting(true)}>
+    <Button variant={current ? 'quiet' : 'primary'} size={pro ? 'lg' : 'xl'} full icon={<Radio size={20} color={current ? c.fg : c.accentFg} />} onPress={() => setStarting(true)}>
       Transmitir en vivo
     </Button>
   );
@@ -111,7 +115,9 @@ export function LiveScreen({ wanted }: { wanted: string | null }) {
   return (
     <>
       <View style={{ gap: 4 }}>
-        <Txt variant="title">En vivo</Txt>
+        <Txt variant="title" style={pro ? TITLE_PRO : undefined}>
+          En vivo
+        </Txt>
         <Txt variant="meta" tone="muted">
           {league.name}
         </Txt>

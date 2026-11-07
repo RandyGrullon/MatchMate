@@ -41,8 +41,8 @@ function RoundButton({
 }
 
 /**
- * Arriba de Yo (YoTop de la web): la lupa (buscar personas y ligas, `/buscar`) y el único engranaje (la cuenta,
- * `/cuenta`). «Lite | Pro» no sale: la app es Lite.
+ * Arriba de Yo (YoTop de la web): «Lite | Pro» (cómo ver la app: cambia al momento, con «Deshacer» abajo), la lupa
+ * (buscar personas y ligas, `/buscar`) y el único engranaje (la cuenta, `/cuenta`).
  */
 export function YoTop() {
   const c = useColors();
@@ -76,22 +76,25 @@ export function YoTop() {
 
 /**
  * Tu foto (o tus iniciales; tocarla lleva a cambiarla en `/cuenta?foto=1`), tu nombre, «@usuario · tu liga» y tu
- * biografía (Identity de la web, en Lite).
+ * biografía (Identity de la web; más chico en Pro).
  */
 export function Identity({
   name,
   line,
   bio,
   photo,
+  pro = false,
 }: {
   name: string;
   line: string | null;
   bio?: string | null;
   photo?: string | null;
+  pro?: boolean;
 }) {
   const text = bio?.trim();
+  const avatar = pro ? 52 : 60;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: pro ? 14 : 16 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
@@ -99,22 +102,21 @@ export function Identity({
         }
         onPress={() => router.push("/cuenta?foto=1" as never)}
         style={({ pressed }) => ({
-          borderRadius: 30,
+          borderRadius: avatar / 2,
           transform: [{ scale: pressed ? 0.95 : 1 }],
         })}
       >
-        <Avatar name={name} photo={photo} size={60} />
+        <Avatar name={name} photo={photo} size={avatar} />
       </Pressable>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Txt
           accessibilityRole="header"
           numberOfLines={1}
-          style={{
-            fontSize: 26,
-            lineHeight: 30,
-            letterSpacing: -0.65,
-            fontFamily: font.bold,
-          }}
+          style={
+            pro
+              ? { fontSize: 22, lineHeight: 26, letterSpacing: -0.44, fontFamily: font.bold }
+              : { fontSize: 26, lineHeight: 30, letterSpacing: -0.65, fontFamily: font.bold }
+          }
         >
           {name}
         </Txt>
@@ -123,7 +125,7 @@ export function Identity({
             variant="meta"
             tone="muted"
             numberOfLines={1}
-            style={{ marginTop: 3 }}
+            style={pro ? { marginTop: 2 } : { marginTop: 3 }}
           >
             {line}
           </Txt>
@@ -133,7 +135,7 @@ export function Identity({
             variant="meta"
             tone="fg2"
             numberOfLines={2}
-            style={{ marginTop: 6 }}
+            style={{ marginTop: pro ? 4 : 6 }}
           >
             {text}
           </Txt>

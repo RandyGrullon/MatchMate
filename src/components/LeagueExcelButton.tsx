@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { fetchEntriesOfEvents } from '../lib/data';
-import { formatDate } from '../lib/format';
+import { EXCEL_DONE, LEAGUE_EXCEL_NOTE, LEAGUE_EXCEL_TEXT, LEAGUE_EXCEL_TITLE, leagueExcelScopes, scopeEventIds, type LeagueExcelScope } from '../lib/leagueExcel';
 import { useLeagueCtx } from '../lib/league';
 import type { Season } from '../lib/seasons';
 import type { BowlingEvent, Player } from '../lib/types';
@@ -12,7 +12,7 @@ import { Button, Modal, cx } from './ui';
 /**
  * Tabla › «Excel» (Pro, la píldora de arriba): descarga la temporada elegida en la tabla (sus fechas; la que sigue
  * abierta, hasta hoy) o toda la liga, con la tabla, todos los juegos y cada práctica y torneo. Sin temporadas: las
- * fechas de la liga.
+ * fechas de la liga. Qué se baja, las hojas y los textos: src/lib/leagueExcel.ts (los usa también la app del teléfono).
  */
 export function LeagueExcelButton({
   season,
@@ -30,24 +30,16 @@ export function LeagueExcelButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const scopes: { key: string; label: string; from: string | undefined; to: string | undefined }[] = [
-    ...(season
-      ? [{ key: 'temporada', label: season.name, from: season.startsOn, to: season.status === 'active' ? undefined : (season.endsOn ?? undefined) }]
-      : league.seasonStart && league.seasonEnd
-        ? [{ key: 'temporada', label: `Temporada (${formatDate(league.seasonStart)} – ${formatDate(league.seasonEnd)})`, from: league.seasonStart, to: league.seasonEnd }]
-        : []),
-    { key: 'todo', label: 'Toda la liga', from: undefined, to: undefined },
-  ];
+  const scopes = leagueExcelScopes(season, league);
 
-  async function download(scope: (typeof scopes)[number]) {
+  async function download(scope: LeagueExcelScope) {
     setBusy(scope.key);
     const ok = await run(async () => {
       // Solo lo de las fechas elegidas (no toda la historia de la liga).
-      const inScope = events.filter((e) => (!scope.from || e.date >= scope.from) && (!scope.to || e.date <= scope.to)).map((e) => e.id);
-      const [{ exportLeagueToExcel }, entries] = await Promise.all([import('../lib/exportExcel'), fetchEntriesOfEvents(lid, inScope)]);
+      const [{ exportLeagueToExcel }, entries] = await Promise.all([import('../lib/exportExcel'), fetchEntriesOfEvents(lid, scopeEventIds(events, scope))]);
       await exportLeagueToExcel(league.name, scope, events, entries, players);
       return true;
-    }, 'Excel descargado');
+    }, EXCEL_DONE);
     setBusy(null);
     if (ok) setOpen(false);
   }
@@ -63,19 +55,19 @@ export function LeagueExcelButton({
         onClose={() => setOpen(false)}
         title={
           <span className="flex items-center gap-2">
-            <FileSpreadsheet className="size-5 text-accent" /> Descargar en Excel
+            <FileSpreadsheet className="size-5 text-accent" /> {LEAGUE_EXCEL_TITLE}
           </span>
         }
         footer={<Button onClick={() => setOpen(false)}>Cerrar</Button>}
       >
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">La tabla de jugadores, todos los juegos y el resumen de cada práctica y torneo (solo juegos aprobados).</p>
+          <p className="text-sm text-muted">{LEAGUE_EXCEL_TEXT}</p>
           {scopes.map((s) => (
             <Button key={s.key} className="justify-start" icon={<FileSpreadsheet className="size-4" />} loading={busy === s.key} disabled={!!busy} onClick={() => download(s)}>
               {s.label}
             </Button>
           ))}
-          <p className="text-xs text-muted">Cada práctica o torneo por separado se descarga desde su página (botón de Excel arriba).</p>
+          <p className="text-xs text-muted">{LEAGUE_EXCEL_NOTE}</p>
         </div>
       </Modal>
     </>

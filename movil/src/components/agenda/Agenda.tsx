@@ -8,6 +8,7 @@ import { joinAgendaItem, useAgenda, type AgendaItem } from '@mm/lib/data/agenda'
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { toIsoDate } from '@mm/lib/format';
 import { useNow } from '@mm/lib/useNow';
+import { useIsPro } from '@mm/lib/useMode';
 import { sportMeta, sportsOf } from '@mm/sports/registry';
 import {
   AGENDA_ALL,
@@ -29,6 +30,7 @@ import { toast } from '@/components/feedback';
 import { Chips, type ChipItem } from '@/components/notifications/NoticeList';
 import { BackBar, Card, LoadError, Loading, Screen, Segmented, Txt } from '@/components/ui';
 import { openLink } from '@/lib/links';
+import { TITLE_PRO } from '@/components/home/proLook';
 import { useColors } from '@/theme/theme';
 import { AgendaRow } from './AgendaRow';
 import { useJoinFlow } from './joinFlow';
@@ -50,8 +52,8 @@ const searchOf = (p: Params) => {
  * - Tus ligas (`?ver=mias`): la semana de tus ligas con sus fechas, «Voy» en las prácticas y las semanas que vienen (la
  *   misma de la hoja Calendario de Hoy).
  * - Abiertas («¿Dónde juego esta semana?»): lo que viene en los próximos 14 días en las ligas públicas donde uno se
- *   puede apuntar y hay lugar, cada fecha en una fila con «Me apunto» al lado; filtro por deporte (`?deporte=`) y por
- *   día si viene `?dia=` (los chips de los días son de Pro, y en el teléfono no hay Pro). «Me apunto» usa el flujo de
+ *   puede apuntar y hay lugar, cada fecha en una fila con «Me apunto» al lado; filtro por deporte (`?deporte=`) y, en
+ *   Pro, por día (`?dia=`; en Lite solo si viene en el link). En Pro, las filas más bajas. «Me apunto» usa el flujo de
  *   siempre; sin cuenta, primero a entrar; en una liga de la que no es miembro, primero se une («¿Quién eres?» si hay
  *   jugadores sin cuenta). Un torneo de raqueta (categoría, pareja) se apunta en su evento. Tocar la fila abre el evento.
  */
@@ -59,6 +61,8 @@ export function AgendaScreen() {
   const c = useColors();
   const auth = useAuth();
   const agenda = useAgenda();
+  const pro = useIsPro();
+  const titleStyle = pro ? TITLE_PRO : undefined;
   const params = useLocalSearchParams<Params>();
   const today = toIsoDate(useNow());
   const [busy, setBusy] = useState<string | null>(null);
@@ -133,7 +137,8 @@ export function AgendaScreen() {
 
   const canMine = !!auth.user && my.all.length > 0;
   const view = agendaView(params.ver, canMine);
-  const showDays = showDayFilter(days.length, false, day);
+  // El filtro por día es de Pro (en Lite solo si ya viene en el link, `?dia=`).
+  const showDays = showDayFilter(days.length, pro, day);
   const empty = agendaEmpty(items.length > 0);
 
   const sportChips: ChipItem<string>[] = [
@@ -172,6 +177,7 @@ export function AgendaScreen() {
             item={item}
             today={today}
             first={i === 0}
+            dense={pro}
             busy={busy === item.eventId || flow.busy === item.leagueId}
             joined={joined[item.eventId] ?? null}
             onJoin={() => void join(item)}
@@ -185,7 +191,7 @@ export function AgendaScreen() {
     <Screen>
       <BackBar label="Ligas" fallback="/ligas" />
       <View style={{ gap: 4 }}>
-        <Txt variant="title" accessibilityRole="header">
+        <Txt variant="title" accessibilityRole="header" style={titleStyle}>
           Calendario
         </Txt>
         <Txt variant="meta" tone="muted">
