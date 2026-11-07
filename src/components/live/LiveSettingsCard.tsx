@@ -3,9 +3,9 @@ import { Link } from 'react-router';
 import { ChevronRight, Radio } from 'lucide-react';
 import { setLeagueLive } from '../../lib/data/streams';
 import { useLeagueCtx } from '../../lib/league';
-import { leagueSport } from '../../sports/registry';
 import { BusyIcon } from '../busy';
 import { useAction } from '../feedback';
+import { liveExplain, liveToggleText } from '../league/settings';
 import { Card, cx } from '../ui';
 import { liveHref } from './LiveParts';
 
@@ -23,10 +23,7 @@ export function LiveSettingsCard({ lid, className }: { lid: string; className?: 
   const saved = league.liveEnabled === true;
   const on = picked && picked.from === saved ? picked.to : saved;
   // En el boliche transmiten solo los admins (como start_stream).
-  const who = leagueSport(league) === 'bowling' ? 'Los admins' : 'Los admins y anotadores';
-  const explain = `${who} podrán poner el link de YouTube, Twitch, Facebook, Kick, Instagram o TikTok de un partido; sale arriba en ${
-    league.kind === 'torneo' ? 'el torneo' : 'la liga'
-  } y avisa a los miembros y seguidores.`;
+  const explain = liveExplain(league);
 
   const toggle = async () => {
     if (!isAdmin || saving) return;
@@ -36,7 +33,7 @@ export function LiveSettingsCard({ lid, className }: { lid: string; className?: 
     const ok = await run(async () => {
       await setLeagueLive(lid, next);
       return true;
-    }, next ? 'Transmisiones en vivo activadas' : 'Transmisiones en vivo apagadas');
+    }, liveToggleText(next));
     if (!ok) setPicked(null);
     setSaving(false);
   };

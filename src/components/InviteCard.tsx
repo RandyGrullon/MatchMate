@@ -4,6 +4,7 @@ import { getInviteCode, renewInviteCode } from '../lib/data';
 import type { League } from '../lib/types';
 import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
+import { RENEW_CODE_CONFIRM, inviteCardText, renewDoneText } from './league/settings';
 import { InviteSheet } from './invite/InviteSheet';
 import { codeInviteUrl } from './invite/logic';
 import { QrCode } from './QrCode';
@@ -37,15 +38,11 @@ export function InviteCard({ league }: { league: League }) {
 
   async function renew() {
     if (code) {
-      const ok = await confirm({
-        title: 'Cambiar el código',
-        message: 'El link, el QR y el código actuales dejan de servir. Quienes ya están en la liga siguen en ella.',
-        confirmText: 'Cambiar',
-      });
+      const ok = await confirm(RENEW_CODE_CONFIRM);
       if (!ok) return;
     }
     await wait('cambiar', async () => {
-      const next = await run(() => renewInviteCode(league), code ? 'Código nuevo listo' : 'Invitación creada');
+      const next = await run(() => renewInviteCode(league), renewDoneText(!!code));
       if (next) setCode(next);
     });
   }
@@ -58,11 +55,7 @@ export function InviteCard({ league }: { league: League }) {
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold">Invitar a la liga</h3>
-          <p className="text-sm text-muted">
-            {league.visibility === 'private'
-              ? 'Es privada: solo entra quien tenga el link, el QR o el código.'
-              : 'Es pública: cualquiera puede unirse; el link los lleva directo.'}
-          </p>
+          <p className="text-sm text-muted">{inviteCardText(league.visibility)}</p>
         </div>
       </div>
 

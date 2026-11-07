@@ -1034,8 +1034,9 @@ export async function setTeamMemberRole(teamId: string, userId: string, role: Te
 /** El bucket `logos` acepta hasta 256 kB (el logo comprimido pesa ≤ 120 kB). */
 const MAX_LOGO_UPLOAD_BYTES = 262_144;
 
+/** ¿Ya viene comprimido? Sin `instanceof Blob`: en el teléfono el archivo es un objeto con sus bytes (bytesBlob.native.ts). */
 const isCompressed = (v: Blob | CompressedLogo): v is CompressedLogo =>
-  typeof (v as CompressedLogo).contentType === 'string' && (v as CompressedLogo).blob instanceof Blob;
+  typeof (v as CompressedLogo).contentType === 'string' && typeof (v as CompressedLogo).blob?.size === 'number';
 
 /**
  * Sube el logo del equipo (un archivo o uno ya comprimido con `prepareLogo`) y lo pone; borra el anterior. Como

@@ -27,21 +27,46 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { deleteLeague, deleteOldPhotos, removeMember, setMemberRole, setMemberScorer, updateLeague, useLeagueMembers, usePlayers } from '../lib/data';
-import { formatDate, venueLabel } from '../lib/format';
-import { rememberLeague, roleLabel, useLeagueCtx, whatsappUrl } from '../lib/league';
+import { rememberLeague, roleLabel, useLeagueCtx } from '../lib/league';
 import { logoErrorText, removeLeagueLogo, uploadLeagueLogo } from '../lib/logos';
 import type { Member } from '../lib/types';
 import { Avatar } from '../components/Avatar';
 import { LeagueIcon } from '../components/home/LeagueCard';
 import { InviteCard } from '../components/InviteCard';
 import { SuggestionsPanel } from '../components/SuggestionsPanel';
-import { leagueSport, sportMeta } from '../sports/registry';
-import { LeagueForm, leagueInput } from '../components/LeagueFormModal';
+import { leagueSport } from '../sports/registry';
+import { LeagueForm } from '../components/LeagueFormModal';
 import { useAction, useFeedback } from '../components/feedback';
 import { useBusy } from '../components/busy';
 import { Badge, Button, Card, ListRow, ListSkeleton, LoadError, Modal, RowIcon, Segmented, Skeleton, TopLoader, cx } from '../components/ui';
 import { AnnouncePanel } from '../components/league/Announce';
-import { tzLabel, tzOffset } from '../components/league/logic';
+import {
+  BACKUP_ERROR_TEXT,
+  DELETED_TEXT,
+  EMPTY_DETAIL,
+  FREE_PHOTOS_CONFIRM,
+  LOGO_REMOVED_TEXT,
+  OLD_PHOTOS_MONTHS,
+  backupDoneText,
+  configRowSubtitle,
+  configRowTitle,
+  configRows,
+  configTitle,
+  deleteLeagueConfirm,
+  freedPhotosText,
+  leagueDataTitle,
+  leagueInput,
+  leaguePhotos,
+  logoButtonLabel,
+  logoDoneText,
+  logoHint,
+  removeLogoConfirm,
+  settingsDetails,
+  visibilityLabel,
+  type ConfigKey,
+  type DetailKey,
+} from '../components/league/settings';
+import { adminConfirm, kickConfirm, makerConfirm, memberLabels, memberPlayerBadge, memberRights, membersIntro, membersScope, scorerConfirm, sortMembers } from '../components/league/members';
 import { usePendingClaimCount } from '../components/claims/data';
 import { ScreenHeader, useOwnTabs } from '../components/organizer/Hub';
 import { adminScreenTitle, organizeUrl } from '../components/organizer/hubLogic';
@@ -52,7 +77,6 @@ import { canEnterLeagues } from '../components/squads/logic';
 import { SquadRequestsPanel } from '../components/squads/SquadRequestsPanel';
 import { BadgeMakersCard } from '../components/badges/maker/MakerSettings';
 import { badgeMakersOf, canMakeBadges, setMemberBadgeMaker } from '../lib/data/leagueBadges';
-import { leavesOnRemove, removeConfirm } from '../components/scorers/logic';
 
 const PlayersPage = lazy(() => import('./PlayersPage'));
 const ClaimsPanel = lazy(() => import('../components/claims/ClaimsPanel').then((m) => ({ default: m.ClaimsPanel })));
@@ -213,8 +237,6 @@ function BadgesScreen({ makers }: { makers: boolean }) {
   );
 }
 
-const ORDER: Record<Member['role'], number> = { owner: 0, admin: 1, member: 2 };
-
 /**
  * Miembros y permisos. Todos los que entran son jugadores (salvo quien entró solo para anotar); el dueño nombra
  * admins y el dueño o un admin, anotadores. Un miembro puede tener varios roles (p. ej. anotador y jugador).
@@ -231,87 +253,46 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   const members = useLeagueMembers(lid);
   const players = usePlayers(lid);
   const playerName = useMemo(() => new Map(players.data.map((p) => [p.id, p.name])), [players.data]);
-  const sorted = [...members.data].sort((a, b) => ORDER[a.role] - ORDER[b.role] || a.name.localeCompare(b.name));
-  // Anotadores: en todas (en una liga de boliche anotan sus torneos, no las prácticas).
-  const bowling = leagueSport(league) === 'bowling';
-  // La liga de boliche con prácticas y torneos (el admin también los crea).
-  const bowlingLeague = bowling && league.kind !== 'torneo';
-  const where = league.kind === 'torneo' ? 'el torneo' : 'la liga';
-  // «Diseña insignias» vale con la regla «Yo y los que yo elija» (Liga › ¿Quién diseña y da insignias?).
-  const chosen = badgeMakersOf(league) === 'chosen';
+  const sorted = sortMembers(members.data);
+  // Anotadores: en todas (en una liga de boliche anotan sus torneos, no las prácticas). «Diseña insignias» vale con la
+  // regla «Yo y los que yo elija» (Liga › ¿Quién diseña y da insignias?).
+  const scope = membersScope(league, badgeMakersOf(league) === 'chosen');
+  const { chosen } = scope;
 
   async function toggleAdmin(m: Member) {
-    const makeAdmin = m.role === 'member';
-    const ok = await confirm({
-      title: makeAdmin ? `¿Hacer admin a ${m.name}?` : `¿Quitarle admin a ${m.name}?`,
-      message: makeAdmin
-        ? !bowlingLeague
-          ? 'Podrá inscribir jugadores, armar equipos, anotar y aprobar juegos, e invitar. Los permisos los sigues manejando tú.'
-          : 'Podrá crear torneos y prácticas, anotar y aprobar juegos, manejar jugadores e invitar. Los permisos los sigues manejando tú.'
-        : m.uid === user?.uid
-          ? `Vas a dejar de administrar ${where}; sigues como jugador. Para volver a ser admin, el dueño te lo tiene que dar.`
-          : `Sigue en ${where} como jugador.`,
-      confirmText: makeAdmin ? 'Hacer admin' : 'Quitar admin',
-      danger: !makeAdmin,
-    });
-    if (ok) await busy.run(`${m.id}:admin`, () => run(() => setMemberRole(m, makeAdmin ? 'admin' : 'member'), makeAdmin ? `${m.name} ahora es admin` : 'Listo'));
+    const ask = adminConfirm(m, scope, user?.uid);
+    if (await confirm(ask)) await busy.run(`${m.id}:admin`, () => run(() => setMemberRole(m, ask.role), ask.done));
   }
 
   async function toggleScorer(m: Member) {
-    const make = !m.scorer;
-    // Quien entró solo para anotar (sin jugador ni otro permiso) sale de la liga al quitarle el permiso (removeConfirm lo dice).
-    const leaving = !make && leavesOnRemove(m);
-    const out = leaving ? removeConfirm(m, league.kind) : null;
-    const ok = await confirm({
-      title: make ? `¿Hacer anotador a ${m.name}?` : `¿Quitarle anotador a ${m.name}?`,
-      message: make
-        ? bowling
-          ? bowlingLeague
-            ? 'Podrá anotar los juegos de los torneos de la liga (no las prácticas) y nada más. Sigue siendo jugador.'
-            : 'Podrá anotar los juegos de los inscritos (a mano, por cuadros o con la foto) y nada más. Sigue siendo jugador.'
-          : 'Podrá anotar los partidos, las tarjetas o los tiempos, y nada más. Sigue siendo jugador.'
-        : (out?.message ?? `Ya no podrá anotar en ${where}.`),
-      confirmText: make ? 'Hacer anotador' : 'Quitar anotador',
-      danger: !make,
-    });
-    if (ok) await busy.run(`${m.id}:scorer`, () => run(() => setMemberScorer(m, make), make ? `${m.name} ahora es anotador` : (out?.done ?? 'Listo')));
+    // Quien entró solo para anotar (sin jugador ni otro permiso) sale de la liga al quitarle el permiso (lo dice la pregunta).
+    const ask = scorerConfirm(m, scope);
+    if (await confirm(ask)) await busy.run(`${m.id}:scorer`, () => run(() => setMemberScorer(m, ask.make), ask.done));
   }
 
   async function toggleMaker(m: Member) {
-    const make = !m.badgeMaker;
-    const ok = await confirm({
-      title: make ? `¿${m.name} diseña insignias?` : `¿Quitarle a ${m.name} el diseño de insignias?`,
-      message: make
-        ? 'Podrá crear las insignias de la liga y darlas. Solo tú puedes quitarlas.'
-        : `Ya no podrá crear ni dar insignias de ${where}. Las que ya dio se quedan.`,
-      confirmText: make ? 'Sí, que diseñe' : 'Quitar',
-      danger: !make,
-    });
-    if (ok) await busy.run(`${m.id}:maker`, () => run(() => setMemberBadgeMaker(m, make), make ? `${m.name} ahora diseña insignias` : 'Listo'));
+    const ask = makerConfirm(m, scope);
+    if (await confirm(ask)) await busy.run(`${m.id}:maker`, () => run(() => setMemberBadgeMaker(m, ask.make), ask.done));
   }
 
   async function kick(m: Member) {
-    const ok = await confirm({
-      title: `¿Sacar a ${m.name} de ${where}?`,
-      message: `Sus juegos se quedan; su cuenta deja de estar en ${where}. Si es privado, necesitará otra invitación para volver.`,
-      confirmText: 'Sacar',
-      danger: true,
-    });
-    if (ok) await busy.run(`${m.id}:kick`, () => run(() => removeMember(m), `${m.name} ya no está en ${where}`));
+    const ask = kickConfirm(m, scope);
+    if (await confirm(ask)) await busy.run(`${m.id}:kick`, () => run(() => removeMember(m), ask.done));
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="px-1">
         <p className="text-sm text-muted">
-          Todos son jugadores, menos quien entró solo para anotar. <b className="text-fg">Admin</b> maneja {where}; <b className="text-fg">Anotador</b> solo anota los juegos
-          {bowlingLeague && ' de los torneos'}
-          {chosen && (
-            <>
-              ; <b className="text-fg">Diseña insignias</b> crea y da las insignias de {where}
-            </>
+          {membersIntro(scope, isOwner).map((part, i) =>
+            part.strong ? (
+              <b key={i} className="text-fg">
+                {part.text}
+              </b>
+            ) : (
+              part.text
+            ),
           )}
-          . {isOwner ? 'Solo tú, como dueño, nombras admins. Tú y los admins nombran anotadores.' : 'Solo el dueño nombra admins. Tú puedes nombrar anotadores.'}
         </p>
       </div>
       {members.error ? (
@@ -322,13 +303,10 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
         <Card className="stagger overflow-hidden">
           {sorted.map((m, i) => {
             const me = m.uid === user?.uid;
-            // El dueño saca a cualquiera; un admin solo a los que no tienen permisos (ni admin, ni anotador, ni diseña insignias).
-            const canKick = !me && m.role !== 'owner' && (isOwner || (m.role === 'member' && !m.scorer && !m.badgeMaker));
-            const canManage = isOwner && m.role !== 'owner';
-            // Anotadores: el dueño a cualquiera menos a sí mismo; un admin, a los miembros (no a sí mismo ni a otro admin).
-            const canScorer = isOwner ? m.role !== 'owner' : isAdmin && !me && m.role === 'member';
-            // Un admin puede dejar de serlo por su cuenta.
-            const canStepDown = me && m.role === 'admin' && !isOwner;
+            // Quién puede qué (members.ts): el dueño saca a cualquiera; un admin, a los que no tienen permisos.
+            const { canKick, canManage, canScorer, canStepDown } = memberRights(m, { uid: user?.uid, isOwner, isAdmin });
+            const label = memberLabels(m, scope);
+            const player = memberPlayerBadge(m, m.playerId ? playerName.get(m.playerId) : undefined);
             return (
               <div key={m.id} style={{ '--i': i } as CSSProperties} className="mm-row relative flex flex-wrap items-center gap-3 py-3 pr-[18px] pl-5">
                 <Avatar name={m.name} />
@@ -345,9 +323,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         <Palette className="size-3" aria-hidden="true" /> Diseña insignias
                       </Badge>
                     )}
-                    <Badge tone={m.playerId ? 'ok' : 'neutral'}>
-                      {m.playerId ? `Jugador: ${playerName.get(m.playerId) ?? '—'}` : m.scorerOnly ? 'Solo anota' : 'Su jugador se crea al abrir la liga'}
-                    </Badge>
+                    <Badge tone={player.tone}>{player.text}</Badge>
                   </div>
                 </div>
                 {(canManage || canScorer || canKick || canStepDown) && (
@@ -361,7 +337,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         disabled={busy.isBusy()}
                         onClick={() => toggleAdmin(m)}
                       >
-                        Dejar de ser admin
+                        {label.stepDown}
                       </Button>
                     )}
                     {canManage && (
@@ -373,7 +349,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         disabled={busy.isBusy()}
                         onClick={() => toggleAdmin(m)}
                       >
-                        {m.role === 'admin' ? 'Quitar admin' : 'Hacer admin'}
+                        {label.admin}
                       </Button>
                     )}
                     {canScorer && (
@@ -385,7 +361,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         disabled={busy.isBusy()}
                         onClick={() => toggleScorer(m)}
                       >
-                        {m.scorer ? 'Quitar anotador' : 'Hacer anotador'}
+                        {label.scorer}
                       </Button>
                     )}
                     {canManage && chosen && (
@@ -397,7 +373,7 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         disabled={busy.isBusy()}
                         onClick={() => toggleMaker(m)}
                       >
-                        {m.badgeMaker ? 'Ya no diseña' : 'Diseña insignias'}
+                        {label.maker}
                       </Button>
                     )}
                     {canKick && (
@@ -405,8 +381,8 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
                         size="sm"
                         variant="ghost"
                         className="size-11 text-danger"
-                        aria-label={`Sacar a ${m.name}`}
-                        title={`Sacar de ${where}`}
+                        aria-label={label.kick}
+                        title={label.kickTitle}
                         icon={<UserMinus className="size-4" />}
                         loading={busy.isBusy(`${m.id}:kick`)}
                         disabled={busy.isBusy()}
@@ -431,10 +407,28 @@ function MembersPanel({ accountsOf = null }: { accountsOf?: string | null }) {
   );
 }
 
+/** El ícono de cada dato de la liga (settingsDetails). */
+const DETAIL_ICONS: Record<DetailKey, ReactNode> = {
+  venue: <MapPin className="size-4" />,
+  schedule: <Clock className="size-4" />,
+  season: <CalendarRange className="size-4" />,
+  contact: <MessageCircle className="size-4" />,
+  photo: <Camera className="size-4" />,
+  tz: <Earth className="size-4" />,
+  minors: <Baby className="size-4" />,
+};
+
+/** El ícono de cada fila de la configuración (configRows). */
+const CONFIG_ICONS: Record<ConfigKey, ReactNode> = {
+  backup: <DatabaseBackup className="size-5" />,
+  photos: <ImageMinus className="size-5" />,
+  delete: <Trash2 className="size-5" />,
+};
+
 /**
  * Ajustes de la liga: los datos (se editan en un modal; ahí va la foto del marcador), el logo, las transmisiones en vivo,
  * la invitación y, al final, el respaldo, las fotos viejas y borrar la liga (en su hoja). Avisar e Insignias tienen su
- * propia fila en Organizar.
+ * propia fila en Organizar. Lo que no es pantalla está en src/components/league/settings.ts (lo usa también la app).
  */
 function SettingsPanel() {
   const { league, isOwner } = useLeagueCtx();
@@ -442,13 +436,9 @@ function SettingsPanel() {
   const [editing, setEditing] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [open, setOpen] = useState(false);
-  const isTournament = league.kind === 'torneo';
-  const season = league.seasonStart && league.seasonEnd ? `${formatDate(league.seasonStart)} – ${formatDate(league.seasonEnd)}` : '';
-  const contact = [league.contactName, league.contactPhone].filter(Boolean).join(' · ');
+  const canDelete = isOwner || isSuper;
   // La foto del marcador es solo del boliche.
-  const photos = sportMeta(leagueSport(league))?.photos ?? false;
-  const tz = league.tz || 'America/Santo_Domingo';
-  const offset = tzOffset(tz);
+  const photos = leaguePhotos(league);
 
   return (
     <div className="flex flex-col gap-5">
@@ -464,10 +454,10 @@ function SettingsPanel() {
           >
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 text-xs font-medium text-muted">
-                {isTournament ? 'Datos del torneo' : 'Datos de la liga'}
+                {leagueDataTitle(league.kind)}
                 <Badge tone={league.visibility === 'private' ? 'neutral' : 'accent'} className="px-1.5 py-0 text-[11px]">
                   {league.visibility === 'private' ? <Lock className="size-3" /> : <Globe className="size-3" />}
-                  {league.visibility === 'private' ? 'Privada' : 'Pública'}
+                  {visibilityLabel(league.visibility)}
                 </Badge>
               </p>
               <h2 className="truncate text-lg font-bold tracking-tight">{league.name}</h2>
@@ -481,36 +471,22 @@ function SettingsPanel() {
         >
           <div className="overflow-hidden" inert={!open}>
             <dl className="grid gap-2.5 pt-4 text-sm sm:grid-cols-2">
-              <Detail icon={<MapPin className="size-4" />} label={venueLabel(league.sport)} value={league.venue} />
-              {!isTournament && <Detail icon={<Clock className="size-4" />} label="Cuándo juegan" value={league.schedule} />}
-              {!isTournament && <Detail icon={<CalendarRange className="size-4" />} label="Temporada" value={season} />}
-              <Detail
-                icon={<MessageCircle className="size-4" />}
-                label="Contacto"
-                value={
-                  contact &&
-                  (league.contactPhone ? (
-                    <a href={whatsappUrl(league.contactPhone)} target="_blank" rel="noreferrer" className="text-accent hover:underline">
-                      {contact}
-                    </a>
-                  ) : (
-                    contact
-                  ))
-                }
-              />
-              {photos && (
+              {settingsDetails(league).map((d) => (
                 <Detail
-                  icon={<Camera className="size-4" />}
-                  label="Foto del marcador"
-                  value={league.requirePhoto !== false ? 'Obligatoria para que cuente' : 'Opcional'}
+                  key={d.key}
+                  icon={DETAIL_ICONS[d.key]}
+                  label={d.label}
+                  value={
+                    d.href ? (
+                      <a href={d.href} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                        {d.value}
+                      </a>
+                    ) : (
+                      d.value
+                    )
+                  }
                 />
-              )}
-              <Detail icon={<Earth className="size-4" />} label="Zona horaria" value={`${tzLabel(tz)}${offset ? ` (${offset})` : ''}`} />
-              <Detail
-                icon={<Baby className="size-4" />}
-                label={isTournament ? 'Torneo con menores' : 'Liga con menores'}
-                value={league.hasMinors ? 'Sí: privada, sin fotos ni comentarios' : 'No'}
-              />
+              ))}
             </dl>
             <Button className="mt-4 w-full sm:w-auto" icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
               Editar datos
@@ -534,16 +510,8 @@ function SettingsPanel() {
               <Settings className="size-[19px]" />
             </RowIcon>
           }
-          title={
-            isOwner || isSuper ? (isTournament ? 'Respaldo y borrar el torneo' : 'Respaldo y borrar la liga') : isTournament ? 'Respaldo del torneo' : 'Respaldo de la liga'
-          }
-          subtitle={[
-            'Descargar los datos',
-            photos ? 'fotos viejas' : '',
-            isOwner || isSuper ? (isTournament ? 'borrar el torneo' : 'borrar la liga') : '',
-          ]
-            .filter(Boolean)
-            .join(', ')}
+          title={configRowTitle(league.kind, canDelete)}
+          subtitle={configRowSubtitle(league.kind, photos, canDelete)}
           onClick={() => setConfiguring(true)}
         />
       </Card>
@@ -565,7 +533,6 @@ function LogoCard() {
   const [busy, setBusy] = useState<'upload' | 'remove' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const kind = league.kind ?? 'liga';
-  const noun = kind === 'torneo' ? 'el torneo' : 'la liga';
   const has = !!league.logoPath;
 
   async function upload(file: File | undefined) {
@@ -575,7 +542,7 @@ function LogoCard() {
     setError(null);
     try {
       await uploadLeagueLogo(lid, file);
-      toast(has ? 'Logo cambiado' : 'Logo listo');
+      toast(logoDoneText(has));
     } catch (e) {
       setError(logoErrorText(e, kind));
     } finally {
@@ -584,18 +551,13 @@ function LogoCard() {
   }
 
   async function remove() {
-    const ok = await confirm({
-      title: '¿Quitar el logo?',
-      message: `${kind === 'torneo' ? 'El torneo' : 'La liga'} vuelve a mostrar el ícono del deporte. Puedes subir otro cuando quieras.`,
-      confirmText: 'Quitar',
-      danger: true,
-    });
+    const ok = await confirm(removeLogoConfirm(kind));
     if (!ok) return;
     setBusy('remove');
     setError(null);
     try {
       await removeLeagueLogo(lid);
-      toast('Logo quitado');
+      toast(LOGO_REMOVED_TEXT);
     } catch (e) {
       setError(logoErrorText(e, kind));
     } finally {
@@ -609,9 +571,7 @@ function LogoCard() {
         <LeagueIcon league={league} size="xl" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold">Logo</h2>
-          <p className="text-xs text-muted">
-            {has ? 'Sale' : 'Si subes uno, sale'} en la lista de ligas, en las invitaciones y arriba en {noun}. Es una imagen pública.
-          </p>
+          <p className="text-xs text-muted">{logoHint(has, kind)}</p>
         </div>
       </div>
       <input ref={input} type="file" accept="image/*" hidden onChange={(e) => void upload(e.target.files?.[0])} />
@@ -624,7 +584,7 @@ function LogoCard() {
           icon={<ImageUp className="size-4" />}
           onClick={() => input.current?.click()}
         >
-          {busy === 'upload' ? 'Subiendo…' : has ? 'Cambiar' : 'Subir logo'}
+          {logoButtonLabel(busy === 'upload', has)}
         </Button>
         {has && (
           <Button className="h-11" variant="ghost" loading={busy === 'remove'} disabled={!!busy} icon={<Trash2 className="size-4" />} onClick={() => void remove()}>
@@ -647,7 +607,7 @@ function Detail({ icon, label, value }: { icon: ReactNode; label: string; value:
       <span className="mt-0.5 text-accent">{icon}</span>
       <div className="min-w-0">
         <dt className="text-xs text-muted">{label}</dt>
-        <dd className={cx('truncate', !value && 'text-muted')}>{value || 'Sin definir'}</dd>
+        <dd className={cx('truncate', !value && 'text-muted')}>{value || EMPTY_DETAIL}</dd>
       </div>
     </div>
   );
@@ -669,7 +629,7 @@ function EditLeagueModal({ open, onClose }: { open: boolean; onClose: () => void
     <Modal
       open={open}
       onClose={onClose}
-      title={league.kind === 'torneo' ? 'Datos del torneo' : 'Datos de la liga'}
+      title={leagueDataTitle(league.kind)}
       footer={
         <>
           <Button onClick={onClose}>Cancelar</Button>
@@ -703,53 +663,39 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
   const navigate = useNavigate();
   const run = useAction();
   const { confirm, toast } = useFeedback();
-  const [busy, setBusy] = useState<string | null>(null);
-  const isTournament = league.kind === 'torneo';
+  const [busy, setBusy] = useState<ConfigKey | null>(null);
   const bowling = leagueSport(league) === 'bowling';
 
   async function backup() {
     setBusy('backup');
     try {
       const { downloadLeagueBackup } = await import('../lib/backup');
-      const c = await downloadLeagueBackup(league);
-      toast(`Respaldo descargado: ${c.players} jugadores, ${c.events} eventos, ${c.entries} participaciones`);
+      toast(backupDoneText(await downloadLeagueBackup(league)));
     } catch (e) {
       console.error(e);
-      toast('No se pudo hacer el respaldo. Intenta de nuevo.', 'error');
+      toast(BACKUP_ERROR_TEXT, 'error');
     } finally {
       setBusy(null);
     }
   }
 
   async function freePhotos() {
-    const ok = await confirm({
-      title: 'Borrar fotos de hace más de un año',
-      message: 'Los juegos siguen contando; solo deja de verse la foto. Sirve para no llenar el espacio gratis.',
-      confirmText: 'Borrar fotos',
-      danger: true,
-    });
+    const ok = await confirm(FREE_PHOTOS_CONFIRM);
     if (!ok) return;
     setBusy('photos');
-    const n = await run(() => deleteOldPhotos(lid, 12));
-    if (n != null) toast(n ? `${n} fotos borradas` : 'No hay fotos de hace más de un año');
+    const n = await run(() => deleteOldPhotos(lid, OLD_PHOTOS_MONTHS));
+    if (n != null) toast(freedPhotosText(n));
     setBusy(null);
   }
 
   async function remove() {
-    const ok = await confirm({
-      title: `¿Borrar ${league.name}?`,
-      message: bowling
-        ? 'Se borran sus torneos, prácticas, jugadores, juegos, fotos, miembros e invitación. No se puede deshacer; descarga el respaldo antes.'
-        : 'Se borran sus eventos, partidos, jugadores, resultados, miembros e invitación. No se puede deshacer; descarga el respaldo antes.',
-      confirmText: 'Borrar todo',
-      danger: true,
-    });
+    const ok = await confirm(deleteLeagueConfirm(league.name, bowling));
     if (!ok || !user) return;
     setBusy('delete');
     const done = await run(async () => {
       await deleteLeague(lid, user.uid);
       return true;
-    }, 'Borrado');
+    }, DELETED_TEXT);
     setBusy(null);
     if (done) {
       onClose();
@@ -758,57 +704,34 @@ function LeagueConfigModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
+  const actions: Record<ConfigKey, () => Promise<void>> = { backup, photos: freePhotos, delete: remove };
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={
         <span className="flex items-center gap-2">
-          <Settings className="size-5 text-accent" /> {isTournament ? 'Configuración del torneo' : 'Configuración de la liga'}
+          <Settings className="size-5 text-accent" /> {configTitle(league.kind)}
         </span>
       }
       footer={<Button onClick={onClose}>Cerrar</Button>}
     >
       <div className="flex flex-col gap-3">
-        <ConfigRow
-          icon={<DatabaseBackup className="size-5" />}
-          title="Respaldo"
-          text={
-            bowling
-              ? 'Descarga todos los datos (jugadores, eventos, juegos y miembros) en un archivo. Las fotos no entran.'
-              : 'Descarga todos los datos (jugadores, eventos, partidos, resultados y miembros) en un archivo.'
-          }
-          action={
-            <Button size="sm" loading={busy === 'backup'} disabled={!!busy} onClick={backup}>
-              Descargar
-            </Button>
-          }
-        />
-        {bowling && (
+        {configRows({ kind: league.kind, bowling, canDelete: isOwner || isSuper }).map((r) => (
           <ConfigRow
-            icon={<ImageMinus className="size-5" />}
-            title="Fotos viejas"
-            text="Borra las fotos de hace más de un año para no llenar el espacio gratis. Los juegos siguen contando."
+            key={r.key}
+            danger={r.danger}
+            icon={CONFIG_ICONS[r.key]}
+            title={r.title}
+            text={r.text}
             action={
-              <Button size="sm" loading={busy === 'photos'} disabled={!!busy} onClick={freePhotos}>
-                Borrar
+              <Button size="sm" variant={r.danger ? 'danger' : undefined} loading={busy === r.key} disabled={!!busy} onClick={actions[r.key]}>
+                {r.action}
               </Button>
             }
           />
-        )}
-        {(isOwner || isSuper) && (
-          <ConfigRow
-            danger
-            icon={<Trash2 className="size-5" />}
-            title={isTournament ? 'Borrar el torneo' : 'Borrar la liga'}
-            text="Se borra todo y no se puede deshacer. Descarga el respaldo antes."
-            action={
-              <Button size="sm" variant="danger" loading={busy === 'delete'} disabled={!!busy} onClick={remove}>
-                Borrar
-              </Button>
-            }
-          />
-        )}
+        ))}
       </div>
     </Modal>
   );

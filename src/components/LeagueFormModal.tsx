@@ -6,8 +6,8 @@ import { toIsoDate } from '../lib/format';
 import type { CompressedLogo } from '../lib/image';
 import { LeagueContext } from '../lib/league';
 import { logoErrorText, prepareLogo, uploadLeagueLogo } from '../lib/logos';
-import { formatSchedule, isCanonicalSchedule, parseSchedule, WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
-import type { League, LeagueKind, Visibility } from '../lib/types';
+import { formatSchedule, WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
+import type { LeagueKind, Visibility } from '../lib/types';
 import { DEFAULT_SPORT, getSport, leagueSport, sportMeta } from '../sports/registry';
 import { preselectedSport, useSportStatus } from '../sports/status';
 import type { SportId } from '../sports/types';
@@ -15,6 +15,30 @@ import { SportPicker } from '../pages/sports/SportPicker';
 import { useAction, useFeedback } from './feedback';
 import { Button, Field, Input, Modal, Select, cx } from './ui';
 import { DEFAULT_TZ, minorsLocked, timezoneOptions, tzOffset, withMinors } from './league/logic';
+import {
+  MINORS_BLURB,
+  MINORS_OFF_TEXT,
+  MINORS_RULES,
+  PRIVATE_CHOICE_TEXT,
+  TZ_HINT,
+  leagueFormData,
+  leagueNameLabel,
+  leagueNamePlaceholder,
+  minorsConfirm,
+  minorsNote,
+  minorsTitle,
+  needsMinorsConfirm,
+  publicChoiceText,
+  requirePhotoText,
+  scheduleDraft,
+  scheduleHint,
+  seasonToggle,
+  toggleDay,
+  whoCanSeeLabel,
+} from './league/settings';
+
+/** Los datos de una liga como los llena el formulario (en src/components/league/settings.ts; los usa también la app). */
+export { leagueInput } from './league/settings';
 
 /**
  * Lo que se manda al crear: los datos del formulario más el deporte (create_league / create_tournament
@@ -37,30 +61,6 @@ const empty = (contactName: string, kind: LeagueKind): LeagueInput => ({
   hasMinors: false,
   tz: DEFAULT_TZ,
 });
-
-export const leagueInput = (l: League): LeagueInput => ({
-  name: l.name,
-  kind: l.kind ?? 'liga',
-  visibility: l.visibility,
-  venue: l.venue ?? '',
-  schedule: l.schedule ?? '',
-  seasonStart: l.seasonStart ?? '',
-  seasonEnd: l.seasonEnd ?? '',
-  contactName: l.contactName ?? '',
-  contactPhone: l.contactPhone ?? '',
-  requirePhoto: l.requirePhoto ?? true,
-  hasMinors: !!l.hasMinors,
-  tz: l.tz || DEFAULT_TZ,
-});
-
-/** Lo que cambia con «Liga con menores» (lo explica el formulario antes de activarla). */
-const MINORS_RULES = [
-  'La liga queda privada: solo entra quien tenga la invitación.',
-  'Los menores no tienen cuenta: los registra un admin, con el permiso de su papá, mamá o tutor.',
-  'Su año de nacimiento y sus datos solo los ven los admins; los demás ven su nombre y su categoría.',
-  'Sin fotos, sin «Me gusta» y sin comentarios en toda la liga.',
-  'Sin link para anotar: a cada anotador se le invita por su @usuario. Quien entró con un link solo para anotar sale de la liga.',
-];
 
 /**
  * Formulario de la liga (o del torneo sin liga): crear (queda como dueño) o editar sus datos.
@@ -115,12 +115,8 @@ export function LeagueForm({
 
   function toggleSeason(on: boolean) {
     setHasSeason(on);
-    if (!on) setForm((f) => ({ ...f, seasonStart: '', seasonEnd: '' }));
-    else if (!form.seasonStart) {
-      // Arranca hoy y termina el 31 de diciembre; se puede cambiar.
-      const today = toIsoDate(new Date());
-      setForm((f) => ({ ...f, seasonStart: today, seasonEnd: `${today.slice(0, 4)}-12-31` }));
-    }
+    // Prendida sin fechas: arranca hoy y termina el 31 de diciembre; se puede cambiar.
+    setForm((f) => seasonToggle(f, on, toIsoDate(new Date())));
   }
 
   /** Con menores: privada y sin foto obligatoria (la base no deja otra cosa). */
@@ -131,40 +127,25 @@ export function LeagueForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     // Encenderla en una liga que ya existe no tiene vuelta atrás para el admin: se confirma.
-    if (!creating && minors && !initial.hasMinors) {
-      const ok = await confirm({
-        title: '¿Activar «Liga con menores»?',
-        message: `${isTournament ? 'El torneo queda privado' : 'La liga queda privada'}, sin fotos ni comentarios, y después no la puedes apagar tú. Los links para anotar dejan de servir y quien entró con uno solo para anotar sale ${isTournament ? 'del torneo' : 'de la liga'}.`,
-        confirmText: 'Activar y guardar',
-      });
+    if (needsMinorsConfirm(!!creating, minors, initial.hasMinors)) {
+      const ok = await confirm(minorsConfirm(isTournament));
       if (!ok) return;
     }
-    const data = withMinors({
-      ...form,
-      // La foto del marcador (y su lectura con IA) es solo del boliche.
-      requirePhoto: meta?.photos === false ? false : form.requirePhoto,
-      name: form.name.trim(),
-      venue: form.venue.trim(),
-      schedule: form.schedule.trim(),
-      seasonStart: hasSeason ? form.seasonStart : '',
-      seasonEnd: hasSeason ? form.seasonEnd : '',
-      contactName: form.contactName.trim(),
-      contactPhone: form.contactPhone.replace(/[^\d+]/g, ''),
-    });
-    // El torneo nuevo no manda menores ni zona (create_tournament no las recibe).
-    onSubmit(advanced ? data : { ...data, hasMinors: undefined, tz: undefined }, date);
+    // La foto del marcador (y su lectura con IA) es solo del boliche. El torneo nuevo no manda menores ni zona
+    // (create_tournament no las recibe).
+    onSubmit(leagueFormData(form, { hasSeason, sportPhotos: meta?.photos, advanced }), date);
   }
 
   return (
     <form id={id} onSubmit={submit} className="grid grid-cols-2 gap-4">
       <SportRow sport={sport} creating={creating} onChange={onChangeSport} />
-      <Field label={isTournament ? 'Nombre del torneo' : 'Nombre de la liga'} className={withDate ? '' : 'col-span-2'}>
+      <Field label={leagueNameLabel(isTournament)} className={withDate ? '' : 'col-span-2'}>
         <Input
           required
           maxLength={60}
           value={form.name}
           onChange={(e) => set('name', e.target.value)}
-          placeholder={isTournament ? 'Copa de verano' : 'Liga de los martes'}
+          placeholder={leagueNamePlaceholder(isTournament)}
         />
       </Field>
       {withDate && (
@@ -174,20 +155,20 @@ export function LeagueForm({
       )}
       {logo}
       <fieldset className="col-span-2 grid grid-cols-2 gap-2">
-        <legend className="mb-1.5 text-xs font-medium text-muted">¿Quién puede {isTournament ? 'verlo' : 'verla'}?</legend>
+        <legend className="mb-1.5 text-xs font-medium text-muted">{whoCanSeeLabel(isTournament)}</legend>
         <Choice
           active={form.visibility === 'private'}
           onClick={() => set('visibility', 'private' as Visibility)}
           icon={<Lock className="size-4" />}
           title="Privada"
-          text="Solo con invitación (link, QR o código)."
+          text={PRIVATE_CHOICE_TEXT}
         />
         <Choice
           active={form.visibility === 'public'}
           onClick={() => set('visibility', 'public' as Visibility)}
           icon={<Globe className="size-4" />}
           title="Pública"
-          text={minors ? 'Con menores no se puede.' : isTournament ? 'Cualquiera lo ve y se une.' : 'Cualquiera la ve y se une.'}
+          text={publicChoiceText(minors, isTournament)}
           disabled={minors}
         />
       </fieldset>
@@ -248,15 +229,13 @@ export function LeagueForm({
               <Camera className="size-4 text-accent" /> Exigir foto del marcador
             </span>
             <span className="text-muted">
-              {form.requirePhoto
-                ? 'Un juego cuenta en promedios y clasificaciones cuando se verifica con la foto. Si un jugador lo envía sin foto, el admin decide si lo acepta.'
-                : 'Los juegos que anota un admin cuentan de una; los que suben los jugadores igual se aprueban.'}
+              {requirePhotoText(form.requirePhoto)}
             </span>
           </span>
         </label>
       )}
       {advanced && (
-        <Field label="Zona horaria" className="col-span-2" hint="Con esta hora salen los recordatorios, los avisos y el «hoy» de la liga.">
+        <Field label="Zona horaria" className="col-span-2" hint={TZ_HINT}>
           <Select value={form.tz || DEFAULT_TZ} onChange={(e) => set('tz', e.target.value)}>
             {timezoneOptions(form.tz).map((z) => {
               const off = tzOffset(z.id);
@@ -291,6 +270,7 @@ function MinorsToggle({
   tournament: boolean;
   onChange: (on: boolean) => void;
 }) {
+  const note = minorsNote({ on, locked, canTurnOff });
   return (
     <div className={cx('col-span-2 flex flex-col gap-2 rounded-xl border p-3', on ? 'border-accent bg-accent-soft/40' : 'border-line')}>
       <label className={cx('flex items-start gap-3', locked ? 'cursor-not-allowed' : 'cursor-pointer')}>
@@ -304,9 +284,9 @@ function MinorsToggle({
         />
         <span className="text-sm">
           <span className="flex items-center gap-1.5 font-medium">
-            <Baby className="size-4 text-accent" /> {tournament ? 'Torneo con menores' : 'Liga con menores'}
+            <Baby className="size-4 text-accent" /> {minorsTitle(tournament)}
           </span>
-          <span className="text-muted">Para clubes con niños y jóvenes: natación, escuelitas, juveniles.</span>
+          <span className="text-muted">{MINORS_BLURB}</span>
         </span>
       </label>
       <div id="menores-reglas" className="ml-7 text-xs text-muted">
@@ -317,17 +297,16 @@ function MinorsToggle({
             ))}
           </ul>
         ) : (
-          <p>Al activarla queda privada, sin fotos ni comentarios, y a los menores los registra un admin (no tienen cuenta).</p>
+          <p>{MINORS_OFF_TEXT}</p>
         )}
-        {locked ? (
-          <p className="mt-2 flex items-start gap-1.5 font-medium text-fg">
-            <Lock className="mt-0.5 size-3.5 shrink-0" /> Ya está activada. Solo el equipo de MatchMate la puede apagar, y solo si no queda ningún menor.
-          </p>
-        ) : canTurnOff ? (
-          <p className="mt-2 font-medium text-fg">Como superadmin la puedes apagar, solo si no queda ningún menor en la liga.</p>
-        ) : (
-          on && <p className="mt-2 font-medium text-fg">Una vez guardada, no la puedes apagar tú.</p>
-        )}
+        {note &&
+          (locked ? (
+            <p className="mt-2 flex items-start gap-1.5 font-medium text-fg">
+              <Lock className="mt-0.5 size-3.5 shrink-0" /> {note}
+            </p>
+          ) : (
+            <p className="mt-2 font-medium text-fg">{note}</p>
+          ))}
       </div>
     </div>
   );
@@ -363,18 +342,18 @@ function SportRow({ sport, creating, onChange }: { sport: string; creating?: boo
 
 /** Días de la semana (se pueden varios) + la hora con el selector de hora del teléfono. */
 function SchedulePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [days, setDays] = useState<number[]>(() => parseSchedule(value).days);
-  const [time, setTime] = useState(() => parseSchedule(value).time);
+  const [days, setDays] = useState<number[]>(() => scheduleDraft(value).days);
+  const [time, setTime] = useState(() => scheduleDraft(value).time);
   // Texto escrito a mano antes del selector: se muestra tal cual hasta que se elija algo.
-  const [legacy, setLegacy] = useState(() => (value.trim() && !isCanonicalSchedule(value) ? value.trim() : ''));
+  const [legacy, setLegacy] = useState(() => scheduleDraft(value).legacy);
   // Si cambian los datos de afuera (otra liga, reabrir el formulario), se vuelven a leer.
   useEffect(() => {
-    const parsed = parseSchedule(value);
+    const parsed = scheduleDraft(value);
     if (formatSchedule(parsed.days, parsed.time) !== formatSchedule(days, time)) {
       setDays(parsed.days);
       setTime(parsed.time);
     }
-    if (value !== formatSchedule(days, time)) setLegacy(value.trim() && !isCanonicalSchedule(value) ? value.trim() : '');
+    if (value !== formatSchedule(days, time)) setLegacy(parsed.legacy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -385,8 +364,7 @@ function SchedulePicker({ value, onChange }: { value: string; onChange: (v: stri
     onChange(formatSchedule(nextDays, nextTime));
   }
 
-  const toggle = (d: number) => update(days.includes(d) ? days.filter((x) => x !== d) : [...days, d], time);
-  const summary = formatSchedule(days, time);
+  const toggle = (d: number) => update(toggleDay(days, d), time);
 
   return (
     <fieldset className="col-span-2 flex flex-col gap-2">
@@ -430,11 +408,7 @@ function SchedulePicker({ value, onChange }: { value: string; onChange: (v: stri
         )}
       </div>
       <span className="text-xs text-muted">
-        {legacy
-          ? `Ahora dice: “${legacy}”. Si eliges días u hora, se reemplaza.`
-          : summary
-            ? `Se verá así: ${summary}`
-            : 'Elige el día (o los días) y la hora.'}
+        {scheduleHint(legacy, days, time)}
       </span>
     </fieldset>
   );

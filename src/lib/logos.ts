@@ -37,8 +37,12 @@ export function isLogoPathOf(lid: string, path: string | null | undefined): bool
   return !!path && LOGO_PATH.test(path) && path.startsWith(`${lid.toLowerCase()}/`);
 }
 
+/**
+ * ¿Ya viene comprimido? Sin `instanceof Blob`: en la app del teléfono el archivo es un objeto con sus bytes
+ * (src/lib/bytesBlob.native.ts), no un Blob.
+ */
 const isCompressed = (v: Blob | CompressedLogo): v is CompressedLogo =>
-  typeof (v as CompressedLogo).contentType === 'string' && (v as CompressedLogo).blob instanceof Blob;
+  typeof (v as CompressedLogo).contentType === 'string' && typeof (v as CompressedLogo).blob?.size === 'number';
 
 /** Comprime la imagen elegida (cuadrado de 256 px). Si no se puede abrir: BackendError 'validation' con código 'imagen'. */
 export async function prepareLogo(file: Blob): Promise<CompressedLogo> {
