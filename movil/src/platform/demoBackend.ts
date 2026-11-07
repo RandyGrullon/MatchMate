@@ -23,6 +23,7 @@ import { demoScorersSelect, forgetDemoScorers, scorersRpc } from './demoScorers'
 import { forgetDemoReports, reportsRpc } from './demoReports';
 import { demoSquadsSelect, forgetDemoSquads, squadsRpc } from './demoSquads';
 import { badgesRpc, demoBadgesSelect, forgetDemoBadges } from './demoBadges';
+import { approvalsRpc, demoApprovalFile, demoApprovalsInvoke, demoApprovalsSelect, forgetDemoApprovals } from './demoApprovals';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -33,7 +34,9 @@ type DemoFilter = { col: string; op: string; value: unknown };
  */
 const baseLayer = (t: string, f: readonly DemoFilter[] = []) => demoLeagueSelect(DEMO_USER, t, f);
 /** Justo encima de la liga, los equipos (demoSquads.ts): «Fútbol de Ejemplo» y su dueño, para que todas las capas la vean. */
-const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+/** Los envíos por aprobar de más (Organizar › Aprobar juegos, demoApprovals.ts), justo encima de la liga. */
+const approvalsLayer = (t: string, f: readonly DemoFilter[] = []) => demoApprovalsSelect(t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
+const squadsBase = (t: string, f: readonly DemoFilter[] = []) => demoSquadsSelect(DEMO_USER, t, f, (x) => approvalsLayer(x)) ?? approvalsLayer(t, f);
 const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => squadsBase(x)) ?? squadsBase(t, f);
 const membersLayer = (t: string, f: readonly DemoFilter[] = []) => demoMembersSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
 /** Encima de los miembros, la liga de los anotadores invitados por link (demoScorers.ts). */
@@ -76,6 +79,7 @@ export function setDemo(on: boolean) {
       forgetDemoReports();
       forgetDemoSquads();
       forgetDemoBadges();
+      forgetDemoApprovals();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -482,6 +486,9 @@ export function createDemoBackend(): Backend {
       // Las bolas (demoBalls.ts): leen los juegos de la liga y los sueltos de la demostración.
       const fromBalls = ballRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromBalls !== undefined) return structuredClone(fromBalls) as T;
+      // Aprobar juegos (demoApprovals.ts): la lectura de la foto y aprobar o rechazar sus envíos.
+      const fromApprovals = approvalsRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
+      if (fromApprovals !== undefined) return structuredClone(fromApprovals) as T;
       const fromLeague = demoLeagueRpc(DEMO_USER, fn, args);
       if (fromLeague !== undefined) return structuredClone(fromLeague) as T;
       const run = rpcs[fn] as ((a: Record<string, unknown>) => unknown) | undefined;
@@ -498,14 +505,20 @@ export function createDemoBackend(): Backend {
         files.set(`${bucket}/${path}`, `data:${contentType};base64,${btoa(binary)}`);
         save();
       },
-      signedUrl: async (bucket, path) => files.get(`${bucket}/${path}`) ?? fail('No existe.', 'not_found'),
+      signedUrl: async (bucket, path) => files.get(`${bucket}/${path}`) ?? demoApprovalFile(bucket, path) ?? fail('No existe.', 'not_found'),
       publicUrl: async (bucket, path) => files.get(`${bucket}/${path}`) ?? fail('No existe.', 'not_found'),
       remove: async (bucket, paths) => {
         paths.forEach((p) => files.delete(`${bucket}/${p}`));
         save();
       },
     },
-    invoke: async () => notInDemo(),
+    // Solo la lectura de la foto del marcador con IA (demoApprovals.ts), con su espera.
+    invoke: async <T,>(fn: string, body: unknown) => {
+      const scan = demoApprovalsInvoke(fn, body);
+      if (scan === undefined) return notInDemo();
+      await new Promise((r) => setTimeout(r, 900));
+      return structuredClone(scan) as T;
+    },
     online: () => true,
   };
 }

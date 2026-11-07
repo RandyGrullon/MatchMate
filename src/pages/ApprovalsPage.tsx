@@ -11,23 +11,51 @@ import {
   usePlayers,
   useSubmissions,
 } from '../lib/data';
-import { eventTitle, formatDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { usePhoto } from '../lib/photos';
-import { rowFor, type ScanRow } from '../lib/scan-result';
-import { scanDone, startScan, useScanJob, waitingText } from '../lib/scanJobs';
-import { firstFreeSlot, isValidScore, slots } from '../lib/stats';
+import type { ScanRow } from '../lib/scan-result';
+import { scanDone, startScan, useScanJob } from '../lib/scanJobs';
 import { useNow } from '../lib/useNow';
 import type { BowlingEvent, Entry, Player, Submission } from '../lib/types';
 import { useAction, useFeedback } from '../components/feedback';
 import { BusyIcon, useBusy } from '../components/busy';
 import { PhotoView } from '../components/PhotoModal';
 import { FramesGrid } from '../components/frames/FramesGrid';
-import { photosLine, shortName } from '../components/organizer/hubLogic';
+import { shortName } from '../components/organizer/hubLogic';
 import { Badge, Button, Card, Empty, Field, Input, ListSkeleton, LoadError, Modal, Select, Skeleton, Spinner, cx } from '../components/ui';
-
-/** Tiempo en que el teléfono del jugador todavía puede estar leyendo la foto después de enviarla. */
-const FRESH_MS = 5 * 60_000;
+import {
+  EMPTY_TEXT,
+  EMPTY_TITLE,
+  FRESH_MS,
+  LIST_HINT,
+  adminReads,
+  approvalDraft,
+  approveAllPrompt,
+  approveLabel,
+  approvedAllText,
+  approvedText,
+  defaultStart,
+  eventLine,
+  gameRows,
+  gamesLine,
+  isGone,
+  isReady,
+  isUnverified,
+  listTitle,
+  notInEventText,
+  proposalOf,
+  readDiffers as differs,
+  readOutcome,
+  readingView,
+  scanRowLabel,
+  sentText,
+  showEventOf,
+  sortSubmissions,
+  tableRows,
+  targetEvent,
+  targetGames,
+  whereText,
+} from './approvals';
 
 /** Lo que «Aprobar todo» necesita de cada envío: si está listo y cómo se aprueba (con lo que tiene puesto ahora). */
 interface Approver {
@@ -61,12 +89,9 @@ export default function ApprovalsPage() {
   const all = useBusy();
   const approvers = useRef(new Map<string, () => Approver>());
 
-  const sorted = useMemo(
-    () => [...subs.data].sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0)),
-    [subs.data],
-  );
+  const sorted = useMemo(() => sortSubmissions(subs.data), [subs.data]);
   // De más de un evento (o fecha): cada envío dice de cuál es.
-  const showEvent = new Set(sorted.map((s) => s.eventId ?? `fecha:${s.date ?? ''}`)).size > 1;
+  const showEvent = showEventOf(sorted);
 
   const register = useCallback((id: string, get: () => Approver) => {
     approvers.current.set(id, get);
@@ -83,13 +108,7 @@ export default function ApprovalsPage() {
     if (!ready.length) return;
     const games = ready.reduce((n, a) => n + a.games, 0);
     const left = list.length - ready.length;
-    const ok = await confirm({
-      title: ready.length === 1 ? '¿Aprobar el envío?' : `¿Aprobar los ${ready.length} envíos?`,
-      message: `Se guardan ${games} ${games === 1 ? 'juego' : 'juegos'} como están ahora y ${games === 1 ? 'cuenta' : 'cuentan'} en la tabla.${
-        left ? ` ${left === 1 ? 'Uno queda' : `${left} quedan`} para que ${left === 1 ? 'lo revises' : 'los revises'} uno por uno (sin foto o con algo por corregir).` : ''
-      }`,
-      confirmText: 'Aprobar todo',
-    });
+    const ok = await confirm(approveAllPrompt(ready.length, games, left));
     if (!ok) return;
     await all.run('todo', async () => {
       let done = 0;
@@ -100,7 +119,7 @@ export default function ApprovalsPage() {
           saved += a.games;
         }
       }
-      if (done) toast(`Aprobados: ${saved} ${saved === 1 ? 'juego' : 'juegos'} de ${done} ${done === 1 ? 'jugador' : 'jugadores'}`);
+      if (done) toast(approvedAllText(saved, done));
     });
   }
 
@@ -111,15 +130,15 @@ export default function ApprovalsPage() {
       ) : subs.loading || events.loading || players.loading ? (
         <ListSkeleton rows={3} />
       ) : sorted.length === 0 ? (
-        <Empty icon={<Inbox className="size-8" />} title="Nada por aprobar">
-          Cuando un jugador envíe sus juegos, salen aquí con su foto. Al aprobarlos cuentan en la tabla.
+        <Empty icon={<Inbox className="size-8" />} title={EMPTY_TITLE}>
+          {EMPTY_TEXT}
         </Empty>
       ) : (
         <ApproveAll.Provider value={api}>
           <Card className="overflow-hidden">
             <div className="flex min-h-11 items-center gap-2 pt-1.5 pr-2 pl-4">
               <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-warn" />
-              <p className="min-w-0 flex-1 py-1 text-sm leading-snug font-[650] text-warn">Por aprobar · {photosLine(sorted.map((s) => ({ hasPhoto: !!s.photoId })))}</p>
+              <p className="min-w-0 flex-1 py-1 text-sm leading-snug font-[650] text-warn">{listTitle(sorted)}</p>
               {/* Mientras corre se queda (con su ruedita) aunque ya quede uno solo. */}
               {(sorted.length > 1 || running) && (
                 <button
@@ -135,9 +154,7 @@ export default function ApprovalsPage() {
             </div>
             {sorted.map((s) => {
               // Envío por fecha: va a la práctica de ese día si ya existe (si no, se crea al aprobar).
-              const event = s.eventId
-                ? events.data.find((e) => e.id === s.eventId)
-                : events.data.find((e) => e.type === 'practica' && e.date === s.date);
+              const event = targetEvent(s, events.data);
               return (
                 <SubmissionRow
                   key={s.id}
@@ -151,7 +168,7 @@ export default function ApprovalsPage() {
               );
             })}
           </Card>
-          <p className="px-1 text-sm text-muted">Toca un envío para ver la foto, lo que leyó la IA y corregir un juego antes de aprobarlo.</p>
+          <p className="px-1 text-sm text-muted">{LIST_HINT}</p>
         </ApproveAll.Provider>
       )}
     </div>
@@ -209,7 +226,7 @@ function RowButton({
 
 /** Cómo quedan los juegos del envío: «Juego 2 · 181» o «J1 187 · J2 210» (el número en negrita). */
 function GamesLine({ values, start }: { values: readonly string[]; start: number }) {
-  const games = values.map((v, k) => ({ slot: start + k + 1, v: v.trim() })).filter((g) => g.v !== '');
+  const games = gamesLine(values, start);
   if (!games.length) return <>Sin juegos</>;
   if (games.length === 1)
     return (
@@ -249,7 +266,7 @@ function SubmissionRow({
   const all = useContext(ApproveAll);
   const photo = usePhoto(lid, sub.photoId);
   // La liga exige foto pero el jugador lo envió sin ella: el admin decide si lo acepta.
-  const unverified = !sub.photoId && league.requirePhoto !== false;
+  const unverified = isUnverified(sub, league);
   const [open, setOpen] = useState(false);
   const [showFrames, setShowFrames] = useState(false);
   const busy = useBusy<'aprobar' | 'rechazar' | 'descartar'>();
@@ -257,26 +274,24 @@ function SubmissionRow({
   const [note, setNote] = useState('');
 
   // Juegos por posición (J1, J2...); se propone lo leído por la IA y, si no hay, lo anotado.
-  const typed = sub.scores ?? [];
-  const scanned = sub.scanned ?? [];
-  const count = Math.max(typed.length, scanned.length);
-  const rows = Array.from({ length: count }, (_, i) => ({ typed: typed[i] ?? null, scanned: scanned[i] ?? null }));
+  const rows = gameRows(sub);
+  const count = rows.length;
   // Juegos del evento destino (una práctica nueva por fecha tiene al menos 3, o los que subió).
-  const games = event?.games ?? Math.max(3, count);
+  const games = targetGames(event, count);
   // Desde el primer dibujo con lo que se propone (sin un «Sin juegos» de paso); el efecto lo vuelve a poner si cambia.
-  const [values, setValues] = useState<string[]>(() => rows.map((r) => String(r.scanned ?? r.typed ?? '')));
-  const [start, setStart] = useState(() => (sub.eventId ? 0 : firstFreeSlot(entry, games, rows.length)));
+  const [values, setValues] = useState<string[]>(() => proposalOf(rows));
+  const [start, setStart] = useState(() => defaultStart(sub, entry, games, count));
 
   useEffect(() => {
-    setValues(rows.map((r) => String(r.scanned ?? r.typed ?? '')));
+    setValues(proposalOf(rows));
     // Envío de un evento: cada juego va en su lugar (J2 es el J2; un juego vacío es que no lo mandó).
     // Por fecha (práctica sin crear o ya creada), se buscan los primeros juegos libres.
-    setStart(sub.eventId ? 0 : firstFreeSlot(entry, games, rows.length));
+    setStart(defaultStart(sub, entry, games, count));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub.id, event?.id, entry == null]);
 
   // Lo que se propone guardar: lo leído por la IA y, si no hay, lo anotado.
-  const proposal = rows.map((r) => String(r.scanned ?? r.typed ?? ''));
+  const proposal = proposalOf(rows);
   // La foto se lee en segundo plano, así que lo leído puede llegar con el envío abierto. Si lo pidió el
   // admin (Leer con IA) y no tocó nada, se propone solo; si llegó del teléfono del jugador, no se cambia lo
   // que el admin está revisando: se marca y se ofrece "Usar lo leído".
@@ -298,20 +313,14 @@ function SubmissionRow({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannedKey]);
-  const readDiffers = lateRead && proposal.some((v, k) => (values[k] ?? '') !== v);
+  const readDiffers = differs(lateRead, proposal, values);
 
-  const gone = (!event && !sub.date) || !player;
-  const verified = slots(entry?.photos, games, null);
-  const invalid = values.some((v) => v.trim() !== '' && !isValidScore(Number(v)));
-  const toSave = values.filter((v, k) => v.trim() !== '' && start + k < games).length;
+  const gone = isGone(sub, event, player);
+  const { invalid, toSave, values: map } = approvalDraft(values, start, games);
   const locked = busy.isBusy() || !!all?.running;
 
   async function approve(silent = false): Promise<boolean> {
     if (!player) return false;
-    const map: Record<number, number> = {};
-    values.forEach((v, k) => {
-      if (v.trim() !== '' && start + k < games) map[start + k] = Number(v);
-    });
     const ok = await busy.run('aprobar', () =>
       run(async () => {
         const target = event ?? (await practiceForDate(lid, events, sub.date!, count));
@@ -322,14 +331,14 @@ function SubmissionRow({
         return true;
       }),
     );
-    if (ok && !silent) toast(`Aprobado: ${toSave} ${toSave === 1 ? 'juego' : 'juegos'} de ${player.name}`);
+    if (ok && !silent) toast(approvedText(toSave, player.name));
     return !!ok;
   }
 
   // «Aprobar todo» toma lo que este envío tiene puesto ahora. Sin foto (cuando la liga la exige) o con algo mal
   // escrito, se queda para revisarlo uno por uno.
   const self = useRef<() => Approver>(() => ({ ready: false, games: 0, approve: async () => false }));
-  self.current = () => ({ ready: !gone && !invalid && toSave > 0 && !unverified, games: toSave, approve: () => approve(true) });
+  self.current = () => ({ ready: isReady({ gone, invalid, toSave, unverified }), games: toSave, approve: () => approve(true) });
   const register = all?.register;
   useEffect(() => register?.(sub.id, () => self.current()), [register, sub.id]);
 
@@ -339,7 +348,8 @@ function SubmissionRow({
     await busy.run('rechazar', () => run(() => rejectSubmission(lid, sub, note.trim() || null), 'Envío rechazado'));
   }
 
-  if (gone) {
+  // `gone` ya incluye que no esté el jugador (así TypeScript lo sabe abajo).
+  if (gone || !player) {
     return (
       <div className="mm-row relative flex items-center gap-3 py-2.5 pr-3.5 pl-4 text-sm text-muted">
         <span className="min-w-0 flex-1">Envío de un jugador o evento que ya no existe.</span>
@@ -355,7 +365,7 @@ function SubmissionRow({
     );
   }
 
-  const where = event ? eventTitle(event) : `Práctica ${formatDate(sub.date!)} · se crea al aprobar`;
+  const where = whereText(event, sub.date);
 
   return (
     <div className="mm-row relative pr-3.5 pl-3.5">
@@ -387,7 +397,7 @@ function SubmissionRow({
             </span>
             <span className="mt-px block truncate text-[13px] text-muted">
               {unverified && <span className="font-medium text-warn">Sin foto · </span>}
-              {showEvent && `${event ? eventTitle(event) : formatDate(sub.date!)} · `}
+              {showEvent && `${eventLine(event, sub.date)} · `}
               <GamesLine values={values} start={start} />
             </span>
           </span>
@@ -405,7 +415,7 @@ function SubmissionRow({
           <RowButton
             busy={busy.isBusy('aprobar')}
             disabled={invalid || !toSave || locked}
-            ariaLabel={`Aprobar ${toSave} ${toSave === 1 ? 'juego' : 'juegos'} de ${player.name}`}
+            ariaLabel={approveLabel(toSave, player.name)}
             onClick={() => void approve()}
           >
             Aprobar
@@ -437,7 +447,7 @@ function SubmissionRow({
           <div className="flex flex-col gap-3">
             <p className="text-sm text-muted">
               {where}
-              {sub.createdAt && ` · enviado ${new Date(sub.createdAt.toMillis()).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}`}
+              {sub.createdAt && sentText(sub.createdAt.toMillis())}
             </p>
             {sub.photoId && <PhotoReading sub={sub} player={player} photoUrl={photo.data?.url ?? null} onApply={() => (proposeRead.current = true)} />}
             {sub.scannedName && (
@@ -486,17 +496,16 @@ function SubmissionRow({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, k) => {
-                  const slot = start + k;
-                  const mismatch = r.typed != null && r.scanned != null && r.typed !== r.scanned;
+                {tableRows(rows, start, games, entry).map((r, k) => {
+                  const slot = r.slot;
                   return (
                     <tr key={k} className="border-t border-line">
                       <td className="py-1.5">
-                        {slot < games ? `J${slot + 1}` : <span className="text-danger">fuera</span>}
-                        {slot < games && verified[slot] && <span className="ml-1 text-[10px] text-muted">(reemplaza)</span>}
+                        {!r.outside ? `J${slot + 1}` : <span className="text-danger">fuera</span>}
+                        {r.replaces && <span className="ml-1 text-[10px] text-muted">(reemplaza)</span>}
                       </td>
-                      <td className={cx('py-1.5 text-right tabular-nums', mismatch && 'text-warn')}>{r.typed ?? '—'}</td>
-                      <td className={cx('py-1.5 text-right tabular-nums', mismatch && 'text-warn')}>{r.scanned ?? '—'}</td>
+                      <td className={cx('py-1.5 text-right tabular-nums', r.mismatch && 'text-warn')}>{r.typed ?? '—'}</td>
+                      <td className={cx('py-1.5 text-right tabular-nums', r.mismatch && 'text-warn')}>{r.scanned ?? '—'}</td>
                       <td className="py-1.5 text-right">
                         <input
                           type="number"
@@ -524,7 +533,7 @@ function SubmissionRow({
                 ))}
               </Select>
             </Field>
-            {!entry && <p className="text-xs text-muted">{player.name} no estaba en este evento: se inscribe al aprobar.</p>}
+            {!entry && <p className="text-xs text-muted">{notInEventText(player.name)}</p>}
           </div>
         </div>
       )}
@@ -549,9 +558,6 @@ function SubmissionRow({
   );
 }
 
-/** Lecturas de fotos que pidió el admin, por envío (siguen aunque cambie de pantalla y vuelva). */
-const adminReads = new Map<string, { jobId: string; pick: boolean }>();
-
 /**
  * Lo que leyó la IA de la foto del envío. Recién enviado, puede que el teléfono del jugador todavía la
  * esté leyendo (se lee en segundo plano); si no llegó (cerró la app, sin señal, no encontró su fila),
@@ -564,16 +570,14 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
   const now = useNow(30_000);
   const [read, setRead] = useState(() => adminReads.get(sub.id) ?? null);
   const job = useScanJob(read?.jobId ?? null);
-  const found = job?.status === 'listo' ? job.rows : null;
-  const match = found ? rowFor(player.name, found) : null;
-  // Elegir la fila: si se pidió (cambiar fila) o si ninguna es la del jugador.
-  const choices = found && (read?.pick || !match) ? found : null;
   const [picked, setPicked] = useState('');
   // Guardando la fila leída en el envío.
   const saving = useBusy();
-  const busy = job?.status === 'leyendo' || job?.status === 'esperando';
   const hasRead = sub.scanned != null;
   const fresh = !!sub.createdAt && now.getTime() - sub.createdAt.toMillis() < FRESH_MS;
+  // Qué dice, si se elige la fila y el botón de leer (approvals.ts).
+  const view = readingView({ job, read, saving: saving.isBusy(), hasRead, fresh, hasPhoto: !!photoUrl, name: player.name });
+  const { choices, line } = view;
 
   function forget() {
     adminReads.delete(sub.id);
@@ -595,19 +599,19 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
     setRead(next);
     scanDone(next.jobId)
       .then((rows) => {
-        const row = rowFor(player.name, rows);
+        const out = readOutcome(player.name, rows, pick);
         // Si se sabe cuál es su fila, se pone sola; si no (o se pidió cambiarla), el admin la elige.
-        if (row && !pick) {
+        if (out && 'apply' in out) {
           adminReads.delete(sub.id);
-          void apply(row);
-        } else if (row) {
-          setPicked(String(rows.indexOf(row)));
+          void apply(out.apply);
+        } else if (out) {
+          setPicked(String(out.picked));
         }
       })
       .catch(() => undefined);
   }
 
-  if (hasRead && !read) {
+  if (view.again) {
     return photoUrl ? (
       <Button variant="ghost" size="sm" className="h-11 self-start" icon={<RotateCcw className="size-4" />} onClick={() => start(true)}>
         Leer de nuevo o elegir otra fila
@@ -617,35 +621,29 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
 
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm">
-      {job?.status === 'leyendo' ? (
+      {line?.kind === 'leyendo' || line?.kind === 'guardando' ? (
         <span className="flex items-center gap-2 text-accent">
-          <Spinner className="text-accent" /> Leyendo la foto con IA…
+          <Spinner className="text-accent" /> {line.text}
         </span>
-      ) : job?.status === 'esperando' ? (
+      ) : line?.kind === 'esperando' ? (
         <span className="flex items-center gap-2 text-muted">
-          {job.motivo === 'sin-senal' ? <WifiOff className="size-4 shrink-0" /> : <Clock className="size-4 shrink-0" />} {waitingText(job.motivo)}
+          {line.offline ? <WifiOff className="size-4 shrink-0" /> : <Clock className="size-4 shrink-0" />} {line.text}
         </span>
-      ) : job?.status === 'error' ? (
+      ) : line?.kind === 'error' ? (
         <span className="flex items-start gap-2 text-warn">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {job.message} Revísala tú.
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {line.text}
         </span>
-      ) : saving.isBusy() && !choices ? (
-        <span className="flex items-center gap-2 text-accent">
-          <Spinner className="text-accent" /> Guardando lo leído…
-        </span>
-      ) : choices ? (
-        <span className="text-muted">
-          {read?.pick && match ? `¿Cuál fila de la foto es la de ${player.name}?` : `No encontramos a ${player.name} en la foto. ¿Cuál fila es?`}
-        </span>
-      ) : hasRead ? null : fresh ? (
+      ) : line?.kind === 'elegir' ? (
+        <span className="text-muted">{line.text}</span>
+      ) : line?.kind === 'fresca' ? (
         <span className="flex items-center gap-2 text-muted">
-          <Clock className="size-4 shrink-0" /> Puede que el teléfono de {player.name} todavía esté leyendo la foto.
+          <Clock className="size-4 shrink-0" /> {line.text}
         </span>
-      ) : (
+      ) : line?.kind === 'sin-leer' ? (
         <span className="flex items-center gap-2 text-warn">
-          <AlertTriangle className="size-4 shrink-0" /> La IA no leyó esta foto (no pudo o no encontró la fila de {player.name}).
+          <AlertTriangle className="size-4 shrink-0" /> {line.text}
         </span>
-      )}
+      ) : null}
       {choices && (
         <div className="flex flex-wrap items-center gap-2">
           <Select value={picked} onChange={(e) => setPicked(e.target.value)} aria-label="Fila de la foto" className="h-11 min-w-0 flex-1">
@@ -654,7 +652,7 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
             </option>
             {choices.map((r, i) => (
               <option key={i} value={i}>
-                {r.name}: {r.games.map((g) => g ?? '–').join(' · ')}
+                {scanRowLabel(r)}
               </option>
             ))}
           </Select>
@@ -678,9 +676,9 @@ function PhotoReading({ sub, player, photoUrl, onApply }: { sub: Submission; pla
           </Button>
         </div>
       )}
-      {!busy && !saving.isBusy() && !choices && photoUrl && (!hasRead || job?.status === 'error') && (
+      {view.button && (
         <Button size="sm" className="h-11 self-start" icon={<ScanLine className="size-4" />} onClick={() => start(hasRead)}>
-          {job?.status === 'error' ? 'Intentar de nuevo' : 'Leer con IA'}
+          {view.button}
         </Button>
       )}
     </div>

@@ -126,9 +126,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   como la web: se puede enviar sin esperar; si la foto dice otra cosa, avisa y deja «Usar lo de la foto»), con la bola
   de cada juego (`movil/src/app/l/[lid]/e/[eventId]/enviar.tsx`).
 - ✅ «Por aprobar» en el evento (owner y admin): Aprobar, Rechazar con motivo y Aprobar todo, con la foto en grande
-  (`approvalLogic.ts`, la misma de la web); lo que hay que revisar a fondo abre Organizar › Aprobar en la web.
-- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla y
-  Organizar › Aprobar completo.
+  (`approvalLogic.ts`, la misma de la web); «Revisar» abre Organizar › Aprobar juegos.
+- ✅ Organizar › Aprobar juegos (`/l/<liga>/aprobar`, `movil/src/components/approvals/`, la lógica de
+  `src/pages/approvals.ts`, la misma de la web): todos los envíos de la liga, el más viejo primero, con su foto (acercar
+  y alejar), de qué evento es, la lectura con IA (leer, volver a leer, elegir la fila, «Usar lo leído»), los cuadros
+  que anotó, corregir los juegos y desde qué juego, quien se inscribe al aprobar, Rechazar con motivo, Aprobar,
+  «Aprobar todo» y descartar el envío de un jugador o evento que ya no existe. La demo trae tres envíos más
+  (`movil/src/platform/demoApprovals.ts`).
+- ✅ «Cómo van todos» / «Resultados» del evento (`boardRows` de la web). 🌐 Anotarle a otro en la Planilla.
 - ✅ La clasificación de un torneo ya jugado (`movil/src/components/bowling/Standings.tsx`, StandingsTab de la web en
   solo mirar): mejor juego y jugadores, los equipos (con sus jugadores) y lo individual, cada tabla con «Con
   handicap · Scratch» y el aviso si no es el criterio oficial. El anuncio de un torneo que viene con «Escribir a…»

@@ -20,6 +20,7 @@ const ADMIN_SCREENS: Record<string, string> = {
   reclamos: 'reclamos',
   equipos: 'equipos',
   temporada: 'temporada',
+  aprobar: 'aprobar',
   buzon: 'buzon',
   liga: 'ajustes',
   insignias: 'insignias',
