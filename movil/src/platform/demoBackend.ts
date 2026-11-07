@@ -22,6 +22,7 @@ import { demoSettingsSelect, forgetDemoSettings, settingsRpc } from './demoSetti
 import { demoScorersSelect, forgetDemoScorers, scorersRpc } from './demoScorers';
 import { forgetDemoReports, reportsRpc } from './demoReports';
 import { demoSquadsSelect, forgetDemoSquads, squadsRpc } from './demoSquads';
+import { badgesRpc, demoBadgesSelect, forgetDemoBadges } from './demoBadges';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -41,6 +42,8 @@ const teamsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamsSelect
 const demoLayer = (t: string, f: readonly DemoFilter[] = []) => demoPlayersSelect(t, f, (x) => teamsLayer(x)) ?? teamsLayer(t, f);
 /** Arriba de todo, Ajustes de la liga y el Buzón (demoSettings.ts): los datos cambiados, la liga borrada, las notas. */
 const settingsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSettingsSelect(t, f, (x) => demoLayer(x)) ?? demoLayer(t, f);
+/** Encima de todo, las insignias (demoBadges.ts): las ganadas, el progreso y lo de las insignias en cada liga. */
+const badgesLayer = (t: string, f: readonly DemoFilter[] = []) => demoBadgesSelect(DEMO_USER, t, f, (x) => settingsLayer(x)) ?? settingsLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -72,6 +75,7 @@ export function setDemo(on: boolean) {
       forgetDemoScorers();
       forgetDemoReports();
       forgetDemoSquads();
+      forgetDemoBadges();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -433,7 +437,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = settingsLayer(q.table, q.filters);
+      const league = badgesLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -446,6 +450,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Las insignias (demoBadges.ts): la vitrina, los avisos, confirmar y los ajustes de la liga.
+      const fromBadges = badgesRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);
+      if (fromBadges !== undefined) return structuredClone(fromBadges) as T;
       // Ajustes de la liga y el Buzón (demoSettings.ts): leen todas las capas.
       const fromSettings = settingsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
       if (fromSettings !== undefined) return structuredClone(fromSettings) as T;

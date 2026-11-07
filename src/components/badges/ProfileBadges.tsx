@@ -12,37 +12,52 @@ import { Button, Card, Empty, LoadError, Modal, SectionHeader, Skeleton, cx, sec
 import { BadgeSheet, tileSub, type SheetSubject } from './BadgeSheet';
 import { BadgeGrid, BadgeTile, LeagueMark } from './BadgeTile';
 import {
-  FEATURED_MAX,
   canReportAward,
-  countSplitText,
   countText,
-  emptyOwnText,
   featurableLeagueTiles,
   featuredIds,
   featuredIsAuto,
   featuredModel,
-  filterChips,
   groupTiles,
-  leagueCount,
-  leagueShelves,
   leagueTileSub,
   levelLine,
-  lockedModels,
-  officialCount,
-  progressByBadge,
-  retiredLines,
   shelfOf,
-  upcoming,
   type BadgeTileModel,
   type FeaturedItem,
   type FeaturedModel,
-  type LeagueShelf,
   type LeagueTileModel,
-  type LockedModel,
-  type ProgressModel,
 } from './logic';
 import { useOpened } from './opened';
 import { shareOrigin } from '../../lib/origin';
+import {
+  ALL,
+  FEATURED_FULL,
+  awardTileLabel,
+  badgesLine,
+  canFeature,
+  currentSubject,
+  emptyTab,
+  featuredEditLabel,
+  leagueTileLabel,
+  leaguesTitle,
+  linkedSubject,
+  lockedLabel,
+  noOfficialText,
+  pickerIntro,
+  pickerSave,
+  pickerSlot,
+  pickerStart,
+  pickerToggle,
+  previewBadges,
+  tabModel,
+  tabView,
+  upcomingLabel,
+  type BadgesTabModel,
+  type PreviewBadge,
+} from './tab';
+
+// La lógica de la pestaña está en tab.ts (la comparte la app del teléfono); se sigue importando desde aquí.
+export { badgesLine, pickerSave, pickerStart, previewBadges, tabModel, wonOn, type BadgesTabModel, type PreviewBadge } from './tab';
 
 /**
  * La vitrina del perfil (docs/insignias.md §6.1): la pestaña «Insignias» de `/u/:id` y `/perfil` (se abre con
@@ -51,8 +66,6 @@ import { shareOrigin } from '../../lib/origin';
  * además «Próximas», las bloqueadas, las ocultas y las que su liga está confirmando. Las de sus ligas (del creador y
  * premios del torneo) cuentan en el total, se pueden destacar y llevan la marca «LIGA».
  */
-
-const ALL = 'todas';
 
 function TabSkeleton() {
   return (
@@ -65,39 +78,6 @@ function TabSkeleton() {
       </div>
     </div>
   );
-}
-
-/** Lo que ve la pestaña, ya calculado (sirve para probarla sin base). */
-export interface BadgesTabModel {
-  own: boolean;
-  /** El total: las oficiales y las de sus ligas. */
-  count: number;
-  /** «20 de MatchMate · 4 de sus ligas» (null sin las de sus ligas). */
-  split: string | null;
-  tiles: BadgeTileModel[];
-  upcoming: ProgressModel[];
-  locked: LockedModel[];
-  retired: { id: string; text: string }[];
-  progress: ReadonlyMap<string, ProgressModel>;
-  /** «De mis ligas»: las que dio el creador de cada liga. */
-  leagues: LeagueShelf[];
-}
-
-export function tabModel(data: ProfileBadges, progress: Parameters<typeof upcoming>[0], sports: readonly string[], now: number, opened?: ReadonlySet<string>): BadgesTabModel {
-  const own = data.isMe;
-  const official = officialCount(data.awards);
-  const league = leagueCount(data.leagueAwards ?? []);
-  return {
-    own,
-    count: official + league,
-    split: countSplitText(official, league, own),
-    tiles: groupTiles(data.awards, { own, now, opened }),
-    upcoming: own ? upcoming(progress) : [],
-    locked: own ? lockedModels(sports, data.awards, progress) : [],
-    retired: own ? retiredLines(data.awards) : [],
-    progress: own ? progressByBadge(progress) : new Map(),
-    leagues: leagueShelves(data.leagueAwards ?? [], { own, now, opened }),
-  };
 }
 
 /** La grilla por deporte y sección, con sus títulos. */
@@ -151,14 +131,8 @@ export function BadgesTabView({
   onToggleLocked: () => void;
   onOpen: (s: SheetSubject) => void;
 }) {
-  const chips = filterChips(sports, [...model.tiles, ...(showLocked ? model.locked : [])]);
-  const active = chips.some((c) => c.key === filter) ? filter : ALL;
-  const f = active === ALL ? null : active;
-  const first = name.split(/\s+/)[0] || name;
-  const shown = model.tiles.filter((t) => f === null || t.sport === f);
-  const leagues = model.leagues
-    .map((l) => ({ ...l, tiles: l.tiles.filter((t) => f === null || t.top.award.sport === f) }))
-    .filter((l) => l.tiles.length > 0);
+  const { chips, active, filter: f, first, shown, leagues, locked } = tabView(model, { sports, name, filter, showLocked });
+  const empty = emptyTab(model.own, first, sports);
 
   return (
     <div className="flex flex-col gap-5">
@@ -188,7 +162,7 @@ export function BadgesTabView({
                   progress={p.ratio}
                   name={p.name}
                   sub={p.text}
-                  label={`${p.name}, bloqueada. ${p.text}`}
+                  label={upcomingLabel(p)}
                   onOpen={() => onOpen({ kind: 'locked', model: p })}
                 />
               ))}
@@ -213,16 +187,16 @@ export function BadgesTabView({
                 name={t.top.name}
                 sub={tileSub(t)}
                 count={t.count}
-                label={`${t.top.label}${t.count > 1 ? `, ${t.count} veces` : ''}${t.state === 'new' ? ', nueva' : ''}${t.bucket === 'review' ? ', en revisión' : t.bucket === 'hidden' ? ', solo tú la ves' : ''}`}
+                label={awardTileLabel(t)}
                 onOpen={() => onOpen({ kind: 'award', tile: t })}
               />
             )}
           />
         ) : leagues.length ? (
-          <p className="text-sm text-muted">{model.own ? 'Todavía no tienes insignias de MatchMate.' : 'Todavía no tiene insignias de MatchMate.'}</p>
+          <p className="text-sm text-muted">{noOfficialText(model.own)}</p>
         ) : (
-          <Empty icon={<Award className="size-7" aria-hidden="true" />} title={model.own ? 'Todavía no tienes insignias' : 'Todavía no tiene insignias.'}>
-            {model.own ? emptyOwnText(sports) : `Cuando ${first} gane una en sus ligas, sale aquí.`}
+          <Empty icon={<Award className="size-7" aria-hidden="true" />} title={empty.title}>
+            {empty.text}
           </Empty>
         )}
       </section>
@@ -230,7 +204,7 @@ export function BadgesTabView({
       {leagues.length > 0 && (
         <section aria-labelledby="insignias-ligas" className="flex flex-col gap-3">
           <h3 id="insignias-ligas" className="text-sm font-bold tracking-tight">
-            {model.own ? 'De mis ligas' : 'De sus ligas'}
+            {leaguesTitle(model.own)}
           </h3>
           {leagues.map((l) => (
             <div key={l.leagueId}>
@@ -244,7 +218,7 @@ export function BadgesTabView({
                     name={t.top.name}
                     sub={leagueTileSub(t, model.own)}
                     count={t.count}
-                    label={`${t.top.fullLabel}${t.count > 1 ? `, ${t.count} veces` : ''}${t.state === 'new' ? ', nueva' : ''}${t.hidden ? ', solo tú la ves' : model.own && !t.onProfile ? ', solo en tu liga' : ''}`}
+                    label={leagueTileLabel(t, model.own)}
                     league
                     onOpen={() => onOpen({ kind: 'league', tile: t })}
                   />
@@ -263,7 +237,7 @@ export function BadgesTabView({
           </Button>
           {showLocked && (
             <Shelf
-              items={model.locked.filter((l) => f === null || l.sport === f)}
+              items={locked}
               filter={f}
               render={(l) => (
                 <BadgeTile
@@ -273,7 +247,7 @@ export function BadgesTabView({
                   progress={l.progress?.ratio}
                   name={l.name}
                   sub={l.progress?.text}
-                  label={`${l.name}, bloqueada`}
+                  label={lockedLabel(l.name)}
                   onOpen={() => onOpen({ kind: 'locked', model: l })}
                 />
               )}
@@ -328,10 +302,8 @@ export default function ProfileBadgesTab({ userId, name, sports }: { userId: str
   const still = params.get('quieta') === '1';
   useEffect(() => {
     if (!wanted || !model) return;
-    const tile = model.tiles.find((t) => t.views.some((v) => v.award.id === wanted));
-    const league = tile ? null : model.leagues.flatMap((l) => l.tiles).find((t) => t.views.some((v) => v.award.id === wanted));
-    if (tile) open({ kind: 'award', tile }, still);
-    else if (league) open({ kind: 'league', tile: league }, still);
+    const linked = linkedSubject(model, wanted);
+    if (linked) open(linked, still);
     setParams(
       (p) => {
         const next = new URLSearchParams(p);
@@ -349,18 +321,7 @@ export default function ProfileBadgesTab({ userId, name, sports }: { userId: str
   if (!model) return null;
 
   // Si el detalle abierto cambió (se ocultó, se destacó), se muestra lo de ahora.
-  const current: SheetSubject | null =
-    subject?.kind === 'award'
-      ? (() => {
-          const t = model.tiles.find((x) => x.views.some((v) => subject.tile.views.some((w) => w.award.id === v.award.id)));
-          return t ? { kind: 'award', tile: t } : subject;
-        })()
-      : subject?.kind === 'league'
-        ? (() => {
-            const t = model.leagues.flatMap((l) => l.tiles).find((x) => x.views.some((v) => subject.tile.views.some((w) => w.award.id === v.award.id)));
-            return t ? { kind: 'league', tile: t } : subject;
-          })()
-        : subject;
+  const current = currentSubject(model, subject);
 
   return (
     <>
@@ -393,76 +354,8 @@ export default function ProfileBadgesTab({ userId, name, sports }: { userId: str
 
 // ---------- Yo: las 3 de la tarjeta «Insignias» y la línea de Pro ----------
 
-const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
 /** Lo que llevan los links de Yo a sus partes: «‹ Yo» vuelve atrás en vez de abrir Yo otra vez. */
 export const YO_STATE = { yo: true } as const;
-
-/** «6 oct»: cuándo la ganó (debajo del nombre en la tarjeta de Yo). */
-export function wonOn(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-/** «Te faltan 6 pinos» → «te faltan 6 pinos» (en la mitad de una frase). */
-const lowerFirst = (s: string) => (s ? s[0].toLowerCase() + s.slice(1) : s);
-
-/** Una de las 3 insignias de la tarjeta de Yo: ganada (con su fecha), en camino (con su barrita) o por ganar. */
-export interface PreviewBadge {
-  id: string;
-  look: BadgeTileModel['top']['look'];
-  state: 'unlocked' | 'new' | 'progress' | 'locked';
-  /** 0 a 1 (solo las que van en camino). */
-  progress: number | null;
-  name: string;
-  sub: string;
-  /** A dónde lleva: la vitrina con esa insignia abierta (`?tab=insignias&insignia=…`) o la vitrina. */
-  to: string;
-  label: string;
-}
-
-/**
- * Las 3 de la tarjeta «Insignias» de Yo: las ganadas más nuevas (dejando lugar a la que está más cerca de ganarse, «te
- * faltan 6») y, si no alcanza, las que van en camino y las que faltan por ganar.
- */
-export function previewBadges(model: BadgesTabModel, max = 3): PreviewBadge[] {
-  const won: PreviewBadge[] = model.tiles
-    .filter((t) => t.bucket === 'ok')
-    .map((t) => ({
-      id: t.id,
-      look: t.top.look,
-      state: t.state === 'new' ? 'new' : 'unlocked',
-      progress: null,
-      name: t.top.name,
-      sub: wonOn(t.top.award.awardedAt),
-      to: `?tab=insignias&insignia=${encodeURIComponent(t.top.award.id)}`,
-      label: `${t.top.label}${t.state === 'new' ? ', nueva' : ''}`,
-    }));
-  const going: PreviewBadge[] = model.upcoming.map((p) => ({
-    id: p.id,
-    look: p.look,
-    state: 'progress',
-    progress: p.ratio,
-    name: p.name,
-    sub: lowerFirst(p.text),
-    to: '?tab=insignias',
-    label: `${p.name}, bloqueada. ${p.text}`,
-  }));
-  const locked: PreviewBadge[] = model.locked
-    .filter((l) => !l.progress)
-    .map((l) => ({ id: l.id, look: l.look, state: 'locked', progress: null, name: l.name, sub: 'Por ganar', to: '?tab=insignias', label: `${l.name}, bloqueada` }));
-  const room = max - Math.min(going.length, 1);
-  return [...won.slice(0, room), ...going, ...won.slice(room), ...locked].slice(0, max);
-}
-
-/** La línea de «Insignias» en Pro: «2 de 18 · Serie de 600: te faltan 6». */
-export function badgesLine(model: BadgesTabModel): string {
-  const total = model.count + model.locked.length;
-  const next = model.upcoming[0];
-  return [model.own && total > model.count ? `${model.count} de ${total}` : countText(model.count), next && `${next.name}: ${lowerFirst(next.text)}`]
-    .filter(Boolean)
-    .join(' · ');
-}
 
 /** La vitrina de la cuenta, ya calculada (para la tarjeta y la línea de Yo); null mientras se lee. */
 export function useBadgesModel(userId: string, sports: readonly string[]): { model: BadgesTabModel | null; loading: boolean } {
@@ -555,10 +448,6 @@ export function FeaturedSection({ userId, className }: { userId: string; classNa
 
 // ---------- Destacadas ----------
 
-/** ¿El dueño tiene alguna que se pueda destacar? (automática que se ve, o de la liga que los demás ven). */
-const canFeature = (data: ProfileBadges) =>
-  data.awards.some((a) => (a.status === 'provisional' || a.status === 'firme') && !a.hidden) || (data.leagueAwards ?? []).some((a) => !a.hidden && a.onProfile);
-
 /**
  * La fila de destacadas, sin leer la base (la de verdad es `FeaturedBadges`): hasta 3 a 40 px (las de la liga con la
  * marca «LIGA»); tocar una la abre en la pestaña. El dueño tiene el lápiz para elegirlas o, sin ninguna, «Elige hasta 3
@@ -567,7 +456,7 @@ const canFeature = (data: ProfileBadges) =>
 export function FeaturedRow({ model, own, canPick, onPick }: { model: FeaturedModel; own: boolean; canPick: boolean; onPick: () => void }) {
   const { items, auto } = model;
   if (!items.length && !(own && canPick)) return null;
-  const edit = auto ? 'Elegir tus destacadas' : 'Cambiar las destacadas';
+  const edit = featuredEditLabel(auto);
   return (
     <div className="flex flex-wrap items-center justify-center gap-1">
       {items.map((it: FeaturedItem) => (
@@ -640,19 +529,6 @@ function Pickable({ at, children }: { at: number; children: ReactNode }) {
   );
 }
 
-/** Las que el elegidor abre marcadas: las que se ven debajo del nombre (también las que salen solas). */
-export const pickerStart = (data: ProfileBadges, shown: FeaturedModel): string[] => (shown.auto ? featuredIds(shown) : [...data.featured]);
-
-/**
- * Qué hace «Guardar» en el elegidor: nada si no cambió lo que se ve (así abrir y guardar no deja fijas las que salen
- * solas, ni borra las elegidas); si no, guardar `picked` con su aviso ([] = vuelven a salir solas).
- */
-export function pickerSave(start: readonly string[], picked: readonly string[], auto: boolean): { save: false } | { save: true; done: string } {
-  const same = start.length === picked.length && start.every((id, i) => id === picked[i]);
-  if (same || (auto && picked.length === 0)) return { save: false };
-  return { save: true, done: picked.length ? 'Destacadas guardadas' : 'Listo: ahora salen solas' };
-}
-
 /**
  * Elegir hasta 3 destacadas (en el orden en que se tocan): las automáticas que se ven y las de sus ligas que los demás
  * ven en el perfil (primero los premios del torneo). Abre con las que se ven debajo del nombre marcadas, también las
@@ -669,12 +545,14 @@ export function FeaturedPicker({ data, shown, onClose }: { data: ProfileBadges; 
   const leagueTiles = useMemo(() => featurableLeagueTiles(data, now), [data, now]);
 
   const toggle = (t: BadgeTileModel | LeagueTileModel) => {
-    const ids = t.views.map((v) => v.award.id);
-    if (!picked.some((id) => ids.includes(id)) && picked.length >= FEATURED_MAX) {
-      toast('Ya tienes 3 destacadas. Quita una para poner esta.', 'error');
+    if (pickerToggle(picked, t).full) {
+      toast(FEATURED_FULL, 'error');
       return;
     }
-    setPicked((p) => (p.some((id) => ids.includes(id)) ? p.filter((id) => !ids.includes(id)) : p.length >= FEATURED_MAX ? p : [...p, t.top.award.id]));
+    setPicked((p) => {
+      const r = pickerToggle(p, t);
+      return r.full ? p : r.next;
+    });
   };
 
   const save = async () => {
@@ -708,7 +586,7 @@ export function FeaturedPicker({ data, shown, onClose }: { data: ProfileBadges; 
         </>
       }
     >
-      <p className={cx('text-sm text-muted', shown.auto ? 'mb-1' : 'mb-3')}>{`Elige hasta 3 para mostrar debajo de tu nombre (${picked.length} de 3).`}</p>
+      <p className={cx('text-sm text-muted', shown.auto ? 'mb-1' : 'mb-3')}>{pickerIntro(picked.length)}</p>
       {shown.auto && <p className="mb-3 text-xs text-muted">Mientras no elijas, salen solas: primero tus premios del torneo.</p>}
       <FeaturedChoices tiles={tiles} leagueTiles={leagueTiles} picked={picked} onToggle={toggle} />
     </Modal>
@@ -727,7 +605,6 @@ export function FeaturedChoices({
   picked: readonly string[];
   onToggle: (t: BadgeTileModel | LeagueTileModel) => void;
 }) {
-  const slot = (t: BadgeTileModel | LeagueTileModel) => picked.findIndex((id) => t.views.some((v) => v.award.id === id));
   const heading = (text: string) => <p className="mb-1 px-1 text-[11px] font-semibold tracking-wide text-muted uppercase">{text}</p>;
   return (
     <div className="flex flex-col gap-4">
@@ -736,7 +613,7 @@ export function FeaturedChoices({
           {leagueTiles.length > 0 && heading('MatchMate')}
           <BadgeGrid>
             {tiles.map((t) => {
-              const at = slot(t);
+              const at = pickerSlot(picked, t);
               return (
                 <Pickable key={t.id} at={at}>
                   <BadgeTile
@@ -758,7 +635,7 @@ export function FeaturedChoices({
           {heading('De mis ligas')}
           <BadgeGrid>
             {leagueTiles.map((t) => {
-              const at = slot(t);
+              const at = pickerSlot(picked, t);
               return (
                 <Pickable key={t.id} at={at}>
                   <BadgeTile

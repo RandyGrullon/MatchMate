@@ -13,16 +13,12 @@ import { badgeShare } from '../share/badge';
 import type { CardFrame, ShareCard } from '../share/cards';
 import { Button, cx } from '../ui';
 import { leagueShareInputOf, levelLine, myBadgesPath, shareInputOf, unlockPlan, yearRecap, type UnlockItem, type UnlockPlan, type YearRecapModel } from './logic';
+import { HISTORY_SHOWN, canShareUnlock, historyTitle, isPrivateUnlock as isPrivate, recapFacts, unlockHeader, unlockMoreLine, unlockTarget } from './unlock';
 
 /** Botón de solo ícono de 44 px (flechas y cerrar). */
 const ICON_BUTTON =
   'inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-fg transition hover:bg-surface-2 active:scale-95 focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40';
 
-/** Cuántas del historial se dibujan en el aviso (las demás: «y 20 más»). */
-const HISTORY_SHOWN = 12;
-
-/** ¿Es una automática privada por defecto que todavía no se mostró? */
-const isPrivate = (it: UnlockItem, shown?: ReadonlySet<string>) => it.kind === 'app' && it.view.award.hidden && !shown?.has(it.id);
 
 /**
  * Lo de adentro del aviso al ganar (§6.4), sin la base: una insignia a la vez con su animación (hasta 5, con flechas
@@ -61,7 +57,7 @@ export function UnlockContent({
           <Award className="size-8" />
         </span>
         <h2 id="insignia-titulo" className="text-xl font-bold tracking-tight">
-          {`Te dimos ${list.length} ${list.length === 1 ? 'insignia' : 'insignias'} por tu historial`}
+          {historyTitle(list.length)}
         </h2>
         <p className="text-sm text-muted">Lo que ya habías jugado también cuenta. ¡Míralas en tu perfil!</p>
         <ul className="grid grid-cols-4 gap-2" aria-label="Insignias del historial">
@@ -78,9 +74,8 @@ export function UnlockContent({
   }
   const many = plan.items.length > 1;
   const v = it.view;
-  const title = it.kind === 'liga' ? `${it.view.leagueName} te dio una insignia` : '¡Te ganaste una insignia!';
-  const line = it.kind === 'liga' ? it.view.givenBy : levelLine(it.view);
-  const where = it.kind === 'app' ? it.view.leagueName : null;
+  const { title, line, where } = unlockHeader(it);
+  const moreLine = unlockMoreLine(plan);
   return (
     <div className="flex flex-col items-center gap-3 text-center">
       <h2 id="insignia-titulo" className="text-lg font-bold tracking-tight break-words">
@@ -145,22 +140,14 @@ export function UnlockContent({
         </div>
       )}
       {many && <p className="sr-only">{`Insignia ${index + 1} de ${plan.items.length}`}</p>}
-      {(plan.more > 0 || plan.history.length > 0) && (
-        <p className="text-sm text-muted">
-          {[plan.more > 0 ? `y ${plan.more} más` : null, plan.history.length ? `${plan.history.length} por tu historial` : null].filter(Boolean).join(' · ')}
-        </p>
-      )}
+      {moreLine && <p className="text-sm text-muted">{moreLine}</p>}
     </div>
   );
 }
 
 /** El resumen del año (§6.4): días, deportes y meses, y la insignia más rara del año. */
 export function YearRecapCard({ recap }: { recap: YearRecapModel }) {
-  const facts = [
-    { n: recap.days, label: recap.days === 1 ? 'día jugado' : 'días jugados' },
-    { n: recap.sports, label: recap.sports === 1 ? 'deporte' : 'deportes' },
-    { n: recap.months, label: recap.months === 1 ? 'mes activo' : 'meses activos' },
-  ].filter((f): f is { n: number; label: string } => f.n !== null);
+  const facts = recapFacts(recap);
   return (
     <section aria-label={`Tu ${recap.year} en MatchMate`} className="flex w-full flex-col gap-3 rounded-2xl bg-surface-2 p-3">
       {facts.length > 0 && (
@@ -237,7 +224,7 @@ export default function UnlockModal({
     markLeagueBadgesSeen(plan.leagueIds).catch(warn);
     ref.current?.close();
     onDone();
-    const only = plan.items.length === 1 && plan.items[0].kind === 'app' ? plan.items[0].id : undefined;
+    const only = unlockTarget(plan);
     // La animación ya se vio aquí: el detalle se abre quieto.
     if (go) navigate(myBadgesPath(only, { still: true }));
   };
@@ -281,7 +268,7 @@ export default function UnlockModal({
     }
   };
 
-  const canShare = !!current && !(current.kind === 'app' && current.view.award.hidden && !revealed.has(current.id));
+  const canShare = canShareUnlock(current, revealed);
 
   return (
     <>

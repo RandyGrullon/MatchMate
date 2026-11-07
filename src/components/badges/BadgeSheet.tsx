@@ -11,34 +11,30 @@ import { badgeShare } from '../share/badge';
 import type { CardFrame, ShareCard } from '../share/cards';
 import { Button, Modal } from '../ui';
 import { makerErrorText } from './maker/design';
+import { leagueShareInputOf, levelLine, shareInputOf, statFor, type AwardView, type ProgressModel } from './logic';
+import { FEATURED_FULL } from './tab';
 import {
-  leagueShareInputOf,
-  levelLine,
-  nextLevelLine,
-  rarityText,
-  shareInputOf,
-  statFor,
-  type AwardView,
-  type BadgeTileModel,
-  type LeagueTileModel,
-  type LockedModel,
-  type ProgressModel,
-} from './logic';
+  MAX_TIMES,
+  awardDetail,
+  featuredDone,
+  hiddenDone,
+  leagueTimeText,
+  lockedProgress,
+  moreTimesText,
+  progressPct,
+  reportQuestion,
+  sheetActions,
+  timeText,
+  toggleFeatured as toggledFeatured,
+  type SheetSubject,
+} from './sheet';
 
-/**
- * Qué se abre en el detalle: una insignia ganada (con todas sus filas), una bloqueada (solo el dueño) o una que dio la
- * liga (el creador).
- */
-export type SheetSubject =
-  | { kind: 'award'; tile: BadgeTileModel }
-  | { kind: 'locked'; model: LockedModel | ProgressModel }
-  | { kind: 'league'; tile: LeagueTileModel };
-
-const MAX_TIMES = 20;
+// Qué se abre, el texto de la grilla y las acciones del detalle están en sheet.ts (la comparte la app del teléfono).
+export { tileSub, type SheetSubject } from './sheet';
 
 /** Barra de progreso (el arco de la insignia en palabras). */
 export function ProgressBar({ ratio, text }: { ratio: number; text: string }) {
-  const pct = Math.round(Math.max(0, Math.min(1, ratio)) * 100);
+  const pct = progressPct(ratio);
   return (
     <div className="flex flex-col gap-1.5">
       <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={text}>
@@ -99,7 +95,7 @@ export function BadgeSheetBody({
 }) {
   if (subject.kind === 'locked') {
     const m = subject.model;
-    const p = 'progress' in m ? m.progress : m;
+    const p = lockedProgress(m);
     return (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col items-center gap-2 text-center">
@@ -182,7 +178,7 @@ export function BadgeSheetBody({
           <ul className="flex flex-col divide-y divide-line rounded-xl border border-line text-sm" aria-label="Veces">
             {tile.views.slice(0, MAX_TIMES).map((x) => (
               <li key={x.award.id} className="flex items-center gap-2 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate">{x.prize?.competition ?? x.detail ?? x.name}</span>
+                <span className="min-w-0 flex-1 truncate">{leagueTimeText(x)}</span>
                 <span className="shrink-0 text-xs text-muted">{x.date}</span>
               </li>
             ))}
@@ -194,12 +190,7 @@ export function BadgeSheetBody({
 
   const { tile } = subject;
   const top = tile.top;
-  const stat = statFor(stats, top.award);
-  const rarity = rarityText(stat, top.award.sport);
-  const leveled = !tile.def.repeatable && tile.def.levels.length > 1;
-  const levels = leveled ? [...tile.views].sort((a, b) => a.award.level - b.award.level) : [];
-  const next = own && leveled && progress ? nextLevelLine(tile.def, tile.sport, progress) : null;
-  const times = tile.def.repeatable ? tile.views : [];
+  const { rarity, levels, next, times } = awardDetail(tile, { own, stats, progress });
 
   return (
     <div className="flex flex-col gap-4">
@@ -275,12 +266,12 @@ export function BadgeSheetBody({
             {times.slice(0, MAX_TIMES).map((v) => (
               <li key={v.award.id} className="flex items-center gap-2 px-3 py-2">
                 <span className="size-2 shrink-0 rounded-full" style={{ background: tierDot(v.look.tier) }} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{[v.event?.name, v.levelName !== v.metal ? v.levelName : null].filter(Boolean).join(' · ') || v.name}</span>
+                <span className="min-w-0 flex-1 truncate">{timeText(v)}</span>
                 <span className="shrink-0 text-xs text-muted">{v.date}</span>
               </li>
             ))}
           </ul>
-          {times.length > MAX_TIMES && <p className="mt-1 text-xs text-muted">{`y ${times.length - MAX_TIMES} más`}</p>}
+          {times.length > MAX_TIMES && <p className="mt-1 text-xs text-muted">{moreTimesText(times.length)}</p>}
         </section>
       )}
     </div>
@@ -351,24 +342,21 @@ export function BadgeSheet({
 
   const tile = subject?.kind === 'award' ? subject.tile : null;
   const leagueTile = subject?.kind === 'league' ? subject.tile : null;
-  const ids = (tile?.views ?? leagueTile?.views ?? []).map((v) => v.award.id);
-  const isFeatured = ids.some((id) => featured.includes(id));
-  // Si salen solas y es la única, quitarla no cambia nada (volvería a salir sola): sin el botón.
-  const canToggleFeatured = !(isFeatured && featuredAuto && featured.length <= 1);
-  // Una de la liga se destaca si los demás la ven en tu perfil (o ya está, para quitarla).
-  const canFeatureLeague = !!leagueTile && !leagueTile.hidden && (leagueTile.onProfile || isFeatured) && canToggleFeatured;
+  // Si salen solas y es la única, quitarla no cambia nada (volvería a salir sola): sin el botón. Una de la liga se
+  // destaca si los demás la ven en tu perfil (o ya está, para quitarla).
+  const actions = sheetActions(subject, { own, featured, featuredAuto, mayShare, announce });
+  const { isFeatured, canToggleFeatured, canFeatureLeague } = actions;
 
   const toggleFeatured = async () => {
     const top = tile?.top.award.id ?? leagueTile?.top.award.id;
     if (!top) return;
-    let next: string[];
-    if (isFeatured) next = featured.filter((id) => !ids.includes(id));
-    else if (featured.length >= 3) {
-      toast('Ya tienes 3 destacadas. Quita una para poner esta.', 'error');
+    const plan = toggledFeatured(featured, actions, top);
+    if (plan.full) {
+      toast(FEATURED_FULL, 'error');
       return;
-    } else next = [...featured, top];
+    }
     setBusy('featured');
-    await run(() => setFeaturedBadges(next), isFeatured ? 'Quitada de destacadas' : 'Destacada en tu perfil');
+    await run(() => setFeaturedBadges(plan.next), featuredDone(isFeatured));
     setBusy(null);
   };
 
@@ -379,7 +367,7 @@ export function BadgeSheet({
       if (tile) for (const v of tile.views) if (v.award.hidden !== hidden) await setBadgeHidden(v.award, hidden);
       if (leagueTile) for (const v of leagueTile.views) if (v.award.hidden !== hidden) await setLeagueBadgeHidden(v.award, hidden);
       return true;
-    }, hidden ? 'Oculta: solo tú la ves' : 'Ya se ve en tu perfil');
+    }, hiddenDone(hidden));
     setBusy(null);
     if (ok) onClose();
   };
@@ -404,12 +392,7 @@ export function BadgeSheet({
 
   const report = async () => {
     if (!tile) return;
-    const yes = await confirm({
-      title: `¿Reportar «${tile.top.name}»?`,
-      message: 'Le llega al equipo de MatchMate para que la revise. Úsalo si crees que se dio por un resultado que no fue.',
-      confirmText: 'Reportar',
-      danger: true,
-    });
+    const yes = await confirm({ ...reportQuestion(tile.top.name), danger: true });
     if (!yes) return;
     setBusy('report');
     try {
@@ -424,7 +407,7 @@ export function BadgeSheet({
     }
   };
 
-  const canShare = (!!tile && tile.bucket === 'ok' && (own || mayShare || announce)) || (!!leagueTile && !leagueTile.hidden && (own || mayShare));
+  const { canShare } = actions;
   const footer = leagueTile ? (
     <>
       {own && (
@@ -519,9 +502,3 @@ export function BadgeSheet({
   );
 }
 
-/** Texto chico de estado debajo del nombre en la grilla. */
-export function tileSub(tile: BadgeTileModel): string {
-  if (tile.bucket === 'review') return 'En revisión';
-  if (tile.bucket === 'hidden') return 'Solo tú la ves';
-  return levelLine(tile.top);
-}

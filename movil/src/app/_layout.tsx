@@ -15,6 +15,7 @@ import { installNetwork } from '@/platform/network';
 import { installNotifications, refreshNotifyState } from '@/platform/notifications';
 import { hydrateStorage } from '@/platform/storage';
 import { AccountGates } from '@/components/account/Gates';
+import { BadgeUnlockHost } from '@/components/badges/BadgeUnlockHost';
 import { ToastHost } from '@/components/feedback';
 import { openLink } from '@/lib/links';
 import { ThemeProvider, useTheme } from '@/theme/theme';
@@ -82,6 +83,8 @@ function Navigator() {
       </Stack>
       {/* «¿Tienes 18 años o más?» y aceptar los Términos vigentes, sobre todo lo demás (como la web). */}
       <AccountGates />
+      {/* El aviso al ganar una insignia (BadgeUnlockHost de la web), encima de la app. */}
+      <BadgeUnlockHost />
       <ToastHost />
     </NoticesProvider>
   );

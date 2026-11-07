@@ -4,21 +4,10 @@ import { setBadgesAuto, type BadgesAutoMode } from '../../lib/data/badges';
 import { useLeagueCtx } from '../../lib/league';
 import { useAction } from '../feedback';
 import { Card, Spinner, cx } from '../ui';
+import { BADGES_AUTO_OPTIONS, badgesAutoIntro, badgesAutoOf, pickedOr } from './settings';
 
-/** Las tres opciones de «Insignias automáticas» (§6.5). */
-export const BADGES_AUTO_OPTIONS: readonly { mode: BadgesAutoMode; label: string; hint: string }[] = [
-  { mode: 'todas', label: 'Todas', hint: 'Resultados, marcas, hitos, constancia y los premios del mes y de la temporada.' },
-  {
-    mode: 'sin_titulos',
-    label: 'Sin títulos',
-    hint: 'Sin las que comparan a unos con otros (figura, podios, títulos). Recomendado para ligas con menores.',
-  },
-  { mode: 'ninguna', label: 'Ninguna', hint: 'La liga no da insignias automáticas. Las de cada cuenta (constancia, kilometraje) siguen.' },
-];
-
-/** El modo de la liga (sin dato: con menores, «Sin títulos»; si no, «Todas»). */
-export const badgesAutoOf = (league: { badgesAuto?: BadgesAutoMode; hasMinors?: boolean }): BadgesAutoMode =>
-  league.badgesAuto ?? (league.hasMinors ? 'sin_titulos' : 'todas');
+// Las opciones y el modo de la liga están en settings.ts (la comparte la app del teléfono).
+export { BADGES_AUTO_OPTIONS, badgesAutoOf } from './settings';
 
 /**
  * «Insignias automáticas» en los ajustes de la liga: lo cambia el dueño; los admins lo ven. Sin `onChange` las
@@ -76,7 +65,7 @@ export function BadgesSettingsCard() {
   // Lo elegido se ve al momento; cuando llega la liga de nuevo, manda la base.
   const [picked, setPicked] = useState<{ from: BadgesAutoMode; to: BadgesAutoMode } | null>(null);
   const saved = badgesAutoOf(league);
-  const value = picked && picked.from === saved ? picked.to : saved;
+  const value = pickedOr(picked, saved);
 
   const change = async (mode: BadgesAutoMode) => {
     if (mode === value) return;
@@ -93,9 +82,7 @@ export function BadgesSettingsCard() {
         <Award className="mt-0.5 size-5 shrink-0 text-accent" aria-hidden="true" />
         <div className="min-w-0">
           <h2 className="text-base font-bold tracking-tight">Insignias automáticas</h2>
-          <p className="text-sm text-muted">
-            MatchMate las da solo con los resultados de la liga. {isOwner ? 'Tú decides cuáles.' : 'Solo el dueño lo cambia.'}
-          </p>
+          <p className="text-sm text-muted">{badgesAutoIntro(isOwner)}</p>
         </div>
       </div>
       <BadgesAutoChoice value={value} busy={busy} onChange={isOwner ? (m) => void change(m) : undefined} />

@@ -9,8 +9,11 @@ import { useLeagueCtx } from '../../lib/league';
 import { useNow } from '../../lib/useNow';
 import { Card, cx } from '../ui';
 import { BadgeSheet, tileSub, type SheetSubject } from './BadgeSheet';
+import { attendanceText } from './league';
+import { awardSubject } from './sheet';
 import { BadgeGrid, BadgeTile } from './BadgeTile';
 import { countText, eventAwards, groupTiles, monthAwards, seasonAwards, viewAward, type BadgeTileModel, type WinnerGroup } from './logic';
+import { awardTileLabel } from './tab';
 import { shareOrigin } from '../../lib/origin';
 
 /**
@@ -92,7 +95,7 @@ export function AttendanceFold({ list, names, base }: { list: readonly { playerI
         onClick={() => setOpen((o) => !o)}
         className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium transition hover:bg-surface-2"
       >
-        <span className="flex-1">{`Asistencia perfecta: ${list.length} ${list.length === 1 ? 'jugador' : 'jugadores'}`}</span>
+        <span className="flex-1">{attendanceText(list.length)}</span>
         <ChevronDown className={cx('size-4 text-muted transition-transform', open && 'rotate-180')} aria-hidden="true" />
       </button>
       {open && (
@@ -122,11 +125,7 @@ function useNames(lid: string): Names {
 /** Abre el detalle de una sola fila (con la rareza y, para los admins, «Compartir» para anunciarla). */
 function useAwardSheet(awards: readonly BadgeAward[], now: number) {
   const [open, setOpen] = useState<{ awardId: string } | null>(null);
-  const subject: SheetSubject | null = useMemo(() => {
-    const a = open ? awards.find((x) => x.id === open.awardId) : undefined;
-    const tile = a ? groupTiles([a], { own: false, now })[0] : undefined;
-    return tile ? { kind: 'award', tile } : null;
-  }, [open, awards, now]);
+  const subject: SheetSubject | null = useMemo(() => awardSubject(awards, open?.awardId ?? null, now), [open, awards, now]);
   return { subject, openAward: (awardId: string) => setOpen({ awardId }), close: () => setOpen(null) };
 }
 
@@ -215,7 +214,7 @@ export function PlayerBadgesPanel({ playerId, awards }: { playerId: string; awar
               name={t.top.name}
               sub={tileSub(t)}
               count={t.count}
-              label={`${t.top.label}${t.count > 1 ? `, ${t.count} veces` : ''}${t.state === 'new' ? ', nueva' : ''}`}
+              label={awardTileLabel(t)}
               onOpen={() => setSubject({ kind: 'award', tile: t })}
             />
           ))}

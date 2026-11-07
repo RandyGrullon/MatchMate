@@ -8,9 +8,7 @@ import { useBusy } from '../busy';
 import { useAction, useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Modal, Textarea } from '../ui';
 import { reviewModel, type ReviewModel } from './logic';
-
-/** Largo máximo de la nota al no confirmar (el de la base). */
-const NOTE_MAX = 140;
+import { REVIEW_NOTE_MAX as NOTE_MAX, approveQuestion, markersText, rejectText, reviewDone, reviewEventText, reviewSubline } from './reviews';
 
 /**
  * Una hazaña por confirmar: la insignia, quién y cuándo, la evidencia (valores, marcadores de la tarjeta y el link al
@@ -39,16 +37,14 @@ export function ReviewRow({
         <p className="leading-snug font-semibold break-words">
           {model.name} <span className="font-normal text-muted">{`de ${r.playerName}`}</span>
         </p>
-        <p className="text-sm text-muted">{[model.levelName !== 'Única' ? model.levelName : null, model.date].filter(Boolean).join(' · ')}</p>
+        <p className="text-sm text-muted">{reviewSubline(model)}</p>
         {model.evidence && <p className="mt-1 text-sm">{model.evidence}</p>}
-        {model.markers > 0 && (
-          <p className="mt-0.5 text-xs text-muted">{`Tarjeta firmada por ${model.markers} ${model.markers === 1 ? 'marcador' : 'marcadores'}`}</p>
-        )}
+        {model.markers > 0 && <p className="mt-0.5 text-xs text-muted">{markersText(model.markers)}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {model.eventLink && (
             <Link to={model.eventLink} className="inline-flex h-11 items-center gap-1.5 text-sm font-semibold text-accent hover:underline">
               <ExternalLink className="size-4" aria-hidden="true" />
-              {model.eventName ? `Ver ${model.eventName}` : 'Ver el juego'}
+              {reviewEventText(model)}
             </Link>
           )}
           {r.overdue && (
@@ -93,14 +89,10 @@ export function ReviewList({ reviews, loading, error, empty }: { reviews: readon
   const models = useMemo(() => reviews.map(reviewModel).filter((m): m is ReviewModel => m !== null), [reviews]);
 
   const decide = (r: BadgeReview, ok: boolean, text?: string) =>
-    track(r.id, () => run(() => reviewBadge(r, ok, text), ok ? 'Confirmada: ya es firme' : 'Listo: no cuenta'));
+    track(r.id, () => run(() => reviewBadge(r, ok, text), reviewDone(ok)));
 
   const approve = async (m: ReviewModel) => {
-    const yes = await confirm({
-      title: `¿Confirmar «${m.name}» de ${m.review.playerName}?`,
-      message: 'Queda firme y se le avisa. Confírmala solo si lo viste o si la evidencia lo muestra.',
-      confirmText: 'Confirmar',
-    });
+    const yes = await confirm(approveQuestion(m));
     if (yes) await decide(m.review, true);
   };
 
@@ -157,7 +149,7 @@ export function ReviewList({ reviews, loading, error, empty }: { reviews: readon
       >
         {rejecting && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm">{`«${rejecting.name}» de ${rejecting.review.playerName} no va a contar. Se le dice que no se pudo confirmar, sin nada público.`}</p>
+            <p className="text-sm">{rejectText(rejecting)}</p>
             <label className="flex flex-col gap-1.5 text-sm font-medium">
               Nota (opcional)
               <Textarea value={note} maxLength={NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} placeholder="Por ejemplo: no hay foto del marcador." />

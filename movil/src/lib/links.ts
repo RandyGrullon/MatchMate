@@ -6,6 +6,7 @@
  * (appLinkPaths.ts: los enlaces universales).
  */
 import { router } from 'expo-router';
+import { getUserId } from '@mm/lib/data/client';
 import { APP_ORIGIN } from '@mm/lib/origin';
 import { openOnWeb } from './web';
 
@@ -67,9 +68,14 @@ export function appRoute(href: string): string | null {
   // Dónde jugar (con su ?deporte=) y la ficha de un espacio.
   if (path === '/canchas') return path + query;
   if (/^\/canchas\/[^/]+$/.test(path)) return path;
-  // El perfil (?tab= de la web: Publicaciones o Juegos se eligen ahí).
+  // El perfil (con su ?tab=: Publicaciones, Juegos o Insignias, y ?insignia= abre una).
+  // Tus insignias (los avisos y los push llevan a `/perfil?tab=insignias&insignia=…`): la vitrina de tu perfil.
+  if (path === '/perfil' && /[?&]tab=insignias(&|$)/.test(query)) {
+    const me = getUserId();
+    if (me) return `/u/${me}${query}`;
+  }
   const user = /^\/u\/([^/]+)/.exec(path);
-  if (user) return `/u/${user[1]}`;
+  if (user) return `/u/${user[1]}${query}`;
   // Organizar (`/organizar?liga=`) y cada pantalla suya (la pestaña ?tab= de la web). Sin pestaña, Organizar de esa liga
   // (como la web); una pestaña que la app todavía no tiene se abre en la web.
   if (path === '/organizar') return path + query;

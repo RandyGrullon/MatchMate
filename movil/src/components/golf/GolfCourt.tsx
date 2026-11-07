@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useHoldBadgeUnlock } from '@mm/components/badges/hold';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Check, ChevronLeft, ChevronRight, CloudOff, Flag, Hand, Minus, Plus, Send, Signature, Undo2 } from 'lucide-react-native';
@@ -58,6 +59,8 @@ export function GolfCourt({
 }) {
   const c = useColors();
   const { lid } = useLeagueCtx();
+  // El aviso de una insignia nueva espera a que se cierre esta pantalla.
+  useHoldBadgeUnlock();
   const eventId = round.eventId;
   const [log, update] = useCourtLog(eventId);
   const [sending, setSending] = useState(false);

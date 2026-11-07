@@ -20,6 +20,7 @@ import { PlayersRow } from '@/components/players/PlayersRow';
 import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
 import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { ChampionsSection } from '@/components/season/Seasons';
+import { LeagueBadgeAwards } from '@/components/badges/LeagueBadges';
 import { SeasonRow } from '@/components/seasonAdmin/SeasonRow';
 import { CountBubble } from '@/components/organizer/Organize';
 import { SettingsRow } from '@/components/leagueSettings/SettingsRow';
@@ -349,6 +350,8 @@ export default function LeagueScreen() {
 
       {/* Los campeones de las temporadas cerradas, con «Temporadas» (en todos los deportes). */}
       <LeagueScope lid={l.id}>
+        {/* Los premios del mes de la liga (insignias), arriba de los campeones, como en la web. */}
+        <LeagueBadgeAwards />
         <ChampionsSection />
       </LeagueScope>
 

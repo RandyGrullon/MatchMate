@@ -8,7 +8,7 @@ import { BADGE_ICONS, SHAPE_ORDER, TIERS, TIER_ORDER, isBadgeIconKey, periodRibb
 import { asBackendError } from '../../../lib/db/errors';
 import type { LeagueBadgeDesign } from '../../../lib/data/badges';
 import { LIMIT_OF, type DesignPalette, type DesignPayload, type LeagueBadge, type LimitKind, type MadeAward } from '../../../lib/data/leagueBadges';
-import { saveErrorMessage } from '../../feedback';
+import { saveErrorMessage } from '../../../lib/errorText';
 import { BADGE_TEXT_MAX, badgeTextError, cleanBadgeText, textLength } from '../text';
 import { designLook } from './look';
 import { byTeamAllowed, templateByTeam, templateDescription, templateName, templateOf, type TemplateKey } from './templates';

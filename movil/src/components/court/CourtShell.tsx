@@ -4,6 +4,7 @@
  * anotador, otro teléfono); el marcador del deporte; dos mitades gigantes para tocar el lado que ganó el punto; y
  * abajo, siempre a la vista, Deshacer y Terminar. La pantalla no se apaga mientras se anota.
  */
+import { useHoldBadgeUnlock } from '@mm/components/badges/hold';
 import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -206,6 +207,8 @@ export function CourtShell<C, S, E>({
   more?: MoreItem[];
 }) {
   useKeepAwake();
+  // El aviso de una insignia nueva espera a que se cierre la mesa (como la web).
+  useHoldBadgeUnlock();
   const c = useColors();
   const [menu, setMenu] = useState(false);
   const [finishing, setFinishing] = useState(false);

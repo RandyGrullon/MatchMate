@@ -14,6 +14,8 @@ import type { Entry } from '@mm/lib/types';
 import { useNow } from '@mm/lib/useNow';
 import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope } from '@/components/league/LeagueScope';
+import { LeaguePlayerBadges } from '@/components/badges/LeagueBadges';
+import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
 import { SwimPlayer } from '@/components/swimming/SwimProfile';
 import { BackBar, Badge, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
@@ -36,6 +38,8 @@ export default function PlayerScreen() {
       <Screen>
         <LeagueScope lid={lid}>
           <SwimPlayer playerId={playerId} />
+          {/* Sus insignias de la liga, abajo (LeaguePlayerBadges de la web). */}
+          <LeaguePlayerBadges playerId={playerId} />
         </LeagueScope>
       </Screen>
     );
@@ -299,6 +303,13 @@ function BowlingPlayerScreen() {
           </Card>
         </View>
       )}
+
+      <LeagueScope lid={lid}>
+        {/* En «Mis números», el buzón de sugerencias de la liga (como la web). */}
+        {isOwner && <SuggestionBox />}
+        {/* Sus insignias de la liga, abajo (LeaguePlayerBadges de la web). */}
+        <LeaguePlayerBadges playerId={p.id} />
+      </LeagueScope>
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/j/${p.id}`)}>
         Tendencia y análisis por cuadros en la web

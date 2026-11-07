@@ -106,7 +106,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - La demo trae en «Liga de Ejemplo» un anotador invitado, el link `ANTE234567` (y `VENC234567`, vencido), dos reportes
   abiertos y uno cerrado, dos notas en el buzón y los ajustes editables (`demoScorers.ts`, `demoReports.ts`,
   `demoSettings.ts`).
-- 🌐 Lo demás de Organizar: Insignias (en camino).
+- 🌐 Lo demás de Organizar: el creador de insignias (ver §9).
 
 ## 3. Boliche (deporte activo)
 
@@ -264,7 +264,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   todos o tus seguidores) y «Siguiendo · Descubrir · Juegos» (`movil/src/components/social/`).
 - ✅ Publicación (`/p/<id>`): me gusta, comentarios, compartir y «⋯» (reportar, bloquear, borrar).
 - ✅ Perfil (`/u/<id>`): Seguir, «Te sigue», biografía, contadores, publicaciones y juegos; seguidores y seguidos
-  (`/u/<id>/seguidores`); reportar la cuenta, bloquear y desbloquear. 🌐 Estadísticas e insignias.
+  (`/u/<id>/seguidores`); reportar la cuenta, bloquear y desbloquear; sus insignias (§9). 🌐 Estadísticas.
 - ✅ Buscar (`/buscar`): personas y ligas (Todo · Personas · Ligas), seguir desde la lista; sin cuenta, ligas públicas.
 - 🟡 Un juego compartido sale resumido (sin la tarjeta del juego) y los juegos de «Juegos» todavía sin me gusta.
 - ✅ Equipos (`/equipos`, `/equipos/<equipo>` y `/equipos/unirse/<código>`, `movil/src/components/squads/`, la lógica de
@@ -314,8 +314,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 ## 9. Insignias, premios, reportes
 
-- ⏳ Insignias del perfil y de la liga, el diseñador; premios del torneo; reportes en PDF y Excel (compartir con
-  expo-sharing).
+- ✅ Insignias (`movil/src/components/badges/`, la lógica de `src/components/badges/*.ts`, la misma de la web; el
+  dibujo de la web con react-native-svg, `paint.ts` y `motion.ts`): la vitrina del perfil (`/u/<id>?tab=insignias`,
+  `&insignia=` abre una): las ganadas, las próximas con lo que falta, las bloqueadas, destacar (el lápiz), ocultar y el
+  detalle; los premios del mes en el inicio de la liga y sus insignias en la página del jugador; el aviso al ganar
+  (encima de la app; espera mientras se anota en la cancha, el campo o la piscina); Organizar › Insignias (las
+  automáticas y quién diseña y da) y Organizar › Insignias por confirmar (`/l/<liga>/confirmar`). La demo trae nueve
+  ganadas, tres en el aviso, los premios de octubre y una hazaña por confirmar (`movil/src/platform/demoBadges.ts`).
+  - 🌐 El creador de insignias («Insignias de la liga», nueva, dar) y compartir la imagen de una insignia (en la web
+    se arma con canvas).
+- ⏳ Premios del torneo; reportes en PDF y Excel (compartir con expo-sharing).
 
 ## 10. Superadmin
 

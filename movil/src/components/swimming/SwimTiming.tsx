@@ -6,6 +6,7 @@
  * una sola operación por la cola (sin señal, sale sola al volver). Con la pestaña abierta la pantalla no se apaga.
  * El modo piscina (pantalla completa con modo sol) se queda en la web.
  */
+import { useHoldBadgeUnlock } from '@mm/components/badges/hold';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -53,6 +54,8 @@ export function TimingPanel({ data }: { data: MeetData }) {
   const [sel, setSel] = useState<HeatRef | null>(null);
   // Entre serie y serie la pantalla no se apaga (se cronometra con las manos mojadas).
   useKeepAwake();
+  // El aviso de una insignia nueva espera a que se cierre esta pantalla.
+  useHoldBadgeUnlock();
   useEffect(() => sweepTimings(), []);
 
   // Al abrir: la primera serie que falta por cronometrar. Después no se mueve sola (aunque otro publique).

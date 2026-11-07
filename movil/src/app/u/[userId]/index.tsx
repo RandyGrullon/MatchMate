@@ -9,7 +9,8 @@ import { useUserPosts, socialErrorText } from '@mm/lib/data/posts';
 import { useProfileGames } from '@mm/lib/data/profileGames';
 import { setBlocked } from '@mm/lib/data/profileSocial';
 import { saveErrorMessage } from '@mm/lib/errorText';
-import { BLOCK_EXPLAIN, compactCount, profileLine } from '@mm/components/social/socialFormat';
+import { BLOCK_EXPLAIN, compactCount, knownSports, profileLine } from '@mm/components/social/socialFormat';
+import { FeaturedBadges, ProfileBadgesTab } from '@/components/badges/ProfileBadges';
 import { Avatar } from '@/components/social/Avatar';
 import { ReportSheet } from '@/components/social/ContentMenu';
 import { FollowButton, GameRow } from '@/components/social/People';
@@ -20,13 +21,14 @@ import { LogoSpinner } from '@/components/Logo';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
-type ProfileTab = 'publicaciones' | 'juegos';
+type ProfileTab = 'publicaciones' | 'juegos' | 'insignias';
 
 /**
  * El perfil de una cuenta (/u/:userId de la web): foto, nombre y «@usuario · deportes · desde cuándo» (y «Te sigue»),
  * su biografía, Seguir, Publicaciones · Seguidores · Siguiendo · Me gusta (tocar abre la lista o la parte) y
- * «Publicaciones | Juegos». «⋯»: reportar la cuenta y bloquear o desbloquear. Si la bloqueaste, «Bloqueaste a …» con
- * «Desbloquear». Estadísticas e insignias, por ahora en la web.
+ * «Publicaciones | Juegos | Insignias» (con sus destacadas debajo del nombre; `?tab=insignias` abre la vitrina y
+ * `&insignia=<id>` esa insignia, como en la web). «⋯»: reportar la cuenta y bloquear o desbloquear. Si la bloqueaste,
+ * «Bloqueaste a …» con «Desbloquear». Estadísticas, por ahora en la web.
  */
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -71,7 +73,11 @@ function useBlockToggle(person: { id: string; name: string }) {
 function Profile({ userId }: { userId: string }) {
   const c = useColors();
   const profile = usePublicProfile(userId);
-  const [tab, setTab] = useState<ProfileTab>('publicaciones');
+  // Las insignias se abren por link (`?tab=insignias`, `&insignia=<id>` y `&quieta=1`: Avisos, los push, el aviso al ganar).
+  const params = useLocalSearchParams<{ tab?: string; insignia?: string; quieta?: string }>();
+  const [tab, setTab] = useState<ProfileTab>(() => (params.tab === 'insignias' ? 'insignias' : 'publicaciones'));
+  // La insignia que se abre en Insignias (la del link, o una destacada que se tocó); null al cerrarla.
+  const [badgeLink, setBadgeLink] = useState<{ id: string; still: boolean } | null>(() => (params.insignia ? { id: params.insignia, still: params.quieta === '1' } : null));
   const [menu, setMenu] = useState(false);
   const [reporting, setReporting] = useState(false);
   const p = profile.data;
@@ -153,6 +159,17 @@ function Profile({ userId }: { userId: string }) {
 
       {!!bio && !blocked && <Txt tone="fg2">{bio}</Txt>}
 
+      {/* Sus insignias destacadas (hasta 3): tocar una la abre en Insignias. */}
+      {!blocked && (
+        <FeaturedBadges
+          userId={p.id}
+          onOpen={(id) => {
+            setTab('insignias');
+            setBadgeLink({ id, still: false });
+          }}
+        />
+      )}
+
       {!p.isMe && !blocked && <FollowButton userId={p.id} name={p.name} isFollowing={p.isFollowing} followsYou={p.followsYou} />}
 
       <Card padded={false}>
@@ -205,9 +222,25 @@ function Profile({ userId }: { userId: string }) {
             options={[
               { key: 'publicaciones', label: 'Publicaciones' },
               { key: 'juegos', label: 'Juegos' },
+              { key: 'insignias', label: 'Insignias' },
             ]}
           />
-          {tab === 'publicaciones' ? <UserPosts userId={p.id} name={p.name} /> : <UserGames userId={p.id} name={p.name} isMe={p.isMe} />}
+          {tab === 'publicaciones' ? (
+            <UserPosts userId={p.id} name={p.name} />
+          ) : tab === 'juegos' ? (
+            <UserGames userId={p.id} name={p.name} isMe={p.isMe} />
+          ) : (
+            <ProfileBadgesTab
+              userId={p.id}
+              name={p.name}
+              sports={knownSports(p.sports)}
+              link={badgeLink}
+              onLinkDone={() => {
+                setBadgeLink(null);
+                if (params.insignia) router.setParams({ insignia: undefined, quieta: undefined });
+              }}
+            />
+          )}
           <Card padded={false}>
             <ListRow
               icon={
@@ -215,7 +248,7 @@ function Profile({ userId }: { userId: string }) {
                   <Globe size={20} color={c.accent} />
                 </RowIcon>
               }
-              title="Estadísticas e insignias"
+              title="Estadísticas"
               subtitle="En la web, por ahora"
               onPress={() => openOnWeb(`/u/${p.id}?tab=estadisticas`)}
             />
