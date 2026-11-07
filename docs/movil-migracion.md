@@ -26,7 +26,13 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   la misma Edge Function y las mismas trabas que la web: ligas a tu nombre, último superadmin).
 - ✅ Descargar mis datos (el mismo JSON de la web, con la hoja de compartir del teléfono).
 - ✅ Notificaciones: activar en este teléfono y qué te avisamos (las cuatro categorías de la web), en Yo.
-- ✅ Ver mi perfil (como lo ven los demás), desde Yo.
+- ✅ Yo (`movil/src/app/(tabs)/yo.tsx` y `movil/src/components/yo/`, ProfilePage de la web en Lite, con la lógica de
+  `src/pages/yoParts.ts`, `src/components/bowlingNumbers.ts` y `stats/yoTrend.ts`): la lupa y el engranaje, tu foto,
+  nombre, «@usuario · tu liga» y biografía, «Tu promedio» con la gráfica corta y cómo vas (o cómo empezar), Mis bolas,
+  Insignias, Dónde juego y las filas (Mis juegos, Anotar un juego suelto, Mis publicaciones, Mis equipos, Amigos y
+  seguidores); las partes en `/yo/juegos`, `/yo/publicaciones` y `/yo/insignias` con «‹ Yo» (`/perfil?tab=` lleva ahí).
+  Sin cuenta, «Tu perfil de jugador». La demo: `movil/src/platform/demoYo.ts`.
+  - En «Dónde juego», las ligas de golf, raqueta y equipos llevan a la liga (la app no tiene su página de jugador).
 - ✅ Configuración (`/cuenta`, `movil/src/app/cuenta/index.tsx` y `movil/src/components/account/`, AccountPage de la
   web con la lógica de `src/components/cuenta/logic.ts`): tu nombre, tu usuario (revisa si está libre mientras escribes),
   la contraseña (también al volver de «Olvidé mi contraseña», `?recuperar=1`), el perfil público (foto con `?foto=1`,
@@ -164,14 +170,19 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
     color, cubierta, fechas, perforación Dual Angle y Borrar. Las fechas van con «‹ ›» y «−7/+7» (`DateStepper`).
   - La bola de cada juego al anotar (`GameBall.tsx`): dibujada, con «Agregar bola» encima de la hoja (queda elegida).
   - Yo › «Mis bolas» (`MyBalls.tsx`, Lite).
-  - 🌐 El creador de la bola («Diseñar»: colores, dibujo y figuras; la app lo abre en la web) y Yo › Pro › «Por bola».
+  - ✅ El creador de la bola («Diseñar», `movil/src/components/balls/BallDesigner.tsx`, con `designer.ts` y
+    `controls.ts` de la web; `/bolas?disenar=<bola>`): colores (con «Otro color» en un tablero de tono y brillo y una
+    tira de grises: en el teléfono no hay selector del sistema), dibujo con tamaño, suavidad y ángulo, brillo y huecos,
+    y figuras (agregar, tocar la bola para ponerlas, flechas, tamaño, giro); la bola se queda arriba al bajar.
+  - 🌐 Yo › Pro › «Por bola» (es de Pro).
 - ✅ Equipos fijos en el inicio de la liga (`movil/src/components/bowling/LeagueTeams.tsx`): cada equipo con su color,
   sus jugadores y la suma de sus promedios, tu equipo con «Tú» y «Editar» para quien organiza.
 - ✅ Organizar › Equipos (`/l/<liga>/equipos`, `movil/src/components/bowlingTeams/`, la lógica de
   `src/lib/data/bowlingTeams.ts` y `src/components/bowlingTeams/logic.ts`, la misma de la web): generar al azar o
   parejos por promedio (de a 2 a 6, quiénes entran, cómo quedan, mezclar otra vez, reemplazar con aviso), crear,
   nombre y color, borrar, agregar jugadores, mover o sacar a uno y «Sin equipo». En el inicio, la fila «Equipos».
-  - 🌐 «Otro color» (cualquier color con el selector del navegador): en el teléfono, los 10 de la paleta.
+  - 🌐 «Otro color» del equipo (cualquier color con el selector del navegador): en el teléfono, los 10 de la paleta
+    (el tablero de «Otro color» de las bolas, `ColorBoard`, se puede usar aquí más adelante).
 - ✅ Torneo › Equipos (`/l/<liga>/e/<evento>/equipos`, quien organiza un torneo; `movil/src/components/event/`, la
   lógica de `src/components/bowlingTeams/eventTeams.ts`): «Usar los equipos fijos de la liga», crear, «Armar
   automáticamente», renombrar, eliminar, quitar a uno, agregar de los sin equipo y «Sin equipo».

@@ -27,18 +27,37 @@ import { useFeedback } from '../feedback';
 import { Button, Input, Segmented, Sheet, cx } from '../ui';
 import { BallArt, StickerArt } from './BallArt';
 import {
+  AUTO_COLOR_LABEL,
   COLOR_SLOTS,
-  STICKER_STEP,
+  DESIGN_LEAVE,
+  DESIGN_PREVIEW,
+  DESIGN_RESET,
+  DESIGN_SWITCHES,
+  DESIGN_TABS,
+  PATTERN_SLIDERS,
+  SOLID_NO_SLIDERS,
+  STICKER_ARROWS,
+  STICKER_MOVE_HINT,
+  STICKER_PICK_HINT,
+  STICKER_SLIDERS,
+  STICKERS_FULL,
+  addStickerColor,
   ballTap,
+  colorsHint,
   designNeedsSave,
   designToSave,
+  hexHint,
+  isOwnColor,
   moveSticker,
-  percent,
+  patternThumb,
   resetWarning,
   sampleText,
   slotColor,
   stickerName,
   stickerRing,
+  stickerTextError,
+  stickerTextLabel,
+  stickersLegend,
   tapToBall,
   withSlotColor,
   type ColorSlot,
@@ -46,14 +65,7 @@ import {
 } from './designer';
 
 /** La bola grande: 160 px (128 en una pantalla bajita, para que quepan los controles debajo). */
-const PREVIEW = 160;
-
-/** Las pestañas (44 px de alto para el dedo). */
-const DESIGN_TABS: readonly { key: DesignTab; label: string }[] = [
-  { key: 'colores', label: 'Colores' },
-  { key: 'dibujo', label: 'Dibujo' },
-  { key: 'figuras', label: 'Figuras' },
-];
+const PREVIEW = DESIGN_PREVIEW;
 
 /**
  * «Diseñar» en Mis bolas: el creador de la bola (en la hoja de abajo). Arriba la bola grande, que cambia con cada toque
@@ -89,7 +101,7 @@ export function BallDesigner({ ball, onClose }: { ball: Ball; onClose: () => voi
   async function close() {
     if (busy) return;
     if (!sameBallDesign(draft, initial)) {
-      const ok = await confirm({ title: '¿Salir sin guardar?', message: 'Lo que cambiaste en el diseño se pierde.', confirmText: 'Salir sin guardar', danger: true });
+      const ok = await confirm({ ...DESIGN_LEAVE, danger: true });
       if (!ok) return;
     }
     onClose();
@@ -118,7 +130,7 @@ export function BallDesigner({ ball, onClose }: { ball: Ball; onClose: () => voi
     if (busy) return;
     const warning = resetWarning(draft, plain);
     if (warning == null) return;
-    const ok = await confirm({ title: '¿Restablecer la bola?', message: warning, confirmText: 'Restablecer', danger: true });
+    const ok = await confirm({ ...DESIGN_RESET, message: warning, danger: true });
     if (!ok) return;
     setDraft(plain);
     setPicked(null);
@@ -285,11 +297,7 @@ export function DesignColors({
         auto={active === 'base' ? undefined : slotColor({ ...draft, [active]: null }, active)}
         onChange={(hex) => onColor(active, hex)}
       />
-      <p className="text-xs text-muted">
-        {three
-          ? 'La «A» es el automático: sale de la base (más claro en una bola oscura, más oscuro en una clara).'
-          : 'La sólida es de un solo color. Los dibujos (en «Dibujo») usan dos colores más.'}
-      </p>
+      <p className="text-xs text-muted">{colorsHint(three)}</p>
     </div>
   );
 }
@@ -322,16 +330,17 @@ export function DesignPattern({
       </div>
       {patternInfo(draft.pattern).sliders ? (
         <div className="flex flex-col gap-2">
-          <Slider label="Tamaño del dibujo" value={draft.scale} min={0.5} max={2} step={0.05} text={percent(draft.scale)} onChange={(scale) => onChange({ scale })} />
-          <Slider label="Suavidad de los bordes" value={draft.softness} min={0} max={1} step={0.05} text={percent(draft.softness)} onChange={(softness) => onChange({ softness })} />
-          <Slider label="Ángulo" value={draft.angle} min={0} max={359} step={1} text={`${Math.round(draft.angle)}°`} onChange={(angle) => onChange({ angle })} />
+          {PATTERN_SLIDERS.map((s) => (
+            <Slider key={s.key} label={s.label} value={draft[s.key]} min={s.min} max={s.max} step={s.step} text={s.text(draft[s.key])} onChange={(v) => onChange({ [s.key]: v })} />
+          ))}
         </div>
       ) : (
-        <p className="text-xs text-muted">La sólida no tiene dibujo: elige otro para cambiarle el tamaño, la suavidad y el ángulo.</p>
+        <p className="text-xs text-muted">{SOLID_NO_SLIDERS}</p>
       )}
       <div className="flex flex-col gap-2">
-        <SwitchRow label="Brillo" hint="Pulida y brillante; sin brillo se ve mate." on={draft.shine} onChange={(shine) => onChange({ shine })} />
-        <SwitchRow label="Huecos" hint="Los dos de los dedos y el del pulgar." on={draft.holes} onChange={(holes) => onChange({ holes })} />
+        {DESIGN_SWITCHES.map((s) => (
+          <SwitchRow key={s.key} label={s.label} hint={s.hint} on={draft[s.key]} onChange={(v) => onChange({ [s.key]: v })} />
+        ))}
       </div>
     </div>
   );
@@ -361,11 +370,11 @@ export function DesignStickers({
   const full = draft.stickers.length >= BALL_STICKERS_MAX;
   const sticker = picked != null ? (draft.stickers[picked] ?? null) : null;
   // El color con que saldría una nueva: el de los botones para agregar.
-  const addColor = newSticker('estrella', draft).color;
+  const addColor = addStickerColor(draft);
   return (
     <div role="group" aria-label="Figuras" className="flex flex-col gap-4">
       <fieldset className="flex min-w-0 flex-col gap-1.5">
-        <legend className="mb-1.5 text-xs font-medium text-muted">{`Agregar una figura (${draft.stickers.length} de ${BALL_STICKERS_MAX})`}</legend>
+        <legend className="mb-1.5 text-xs font-medium text-muted">{stickersLegend(draft.stickers.length)}</legend>
         <div className="grid grid-cols-4 gap-2">
           {BALL_STICKER_SHAPES.map((s) => (
             <button
@@ -381,7 +390,7 @@ export function DesignStickers({
             </button>
           ))}
         </div>
-        {full && <p className="text-xs text-muted">{`Ya tiene ${BALL_STICKERS_MAX} figuras: quita una para agregar otra.`}</p>}
+        {full && <p className="text-xs text-muted">{STICKERS_FULL}</p>}
       </fieldset>
 
       {draft.stickers.length > 0 && (
@@ -411,7 +420,7 @@ export function DesignStickers({
       {sticker && picked != null ? (
         <StickerEditor key={picked} sticker={sticker} onChange={(fn) => onSticker(picked, fn)} onRemove={() => onRemove(picked)} />
       ) : (
-        draft.stickers.length > 0 && <p className="text-xs text-muted">Elige una figura (o tócala en la bola) para cambiarle el color, moverla, agrandarla o girarla.</p>
+        draft.stickers.length > 0 && <p className="text-xs text-muted">{STICKER_PICK_HINT}</p>
       )}
     </div>
   );
@@ -444,7 +453,7 @@ function Swatch({ color, className, children }: { color: string; className?: str
  */
 function ColorPicker({ label, value, auto, onChange }: { label: string; value: string | null; auto?: string; onChange: (hex: string | null) => void }) {
   const shown = value ?? auto ?? '#000000';
-  const own = value != null && !BALL_COLORS.some((c) => c.hex === value);
+  const own = isOwnColor(value);
   const choice = (key: string, on: boolean, name: string, color: string, pick: () => void, mark?: string) => (
     <button
       key={key}
@@ -468,7 +477,7 @@ function ColorPicker({ label, value, auto, onChange }: { label: string; value: s
     <fieldset className="flex min-w-0 flex-col gap-1.5">
       <legend className="mb-1.5 text-xs font-medium text-muted">{label}</legend>
       <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1">
-        {auto && choice('auto', value == null, 'Automático (sale de la base)', auto, () => onChange(null), 'A')}
+        {auto && choice('auto', value == null, AUTO_COLOR_LABEL, auto, () => onChange(null), 'A')}
         {BALL_COLORS.map((c) => choice(c.hex, value === c.hex, c.label, c.hex, () => onChange(c.hex)))}
       </div>
       <HexField value={shown} own={own} onChange={onChange} />
@@ -517,7 +526,7 @@ function HexField({ value, own, onChange }: { value: string; own: boolean; onCha
           if (bad) setText(value);
         }}
       />
-      <span className={cx('text-xs', bad ? 'text-danger' : 'text-muted')}>{bad ? 'Usa #rrggbb' : 'Otro color'}</span>
+      <span className={cx('text-xs', bad ? 'text-danger' : 'text-muted')}>{hexHint(bad)}</span>
     </div>
   );
 }
@@ -540,7 +549,7 @@ const PatternChip = memo(function PatternChip({
   third: string | null;
   onPick: (p: BallPattern) => void;
 }) {
-  const thumb: BallDesign = { ...defaultBallDesign(base), second, third, pattern, holes: false };
+  const thumb = patternThumb(pattern, base, second, third);
   return (
     <button
       type="button"
@@ -610,21 +619,31 @@ function SwitchRow({ label, hint, on, onChange }: { label: string; hint: string;
   );
 }
 
+/** Dónde va cada flecha en la cruz (3 columnas) y su ícono. */
+const ARROW_CELL: Record<(typeof STICKER_ARROWS)[number]['key'], string> = { up: 'col-start-2', left: 'col-start-1', right: 'col-start-3', down: 'col-start-2' };
+const ARROW_ICON: Record<(typeof STICKER_ARROWS)[number]['key'], ReactNode> = {
+  up: <ArrowUp className="size-4" aria-hidden="true" />,
+  left: <ArrowLeft className="size-4" aria-hidden="true" />,
+  right: <ArrowRight className="size-4" aria-hidden="true" />,
+  down: <ArrowDown className="size-4" aria-hidden="true" />,
+};
+
 /** Lo de la figura elegida: su texto (número o iniciales), su color, moverla, agrandarla, girarla y quitarla. */
 function StickerEditor({ sticker: s, onChange, onRemove }: { sticker: BallSticker; onChange: (fn: (s: BallSticker) => BallSticker) => void; onRemove: () => void }) {
   const move = (dx: number, dy: number) => onChange((x) => moveSticker(x, dx, dy));
-  const arrow = (label: string, icon: ReactNode, dx: number, dy: number, cell: string) => (
+  const arrow = ({ key, label, dx, dy }: (typeof STICKER_ARROWS)[number]) => (
     <button
+      key={key}
       type="button"
       aria-label={label}
       title={label}
       onClick={() => move(dx, dy)}
       className={cx(
         'inline-flex size-11 items-center justify-center rounded-xl border border-line text-fg transition hover:bg-surface-2 active:scale-[0.95] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        cell,
+        ARROW_CELL[key],
       )}
     >
-      {icon}
+      {ARROW_ICON[key]}
     </button>
   );
   return (
@@ -634,15 +653,13 @@ function StickerEditor({ sticker: s, onChange, onRemove }: { sticker: BallSticke
       <ColorPicker label="Color de la figura" value={s.color} onChange={(hex) => hex && onChange((x) => ({ ...x, color: hex }))} />
       <div className="flex items-center gap-3">
         <div role="group" aria-label="Mover la figura" className="grid shrink-0 grid-cols-3 gap-1">
-          {arrow('Mover arriba', <ArrowUp className="size-4" aria-hidden="true" />, 0, -STICKER_STEP, 'col-start-2')}
-          {arrow('Mover a la izquierda', <ArrowLeft className="size-4" aria-hidden="true" />, -STICKER_STEP, 0, 'col-start-1')}
-          {arrow('Mover a la derecha', <ArrowRight className="size-4" aria-hidden="true" />, STICKER_STEP, 0, 'col-start-3')}
-          {arrow('Mover abajo', <ArrowDown className="size-4" aria-hidden="true" />, 0, STICKER_STEP, 'col-start-2')}
+          {STICKER_ARROWS.map(arrow)}
         </div>
-        <p className="text-xs text-muted">Muévela con las flechas o toca la bola donde la quieres. Toca otra figura en la bola para elegirla.</p>
+        <p className="text-xs text-muted">{STICKER_MOVE_HINT}</p>
       </div>
-      <Slider label="Tamaño" value={s.size} min={0.1} max={0.6} step={0.02} text={percent(s.size)} onChange={(size) => onChange((x) => ({ ...x, size }))} />
-      <Slider label="Giro" value={s.rotation} min={0} max={359} step={1} text={`${Math.round(s.rotation)}°`} onChange={(rotation) => onChange((x) => ({ ...x, rotation }))} />
+      {STICKER_SLIDERS.map((k) => (
+        <Slider key={k.key} label={k.label} value={s[k.key]} min={k.min} max={k.max} step={k.step} text={k.text(s[k.key])} onChange={(v) => onChange((x) => ({ ...x, [k.key]: v }))} />
+      ))}
       <button
         type="button"
         onClick={onRemove}
@@ -668,7 +685,7 @@ function StickerText({ shape, value, onChange }: { shape: BallStickerShape; valu
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-xs font-medium text-muted">
-        {digits ? `Número (hasta ${BALL_STICKER_TEXT_MAX} cifras)` : `Iniciales (hasta ${BALL_STICKER_TEXT_MAX} letras)`}
+        {stickerTextLabel(shape)}
       </label>
       <Input
         id={id}
@@ -689,7 +706,7 @@ function StickerText({ shape, value, onChange }: { shape: BallStickerShape; valu
           if (!text) setText(value);
         }}
       />
-      {empty && <span className="text-xs text-danger">{digits ? 'Escribe de 1 a 3 cifras.' : 'Escribe de 1 a 3 letras.'}</span>}
+      {empty && <span className="text-xs text-danger">{stickerTextError(shape)}</span>}
     </div>
   );
 }

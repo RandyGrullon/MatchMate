@@ -18,10 +18,23 @@ import { BallDesigner, DesignColors, DesignPattern, DesignStickers } from './Bal
 import { BallSheet } from './BallSheet';
 import { BallCard, BallStatsSection, MyBallsSection } from './BallStats';
 import {
+  DESIGN_TABS,
+  PATTERN_SLIDERS,
+  STICKER_ARROWS,
+  STICKER_SLIDERS,
+  addStickerColor,
   ballTap,
+  colorsHint,
+  degrees,
   designNeedsSave,
   designToSave,
+  hexHint,
+  isOwnColor,
   moveSticker,
+  patternThumb,
+  stickerTextError,
+  stickerTextLabel,
+  stickersLegend,
   percent,
   resetWarning,
   sampleText,
@@ -182,6 +195,38 @@ describe('las cuentas del creador', () => {
     expect(withSlotColor(galaxy, 'third', null).third).toBeNull();
     // La base nunca queda sin color.
     expect(withSlotColor(galaxy, 'base', null).base).toBe('#0b1026');
+  });
+
+  it('lo que dicen y miden los controles (los mismos en la web y en el teléfono)', () => {
+    expect(DESIGN_TABS.map((t) => t.label)).toEqual(['Colores', 'Dibujo', 'Figuras']);
+    expect(PATTERN_SLIDERS.map((s) => [s.label, s.text(s.min), s.text(s.max)])).toEqual([
+      ['Tamaño del dibujo', '50 %', '200 %'],
+      ['Suavidad de los bordes', '0 %', '100 %'],
+      ['Ángulo', '0°', '359°'],
+    ]);
+    expect(STICKER_SLIDERS.map((s) => s.label)).toEqual(['Tamaño', 'Giro']);
+    expect(STICKER_ARROWS.map((a) => [a.dx, a.dy])).toEqual([
+      [0, -0.1],
+      [-0.1, 0],
+      [0.1, 0],
+      [0, 0.1],
+    ]);
+    expect(colorsHint(true)).toContain('La «A» es el automático');
+    expect(colorsHint(false)).toContain('La sólida es de un solo color');
+    expect(stickersLegend(2)).toBe('Agregar una figura (2 de 5)');
+    expect(stickerTextLabel('numero')).toBe('Número (hasta 3 cifras)');
+    expect(stickerTextLabel('iniciales')).toBe('Iniciales (hasta 3 letras)');
+    expect(stickerTextError('numero')).toBe('Escribe de 1 a 3 cifras.');
+    expect(stickerTextError('iniciales')).toBe('Escribe de 1 a 3 letras.');
+    // Amarillo sobre una bola oscura.
+    expect(addStickerColor(galaxy)).toBe('#facc15');
+    expect(patternThumb('veteada', '#dc2626', null, '#f8fafc')).toMatchObject({ pattern: 'veteada', base: '#dc2626', second: null, third: '#f8fafc', holes: false });
+    expect(isOwnColor('#1d4ed8')).toBe(false);
+    expect(isOwnColor('#123456')).toBe(true);
+    expect(isOwnColor(null)).toBe(false);
+    expect(hexHint(true)).toBe('Usa #rrggbb');
+    expect(hexHint(false)).toBe('Otro color');
+    expect(degrees(29.6)).toBe('30°');
   });
 });
 

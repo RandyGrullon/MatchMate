@@ -76,7 +76,8 @@ export function placeSections(places: PlayerPlaces, uid: string): PlaceSection[]
   }
   if (places.esportsTeams.length) {
     out.push({
-      key: 'esports',
+      // No 'esports': así se llama la sección de una liga de esports sin juego (las claves no se repiten).
+      key: 'equipos-esports',
       label: 'Equipos de esports',
       kind: 'esports',
       sport: 'esports',

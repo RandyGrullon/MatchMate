@@ -6,7 +6,6 @@
  * (appLinkPaths.ts: los enlaces universales).
  */
 import { router } from 'expo-router';
-import { getUserId } from '@mm/lib/data/client';
 import { APP_ORIGIN } from '@mm/lib/origin';
 import { openOnWeb } from './web';
 
@@ -74,10 +73,14 @@ export function appRoute(href: string): string | null {
   if (path === '/canchas') return path + query;
   if (/^\/canchas\/[^/]+$/.test(path)) return path;
   // El perfil (con su ?tab=: Publicaciones, Juegos o Insignias, y ?insignia= abre una).
-  // Tus insignias (los avisos y los push llevan a `/perfil?tab=insignias&insignia=…`): la vitrina de tu perfil.
-  if (path === '/perfil' && /[?&]tab=insignias(&|$)/.test(query)) {
-    const me = getUserId();
-    if (me) return `/u/${me}${query}`;
+  // Yo (`/perfil`) y sus partes (`?tab=juegos|publicaciones|insignias`; `&insignia=` abre una y `&quieta=1` sin
+  // animarla): la pestaña Yo y `/yo/<parte>`. «Por liga y temporada» (`?tab=estadisticas`) es de Pro: en la web.
+  if (path === '/perfil') {
+    const part = /[?&]tab=([^&]+)/.exec(query)?.[1];
+    if (!part) return '/yo';
+    if (part !== 'juegos' && part !== 'publicaciones' && part !== 'insignias') return null;
+    const rest = query.slice(1).split('&').filter((kv) => kv && !kv.startsWith('tab=')).join('&');
+    return `/yo/${part}${rest ? `?${rest}` : ''}`;
   }
   const user = /^\/u\/([^/]+)/.exec(path);
   if (user) return `/u/${user[1]}${query}`;

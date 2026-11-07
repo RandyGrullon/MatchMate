@@ -1,14 +1,19 @@
-import type { Ball } from '../../lib/balls';
+import { BALL_COLORS, type Ball } from '../../lib/balls';
 import {
+  BALL_STICKER_TEXT_MAX,
+  BALL_STICKERS_MAX,
   ballDesignColors,
   cleanStickerText,
   defaultBallDesign,
+  newSticker,
   normalizeBallDesign,
   nudgeSticker,
   sameBallDesign,
+  stickerInfo,
   stickerLabel,
   stickerStartText,
   type BallDesign,
+  type BallPattern,
   type BallSticker,
   type BallStickerShape,
 } from '../../lib/ballDesign';
@@ -156,3 +161,112 @@ export function sampleText(shape: BallStickerShape, initials: string): string | 
 
 /** «100 %», para los controles de tamaño y suavidad. */
 export const percent = (v: number) => `${Math.round(v * 100)} %`;
+
+/** «30°», para los controles de ángulo y giro. */
+export const degrees = (v: number) => `${Math.round(v)}°`;
+
+// ---------- Lo que dicen y miden los controles (los mismos en la web y en el teléfono) ----------
+
+/** La bola grande del creador, en píxeles (128 en una pantalla bajita, de menos de 740 de alto). */
+export const DESIGN_PREVIEW = 160;
+export const DESIGN_PREVIEW_SHORT = 128;
+export const DESIGN_SHORT_SCREEN = 740;
+
+/** Las pestañas (un segmentado: son 3). */
+export const DESIGN_TABS: readonly { key: DesignTab; label: string }[] = [
+  { key: 'colores', label: 'Colores' },
+  { key: 'dibujo', label: 'Dibujo' },
+  { key: 'figuras', label: 'Figuras' },
+];
+
+/** Cerrar con cambios sin guardar. */
+export const DESIGN_LEAVE = { title: '¿Salir sin guardar?', message: 'Lo que cambiaste en el diseño se pierde.', confirmText: 'Salir sin guardar' } as const;
+
+/** «Restablecer» (el mensaje sale de resetWarning). */
+export const DESIGN_RESET = { title: '¿Restablecer la bola?', confirmText: 'Restablecer' } as const;
+
+/** La línea de abajo de «Colores»: en los dibujos, qué es la «A»; en la sólida, que los dibujos usan más colores. */
+export function colorsHint(three: boolean): string {
+  return three
+    ? 'La «A» es el automático: sale de la base (más claro en una bola oscura, más oscuro en una clara).'
+    : 'La sólida es de un solo color. Los dibujos (en «Dibujo») usan dos colores más.';
+}
+
+/** Un control deslizable: su nombre, su rango, de a cuánto y cómo se dice su valor. */
+export interface DesignSlider<K extends string> {
+  key: K;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  text: (v: number) => string;
+}
+
+/** Los controles del dibujo (menos en la sólida). */
+export const PATTERN_SLIDERS: readonly DesignSlider<'scale' | 'softness' | 'angle'>[] = [
+  { key: 'scale', label: 'Tamaño del dibujo', min: 0.5, max: 2, step: 0.05, text: percent },
+  { key: 'softness', label: 'Suavidad de los bordes', min: 0, max: 1, step: 0.05, text: percent },
+  { key: 'angle', label: 'Ángulo', min: 0, max: 359, step: 1, text: degrees },
+];
+
+/** Lo que se le dice en la sólida en vez de los controles. */
+export const SOLID_NO_SLIDERS = 'La sólida no tiene dibujo: elige otro para cambiarle el tamaño, la suavidad y el ángulo.';
+
+/** Los dos interruptores del dibujo. */
+export const DESIGN_SWITCHES: readonly { key: 'shine' | 'holes'; label: string; hint: string }[] = [
+  { key: 'shine', label: 'Brillo', hint: 'Pulida y brillante; sin brillo se ve mate.' },
+  { key: 'holes', label: 'Huecos', hint: 'Los dos de los dedos y el del pulgar.' },
+];
+
+/** Los controles de la figura elegida. */
+export const STICKER_SLIDERS: readonly DesignSlider<'size' | 'rotation'>[] = [
+  { key: 'size', label: 'Tamaño', min: 0.1, max: 0.6, step: 0.02, text: percent },
+  { key: 'rotation', label: 'Giro', min: 0, max: 359, step: 1, text: degrees },
+];
+
+/** Las cuatro flechas para mover la figura elegida (en cruz: arriba, izquierda y derecha, abajo). */
+export const STICKER_ARROWS: readonly { key: 'up' | 'left' | 'right' | 'down'; label: string; dx: number; dy: number }[] = [
+  { key: 'up', label: 'Mover arriba', dx: 0, dy: -STICKER_STEP },
+  { key: 'left', label: 'Mover a la izquierda', dx: -STICKER_STEP, dy: 0 },
+  { key: 'right', label: 'Mover a la derecha', dx: STICKER_STEP, dy: 0 },
+  { key: 'down', label: 'Mover abajo', dx: 0, dy: STICKER_STEP },
+];
+
+/** Al lado de las flechas. */
+export const STICKER_MOVE_HINT = 'Muévela con las flechas o toca la bola donde la quieres. Toca otra figura en la bola para elegirla.';
+
+/** Con figuras y ninguna elegida. */
+export const STICKER_PICK_HINT = 'Elige una figura (o tócala en la bola) para cambiarle el color, moverla, agrandarla o girarla.';
+
+/** «Agregar una figura (2 de 5)». */
+export const stickersLegend = (n: number) => `Agregar una figura (${n} de ${BALL_STICKERS_MAX})`;
+
+/** Con las 5 puestas. */
+export const STICKERS_FULL = `Ya tiene ${BALL_STICKERS_MAX} figuras: quita una para agregar otra.`;
+
+/** El nombre del campo del texto de la figura (número o iniciales). */
+export function stickerTextLabel(shape: BallStickerShape): string {
+  return stickerInfo(shape).text === 'digits' ? `Número (hasta ${BALL_STICKER_TEXT_MAX} cifras)` : `Iniciales (hasta ${BALL_STICKER_TEXT_MAX} letras)`;
+}
+
+/** Lo que dice con el texto de la figura vacío. */
+export function stickerTextError(shape: BallStickerShape): string {
+  return stickerInfo(shape).text === 'digits' ? 'Escribe de 1 a 3 cifras.' : 'Escribe de 1 a 3 letras.';
+}
+
+/** El color con que saldría una figura nueva (el de los botones para agregar). */
+export const addStickerColor = (d: Pick<BallDesign, 'base' | 'stickers'>) => newSticker('estrella', d).color;
+
+/** La bola chica de un dibujo para elegirlo: ese dibujo con los colores de ahora, sin huecos. */
+export function patternThumb(pattern: BallPattern, base: string, second: string | null, third: string | null): BallDesign {
+  return { ...defaultBallDesign(base), second, third, pattern, holes: false };
+}
+
+/** ¿Es un color propio (no de la paleta de las bolas)? null (el automático) no lo es. */
+export const isOwnColor = (value: string | null) => value != null && !BALL_COLORS.some((c) => c.hex === value);
+
+/** El nombre del automático en la paleta. */
+export const AUTO_COLOR_LABEL = 'Automático (sale de la base)';
+
+/** Lo que dice al lado del código del color. */
+export const hexHint = (bad: boolean) => (bad ? 'Usa #rrggbb' : 'Otro color');

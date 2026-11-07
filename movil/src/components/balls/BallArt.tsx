@@ -2,9 +2,9 @@ import { memo, useId, useMemo, type ReactNode } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { catalogLook, type Ball, type BallCover } from '@mm/lib/balls';
-import { ballDesignOf, type BallDesign } from '@mm/lib/ballDesign';
+import { ballDesignOf, type BallDesign, type BallSticker, type BallStickerShape } from '@mm/lib/ballDesign';
 import type { CatalogBall } from '@mm/lib/ballCatalog';
-import { C, artNum as f, ballArtScene, designHash, type ArtPaint, type StickerPart } from '@mm/components/balls/art';
+import { C, artNum as f, ballArtScene, designHash, stickerOutline, stickerParts, type ArtPaint, type StickerPart } from '@mm/components/balls/art';
 import { CATALOG_NO_COLOR } from '@mm/components/balls/catalog';
 import { font } from '@/theme/tokens';
 
@@ -51,6 +51,21 @@ function stickerPart(p: StickerPart, key: number): ReactNode {
     default:
       return null;
   }
+}
+
+/**
+ * Una figura sola, sin la bola (StickerArt de la web: los botones del creador para agregarla o elegirla): con su color,
+ * su borde y, en el número y las iniciales, su texto (limpio, como en la bola). Decorativa: el nombre va en el botón.
+ */
+export function StickerArt({ shape, color, text, size }: { shape: BallStickerShape; color: string; text?: string; size: number }) {
+  const s: BallSticker = { shape, color, x: 0, y: 0, size: 1, rotation: 0, ...(text ? { text } : {}) };
+  return (
+    <View aria-hidden style={{ width: size, height: size }}>
+      <Svg viewBox="-1.2 -1.2 2.4 2.4" width={size} height={size}>
+        {stickerParts(s, stickerOutline(color), 0.1, 'mid').map(stickerPart)}
+      </Svg>
+    </View>
+  );
 }
 
 export interface BallArtProps {

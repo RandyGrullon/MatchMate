@@ -4,15 +4,15 @@ import { Award, BarChart3, ChevronLeft, List, LogIn, Newspaper, Settings, Shield
 import { displayName, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { useMyEsportsTeams } from '../lib/data/esports';
-import { usePublicProfile, type FollowKind, type PublicProfile } from '../lib/data/follows';
+import { usePublicProfile, type FollowKind } from '../lib/data/follows';
 import { useUserPosts } from '../lib/data/posts';
 import { useMySoloSessions } from '../lib/data/solo';
 import { useMySquads } from '../lib/data/squads';
 import { toIsoDate } from '../lib/format';
-import type { League } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { getSport } from '../sports/registry';
-import { NoBowlingNumbers, ProfileStats, splitBySport, useBowlingNumbers, type BowlingNumbersState } from '../components/GlobalStats';
+import { splitBySport, useBowlingNumbers, type BowlingNumbersState } from '../components/bowlingNumbers';
+import { NoBowlingNumbers, ProfileStats } from '../components/GlobalStats';
 import { BallIcon } from '../components/balls/BallPicker';
 import { BallStatsSection, MyBallsSection, useBallSection } from '../components/balls/BallStats';
 import { ModeSwitch, useIsPro } from '../components/mode';
@@ -25,10 +25,11 @@ import { AppShell } from '../components/Shell';
 import { FollowersSheet } from '../components/social/FollowersSheet';
 import { GamesTab, StatsTab } from '../components/social/ProfileView';
 import { SearchButton } from '../components/social/SearchButton';
-import { atUsername, knownSports, plural } from '../components/social/socialFormat';
+import { knownSports } from '../components/social/socialFormat';
 import { myTeamsLine } from '../components/squads/logic';
 import { AverageCard, NumbersGrid, ShotsCard, TrendCard, type NumberItem } from '../components/stats/YoStats';
 import { Card, Empty, ListRow, LoadError, Loading, RowIcon, Skeleton, cx } from '../components/ui';
+import { YO_PARTS, identityLine, mainLeagueId, postsLine, showsBowling, socialIsEmpty, socialLine, yoPart, type YoPart } from './yoParts';
 
 // Las insignias traen el catálogo y el dibujo: se cargan aparte (la tarjeta de Lite, la línea de Pro y la vitrina).
 const BadgesPreview = lazy(() => import('../components/badges/ProfileBadges').then((m) => ({ default: m.BadgesPreview })));
@@ -36,45 +37,12 @@ const BadgesLineText = lazy(() => import('../components/badges/ProfileBadges').t
 const FeaturedSection = lazy(() => import('../components/badges/ProfileBadges').then((m) => ({ default: m.FeaturedSection })));
 const ProfileBadgesTab = lazy(() => import('../components/badges/ProfileBadges'));
 
-/**
- * Las partes de Yo que se abren aparte (`?tab=`): Mis juegos, Mis publicaciones, la vitrina de insignias y «Por liga y
- * temporada».
- */
-export type YoPart = 'juegos' | 'publicaciones' | 'insignias' | 'estadisticas';
-
-export const YO_PARTS: Record<YoPart, string> = {
-  juegos: 'Mis juegos',
-  publicaciones: 'Mis publicaciones',
-  insignias: 'Insignias',
-  estadisticas: 'Por liga y temporada',
-};
-
-export const yoPart = (raw: string | null): YoPart | null =>
-  raw === 'juegos' || raw === 'publicaciones' || raw === 'insignias' || raw === 'estadisticas' ? raw : null;
-
-/** Debajo de «Mis publicaciones»: cuántas llevas, o una invitación a la primera. */
-export const postsLine = (posts: number | null | undefined): string => (posts ? plural(posts, 'publicación', 'publicaciones') : 'Comparte cómo te fue');
+// La lógica de Yo sin pantallas (las partes, las líneas de las filas y la de tu nombre) está en yoParts.ts: la comparte
+// la app del teléfono. Se sigue importando desde aquí.
+export { YO_PARTS, identityLine, postsLine, socialLine, yoPart, type YoPart } from './yoParts';
 
 /** Lo que llevan los links de Yo a sus partes: «‹ Yo» vuelve atrás en vez de abrir Yo otra vez. */
 const YO_STATE = { yo: true } as const;
-
-/**
- * «@anaperez · Liga de los martes»: tu usuario y tu liga (la de más juegos; «y 1 más» si tienes otras). Sin usuario ni
- * ligas, null.
- */
-export function identityLine(username: string | null | undefined, leagues: readonly Pick<League, 'id' | 'name'>[], main?: string | null): string | null {
-  const first = (main && leagues.find((l) => l.id === main)) || leagues[0];
-  const where = first ? (leagues.length > 1 ? `${first.name} y ${leagues.length - 1} más` : first.name) : null;
-  return [atUsername(username), where].filter(Boolean).join(' · ') || null;
-}
-
-/** Debajo de «Amigos y seguidores»: «3 seguidores · 1 siguiendo · 5 me gusta», o «Buscar personas» si todo está en cero. */
-export function socialLine(p: Pick<PublicProfile, 'followers' | 'following' | 'likesReceived'> | null | undefined): string {
-  if (!p || (!p.followers && !p.following && !p.likesReceived)) return 'Buscar personas';
-  return [`${p.followers} ${p.followers === 1 ? 'seguidor' : 'seguidores'}`, `${p.following} siguiendo`, p.likesReceived > 0 && `${p.likesReceived} me gusta`]
-    .filter(Boolean)
-    .join(' · ');
-}
 
 /**
  * Yo (/perfil), rediseño «Calma y foco» (final/6-perfil.png y p6-perfil.png). Arriba, «Lite | Pro» (cómo ver la app),
@@ -149,9 +117,9 @@ function Yo({ uid }: { uid: string }) {
   const sports = useMemo(() => knownSports(p?.sports), [p?.sports]);
   const listsLoading = memberships.loading || leagues.loading;
   // Los números del boliche: si juega boliche, tiene juegos sueltos o (todavía) ninguna liga de otro deporte.
-  const showBowling = bowling.length > 0 || others.length === 0 || solo.data.length > 0;
+  const showBowling = showsBowling(bowling.length, others.length, solo.data.length);
   const state: BowlingNumbersState = listsLoading ? { status: 'loading' } : numbers;
-  const main = state.status === 'ready' ? state.data.perLeague.find((l) => l.stats.games > 0)?.lid : null;
+  const main = mainLeagueId(state);
   const line = identityLine(p?.username ?? auth.profile?.username, leagues.data, main);
   const open = (to: YoPart) => navigate(`?tab=${to}`, { state: YO_STATE });
 
@@ -182,7 +150,7 @@ function Yo({ uid }: { uid: string }) {
     );
   }
 
-  const zero = !p || (!p.followers && !p.following && !p.likesReceived);
+  const zero = socialIsEmpty(p);
   const friends = (dense: boolean) => (
     <ListRow
       dense={dense}

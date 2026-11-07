@@ -305,7 +305,7 @@ export function UnlockModal({ awards, leagueAwards = [], onDone }: { awards: rea
     onDone();
     const only = unlockTarget(plan);
     // La animación ya se vio aquí: el detalle se abre quieto.
-    if (go && uid) router.push({ pathname: '/u/[userId]', params: { userId: uid, tab: 'insignias', ...(only ? { insignia: only, quieta: '1' } : {}) } });
+    if (go && uid) router.push({ pathname: '/yo/[parte]', params: { parte: 'insignias', ...(only ? { insignia: only, quieta: '1' } : {}) } } as never);
   };
 
   // Atrás en Android cierra el aviso (como Esc en la web).

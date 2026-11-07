@@ -6,9 +6,8 @@
 import { Pressable, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ChevronRight, Shield } from 'lucide-react-native';
-import { useMyEsportsTeams } from '@mm/lib/data/esports';
 import { useMySquads, type MySquad } from '@mm/lib/data/squads';
-import { mySquadLine, myTeamsLine, squadTitle, squadsSectionMode } from '@mm/components/squads/logic';
+import { mySquadLine, squadTitle, squadsSectionMode } from '@mm/components/squads/logic';
 import { Card, ListRow, RowIcon, SectionHeader, Txt } from '../ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -87,24 +86,3 @@ function SquadCard({ squad }: { squad: MySquad }) {
   );
 }
 
-/** Yo › «Mis equipos» (los de fuera de una liga y los de esports): a /equipos. */
-export function MySquadsRow({ uid }: { uid: string }) {
-  const c = useColors();
-  const squads = useMySquads();
-  const esports = useMyEsportsTeams(uid);
-  const names = [...squads.data.map((s) => s.name), ...esports.data.map((t) => t.name)];
-  return (
-    <Card padded={false}>
-      <ListRow
-        icon={
-          <RowIcon>
-            <Shield size={20} color={c.accent} />
-          </RowIcon>
-        }
-        title="Mis equipos"
-        subtitle={myTeamsLine(names)}
-        onPress={toSquads}
-      />
-    </Card>
-  );
-}

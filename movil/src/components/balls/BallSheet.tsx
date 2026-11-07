@@ -37,7 +37,7 @@ const BRAND_HINTS = 6;
 
 /**
  * Hoja para registrar o cambiar una bola (BallSheet de la web, con la misma lógica: src/components/balls/sheet.ts):
- * arriba, cómo se ve y «Diseñar» (`onDesign`, en una que ya existe: el creador está en la web); «Buscar en el catálogo»;
+ * arriba, cómo se ve y «Diseñar» (`onDesign`, en una que ya existe: abre el creador, BallDesigner); «Buscar en el catálogo»;
  * nombre, marca (con las del catálogo para elegir), peso, color, cubierta, cuándo se perforó y se pulió por última vez y
  * la perforación. Todo opcional menos el nombre y el peso. Una bola con diseño no elige el color aquí. «Borrar»
  * pregunta antes. Se monta abierta: la pantalla la quita al cerrar. `catalog` (solo en una nueva): el modelo con que se

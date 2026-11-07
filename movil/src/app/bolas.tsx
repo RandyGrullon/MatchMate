@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Plus, Search, Trophy } from 'lucide-react-native';
@@ -11,12 +11,12 @@ import { useNow } from '@mm/lib/useNow';
 import { hasBallCatalog } from '@mm/components/balls/catalog';
 import { BallCard } from '@/components/balls/BallCard';
 import { CatalogSearchSheet } from '@/components/balls/BallCatalog';
+import { BallDesigner } from '@/components/balls/BallDesigner';
 import { BallSheet } from '@/components/balls/BallSheet';
 import { BallIcon } from '@/components/balls/bits';
 import { SignInCard } from '@/components/esports/EsportsIndex';
 import { confirmAsync, toast } from '@/components/feedback';
 import { BackBar, Button, Card, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -39,8 +39,8 @@ function Title({ hint }: { hint?: string }) {
  * bola en su tarjeta (dibujada con su diseño, sus números y cuántos juegos lleva desde la última pulida, con «La pulí
  * hoy»; Editar, Diseñar y Retirar en su «•••»), un solo botón «Agregar bola» y las retiradas aparte. Arriba, «Buscar
  * bolas» en el catálogo: «Agregar a mi arsenal» abre la hoja de una nueva ya llena. `?bola=<id>` abre esa; `?nueva=1`,
- * una nueva (con `&catalogo=<modelo>`, ya llena); `?buscar=<texto>`, el buscador. El creador («Diseñar»,
- * `?disenar=<id>`) está en la web. Solo la cuenta ve sus bolas; sin cuenta, invita a entrar.
+ * una nueva (con `&catalogo=<modelo>`, ya llena); `?buscar=<texto>`, el buscador; `?disenar=<id>`, el creador de esa
+ * («Diseñar», BallDesigner). Solo la cuenta ve sus bolas; sin cuenta, invita a entrar.
  */
 export default function BallsScreen() {
   const auth = useAuth();
@@ -58,7 +58,7 @@ export default function BallsScreen() {
   return <Balls />;
 }
 
-/** El creador abre la web cuando ya se cerró la hoja que estaba abierta (encima de una hoja que se cierra no se ve). */
+/** El creador se abre cuando ya se cerró la hoja que estaba abierta (una hoja encima de otra que se cierra no se ve). */
 const SHEET_CLOSE_MS = 400;
 
 function Balls() {
@@ -79,36 +79,38 @@ function Balls() {
   const isNew = params.nueva === '1';
   const catalogId = params.catalogo ?? null;
   const searching = params.buscar != null;
+  const designId = params.disenar ?? null;
   const editing = openId ? (balls.find((b) => b.id === openId) ?? null) : null;
+  const designing = designId ? (balls.find((b) => b.id === designId) ?? null) : null;
   const full = balls.length >= BALL_MAX;
 
-  /** Abre la hoja de una bola o una nueva (con `catalog`, ya llena con ese modelo); null cierra (también el buscador). */
-  const setOpen = useCallback((id: string | 'nueva' | null, catalog?: string) => {
+  /**
+   * Abre la hoja de una bola (`as` 'bola'), una nueva ('nueva'; con `catalog`, ya llena con ese modelo) o el creador de
+   * una ('disenar'); null cierra (también el buscador).
+   */
+  const setOpen = useCallback((id: string | 'nueva' | null, catalog?: string, as: 'bola' | 'disenar' = 'bola') => {
+    const one = id && id !== 'nueva' ? id : undefined;
     router.setParams({
-      bola: id && id !== 'nueva' ? id : undefined,
+      bola: as === 'bola' ? one : undefined,
       nueva: id === 'nueva' ? '1' : undefined,
       catalogo: id === 'nueva' && catalog ? catalog : undefined,
       buscar: undefined,
-      disenar: undefined,
+      disenar: as === 'disenar' ? one : undefined,
     });
   }, []);
 
-  /** «Diseñar»: el creador está en la web (al volver, la lista se vuelve a leer con el diseño nuevo). */
-  const design = useCallback(
-    (id: string) => {
-      setOpen(null);
-      setTimeout(() => {
-        void openOnWeb(`/bolas?disenar=${encodeURIComponent(id)}`).then(() => invalidate(ballTags.all));
-      }, SHEET_CLOSE_MS);
-    },
-    [setOpen],
-  );
-
-  // Un link al creador (`?disenar=<id>`) también va a la web.
-  const designId = params.disenar ?? null;
-  useEffect(() => {
-    if (designId) design(designId);
-  }, [designId, design]);
+  /**
+   * «Diseñar»: abre el creador de esa bola. Desde una hoja (la de la bola o el «•••» de la tarjeta), primero se cierra
+   * la hoja y después se abre el creador.
+   */
+  function design(id: string, fromSheet: boolean) {
+    if (!fromSheet) {
+      setOpen(id, undefined, 'disenar');
+      return;
+    }
+    setOpen(null);
+    setTimeout(() => setOpen(id, undefined, 'disenar'), SHEET_CLOSE_MS);
+  }
 
   async function act(id: string, what: () => Promise<void>, done: string) {
     if (busy) return;
@@ -176,7 +178,7 @@ function Balls() {
       stats={s}
       busy={busy === s.ball.id}
       onEdit={() => setOpen(s.ball.id)}
-      onDesign={() => design(s.ball.id)}
+      onDesign={(fromMenu) => design(s.ball.id, fromMenu)}
       onResurface={s.ball.retired ? () => undefined : () => void resurface(s.ball)}
       onRetire={() => void retire(s.ball.id, s.ball.name, !s.ball.retired)}
     />
@@ -246,14 +248,16 @@ function Balls() {
         {search}
         {content}
       </Screen>
-      {isNew || editing ? (
+      {designing ? (
+        <BallDesigner key={designing.id} ball={designing} onClose={() => setOpen(null)} />
+      ) : isNew || editing ? (
         <BallSheet
           key={editing?.id ?? `nueva:${catalogId ?? ''}`}
           ball={editing}
           today={today}
           catalog={editing ? null : catalogId}
           onClose={() => setOpen(null)}
-          onDesign={editing ? () => design(editing.id) : undefined}
+          onDesign={editing ? () => design(editing.id, true) : undefined}
         />
       ) : (
         searching && (

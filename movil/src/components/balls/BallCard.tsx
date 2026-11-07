@@ -43,8 +43,8 @@ export function BallCard({
   stats: BallStats;
   busy?: boolean;
   onEdit: () => void;
-  /** Abre el creador de la bola (en la web). */
-  onDesign?: () => void;
+  /** Abre el creador de la bola (BallDesigner); `fromMenu`: se tocó en el «•••» (su hoja se está cerrando). */
+  onDesign?: (fromMenu: boolean) => void;
   onResurface: () => void;
   onRetire: () => void;
 }) {
@@ -70,7 +70,7 @@ export function BallCard({
     <Card style={{ gap: 16, opacity: b.retired ? 0.8 : 1 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         {onDesign ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Diseñar la ${b.name}`} onPress={onDesign} style={({ pressed: p }) => ({ alignItems: 'center', gap: 2, margin: -4, padding: 4, borderRadius: 16, transform: [{ scale: p ? 0.97 : 1 }] })}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Diseñar la ${b.name}`} onPress={() => onDesign(false)} style={({ pressed: p }) => ({ alignItems: 'center', gap: 2, margin: -4, padding: 4, borderRadius: 16, transform: [{ scale: p ? 0.97 : 1 }] })}>
             <BallArt ball={b} size={64} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Palette size={12} color={c.accent} />
@@ -195,7 +195,7 @@ export function BallCard({
             hint="Su color y su dibujo"
             onPress={() => {
               setMenu(false);
-              onDesign();
+              onDesign(true);
             }}
           />
         )}
