@@ -47,4 +47,7 @@ Docs: https://docs.expo.dev/eas/index.md
   `.native.ts` (ver `../docs/movil.md`). Lo del teléfono va en `src/platform/`.
 - Qué pantallas faltan: `../docs/movil-migracion.md` (actualizarla con cada pantalla que llega).
 - Textos en español dominicano sencillo, comentarios en español, identificadores en inglés (como la web).
+- El React Compiler corre solo en `movil/src` (`babel.config.js`): lo compartido de `../src` se compila como en la web,
+  sin él (hay hooks que leen cosas de fuera de React en cada render, como `getUserId()`). Después de cambiar
+  `babel.config.js`, arrancar con `npx expo start --clear`.
 - Antes de terminar: `npx tsc --noEmit` aquí y `pnpm typecheck` en la raíz (la web no puede romperse).
