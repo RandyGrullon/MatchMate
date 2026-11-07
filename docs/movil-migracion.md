@@ -27,7 +27,13 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Descargar mis datos (el mismo JSON de la web, con la hoja de compartir del teléfono).
 - ✅ Notificaciones: activar en este teléfono y qué te avisamos (las cuatro categorías de la web), en Yo.
 - ✅ Ver mi perfil (como lo ven los demás), desde Yo.
-- 🌐 Configuración: nombre, usuario, contraseña, perfil público (foto, biografía), personas bloqueadas.
+- ✅ Configuración (`/cuenta`, `movil/src/app/cuenta/index.tsx` y `movil/src/components/account/`, AccountPage de la
+  web con la lógica de `src/components/cuenta/logic.ts`): tu nombre, tu usuario (revisa si está libre mientras escribes),
+  la contraseña (también al volver de «Olvidé mi contraseña», `?recuperar=1`), el perfil público (foto con `?foto=1`,
+  biografía de 160 y personas bloqueadas), Apariencia, Notificaciones, Mis ligas, Tus datos, MatchMate (Organizar con lo
+  que espera, Mi empresa) y Cerrar sesión. Como en la web, Yo lleva ahí con el engranaje y la foto. 🌐 Términos,
+  privacidad, Acerca de, Contáctanos y el panel del superadmin. La foto sale en JPEG (el teléfono no hace WebP).
+  La demo trae la cuenta de prueba editable (`movil/src/platform/demoAccount.ts`).
 - ✅ Apariencia (Auto / Claro / Oscuro) y salir (quita los avisos de la cuenta en este teléfono).
 
 ## 2. Hoy y Ligas
@@ -62,8 +68,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   varios (menores con tutor), editar (nombre, promedio fijo, Index, posición y dorsal, menor y tutor), vincular o
   desvincular la cuenta, juntar con…, compartir su link y eliminar. En el inicio de la liga, «Jugadores y miembros»
   con cuántos y cuántos con cuenta.
-  - 🌐 Miembros y Reclamos (las pestañas abren la web); donde el deporte lleva a su gente en su pestaña (natación:
-    Nadadores; raqueta: Parejas y niveles), «Miembros» y las cuentas; «Ver su página» de quien no es de boliche.
+  - ✅ Miembros (`/l/<liga>/miembros`, `movil/src/components/members/`, la lógica de `src/components/league/members.ts`,
+    la misma de la web) y Reclamos (`/l/<liga>/reclamos`, `movil/src/components/claims/`, `src/components/claims/panel.ts`
+    y `logic.ts`): el papel de cada cuenta, hacer o quitar admin, dejar de ser admin, anotador, «Diseña insignias», su
+    jugador y sacar de la liga; aprobar o rechazar un «ese soy yo» con nota, lo que jugó cada uno, lo que choca y «Ya
+    decididos». El segmentado Jugadores · Miembros · Reclamos cambia de pantalla; donde el deporte lleva a su gente en
+    su pestaña (natación: Nadadores; raqueta: Parejas y niveles) no sale «Jugadores» y debajo de Miembros van
+    «<su gente> y sus cuentas». La demo trae cinco cuentas más y dos reclamos (`movil/src/platform/demoMembers.ts`).
+  - 🌐 «Ver su página» de quien no es de boliche.
 - ✅ Temporadas (`/l/<liga>/temporadas`, `movil/src/components/season/Seasons.tsx`, SeasonsPage de la web): cada
   temporada con sus fechas, el campeón y los demás premios, el campeón del playoff y la tabla final guardada; la en
   curso lleva a su tabla («?temporada=» abre esa temporada en la Tabla del boliche). «Campeones» abajo en el inicio de
@@ -75,10 +87,26 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   premios con nota y el aviso), «Corregir premios», «Nueva temporada» (el nombre sigue al año, las fechas y, en las
   ligas de equipos, copiar los equipos) y el historial. En un torneo suelto, «Fechas». En el inicio, la fila.
   - 🌐 Cerrar y corregir la temporada en raqueta (su tabla usa lo que cada deporte agrega en la web).
-  - ⏳ «Hoy · Suspender» en el inicio de la liga (SuspendTodayCard de la web).
+  - «Hoy · Suspender» en el inicio de la liga (SuspendTodayCard) es de Pro en la web; la app es Lite: no va.
 - La demostración trae en «Liga de Ejemplo» la «Temporada de Ejemplo 1» cerrada (tabla final y premios) y la
   «Temporada de Ejemplo 2» en curso (`movil/src/platform/demoSeasons.ts`).
-- 🌐 Lo demás de Organizar: Miembros, Reclamos, Anotadores, Insignias, Ajustes de la liga, Buzón y Reportes.
+- ✅ Ajustes de la liga (`/l/<liga>/ajustes`, `movil/src/components/leagueSettings/`, la lógica de
+  `src/components/league/settings.ts`): los datos (y cambiarlos), el logo, las transmisiones en vivo, la invitación con
+  su código y QR, y «Respaldo y borrar la liga» (fotos viejas, borrar). 🌐 «Invitar personas», «Ir a En vivo» y
+  descargar el respaldo en el teléfono. El logo sale en JPEG.
+- ✅ Buzón (`/l/<liga>/buzon`, `movil/src/components/suggestions/`, `src/components/suggestions.ts`): las notas de los
+  jugadores, marcarlas y borrarlas; y del lado del jugador, «Escribir» (anónimo o con tu nombre) como última fila de la
+  liga o en su tarjeta.
+- ✅ Anotadores (la hoja de Organizar › La liga, `movil/src/components/scorers/`, la lógica de
+  `src/components/scorers/logic.ts`): los que anotan ahora, de la liga, por @usuario y el link para anotar (crear,
+  compartir, cambiar y quitar); y el link `/anotar/<código>` (`movil/src/app/anotar/[code].tsx`, también como enlace
+  universal; al entrar vuelve a él).
+- ✅ Reportes (`/l/<liga>/reportes`, `movil/src/components/reports/`, `src/components/report/logic.ts`): abiertos y
+  cerrados, borrar el comentario, marcar como atendido o descartar.
+- La demo trae en «Liga de Ejemplo» un anotador invitado, el link `ANTE234567` (y `VENC234567`, vencido), dos reportes
+  abiertos y uno cerrado, dos notas en el buzón y los ajustes editables (`demoScorers.ts`, `demoReports.ts`,
+  `demoSettings.ts`).
+- 🌐 Lo demás de Organizar: Insignias (en camino).
 
 ## 3. Boliche (deporte activo)
 
@@ -223,8 +251,9 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - 🌐 Esports: crear torneo o liga, lo del organizador (revisar inscripciones, sembrar, armar el cuadro, playoffs,
   agentes libres, editar, cerrar o cancelar, anotadores), anotar una partida de battle royale, corregir una serie,
   W.O., cambiar la hora, anular o decidir un reclamo, transmitir, «Conectar con Epic/Steam/Riot» y el logo del equipo.
-- ⏳ Esports: el color violeta en las pantallas de `/esports` (la app sigue con el del deporte activo) y el aviso
-  «Tu ID pasó a otra cuenta» en Hoy.
+- ✅ Esports: las pantallas de `/esports` van en el violeta de los esports (`SportColors` de
+  `movil/src/theme/theme.tsx`, el EsportsTint de la web) y el aviso «Tu ID pasó a otra cuenta» sale también en Hoy (la
+  demo trae uno).
 - Para probar esports sin cuenta: la demostración trae «Esports de Ejemplo» (`movil/src/platform/demoEsports.ts`: un
   torneo de eliminación con tu semifinal por anotar, una copa de todos contra todos con una serie por confirmar, un
   abierto con inscripción, tu equipo y tu ID; el código `UNIR2345` lleva a otro equipo).
@@ -244,7 +273,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 - ✅ Crear liga o torneo (`/crear`, el asistente de la web con su misma lógica: Nombre · Día y lugar · Temporada ·
   Invitar). 🌐 El logo al crear y los esports (llevan a la web).
-- 🌐 Organizar, Agenda.
+- ✅ Organizar (`/organizar`, `?liga=` elige la liga; `movil/src/app/organizar.tsx` y
+  `movil/src/components/organizer/Organize.tsx`, con los datos de `src/components/organizer/hubData.ts`, los mismos de
+  la web): la ficha de la liga con «Lo que organizas» (cada liga con lo que espera y su número), «Por hacer» (solo lo
+  que tiene algo) y «La liga» (o «El torneo»), cada fila a su pantalla de la app o, si todavía no la tiene, a la web.
+  Las pantallas propias de cada deporte salen de `src/sports/adminTabs.ts` (también las usa la web). En el inicio de la
+  liga, «Organizas esta liga» con lo que espera (`useLeagueToDo`, el de la web). `/l/<liga>/admin` sin pestaña abre
+  Organizar de esa liga.
+- 🌐 Agenda.
 
 ## 8b. Empresas (docs/empresas.md)
 
@@ -292,4 +328,4 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Links: los de `/unirse/…`, `/l/…`, `/p/…`, `/u/…` y `/canchas/…` abren la app (`app.json`, `+native-intent.tsx`); los archivos de
   `/.well-known/` salen de `movil/scripts/enlaces-universales.mjs` cuando estén el Team ID y las huellas.
 - ✅ Compartir (la hoja del teléfono: publicaciones, invitaciones; expo-sharing para archivos), fotos y cámara
-  (expo-image-picker), vibración (expo-haptics). ⏳ Escanear un QR (expo-camera).
+  (expo-image-picker), vibración (expo-haptics) y escanear un QR (expo-camera, `movil/src/app/escanear.tsx`).

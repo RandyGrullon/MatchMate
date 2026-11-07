@@ -1,10 +1,10 @@
+import { router } from 'expo-router';
 import { Pressable } from 'react-native';
 import { Clock } from 'lucide-react-native';
 import { useLeagueClaims } from '@mm/lib/data/claims';
 import { useLeagueCtx } from '@mm/lib/league';
 import { pendingFor } from '@mm/components/claims/logic';
 import { Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font, radius } from '@/theme/tokens';
 
@@ -25,7 +25,7 @@ export function PlayerClaimBadge({ playerId }: { playerId: string }) {
       accessibilityLabel="Reclamo pendiente"
       accessibilityHint={`${claim.claimantName} dice que es ${claim.playerName}`}
       hitSlop={6}
-      onPress={() => void openOnWeb(`/l/${lid}/admin?tab=reclamos`)}
+      onPress={() => router.push(`/l/${lid}/reclamos` as never)}
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',

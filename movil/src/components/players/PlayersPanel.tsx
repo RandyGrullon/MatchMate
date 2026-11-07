@@ -78,10 +78,12 @@ function Row({
  * nombre, el número de su deporte, menor y tutor, su cuenta (vincular o separar), compartir su link, ver su página,
  * juntarlo con otro y eliminarlo. Abajo, los miembros sin jugador. Va dentro de LeagueScope.
  */
-export function PlayersPanel() {
+export function PlayersPanel({ variant = 'full', addWhere }: { variant?: 'full' | 'accounts'; addWhere?: string | null } = {}) {
   const c = useColors();
   const { lid, league } = useLeagueCtx();
+  const accounts = variant === 'accounts';
   const people = peopleWord(league.sport);
+  const peopleTitle = people[1].charAt(0).toUpperCase() + people[1].slice(1);
   // Promedio, juegos y mejor son del boliche; los otros deportes muestran sus números en Tabla y en cada jugador.
   const sport = leagueSport(league);
   const bowling = sport === 'bowling';
@@ -145,11 +147,22 @@ export function PlayersPanel() {
 
   return (
     <View style={{ gap: 14 }}>
+      {accounts && <SectionHeader title={`${peopleTitle} y sus cuentas`} />}
       {/* Una línea, no tres: lo demás se ve en la hoja de cada uno. */}
       <Txt variant="meta" tone="muted" style={{ marginHorizontal: 4 }}>
-        {bowling ? `El número es el promedio del handicap (con ${MIN_RANK_GAMES} juegos verificados en la temporada).` : 'Toca a alguien para cambiar su nombre o su cuenta.'}
+        {accounts
+          ? `Toca a alguien para vincularlo con su cuenta.${addWhere ? ` Para agregar ${people[1]}, usa «${addWhere}».` : ''}`
+          : bowling
+            ? `El número es el promedio del handicap (con ${MIN_RANK_GAMES} juegos verificados en la temporada).`
+            : 'Toca a alguien para cambiar su nombre o su cuenta.'}
       </Txt>
-      <Button variant="primary" size="lg" full icon={<Plus size={20} color={c.accentFg} strokeWidth={2.4} />} onPress={() => setAdding(true)}>
+      <Button
+        variant={accounts ? 'quiet' : 'primary'}
+        size="lg"
+        full
+        icon={<Plus size={20} color={accounts ? c.fg : c.accentFg} strokeWidth={2.4} />}
+        onPress={() => setAdding(true)}
+      >
         {`Agregar ${people[0]}`}
       </Button>
 
@@ -176,7 +189,7 @@ export function PlayersPanel() {
         <Empty
           icon={<UserRound size={28} color={c.accent} />}
           title={`Todavía no hay ${people[1]}`}
-          text="Agrégalos o deja que cada miembro cree el suyo al unirse."
+          text={accounts && addWhere ? `Agrégalos en «${addWhere}», o deja que cada miembro cree el suyo al unirse.` : 'Agrégalos o deja que cada miembro cree el suyo al unirse.'}
         />
       ) : (
         <Card padded={false}>

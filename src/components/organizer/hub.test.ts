@@ -41,7 +41,7 @@ vi.mock('../../lib/data/organizer', async (orig) => ({
   useLeaguePending: (lid: string | null) => ({ data: lid ? data.pending : null, loading: false, error: null }),
 }));
 vi.mock('../claims/data', () => ({ usePendingClaimCount: (lid: string | null) => (lid ? data.claims : 0) }));
-vi.mock('../Notifications', () => ({
+vi.mock('../notifications/provider', () => ({
   useNotifications: () => ({ feeds: [{ lid: 'L1', suggestions: data.suggestions, events: data.events }] }),
 }));
 vi.mock('../../lib/data/reports', () => ({ useReportCounts: () => ({ data: data.reports, loading: false, error: null }) }));

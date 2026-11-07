@@ -11,6 +11,21 @@ import { openOnWeb } from './web';
 
 const TABS = ['/', '/ligas', '/social', '/yo', '/empresa', '/login', '/buscar'];
 
+/** Las pantallas de Organizar que la app tiene: la pestaña `?tab=` de la web → la pantalla en `/l/<liga>/…`. */
+const ADMIN_SCREENS: Record<string, string> = {
+  avisar: 'avisar',
+  jugadores: 'jugadores',
+  miembros: 'miembros',
+  reclamos: 'reclamos',
+  equipos: 'equipos',
+  temporada: 'temporada',
+  buzon: 'buzon',
+  liga: 'ajustes',
+  insignias: 'insignias',
+  confirmar: 'confirmar',
+  reportes: 'reportes',
+};
+
 /** La pantalla de la app para una dirección de la web (con su ?…), o null si la app no la tiene. */
 export function appRoute(href: string): string | null {
   const cut = href.search(/[?#]/);
@@ -18,6 +33,8 @@ export function appRoute(href: string): string | null {
   const query = cut < 0 || href[cut] === '#' ? '' : href.slice(cut).split('#')[0];
   if (TABS.includes(path) || path === '/auth') return path + query;
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
+  // El link para anotar (con su ?entrar=1 al volver de entrar).
+  if (/^\/anotar\/[^/]+$/.test(path)) return path + query;
   // La campana (con sus ?ver= y ?deporte=) y una invitación a una liga.
   if (path === '/avisos') return path + query;
   if (/^\/invitacion\/[^/]+$/.test(path)) return path;
@@ -49,13 +66,18 @@ export function appRoute(href: string): string | null {
   // El perfil (?tab= de la web: Publicaciones o Juegos se eligen ahí).
   const user = /^\/u\/([^/]+)/.exec(path);
   if (user) return `/u/${user[1]}`;
-  // Organizar › Avisar y Jugadores (la pestaña ?tab= de la web); lo demás de Organizar abre la liga.
+  // Organizar (`/organizar?liga=`) y cada pantalla suya (la pestaña ?tab= de la web). Sin pestaña, Organizar de esa liga
+  // (como la web); una pestaña que la app todavía no tiene se abre en la web.
+  if (path === '/organizar') return path + query;
+  // Configuración de la cuenta (con su ?foto=1 o ?recuperar=1).
+  if (path === '/cuenta') return path + query;
   const admin = /^\/l\/([^/]+)\/admin$/.exec(path);
-  const adminTab = /[?&]tab=([^&]+)/.exec(query)?.[1];
-  if (admin && adminTab === 'avisar') return `/l/${admin[1]}/avisar`;
-  if (admin && adminTab === 'jugadores') return `/l/${admin[1]}/jugadores`;
-  if (admin && adminTab === 'equipos') return `/l/${admin[1]}/equipos`;
-  if (admin && adminTab === 'temporada') return `/l/${admin[1]}/temporada`;
+  if (admin) {
+    const adminTab = /[?&]tab=([^&]+)/.exec(query)?.[1];
+    const screen = adminTab ? ADMIN_SCREENS[adminTab] : undefined;
+    if (!adminTab || adminTab === 'pendientes') return `/organizar?liga=${admin[1]}`;
+    return screen ? `/l/${admin[1]}/${screen}` : null;
+  }
   // Las otras partes de la liga (perfil, admin…) todavía están en la liga misma.
   const league = /^\/l\/([^/]+)(\/.*)?$/.exec(path);
   if (league) return `/l/${league[1]}`;

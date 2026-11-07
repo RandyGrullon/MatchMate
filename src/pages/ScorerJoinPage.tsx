@@ -2,19 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { CalendarClock, ClipboardPen, Link2Off, LogIn, Trophy, UserPlus } from 'lucide-react';
 import { useAuth } from '../lib/auth';
-import {
-  getScorerLinkPreview,
-  isScorerRateLimited,
-  joinAsScorer,
-  normalizeScorerCode,
-  scorerJoinErrorText,
-  type ScorerJoinResult,
-  type ScorerLinkInfo,
-  type ScorerLinkPreview,
-} from '../lib/data/scorers';
+import { getScorerLinkPreview, joinAsScorer, normalizeScorerCode, type ScorerLinkInfo, type ScorerLinkPreview } from '../lib/data/scorers';
 import { sportMeta } from '../sports/registry';
 import { LeagueLogo } from '../components/home/LeagueCard';
-import { DeadInvite, InfoLine, InviteHero, heroArtClass, leagueTypeLine } from '../components/screens/InviteBits';
+import { DeadInvite, InfoLine, InviteHero, heroArtClass } from '../components/screens/InviteBits';
+import { leagueTypeLine } from '../components/screens/leagueTypeLine';
 import { ScreenTop, linkButton } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
 import { SportSplash } from '../components/splash/SportSplash';
@@ -25,13 +17,13 @@ import {
   deadLinkText,
   expiryDay,
   hasScorerIntent,
-  joinedScorerText,
   rememberScorerIntent,
   scorerJoinNext,
   scorerReach,
   scorerReachForYou,
   takeScorerIntent,
 } from '../components/scorers/logic';
+import { deadStatusOf, enterWithLink, scorerJoinLines, scorerJoinSub } from '../components/scorers/join';
 import { Button, Card, Loading, LoadError } from '../components/ui';
 
 /**
@@ -144,35 +136,14 @@ export default function ScorerJoinPage() {
   );
 }
 
-/** Qué sigue después de «Entrar para anotar»: ir al torneo (con el aviso), el vacío del link, o el error en palabras. */
-export type ScorerJoinOutcome =
-  | { kind: 'go'; path: string; toast: string | null }
-  | { kind: 'dead'; preview: Exclude<ScorerLinkPreview, ScorerLinkInfo> }
-  | { kind: 'error'; message: string };
+// «Entrar para anotar» (qué sigue después de joinAsScorer) es lógica pura: src/components/scorers/join.ts.
+export { enterWithLink, type ScorerJoinOutcome } from '../components/scorers/join';
 
-/**
- * «Entrar para anotar» (a mano o solo al volver de /login): llama a `join` (joinAsScorer) una vez y dice qué sigue:
- * ir al torneo (joined, upgraded o already), el vacío del link que ya no sirve, que no sirve para esta cuenta o que
- * hubo muchos intentos, o el error en palabras (la tarjeta sigue ahí para intentarlo otra vez).
- */
-export async function enterWithLink(
-  code: string,
-  info: Pick<ScorerLinkInfo, 'title'>,
-  join: (code: string) => Promise<ScorerJoinResult>,
-): Promise<ScorerJoinOutcome> {
-  try {
-    const r = await join(code);
-    if (!r) return { kind: 'dead', preview: null };
-    if (r.status === 'joined' || r.status === 'upgraded' || r.status === 'already') {
-      return { kind: 'go', path: r.path, toast: joinedScorerText(r.status, r.title || info.title) };
-    }
-    return { kind: 'dead', preview: { status: r.status } };
-  } catch (e) {
-    console.warn('[anotar] entrar', e);
-    if (isScorerRateLimited(e)) return { kind: 'dead', preview: { status: 'rate_limited' } };
-    return { kind: 'error', message: scorerJoinErrorText(e) };
-  }
-}
+const LINE_ICONS = {
+  que: <ClipboardPen className="size-5" />,
+  donde: <Trophy className="size-5" />,
+  hasta: <CalendarClock className="size-5" />,
+};
 
 /**
  * Lo que se ve según el link (sin datos propios: se dibuja igual en las pruebas): el link que no sirve (o que no
@@ -198,7 +169,7 @@ export function ScorerJoinView({
   const info = preview && preview.status === 'ok' ? preview : null;
 
   if (!info) {
-    const dead = deadLinkText(preview ? (preview.status as Exclude<NonNullable<ScorerLinkPreview>['status'], 'ok'>) : null);
+    const dead = deadLinkText(deadStatusOf(preview));
     return (
       <AppShell>
         <div className="mx-auto flex max-w-md flex-col px-2">
@@ -239,15 +210,15 @@ export function ScorerJoinView({
             }
             kicker="Te invitaron a anotar"
             title={info.name}
-            sub={info.title && info.title !== info.name ? `en ${info.title}` : undefined}
+            sub={scorerJoinSub(info) ?? undefined}
             meta={leagueTypeLine(info.sport, torneo ? 'torneo' : 'liga', info.visibility)}
           />
 
           <Card className="mt-6 overflow-hidden">
             <dl>
-              <InfoLine icon={<ClipboardPen className="size-5" />} label="Qué haces" value="Anotas los resultados. No te inscribe como jugador." />
-              {reach && <InfoLine icon={<Trophy className="size-5" />} label="Dónde" value={reach} />}
-              {day && <InfoLine icon={<CalendarClock className="size-5" />} label="Hasta cuándo sirve" value={`El link vence el ${day}`} />}
+              {scorerJoinLines(reach, day).map((l) => (
+                <InfoLine key={l.key} icon={LINE_ICONS[l.key]} label={l.label} value={l.value} />
+              ))}
             </dl>
           </Card>
 

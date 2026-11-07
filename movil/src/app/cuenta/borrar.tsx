@@ -61,7 +61,7 @@ export default function DeleteAccountScreen() {
     try {
       await deleteMyAccount(uid);
       toast('Tu cuenta se borró. Gracias por jugar con MatchMate.');
-      router.replace('/');
+      router.dismissTo('/');
     } catch (e) {
       setActionError(accountErrorMessage(e));
     } finally {

@@ -1,10 +1,9 @@
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { useAuth } from '../lib/auth';
 import { useMyMemberships } from '../lib/data/members';
-import { pendingTotal, useLeaguePending, type LeaguePending } from '../lib/data/organizer';
 import { organizeHref, organizedLeagueIds } from '../lib/organize';
-import { useNotifications } from './Notifications';
+import { useLeagueCount, useOrganizeTotal } from './organizeCount';
 
 /**
  * El número de la fila «Organizar» de Yo › Configuración (ya no va en la barra de abajo; en Lite y en Pro): todo lo que
@@ -16,47 +15,11 @@ import { useNotifications } from './Notifications';
  * la fila, al volver a la pantalla, sale con el número de una vez, sin parpadear.
  */
 
-/** Más ligas que esto no se cuentan en la fila (quien organiza tantas las ve todas en Organizar). */
-export const MAX_COUNTED = 8;
-
-const counts = new Map<string, number>();
-const listeners = new Set<() => void>();
-let version = 0;
-
-function setCount(lid: string, n: number) {
-  if ((counts.get(lid) ?? 0) === n) return;
-  if (n) counts.set(lid, n);
-  else counts.delete(lid);
-  version++;
-  for (const l of listeners) l();
-}
-
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-};
-const snapshot = () => version;
-
-/** La suma de lo pendiente en esas ligas (lo último que se contó de cada una). */
-export function pendingSum(lids: readonly string[]): number {
-  return lids.reduce((sum, lid) => sum + (counts.get(lid) ?? 0), 0);
-}
-
-/** Solo pruebas: lo contado vuelve a cero (y se puede poner un número a mano). */
-export function setPendingCountForTests(lid: string, n: number): void {
-  setCount(lid, n);
-}
-
-/** Lo que suma una liga: lo pendiente (league_pending) más sus notas nuevas del buzón (las de la campana). */
-export function leagueCount(p: LeaguePending | null | undefined, feeds: readonly { lid: string; suggestions: readonly unknown[] }[], lid: string): number {
-  return pendingTotal(p) + (feeds.find((f) => f.lid === lid)?.suggestions.length ?? 0);
-}
+export { MAX_COUNTED, leagueCount, pendingSum, setPendingCountForTests } from './organizeCount';
 
 /** Cuenta lo pendiente de una liga (no dibuja nada). */
 function PendingProbe({ lid }: { lid: string }) {
-  const { feeds } = useNotifications();
-  const n = leagueCount(useLeaguePending(lid).data, feeds, lid);
-  useEffect(() => setCount(lid, n), [lid, n]);
+  useLeagueCount(lid);
   return null;
 }
 
@@ -69,12 +32,11 @@ export function useOrganize(enabled: boolean): { href: string; total: number; pr
   const { user } = useAuth();
   const { pathname } = useLocation();
   const members = useMyMemberships(enabled ? user?.uid : undefined);
-  useSyncExternalStore(subscribe, snapshot, snapshot);
   const organized = enabled ? organizedLeagueIds(members.data) : [];
-  const counted = organized.slice(0, MAX_COUNTED);
+  const { counted, total } = useOrganizeTotal(organized);
   return {
     href: organizeHref(pathname, organized),
-    total: enabled ? pendingSum(counted) : 0,
+    total: enabled ? total : 0,
     probes: counted.map((lid) => <PendingProbe key={lid} lid={lid} />),
   };
 }

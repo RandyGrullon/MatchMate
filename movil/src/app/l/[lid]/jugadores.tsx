@@ -1,5 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
-import { Globe } from 'lucide-react-native';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { invalidate } from '@mm/lib/data/client';
 import { tags } from '@mm/lib/data/keys';
 import { useLeagueCtx } from '@mm/lib/league';
@@ -9,9 +8,7 @@ import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope } from '@/components/league/LeagueScope';
 import { PeopleTabs } from '@/components/players/PeopleTabs';
 import { PlayersPanel } from '@/components/players/PlayersPanel';
-import { BackBar, Button, LoadError, Screen, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
-import { useColors } from '@/theme/theme';
+import { BackBar, LoadError, Screen, Txt } from '@/components/ui';
 
 /**
  * Organizar › Jugadores (`/l/<liga>/admin?tab=jugadores` en la web): la lista de jugadores de la liga con agregar,
@@ -29,7 +26,6 @@ export default function PlayersScreen() {
 }
 
 function PlayersScreenBody() {
-  const c = useColors();
   const { lid, league, isAdmin } = useLeagueCtx();
   const merged = peopleInOwnTab(leagueSport(league));
   return (
@@ -41,12 +37,11 @@ function PlayersScreenBody() {
         <>
           <Txt variant="title">{adminScreenTitle('jugadores', league.kind) ?? ''}</Txt>
           {merged ? (
-            <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/admin?tab=miembros`)}>
-              Abrir en la web
-            </Button>
+            // Donde el deporte lleva a su gente en su pestaña, lo de las cuentas está en Miembros (como la web).
+            <Redirect href={`/l/${lid}/miembros` as never} />
           ) : (
             <>
-              <PeopleTabs />
+              <PeopleTabs active="jugadores" />
               <PlayersPanel />
             </>
           )}

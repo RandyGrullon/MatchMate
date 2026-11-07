@@ -11,33 +11,13 @@ import { useMyLeagues } from '../components/home/useHomeData';
 import { SportTheme } from '../components/league/SportTheme';
 import { NoticeSlot } from '../components/NoticeSlot';
 import { OrganizeHub, useOrganizerCtx } from '../components/organizer/Hub';
-import { organizeUrl, pickOrganizeLeague } from '../components/organizer/hubLogic';
+import { organizeUrl, pickOrganizeLeague, rememberedOrganizeLeague, rememberOrganizeLeague } from '../components/organizer/hubLogic';
 import { LeaguePickerChip, LeaguePickerSheet } from '../components/organizer/LeaguePicker';
 import { canEnterLeagues } from '../components/squads/logic';
 import { SquadRequestsPanel } from '../components/squads/SquadRequestsPanel';
 import { AppShell } from '../components/Shell';
 import { BackBar } from '../components/cuenta/kit';
 import { Button, Card, ListRow, ListSkeleton, Loading, LoadError, RowIcon } from '../components/ui';
-
-/** La última liga que se miró en Organizar (en este teléfono, por cuenta). */
-const LAST_KEY = (uid: string) => `mm:organizar:${uid}`;
-
-function rememberedLeague(uid: string | undefined): string | null {
-  if (!uid) return null;
-  try {
-    return localStorage.getItem(LAST_KEY(uid));
-  } catch {
-    return null;
-  }
-}
-
-function rememberLeague(uid: string, lid: string) {
-  try {
-    localStorage.setItem(LAST_KEY(uid), lid);
-  } catch {
-    // almacenamiento no disponible
-  }
-}
 
 /**
  * Organizar (`/organizar`, desde Yo › Configuración, en Lite y en Pro; `?liga=` elige la liga): «‹ Configuración», el título, la ficha de
@@ -56,9 +36,9 @@ export default function OrganizePage() {
   const organized = organizedLeagueIds(mine.memberships.data);
   const requested = params.get('liga');
   // La pedida se abre de una (sus permisos se miran al cargarla); si no, se espera a saber cuáles organizas.
-  const lid = requested && auth.isSuper ? requested : mine.memberships.loading ? null : pickOrganizeLeague(organized, requested, rememberedLeague(uid), auth.isSuper);
+  const lid = requested && auth.isSuper ? requested : mine.memberships.loading ? null : pickOrganizeLeague(organized, requested, rememberedOrganizeLeague(uid), auth.isSuper);
   useEffect(() => {
-    if (uid && lid) rememberLeague(uid, lid);
+    if (uid && lid) rememberOrganizeLeague(uid, lid);
   }, [uid, lid]);
 
   if (auth.loading) return <Loading />;

@@ -22,7 +22,7 @@ vi.mock('../lib/data/organizer', () => ({
   useLeaguePending: () => ({ data: null, loading: false, error: null }),
   pendingTotal: (p: { total: number } | null | undefined) => p?.total ?? 0,
 }));
-vi.mock('./Notifications', () => ({ useNotifications: () => ({ feeds: [] }) }));
+vi.mock('./notifications/provider', () => ({ useNotifications: () => ({ feeds: [] }) }));
 
 const { MAX_COUNTED, leagueCount, pendingSum, setPendingCountForTests, useOrganize } = await import('./OrganizeNav');
 

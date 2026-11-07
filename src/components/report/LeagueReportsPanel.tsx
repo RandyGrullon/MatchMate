@@ -5,6 +5,7 @@ import { useLeagueCtx } from '../../lib/league';
 import { useFeedback } from '../feedback';
 import { Button, Card, ListSkeleton, LoadError, Segmented } from '../ui';
 import { ReportItem, ResolveButtons } from './ReportItem';
+import { deleteCommentConfirm, LEAGUE_REPORTS_INTRO, reportFilterOptions, reportsEmptyText } from './logic';
 
 const PAGE = 50;
 
@@ -20,19 +21,16 @@ export function LeagueReportsPanel() {
   const [filter, setFilter] = useState<Exclude<ReportFilter, 'all'>>('open');
   const list = useReports(true, { league: lid, status: filter, page: 0, pageSize: PAGE });
   const { rows, open, all } = list.data;
-  const closed = Math.max(0, all - open);
+  const empty = reportsEmptyText(filter);
 
   return (
     <div className="flex flex-col gap-3.5">
       {/* Una línea, no cuatro: quién lo ve y que nadie sabe quién reportó. */}
-      <p className="mx-1 text-meta text-muted">Comentarios, avisos, juegos y publicaciones de tu liga. Nadie sabe quién los reportó.</p>
+      <p className="mx-1 text-meta text-muted">{LEAGUE_REPORTS_INTRO}</p>
       <Segmented<Exclude<ReportFilter, 'all'>>
         label="Qué reportes ver"
         full
-        options={[
-          { key: 'open', label: open > 0 ? `Abiertos (${open})` : 'Abiertos' },
-          { key: 'closed', label: closed > 0 ? `Cerrados (${closed})` : 'Cerrados' },
-        ]}
+        options={reportFilterOptions(open, all)}
         value={filter}
         onChange={setFilter}
       />
@@ -45,10 +43,8 @@ export function LeagueReportsPanel() {
           <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
             <CheckCircle2 className="size-7" />
           </span>
-          <h2 className="mt-4 text-section">{filter === 'open' ? 'Nada por revisar' : 'Todavía no hay reportes cerrados'}</h2>
-          <p className="mt-1.5 max-w-sm text-meta text-muted">
-            {filter === 'open' ? 'Cuando alguien reporte algo de tu liga, sale aquí.' : 'Los que descartes o atiendas quedan aquí.'}
-          </p>
+          <h2 className="mt-4 text-section">{empty.title}</h2>
+          <p className="mt-1.5 max-w-sm text-meta text-muted">{empty.text}</p>
         </Card>
       ) : (
         <Card className="overflow-hidden">
@@ -68,12 +64,7 @@ function LeagueActions({ report }: { report: Report }) {
   const [busy, setBusy] = useState(false);
 
   async function removeComment() {
-    const ok = await confirm({
-      title: '¿Borrar el comentario?',
-      message: report.target?.text ? `“${report.target.text}”` : 'Se borra para todos.',
-      confirmText: 'Borrar',
-      danger: true,
-    });
+    const ok = await confirm(deleteCommentConfirm(report));
     if (!ok) return;
     setBusy(true);
     try {

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CalendarDays, CalendarRange, Clock, MapPin, UserRound, Users } from 'lucide-react';
-import { sportMeta } from '../../sports/registry';
 import { WhatsAppLink } from '../league/LeagueInfo';
 import type { InfoKey, InfoRow } from '../league/logic';
 import { Card, RowIcon, cx } from '../ui';
@@ -86,12 +85,8 @@ export function InfoCard({
 /** El cuadro del logo o de la escena del deporte arriba de la pantalla (96 px). */
 export const heroArtClass = 'size-24 rounded-3xl';
 
-/** «Boliche · Liga pública», «Pádel · Liga privada», «Boliche · Torneo». */
-export function leagueTypeLine(sport: string | null | undefined, kind: string | null | undefined, visibility: string | null | undefined): string {
-  const word = kind === 'torneo' ? 'Torneo' : visibility === 'public' ? 'Liga pública' : 'Liga privada';
-  const meta = sportMeta(sport);
-  return meta ? `${meta.short} · ${word}` : word;
-}
+/** «Boliche · Liga pública», «Pádel · Liga privada», «Boliche · Torneo» (la misma de la app, sin pantalla). */
+export { leagueTypeLine } from './leagueTypeLine';
 
 /**
  * Una invitación que no sirve o que ya se respondió (código cambiado, link vencido, de otra cuenta…): qué pasó en una

@@ -359,6 +359,26 @@ export function pickOrganizeLeague(organized: readonly string[], requested: stri
 /** La dirección del inicio de Organizar con esa liga elegida. */
 export const organizeUrl = (lid: string) => `/organizar?liga=${encodeURIComponent(lid)}`;
 
+/** La última liga que se miró en Organizar (en este teléfono o navegador, por cuenta). */
+const LAST_KEY = (uid: string) => `mm:organizar:${uid}`;
+
+export function rememberedOrganizeLeague(uid: string | undefined): string | null {
+  if (!uid) return null;
+  try {
+    return localStorage.getItem(LAST_KEY(uid));
+  } catch {
+    return null;
+  }
+}
+
+export function rememberOrganizeLeague(uid: string, lid: string) {
+  try {
+    localStorage.setItem(LAST_KEY(uid), lid);
+  } catch {
+    // almacenamiento no disponible
+  }
+}
+
 /**
  * Lo que la cuenta puede en esa liga, igual que adentro de la liga (src/components/LeagueShell.tsx): dueño (o
  * superadmin), admin, anotador (en boliche, solo en los torneos sin liga) y su jugador.

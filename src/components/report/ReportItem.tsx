@@ -1,37 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { CheckCircle2, ExternalLink, Flag } from 'lucide-react';
-import {
-  REPORT_KIND_LABEL,
-  REPORT_NOTE_MAX,
-  REPORT_REASON_LABEL,
-  reportErrorText,
-  reportTargetUrl,
-  resolveReport,
-  type Report,
-  type ReportReason,
-} from '../../lib/data/reports';
+import { REPORT_KIND_LABEL, REPORT_NOTE_MAX, REPORT_REASON_LABEL, reportErrorText, reportTargetUrl, resolveReport, type Report } from '../../lib/data/reports';
 import { relativeTime } from '../../lib/notifications';
 import { useFeedback } from '../feedback';
 import { Badge, Button, Sheet, Textarea, cx } from '../ui';
+import { ATTEND_NOTE_LABEL, ATTEND_NOTE_PLACEHOLDER, attendNoteHint, dismissConfirm, reasonTone, resolvedText, resolvedToast } from './logic';
 
-type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
-
-/** Color del motivo: lo grave en rojo. */
-export function reasonTone(reason: ReportReason): Tone {
-  if (reason === 'menores' || reason === 'acoso') return 'danger';
-  if (reason === 'ofensivo' || reason === 'falso') return 'warn';
-  return 'neutral';
-}
-
-/** Cómo quedó un reporte cerrado: «Descartado por Ana · hace 2 h». */
-export function resolvedText(r: Pick<Report, 'status' | 'handledByName' | 'handledAt'>, now = Date.now()): string | null {
-  if (r.status === 'open') return null;
-  const what = r.status === 'actioned' ? 'Atendido' : 'Descartado';
-  const who = r.handledByName ? ` por ${r.handledByName}` : '';
-  const when = r.handledAt && Number.isFinite(Date.parse(r.handledAt)) ? ` · ${relativeTime(Date.parse(r.handledAt), now)}` : '';
-  return `${what}${who}${when}`;
-}
+// El color del motivo y cómo quedó un reporte cerrado son lógica pura (logic.ts, también la usa la app del teléfono).
+export { reasonTone, resolvedText } from './logic';
 
 /**
  * Un reporte en una lista (consola y Admin de la liga): el motivo, qué es y de qué liga, lo reportado a la vista (con
@@ -126,14 +103,13 @@ export function ResolveButtons({ report }: { report: Report }) {
   const [busy, setBusy] = useState<'dismissed' | 'actioned' | null>(null);
   const [attending, setAttending] = useState(false);
   const [note, setNote] = useState('');
-  const others = report.sameTarget > 1 ? ` y los otros ${report.sameTarget - 1} de lo mismo` : '';
 
   async function run(status: 'dismissed' | 'actioned', text: string | null) {
     if (busy) return false;
     setBusy(status);
     try {
       await resolveReport(report.id, status, text);
-      toast(status === 'actioned' ? 'Reporte atendido' : 'Reporte descartado');
+      toast(resolvedToast(status));
       return true;
     } catch (e) {
       console.error(e);
@@ -145,11 +121,7 @@ export function ResolveButtons({ report }: { report: Report }) {
   }
 
   async function dismiss() {
-    const ok = await confirm({
-      title: '¿Descartar el reporte?',
-      message: `Queda cerrado sin hacer nada${others}. Si vuelve a pasar, lo pueden reportar otra vez.`,
-      confirmText: 'Descartar',
-    });
+    const ok = await confirm(dismissConfirm(report));
     if (ok) await run('dismissed', null);
   }
 
@@ -180,14 +152,15 @@ export function ResolveButtons({ report }: { report: Report }) {
       >
         <label className="flex flex-col gap-1.5">
           <span className="text-sm">
-            ¿Qué se hizo?<span className="text-muted"> Queda anotado en el reporte{others}.</span>
+            {ATTEND_NOTE_LABEL}
+            <span className="text-muted">{attendNoteHint(report)}</span>
           </span>
           <Textarea
             rows={3}
             maxLength={REPORT_NOTE_MAX}
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, REPORT_NOTE_MAX))}
-            placeholder="Hablé con el admin y borró el comentario."
+            placeholder={ATTEND_NOTE_PLACEHOLDER}
           />
         </label>
       </Sheet>

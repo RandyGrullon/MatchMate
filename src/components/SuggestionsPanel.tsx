@@ -2,21 +2,11 @@ import type { CSSProperties } from 'react';
 import { CheckCheck, EyeOff, Lightbulb, Mail, MailOpen, Trash2 } from 'lucide-react';
 import { deleteSuggestion, markSuggestions, useSuggestions } from '../lib/data';
 import { useLeagueCtx } from '../lib/league';
-import { formatDate, toIsoDate } from '../lib/format';
 import type { Suggestion } from '../lib/types';
 import { useBusy } from './busy';
 import { useAction, useFeedback } from './feedback';
+import { SUGGESTION_DELETED_TEXT, deleteSuggestionConfirm, markLabel, noteDay, unreadIds } from './suggestions';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, cx } from './ui';
-
-/** Día de la nota: "hoy", "ayer" o la fecha (sin la hora: no ayuda a adivinar quién la escribió). */
-function noteDay(ms: number | undefined): string {
-  if (ms == null) return 'hoy';
-  const day = toIsoDate(new Date(ms));
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  return day === toIsoDate(today) ? 'hoy' : day === toIsoDate(yesterday) ? 'ayer' : formatDate(day);
-}
 
 /** Organizadores: las notas del buzón de sugerencias (anónimas), para leerlas, marcarlas y borrarlas. */
 export function SuggestionsPanel() {
@@ -29,8 +19,8 @@ export function SuggestionsPanel() {
   const unread = suggestions.data.filter((s) => !s.read);
 
   async function remove(s: Suggestion) {
-    const ok = await confirm({ title: '¿Borrar la sugerencia?', message: `“${s.text.length > 140 ? `${s.text.slice(0, 140)}…` : s.text}”`, confirmText: 'Borrar', danger: true });
-    if (ok) await deleting.run(s.id, () => run(() => deleteSuggestion(lid, s.id), 'Sugerencia borrada'));
+    const ok = await confirm(deleteSuggestionConfirm(s.text));
+    if (ok) await deleting.run(s.id, () => run(() => deleteSuggestion(lid, s.id), SUGGESTION_DELETED_TEXT));
   }
 
   return (
@@ -45,7 +35,7 @@ export function SuggestionsPanel() {
           </p>
         </div>
         {unread.length > 0 && (
-          <Button size="sm" icon={<CheckCheck className="size-4" />} onClick={() => run(() => markSuggestions(lid, unread.map((s) => s.id), true))}>
+          <Button size="sm" icon={<CheckCheck className="size-4" />} onClick={() => run(() => markSuggestions(lid, unreadIds(unread), true))}>
             Marcar todas como leídas
           </Button>
         )}
@@ -70,8 +60,8 @@ export function SuggestionsPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label={s.read ? 'Marcar como no leída' : 'Marcar como leída'}
-                    title={s.read ? 'Marcar como no leída' : 'Marcar como leída'}
+                    aria-label={markLabel(s.read)}
+                    title={markLabel(s.read)}
                     icon={s.read ? <Mail className="size-4" /> : <MailOpen className="size-4" />}
                     onClick={() => run(() => markSuggestions(lid, [s.id], !s.read))}
                   />

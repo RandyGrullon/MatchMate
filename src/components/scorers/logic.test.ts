@@ -17,8 +17,15 @@ import {
   expiryDay,
   foldName,
   hasScorerIntent,
+  hitName,
   inviteConfirm,
+  inviteeName,
   inviteScorerText,
+  linkCreateText,
+  memberSearchLabel,
+  REVOKE_LINK_CONFIRM,
+  ROTATE_LINK_CONFIRM,
+  scorerTabs,
   joinedScorerText,
   leavesOnRemove,
   linkStateText,
@@ -389,5 +396,34 @@ describe('volver de /login con ?entrar=1: la marca de que tocó el botón', () =
     expect(() => rememberScorerIntent('ABCDEFGH23', now, broken)).not.toThrow();
     expect(hasScorerIntent('ABCDEFGH23', now, broken)).toBe(false);
     expect(hasScorerIntent('ABCDEFGH23', now, null)).toBe(false);
+  });
+});
+
+describe('la hoja: pestañas, buscadores, nombres y el link (lo mismo en la web y en el teléfono)', () => {
+  it('«De la liga» es «Del torneo» en un torneo sin liga; el buscador lo dice igual', () => {
+    expect(scorerTabs('liga').map((t) => t.label)).toEqual(['De la liga', 'Por @usuario', 'Link']);
+    expect(scorerTabs('torneo').map((t) => [t.key, t.label])).toEqual([
+      ['liga', 'Del torneo'],
+      ['usuario', 'Por @usuario'],
+      ['link', 'Link'],
+    ]);
+    expect(memberSearchLabel('liga')).toBe('Buscar en la liga');
+    expect(memberSearchLabel('torneo')).toBe('Buscar en el torneo');
+  });
+
+  it('el nombre de quien sale en la búsqueda: su nombre, su @usuario o «Sin nombre» / «Esa persona»', () => {
+    expect(hitName(hit())).toBe('Nora');
+    expect(hitName(hit({ name: '' }))).toBe('@nora');
+    expect(hitName(hit({ name: '', username: '' }))).toBe('Sin nombre');
+    expect(inviteeName(hit({ name: '' }))).toBe('@nora');
+    expect(inviteeName(hit({ name: '', username: '' }))).toBe('Esa persona');
+  });
+
+  it('crear, cambiar y quitar el link', () => {
+    expect(linkCreateText('liga')).toBe('Quien entre con el link queda como anotador de la liga, sin jugador. Vence a los 7 días y sirve 20 veces.');
+    expect(linkCreateText('torneo')).toContain('anotador de este torneo');
+    expect(ROTATE_LINK_CONFIRM).toMatchObject({ confirmText: 'Cambiar link' });
+    expect(ROTATE_LINK_CONFIRM.danger).toBeUndefined();
+    expect(REVOKE_LINK_CONFIRM).toMatchObject({ confirmText: 'Quitar link', danger: true });
   });
 });

@@ -5,7 +5,7 @@ import { pendingTotal, useLeaguePending } from '../../../lib/data/organizer';
 import { useLeagueCtx } from '../../../lib/league';
 import type { BowlingEvent } from '../../../lib/types';
 import { usePendingClaimCount } from '../../claims/data';
-import { useNotifications } from '../../Notifications';
+import { useNotifications } from '../../notifications/provider';
 import { pendingLine } from '../../organizer/logic';
 
 /**

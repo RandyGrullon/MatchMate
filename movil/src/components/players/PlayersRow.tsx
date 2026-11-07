@@ -6,7 +6,6 @@ import { leagueRows } from '@mm/components/organizer/hubLogic';
 import { peopleInOwnTab } from '@mm/components/players/list';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
 import { ListRow, RowIcon } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -45,7 +44,7 @@ export function PlayersRow({ lid, league }: { lid: string; league: League }) {
       }
       title={row.title}
       subtitle={row.subtitle ?? null}
-      onPress={() => (row.tab === 'jugadores' ? router.push({ pathname: '/l/[lid]/jugadores', params: { lid } }) : openOnWeb(`/l/${lid}/admin?tab=${row.tab ?? 'miembros'}`))}
+      onPress={() => (row.tab === 'jugadores' ? router.push({ pathname: '/l/[lid]/jugadores', params: { lid } }) : router.push(`/l/${lid}/miembros` as never))}
     />
   );
 }

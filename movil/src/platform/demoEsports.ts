@@ -79,6 +79,8 @@ interface State {
   /** Los equipos de temporada (el lado de cada inscrito en sus series). */
   seasonTeams: Row[];
   teamPlayers: Row[];
+  /** «Tu ID pasó a otra cuenta» (esports_my_id_moves): uno sin ver. */
+  moves?: Row[];
 }
 
 /** Las series de las fases (se arman una vez, al sembrar la demostración). */
@@ -156,6 +158,8 @@ const gameId = (userId: string, display: string, ranks: Row = {}): Row => ({
 
 function seed(uid: string): State {
   const s: State = { matches: [], sides: [], links: [], entries: [], members: [], gameIds: [], teams: [], teamMembers: [], photos: [], code: TEAM_CODE, seasonTeams: [], teamPlayers: [] };
+  // Un ID viejo tuyo con el que alguien entró por Riot en otra cuenta (el aviso de Hoy, Esports y Mi ID).
+  s.moves = [{ id: id('9', 1), game: GAME, platform: '', idDisplay: 'Viejo#5678', provider: 'riot', createdAt: iso(-2 * 60 * 60_000) }];
   // Los equipos de esports (globales) y los de la cuenta.
   s.teams.push({ id: MY_TEAM, game: GAME, name: 'Equipo de Ejemplo', tag: 'EJE', description: 'Un equipo de ejemplo para probar la app.', logo_path: null, captain_id: uid, member_count: 6, created_at: iso(-20 * DAY), updated_at: iso(-2 * DAY) });
   for (const o of OTHERS) {
@@ -532,9 +536,10 @@ export function esportsRpc(uid: string, fn: string, a: Record<string, unknown>):
     case 'esports_my_game_ids':
       return s.gameIds.filter((r) => r.user_id === uid).map(toMine);
     case 'esports_my_id_moves':
-      return [];
+      return s.moves ?? [];
     case 'esports_seen_id_move':
-      return null;
+      s.moves = (s.moves ?? []).filter((m) => m.id !== a.p_id);
+      return done(null);
     case 'esports_team_code':
       return a.p_team === MY_TEAM ? s.code : null;
     case 'esports_team_preview': {

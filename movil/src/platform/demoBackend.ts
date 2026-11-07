@@ -16,18 +16,28 @@ import { demoPlayersSelect, forgetDemoPlayers, playersRpc } from './demoPlayers'
 import { demoTeamsSelect, forgetDemoTeams, teamsRpc } from './demoTeams';
 import { demoLeagueRpc, demoLeagueSelect, forgetDemoLeague } from './demoLeague';
 import { demoSeasonsSelect, forgetDemoSeasons, seasonsRpc } from './demoSeasons';
+import { demoMembersSelect, forgetDemoMembers, membersRpc } from './demoMembers';
+import { accountRpc, demoAccountSelect, demoUpdatePassword, forgetDemoAccount } from './demoAccount';
+import { demoSettingsSelect, forgetDemoSettings, settingsRpc } from './demoSettings';
+import { demoScorersSelect, forgetDemoScorers, scorersRpc } from './demoScorers';
+import { forgetDemoReports, reportsRpc } from './demoReports';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
  * Las tablas de las ligas ficticias por capas, de abajo hacia arriba: la liga (demoLeague.ts), lo que cambiaron las
- * temporadas («Suspender un día» mueve eventos; empezar una cambia las fechas de la liga), los equipos del boliche y
- * los jugadores. Cada capa lee la de abajo entera; los filtros se aplican en la de arriba que tiene la tabla. null si
+ * temporadas («Suspender un día» mueve eventos; empezar una cambia las fechas de la liga), los miembros y los reclamos
+ * (Organizar › Miembros y Reclamos), los equipos del boliche y los jugadores. Cada capa lee la de abajo entera; los filtros se aplican en la de arriba que tiene la tabla. null si
  * la tabla no es de las ligas ficticias.
  */
 const baseLayer = (t: string, f: readonly DemoFilter[] = []) => demoLeagueSelect(DEMO_USER, t, f);
 const seasonsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSeasonsSelect(t, f, (x) => baseLayer(x)) ?? baseLayer(t, f);
-const teamsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamsSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
+const membersLayer = (t: string, f: readonly DemoFilter[] = []) => demoMembersSelect(t, f, (x) => seasonsLayer(x)) ?? seasonsLayer(t, f);
+/** Encima de los miembros, la liga de los anotadores invitados por link (demoScorers.ts). */
+const scorersLayer = (t: string, f: readonly DemoFilter[] = []) => demoScorersSelect(t, f, (x) => membersLayer(x)) ?? membersLayer(t, f);
+const teamsLayer = (t: string, f: readonly DemoFilter[] = []) => demoTeamsSelect(t, f, (x) => scorersLayer(x)) ?? scorersLayer(t, f);
 const demoLayer = (t: string, f: readonly DemoFilter[] = []) => demoPlayersSelect(t, f, (x) => teamsLayer(x)) ?? teamsLayer(t, f);
+/** Arriba de todo, Ajustes de la liga y el Buzón (demoSettings.ts): los datos cambiados, la liga borrada, las notas. */
+const settingsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSettingsSelect(t, f, (x) => demoLayer(x)) ?? demoLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -53,6 +63,11 @@ export function setDemo(on: boolean) {
       forgetDemoPlayers();
       forgetDemoTeams();
       forgetDemoSeasons();
+      forgetDemoMembers();
+      forgetDemoAccount();
+      forgetDemoSettings();
+      forgetDemoScorers();
+      forgetDemoReports();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -408,12 +423,13 @@ export function createDemoBackend(): Backend {
       },
       resetPassword: async () => notInDemo(),
       resendConfirmation: async () => notInDemo(),
-      updatePassword: async () => notInDemo(),
+      updatePassword: (password) => demoUpdatePassword(password),
     },
     select: async <T,>(q: { table: string; filters?: { col: string; op: string; value: unknown }[] }) => {
-      if (q.table === 'profiles') return [profileRow()] as T[];
+      // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
+      if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = demoLayer(q.table, q.filters);
+      const league = settingsLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -426,11 +442,25 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
-      // Los jugadores de la liga ficticia (Organizar › Jugadores).
-      const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
+      // Ajustes de la liga y el Buzón (demoSettings.ts): leen todas las capas.
+      const fromSettings = settingsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromSettings !== undefined) return structuredClone(fromSettings) as T;
+      // Los anotadores (demoScorers.ts: invitar, el link para anotar) y los reportes de la liga (demoReports.ts).
+      const fromScorers = scorersRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromScorers !== undefined) return structuredClone(fromScorers) as T;
+      const fromReports = reportsRpc(DEMO_USER, fn, args);
+      if (fromReports !== undefined) return structuredClone(fromReports) as T;
+      // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto y bloqueos.
+      const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : null));
+      if (fromAccount !== undefined) return structuredClone(fromAccount) as T;
+      // Los jugadores de la liga ficticia (Organizar › Jugadores): leen la liga con las temporadas y los miembros encima.
+      const fromPlayers = playersRpc(DEMO_USER, fn, args, (t) => membersLayer(t) ?? []);
       if (fromPlayers !== undefined) return structuredClone(fromPlayers) as T;
-      // Los equipos del boliche (fijos y de torneo): leen la liga con las temporadas y los jugadores encima.
-      const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], (x) => seasonsLayer(x)) ?? seasonsLayer(t) ?? []);
+      // Organizar › Miembros y Reclamos (demoMembers.ts): leen todas las capas.
+      const fromMembers = membersRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromMembers !== undefined) return structuredClone(fromMembers) as T;
+      // Los equipos del boliche (fijos y de torneo): leen la liga con las temporadas, los miembros y los jugadores encima.
+      const fromTeams = teamsRpc(DEMO_USER, fn, args, (t) => demoPlayersSelect(t, [], (x) => membersLayer(x)) ?? membersLayer(t) ?? []);
       if (fromTeams !== undefined) return structuredClone(fromTeams) as T;
       // Las temporadas y «Suspender un día» (demoSeasons.ts): leen todas las capas.
       const fromSeasons = seasonsRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);

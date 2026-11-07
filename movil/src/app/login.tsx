@@ -79,7 +79,9 @@ function PasswordInput({ value, onChange, label, newPassword, invalid }: { value
 export default function LoginScreen() {
   const c = useColors();
   const { isDark } = useTheme();
-  const params = useLocalSearchParams<{ modo?: string }>();
+  const params = useLocalSearchParams<{ modo?: string; next?: string }>();
+  // A dónde volver al entrar (como `?next=` de la web): solo una dirección de la app, nunca otro sitio.
+  const next = typeof params.next === 'string' && params.next.startsWith('/') && !params.next.startsWith('//') ? params.next : '/';
   const [mode, setMode] = useState<Mode>(params.modo === 'registro' ? 'registro' : 'entrar');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -129,10 +131,10 @@ export default function LoginScreen() {
       } else if (signingUp) {
         const { needsConfirm } = await signUp(name.trim(), email, password, adult, undefined, terms, null);
         if (needsConfirm) setSent('confirmar');
-        else router.dismissTo('/');
+        else router.dismissTo(next as never);
       } else {
         await login(email, password);
-        router.dismissTo('/');
+        router.dismissTo(next as never);
       }
     } catch (e) {
       setError(authErrorMessage(e));

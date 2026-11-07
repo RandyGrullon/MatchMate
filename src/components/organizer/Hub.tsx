@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import {
   Award,
@@ -21,23 +21,14 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { useAuth } from '../../lib/auth';
-import { useLeague, useLeagueMembers, useMembership, usePlayers, useSubmissions } from '../../lib/data';
-import { pendingTotal, useLeaguePending } from '../../lib/data/organizer';
-import { useBadgeNotices } from '../../lib/data/badges';
-import { useReportCounts } from '../../lib/data/reports';
-import { toIsoDate } from '../../lib/format';
-import { leagueSport, sportMeta } from '../../sports/registry';
+import { leagueSport } from '../../sports/registry';
 import { hasScreens, useSportScreens, type SportScreens } from '../../sports/screens';
 import { useLeagueCtx, type LeagueCtx } from '../../lib/league';
-import { useNow } from '../../lib/useNow';
-import { usePendingClaimCount } from '../claims/data';
-import { PEOPLE_TABS } from '../league/logic';
-import { useNotifications } from '../Notifications';
 import { BusyIcon, useBusy } from '../busy';
 import { Card, ListRow, ListSkeleton, RowIcon, SectionHeader, cx } from '../ui';
 import { BOWLING_TEAMS_TAB } from '../bowlingTeams/logic';
-import { leagueOf, leagueRows, organizeUrl, teamsToBuild, toDoItems, toDoLine, type LeagueRowKind, type ToDoItem, type ToDoKind } from './hubLogic';
+import { ownTabsInfo, useLeagueRowItems, useToDoItems } from './hubData';
+import { organizeUrl, type LeagueRowKind, type ToDoItem, type ToDoKind } from './hubLogic';
 
 // La hoja de Anotadores se baja al tocar la fila (quien no la abre no la carga).
 const loadScorers = () => import('../scorers/ScorersSheet');
@@ -55,17 +46,7 @@ export function CountBubble({ n, className }: { n: number; className?: string })
   );
 }
 
-/**
- * La liga que se organiza, como dentro de la liga (src/components/LeagueShell.tsx): dueño o admin (el superadmin, en
- * todas), anotador y su jugador. null mientras carga, si no existe o si no la puede ver.
- */
-export function useOrganizerCtx(lid: string | null): { ctx: LeagueCtx | null; loading: boolean; error: Error | null } {
-  const { user, isSuper } = useAuth();
-  const league = useLeague(lid ?? undefined);
-  const membership = useMembership(lid ?? undefined, user?.uid);
-  const ctx = useMemo(() => (lid && league.data ? leagueOf(lid, league.data, membership.data, isSuper) : null), [lid, league.data, membership.data, isSuper]);
-  return { ctx, loading: !!lid && (league.loading || membership.loading), error: league.error ?? membership.error ?? null };
-}
+export { useOrganizerCtx, useToDoCount, useToDoSummary } from './hubData';
 
 /** Las líneas de las filas de Organizar a 1,4 (como el diseño): filas de 57 px con subtítulo y 56 sin él. */
 const ROW_LEADING = 'leading-[1.4]';
@@ -83,9 +64,6 @@ const TODO_ICONS: Record<ToDoKind, LucideIcon> = {
   paso: ListChecks,
 };
 
-/** Las pestañas generales de antes (una del deporte con la misma clave la reemplaza, no va aparte). */
-const GENERIC_TABS = new Set(['pendientes', 'jugadores', 'aprobar', 'miembros', 'reclamos', 'reportes', 'confirmar', 'insignias', 'buzon', 'temporada', 'liga', 'avisar']);
-
 /** Las pantallas propias del boliche: los equipos fijos de una liga (un torneo suelto arma los suyos en el torneo). */
 const BOWLING_TABS: NonNullable<SportScreens['adminTabs']> = [
   {
@@ -101,16 +79,10 @@ export function useOwnTabs(league: LeagueCtx['league']) {
   const bowling = sport === 'bowling';
   const screens = useSportScreens(bowling ? null : sport);
   const own = bowling ? (league.kind === 'torneo' ? [] : BOWLING_TABS) : (screens?.adminTabs ?? []);
-  const peopleTab = own.find((t) => PEOPLE_TABS.has(t.key)) ?? null;
   return {
-    bowling,
+    ...ownTabsInfo(bowling, own),
     /** Las pantallas del deporte ya llegaron (o no tiene): mientras tanto no se abre una pantalla que después cambia. */
     ready: bowling || !hasScreens(sport) || !!screens,
-    /** Las que van aparte (no reemplazan una general). */
-    extra: own.filter((t) => !GENERIC_TABS.has(t.key)),
-    all: own,
-    peopleTab,
-    playersMerged: !bowling && !!peopleTab && !own.some((t) => t.key === 'jugadores'),
   };
 }
 
@@ -120,63 +92,8 @@ export function useOwnTabs(league: LeagueCtx['league']) {
  * los primeros pasos de una liga nueva). Solo lo que tiene algo.
  */
 export function useToDo(): { items: ToDoItem[]; loading: boolean; error: Error | null } {
-  const { lid, league, isAdmin } = useLeagueCtx();
-  const uid = useAuth().user?.uid;
-  const own = useOwnTabs(league);
-  const on = isAdmin ? lid : undefined;
-  const subs = useSubmissions(own.bowling ? on : undefined, 'pendiente');
-  const players = usePlayers(own.bowling ? on : undefined);
-  const pending = useLeaguePending(on ?? null);
-  const claims = usePendingClaimCount(on ?? null, uid);
-  const feed = useNotifications().feeds.find((f) => f.lid === lid);
-  const reports = useReportCounts(isAdmin, lid).data;
-  const reviews = useBadgeNotices().data.reviews.filter((r) => r.leagueId === lid).length;
-  const now = useNow();
-  const items = useMemo(() => {
-    const names = new Map(players.data.map((p) => [p.id, p.name]));
-    // Aprobar envíos (con foto del marcador) es del boliche; los otros deportes confirman en sus partidos.
-    const submissions = own.bowling
-      ? [...subs.data]
-          .sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0))
-          .map((s) => ({ name: names.get(s.playerId) ?? 'Jugador', scores: s.scores ?? [], hasPhoto: !!s.photoId }))
-      : [];
-    const suggestions = [...(feed?.suggestions ?? [])].sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0));
-    return toDoItems({
-      lid,
-      kind: league.kind,
-      pending: pending.data,
-      submissions,
-      claims,
-      suggestions,
-      reports: reports?.open ?? 0,
-      reviews,
-      teams: teamsToBuild(feed?.events ?? [], toIsoDate(now)),
-      playersTab: own.playersMerged ? (own.peopleTab?.key ?? null) : null,
-      now: now.getTime(),
-    });
-  }, [lid, league.kind, own.bowling, own.playersMerged, own.peopleTab, subs.data, players.data, pending.data, claims, feed, reports, reviews, now]);
-  return { items, loading: !pending.data && !pending.error, error: pending.error };
-}
-
-/**
- * Cuántas cosas esperan en una liga que organizas, lo mismo que suman los globos de su «Por hacer» (league_pending, el
- * buzón, los reportes abiertos y las insignias por confirmar), sin leer los envíos uno por uno: sirve para varias ligas
- * a la vez (la hoja de ligas y el número de la fila «Organizar» de Yo › Configuración).
- */
-export function useToDoCount(lid: string | null | undefined): number {
-  return useToDoSummary(lid).count;
-}
-
-/** Lo mismo que useToDoCount, con la línea en palabras («2 juegos por aprobar · 1 nota en el buzón»; '' sin nada). */
-export function useToDoSummary(lid: string | null | undefined): { count: number; line: string; loading: boolean } {
-  const pending = useLeaguePending(lid ?? null).data;
-  const feed = useNotifications().feeds.find((f) => f.lid === lid);
-  const reports = useReportCounts(!!lid, lid).data;
-  const reviews = useBadgeNotices().data.reviews.filter((r) => r.leagueId === lid).length;
-  if (!lid) return { count: 0, line: '', loading: false };
-  const notes = feed?.suggestions.length ?? 0;
-  const open = reports?.open ?? 0;
-  return { count: pendingTotal(pending) + notes + open + reviews, line: toDoLine(pending, { notes, reports: open, reviews }), loading: !pending };
+  const { league } = useLeagueCtx();
+  return useToDoItems(useOwnTabs(league));
 }
 
 /** «Por hacer»: una fila por cosa, con su número (o chevron). Nada si no hay nada (mientras carga, el esqueleto). */
@@ -234,26 +151,9 @@ const LEAGUE_ICONS: Record<LeagueRowKind, LucideIcon> = {
 export function LeagueSection({ toDo, className }: { toDo: readonly ToDoItem[]; className?: string }) {
   const { lid, league } = useLeagueCtx();
   const own = useOwnTabs(league);
-  const players = usePlayers(lid);
-  const members = useLeagueMembers(lid);
-  const reports = useReportCounts(true, lid).data;
   const loadingSheet = useBusy();
   const [scorers, setScorers] = useState(false);
-  const ids = new Set(players.data.map((p) => p.id));
-  const rows = leagueRows({
-    kind: league.kind,
-    photos: sportMeta(leagueSport(league))?.photos ?? false,
-    schedule: league.schedule,
-    seasonStart: league.seasonStart,
-    seasonEnd: league.seasonEnd,
-    players: players.loading ? null : players.data.length,
-    accounts: members.loading || players.loading ? null : members.data.filter((m) => m.playerId && ids.has(m.playerId)).length,
-    members: members.loading ? null : members.data.length,
-    own: own.extra.map((t) => ({ key: t.key, label: t.label, ...(t.subtitle ? { subtitle: t.subtitle } : {}) })),
-    playersMerged: own.playersMerged,
-    buzonInToDo: toDo.some((t) => t.kind === 'buzon'),
-    reportsTab: (reports?.all ?? 0) > 0 && !toDo.some((t) => t.kind === 'reportes'),
-  });
+  const rows = useLeagueRowItems(toDo, own);
   const iconOf = (key: string): LucideIcon | undefined => own.extra.find((t) => `own:${t.key}` === key)?.icon;
   const openScorers = async () => {
     await loadingSheet.run('anotadores', () => loadScorers().catch(() => undefined));

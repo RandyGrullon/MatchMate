@@ -11,6 +11,8 @@ import { LeagueCard } from '@/components/LeagueCard';
 import { LogoLockup } from '@/components/Logo';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { EsportsHomeRow } from '@/components/esports/EsportsRow';
+import { ScreenNotice } from '@/components/esports/bits';
+import { useIdMoveNotice } from '@/components/esports/EsportsIndex';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -208,6 +210,8 @@ export default function HoyScreen() {
       ) : leagues.data.length ? (
         <>
           <TodaySection leagues={mine.all} uid={uid!} loading={loading} />
+          {/* El único aviso de la pantalla, a la vista: justo debajo de lo de hoy. */}
+          <HomeNotice uid={uid ?? null} />
           <EsportsHomeRow uid={uid} />
           <SectionHeader title="Tus ligas" />
           <View style={{ gap: 10 }}>
@@ -219,6 +223,7 @@ export default function HoyScreen() {
         </>
       ) : (
         <>
+          <HomeNotice uid={uid ?? null} />
           <JoinCard />
           <Card padded={false}>
             <ListRow
@@ -256,3 +261,9 @@ const styles = StyleSheet.create({
   badge: { position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   ticket: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 });
+
+/** El aviso de Hoy (NoticeSlot de la web): el de un ID de esports tuyo que pasó a otra cuenta, si hay. */
+function HomeNotice({ uid }: { uid: string | null }) {
+  const moved = useIdMoveNotice(uid);
+  return <ScreenNotice notices={[moved]} />;
+}

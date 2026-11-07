@@ -1,4 +1,5 @@
 import { Shirt } from 'lucide-react';
+import { TEAM_ADMIN_TAB } from '../../../sports/adminTabs';
 import type { SportScreens } from '../../../sports/screens';
 import BasketballAdmin from './BasketballAdmin';
 import BasketballEvent from './BasketballEvent';
@@ -23,7 +24,7 @@ const screens: SportScreens = {
   Player: BasketballPlayer,
   Playoffs: BasketballPlayoffs,
   useSeasonTable: useBasketballSeasonTable,
-  adminTabs: [{ key: 'equipos', label: 'Equipos', icon: Shirt, Component: BasketballAdmin }],
+  adminTabs: [{ ...TEAM_ADMIN_TAB, icon: Shirt, Component: BasketballAdmin }],
   tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mi equipo' },
 };
 

@@ -9,9 +9,10 @@ import { Avatar } from '../Avatar';
 import { useBusy } from '../busy';
 import { saveErrorMessage, useFeedback } from '../feedback';
 import { ProfileAvatar } from '../profile/ProfileAvatar';
-import { atUsername, plural } from '../social/socialFormat';
+import { atUsername } from '../social/socialFormat';
 import { Button, Card, Empty, ListRow, ListSkeleton, LoadError, RowIcon, SectionHeader, Sheet } from '../ui';
 import { BigField, BigTextarea, ErrorNote } from './kit';
+import { avatarErrorText, bioErrorText, blockedSubtitle, sameBio } from './logic';
 
 /**
  * «Perfil público» en Configuración (docs/red-social.md): lo que ven los demás en tu perfil y en tus publicaciones (tu
@@ -22,28 +23,8 @@ import { BigField, BigTextarea, ErrorNote } from './kit';
 
 type Part = 'foto' | 'bio' | 'bloqueadas';
 
-/** El error de guardar la biografía en palabras simples. */
-export function bioErrorText(e: unknown): string {
-  const code = e && typeof e === 'object' ? (e as { code?: unknown }).code : undefined;
-  const message = e instanceof Error ? e.message.trim() : '';
-  if (code === 'palabras' || /^palabras\b/.test(message)) return 'Tu texto tiene palabras que no se permiten';
-  return saveErrorMessage(e);
-}
-
-/** El error de preparar, subir o quitar la foto de perfil en palabras simples. */
-export function avatarErrorText(e: unknown): string {
-  const code = e && typeof e === 'object' ? (e as { code?: unknown }).code : undefined;
-  const kind = e && typeof e === 'object' ? (e as { kind?: unknown }).kind : undefined;
-  if (code === 'imagen') return 'No se pudo usar esa imagen. Prueba con otra (JPG, PNG o WebP).';
-  if (kind === 'rate_limited' || code === 'rate_limited') return 'Cambiaste tu foto muchas veces hoy. Prueba mañana.';
-  return saveErrorMessage(e);
-}
-
-/** Debajo de «Personas bloqueadas»: cuántas, o que no hay. */
-export const blockedLine = (n: number): string => (n > 0 ? plural(n, 'persona', 'personas') : 'No has bloqueado a nadie');
-
-/** La biografía sin espacios de más (como la guarda la base). */
-const cleanBio = (s: string) => s.replace(/\s+/g, ' ').trim();
+// Los textos y las reglas sin pantalla están en ./logic (los usa también la app del teléfono).
+export { avatarErrorText, bioErrorText, blockedLine } from './logic';
 
 export function PublicProfileSection({
   name,
@@ -118,7 +99,7 @@ export function PublicProfileSection({
             </RowIcon>
           }
           title="Personas bloqueadas"
-          subtitle={blocks.loading && !blocks.data.length ? 'Las que no ven tu perfil' : blockedLine(blocks.data.length)}
+          subtitle={blockedSubtitle(blocks.loading, blocks.data.length)}
           onClick={() => setSheet('bloqueadas')}
         />
       </Card>
@@ -257,7 +238,7 @@ export function BioForm({ current, onDone }: { current: string | null | undefine
   async function save(e: FormEvent) {
     e.preventDefault();
     if (busy || over) return;
-    if (cleanBio(value) === cleanBio(current ?? '')) {
+    if (sameBio(value, current)) {
       onDone();
       return;
     }

@@ -1,4 +1,5 @@
 import { LandPlot } from 'lucide-react';
+import { GOLF_ADMIN_TAB } from '../../../sports/adminTabs';
 import type { SportScreens } from '../../../sports/screens';
 import GolfAdmin from './GolfAdmin';
 import GolfEvent from './GolfEvent';
@@ -18,7 +19,7 @@ const screens: SportScreens = {
   MyProfile: GolfMyProfile,
   Player: GolfPlayerPage,
   useSeasonTable: useGolfSeasonTable,
-  adminTabs: [{ key: 'campos', label: 'Campos', icon: LandPlot, Component: GolfAdmin }],
+  adminTabs: [{ ...GOLF_ADMIN_TAB, icon: LandPlot, Component: GolfAdmin }],
   tabs: { home: 'Rondas', feed: null, standings: 'Orden de mérito', profile: 'Mi golf' },
 };
 

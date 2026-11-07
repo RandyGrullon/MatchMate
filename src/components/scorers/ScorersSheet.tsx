@@ -31,12 +31,17 @@ import {
   adminCount,
   adminsLine,
   emptyScorersText,
+  hitName,
   inviteConfirm,
+  inviteeName,
   inviteScorerText,
+  LINK_SHARE_HINT,
   LINK_WARNING,
+  linkCreateText,
   linkStateText,
   madeText,
   makeConfirm,
+  memberSearchLabel,
   MINORS_NO_LINK,
   MINORS_WARNING,
   nobodyFoundText,
@@ -45,16 +50,22 @@ import {
   pickableMembers,
   playsHere,
   removeConfirm,
+  REVOKE_LINK_CONFIRM,
+  ROTATE_LINK_CONFIRM,
+  SCORER_DONE,
   scorerReach,
   scorerReachText,
   scorerRows,
   scorerShareText,
+  scorerTabs,
+  SHORT_QUERY_TEXT,
   usernameHintText,
   type ScorerRow,
+  type ScorersTab,
 } from './logic';
 import { shareOrigin } from '../../lib/origin';
 
-export type ScorersTab = 'liga' | 'usuario' | 'link';
+export type { ScorersTab } from './logic';
 
 export interface ScorersSheetProps {
   /** El torneo desde el que se abre (el texto de los avisos y a dónde llevan). */
@@ -131,11 +142,11 @@ function ScorersSheetOpen({ target, participants, onClose, initialTab = 'liga' }
     await act(`m:${m.uid}`, () => setScorer(m, false, target), ask.done);
   }
 
-  const retire = (inv: Pick<ScorerInvite, 'id'>) => act(`i:${inv.id}`, () => cancelInvite(inv.id, lid), 'Invitación retirada');
+  const retire = (inv: Pick<ScorerInvite, 'id'>) => act(`i:${inv.id}`, () => cancelInvite(inv.id, lid), SCORER_DONE.retired);
 
   async function invite(hit: PersonHit) {
     if (busy) return;
-    const name = hit.name || handleOf(hit.username) || 'Esa persona';
+    const name = inviteeName(hit);
     const ask = inviteConfirm(name, league);
     if (ask && !(await confirm(ask))) return;
     setBusy(`u:${hit.id}`);
@@ -151,27 +162,18 @@ function ScorersSheetOpen({ target, participants, onClose, initialTab = 'liga' }
     }
   }
 
-  const createLink = () => act('link', () => createScorerLink(lid, target), 'Link para anotar listo');
+  const createLink = () => act('link', () => createScorerLink(lid, target), SCORER_DONE.linkReady);
 
   async function rotateLink(link: ScorerLink) {
     if (busy) return;
-    const ok = await confirm({
-      title: '¿Cambiar el link para anotar?',
-      message: 'El link de antes deja de servir. Quien ya entró sigue anotando.',
-      confirmText: 'Cambiar link',
-    });
-    if (ok) await act('link', () => rotateScorerLink(lid, link), 'Link cambiado');
+    const ok = await confirm(ROTATE_LINK_CONFIRM);
+    if (ok) await act('link', () => rotateScorerLink(lid, link), SCORER_DONE.linkChanged);
   }
 
   async function revokeLink(link: ScorerLink) {
     if (busy) return;
-    const ok = await confirm({
-      title: '¿Quitar el link para anotar?',
-      message: 'Deja de servir. Quien ya entró sigue anotando; lo quitas de «Anotan ahora».',
-      confirmText: 'Quitar link',
-      danger: true,
-    });
-    if (ok) await act('link:quitar', () => revokeScorerLink(lid, link), 'Link quitado');
+    const ok = await confirm(REVOKE_LINK_CONFIRM);
+    if (ok) await act('link:quitar', () => revokeScorerLink(lid, link), SCORER_DONE.linkRemoved);
   }
 
   return (
@@ -227,17 +229,17 @@ export interface ScorersBodyProps {
   onRevokeLink: (link: ScorerLink) => void;
 }
 
-const TABS: { key: ScorersTab; label: string; icon: ReactNode }[] = [
-  { key: 'liga', label: 'De la liga', icon: <Users className="size-4 max-[389px]:hidden" /> },
-  { key: 'usuario', label: 'Por @usuario', icon: <Search className="size-4 max-[389px]:hidden" /> },
-  { key: 'link', label: 'Link', icon: <Link2 className="size-4 max-[389px]:hidden" /> },
-];
+const TAB_ICONS: Record<ScorersTab, ReactNode> = {
+  liga: <Users className="size-4 max-[389px]:hidden" />,
+  usuario: <Search className="size-4 max-[389px]:hidden" />,
+  link: <Link2 className="size-4 max-[389px]:hidden" />,
+};
 
 /** Lo de adentro de la hoja (sin datos propios: se dibuja igual en las pruebas). */
 export function ScorersBody(p: ScorersBodyProps) {
   const { league, rows, admins, members, busy } = p;
-  // En un torneo sin liga, «De la liga» es «Del torneo».
-  const tabs = league.kind === 'torneo' ? TABS.map((t) => (t.key === 'liga' ? { ...t, label: 'Del torneo' } : t)) : TABS;
+  // En un torneo sin liga, «De la liga» es «Del torneo» (scorerTabs).
+  const tabs = scorerTabs(league.kind).map((t) => ({ ...t, icon: TAB_ICONS[t.key] }));
   return (
     // Alta desde el principio: no cambia de tamaño con cada letra del buscador.
     <div className="flex min-h-[55dvh] flex-col gap-4 sm:min-h-80">
@@ -378,7 +380,7 @@ function FromLeague({ league, members, players, query, onQuery, busy, onMake }: 
   const list = pickableMembers(members.data, query, players);
   return (
     <div className="flex flex-col gap-3">
-      <SearchBox value={query} onChange={onQuery} label={league.kind === 'torneo' ? 'Buscar en el torneo' : 'Buscar en la liga'} placeholder="Busca por nombre" />
+      <SearchBox value={query} onChange={onQuery} label={memberSearchLabel(league.kind)} placeholder="Busca por nombre" />
       {members.error && !members.data.length ? (
         <LoadError error={members.error} />
       ) : members.loading && !members.data.length ? (
@@ -454,7 +456,7 @@ function ByUsername({ lid, league, members, access, players, busy, onMake, onInv
       body = <p className="py-6 text-center text-sm text-muted">{usernameHintText(!!league.hasMinors)}</p>;
       break;
     case 'short':
-      body = <p className="py-6 text-center text-sm text-muted">Escribe al menos 2 letras.</p>;
+      body = <p className="py-6 text-center text-sm text-muted">{SHORT_QUERY_TEXT}</p>;
       break;
     case 'none':
       body = <p className="py-6 text-center text-sm text-muted">{nobodyFoundText(input, !!league.hasMinors)}</p>;
@@ -494,7 +496,7 @@ function HitRow({
   onRetire: ScorersBodyProps['onRetire'];
 }) {
   const action = personAction(hit, member, invite);
-  const name = hit.name || handleOf(hit.username) || 'Sin nombre';
+  const name = hitName(hit);
   const plays = !!member && playsHere(member, players);
   let button: ReactNode;
   switch (action) {
@@ -579,7 +581,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
           link={{ kind: 'url', url }}
           leagueName={title}
           text={scorerShareText(title)}
-          hint="Manda el link para anotar por WhatsApp o donde quieras."
+          hint={LINK_SHARE_HINT}
         />
         <p className="truncate text-center font-mono text-xs text-muted">{url.replace(/^https?:\/\//, '')}</p>
         <p className="text-center text-xs text-muted">{linkStateText(link, league.tz)}</p>
@@ -610,10 +612,7 @@ function LinkPanel({ league, target, access, busy, onCreateLink, onRotateLink, o
   return (
     <div className="flex flex-col gap-2">
       <p className="text-center text-sm text-muted">{linkStateText(link, league.tz)}</p>
-      <p className="text-center text-xs text-muted">
-        Quien entre con el link queda como anotador de {league.kind === 'torneo' ? 'este torneo' : 'la liga'}, sin jugador. Vence a los 7 días y sirve 20
-        veces.
-      </p>
+      <p className="text-center text-xs text-muted">{linkCreateText(league.kind)}</p>
       <Button variant="primary" size="xl" className="mt-2 w-full" icon={<Ticket className="size-5" />} loading={busy === 'link'} disabled={!!busy} onClick={onCreateLink}>
         Crear link para anotar
       </Button>

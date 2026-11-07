@@ -1,12 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, ClipboardList, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
 import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
-import { adminScreenTitle } from '@mm/components/organizer/hubLogic';
+import { adminScreenTitle, organizeUrl } from '@mm/components/organizer/hubLogic';
+import { useLeagueToDo } from '@mm/components/league/home/useLeagueData';
 import { eventTitle, formatDateLong, toIsoDate } from '@mm/lib/format';
 import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
@@ -20,6 +21,10 @@ import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
 import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { ChampionsSection } from '@/components/season/Seasons';
 import { SeasonRow } from '@/components/seasonAdmin/SeasonRow';
+import { CountBubble } from '@/components/organizer/Organize';
+import { SettingsRow } from '@/components/leagueSettings/SettingsRow';
+import { SuggestionsRow } from '@/components/suggestions/SuggestionsRow';
+import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
 import { RacketHome } from '@/components/racket/RacketHome';
 import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
@@ -189,11 +194,14 @@ export default function LeagueScreen() {
         );
       })()}
 
-      {/* Organizar (quien la organiza): equipos, jugadores y miembros, temporada y fechas, y avisar a toda la liga. */}
+      {/* Organizar (quien la organiza): «Organizas esta liga» (Organizar con «Por hacer» y «La liga», con lo que espera) y
+          a un toque equipos, jugadores y miembros, temporada y fechas, y avisar a toda la liga. */}
       {(membership.data?.role === 'admin' || membership.data?.role === 'owner') && (
         <>
           <SectionHeader title="Organizar" />
           <Card padded={false}>
+            <OrganizeRow lid={l.id} bowling={isBowling} />
+            <Divider inset={68} />
             {isBowling && l.kind !== 'torneo' && (
               <>
                 <TeamsRow lid={l.id} league={l} />
@@ -213,6 +221,10 @@ export default function LeagueScreen() {
               title={adminScreenTitle('avisar', l.kind) ?? ''}
               onPress={() => router.push({ pathname: '/l/[lid]/avisar', params: { lid: l.id } })}
             />
+            <Divider inset={68} />
+            <SettingsRow lid={l.id} league={l} />
+            <Divider inset={68} />
+            <SuggestionsRow lid={l.id} league={l} />
           </Card>
         </>
       )}
@@ -244,6 +256,10 @@ export default function LeagueScreen() {
                 />
               </>
             )}
+            {/* El buzón de sugerencias: la última fila (no sale a quien organiza ni a quien no es miembro). */}
+            <LeagueScope lid={l.id}>
+              <SuggestionBox row divider />
+            </LeagueScope>
           </Card>
           {/* Los equipos fijos de la liga (solo si tiene). */}
           <LeagueScope lid={l.id}>
@@ -279,6 +295,7 @@ export default function LeagueScreen() {
       ) : sport === 'golf' ? (
         <LeagueScope lid={l.id}>
           <GolfHome />
+          <SuggestionBox />
         </LeagueScope>
       ) : sport === 'swimming' ? (
         <LeagueScope lid={l.id}>
@@ -291,6 +308,7 @@ export default function LeagueScreen() {
             ]}
           />
           <SwimHome />
+          <SuggestionBox />
         </LeagueScope>
       ) : sport === 'esports' ? (
         <LeagueScope lid={l.id}>
@@ -304,16 +322,19 @@ export default function LeagueScreen() {
             ]}
           />
           <EsportsHome />
+          <SuggestionBox />
         </LeagueScope>
       ) : family === 'racket' ? (
         <LeagueScope lid={l.id}>
           <SportLinks lid={l.id} mine={!!membership.data?.playerId} />
           <RacketHome />
+          <SuggestionBox />
         </LeagueScope>
       ) : family === 'team' ? (
         <LeagueScope lid={l.id}>
           <SportLinks lid={l.id} mine={!!membership.data?.playerId} mineLabel="Mi equipo" />
           <TeamHome />
+          <SuggestionBox />
         </LeagueScope>
       ) : (
         <Empty
@@ -331,5 +352,25 @@ export default function LeagueScreen() {
         {membership.data ? 'Tabla, jugadores y más en la web' : 'Ver la liga en la web'}
       </Button>
     </Screen>
+  );
+}
+
+/** «Organizas esta liga» (la fila de la web): lo que espera en Organizar, con su número; lleva a Organizar de la liga. */
+function OrganizeRow({ lid, bowling }: { lid: string; bowling: boolean }) {
+  const c = useColors();
+  const toDo = useLeagueToDo(lid, bowling);
+  return (
+    <ListRow
+      icon={
+        <RowIcon>
+          <ClipboardList size={20} color={c.accent} />
+        </RowIcon>
+      }
+      title="Organizas esta liga"
+      subtitle={toDo.line || 'Jugadores, fechas y ajustes'}
+      accessibilityLabel={toDo.count ? `Organizas esta liga: ${toDo.count} ${toDo.count === 1 ? 'pendiente' : 'pendientes'}` : undefined}
+      right={toDo.count ? <CountBubble n={toDo.count} /> : undefined}
+      onPress={() => router.push(organizeUrl(lid) as never)}
+    />
   );
 }

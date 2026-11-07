@@ -1,7 +1,8 @@
 import type { ComponentType } from 'react';
 import { Users } from 'lucide-react';
+import { racketAdminTab } from '../../../sports/adminTabs';
 import type { SportScreens } from '../../../sports/screens';
-import { defaultRules, type RacketSport } from '../../../sports/racket';
+import type { RacketSport } from '../../../sports/racket';
 import PairsAdmin from './admin/PairsAdmin';
 import RacketEventPage from './EventPage';
 import RacketFeed from './Feed';
@@ -27,8 +28,6 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     W.displayName = `${sport}:${C.displayName ?? C.name ?? 'pantalla'}`;
     return W;
   };
-  // Parejas en pádel y en los deportes que juegan en dobles por defecto (pickleball); tenis y ping pong, jugadores.
-  const doubles = defaultRules(sport).doubles || sport === 'padel';
   const extras = ext ?? {};
   return {
     Home: wrap(RacketHome),
@@ -40,7 +39,7 @@ export function racketScreens(sport: RacketSport, ext?: RacketExtensions): Sport
     // Admin › Temporada: la tabla para cerrarla (fuera de RacketProvider: recibe el deporte).
     useSeasonTable: (season) => useRacketSeasonTable(season, sport, extras),
     // También como fila del inicio para quien organiza (antes era un link al lado de «Nuevo»).
-    adminTabs: [{ key: 'parejas', label: doubles ? 'Parejas y niveles' : 'Jugadores y niveles', icon: Users, Component: wrap(PairsAdmin), homeRow: true }],
+    adminTabs: [{ ...racketAdminTab(sport), icon: Users, Component: wrap(PairsAdmin) }],
     tabs: { home: 'Calendario', feed: 'Partidos', standings: 'Tabla', profile: 'Mis partidos' },
   };
 }

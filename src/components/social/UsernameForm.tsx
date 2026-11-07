@@ -4,9 +4,10 @@ import { checkUsername, normalizeUsername, setUsername, USERNAME_MAX, usernameEr
 import { useFeedback } from '../feedback';
 import { Button, Field, Input, cx } from '../ui';
 import { usernameHint, type UsernameCheck } from './socialFormat';
+import { USERNAME_CHECK_MS } from '../cuenta/logic';
 
-/** Espera después de la última tecla antes de preguntar si está libre. */
-export const USERNAME_CHECK_MS = 350;
+/** Espera después de la última tecla antes de preguntar si está libre (la misma de la app, src/components/cuenta/logic.ts). */
+export { USERNAME_CHECK_MS };
 
 const HINT_TONE = { muted: 'text-muted', ok: 'text-ok', danger: 'text-danger' } as const;
 

@@ -320,6 +320,62 @@ export const LINK_WARNING = 'Cualquiera con este link puede entrar a anotar. Má
 export const MINORS_NO_LINK = 'En una liga con menores no hay link para anotar: invita a cada anotador por su @usuario.';
 export const MINORS_WARNING = 'Quien anota ve la liga completa, también a los menores.';
 
+/** La línea de arriba de los botones para mandar el link (Copiar enlace, WhatsApp, Más). */
+export const LINK_SHARE_HINT = 'Manda el link para anotar por WhatsApp o donde quieras.';
+
+/** Lo que se dice antes de crear el link («anotador de la liga» o, en un torneo sin liga, «de este torneo»). */
+export const linkCreateText = (kind: LeagueKind | null | undefined) =>
+  `Quien entre con el link queda como anotador de ${kind === 'torneo' ? 'este torneo' : 'la liga'}, sin jugador. Vence a los 7 días y sirve 20 veces.`;
+
+/** «Cambiar link»: el de antes deja de servir. */
+export const ROTATE_LINK_CONFIRM: ScorerConfirm = {
+  title: '¿Cambiar el link para anotar?',
+  message: 'El link de antes deja de servir. Quien ya entró sigue anotando.',
+  confirmText: 'Cambiar link',
+};
+
+/** «Quitar link»: deja de servir (quien ya entró sigue anotando). */
+export const REVOKE_LINK_CONFIRM: ScorerConfirm = {
+  title: '¿Quitar el link para anotar?',
+  message: 'Deja de servir. Quien ya entró sigue anotando; lo quitas de «Anotan ahora».',
+  confirmText: 'Quitar link',
+  danger: true,
+};
+
+/** Los avisos después de retirar una invitación y de manejar el link. */
+export const SCORER_DONE = {
+  retired: 'Invitación retirada',
+  linkReady: 'Link para anotar listo',
+  linkChanged: 'Link cambiado',
+  linkRemoved: 'Link quitado',
+} as const;
+
+// ---------- La hoja: pestañas y buscadores ----------
+
+/** Las tres formas de sumar a alguien: de la liga, por @usuario o con el link. */
+export type ScorersTab = 'liga' | 'usuario' | 'link';
+
+/** El segmentado «Cómo sumar a alguien»; en un torneo sin liga, «De la liga» es «Del torneo». */
+export function scorerTabs(kind: LeagueKind | null | undefined): { key: ScorersTab; label: string }[] {
+  return [
+    { key: 'liga', label: kind === 'torneo' ? 'Del torneo' : 'De la liga' },
+    { key: 'usuario', label: 'Por @usuario' },
+    { key: 'link', label: 'Link' },
+  ];
+}
+
+/** El buscador de «De la liga» (lo que lee el lector de pantalla). */
+export const memberSearchLabel = (kind: LeagueKind | null | undefined) => (kind === 'torneo' ? 'Buscar en el torneo' : 'Buscar en la liga');
+
+/** «Por @usuario» con una sola letra. */
+export const SHORT_QUERY_TEXT = 'Escribe al menos 2 letras.';
+
+/** El nombre de una persona encontrada en la lista («Sin nombre» si no tiene ni nombre ni @usuario). */
+export const hitName = (hit: Pick<PersonHit, 'name' | 'username'>) => hit.name || (hit.username ? `@${hit.username}` : '') || 'Sin nombre';
+
+/** El nombre de una persona encontrada en la pregunta y el aviso de invitarla («Esa persona» si no tiene). */
+export const inviteeName = (hit: Pick<PersonHit, 'name' | 'username'>) => hit.name || (hit.username ? `@${hit.username}` : '') || 'Esa persona';
+
 // ---------- /anotar/<código> ----------
 
 /**

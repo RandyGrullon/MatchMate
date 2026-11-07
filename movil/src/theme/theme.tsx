@@ -57,5 +57,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/**
+ * Una parte de la app en el color de otro deporte (SportTint/EsportsTint de la web): el acento de `sport` para todo lo
+ * de adentro, con el mismo claro u oscuro. Las pantallas de `/esports` van en el violeta de los esports.
+ */
+export function SportColors({ sport, children }: { sport: string | null; children: ReactNode }) {
+  const theme = useContext(Ctx);
+  const value = useMemo(() => ({ ...theme, colors: colorsFor(theme.isDark, sport) }), [theme, sport]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 export const useTheme = () => useContext(Ctx);
 export const useColors = () => useContext(Ctx).colors;

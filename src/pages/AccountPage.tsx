@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { AtSign, Building2, ChevronLeft, ClipboardList, Crown, Info, KeyRound, LogOut, MessageCircle, Pencil, Plus } from 'lucide-react';
-import { authErrorMessage, createProfile, displayName, logout, MIN_PASSWORD, renameProfile, updatePassword, useAuth } from '../lib/auth';
+import { authErrorMessage, createProfile, displayName, logout, renameProfile, updatePassword, useAuth } from '../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../lib/data';
 import { usePublicProfile } from '../lib/data/follows';
 import { rememberLeague, roleLabel } from '../lib/league';
-import { countLabel, organizedLeagueIds } from '../lib/organize';
+import { countLabel } from '../lib/organize';
 import { useIsPro } from '../lib/useMode';
 import { useOrganize } from '../components/OrganizeNav';
 import { AppShell } from '../components/Shell';
@@ -14,6 +14,17 @@ import { NotificationsCard } from '../components/NotificationsOptIn';
 import { unsubscribePush } from '../lib/push';
 import { useCreateMenu } from '../components/CreateMenu';
 import { BigField, BigInput, ErrorNote } from '../components/cuenta/kit';
+import {
+  accountLine,
+  businessSubtitle,
+  organizeAriaLabel,
+  PASSWORD_MISMATCH_HINT,
+  PASSWORD_SHORT_HINT,
+  passwordCheck,
+  passwordSheetTitle,
+  showsOrganize,
+  usernameSubtitle,
+} from '../components/cuenta/logic';
 import { PublicProfileSection } from '../components/cuenta/PublicProfile';
 import { ProfileAvatar } from '../components/profile/ProfileAvatar';
 import { useAction, useFeedback } from '../components/feedback';
@@ -88,9 +99,9 @@ export default function AccountPage() {
   const username = auth.profile?.username ?? '';
   const handle = atUsername(username);
   const icon = pro ? 'size-[19px]' : 'size-5';
-  const line = [handle, user.email].filter(Boolean).join(' · ');
+  const line = accountLine(handle, user.email);
   // Organizar sale a quien organiza alguna liga (dueño o admin) y al superadmin.
-  const organizes = auth.isSuper || organizedLeagueIds(memberships.data).length > 0;
+  const organizes = showsOrganize(auth.isSuper, memberships.data);
   const pending = organize.total;
 
   return (
@@ -157,7 +168,7 @@ export default function AccountPage() {
                 </RowIcon>
               }
               title="Tu usuario"
-              subtitle={handle || 'Para que te encuentren'}
+              subtitle={usernameSubtitle(handle)}
               onClick={() => setSheet('usuario')}
             />
           )}
@@ -235,7 +246,7 @@ export default function AccountPage() {
                 title="Organizar"
                 subtitle="Tus ligas, pendientes y ajustes"
                 to={organize.href}
-                ariaLabel={pending > 0 ? `Organizar: ${pending} ${pending === 1 ? 'pendiente' : 'pendientes'}` : undefined}
+                ariaLabel={organizeAriaLabel(pending)}
                 trailing={
                   pending > 0 ? (
                     <span
@@ -259,7 +270,7 @@ export default function AccountPage() {
                 </RowIcon>
               }
               title="Mi empresa"
-              subtitle={auth.profile?.accountMode === 'business' ? 'Estás usando la app como empresa' : '¿Tienes canchas? Regístralas o cambia a modo empresa'}
+              subtitle={businessSubtitle(auth.profile?.accountMode)}
               to="/empresa"
             />
             <ListRow
@@ -362,8 +373,7 @@ function PasswordRow({ dense, icon }: { dense: boolean; icon: string }) {
   const [password2, setPassword2] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const short = password !== '' && password.length < MIN_PASSWORD;
-  const mismatch = password2 !== '' && password !== password2;
+  const { short, mismatch, canSave } = passwordCheck(password, password2);
 
   // Llegó del link del correo con la pantalla ya abierta: la hoja se abre igual.
   useEffect(() => {
@@ -372,7 +382,7 @@ function PasswordRow({ dense, icon }: { dense: boolean; icon: string }) {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (short || mismatch || !password2) return;
+    if (!canSave) return;
     setBusy(true);
     setError(null);
     try {
@@ -409,18 +419,18 @@ function PasswordRow({ dense, icon }: { dense: boolean; icon: string }) {
       <Sheet
         open={open}
         onClose={() => setOpen(false)}
-        title={recovering ? 'Pon tu contraseña nueva' : 'Cambiar contraseña'}
+        title={passwordSheetTitle(recovering)}
         footer={
-          <Button type="submit" form="cfg-contrasena" variant="primary" size="xl" loading={busy} disabled={short || mismatch || !password2} className="w-full">
+          <Button type="submit" form="cfg-contrasena" variant="primary" size="xl" loading={busy} disabled={!canSave} className="w-full">
             Guardar
           </Button>
         }
       >
         <form id="cfg-contrasena" onSubmit={save} className="flex flex-col gap-5 pt-1">
-          <BigField label="Contraseña nueva" hint={short ? `Mínimo ${MIN_PASSWORD} caracteres.` : undefined} error={short}>
+          <BigField label="Contraseña nueva" hint={short ? PASSWORD_SHORT_HINT : undefined} error={short}>
             <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" invalid={short} autoFocus={recovering} />
           </BigField>
-          <BigField label="Repite la contraseña" hint={mismatch ? 'Las contraseñas no coinciden.' : undefined} error={mismatch}>
+          <BigField label="Repite la contraseña" hint={mismatch ? PASSWORD_MISMATCH_HINT : undefined} error={mismatch}>
             <PasswordInput value={password2} onChange={setPassword2} autoComplete="new-password" invalid={mismatch} />
           </BigField>
           {error && <ErrorNote>{error}</ErrorNote>}

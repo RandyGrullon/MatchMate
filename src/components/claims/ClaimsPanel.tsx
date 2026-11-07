@@ -1,15 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, ChevronDown, Inbox, MessageSquareText, UserCheck, X } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import {
-  CLAIM_NOTE_MAX,
-  claimConflictList,
-  claimErrorText,
-  decideClaim,
-  fetchClaimConflicts,
-  useLeagueClaims,
-  type PlayerClaim,
-} from '../../lib/data/claims';
+import { CLAIM_NOTE_MAX, decideClaim, fetchClaimConflicts, useLeagueClaims, type PlayerClaim } from '../../lib/data/claims';
 import { useLeagueMembers, useUsers } from '../../lib/data/members';
 import { useLeagueCtx } from '../../lib/league';
 import { Avatar } from '../Avatar';
@@ -17,6 +9,7 @@ import { useFeedback } from '../feedback';
 import { Badge, Button, Card, Empty, ListSkeleton, LoadError, Modal, Textarea, cx } from '../ui';
 import { usePlayerHistory } from './data';
 import { ago, historyText, statusLabel } from './logic';
+import { CLAIM_CONFLICT_HELP, claimAccounts, claimMeta, conflictsProblem, decideCopy, decideDoneText, decideProblem, ownPlayerOf, type ClaimAccount, type DecideProblem } from './panel';
 
 /**
  * Admin › Reclamos (todas las ligas, todos los deportes): quien se hizo una cuenta y dice «ese soy yo» de un
@@ -33,12 +26,7 @@ export function ClaimsPanel() {
   const [showDone, setShowDone] = useState(false);
   const pending = claims.data.filter((c) => c.status === 'pending');
   const done = claims.data.filter((c) => c.status !== 'pending');
-  const account = useMemo(() => {
-    const byUid = new Map<string, { name: string; email: string | null; playerId: string | null }>();
-    const mail = new Map(users.data.map((u) => [u.id, u.email] as const));
-    for (const m of members.data) byUid.set(m.uid, { name: m.name, email: mail.get(m.uid) ?? null, playerId: m.playerId });
-    return byUid;
-  }, [members.data, users.data]);
+  const account = useMemo(() => claimAccounts(members.data, users.data), [members.data, users.data]);
 
   if (claims.error) return <LoadError error={claims.error} />;
   if (claims.loading && !claims.data.length) return <ListSkeleton rows={3} />;
@@ -99,13 +87,11 @@ export function ClaimsPanel() {
   );
 }
 
-type Account = { name: string; email: string | null; playerId: string | null } | null;
-
-function PendingClaim({ lid, claim: c, account }: { lid: string; claim: PlayerClaim; account: Account }) {
+function PendingClaim({ lid, claim: c, account }: { lid: string; claim: PlayerClaim; account: ClaimAccount | null }) {
   const claimed = usePlayerHistory(lid, c.playerId);
-  const own = usePlayerHistory(lid, account?.playerId && account.playerId !== c.playerId ? account.playerId : null);
+  const ownPlayer = ownPlayerOf(c, account);
+  const own = usePlayerHistory(lid, ownPlayer);
   const [deciding, setDeciding] = useState<'approve' | 'reject' | null>(null);
-  const accountName = account?.name?.trim();
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start gap-3">
@@ -115,11 +101,7 @@ function PendingClaim({ lid, claim: c, account }: { lid: string; claim: PlayerCl
             <span className="font-semibold">{c.claimantName}</span> <span className="text-muted">dice que es</span>{' '}
             <span className="font-semibold text-accent">{c.playerName}</span>
           </p>
-          <p className="text-xs break-words text-muted">
-            {accountName && accountName !== c.claimantName ? `Cuenta: ${accountName} · ` : ''}
-            {account?.email ? `${account.email} · ` : ''}
-            {ago(c.requestedAt)}
-          </p>
+          <p className="text-xs break-words text-muted">{claimMeta(c, account)}</p>
         </div>
         <Badge tone="warn">Por aprobar</Badge>
       </div>
@@ -131,7 +113,7 @@ function PendingClaim({ lid, claim: c, account }: { lid: string; claim: PlayerCl
         </div>
         <div>
           <dt className="text-xs text-muted">Lo que ya jugó con su cuenta</dt>
-          <dd>{!account?.playerId || account.playerId === c.playerId ? 'Nada todavía' : own.data ? historyText(own.data) : '…'}</dd>
+          <dd>{!ownPlayer ? 'Nada todavía' : own.data ? historyText(own.data) : '…'}</dd>
         </div>
       </dl>
 
@@ -160,8 +142,9 @@ function DecideModal({ lid, claim: c, mode, onClose }: { lid: string; claim: Pla
   const { toast } = useFeedback();
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<{ text: string; list: string[] | null } | null>(null);
+  const [problem, setProblem] = useState<DecideProblem | null>(null);
   const approve = mode === 'approve';
+  const copy = decideCopy(c, approve);
 
   const close = () => {
     if (busy) return;
@@ -177,30 +160,19 @@ function DecideModal({ lid, claim: c, mode, onClose }: { lid: string; claim: Pla
     try {
       if (approve) {
         // Antes de aprobar: si los dos jugaron lo mismo, no se pueden juntar (se explica y no se toca nada).
-        const conflicts = await fetchClaimConflicts(c.id);
-        if (conflicts.length) {
-          setProblem({
-            text: 'No se pueden juntar los dos jugadores porque los dos aparecen en lo mismo:',
-            list: conflicts.map((x) => `${x.label} (${x.count})`),
-          });
+        const conflicts = conflictsProblem(await fetchClaimConflicts(c.id));
+        if (conflicts) {
+          setProblem(conflicts);
           return;
         }
       }
       const status = await decideClaim(lid, c.id, approve, note);
-      const other = (approve && status !== 'approved') || (!approve && status !== 'rejected');
-      toast(
-        other
-          ? 'Otro admin ya lo había decidido.'
-          : approve
-            ? `Listo: ${c.claimantName} ahora es ${c.playerName}.`
-            : `Rechazado. ${c.claimantName} sigue con su propio jugador.`,
-      );
+      toast(decideDoneText(c, approve, status));
       setNote('');
       onClose();
     } catch (e) {
       console.error(e);
-      const list = claimConflictList(e);
-      setProblem(list ? { text: 'No se pueden juntar los dos jugadores porque los dos aparecen en lo mismo:', list } : { text: claimErrorText(e), list: null });
+      setProblem(decideProblem(e));
     } finally {
       setBusy(false);
     }
@@ -210,7 +182,7 @@ function DecideModal({ lid, claim: c, mode, onClose }: { lid: string; claim: Pla
     <Modal
       open={!!mode}
       onClose={close}
-      title={approve ? 'Aprobar reclamo' : 'Rechazar reclamo'}
+      title={copy.title}
       footer={
         <>
           <Button onClick={close} disabled={busy}>
@@ -222,25 +194,21 @@ function DecideModal({ lid, claim: c, mode, onClose }: { lid: string; claim: Pla
             icon={approve ? <UserCheck className="size-4" /> : <X className="size-4" />}
             onClick={() => void submit()}
           >
-            {approve ? 'Aprobar' : 'Rechazar'}
+            {copy.confirmText}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3 text-sm">
-        <p>
-          {approve
-            ? `${c.claimantName} queda como ${c.playerName}: lo que jugó cada uno se junta en un solo jugador y su cuenta sigue con él. Esto no se puede deshacer.`
-            : `${c.claimantName} no queda como ${c.playerName} y sigue con su propio jugador. Le avisamos.`}
-        </p>
+        <p>{copy.message}</p>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Nota para {c.claimantName} (opcional)</span>
+          <span className="text-xs text-muted">{copy.noteLabel}</span>
           <Textarea
             value={note}
             maxLength={CLAIM_NOTE_MAX}
             rows={2}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={approve ? 'Bienvenido' : 'Ese no eres tú: habla conmigo'}
+            placeholder={copy.placeholder}
           />
         </label>
         {problem && (
@@ -255,10 +223,7 @@ function DecideModal({ lid, claim: c, mode, onClose }: { lid: string; claim: Pla
                       <li key={x}>{x}</li>
                     ))}
                   </ul>
-                  <p className="mt-1">
-                    Una misma persona no puede estar dos veces en el mismo evento o partido. Borra lo repetido (el juego o el partido de
-                    uno de los dos) y aprueba otra vez.
-                  </p>
+                  <p className="mt-1">{CLAIM_CONFLICT_HELP}</p>
                 </>
               )}
             </div>

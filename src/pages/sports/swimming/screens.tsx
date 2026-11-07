@@ -1,4 +1,5 @@
 import { Shield, Users } from 'lucide-react';
+import { SWIM_ADMIN_TABS } from '../../../sports/adminTabs';
 import type { SportScreens } from '../../../sports/screens';
 import { ClubsAdmin } from './ClubsAdmin';
 import MeetPage from './MeetPage';
@@ -20,8 +21,8 @@ const screens: SportScreens = {
   Player: SwimPlayer,
   useSeasonTable: useSwimSeasonTable,
   adminTabs: [
-    { key: 'nadadores', label: 'Nadadores', icon: Users, Component: SwimmersAdmin },
-    { key: 'clubes', label: 'Clubes', icon: Shield, Component: ClubsAdmin },
+    { ...SWIM_ADMIN_TABS[0], icon: Users, Component: SwimmersAdmin },
+    { ...SWIM_ADMIN_TABS[1], icon: Shield, Component: ClubsAdmin },
   ],
   tabs: { home: 'Encuentros', feed: null, standings: 'Puntos', profile: 'Mis marcas' },
 };
