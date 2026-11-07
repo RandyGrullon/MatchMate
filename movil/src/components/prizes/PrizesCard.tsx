@@ -3,7 +3,7 @@
  * insignias ve «Elegir premios»; elegidos, «El campeón se lleva…» con la insignia de cada lugar por categoría (y quién
  * va ganando); ya entregados, «Campeones» con quién ganó (tocar un jugador abre su página). Los admins además
  * entregan, corrigen y cierran. Lo que se decide (textos, botones, plazos) es lo de la web: src/components/prizes/view.ts.
- * El detalle de una insignia (DesignSheet de la web) todavía se abre en la web.
+ * Tocar una insignia abre su detalle (DesignSheet de badges/maker, como en la web).
  */
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -21,9 +21,9 @@ import { PLACE_LABEL } from '@mm/prizes/catalog';
 import { designLook } from '@mm/components/badges/maker/look';
 import { adminBarView, cardHidden, CLOSE_PRIZES_CONFIRM, currentLine, nameJoiner, PODIUM_CHANGED_TEXT, soloWinner, winnerPlayerName, winnerShortLine, type AdminBarView } from '@mm/components/prizes/view';
 import { Insignia } from '@/components/badges/Insignia';
+import { DesignSheet } from '@/components/badges/maker/DesignSheet';
 import { confirmAsync, toast } from '@/components/feedback';
 import { Button, Card, SectionHeader, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { AwardPrizesSheet } from './AwardPrizesSheet';
@@ -31,7 +31,7 @@ import { NoBadge } from './parts';
 import { PrizePicker } from './PrizePicker';
 import type { TournamentPrizesProps } from './TournamentPrizes';
 
-export function PrizesCard({ comp, prize, ready, waitText, podium, warnings, webPath }: TournamentPrizesProps & { prize: TournamentPrize | null }) {
+export function PrizesCard({ comp, prize, ready, waitText, podium, warnings }: TournamentPrizesProps & { prize: TournamentPrize | null }) {
   const c = useColors();
   const ctx = useLeagueCtx();
   const made = useLeagueBadges(ctx.lid);
@@ -40,6 +40,8 @@ export function PrizesCard({ comp, prize, ready, waitText, podium, warnings, web
   const [picking, setPicking] = useState(false);
   const [awarding, setAwarding] = useState(false);
   const [closing, setClosing] = useState(false);
+  // El detalle de la insignia que se tocó.
+  const [open, setOpen] = useState<LeagueBadge | null>(null);
   const canPick = canPickPrizes(ctx);
   const canDeliver = canDeliverPrizes(ctx);
   const admin = canPick || canDeliver;
@@ -107,7 +109,7 @@ export function PrizesCard({ comp, prize, ready, waitText, podium, warnings, web
                   {sec.title}
                 </Txt>
                 {sec.rows.map((r) => (
-                  <PrizeRow key={r.slot.id} row={r} sport={comp.sport} period={prize?.period ?? ''} lid={ctx.lid} nameOf={nameOf} onOpenBadge={() => void openOnWeb(webPath)} />
+                  <PrizeRow key={r.slot.id} row={r} sport={comp.sport} period={prize?.period ?? ''} lid={ctx.lid} nameOf={nameOf} onOpenBadge={setOpen} />
                 ))}
               </View>
             ))}
@@ -117,6 +119,7 @@ export function PrizesCard({ comp, prize, ready, waitText, podium, warnings, web
       </Card>
       {canPick && picking && <PrizePicker onClose={() => setPicking(false)} comp={comp} prize={prize} designs={designs} />}
       {canDeliver && prize && awarding && <AwardPrizesSheet onClose={() => setAwarding(false)} comp={comp} prize={prize} designs={designs} podium={podium} warnings={warnings} />}
+      <DesignSheet badge={open} onClose={() => setOpen(null)} />
     </View>
   );
 }

@@ -15,6 +15,7 @@ import { useNow } from '@mm/lib/useNow';
 import { leagueSport } from '@mm/sports/registry';
 import { LeagueScope } from '@/components/league/LeagueScope';
 import { LeaguePlayerBadges } from '@/components/badges/LeagueBadges';
+import { LeaguePlayerMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
 import { SwimPlayer } from '@/components/swimming/SwimProfile';
 import { BackBar, Badge, Button, Card, Empty, LoadError, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
@@ -40,6 +41,7 @@ export default function PlayerScreen() {
           <SwimPlayer playerId={playerId} />
           {/* Sus insignias de la liga, abajo (LeaguePlayerBadges de la web). */}
           <LeaguePlayerBadges playerId={playerId} />
+          <LeaguePlayerMadeBadges playerId={playerId} />
         </LeagueScope>
       </Screen>
     );
@@ -309,6 +311,7 @@ function BowlingPlayerScreen() {
         {isOwner && <SuggestionBox />}
         {/* Sus insignias de la liga, abajo (LeaguePlayerBadges de la web). */}
         <LeaguePlayerBadges playerId={p.id} />
+        <LeaguePlayerMadeBadges playerId={p.id} />
       </LeagueScope>
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/j/${p.id}`)}>

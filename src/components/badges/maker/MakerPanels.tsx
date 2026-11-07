@@ -2,20 +2,19 @@ import { useMemo } from 'react';
 import { Award, Gift, Plus } from 'lucide-react';
 import { badgeLabel } from '../../../badges/visual';
 import { usePlayers } from '../../../lib/data';
-import { MAX_ACTIVE_DESIGNS, canMakeBadges, type LeagueBadge, type LeagueBadgesData } from '../../../lib/data/leagueBadges';
+import { MAX_ACTIVE_DESIGNS, canMakeBadges, type LeagueBadgesData } from '../../../lib/data/leagueBadges';
 import { useLeagueCtx } from '../../../lib/league';
 import { leagueSport } from '../../../sports/registry';
 import { Button, Card } from '../../ui';
 import { BadgeGrid, BadgeTile } from '../BadgeTile';
 import { MakerModals, RecentAwards, useMaker } from './MakerHost';
 import { designLook } from './look';
+import { playerMadeTiles, shelfHoldersText as holdersText } from './view';
 
 /**
  * Lo pesado de las insignias del creador fuera de Admin (se carga aparte desde LeagueMadeBadges.tsx): el estante
  * «Insignias de la liga» de la portada y las del creador en la página de un jugador.
  */
-
-const holdersText = (n: number) => (n === 0 ? 'Nadie todavía' : n === 1 ? '1 la tiene' : `${n} la tienen`);
 
 /**
  * «Insignias de la liga» (§6.2): los diseños activos a 64 px con cuántos la tienen, las últimas 5 que se dieron y,
@@ -81,17 +80,9 @@ export function PlayerMadeBadges({ playerId, data }: { playerId: string; data: L
   const ctx = useLeagueCtx();
   const m = useMaker();
   const sport = leagueSport(ctx.league);
-  const byId = new Map(data.designs.map((d) => [d.id, d] as const));
   // Una por diseño (×N si se la dieron varias veces), la más nueva arriba.
-  const tiles = new Map<string, { badge: LeagueBadge; period: string; count: number }>();
-  for (const a of data.awards) {
-    const d = byId.get(a.badgeId);
-    if (a.playerId !== playerId || a.revokedAt || a.hidden || !d || d.status === 'oculta') continue;
-    const t = tiles.get(d.id);
-    if (t) t.count++;
-    else tiles.set(d.id, { badge: d, period: a.period, count: 1 });
-  }
-  if (!tiles.size) return null;
+  const tiles = playerMadeTiles(data, playerId);
+  if (!tiles.length) return null;
   return (
     <section aria-labelledby="jugador-insignias-liga" className="mt-5 flex flex-col gap-2">
       <h2 id="jugador-insignias-liga" className="flex items-center gap-2 text-lg font-bold tracking-tight">
@@ -99,7 +90,7 @@ export function PlayerMadeBadges({ playerId, data }: { playerId: string; data: L
       </h2>
       <Card className="p-2">
         <BadgeGrid>
-          {[...tiles.values()].map((t) => {
+          {tiles.map((t) => {
             const look = designLook(t.badge, sport, t.period);
             return (
               <BadgeTile

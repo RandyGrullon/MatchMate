@@ -3,8 +3,8 @@
  * competencia («Equipos (scratch)», «Individual (handicap)»…) con el 1.º, el 2.º y el 3.er lugar; en cada uno, la
  * insignia que se lleva: un diseño de la liga o uno nuevo de plantilla («Campeón», «Subcampeón», «Tercer lugar») sin
  * cinta, que sirve para todos los torneos. La cinta la pone el premio (el mes del torneo). Guarda el conjunto completo
- * (set_tournament_prizes). «Diseñar otra» abre el creador de insignias de la web (la app todavía no lo tiene). Se monta
- * al abrirse.
+ * (set_tournament_prizes). «Diseñar otra» abre el editor del creador encima (BadgeEditor de badges/maker) y la nueva
+ * queda elegida en ese lugar. Se monta al abrirse.
  */
 import { useState } from 'react';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
@@ -21,9 +21,9 @@ import { draftPayload, makerErrorText, periodChoices, templateDraft } from '@mm/
 import { designLook } from '@mm/components/badges/maker/look';
 import { archivedHint, designReadyText, periodCheck, periodCount, periodHint, pickerTitle, REMOVE_PRIZES_CONFIRM, ruleLine, savedPrizesText, saveStep, toggleRow } from '@mm/components/prizes/view';
 import { Insignia } from '@/components/badges/Insignia';
+import { BadgeEditor } from '@/components/badges/maker/BadgeEditor';
 import { confirmAsync, toast } from '@/components/feedback';
 import { Badge, Button, Input, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { NoBadge } from './parts';
@@ -51,6 +51,8 @@ export function PrizePicker({ onClose, comp, prize, designs }: PrizePickerProps)
   const [creating, setCreating] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // «Diseñar otra»: el lugar para el que se diseña (el editor sale encima de la hoja).
+  const [editorFor, setEditorFor] = useState<string | null>(null);
   const delivered = deliveredKeys(prize);
   const periodLocked = anyDelivered(prize);
   const { clean: cleanPeriod, error: periodError } = periodCheck(period);
@@ -258,7 +260,7 @@ export function PrizePicker({ onClose, comp, prize, designs }: PrizePickerProps)
                       setChoosing(null);
                     }}
                     onCreate={(t) => void createFor(key, t)}
-                    onDesign={() => void openOnWeb(`/l/${lid}/admin?tab=insignias`)}
+                    onDesign={() => setEditorFor(key)}
                   />
                 )}
               </View>
@@ -271,13 +273,23 @@ export function PrizePicker({ onClose, comp, prize, designs }: PrizePickerProps)
           {error}
         </Txt>
       )}
+      {/* Dentro de la hoja para que salga encima; «Guardar diseño» no guarda los premios. */}
+      <BadgeEditor
+        mode={editorFor ? { kind: 'new' } : null}
+        onClose={() => setEditorFor(null)}
+        onSaved={(b) => {
+          setCreated((list) => [b, ...list]);
+          if (editorFor) setRows((r) => ({ ...r, [editorFor]: { on: true, badgeId: b.id } }));
+          setChoosing(null);
+        }}
+      />
     </Sheet>
   );
 }
 
 /**
  * La lista de insignias para un lugar (§6.2): los diseños activos de la liga, arriba el de plantilla de ese lugar;
- * «Crear “Campeón”» si la liga todavía no lo tiene, y «Diseñar otra» (el creador de la web).
+ * «Crear “Campeón”» si la liga todavía no lo tiene, y «Diseñar otra» (el editor de siempre).
  */
 function PrizeBadgePicker({
   place,

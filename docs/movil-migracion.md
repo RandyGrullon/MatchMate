@@ -116,7 +116,6 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - La demo trae en «Liga de Ejemplo» un anotador invitado, el link `ANTE234567` (y `VENC234567`, vencido), dos reportes
   abiertos y uno cerrado, dos notas en el buzón y los ajustes editables (`demoScorers.ts`, `demoReports.ts`,
   `demoSettings.ts`).
-- 🌐 Lo demás de Organizar: el creador de insignias (ver §9).
 
 ## 3. Boliche (deporte activo)
 
@@ -348,8 +347,14 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (encima de la app; espera mientras se anota en la cancha, el campo o la piscina); Organizar › Insignias (las
   automáticas y quién diseña y da) y Organizar › Insignias por confirmar (`/l/<liga>/confirmar`). La demo trae nueve
   ganadas, tres en el aviso, los premios de octubre y una hazaña por confirmar (`movil/src/platform/demoBadges.ts`).
-  - 🌐 El creador de insignias («Insignias de la liga», nueva, dar) y compartir la imagen de una insignia (en la web
-    se arma con canvas).
+  - ✅ El creador de insignias (`movil/src/components/badges/maker/`, la lógica de
+    `src/components/badges/maker/{design,view,give,look,templates,suggest}.ts`): Organizar › Insignias › «Insignias de
+    la liga» (activas, las últimas que se dieron, archivadas, escondidas), nueva insignia (plantillas, forma, color,
+    ícono, textos, cupo, por equipo, vista previa clara y oscura), cambiar, duplicar, archivar, borrar, «Dar insignia»
+    (sugerencias, periodo, división, nota, «Así la verá», deshacer), el detalle con «Quién la tiene» (deshacer, quitar,
+    ocultar de mi perfil, reportar), el estante del inicio y «De la liga» en la página del jugador. «Otro color»: los
+    8 colores y el código (en el teléfono no hay selector del sistema). La demo: `movil/src/platform/demoMaker.ts`.
+  - 🌐 Compartir la imagen de una insignia (en la web se arma con canvas).
 - ✅ Premios del torneo (`movil/src/components/prizes/`, la lógica de `src/prizes/*` y
   `src/components/prizes/{gate,view,screens}.ts`, la misma de la web): la tarjeta «Premios del torneo» (la insignia de
   cada lugar, «Por ahora: …», quién ganó, «El podio cambió»), «Elegir premios» (la cinta, «Usar Campeón, Subcampeón y
@@ -357,8 +362,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   ganadores) y «Cerrar premios», en el torneo del boliche, la ronda o el torneo de golf, la noche y el torneo de raqueta
   («Se lleva: …» de cada categoría) y el encuentro de natación. La demo trae la Copa de Ejemplo y la ronda cerrada de
   «Golf de Ejemplo», cada una con un premio dado y otro por dar (`movil/src/platform/demoPrizes.ts`).
-  - 🌐 Los premios del relámpago y de los playoffs de equipos (sus pantallas siguen en la web), «Diseñar otra» (el
-    creador) y el detalle de una insignia al tocarla.
+  - 🌐 Los premios del relámpago y de los playoffs de equipos (sus pantallas siguen en la web).
 - ⏳ Reportes en PDF y Excel (compartir con expo-sharing).
 
 ## 10. Superadmin

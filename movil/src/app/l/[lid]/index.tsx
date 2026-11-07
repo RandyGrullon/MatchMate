@@ -21,6 +21,7 @@ import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
 import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { ChampionsSection } from '@/components/season/Seasons';
 import { LeagueBadgeAwards } from '@/components/badges/LeagueBadges';
+import { LeagueMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
 import { SeasonRow } from '@/components/seasonAdmin/SeasonRow';
 import { CountBubble } from '@/components/organizer/Organize';
 import { SettingsRow } from '@/components/leagueSettings/SettingsRow';
@@ -353,6 +354,8 @@ export default function LeagueScreen() {
         {/* Los premios del mes de la liga (insignias), arriba de los campeones, como en la web. */}
         <LeagueBadgeAwards />
         <ChampionsSection />
+        {/* El estante de las insignias que diseñó la liga (LeagueHomeBottom de la web). */}
+        <LeagueMadeBadges />
       </LeagueScope>
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${l.id}`)}>

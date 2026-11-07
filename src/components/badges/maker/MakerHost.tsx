@@ -3,11 +3,12 @@ import { ChevronRight } from 'lucide-react';
 import { Insignia, badgeLabel } from '../../../badges/visual';
 import type { LeagueBadge, LeagueBadgesData, MadeAward } from '../../../lib/data/leagueBadges';
 import { Badge, cx } from '../../ui';
-import { BadgeEditor, type EditorMode } from './BadgeEditor';
-import { LIMIT_INFO, awardTitle, dayText } from './design';
+import { BadgeEditor } from './BadgeEditor';
+import { awardTitle, dayText } from './design';
 import { DesignSheet } from './DesignSheet';
 import { GiveBadge } from './GiveBadge';
 import { designLook } from './look';
+import { designHoldersText, designRowSub, recentAwards, type EditorMode } from './view';
 
 /**
  * Lo que comparten la pestaña de Admin y el estante de la liga: los tres modales del creador (el detalle, el editor y
@@ -80,7 +81,7 @@ export function MakerModals({ m, data }: { m: MakerState; data: LeagueBadgesData
 /** Una fila de la lista de diseños: la insignia a 40, el nombre, el cupo y cuántos la tienen. */
 export function DesignRow({ badge, sport, onOpen, reports }: { badge: LeagueBadge; sport: string; onOpen: () => void; reports?: boolean }) {
   const look = designLook(badge, sport);
-  const who = badge.active ? (badge.active === 1 ? '1 la tiene' : `${badge.active} la tienen`) : 'Nadie la tiene todavía';
+  const who = designHoldersText(badge.active);
   return (
     <button
       type="button"
@@ -95,10 +96,7 @@ export function DesignRow({ badge, sport, onOpen, reports }: { badge: LeagueBadg
           {badge.status === 'oculta' && <Badge tone="danger">Escondida</Badge>}
           {reports && (badge.openReports ?? 0) > 0 && <Badge tone="warn">Reportada</Badge>}
         </span>
-        <span className="block truncate text-xs text-muted">
-          {LIMIT_INFO[badge.limitKind].label}
-          {badge.periodText ? ` · ${badge.periodText}` : ''} · {who}
-        </span>
+        <span className="block truncate text-xs text-muted">{designRowSub(badge)}</span>
       </span>
       <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
     </button>
@@ -125,13 +123,11 @@ export function RecentAwards({
   onOpen: (b: LeagueBadge) => void;
   className?: string;
 }) {
-  const byId = new Map(designs.map((d) => [d.id, d] as const));
-  const list = awards.filter((a) => !a.revokedAt && !a.hidden && byId.has(a.badgeId) && byId.get(a.badgeId)!.status !== 'oculta').slice(0, limit);
+  const list = recentAwards(awards, designs, limit);
   if (!list.length) return null;
   return (
     <ul className={cx('flex flex-col', className)}>
-      {list.map((a) => {
-        const d = byId.get(a.badgeId)!;
+      {list.map(({ award: a, design: d }) => {
         const look = designLook(d, sport, a.period);
         return (
           <li key={a.id}>

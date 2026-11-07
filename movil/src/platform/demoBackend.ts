@@ -28,6 +28,7 @@ import { agendaRpc, demoAgendaSelect, forgetDemoAgenda } from './demoAgenda';
 import { forgetDemoSocial, socialRpc } from './demoSocial';
 import { demoPrizesSelect, forgetDemoPrizes, prizesRpc } from './demoPrizes';
 import { yoRpc } from './demoYo';
+import { demoMakerSelect, forgetDemoMaker, makerRpc } from './demoMaker';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -55,6 +56,8 @@ const badgesLayer = (t: string, f: readonly DemoFilter[] = []) => demoBadgesSele
 const agendaLayer = (t: string, f: readonly DemoFilter[] = []) => demoAgendaSelect(DEMO_USER, t, f, (x) => badgesLayer(x)) ?? badgesLayer(t, f);
 /** Arriba de todo, los premios del torneo (demoPrizes.ts): los puestos y los entregados, y sus insignias encima. */
 const prizesLayer = (t: string, f: readonly DemoFilter[] = []) => demoPrizesSelect(DEMO_USER, t, f, (x) => agendaLayer(x)) ?? agendaLayer(t, f);
+/** Arriba de todo, el creador de insignias (demoMaker.ts): diseños y «Dar insignia» encima de los premios. */
+const makerLayer = (t: string, f: readonly DemoFilter[] = []) => demoMakerSelect(DEMO_USER, t, f, (x) => prizesLayer(x)) ?? prizesLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -91,6 +94,7 @@ export function setDemo(on: boolean) {
       forgetDemoAgenda();
       forgetDemoSocial();
       forgetDemoPrizes();
+      forgetDemoMaker();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -452,7 +456,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = prizesLayer(q.table, q.filters);
+      const league = makerLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -465,8 +469,12 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
-      // Los premios del torneo (demoPrizes.ts): elegirlos, el podio y entregarlos (va antes de las insignias).
-      const fromPrizes = prizesRpc(DEMO_USER, fn, args, (t) => agendaLayer(t) ?? []);
+      // El creador de insignias (demoMaker.ts): crear, cambiar, archivar, dar y quitar (antes de los premios: contesta
+      // todo save_league_badge).
+      const fromMaker = makerRpc(DEMO_USER, fn, args, (t) => prizesLayer(t) ?? []);
+      if (fromMaker !== undefined) return structuredClone(fromMaker) as T;
+      // Los premios del torneo (demoPrizes.ts): elegirlos, el podio y entregarlos; ven los diseños del creador.
+      const fromPrizes = prizesRpc(DEMO_USER, fn, args, (t) => makerLayer(t) ?? []);
       if (fromPrizes !== undefined) return structuredClone(fromPrizes) as T;
       // Las insignias (demoBadges.ts): la vitrina, los avisos, confirmar y los ajustes de la liga.
       const fromBadges = badgesRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);

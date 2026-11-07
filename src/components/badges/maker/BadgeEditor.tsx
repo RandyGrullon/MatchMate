@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Copy, Lock, Save } from 'lucide-react';
 import { Insignia, SHAPES, SHAPE_ORDER, humanPeriod, type BadgeShape } from '../../../badges/visual';
-import { saveLeagueBadge, type LeagueBadge, type LimitKind } from '../../../lib/data/leagueBadges';
+import { saveLeagueBadge, type LeagueBadge } from '../../../lib/data/leagueBadges';
 import { useLeagueCtx } from '../../../lib/league';
 import { ACCENT_PRESETS } from '../../../lib/theme';
 import { leagueSport } from '../../../sports/registry';
-import { SPORT_FAMILY, type SportId } from '../../../sports/types';
 import { sportColor } from '../../share/palette';
 import { useFeedback } from '../../feedback';
 import { Button, Input, Modal, Textarea, cx } from '../../ui';
@@ -13,10 +12,8 @@ import { BADGE_TEXT_MAX, textLength } from '../text';
 import {
   LIMIT_INFO,
   PALETTE_OPTIONS,
-  blankDraft,
   draftDesign,
   draftErrors,
-  draftFromBadge,
   draftLook,
   draftPatch,
   draftPayload,
@@ -36,11 +33,24 @@ import { IconPicker } from './IconPicker';
 import { colorAdjusted } from './look';
 import { Chip, Counter, Dot, FieldBox, PreviewPair, ShapeOutline, Toggle } from './parts';
 import { byTeamAllowed, templateName, templatesFor, type TemplateKey } from './templates';
+import {
+  ADJUSTED_TEXT,
+  BY_TEAM_HINT,
+  LIMITS,
+  LOCKED_TEXT,
+  editorDraft,
+  editorKey,
+  editorTitle,
+  periodChipPatch,
+  previewSub,
+  shownErrors,
+  teamWord as teamWordOf,
+  withTemplate,
+  type EditorMode,
+} from './view';
 
-/** Qué abre el editor: una nueva (con o sin plantilla), cambiar una guardada o hacer una copia («Duplicar»). */
-export type EditorMode = { kind: 'new'; template?: TemplateKey | null } | { kind: 'edit'; badge: LeagueBadge } | { kind: 'copy'; badge: LeagueBadge };
-
-const LIMITS: readonly LimitKind[] = ['unica', 'selecta', 'abierta'];
+// Lo de antes se sigue importando de aquí (la lógica está en view.ts).
+export { shownErrors, withTemplate, type EditorMode };
 
 /**
  * «Nueva insignia» (docs/insignias.md §5.4): el editor con la vista previa en claro y en oscuro a 128 px y la fila a
@@ -61,12 +71,12 @@ export function BadgeEditor({
   onDuplicate?: (badge: LeagueBadge) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const title = mode?.kind === 'edit' ? 'Cambiar la insignia' : mode?.kind === 'copy' ? 'Copia de la insignia' : 'Nueva insignia';
+  const title = editorTitle(mode);
   return (
     <Modal open={mode != null} onClose={onClose} title={title} wide footer={mode ? <EditorFooter onClose={onClose} busy={busy} /> : undefined}>
       {mode && (
         <EditorForm
-          key={mode.kind === 'new' ? `new-${mode.template ?? ''}` : `${mode.kind}-${mode.badge.id}`}
+          key={editorKey(mode)}
           mode={mode}
           onClose={onClose}
           onSaved={onSaved}
@@ -108,9 +118,7 @@ function EditorForm({
   const { toast } = useFeedback();
   const sport = leagueSport(league);
   const choices = useMemo(() => periodChoices(league, Date.now()), [league]);
-  const [draft, setDraft] = useState<DesignDraft>(() =>
-    mode.kind === 'new' ? (mode.template ? templateDraft(mode.template, sport, league.kind) : blankDraft()) : { ...draftFromBadge(mode.badge, choices) },
-  );
+  const [draft, setDraft] = useState<DesignDraft>(() => editorDraft(mode, sport, league.kind, choices));
   const original = mode.kind === 'edit' ? mode.badge : null;
   const [locked, setLocked] = useState(original?.locked ?? false);
   const [tried, setTried] = useState(false);
@@ -175,26 +183,6 @@ function EditorForm({
   );
 }
 
-/**
- * Los avisos que se ven: el del nombre no sale mientras se escriben las primeras letras («C» todavía no es un error);
- * sale al intentar guardar, o si ya tiene 3 o más y algo no está bien (muy largo, un texto que no se puede usar). Lo
- * demás, al escribir. El contador de letras guía mientras tanto.
- */
-export function shownErrors(errors: DraftErrors, draft: Pick<DesignDraft, 'name'>, tried: boolean): DraftErrors {
-  return tried || draft.name.trim().length >= 3 ? errors : { ...errors, name: undefined };
-}
-
-/** Elegir una plantilla no borra lo que ya se escribió: el nombre y la descripción propios se quedan. */
-export function withTemplate(current: DesignDraft, template: DesignDraft): DesignDraft {
-  return {
-    ...template,
-    name: current.name.trim() ? current.name : template.name,
-    description: current.description.trim() ? current.description : template.description,
-  };
-}
-
-const familyOf = (sport: string) => (Object.hasOwn(SPORT_FAMILY, sport) ? SPORT_FAMILY[sport as SportId] : null);
-
 /** El cuerpo del editor sin el modal (se prueba con renderToString). */
 export function EditorBody({
   draft,
@@ -230,7 +218,7 @@ export function EditorBody({
   const adjusted = colorAdjusted(design, sport);
   const off = locked;
   const sportHex = sportColor(sport);
-  const teamWord = familyOf(sport) === 'racket' ? 'Por pareja' : 'Por equipo';
+  const teamWord = teamWordOf(sport);
   // En el teléfono la vista previa grande se va al bajar: una tira con la insignia a 40 queda arriba mientras tanto.
   const preview = useRef<HTMLDivElement>(null);
   const [gone, setGone] = useState(false);
@@ -258,8 +246,8 @@ export function EditorBody({
       </div>
       <div className="grid gap-5 sm:grid-cols-[19rem_minmax(0,1fr)]">
         <div ref={preview} className="flex flex-col gap-2 sm:sticky sm:top-0 sm:self-start">
-          <PreviewPair look={look} name={name} sub={`${leagueName}${period ? ` · ${period}` : ''}`} />
-          {adjusted && <p className="text-center text-xs text-muted">Ajustamos el tono para que se lea bien.</p>}
+          <PreviewPair look={look} name={name} sub={previewSub(leagueName, period)} />
+          {adjusted && <p className="text-center text-xs text-muted">{ADJUSTED_TEXT}</p>}
         </div>
 
         <div className="flex min-w-0 flex-col gap-5">
@@ -272,7 +260,7 @@ export function EditorBody({
             <div className="flex flex-col gap-2 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2.5 text-sm">
               <p className="flex items-start gap-2 font-medium text-warn">
                 <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                Esta insignia ya se dio: solo puedes cambiar la descripción. Duplícala para hacer otra versión.
+                {LOCKED_TEXT}
               </p>
               {onDuplicate && (
                 <Button size="sm" className="min-h-11 self-start" icon={<Copy className="size-4" />} onClick={onDuplicate}>
@@ -420,9 +408,7 @@ export function EditorBody({
                   key={c.mode}
                   on={draft.periodMode === c.mode && !draft.periodFree.trim()}
                   disabled={off}
-                  onClick={() =>
-                    onChange(c.mode === 'torneo' && !draft.topText.trim() ? { periodMode: c.mode, periodFree: '', topText: 'TORNEO' } : { periodMode: c.mode, periodFree: '' })
-                  }
+                  onClick={() => onChange(periodChipPatch(c, draft))}
                 >
                   {c.label}
                   {c.text && <span className="text-xs text-muted">{c.text}</span>}
@@ -478,7 +464,7 @@ export function EditorBody({
               disabled={off}
               onChange={(byTeam) => onChange({ byTeam })}
               label={teamWord}
-              hint="Se da al equipo o la pareja completa (cuenta como 1)"
+              hint={BY_TEAM_HINT}
             />
           )}
 

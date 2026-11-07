@@ -1,22 +1,56 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Gift, Search, Sparkles, Undo2, Users } from 'lucide-react';
-import { Insignia, badgeLabel, normalizeSearch } from '../../../badges/visual';
+import { Insignia, badgeLabel } from '../../../badges/visual';
 import { usePlayers } from '../../../lib/data';
-import { awardLeagueBadge, revokeLeagueBadgeAward, LIMIT_OF, MAX_AWARD_PLAYERS, type GiveResult, type LeagueBadge, type MadeAward } from '../../../lib/data/leagueBadges';
+import { awardLeagueBadge, revokeLeagueBadgeAward, type GiveResult, type LeagueBadge, type MadeAward } from '../../../lib/data/leagueBadges';
 import { useSeasonTeams } from '../../../lib/data/seasonTeams';
 import { useLeagueCtx } from '../../../lib/league';
 import type { Player } from '../../../lib/types';
 import { leagueSport } from '../../../sports/registry';
 import { useFeedback } from '../../feedback';
 import { Badge, Button, Card, Input, LoadError, Modal, Spinner, Textarea, cx } from '../../ui';
-import { BADGE_TEXT_MAX, badgeTextError, cleanBadgeText, textLength } from '../text';
-import { LIMIT_INFO, dayText, givenText, makerErrorText, namesText, periodChoices, quotaFullText, quotaLeft, slotKey, type PeriodChoice } from './design';
+import { BADGE_TEXT_MAX, cleanBadgeText, textLength } from '../text';
+import { dayText, givenText, makerErrorText, namesText, periodChoices, quotaFullText, quotaLeft, type PeriodChoice } from './design';
+import {
+  GIVE_STEPS,
+  NOTE_HINT,
+  NO_ACTIVE_TEXT,
+  NO_TEAMS_TEXT,
+  STEP_LABEL,
+  SUGGEST_FOOT,
+  TEAM_ROSTER_HINT,
+  UNDONE_TOAST,
+  UNDO_NOTE,
+  canPick,
+  cleanDivision as cleanDivisionOf,
+  cleanPeriod as cleanPeriodOf,
+  detailErrors,
+  detailsOk as detailsOkOf,
+  emptyPlayersText,
+  giveTitle,
+  notifiedText,
+  notifyHint,
+  notifyLabel,
+  notifyState,
+  overQuota as overQuotaOf,
+  periodOptions,
+  pickAll,
+  pickDesignSub,
+  pickedLine,
+  playerList,
+  previewDetail,
+  quotaLine,
+  slotHolders,
+  stepIndex,
+  suggestionChosen,
+  togglePick,
+  toggleSuggestion,
+  type GiveStep as Step,
+} from './give';
 import { designLook } from './look';
 import { Chip, Counter, Toggle } from './parts';
 import type { Suggestion, SuggestOutcome } from './suggest';
 import { useBadgeSuggestions } from './useSuggestions';
-
-type Step = 'cual' | 'quien' | 'detalles' | 'vista' | 'listo';
 
 export interface GiveBadgeProps {
   /** null = cerrado. */
@@ -36,7 +70,7 @@ export interface GiveBadgeProps {
  */
 export function GiveBadge({ open, badge, designs, awards, onClose }: GiveBadgeProps) {
   return (
-    <Modal open={open} onClose={onClose} title={badge ? `Dar “${badge.name}”` : 'Dar insignia'} wide>
+    <Modal open={open} onClose={onClose} title={giveTitle(badge)} wide>
       {open && <GiveFlow key={badge?.id ?? 'elegir'} initial={badge} designs={designs} awards={awards} onClose={onClose} />}
     </Modal>
   );
@@ -64,47 +98,31 @@ function GiveFlow({ initial, designs, awards, onClose }: { initial: LeagueBadge 
 
   const byId = useMemo(() => new Map(players.data.map((p) => [p.id, p] as const)), [players.data]);
   const nameOf = (id: string) => byId.get(id)?.name ?? 'Jugador';
-  const cleanPeriod = cleanBadgeText(period).toUpperCase();
-  const cleanDivision = cleanBadgeText(division);
+  const cleanPeriod = cleanPeriodOf(period);
+  const cleanDivision = cleanDivisionOf(division);
   // Quiénes ya la tienen vigente con este periodo y división (no se les puede volver a dar). Un premio del torneo no
   // cuenta: no choca con un regalo (docs/premios-torneo.md §1 D4), como en la base.
-  const holders = useMemo(
-    () =>
-      new Set(
-        awards
-          .filter((a) => badge && a.badgeId === badge.id && !a.revokedAt && !a.prizeSlotId && slotKey(a.period) === slotKey(cleanPeriod) && slotKey(a.division) === slotKey(cleanDivision))
-          .map((a) => a.playerId),
-      ),
-    [awards, badge, cleanPeriod, cleanDivision],
-  );
+  const holders = useMemo(() => slotHolders(awards, badge, cleanPeriod, cleanDivision), [awards, badge, cleanPeriod, cleanDivision]);
   const left = badge ? quotaLeft(badge, awards, cleanPeriod, cleanDivision) : 0;
   const team = teams.data.find((t) => t.id === teamId) ?? null;
 
-  const free = (id: string) => id !== myPlayerId && !holders.has(id);
+  const free = (id: string) => canPick(id, myPlayerId, holders);
   const pick = (ids: readonly string[], team: string | null = teamId) => {
     setTeamId(team);
-    setPicked(ids.filter(free).slice(0, MAX_AWARD_PLAYERS));
+    setPicked(pickAll(ids, free));
   };
   /** Una sugerencia: un equipo reemplaza la selección por su plantilla; un jugador se suma (o se quita si ya estaba). */
   const suggest = (s: Suggestion) => {
     if (badge?.byTeam && s.teamId) return pick(s.playerIds, s.teamId);
-    setPicked((p) =>
-      s.playerIds.every((id) => p.includes(id)) ? p.filter((id) => !s.playerIds.includes(id)) : [...p, ...s.playerIds.filter((id) => free(id) && !p.includes(id))].slice(0, MAX_AWARD_PLAYERS),
-    );
+    setPicked((p) => toggleSuggestion(p, s, free));
   };
-  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= MAX_AWARD_PLAYERS ? p : [...p, id]));
+  const toggle = (id: string) => setPicked((p) => togglePick(p, id));
 
-  const textErrors = { period: badgeTextError(period), division: badgeTextError(division), note: badgeTextError(note) };
-  const detailsOk =
-    !textErrors.period &&
-    !textErrors.division &&
-    !textErrors.note &&
-    textLength(cleanPeriod) <= BADGE_TEXT_MAX.period &&
-    textLength(cleanDivision) <= BADGE_TEXT_MAX.division &&
-    textLength(cleanBadgeText(note)) <= BADGE_TEXT_MAX.note;
+  const textErrors = detailErrors(period, division, note);
+  const detailsOk = detailsOkOf(period, division, note);
 
   // El cupo que se ve en el teléfono (la base decide igual): con una por equipo, el equipo cuenta 1.
-  const overQuota = badge ? (badge.byTeam ? left < 1 && !awards.some((a) => a.badgeId === badge.id && !a.revokedAt && !a.prizeSlotId && a.teamId === teamId && a.period === cleanPeriod && a.division === cleanDivision) : picked.length > left) : false;
+  const overQuota = overQuotaOf({ badge, awards, left, picked, teamId, period: cleanPeriod, division: cleanDivision });
   const quotaText = badge ? quotaFullText({ name: badge.name, limitKind: badge.limitKind, period: cleanPeriod, holders: [...holders].map(nameOf) }) : '';
 
   async function give() {
@@ -132,7 +150,7 @@ function GiveFlow({ initial, designs, awards, onClose }: { initial: LeagueBadge 
     setBusy(true);
     try {
       await revokeLeagueBadgeAward(lid, result.awards.map((a) => a.id));
-      toast('Deshecho: se la quitamos');
+      toast(UNDONE_TOAST);
       onClose();
     } catch (e) {
       console.error(e);
@@ -281,11 +299,9 @@ function GiveFlow({ initial, designs, awards, onClose }: { initial: LeagueBadge 
   );
 }
 
-const STEP_LABEL: Record<'quien' | 'detalles' | 'vista', string> = { quien: '¿A quién?', detalles: 'Periodo y nota', vista: 'Así la verá' };
-
 function Steps({ step }: { step: Step }) {
-  const keys = ['quien', 'detalles', 'vista'] as const;
-  const at = keys.indexOf(step as (typeof keys)[number]);
+  const keys = GIVE_STEPS;
+  const at = stepIndex(step);
   return (
     <ol className="flex items-center gap-2 text-xs font-medium" aria-label="Pasos">
       {keys.map((k, i) => (
@@ -301,7 +317,7 @@ function Steps({ step }: { step: Step }) {
 /** Elegir cuál dar (cuando «Dar insignia» se abre sin un diseño). */
 export function PickDesign({ designs, sport, onPick }: { designs: readonly LeagueBadge[]; sport: string; onPick: (b: LeagueBadge) => void }) {
   const active = designs.filter((d) => d.status === 'activa');
-  if (!active.length) return <p className="py-6 text-center text-sm text-muted">No hay insignias activas. Crea una con «Nueva insignia».</p>;
+  if (!active.length) return <p className="py-6 text-center text-sm text-muted">{NO_ACTIVE_TEXT}</p>;
   return (
     <div className="flex flex-col gap-1">
       <p id="cual-dar" className="mb-1 text-sm font-semibold">
@@ -320,11 +336,7 @@ export function PickDesign({ designs, sport, onPick }: { designs: readonly Leagu
                 <Insignia badge={look} size={40} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{d.name}</span>
-                  <span className="block truncate text-xs text-muted">
-                    {LIMIT_INFO[d.limitKind].label}
-                    {d.periodText ? ` · ${d.periodText}` : ''}
-                    {d.byTeam ? ' · por equipo' : ''}
-                  </span>
+                  <span className="block truncate text-xs text-muted">{pickDesignSub(d)}</span>
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-muted" aria-hidden="true" />
               </button>
@@ -380,22 +392,13 @@ export function WhoStep({
 }) {
   const [q, setQ] = useState('');
   const team = teams?.find((t) => t.id === teamId) ?? null;
-  const pool = team ? players.filter((p) => team.roster.some((r) => r.playerId === p.id)) : players;
-  const query = normalizeSearch(q);
-  const list = [...pool].filter((p) => !query || normalizeSearch(p.name).includes(query)).sort((a, b) => a.name.localeCompare(b.name, 'es'));
-  const limit = LIMIT_OF[badge.limitKind];
+  const list = playerList(players, q, team ? team.roster : null);
 
   return (
     <div className="flex flex-col gap-4">
       {suggestions && <SuggestionsBox outcome={suggestions} loading={suggestionsLoading} picked={picked} teamId={badge.byTeam ? teamId : null} onPick={onSuggestion} />}
 
-      <p className="text-xs text-muted">
-        {badge.byTeam
-          ? `${LIMIT_INFO[badge.limitKind].label}: ${limit === 1 ? '1 equipo' : `hasta ${limit} equipos`} por periodo.`
-          : left > 0
-            ? `${LIMIT_INFO[badge.limitKind].label}: ${left === 1 ? 'queda 1 lugar' : `quedan ${left} lugares`}${period ? ` en ${period}` : ''}.`
-            : `${LIMIT_INFO[badge.limitKind].label}: ya no quedan lugares${period ? ` en ${period}` : ''}. Puedes darla con otro periodo o división en el paso siguiente.`}
-      </p>
+      <p className="text-xs text-muted">{quotaLine(badge, left, period)}</p>
 
       {teams && (
         <fieldset className="min-w-0 flex flex-col gap-1.5">
@@ -414,9 +417,9 @@ export function WhoStep({
           ) : teamsError ? (
             <LoadError error={teamsError} />
           ) : (
-            <p className="text-sm text-muted">Todavía no hay equipos ni parejas de temporada.</p>
+            <p className="text-sm text-muted">{NO_TEAMS_TEXT}</p>
           )}
-          {team && <p className="text-xs text-muted">Su plantilla sale marcada: desmarca a los que no jugaron.</p>}
+          {team && <p className="text-xs text-muted">{TEAM_ROSTER_HINT}</p>}
         </fieldset>
       )}
 
@@ -456,12 +459,14 @@ export function WhoStep({
                 );
               })
             ) : (
-              <p className="px-3 py-6 text-center text-sm text-muted">{players.length ? 'Nadie coincide.' : 'Todavía no hay jugadores en la liga.'}</p>
+              <p className="px-3 py-6 text-center text-sm text-muted">{emptyPlayersText(players.length > 0)}</p>
             )}
           </div>
           <p className="text-xs text-muted" aria-live="polite">
-            {picked.length ? `${picked.length === 1 ? '1 elegido' : `${picked.length} elegidos`}: ${namesText(picked.map((id) => players.find((p) => p.id === id)?.name ?? 'Jugador'))}` : 'Elige a quién se la das.'}
-            {myPlayerId && ' Nadie se da insignias a sí mismo.'}
+            {pickedLine(
+              picked.map((id) => players.find((p) => p.id === id)?.name ?? 'Jugador'),
+              !!myPlayerId,
+            )}
           </p>
         </div>
       )}
@@ -483,7 +488,7 @@ export function SuggestionsBox({
   teamId: string | null;
   onPick: (s: Suggestion) => void;
 }) {
-  const chosen = (s: Suggestion) => (s.teamId && teamId ? s.teamId === teamId : s.playerIds.length > 0 && s.playerIds.every((id) => picked.includes(id)));
+  const chosen = (s: Suggestion) => suggestionChosen(s, picked, teamId);
   return (
     <section aria-labelledby="sugerencias-app" className="flex flex-col gap-1.5 rounded-xl bg-surface-2 p-3">
       <h3 id="sugerencias-app" className="flex items-center gap-1.5 text-sm font-semibold">
@@ -518,7 +523,7 @@ export function SuggestionsBox({
       ) : (
         <p className="text-sm text-muted">{outcome.note}</p>
       )}
-      <p className="text-xs text-muted">La app sugiere; la liga decide.</p>
+      <p className="text-xs text-muted">{SUGGEST_FOOT}</p>
     </section>
   );
 }
@@ -553,13 +558,9 @@ export function DetailsStep({
   errors: { period: string | null; division: string | null; note: string | null };
   withAccount: number;
 }) {
-  const current = cleanBadgeText(period).toUpperCase();
-  const own = badge.periodText.trim();
+  const current = cleanPeriodOf(period);
   // El del diseño primero; después los de hoy que no son el mismo.
-  const options = [
-    ...(own ? [{ key: 'diseno', label: 'El del diseño', text: own }] : []),
-    ...choices.filter((c) => c.mode !== 'torneo' && (c.mode === 'none' || c.text !== own)).map((c) => ({ key: c.mode, label: c.label, text: c.text })),
-  ];
+  const options = periodOptions(badge, choices);
   return (
     <div className="flex flex-col gap-4">
       <fieldset className="min-w-0 flex flex-col gap-1.5">
@@ -614,7 +615,7 @@ export function DetailsStep({
           <Counter value={textLength(note)} max={BADGE_TEXT_MAX.note} />
         </div>
         <Textarea id="dar-nota" rows={2} value={note} maxLength={BADGE_TEXT_MAX.note} onChange={(e) => onNote(e.target.value)} placeholder="“Por tu 279 en la final”" aria-invalid={!!errors.note} />
-        <p className="text-xs text-muted">La ven el jugador y los admins. Nunca sale en la imagen para compartir.</p>
+        <p className="text-xs text-muted">{NOTE_HINT}</p>
         {errors.note && (
           <p role="alert" className="text-xs font-medium text-danger">
             {errors.note}
@@ -624,19 +625,11 @@ export function DetailsStep({
 
       <Toggle
         id="dar-avisar"
-        on={notify && !minors && withAccount > 0}
-        disabled={minors || withAccount === 0}
+        on={notifyState(notify, minors, withAccount).on}
+        disabled={notifyState(notify, minors, withAccount).disabled}
         onChange={onNotify}
-        label={withAccount > 1 ? 'Avisarles' : 'Avisarle'}
-        hint={
-          minors
-            ? 'En ligas con menores no se mandan avisos.'
-            : withAccount === 0
-              ? 'Ninguno tiene cuenta: la ven en la página de la liga.'
-              : withAccount === 1
-                ? 'Le llega un aviso al teléfono (tiene cuenta).'
-                : `Les llega un aviso al teléfono (${withAccount} tienen cuenta).`
-        }
+        label={notifyLabel(withAccount)}
+        hint={notifyHint(minors, withAccount)}
       />
     </div>
   );
@@ -667,7 +660,7 @@ export function PreviewStep({
   error: string | null;
 }) {
   const look = designLook(badge, sport, period);
-  const detail = [division, teamName].filter(Boolean).join(' · ');
+  const detail = previewDetail(division, teamName);
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-semibold">Así la verá</p>
@@ -703,8 +696,8 @@ export function DoneStep({ badge, result, names, period, error }: { badge: Leagu
       </span>
       <p className="text-base font-semibold">{givenText(names, badge.name, period)}</p>
       <p className="text-sm text-muted">
-        {notified ? (notified === 1 ? 'Le avisamos a 1 jugador con cuenta. ' : `Les avisamos a ${notified} jugadores con cuenta. `) : ''}
-        ¿Te equivocaste? Puedes deshacerla durante 24 horas.
+        {notifiedText(notified)}
+        {UNDO_NOTE}
       </p>
       {error && (
         <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2.5 text-sm font-medium text-danger">

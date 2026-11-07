@@ -1,13 +1,14 @@
 import { useMemo } from 'react';
 import { Award, ChevronDown, Gift, Plus } from 'lucide-react';
 import { usePlayers } from '../../../lib/data';
-import { BADGE_MAKERS_OPTIONS, MAX_ACTIVE_DESIGNS, badgeMakersOf, canMakeBadges, useLeagueBadges, type LeagueBadge } from '../../../lib/data/leagueBadges';
+import { MAX_ACTIVE_DESIGNS, canMakeBadges, useLeagueBadges, type LeagueBadge } from '../../../lib/data/leagueBadges';
 import { useLeagueCtx } from '../../../lib/league';
 import { leagueSport } from '../../../sports/registry';
 import { Button, Card, Empty, ListSkeleton, LoadError } from '../../ui';
 import { Chip } from './parts';
 import { DesignRow, MakerModals, RecentAwards, useMaker, type MakerState } from './MakerHost';
 import { templateName, templatesFor } from './templates';
+import { FULL_DESIGNS_TEXT, activeTitle, archivedTitle, designGroups, hasGiven, makerIntro, policyLine } from './view';
 
 /**
  * Admin › «Insignias» (docs/insignias.md §6.5): los diseños de la liga (activos, archivados y los escondidos por
@@ -24,10 +25,8 @@ export default function MakerAdmin() {
   const names = useMemo(() => new Map(players.data.map((p) => [p.id, p.name] as const)), [players.data]);
   const can = canMakeBadges(ctx);
   const { designs } = data.data;
-  const active = designs.filter((d) => d.status === 'activa');
-  const archived = designs.filter((d) => d.status === 'archivada');
-  const hidden = designs.filter((d) => d.status === 'oculta');
-  const policy = BADGE_MAKERS_OPTIONS.find((o) => o.value === badgeMakersOf(league));
+  const { active, archived, hidden } = designGroups(designs);
+  const policy = policyLine(league, ctx.isOwner);
 
   return (
     <div className="flex flex-col gap-4">
@@ -35,10 +34,7 @@ export default function MakerAdmin() {
         <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight">
           <Award className="size-5 text-accent" aria-hidden="true" /> Insignias de la liga
         </h2>
-        <p className="text-sm text-muted">
-          Diseña insignias propias y dáselas a quien se las ganó, con cuenta o sin ella. No cuentan para las de MatchMate y siempre dicen que son de{' '}
-          {league.name}.
-        </p>
+        <p className="text-sm text-muted">{makerIntro(league.name)}</p>
       </div>
 
       {can && (
@@ -51,7 +47,7 @@ export default function MakerAdmin() {
           </Button>
         </div>
       )}
-      {can && active.length >= MAX_ACTIVE_DESIGNS && <p className="text-xs text-muted">Llegaste a 30 insignias activas. Archiva una para crear otra.</p>}
+      {can && active.length >= MAX_ACTIVE_DESIGNS && <p className="text-xs text-muted">{FULL_DESIGNS_TEXT}</p>}
 
       {data.error ? (
         <LoadError error={data.error} />
@@ -61,8 +57,8 @@ export default function MakerAdmin() {
         <MakerEmpty can={can} kind={league.kind} sport={sport} m={m} />
       ) : (
         <>
-          <DesignList title={`Activas (${active.length} de ${MAX_ACTIVE_DESIGNS})`} list={active} sport={sport} onOpen={m.openSheet} empty="No hay insignias activas." />
-          {data.data.awards.some((a) => !a.revokedAt) && (
+          <DesignList title={activeTitle(active.length)} list={active} sport={sport} onOpen={m.openSheet} empty="No hay insignias activas." />
+          {hasGiven(data.data.awards) && (
             <section aria-labelledby="ultimas-dadas" className="flex flex-col gap-1.5">
               <h3 id="ultimas-dadas" className="text-sm font-semibold">
                 Las últimas que se dieron
@@ -76,7 +72,7 @@ export default function MakerAdmin() {
             <details className="group">
               <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-semibold">
                 <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-                Archivadas ({archived.length})
+                {archivedTitle(archived.length)}
               </summary>
               <DesignList list={archived} sport={sport} onOpen={m.openSheet} />
             </details>
@@ -87,7 +83,7 @@ export default function MakerAdmin() {
 
       {policy && (
         <p className="text-xs text-muted">
-          Las diseñan y las dan: <b className="text-fg">{policy.who}</b>. {ctx.isOwner ? 'Lo cambias aquí arriba, en «¿Quién diseña y da insignias?».' : 'Lo decide el dueño.'}
+          Las diseñan y las dan: <b className="text-fg">{policy.who}</b>. {policy.text}
         </p>
       )}
 
