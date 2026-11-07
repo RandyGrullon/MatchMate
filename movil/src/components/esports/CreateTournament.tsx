@@ -2,8 +2,8 @@
  * «Crear torneo» de esports (`/esports/<juego>/nuevo-torneo`, CreateTournamentPage + create/steps.tsx de la web, con
  * su misma lógica: src/pages/esports/create/logic.ts): a pantalla completa, con la barra de pasos y un solo botón abajo.
  * Juego y modo · Inscripción · Formato · Nombre y fecha · Invitar (el QR, el link y, si es privado, el código).
- * `?liga=<liga>` lo crea dentro de esa liga de esports. Sin cuenta, la tarjeta para entrar. Como en Lite, lo que casi no
- * se toca va en «Más opciones» (en el teléfono no hay Pro).
+ * `?liga=<liga>` lo crea dentro de esa liga de esports. Sin cuenta, la tarjeta para entrar. En Lite, lo que casi no se
+ * toca va en «Más opciones» (y los ajustes del formato, en «Ajustes del formato»); en Pro, a la vista, como en la web.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, View } from 'react-native';
@@ -15,6 +15,7 @@ import { useAuth } from '@mm/lib/auth';
 import { getInviteCode } from '@mm/lib/data';
 import { createEsportsTournament, esportsErrorText } from '@mm/lib/data/esports';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { sportMeta } from '@mm/sports/registry';
 import { ENTRY_LABEL, GAMES, entryTypesFor, isGameId, isIndividualMode, maxEntries, minEntries, modeLabel, type EntryType, type GameId, type Mode, type TournamentSettings } from '@mm/sports/esports';
@@ -81,6 +82,7 @@ function Wizard({ game }: { game: GameId }) {
   const c = useColors();
   const params = useLocalSearchParams<{ liga?: string }>();
   const leagueId = params.liga || null;
+  const pro = useIsPro();
   const now = useNow().getTime();
   const tz = DEFAULT_TZ;
   const [form, setForm] = useState<TournamentForm>(() => emptyForm(game, todayIn(tz, now)));
@@ -153,11 +155,11 @@ function Wizard({ game }: { game: GameId }) {
 
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 24, gap: 22 }}>
           {step === 'juego' && <GameStep form={form} onMode={(m) => setForm((f) => withMode(f, m))} />}
-          {step === 'inscripcion' && <EntryStep form={form} set={set} />}
+          {step === 'inscripcion' && <EntryStep form={form} set={set} pro={pro} />}
           {step === 'formato' && (
             <>
               <Question title="¿Cómo se juega?" sub="La plataforma, el formato y lo que cambia de cada fase." />
-              <FormatFields value={form} onChange={(v) => setForm((f) => ({ ...f, ...v }))} />
+              <FormatFields value={form} onChange={(v) => setForm((f) => ({ ...f, ...v }))} pro={pro} />
               <View accessibilityLiveRegion="polite">
                 <SoftNote>{summary(form)}</SoftNote>
               </View>
@@ -272,7 +274,7 @@ function GameStep({ form, onMode }: { form: TournamentForm; onMode: (m: Mode) =>
 
 // ---------- Paso 2: Inscripción ----------
 
-function EntryStep({ form, set }: { form: TournamentForm; set: SetField }) {
+function EntryStep({ form, set, pro }: { form: TournamentForm; set: SetField; pro: boolean }) {
   const c = useColors();
   const types = entryTypesFor(form.game, form.mode);
   const lo = minEntries(form.format);
@@ -313,7 +315,7 @@ function EntryStep({ form, set }: { form: TournamentForm; set: SetField }) {
           </>
         )}
       </View>
-      <MoreOptions>
+      <MoreOptions pro={pro}>
         <View style={{ gap: 8 }}>
           <Legend>Check-in</Legend>
           <ChoiceChips label="Check-in" items={CHECKIN_OPTIONS.map((o) => ({ key: String(o.value), label: o.label }))} value={String(form.checkin)} onChange={(k) => set('checkin', Number(k))} />

@@ -1,10 +1,10 @@
 /**
- * La página de un juego (`/esports/<juego>`, GameHubPage de la web, Lite): «‹ Esports», el monograma grande, el nombre y
- * «5 contra 5 · Riot ID»; «Torneos abiertos | Equipos»; «Crear equipo» si todavía no tienes equipo de ese juego (y al
- * final «¿Organizas? Crear torneo», el asistente de `/esports/<juego>/nuevo-torneo`); «Torneos | Equipos» (los duelos
- * solo tienen torneos). Los torneos en «Inscripción abierta», «En curso» y «Terminados»; los equipos con un buscador y
- * los tuyos primero. `?crear=equipo` abre «Crear equipo» (`&volver=` a dónde ir después; con su logo) y `?crear=liga`,
- * «Crear liga».
+ * La página de un juego (`/esports/<juego>`, GameHubPage de la web): «‹ Esports», el monograma grande, el nombre y
+ * «5 contra 5 · Riot ID»; «Torneos abiertos | Equipos»; la acción principal (Pro: «Crear torneo» y «Crear equipo» en gris
+ * debajo; Lite: «Crear equipo» si todavía no tienes equipo de ese juego, y al final «¿Organizas? Crear torneo», el
+ * asistente de `/esports/<juego>/nuevo-torneo`); «Torneos | Equipos» (los duelos solo tienen torneos). Los torneos en
+ * «Inscripción abierta», «En curso» y «Terminados»; los equipos con un buscador y los tuyos primero. `?crear=equipo` abre
+ * «Crear equipo» (`&volver=` a dónde ir después; con su logo) y `?crear=liga`, «Crear liga».
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -13,6 +13,7 @@ import { IdCard, Lock, Plus, Search, Trophy, Users } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { createTeam, esportsErrorText, uploadTeamLogo, useEsportsHub, useMyEsportsTeams, type HubTournament } from '@mm/lib/data/esports';
 import { useMyGameIds } from '@mm/lib/data/esportsIds';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { GAMES, isGameId, modeLabel, type GameId } from '@mm/sports/esports';
 import {
@@ -79,6 +80,7 @@ function StatDuo({ left, right }: { left: { value: number; label: string; onPres
 function Hub({ game, uid }: { game: GameId; uid: string | null }) {
   const c = useColors();
   const meta = GAMES[game];
+  const pro = useIsPro();
   const now = useNow().getTime();
   const params = useLocalSearchParams<{ ver?: string; crear?: string; volver?: string }>();
   const hub = useEsportsHub(game);
@@ -94,13 +96,26 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
   const mine = useMemo(() => myTeams.data.filter((t) => t.game === game), [myTeams.data, game]);
   const sections = useMemo(() => hubSections(hub.data.tournaments), [hub.data.tournaments]);
   const lists = useMemo(() => teamLists(mine, hub.data.teams, query), [mine, hub.data.teams, query]);
-  // En el teléfono no hay Pro: la acción de Lite («Crear equipo») y «¿Organizas? Crear torneo».
-  const actions = gameHubActions({ pro: false, kind: meta.kind, hasTeam: mine.length > 0 });
+  const actions = gameHubActions({ pro, kind: meta.kind, hasTeam: mine.length > 0 });
   const newTournament = () => router.push({ pathname: '/esports/[game]/nuevo-torneo', params: { game } } as never);
   const teamCount = Math.max(hub.data.teams.length, mine.length);
   const liveCount = hub.data.tournaments.filter((t) => t.status === 'live').length;
   const go = (href: string) => router.push(href as Href);
+  const openCreateTeam = () => router.setParams({ crear: 'equipo' });
   const closeCreate = () => router.setParams({ crear: undefined, volver: undefined });
+  const size = pro ? 'lg' : 'xl';
+  // Principal (Lite, sin equipo de ese juego) o en gris debajo de «Crear torneo» (Pro): en el teléfono no caben lado a lado.
+  const createTeamButton = (variant: 'primary' | 'secondary') => (
+    <Button
+      variant={variant}
+      size={variant === 'primary' ? size : 'md'}
+      full
+      icon={<Users size={variant === 'primary' ? 20 : 16} color={variant === 'primary' ? c.accentFg : c.fg} />}
+      onPress={openCreateTeam}
+    >
+      Crear equipo
+    </Button>
+  );
 
   let body: ReactNode;
   if (view === 'torneos') {
@@ -187,7 +202,7 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
       <BackBar label="Esports" fallback="/esports" />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
         <GameMark game={game} size="lg" />
-        <ScreenTitle title={meta.name} hint={gameLine(meta, modeLabel(meta.defaultMode))} />
+        <ScreenTitle title={meta.name} hint={gameLine(meta, modeLabel(meta.defaultMode))} pro={pro} />
       </View>
 
       <StatDuo
@@ -195,11 +210,15 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
         right={teamsOn ? { value: teamCount, label: 'Equipos', onPress: () => setPicked('equipos') } : { value: liveCount, label: 'En curso' }}
       />
 
-      {actions.primary === 'team' && (
-        <Button variant="primary" size="xl" full icon={<Users size={20} color={c.accentFg} />} onPress={() => router.setParams({ crear: 'equipo' })}>
-          Crear equipo
-        </Button>
+      {actions.primary === 'tournament' && (
+        <View style={{ gap: 8 }}>
+          <Button variant="primary" size={size} full icon={<Trophy size={20} color={c.accentFg} />} onPress={newTournament}>
+            Crear torneo
+          </Button>
+          {actions.secondary === 'team' && createTeamButton('secondary')}
+        </View>
       )}
+      {actions.primary === 'team' && createTeamButton('primary')}
 
       {teamsOn && (
         <Segmented<HubView>
@@ -235,6 +254,7 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
         hasId={hasGameId(ids.data, game)}
         idsLoading={!!uid && ids.loading && !ids.data.length}
         back={back}
+        pro={pro}
       />
       <CreateLeagueSheet open={crear === 'liga'} onClose={closeCreate} game={game} signedIn={!!uid} />
     </View>
@@ -276,6 +296,7 @@ function CreateTeamSheet({
   hasId,
   idsLoading,
   back,
+  pro,
 }: {
   open: boolean;
   onClose: () => void;
@@ -284,15 +305,16 @@ function CreateTeamSheet({
   hasId: boolean;
   idsLoading: boolean;
   back: string | null;
+  pro: boolean;
 }) {
   return (
     <Sheet open={open} onClose={onClose} title="Crear equipo" subtitle={GAMES[game].name}>
-      {open && <CreateTeamBody game={game} signedIn={signedIn} hasId={hasId} idsLoading={idsLoading} back={back} onClose={onClose} />}
+      {open && <CreateTeamBody game={game} signedIn={signedIn} hasId={hasId} idsLoading={idsLoading} back={back} onClose={onClose} pro={pro} />}
     </Sheet>
   );
 }
 
-function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose }: { game: GameId; signedIn: boolean; hasId: boolean; idsLoading: boolean; back: string | null; onClose: () => void }) {
+function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose, pro }: { game: GameId; signedIn: boolean; hasId: boolean; idsLoading: boolean; back: string | null; onClose: () => void; pro: boolean }) {
   const c = useColors();
   const meta = GAMES[game];
   const [form, setForm] = useState<TeamForm>({ name: '', tag: '', description: '' });
@@ -402,7 +424,7 @@ function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose }: { 
         />
       </Field>
       <TeamLogoField value={logo} onChange={setLogo} name={form.name || 'Equipo'} tag={form.tag} />
-      <Button variant="primary" size="xl" full loading={busy} icon={<Users size={20} color={c.accentFg} />} onPress={create}>
+      <Button variant="primary" size={pro ? 'lg' : 'xl'} full loading={busy} icon={<Users size={20} color={c.accentFg} />} onPress={create}>
         Crear equipo
       </Button>
     </View>

@@ -6,7 +6,7 @@
  * error del motor en vivo, hasta 3 capturas y «Enviar resultado» (o «Guardar resultado» si es admin) con el resumen
  * («Gana Tigres 2-1»). Quien organiza: en «•••», corregir, W.O., cambiar la hora y anular, y decidir un reclamo («Dejar
  * el propuesto» o «Corregir»). Los admins y anotadores (con la liga en vivo activada): «Transmitir en vivo».
- * En el teléfono no hay Pro: lo del organizador sale para los admins de la liga.
+ * Lo del organizador sale en Pro para los admins de la liga (como en la web).
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -19,6 +19,7 @@ import { adminCorrectResult, finishMatch, hasResult, rescheduleMatch, resolveDis
 import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { useLeagueCtx } from '@mm/lib/league';
 import { usePhoto } from '@mm/lib/photos';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { sideName, statusInfo, whenText } from '@mm/components/match/format';
 import { canStartStream, liveHref } from '@mm/components/live/logic';
@@ -51,7 +52,7 @@ import { ConfirmResult } from '../match/ResultParts';
 import { MatchStatus } from '../match/MatchCard';
 import { confirmAsync, toast } from '../feedback';
 import { ProofStrip } from './Br';
-import { Initials, TeamLogo } from './bits';
+import { Initials, PRO_TITLE, TeamLogo } from './bits';
 import { Legend, TimeStepper } from './fields';
 import { ChoiceChips, MenuRow, ScoreStepper, SideStepRow, ToggleRow, WinnerPick } from './inputs';
 import { Button, Card, ChoiceRow, Empty, LoadError, Sheet, Txt } from '../ui';
@@ -75,6 +76,7 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
   const [edit, setEdit] = useState<EditMode | null>(null);
   const [sheet, setSheet] = useState<SheetKey>(null);
   const [busy, setBusy] = useState<null | 'dejar' | 'anular'>(null);
+  const pro = useIsPro();
 
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) {
@@ -88,8 +90,8 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
   const rules = rulesFromMatch(m.rules, m.format);
   if (!rules) return <Empty title="No se pudo leer la serie" text="Actualiza la app e intenta de nuevo." />;
 
-  // En el teléfono no hay Pro: lo del organizador (corregir, W.O., la hora, anular, el reclamo) es de los admins.
-  const organizer = isAdmin;
+  // Lo del organizador (corregir, W.O., la hora, anular, el reclamo): solo en Pro y si es admin de la liga.
+  const organizer = isAdmin && pro;
   const mySide = sideOfTeams(m, myTeams.act);
   const known = m.sides.every((s) => !!s.teamId);
   const canScore = canScoreSeries(m, { isAdmin, scorer: !!member?.scorer, mySide });
@@ -149,7 +151,7 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
     <View style={{ gap: 18 }}>
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Txt variant="title" style={{ flex: 1 }}>
+          <Txt variant="title" style={[{ flex: 1 }, pro && PRO_TITLE]}>
             {heading}
           </Txt>
           {hasMenu && (
@@ -202,7 +204,7 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
         </Card>
       )}
 
-      {mode && <SeriesEditor key={`${m.id}:${mode}`} match={m} rules={rules} names={names} mode={mode} admin={isAdmin} onCancel={edit ? () => setEdit(null) : undefined} onDone={() => setEdit(null)} />}
+      {mode && <SeriesEditor key={`${m.id}:${mode}`} match={m} rules={rules} names={names} mode={mode} admin={isAdmin} onCancel={edit ? () => setEdit(null) : undefined} onDone={() => setEdit(null)} pro={pro} />}
 
       {!mode && !hasResult(m) && !known && m.status !== 'void' && (
         <View style={{ borderRadius: 16, backgroundColor: c.surface2, paddingHorizontal: 16, paddingVertical: 14 }}>
@@ -390,6 +392,7 @@ function SeriesEditor({
   admin,
   onCancel,
   onDone,
+  pro,
 }: {
   match: Match;
   rules: SeriesRules;
@@ -398,6 +401,7 @@ function SeriesEditor({
   admin: boolean;
   onCancel?: () => void;
   onDone: () => void;
+  pro: boolean;
 }) {
   const c = useColors();
   const { lid } = useLeagueCtx();
@@ -548,7 +552,7 @@ function SeriesEditor({
       <Txt accessibilityLiveRegion="polite" tone={summary.done ? 'fg' : 'muted'} style={{ textAlign: 'center', fontSize: 15, fontFamily: font.semibold, marginTop: 4 }}>
         {summary.text}
       </Txt>
-      <Button variant="primary" size="xl" full loading={busy === 'enviar'} disabled={busy === 'foto'} onPress={submit}>
+      <Button variant="primary" size={pro ? 'lg' : 'xl'} full loading={busy === 'enviar'} disabled={busy === 'foto'} onPress={submit}>
         {editorLabel(mode, admin)}
       </Button>
     </View>

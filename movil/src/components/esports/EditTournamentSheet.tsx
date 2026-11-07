@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { esportsErrorText, updateTournament, type EsportsTournament } from '@mm/lib/data/esports';
+import { useIsPro } from '@mm/lib/useMode';
 import { CHECKIN_OPTIONS, idRequirement, rankRequirement, type FormatValue } from '@mm/pages/esports/create/logic';
 import { FORMAT_LOCKED_TEXT, editInitial, editRange, editTournamentErrors, editTournamentPatch } from '@mm/pages/sports/esports/admin/logic';
 import { toast } from '../feedback';
@@ -25,6 +26,7 @@ export function EditTournamentSheet({ open, onClose, t, tz, approved, formatEdit
 
 function Body({ t, tz, approved, formatEditable, onDone }: { t: EsportsTournament; tz?: string; approved: number; formatEditable: boolean; onDone: () => void }) {
   const c = useColors();
+  const pro = useIsPro();
   const [initial] = useState(() => editInitial(t, tz));
   const [name, setName] = useState(initial.name);
   const [date, setDate] = useState(initial.date);
@@ -80,7 +82,7 @@ function Body({ t, tz, approved, formatEditable, onDone }: { t: EsportsTournamen
       </Field>
       {formatEditable ? (
         <>
-          <FormatFields value={format} onChange={setFormat} />
+          <FormatFields value={format} onChange={setFormat} pro={pro} />
           {requirements && <RequirementToggles game={t.game} settings={format.settings} onChange={(p) => setFormat((f) => ({ ...f, settings: { ...f.settings, ...p } }))} />}
         </>
       ) : (

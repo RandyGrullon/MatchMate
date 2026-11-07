@@ -4,14 +4,15 @@
  * el logo del equipo, las iniciales de un inscrito y el aviso de la pantalla (NoticeSlot de la web: uno solo, el más
  * importante que no se haya cerrado).
  */
-import { useSyncExternalStore } from 'react';
-import { Pressable, View } from 'react-native';
+import { useSyncExternalStore, type ReactNode } from 'react';
+import { Pressable, View, type StyleProp, type TextStyle } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Image } from 'expo-image';
 import { X } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import type { EntryStatus } from '@mm/lib/data/esports';
 import { useLogo } from '@mm/lib/logos';
+import { useIsPro } from '@mm/lib/useMode';
 import { dismissedFor, dismissedSnapshot, dismissNotice, pickEntry, subscribeNotices, type Notice } from '@mm/lib/notices';
 import { gameMeta, type GameId, type IdStatus, type Ownership, type Phase, type RankSource, type RankValue } from '@mm/sports/esports';
 import {
@@ -160,5 +161,21 @@ export function ScreenNotice({ notices }: { notices: readonly (Notice | null | f
         </Pressable>
       )}
     </View>
+  );
+}
+
+/**
+ * El título de una pantalla de esports en Pro (text-title-pro de la web: 28 px, un poco más chico que el `title` de
+ * Lite, que es de 32). Va encima de `<Txt variant="title">`.
+ */
+export const PRO_TITLE = { fontSize: 28, lineHeight: 34, letterSpacing: -0.85 } as const;
+
+/** El título de una pantalla de esports: el `title` de 32 en Lite y el de 28 en Pro (como la web). */
+export function TitleText({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+  const pro = useIsPro();
+  return (
+    <Txt variant="title" style={[pro && PRO_TITLE, style]}>
+      {children}
+    </Txt>
   );
 }

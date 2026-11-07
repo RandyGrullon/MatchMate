@@ -38,6 +38,7 @@ import {
 import { useGameIdsFor, useMyGameIds, type GameIdRecord } from '@mm/lib/data/esportsIds';
 import { logoErrorText } from '@mm/lib/logos';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
 import { GAMES, formatLine, type GameId } from '@mm/sports/esports';
 import {
   cleanTag,
@@ -66,7 +67,7 @@ import { Avatar } from '../social/Avatar';
 import { confirmAsync, toast } from '../feedback';
 import { BackBar, Badge, Button, Card, Empty, Field, Input, LoadError, Loading, SectionHeader, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
-import { EntryStatusChip, GameMark, IdChip, RankChip, TeamLogo } from './bits';
+import { EntryStatusChip, GameMark, IdChip, PRO_TITLE, RankChip, TeamLogo } from './bits';
 import { TeamLogoField, type PickedLogo } from './TeamLogoField';
 import { SignInCard } from './EsportsIndex';
 import { MenuRow, RichRow, RowText } from './inputs';
@@ -90,6 +91,7 @@ export function TeamScreen({ teamId }: { teamId: string }) {
 
 function TeamView({ teamId, uid }: { teamId: string; uid: string | null }) {
   const c = useColors();
+  const pro = useIsPro();
   const params = useLocalSearchParams<{ invitar?: string }>();
   const data = useEsportsTeam(teamId);
   const team = data.data?.team ?? null;
@@ -155,7 +157,7 @@ function TeamView({ teamId, uid }: { teamId: string; uid: string | null }) {
 
       <View style={{ alignItems: 'center', gap: 2 }}>
         <TeamLogo path={team.logoPath} name={team.name} tag={team.tag} size={96} />
-        <Txt variant="title" style={{ textAlign: 'center', marginTop: 16 }}>
+        <Txt variant="title" style={[{ textAlign: 'center', marginTop: 16 }, pro && PRO_TITLE]}>
           {team.name}
         </Txt>
         <Txt tone="fg2" style={{ fontFamily: font.semibold, letterSpacing: 1.2 }}>{`[${team.tag}]`}</Txt>
@@ -173,7 +175,7 @@ function TeamView({ teamId, uid }: { teamId: string; uid: string | null }) {
       </View>
 
       {viewer === 'captain' && (
-        <Button variant="primary" size="xl" full icon={<UserPlus size={20} color={c.accentFg} />} onPress={() => setInviting(true)}>
+        <Button variant="primary" size={pro ? 'lg' : 'xl'} full icon={<UserPlus size={20} color={c.accentFg} />} onPress={() => setInviting(true)}>
           Invitar
         </Button>
       )}
@@ -545,6 +547,7 @@ function EditTeamSheet({ open, onClose, team }: { open: boolean; onClose: () => 
 
 function EditTeamBody({ team, onDone }: { team: EsportsTeam; onDone: () => void }) {
   const c = useColors();
+  const pro = useIsPro();
   const [form, setForm] = useState<TeamForm>({ name: team.name, tag: team.tag, description: team.description ?? '' });
   const [logo, setLogo] = useState<PickedLogo | null>(null);
   const [logoRemoved, setLogoRemoved] = useState(false);
@@ -590,7 +593,7 @@ function EditTeamBody({ team, onDone }: { team: EsportsTeam; onDone: () => void 
         <Input multiline maxLength={200} value={form.description} onChangeText={(description) => setForm((f) => ({ ...f, description }))} style={{ height: 80, paddingTop: 14, textAlignVertical: 'top' }} />
       </Field>
       <TeamLogoField value={logo} onChange={setLogo} name={form.name || team.name} tag={form.tag || team.tag} current={team.logoPath} removed={logoRemoved} onRemove={setLogoRemoved} />
-      <Button variant="primary" size="xl" full loading={busy} disabled={!ok} icon={<Save size={20} color={c.accentFg} />} onPress={save}>
+      <Button variant="primary" size={pro ? 'lg' : 'xl'} full loading={busy} disabled={!ok} icon={<Save size={20} color={c.accentFg} />} onPress={save}>
         Guardar
       </Button>
     </View>
@@ -625,6 +628,7 @@ export function JoinTeamScreen({ code }: { code: string }) {
 
 function JoinTeamView({ code, preview, uid }: { code: string; preview: TeamPreview | null | undefined; uid: string | null }) {
   const c = useColors();
+  const pro = useIsPro();
   const ids = useMyGameIds(uid);
   const teams = useMyEsportsTeams(uid);
   const [busy, setBusy] = useState(false);
@@ -721,7 +725,7 @@ function JoinTeamView({ code, preview, uid }: { code: string; preview: TeamPrevi
       )}
 
       {state === 'ready' && (
-        <Button variant="primary" size="xl" full loading={busy} onPress={join} icon={<UserPlus size={20} color={c.accentFg} />}>
+        <Button variant="primary" size={pro ? 'lg' : 'xl'} full loading={busy} onPress={join} icon={<UserPlus size={20} color={c.accentFg} />}>
           Unirme al equipo
         </Button>
       )}

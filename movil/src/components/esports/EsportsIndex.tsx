@@ -13,11 +13,12 @@ import { useAuth } from '@mm/lib/auth';
 import { useMyEsportsEntries, useMyEsportsTeams } from '@mm/lib/data/esports';
 import { seenIdMove, useMyGameIds, useMyIdMoves } from '@mm/lib/data/esportsIds';
 import type { Notice } from '@mm/lib/notices';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
 import { GAMES, GAME_IDS, type GameId } from '@mm/sports/esports';
 import { entryPhase, esportsNotice, gameSections, idMoveNoticeOf, liveEntries, myEntrySubtitle, myIdsSubtitle, myTeamSubtitle, teamTitle } from '@mm/pages/esports/logic';
 import { BackBar, Button, Card, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '../ui';
-import { GameMark, PhaseChip, ScreenNotice, TeamLogo } from './bits';
+import { GameMark, PRO_TITLE, PhaseChip, ScreenNotice, TeamLogo } from './bits';
 import { RichRow, RowText } from './inputs';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -56,11 +57,13 @@ export function SignInCard({ icon, title, text, createLabel = 'Crear cuenta', lo
   );
 }
 
-/** El título de una pantalla de esports con su línea de abajo (ScreenTitle de la web). */
-export function ScreenTitle({ title, hint }: { title: string; hint?: string }) {
+/** El título de una pantalla de esports con su línea de abajo (ScreenTitle de la web; en Pro, el título de 28). */
+export function ScreenTitle({ title, hint, pro }: { title: string; hint?: string; pro?: boolean }) {
   return (
     <View style={{ gap: 4, flex: 1, minWidth: 0 }}>
-      <Txt variant="title">{title}</Txt>
+      <Txt variant="title" style={pro ? PRO_TITLE : undefined}>
+        {title}
+      </Txt>
       {!!hint && <Txt tone="muted">{hint}</Txt>}
     </View>
   );
@@ -139,6 +142,7 @@ export function EsportsIndex() {
 
 function EsportsHome({ uid }: { uid: string | null }) {
   const c = useColors();
+  const pro = useIsPro();
   const params = useLocalSearchParams<{ crear?: string }>();
   const now = useNow().getTime();
   const ids = useMyGameIds(uid);
@@ -156,7 +160,7 @@ function EsportsHome({ uid }: { uid: string | null }) {
     <View style={{ gap: 26 }}>
       <View style={{ gap: 12 }}>
         <BackBar label="Ligas" fallback="/ligas" />
-        <ScreenTitle title="Esports" hint="Torneos y equipos por juego" />
+        <ScreenTitle title="Esports" hint="Torneos y equipos por juego" pro={pro} />
       </View>
       <ScreenNotice notices={[moved, esportsNotice({ signedIn: !!uid, ids: ids.data, idsLoading: ids.loading })]} />
 

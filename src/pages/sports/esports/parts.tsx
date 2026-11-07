@@ -5,20 +5,14 @@
  */
 import type { ReactNode } from 'react';
 import { Minus, Plus } from 'lucide-react';
-import { useLeagueCtx } from '../../../lib/league';
-import { useIsPro } from '../../../components/mode';
 import { cx } from '../../../components/ui';
 import { entryInitials } from '../../esports/chips';
+import { useOrganizer } from './organizer';
 
-// Los datos del torneo, mis equipos y los nombres (hooks sin pantallas) están en tournamentData.ts: los usa también la
-// app del teléfono.
+// Los datos del torneo, mis equipos y los nombres (hooks sin pantallas) están en tournamentData.ts, y la puerta del
+// organizador (Pro + admin) en organizer.ts: los usa también la app del teléfono.
 export { useEntryNames, useMyTeams, useTournament, type TournamentData } from './tournamentData';
-
-/** Lo del organizador: solo en Pro y si es admin de la liga (los permisos los decide la base). */
-export function useOrganizer(): boolean {
-  const { isAdmin } = useLeagueCtx();
-  return useIsPro() && isAdmin;
-}
+export { useOrganizer };
 
 export function OrganizerOnly({ children, fallback = null }: { children: ReactNode; fallback?: ReactNode }) {
   return <>{useOrganizer() ? children : fallback}</>;

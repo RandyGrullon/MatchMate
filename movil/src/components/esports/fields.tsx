@@ -3,7 +3,7 @@
  * src/pages/esports/create/logic.ts): la hora con − y +, «Más opciones», las tarjetas para elegir (entrada, formato),
  * el número con − y + en su fila, «Mejor de», la plataforma, el formato con sus ajustes (FormatFields), lo de battle
  * royale (jornadas, partidas y la tabla de puntos) y «Pedir ID confirmado» / «Pedir rango verificado».
- * En el teléfono no hay Pro: los ajustes van en «Más opciones», como en Lite.
+ * En Lite, lo que casi no se toca va en «Más opciones»; en Pro, a la vista (como la web).
  */
 import { useState, type ReactNode } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
@@ -87,10 +87,11 @@ export function Legend({ children }: { children: string }) {
   );
 }
 
-/** «Más opciones»: lo que casi no se toca va escondido (Lite). */
-export function MoreOptions({ label = 'Más opciones', children }: { label?: string; children: ReactNode }) {
+/** «Más opciones»: en Lite, lo que casi no se toca va escondido (en Pro, a la vista). */
+export function MoreOptions({ pro, label = 'Más opciones', children }: { pro: boolean; label?: string; children: ReactNode }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
+  if (pro) return <View style={{ gap: 16 }}>{children}</View>;
   return (
     <View style={{ gap: 16 }}>
       <Pressable
@@ -288,8 +289,9 @@ function BrFields({ game, settings: s, onChange }: { game: GameId; settings: Tou
  * El formato y sus ajustes (§12.7 paso 3): la plataforma, las tarjetas de formato con una línea y, en «Ajustes del
  * formato», el mejor de por fase, grupos y clasificados, playoffs simple o doble, 3.er lugar, reinicio de la gran final,
  * ida y vuelta, empates (EA SPORTS FC), rondas para ganar (SF6/TEKKEN), vidas (Smash), lo de battle royale y la siembra.
+ * En Lite los ajustes van en «Ajustes del formato» (cerrado); en Pro, a la vista.
  */
-export function FormatFields({ value: v, onChange }: { value: FormatValue; onChange: (v: FormatValue) => void }) {
+export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; onChange: (v: FormatValue) => void; pro: boolean }) {
   const meta = GAMES[v.game];
   const s = v.settings;
   const setS = (patch: Partial<TournamentSettings>) => onChange({ ...v, settings: { ...s, ...patch } });
@@ -305,7 +307,7 @@ export function FormatFields({ value: v, onChange }: { value: FormatValue; onCha
           <ChoiceCard key={f} on={v.format === f} title={FORMAT_LABEL[f]} text={FORMAT_BLURB[f]} onPress={() => pickFormat(f)} />
         ))}
       </View>
-      <MoreOptions label="Ajustes del formato">
+      <MoreOptions pro={pro} label="Ajustes del formato">
         {shown.bestOfGroups && <BestOfPick label={shown.bestOfGroups} value={s.bestOf.groups} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, groups: b } })} />}
         {shown.bestOfPlayoffs && <BestOfPick label={shown.bestOfPlayoffs} value={s.bestOf.playoffs} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, playoffs: b } })} />}
         {shown.bestOfFinal && <BestOfPick label="Mejor de en la final" value={s.bestOf.final} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, final: b } })} />}

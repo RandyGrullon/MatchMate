@@ -8,6 +8,7 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Trophy } from 'lucide-react-native';
 import { createEsportsLeague, esportsErrorText } from '@mm/lib/data/esports';
+import { useIsPro } from '@mm/lib/useMode';
 import { GAMES, type GameId } from '@mm/sports/esports';
 import { toast } from '../feedback';
 import { Button, Field, Input, Segmented, Sheet, Txt } from '../ui';
@@ -26,6 +27,7 @@ export function CreateLeagueSheet({ open, onClose, game, signedIn }: { open: boo
 
 function Body({ game, signedIn, onClose }: { game: GameId; signedIn: boolean; onClose: () => void }) {
   const c = useColors();
+  const pro = useIsPro();
   const meta = GAMES[game];
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<Visibility>('public');
@@ -79,7 +81,7 @@ function Body({ game, signedIn, onClose }: { game: GameId; signedIn: boolean; on
       <Field label="Sede (opcional)">
         <Input accessibilityLabel="Sede (opcional)" maxLength={80} value={venue} placeholder="Online, cibercafé o centro gamer" onChangeText={setVenue} />
       </Field>
-      <Button variant="primary" size="xl" full loading={busy} icon={<Trophy size={20} color={c.accentFg} />} onPress={create}>
+      <Button variant="primary" size={pro ? 'lg' : 'xl'} full loading={busy} icon={<Trophy size={20} color={c.accentFg} />} onPress={create}>
         Crear liga
       </Button>
     </View>

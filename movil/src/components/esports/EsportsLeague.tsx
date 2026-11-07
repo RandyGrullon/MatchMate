@@ -2,8 +2,8 @@
  * Las pantallas de la liga de esports (src/pages/sports/esports/screens.tsx de la web, Lite): el inicio (un torneo
  * suelto es la página de su torneo; una liga, sus torneos en «Inscripción abierta», «En curso» y «Terminados»), un
  * torneo, «Partidos» (todas las series), «Tabla» (grupos, todos contra todos o battle royale) y «Lo mío» (mis
- * inscripciones y mis series). Las pestañas de la web: Torneo · Partidos · Tabla · Lo mío. Quien organiza la liga (en el
- * teléfono no hay Pro: sus admins) tiene «Crear torneo» (el asistente con `?liga=`).
+ * inscripciones y mis series). Las pestañas de la web: Torneo · Partidos · Tabla · Lo mío. Quien organiza la liga (en
+ * Pro, sus admins: useOrganizer de la web) tiene «Crear torneo» (el asistente con `?liga=`).
  */
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -40,12 +40,13 @@ import {
   type SeriesFilter,
 } from '@mm/pages/sports/esports/logic';
 import { useEntryNames, useMyTeams, useTournament } from '@mm/pages/sports/esports/tournamentData';
+import { useOrganizer } from '@mm/pages/sports/esports/organizer';
 import { DateBlock } from '../DateBlock';
 import { MatchCard } from '../match/MatchCard';
 import { StandingsTable } from '../match/StandingsTable';
-import { Button, Card, Empty, ListRow, LoadError, Loading, Segmented, SectionHeader, Txt } from '../ui';
+import { Button, Card, Empty, ListRow, LoadError, Loading, Segmented, SectionHeader } from '../ui';
 import { BrLeaderboard } from './Br';
-import { EntryStatusChip, GameMark, PhaseChip } from './bits';
+import { EntryStatusChip, GameMark, PhaseChip, TitleText } from './bits';
 import { ChoiceChips, FinePrint } from './inputs';
 import { TournamentView, esportsMatchRoute } from './Tournament';
 import { useColors } from '@/theme/theme';
@@ -74,10 +75,10 @@ export function EsportsEventBody({ eventId }: { eventId: string }) {
 
 function LeagueTournaments({ list }: { list: readonly EsportsTournament[] }) {
   const c = useColors();
-  const { lid, isAdmin } = useLeagueCtx();
+  const { lid } = useLeagueCtx();
   const rules = useLeagueRules(lid);
-  // En el teléfono no hay Pro: «Crear torneo» es de los admins de la liga.
-  const organizer = isAdmin;
+  // «Crear torneo»: solo en Pro y si es admin de la liga.
+  const organizer = useOrganizer();
   const game = isGameId(rules.data.game) ? rules.data.game : (list[0]?.game ?? null);
   const live = list.filter((t) => t.status !== 'cancelled');
   const open = live.filter((t) => t.status === 'registration');
@@ -165,7 +166,7 @@ export function EsportsMatches({ initial = 'todos' }: { initial?: SeriesFilter }
     );
   return (
     <View style={{ gap: 20 }}>
-      <Txt variant="title">Partidos</Txt>
+      <TitleText>Partidos</TitleText>
       {myTeams.all.size > 0 && (
         <Segmented<SeriesFilter>
           label="Qué partidos ver"
@@ -221,7 +222,7 @@ export function EsportsStandings() {
   if (!picked) return <Redirect href={{ pathname: '/l/[lid]', params: { lid } }} />;
   return (
     <View style={{ gap: 20 }}>
-      <Txt variant="title">Tabla</Txt>
+      <TitleText>Tabla</TitleText>
       {withTable.length > 1 && <ChoiceChips scroll label="Torneo" items={withTable.map((t) => ({ key: t.eventId, label: t.name }))} value={picked.eventId} onChange={setWanted} />}
       <TournamentTables key={picked.eventId} eventId={picked.eventId} />
     </View>
@@ -336,7 +337,7 @@ export function EsportsMine() {
   }
   return (
     <View style={{ gap: 26 }}>
-      <Txt variant="title">Lo mío</Txt>
+      <TitleText>Lo mío</TitleText>
       {body}
     </View>
   );

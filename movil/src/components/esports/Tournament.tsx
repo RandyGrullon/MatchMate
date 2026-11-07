@@ -3,15 +3,16 @@
  * tournamentData.ts): el juego, la fase, el inicio, el formato y el cupo; UNA acción principal (anotar o confirmar mi
  * serie, hacer check-in, inscribirme); mi inscripción; el aviso de la pantalla (lo que le falta a tu ID, «Tu inscripción
  * está por aprobar», cuándo abre el check-in) y las vistas del formato: Cuadro, Grupos, Playoffs, Tabla, Partidos,
- * Partidas, Equipos (o Jugadores) e Info. Tocar una serie abre el partido. Quien organiza (en el teléfono no hay Pro: los
- * admins de la liga), lo de la web: revisar inscripciones, sembrar, armar el cuadro o empezar, pasar a playoffs, los
- * agentes libres, anotar partidas de battle royale, editar, rehacer el cuadro, los anotadores, el logo, cerrar, cancelar
- * o volver a abrir (las hojas de admin/*.tsx, con la lógica de admin/logic.ts).
+ * Partidas, Equipos (o Jugadores) e Info. Tocar una serie abre el partido. Quien organiza (en Pro y admin de la liga),
+ * lo de la web: revisar inscripciones, sembrar, armar el cuadro o empezar, pasar a playoffs, los agentes libres, anotar
+ * partidas de battle royale, editar, rehacer el cuadro, los anotadores, el logo, cerrar, cancelar o volver a abrir (las
+ * hojas de admin/*.tsx, con la lógica de admin/logic.ts). El admin en Lite ve el aviso «Organizas este torneo» con «Usar
+ * Pro» y, en «•••», «Revisar inscripciones y armar el cuadro» (está en Pro), como useOrganizePro de la web.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Ban, CheckCircle2, ClipboardPen, Crosshair, Flag, GitFork, ImageIcon, ListOrdered, MoreHorizontal, Play, RotateCcw, Settings2, Share2, Swords, Trophy, UserPlus, Users } from 'lucide-react-native';
+import { Ban, CheckCircle2, ClipboardPen, Crosshair, Flag, GitFork, ImageIcon, ListOrdered, MoreHorizontal, Play, RotateCcw, Settings2, Share2, Swords, Trophy, UserPlus, Users, Zap } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { checkIn, deleteStage, esportsErrorText, setTournamentStatus, syncBracket, type BrGame, type EsportsEntry, type EsportsTournament } from '@mm/lib/data/esports';
 import { useMyGameIds } from '@mm/lib/data/esportsIds';
@@ -19,7 +20,9 @@ import type { Match } from '@mm/lib/data/matches';
 import type { Notice } from '@mm/lib/notices';
 import { useLeagueCtx } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
+import { useIsPro } from '@mm/lib/useMode';
 import { useNow } from '@mm/lib/useNow';
+import { useSwitchMode } from '@mm/components/mode/toast';
 import { whenText } from '@mm/components/match/format';
 import { canCheckIn, canRegister, champion, formatLine, gameLabel, isIndividualMode, platformLabel, rankKeyFor, resolvePlan, tiebreakText, type StageKind } from '@mm/sports/esports';
 import { groupLetter } from '@mm/sports/formats/groups';
@@ -74,12 +77,13 @@ import { BackBar, Button, Card, Empty, ListRow, LoadError, Loading, Segmented, S
 import { BrGamesList, BrLeaderboard } from './Br';
 import { EsportsBracket } from './Bracket';
 import { EntriesView, TournamentInfo } from './Entries';
-import { EntryStatusChip, GameMark, PhaseChip, ScreenNotice } from './bits';
+import { EntryStatusChip, GameMark, PRO_TITLE, PhaseChip, ScreenNotice } from './bits';
 import { FinePrint, MenuRow } from './inputs';
 import { RegisterSheet } from './RegisterSheet';
 import { BrGameSheet } from './BrGameSheet';
 import { EditTournamentSheet } from './EditTournamentSheet';
 import { FreeAgentsSheet, SeedSheet, StageSheet } from './StageSheets';
+import { useProUpsell } from '../mode/Mode';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -126,8 +130,10 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
   const [editingBr, setEditingBr] = useState<BrGame | null>(null);
   const [wanted, setWanted] = useState<string | null>(params.ver ?? null);
   const [busy, setBusy] = useState<null | 'checkin' | 'estado' | 'rehacer'>(null);
-  // En el teléfono no hay Pro: lo del organizador es de los admins de la liga.
-  const organizer = isAdmin;
+  const pro = useIsPro();
+  const switchMode = useSwitchMode();
+  // Lo del organizador: solo en Pro y si es admin de la liga.
+  const organizer = pro && isAdmin;
   const myTeams = useMyTeams(d.entries);
   const nameOf = useEntryNames(d.entries);
   const myIds = useMyGameIds(uid);
@@ -180,6 +186,9 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
   const idProblem = memberProblem(myId, t.settings, rankKeyFor(t.game, t.mode), t.game);
   const idTip = idProblem ? idNotice(idProblem, t.game, platform, playsOnOf(t.game, myId)) : null;
   const checkinAt = checkinOpensAt(t);
+  // El admin en Lite: inscripciones y cuadro se manejan en Pro (el aviso con «Usar Pro» y la opción de «•••»).
+  const finished = t.status === 'finished' || t.status === 'cancelled';
+  const proNotice = useProUpsell(isAdmin && !finished, { id: `esports-torneo-pro:${t.eventId}`, title: 'Organizas este torneo', text: 'Inscripciones y cuadro se manejan en Pro' });
   const notices: (Notice | false | null)[] = [
     !!uid &&
       registrationOpen &&
@@ -191,6 +200,7 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
       checkinAt !== null &&
       now < checkinAt &&
       t.status === 'registration' && { id: `esports-checkin:${t.eventId}`, kind: 'tip', title: `El check-in abre el ${checkinDay(checkinAt, league.tz)}`, text: 'Hazlo antes de empezar o te pueden dejar fuera.' },
+    proNotice,
   ];
 
   const openMatch = (id: string) => router.push(esportsMatchRoute(lid, id));
@@ -316,7 +326,9 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
       {!embedded && (
         <>
           <BackBar label={league.name} fallback={`/l/${lid}`} right={more} />
-          <Txt variant="title">{t.name}</Txt>
+          <Txt variant="title" style={pro ? PRO_TITLE : undefined}>
+            {t.name}
+          </Txt>
         </>
       )}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -349,7 +361,7 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
 
       {primary && (
         <View style={{ gap: 10 }}>
-          <Button variant="primary" size="xl" full icon={primaryIcon(primary, c.accentFg)} loading={busy === 'checkin' || busy === 'estado'} onPress={() => runPrimary(primary)}>
+          <Button variant="primary" size={pro ? 'lg' : 'xl'} full icon={primaryIcon(primary, c.accentFg)} loading={busy === 'checkin' || busy === 'estado'} onPress={() => runPrimary(primary)}>
             {primary.label}
           </Button>
           {orgAction && (
@@ -394,6 +406,8 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
 
       <Sheet open={sheet === 'menu'} onClose={() => setSheet(null)} title={t.name}>
         <MenuRow icon={<Share2 size={20} color={c.fg2} />} label="Compartir el torneo" onPress={() => void share()} />
+        {/* Lite, quien organiza: lo mismo que el aviso (cambia a Pro y el menú sigue abierto, ya con lo del organizador). */}
+        {!!proNotice && <MenuRow icon={<Zap size={20} color={c.fg2} />} label="Revisar inscripciones y armar el cuadro" hint="Está en Pro · Usar Pro" onPress={() => void switchMode('pro')} />}
         {menuItems.map((it) => {
           const I = MENU_ICON[it.key];
           return (

@@ -67,6 +67,7 @@ import {
   type IdSheetState,
   type RankKey,
 } from '@mm/pages/esports/logic';
+import { useIsPro } from '@mm/lib/useMode';
 import { openOnWeb } from '@/lib/web';
 import { confirmAsync, toast } from '../feedback';
 import { BackBar, Button, Card, ChoiceRow, Field, Input, LoadError, Loading, Segmented, SectionHeader, Sheet, Txt } from '../ui';
@@ -96,6 +97,7 @@ export function GameIdsScreen() {
 
 function GameIds({ uid, back }: { uid: string; back: string | null }) {
   const c = useColors();
+  const pro = useIsPro();
   const params = useLocalSearchParams<{ juego?: string; plataforma?: string }>();
   const ids = useMyGameIds(uid);
   const providers = useProviders();
@@ -161,10 +163,10 @@ function GameIds({ uid, back }: { uid: string; back: string | null }) {
   return (
     <View style={{ gap: 20 }}>
       <BackBar label={back ? 'Volver' : 'Esports'} fallback={back ?? '/esports'} />
-      <ScreenTitle title="Mi ID de juego" hint="Tu ID en cada juego, para equipos y torneos" />
+      <ScreenTitle title="Mi ID de juego" hint="Tu ID en cada juego, para equipos y torneos" pro={pro} />
       <ScreenNotice notices={[moved]} />
       {content}
-      <Button variant="primary" size="xl" full icon={<Plus size={20} color={c.accentFg} strokeWidth={2.4} />} onPress={() => setPicking(true)}>
+      <Button variant="primary" size={pro ? 'lg' : 'xl'} full icon={<Plus size={20} color={c.accentFg} strokeWidth={2.4} />} onPress={() => setPicking(true)}>
         Agregar un ID
       </Button>
       <Txt tone="muted" style={{ fontSize: 13, marginHorizontal: 4, marginTop: -8 }}>
@@ -400,6 +402,8 @@ function GameIdSheet({
   linkBack: string;
 }) {
   const c = useColors();
+  const pro = useIsPro();
+  const size = pro ? 'lg' : 'xl';
   const meta = GAMES[game];
   const [busy, setBusy] = useState<null | 'save' | 'found' | 'lookup' | 'rank' | 'delete' | 'platforms'>(null);
   const [s, setS] = useState<IdSheetState>(() => initialIdSheetState(game, record, wanted));
@@ -665,7 +669,7 @@ function GameIdSheet({
       );
       if (changed) {
         footer = (
-          <Button variant="primary" size="xl" full loading={busy === 'platforms'} onPress={savePlatforms} icon={<MonitorSmartphone size={20} color={c.accentFg} />}>
+          <Button variant="primary" size={size} full loading={busy === 'platforms'} onPress={savePlatforms} icon={<MonitorSmartphone size={20} color={c.accentFg} />}>
             Guardar dónde juego
           </Button>
         );
@@ -765,7 +769,7 @@ function GameIdSheet({
       footer = (
         <Button
           variant="primary"
-          size="xl"
+          size={size}
           full
           disabled={!!rankError}
           loading={busy === 'save'}
@@ -797,10 +801,10 @@ function GameIdSheet({
       );
       footer = (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button size="xl" disabled={busy !== null} onPress={() => patch({ step: 'edit', found: null, message: null })}>
+          <Button size={size} disabled={busy !== null} onPress={() => patch({ step: 'edit', found: null, message: null })}>
             No soy yo
           </Button>
-          <Button variant="primary" size="xl" style={{ flex: 1 }} loading={busy === 'found'} onPress={() => confirmFound(f.lookupId)}>
+          <Button variant="primary" size={size} style={{ flex: 1 }} loading={busy === 'found'} onPress={() => confirmFound(f.lookupId)}>
             Sí, soy yo
           </Button>
         </View>
@@ -829,13 +833,13 @@ function GameIdSheet({
         </View>
       );
       const other = (
-        <Button variant={provider ? 'ghost' : 'primary'} size={provider ? 'md' : 'xl'} full disabled={busy !== null} onPress={() => patch({ step: 'edit', message: null })}>
+        <Button variant={provider ? 'ghost' : 'primary'} size={provider ? 'md' : size} full disabled={busy !== null} onPress={() => patch({ step: 'edit', message: null })}>
           Prueba con otro ID
         </Button>
       );
       footer = provider ? (
         <View style={{ gap: 8 }}>
-          <Button variant="primary" size="xl" full onPress={connect} icon={<Link2 size={20} color={c.accentFg} />}>
+          <Button variant="primary" size={size} full onPress={connect} icon={<Link2 size={20} color={c.accentFg} />}>
             {connectLabel(provider)}
           </Button>
           {other}
@@ -857,10 +861,10 @@ function GameIdSheet({
       );
       footer = (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Button size="xl" disabled={busy !== null} onPress={() => patch({ step: 'summary' })}>
+          <Button size={size} disabled={busy !== null} onPress={() => patch({ step: 'summary' })}>
             Volver
           </Button>
-          <Button variant="primary" size="xl" style={{ flex: 1 }} disabled={!!rankError} loading={busy === 'rank'} onPress={saveRanks} icon={<Trophy size={20} color={c.accentFg} />}>
+          <Button variant="primary" size={size} style={{ flex: 1 }} disabled={!!rankError} loading={busy === 'rank'} onPress={saveRanks} icon={<Trophy size={20} color={c.accentFg} />}>
             Guardar rango
           </Button>
         </View>

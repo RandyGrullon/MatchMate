@@ -10,7 +10,8 @@
  * Su ID es `Ejemplo#1234`. El código `UNIR2345` lleva a otro equipo («Equipo Cinco») para probar «Unirme al equipo».
  *
  * Donde la cuenta organiza (es la dueña): «Torneos de Ejemplo» (liga de VALORANT, con las transmisiones activadas) y
- * «Battle Royale de Ejemplo» (un torneo suelto de Free Fire):
+ * «Battle Royale de Ejemplo» (un torneo suelto de Free Fire). Lo del organizador sale en Pro (Yo › «Pro»), como en la
+ * web; en Lite, el torneo dice «Organizas este torneo · Inscripciones y cuadro se manejan en Pro · Usar Pro»:
  * - «Clásico de Ejemplo» (inscripción abierta, «Libre», con check-in): 4 equipos aprobados (2 con check-in y uno con
  *   lugar), uno por aprobar y 6 agentes libres → revisar, sembrar, agentes libres, armar el cuadro, editar, cancelar.
  * - «Grupos de Ejemplo» (grupos y playoffs, en curso): los dos grupos terminados → «Pasar a playoffs».
