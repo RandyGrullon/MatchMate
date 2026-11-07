@@ -25,6 +25,8 @@ import { demoSquadsSelect, forgetDemoSquads, squadsRpc } from './demoSquads';
 import { badgesRpc, demoBadgesSelect, forgetDemoBadges } from './demoBadges';
 import { approvalsRpc, demoApprovalFile, demoApprovalsInvoke, demoApprovalsSelect, forgetDemoApprovals } from './demoApprovals';
 import { agendaRpc, demoAgendaSelect, forgetDemoAgenda } from './demoAgenda';
+import { forgetDemoSocial, socialRpc } from './demoSocial';
+import { demoPrizesSelect, forgetDemoPrizes, prizesRpc } from './demoPrizes';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -50,6 +52,8 @@ const settingsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSettings
 const badgesLayer = (t: string, f: readonly DemoFilter[] = []) => demoBadgesSelect(DEMO_USER, t, f, (x) => settingsLayer(x)) ?? settingsLayer(t, f);
 /** Arriba de todo, la Agenda (demoAgenda.ts): las ligas públicas a las que la cuenta entró con «Me apunto» y sus «Voy». */
 const agendaLayer = (t: string, f: readonly DemoFilter[] = []) => demoAgendaSelect(DEMO_USER, t, f, (x) => badgesLayer(x)) ?? badgesLayer(t, f);
+/** Arriba de todo, los premios del torneo (demoPrizes.ts): los puestos y los entregados, y sus insignias encima. */
+const prizesLayer = (t: string, f: readonly DemoFilter[] = []) => demoPrizesSelect(DEMO_USER, t, f, (x) => agendaLayer(x)) ?? agendaLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -84,6 +88,8 @@ export function setDemo(on: boolean) {
       forgetDemoBadges();
       forgetDemoApprovals();
       forgetDemoAgenda();
+      forgetDemoSocial();
+      forgetDemoPrizes();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -445,7 +451,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = agendaLayer(q.table, q.filters);
+      const league = prizesLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -458,6 +464,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Los premios del torneo (demoPrizes.ts): elegirlos, el podio y entregarlos (va antes de las insignias).
+      const fromPrizes = prizesRpc(DEMO_USER, fn, args, (t) => agendaLayer(t) ?? []);
+      if (fromPrizes !== undefined) return structuredClone(fromPrizes) as T;
       // Las insignias (demoBadges.ts): la vitrina, los avisos, confirmar y los ajustes de la liga.
       const fromBadges = badgesRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);
       if (fromBadges !== undefined) return structuredClone(fromBadges) as T;
@@ -496,6 +505,9 @@ export function createDemoBackend(): Backend {
       // Aprobar juegos (demoApprovals.ts): la lectura de la foto y aprobar o rechazar sus envíos.
       const fromApprovals = approvalsRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromApprovals !== undefined) return structuredClone(fromApprovals) as T;
+      // Social (demoSocial.ts): el feed, me gusta, comentarios, los juegos de los que sigues y los avisos sociales.
+      const fromSocial = socialRpc(DEMO_USER, fn, args);
+      if (fromSocial !== undefined) return structuredClone(fromSocial) as T;
       const fromLeague = demoLeagueRpc(DEMO_USER, fn, args);
       if (fromLeague !== undefined) return structuredClone(fromLeague) as T;
       const run = rpcs[fn] as ((a: Record<string, unknown>) => unknown) | undefined;

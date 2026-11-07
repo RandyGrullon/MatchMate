@@ -4,7 +4,6 @@ import { Insignia, badgeLabel } from '../../badges/visual';
 import { usePlayers } from '../../lib/data';
 import type { LeagueBadge } from '../../lib/data/leagueBadges';
 import {
-  anyDelivered,
   deliverTournamentPrizes,
   fetchTournamentPodium,
   podiumLoadErrorText,
@@ -35,6 +34,7 @@ import { saveErrorMessage, useFeedback } from '../feedback';
 import { Button, ListSkeleton, Sheet, cx } from '../ui';
 import { designLook } from '../badges/maker/look';
 import { Toggle } from '../badges/maker/parts';
+import { awardButtonLabel, awardNames, awardTitle, NOTIFY_HINT, NOTIFY_LABEL, PODIUM_RETRY_TEXT, removeHint, showUnits, unitTitle } from './view';
 
 const FORM_ID = 'premios-entregar';
 
@@ -62,7 +62,7 @@ export function AwardPrizesSheet(props: AwardPrizesSheetProps) {
     <Sheet
       open={props.open}
       onClose={props.onClose}
-      title={anyDelivered(props.prize) ? 'Revisar premios' : 'Entregar premios'}
+      title={awardTitle(props.prize)}
       subtitle={props.comp.name}
       footer={
         // Un solo botón (la X de arriba cierra sin entregar).
@@ -116,16 +116,12 @@ function AwardFlow({ comp, prize, designs, podium: phone, warnings, onClose, onF
 
   const payload = useMemo(() => payloadOf(plans, picks), [plans, picks]);
   const changes = hasChanges(plans, payload);
-  const correcting = plans.some((p) => p.holders.length > 0);
+  const label = awardButtonLabel(plans);
   useEffect(() => {
-    onFooter({ label: correcting ? 'Corregir' : 'Entregar', disabled: !server || !changes, busy });
-  }, [onFooter, correcting, server, changes, busy]);
+    onFooter({ label, disabled: !server || !changes, busy });
+  }, [onFooter, label, server, changes, busy]);
 
-  const names = useMemo(() => {
-    const m = new Map(players.data.map((p) => [p.id, p.name] as const));
-    for (const p of plans) for (const u of p.units) for (const x of u.players) if (!m.has(x.id)) m.set(x.id, x.name);
-    return m;
-  }, [players.data, plans]);
+  const names = useMemo(() => awardNames(players.data, plans), [players.data, plans]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -140,7 +136,7 @@ function AwardFlow({ comp, prize, designs, podium: phone, warnings, onClose, onF
       console.error(err);
       // El podio cambió mientras mirabas: se vuelve a cargar solo y se muestra otra vez (el aviso no pide recargar).
       if (prizeCode(err) === 'podio_cambio') {
-        setError('El podio cambió: revísalo y vuelve a entregar.');
+        setError(PODIUM_RETRY_TEXT);
         void load();
       } else {
         setError(prizeErrorText(err, saveErrorMessage));
@@ -242,10 +238,10 @@ export function AwardBody(p: AwardBodyProps) {
                 on={!!pick?.on}
                 onChange={(on) => p.onToggleSlot(plan, on)}
                 label="Entregar este lugar"
-                hint={!pick?.on && plan.holders.length ? `Se le quita a ${namesLine(plan.holders.map(p.nameOf))}.` : undefined}
+                hint={removeHint(plan, pick, p.nameOf)}
               />
             )}
-            {plan.units.length > 0 && (plan.status === 'listo' || plan.status === 'empate_multiple') && (
+            {showUnits(plan) && (
               <ul className="flex flex-col gap-2">
                 {plan.units.map((u) => {
                   const picked = pick?.players[u.ref] ?? [];
@@ -253,7 +249,7 @@ export function AwardBody(p: AwardBodyProps) {
                   return (
                     <li key={u.ref} className="flex flex-col gap-1">
                       <p className="text-sm font-medium">
-                        {u.name || namesLine(u.players.map((x) => x.name))}
+                        {unitTitle(u)}
                         {u.detail && <span className="font-normal text-muted"> · {u.detail}</span>}
                       </p>
                       {many && (
@@ -292,7 +288,7 @@ export function AwardBody(p: AwardBodyProps) {
         );
       })}
       {p.canNotify && (
-        <Toggle id="entregar-avisar" on={p.notify} onChange={p.onNotify} label="Avisar a los ganadores" hint="Les llega una notificación con su insignia." />
+        <Toggle id="entregar-avisar" on={p.notify} onChange={p.onNotify} label={NOTIFY_LABEL} hint={NOTIFY_HINT} />
       )}
       {p.error && (
         <p role="alert" className="text-sm font-medium text-danger">

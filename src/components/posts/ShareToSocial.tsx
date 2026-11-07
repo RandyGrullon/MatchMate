@@ -1,14 +1,14 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Newspaper, Share } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import { useLeaguesByIds } from '../../lib/data/leagues';
-import { useMyMemberships } from '../../lib/data/members';
-import { sharedGameOf, type SharedGame } from '../../lib/data/posts';
+import type { SharedGame } from '../../lib/data/posts';
 import type { ProfileGame } from '../../lib/data/profileGames';
-import { leagueSport } from '../../sports/registry';
 import { Button, cx } from '../ui';
+import { useGameShare } from './gameShareTarget';
 import type { ComposerTarget } from './postFormat';
-import { gamePostText } from './shareGame';
+
+// Si quien mira puede compartir un juego (sin React de pantallas: también lo usa el teléfono).
+export { useGameShare };
 
 /**
  * «Publicar en Social»: abre la hoja para publicar (src/components/posts/Composer.tsx) con el partido o el juego
@@ -73,31 +73,6 @@ export function PublishButton({
       <PublishGameSheet open={open} onClose={() => setOpen(false)} league={league} game={game} text={text} preview={preview} />
     </>
   );
-}
-
-/**
- * Si quien mira puede compartir ese juego del perfil o del inicio: uno suelto, solo su dueño (va al perfil); uno de
- * liga, si es miembro de esa liga y no tiene menores (va a la liga). null si no.
- */
-export function useGameShare(game: ProfileGame): { league: ComposerTarget | null; game: SharedGame; text: string } | null {
-  const uid = useAuth().user?.uid ?? null;
-  const solo = game.kind === 'solo';
-  const memberships = useMyMemberships(!solo && uid ? uid : undefined);
-  const ids = useMemo(() => memberships.data.map((m) => m.leagueId), [memberships.data]);
-  const leagues = useLeaguesByIds(ids);
-  return useMemo(() => {
-    if (!uid) return null;
-    const mine = game.userId === uid;
-    if (game.kind === 'solo') return mine ? { league: null, game: sharedGameOf(game), text: gamePostText(game, true) } : null;
-    if (!game.leagueId || !memberships.data.some((m) => m.leagueId === game.leagueId)) return null;
-    const l = leagues.data.find((x) => x.id === game.leagueId);
-    if (!l || l.hasMinors) return null;
-    return {
-      league: { id: l.id, name: l.name, sport: leagueSport(l), visibility: l.visibility },
-      game: sharedGameOf(game),
-      text: gamePostText(game, mine),
-    };
-  }, [uid, game, memberships.data, leagues.data]);
 }
 
 /** El ícono «Compartir en Social» del pie de la tarjeta de un juego (no sale si no se puede). */

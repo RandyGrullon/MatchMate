@@ -3,9 +3,12 @@ import { useEvents } from '../../../lib/data';
 import type { Playoff } from '../../../lib/data/playoffs';
 import { useNow } from '../../../lib/useNow';
 import { koEventOf, playoffComp, playoffDate, playoffProvider, teamKoComp, teamKoFinished, teamKoProvider, type TeamNames } from '../../../prizes/sports';
+import { KO_WAIT_TEXT, PLAYOFF_WAIT_TEXT, teamNamesOf } from '../../../components/prizes/screens';
 import { TournamentPrizes } from '../../../components/prizes/TournamentPrizes';
-import type { TeamReportNames } from '../../../lib/report/team';
 import type { TeamLeague } from './useTeamLeague';
+
+// La lógica vive en src/components/prizes/screens.ts (la comparte la app); PlayoffsPage y TournamentHub la leen de aquí.
+export { teamReportNames } from '../../../components/prizes/screens';
 
 /**
  * «Premios del torneo» de los deportes de equipo (docs/premios-torneo.md §5.3): el equipo campeón (y si se quiere el
@@ -24,23 +27,7 @@ export interface KoEvent {
 /** Nombres de jugadores y equipos (con su plantilla) de la liga. */
 function useTeamNames(tl: TeamLeague): TeamNames {
   const { nameOf, teamOf } = tl;
-  return useMemo(
-    () => ({
-      nameOf,
-      rosterOf: (teamId: string) => teamOf(teamId)?.roster.map((r) => r.playerId) ?? [],
-      teamName: (teamId: string) => teamOf(teamId)?.name ?? '(equipo borrado)',
-    }),
-    [nameOf, teamOf],
-  );
-}
-
-/** Los nombres para el reporte del torneo (el equipo borrado: null, y el reporte usa el nombre copiado). */
-export function teamReportNames(tl: Pick<TeamLeague, 'nameOf' | 'teamOf'>): TeamReportNames {
-  return {
-    nameOf: tl.nameOf,
-    teamName: (teamId) => tl.teamOf(teamId)?.name ?? null,
-    rosterOf: (teamId) => tl.teamOf(teamId)?.roster.map((r) => r.playerId) ?? [],
-  };
+  return useMemo(() => teamNamesOf({ nameOf, teamOf }), [nameOf, teamOf]);
 }
 
 /**
@@ -67,7 +54,7 @@ export function KnockoutPrizes({ tl, event }: { tl: TeamLeague; event: KoEvent |
   const comp = useMemo(() => teamKoComp(tl.lid, { kind: tl.league.kind ?? 'liga', sport, event, leagueName: tl.league.name }), [tl.lid, tl.league.kind, sport, event, tl.league.name]);
   const podium = useMemo(() => teamKoProvider(matches, names, now), [matches, names, now]);
   if (!comp) return null;
-  return <TournamentPrizes comp={comp} ready={teamKoFinished(matches, now)} waitText="Se entregan cuando cuente la final" podium={podium} />;
+  return <TournamentPrizes comp={comp} ready={teamKoFinished(matches, now)} waitText={KO_WAIT_TEXT} podium={podium} />;
 }
 
 /** Los premios de un playoff: se entregan cuando termina. */
@@ -79,5 +66,5 @@ export function PlayoffPrizes({ tl, playoff }: { tl: TeamLeague; playoff: Playof
   const date = playoffDate(playoff, matches, tl.tz, now);
   const comp = useMemo(() => playoffComp(tl.lid, playoff, sport, date), [tl.lid, playoff, sport, date]);
   const podium = useMemo(() => playoffProvider(playoff, matches, names), [playoff, matches, names]);
-  return <TournamentPrizes comp={comp} ready={playoff.status === 'finished'} waitText="Se entregan cuando termine el playoff" podium={podium} />;
+  return <TournamentPrizes comp={comp} ready={playoff.status === 'finished'} waitText={PLAYOFF_WAIT_TEXT} podium={podium} />;
 }

@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
-import { Compass, Newspaper, Search, Trophy, Users } from 'lucide-react-native';
+import { Compass, Newspaper, Search, Users } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { useFollowingGames } from '@mm/lib/data/profileGames';
-import { socialErrorText, useSocialFeed } from '@mm/lib/data/posts';
+import { useSocialFeed } from '@mm/lib/data/posts';
 import { ComposerCard } from '@/components/social/Composer';
-import { GameRow } from '@/components/social/People';
+import { FollowingGames } from '@/components/social/GameCard';
 import { PostList } from '@/components/social/PostList';
-import { Button, Card, Divider, Empty, ErrorNote, Loading, Screen, Segmented, Txt } from '@/components/ui';
-import { LogoSpinner } from '@/components/Logo';
+import { Button, Card, Empty, Loading, Screen, Segmented, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 
 type SocialTab = 'siguiendo' | 'descubrir' | 'juegos';
@@ -96,53 +94,3 @@ function DiscoverPosts() {
   return <PostList list={list} empty={<Empty icon={<Newspaper size={28} color={c.accent} />} title="Todavía no hay publicaciones" text="Sé el primero en contar qué jugaste." />} />;
 }
 
-function FollowingGames() {
-  const c = useColors();
-  const games = useFollowingGames(null);
-  if (games.loading && !games.data.length) {
-    return (
-      <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-        <LogoSpinner size={36} label="Cargando juegos" />
-      </View>
-    );
-  }
-  if (games.error && !games.data.length) {
-    return (
-      <View style={{ gap: 10 }}>
-        <ErrorNote>{socialErrorText(games.error, 'No se pudieron cargar los juegos.')}</ErrorNote>
-        <Button onPress={games.refresh}>Reintentar</Button>
-      </View>
-    );
-  }
-  if (!games.data.length) {
-    return (
-      <Empty
-        icon={<Trophy size={28} color={c.accent} />}
-        title="Todavía no hay juegos"
-        text="Cuando alguien que sigues juegue, sus juegos salen aquí para darles me gusta."
-        action={
-          <Button variant="soft" icon={<Search size={18} color={c.accent} />} onPress={() => router.push('/buscar')}>
-            Buscar personas
-          </Button>
-        }
-      />
-    );
-  }
-  return (
-    <View style={{ gap: 12 }}>
-      <Card padded={false}>
-        {games.data.map((g, i) => (
-          <View key={g.key}>
-            {i > 0 && <Divider inset={68} />}
-            <GameRow game={g} showUser />
-          </View>
-        ))}
-      </Card>
-      {games.hasMore && (
-        <Button full loading={games.loadingMore} onPress={games.loadMore}>
-          Ver más
-        </Button>
-      )}
-    </View>
-  );
-}

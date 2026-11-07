@@ -13,11 +13,11 @@ import { BLOCK_EXPLAIN, compactCount, knownSports, profileLine } from '@mm/compo
 import { FeaturedBadges, ProfileBadgesTab } from '@/components/badges/ProfileBadges';
 import { Avatar } from '@/components/social/Avatar';
 import { ReportSheet } from '@/components/social/ContentMenu';
-import { FollowButton, GameRow } from '@/components/social/People';
+import { FollowButton } from '@/components/social/People';
+import { GameList } from '@/components/social/GameCard';
 import { PostList } from '@/components/social/PostList';
 import { confirmAsync, toast } from '@/components/feedback';
-import { BackBar, Button, Card, Divider, Empty, ErrorNote, ListRow, Loading, RowIcon, Screen, Segmented, Sheet, Txt } from '@/components/ui';
-import { LogoSpinner } from '@/components/Logo';
+import { BackBar, Button, Card, Empty, ErrorNote, ListRow, Loading, RowIcon, Screen, Segmented, Sheet, Txt } from '@/components/ui';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
@@ -326,45 +326,16 @@ function UserGames({ userId, name, isMe }: { userId: string; name: string; isMe:
   const c = useColors();
   const games = useProfileGames(userId, null);
   const first = name.split(/\s+/)[0] || name;
-  if (games.loading && !games.data.length) {
-    return (
-      <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-        <LogoSpinner size={36} label="Cargando juegos" />
-      </View>
-    );
-  }
-  if (games.error && !games.data.length) {
-    return (
-      <View style={{ gap: 10 }}>
-        <ErrorNote>{socialErrorText(games.error, 'No se pudieron cargar los juegos.')}</ErrorNote>
-        <Button onPress={games.refresh}>Reintentar</Button>
-      </View>
-    );
-  }
-  if (!games.data.length) {
-    return (
-      <Empty
-        icon={<Trophy size={28} color={c.accent} />}
-        title="Todavía no hay juegos"
-        text={isMe ? 'Cuando juegues en una liga, tus juegos salen aquí para que los demás te den me gusta.' : `Cuando ${first} juegue en ligas que puedas ver, sus juegos salen aquí.`}
-      />
-    );
-  }
   return (
-    <View style={{ gap: 12 }}>
-      <Card padded={false}>
-        {games.data.map((g, i) => (
-          <View key={g.key}>
-            {i > 0 && <Divider inset={68} />}
-            <GameRow game={g} />
-          </View>
-        ))}
-      </Card>
-      {games.hasMore && (
-        <Button full loading={games.loadingMore} onPress={games.loadMore}>
-          Ver más
-        </Button>
-      )}
-    </View>
+    <GameList
+      games={games}
+      empty={
+        <Empty
+          icon={<Trophy size={28} color={c.accent} />}
+          title="Todavía no hay juegos"
+          text={isMe ? 'Cuando juegues en una liga, tus juegos salen aquí para que los demás te den me gusta.' : `Cuando ${first} juegue en ligas que puedas ver, sus juegos salen aquí.`}
+        />
+      }
+    />
   );
 }

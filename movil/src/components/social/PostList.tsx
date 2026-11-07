@@ -9,9 +9,9 @@ import { LogoSpinner } from '../Logo';
 
 /**
  * Publicaciones por páginas (feed, perfil o muro de la liga), como PostList de la web: cargando, error con
- * «Reintentar», vacía (`empty`), las tarjetas y «Ver más».
+ * «Reintentar», vacía (`empty`), las tarjetas y «Ver más». En el muro de un equipo, `hideSquad` (no se repite el equipo).
  */
-export function PostList({ list, empty, hideLeague }: { list: Paged<Post>; empty?: ReactNode; hideLeague?: boolean }) {
+export function PostList({ list, empty, hideLeague, hideSquad }: { list: Paged<Post>; empty?: ReactNode; hideLeague?: boolean; hideSquad?: boolean }) {
   if (list.loading && !list.data.length) {
     return (
       <View style={{ paddingVertical: 32, alignItems: 'center' }}>
@@ -31,7 +31,7 @@ export function PostList({ list, empty, hideLeague }: { list: Paged<Post>; empty
   return (
     <View style={{ gap: 14 }}>
       {list.data.map((p) => (
-        <PostCard key={p.id} post={p} hideLeague={hideLeague} />
+        <PostCard key={p.id} post={p} hideLeague={hideLeague} hideSquad={hideSquad} />
       ))}
       {list.moreError && (
         <Txt variant="meta" tone="danger" style={{ textAlign: 'center' }}>

@@ -15,6 +15,7 @@ import { LaneChip } from '@/components/bowling/LaneChip';
 import { Standings } from '@/components/bowling/Standings';
 import { TourneyAnnouncement } from '@/components/bowling/TourneyAnnouncement';
 import { EventTeamsRow } from '@/components/event/EventTeamsRow';
+import { EventPrizes } from '@/components/prizes/SportPrizes';
 import { GolfEventBody } from '@/components/golf/GolfEvent';
 import { SwimEventBody } from '@/components/swimming/SwimEvent';
 import { EsportsEventBody } from '@/components/esports/EsportsLeague';
@@ -249,6 +250,12 @@ function BowlingEventScreen() {
         </View>
       ) : (
         ev.date <= g.today && <EventBoard rows={board} players={players.data} me={g.playerId} live={ev.date === g.today} past={ev.date < g.today} />
+      )}
+      {/* Los premios que eligió la liga (equipos por scratch, individual con handicap): se ven desde que se crea el torneo. */}
+      {ev.type === 'torneo' && (
+        <LeagueScope lid={lid}>
+          <EventPrizes event={ev} entries={entries.data} players={players.data} />
+        </LeagueScope>
       )}
 
       <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${lid}/e/${eventId}`)}>

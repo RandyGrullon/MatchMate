@@ -111,6 +111,15 @@ export function matchPostText(m: MatchPart, side: Side, mine: boolean, sport: st
   return withEmoji(raw ? `${name(1)} ${raw} ${name(2)}` : `${name(1)} vs ${name(2)}`, sport);
 }
 
+/**
+ * El partido en la hoja para publicarlo: los dos lados (primero el de `side`, el del jugador) y el marcador desde su
+ * lado («W.O.» si fue por W.O.; '' sin marcador).
+ */
+export function matchPreviewParts(m: Pick<Match, 'status' | 'score' | 'sides'>, side: Side): { mine: string; other: string; score: string } {
+  const name = (s: Side) => sideName(m.sides.find((x) => x.side === s) ?? { label: '' });
+  return { mine: name(side), other: name(side === 1 ? 2 : 1), score: m.status === 'walkover' ? 'W.O.' : scoreFrom(scoreOf(m), side) };
+}
+
 // ---------- Boliche y golf ----------
 
 /** «¡Hice 540 de serie!» (o «¡Hice 210!» con un juego); de otro, con su nombre. */

@@ -3,6 +3,7 @@ import { canPickPrizes, useTournamentPrize } from '../../lib/data/prizes';
 import { useLeagueCtx } from '../../lib/league';
 import type { PrizeComp } from '../../prizes/catalog';
 import type { PodiumProvider } from '../../prizes/providers';
+import { noPrizes, prizesHidden } from './gate';
 
 /**
  * La tarjeta «Premios del torneo» de una competencia (docs/premios-torneo.md §6.1), liviana: lee la premiación y solo
@@ -31,10 +32,10 @@ export interface TournamentPrizesProps {
 export function TournamentPrizes(props: TournamentPrizesProps) {
   const ctx = useLeagueCtx();
   // En una liga con menores lo ven solo los miembros (como las demás insignias de la liga).
-  const hide = !!ctx.league.hasMinors && !ctx.member;
+  const hide = prizesHidden(ctx);
   const prize = useTournamentPrize(hide ? null : ctx.lid, props.comp.scope, props.comp.refId);
   if (hide || prize.loading) return null;
-  if (!prize.data && (prize.error || !canPickPrizes(ctx))) return null;
+  if (noPrizes(prize, canPickPrizes(ctx))) return null;
   return (
     <Suspense fallback={null}>
       <PrizesCard {...props} prize={prize.data} />

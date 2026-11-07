@@ -15,6 +15,7 @@ import { MenuSheet, MoreButton, TabStrip, type MenuItem } from './parts';
 import { EntriesPanel } from './SwimEntries';
 import { HeatSheetPanel, ProgramPanel, ResultsPanel, ScoresPanel } from './SwimPanels';
 import { TimingPanel } from './SwimTiming';
+import { MeetPrizes } from '@/components/prizes/SportPrizes';
 
 /**
  * Un encuentro de natación (MeetPage de la web, Lite): «‹ Club Acuático» y «•••» arriba, el título grande y una línea
@@ -22,7 +23,7 @@ import { TimingPanel } from './SwimTiming';
  * (inscribirse) · Series · Resultados y, para quien cronometra, «Cronometrar» en «•••» abre las de Pro (Programa,
  * Inscritos, Series, Cronometrar, Resultados y Puntos), como un link de Pro en la web. Los puntos por club van en
  * «•••». Lo del admin (cambiar, finalizar, borrar, cronometristas, armar el programa y las series), el reporte, la
- * transmisión en vivo y los premios, en la web. `?ver=` abre una parte (como en la web).
+ * transmisión en vivo, en la web; los premios del encuentro, abajo. `?ver=` abre una parte (como en la web).
  */
 export function SwimEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
@@ -147,6 +148,9 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
         {tab === 'resultados' && <ResultsPanel data={data} />}
         {tab === 'puntos' && <ScoresPanel data={data} />}
       </View>
+
+      {/* Los premios del encuentro, debajo de sus partes (como en la web). */}
+      <MeetPrizes data={data} />
 
       <MenuSheet open={menu} onClose={closeMenu} title={meetTitle(meet)} items={menuItems} />
       <Sheet open={pointsOpen} onClose={() => setPointsOpen(false)} title="Puntos por club" subtitle={meetTitle(meet)}>

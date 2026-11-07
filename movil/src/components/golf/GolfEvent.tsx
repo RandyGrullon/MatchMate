@@ -22,6 +22,7 @@ import { font } from '@/theme/tokens';
 import { GolfBoard } from './GolfBoard';
 import { GolfCourt } from './GolfCourt';
 import { GolfPlayers } from './GolfPlayers';
+import { GolfPrizes } from '@/components/prizes/SportPrizes';
 
 type TabKey = 'tarjeta' | 'leaderboard' | 'jugadores';
 const TAB_LABEL: Record<TabKey, string> = { tarjeta: 'Tarjeta', leaderboard: 'Leaderboard', jugadores: 'Jugadores' };
@@ -146,6 +147,8 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
           ) : (
             <GolfPlayers round={round} cards={cards} players={players.data} onSign={setSigning} />
           )}
+          {/* Los premios del torneo, debajo de las partes de la ronda (como en la web). */}
+          <GolfPrizes eventId={eventId} name={ev.name} date={ev.date} round={round} cards={golf.data.cards} tournamentName={tournament?.name} nameOf={nameOf} />
           <Sheet
             open={!!reviewed}
             onClose={() => setSigning(null)}

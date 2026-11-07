@@ -9,7 +9,7 @@
  * Armar el calendario, los equipos, las actas y los playoffs, por ahora en la web.
  */
 import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { CalendarDays, ClipboardList, Share2 } from 'lucide-react-native';
 import { hasResult, useMatch, type Match } from '@mm/lib/data/matches';
@@ -19,7 +19,7 @@ import { shareOrigin } from '@mm/lib/origin';
 import { useNow } from '@mm/lib/useNow';
 import { groupSchedule } from '@mm/components/match/schedule';
 import { defaultColumns, type StandingsColumn } from '@mm/components/match/standings';
-import { matchShareText, statusInfo, whenText } from '@mm/components/match/format';
+import { statusInfo, whenText } from '@mm/components/match/format';
 import { useBasketballSeason } from '@mm/pages/sports/basketball/season';
 import { useFootballSeason } from '@mm/pages/sports/football/season';
 import { basketballTableFrom, basketballTeamRules } from '@mm/pages/sports/basketball/rules';
@@ -31,6 +31,7 @@ import { matchWhen, recordLine, rsvpLine, todayIn } from '@mm/pages/sports/team/
 import { leagueSport } from '@mm/sports/registry';
 import { MatchCard, MatchStatus } from '../match/MatchCard';
 import { ConfirmResult, Scoreboard } from '../match/ResultParts';
+import { ShareResultSheet } from '../match/ShareResult';
 import { StandingsTable } from '../match/StandingsTable';
 import { toast } from '../feedback';
 import { Button, Card, Divider, Empty, ListRow, LoadError, RowIcon, Segmented, SectionHeader, Txt } from '../ui';
@@ -338,6 +339,7 @@ export function TeamMatch({ matchId }: { matchId: string }) {
   const tl = useTeamLeague();
   const q = useMatch(tl.lid, matchId);
   const now = useNow(30_000).getTime();
+  const [sharing, setSharing] = useState(false);
   const m = q.data;
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) return <Spinner label="Cargando el partido" />;
@@ -350,6 +352,8 @@ export function TeamMatch({ matchId }: { matchId: string }) {
   const live = m.status === 'live' || m.status === 'suspended';
   const names = sideNames(tl, m);
   const path = `/l/${tl.lid}/juegos?partido=${m.id}`;
+  // El color de cada equipo en la imagen del resultado (como la web).
+  const sideExtra = (s: 1 | 2) => ({ dot: tl.teamOf(m.sides.find((x) => x.side === s)?.teamId ?? null)?.color ?? null });
   const shown: Match = { ...m, sides: [{ ...m.sides[0], label: names[0] }, { ...m.sides[1], label: names[1] }] as Match['sides'] };
   return (
     <View style={{ gap: 16 }}>
@@ -382,10 +386,22 @@ export function TeamMatch({ matchId }: { matchId: string }) {
               </RowIcon>
             }
             title="Compartir el resultado"
-            subtitle="Texto para WhatsApp"
-            onPress={() => void Share.share({ message: matchShareText({ match: shown, title: tl.league.name, roundWord: 'Jornada', url: `${shareOrigin(null)}${path}`, now }) }).catch(() => undefined)}
+            subtitle="Imagen o texto para WhatsApp"
+            onPress={() => setSharing(true)}
           />
         </Card>
+      )}
+      {sharing && (
+        <ShareResultSheet
+          onClose={() => setSharing(false)}
+          match={shown}
+          title={tl.league.name}
+          subtitle={matchHeading(m)}
+          roundWord="Jornada"
+          url={`${shareOrigin(null)}${path}`}
+          sideExtra={sideExtra}
+          mySide={mySide}
+        />
       )}
       <Button full onPress={() => openOnWeb(path)}>
         Ver el partido en la web

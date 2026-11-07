@@ -7,17 +7,16 @@ import { useLeagueBadges, type LeagueBadge } from '../../lib/data/leagueBadges';
 import { canDeliverPrizes, canPickPrizes, closeTournamentPrizes, prizeErrorText, type PrizeWinner, type TournamentPrize } from '../../lib/data/prizes';
 import { useLeagueCtx } from '../../lib/league';
 import { useNow } from '../../lib/useNow';
-import { namesLine } from '../../prizes/award';
 import { cardModel, correctionWindow, type CardModel, type CardRow, type CorrectionWindow } from '../../prizes/card';
 import { PLACE_LABEL } from '../../prizes/catalog';
 import { useFeedback, saveErrorMessage } from '../feedback';
 import { Button, Card, SectionHeader, cx } from '../ui';
-import { dayText } from '../badges/maker/design';
 import { DesignSheet } from '../badges/maker/DesignSheet';
 import { designLook } from '../badges/maker/look';
 import { AwardPrizesSheet } from './AwardPrizesSheet';
 import { PrizePicker } from './PrizePicker';
 import type { TournamentPrizesProps } from './TournamentPrizes';
+import { adminBarView, cardHidden, CLOSE_PRIZES_CONFIRM, currentLine, nameJoiner, PODIUM_CHANGED_TEXT, soloWinner, winnerPlayerName, winnerShortLine } from './view';
 
 /**
  * «Premios del torneo» (docs/premios-torneo.md §6.1): lo ven todos. Sin premios, quien diseña insignias ve «Elegir
@@ -41,16 +40,11 @@ export default function PrizesCard({ comp, prize, ready, waitText, podium, warni
   const names = useMemo(() => new Map(players.data.map((p) => [p.id, p.name] as const)), [players.data]);
   // Mientras llegan los diseños no se dibuja nada (la tarjeta saldría sin insignias y luego con ellas).
   if (made.loading) return null;
-  if (model.state === 'sin_premios' && !canPick) return null;
-  if (model.state !== 'sin_premios' && !model.sections.length) return null;
+  if (cardHidden(model, canPick)) return null;
 
   async function close() {
     if (!prize) return;
-    const ok = await confirm({
-      title: '¿Cerrar los premios?',
-      message: 'Desde ahora solo el dueño puede corregirlos. No se puede deshacer.',
-      confirmText: 'Cerrar premios',
-    });
+    const ok = await confirm({ ...CLOSE_PRIZES_CONFIRM });
     if (!ok) return;
     setClosing(true);
     try {
@@ -161,7 +155,6 @@ export function PrizesCardView(p: PrizesCardViewProps) {
             {admin && (
               <AdminBar
                 model={model}
-                closed={closed}
                 correction={correction}
                 tz={p.tz}
                 canPick={p.canPick}
@@ -186,7 +179,7 @@ function PrizeRow({ row, sport, period, base, nameOf, onOpenBadge }: { row: Card
   const { slot, design } = row;
   const look = design ? designLook(design, sport, period) : null;
   const big = slot.place === 1;
-  const current = !row.delivered && row.current?.status === 'listo' ? row.current.units : [];
+  const current = currentLine(row);
   return (
     <li className="flex items-center gap-3">
       {design && look ? (
@@ -216,12 +209,8 @@ function PrizeRow({ row, sport, period, base, nameOf, onOpenBadge }: { row: Card
           ) : (
             <p className="text-xs text-muted">Nadie en este lugar.</p>
           )
-        ) : current.length ? (
-          <p className="truncate text-xs text-muted">
-            Por ahora: {current.map((u) => (u.detail ? `${u.name} (${u.detail})` : u.name)).join(' · ')}
-          </p>
-        ) : row.current?.status === 'vacio' ? (
-          <p className="text-xs text-muted">Por ahora, nadie en este lugar.</p>
+        ) : current ? (
+          <p className={cx('text-xs text-muted', current.truncate && 'truncate')}>{current.text}</p>
         ) : null}
       </div>
     </li>
@@ -230,26 +219,25 @@ function PrizeRow({ row, sport, period, base, nameOf, onOpenBadge }: { row: Card
 
 /** «Los Strikers · Ana, Luis y Pedro» (tocar un jugador abre su página). */
 function Winner({ winner, base, nameOf }: { winner: PrizeWinner; base: string; nameOf: (id: string) => string }) {
-  const solo = winner.players.length === 1 && !winner.teamId && !winner.ref.startsWith('c:');
+  const solo = soloWinner(winner);
   const links: ReactNode[] = winner.players.map((id, i) => (
     <span key={id}>
-      {i > 0 && (i === winner.players.length - 1 ? ' y ' : ', ')}
+      {nameJoiner(i, winner.players.length)}
       <Link to={`${base}/j/${id}`} className="hover:text-accent hover:underline">
-        {solo ? winner.name || nameOf(id) : nameOf(id)}
+        {winnerPlayerName(winner, id, nameOf)}
       </Link>
     </span>
   ));
   return (
     <p className="text-sm">
       {!solo && winner.name && <b className="font-semibold">{winner.name} · </b>}
-      {winner.players.length > 6 ? namesLine(winner.players.map(nameOf), 5) : links}
+      {winnerShortLine(winner, nameOf) ?? links}
     </p>
   );
 }
 
 function AdminBar(p: {
   model: CardModel;
-  closed: boolean;
   correction: CorrectionWindow;
   tz?: string;
   canPick: boolean;
@@ -262,54 +250,38 @@ function AdminBar(p: {
   onAward: () => void;
   onClosePrizes: () => void;
 }) {
-  const { model } = p;
-  const delivered = model.state === 'entregados' || model.state === 'cerrados';
-  // Con algo entregado ya es «Revisar» (un lugar que se quedó sin nadie nunca se entrega); destacado si falta alguno.
-  const review = delivered;
-  // Cerrados (o con todos los lugares pasados de sus 14 días): solo el dueño corrige. Un lugar sin entregar se sigue
-  // entregando aunque otro ya se venció (la base lo revisa lugar por lugar).
-  const { open, deadline, someExpired } = p.correction;
-  const canCorrect = p.canDeliver && (p.isOwner || open);
+  const v = adminBarView(p);
   return (
     <div className="flex flex-col gap-2 border-t border-line pt-3">
-      {model.podiumChanged && canCorrect && (
+      {v.podiumWarning && (
         <p role="status" className="flex items-center gap-1.5 text-sm font-medium text-warn">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> El podio cambió: revisa los premios.
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" /> {PODIUM_CHANGED_TEXT}
         </p>
       )}
-      {delivered && open && deadline && <p className="text-xs text-muted">Puedes corregir hasta el {dayText(deadline, p.tz)}.</p>}
-      {delivered && !open && <p className="text-xs text-muted">{p.isOwner ? 'Solo tú puedes corregirlos.' : 'Solo el dueño puede corregirlos.'}</p>}
-      {delivered && open && someExpired && (
-        <p className="text-xs text-muted">
-          {p.isOwner ? 'Lo entregado hace más de 14 días solo lo corriges tú.' : 'Lo entregado hace más de 14 días solo lo corrige el dueño.'}
+      {v.notes.map((n) => (
+        <p key={n} className="text-xs text-muted">
+          {n}
         </p>
-      )}
+      ))}
       <div className="flex flex-wrap items-center gap-2">
         {/* Un solo botón principal (Entregar, o Revisar si falta alguno); lo demás en gris. */}
-        {canCorrect && (
-          <Button
-            variant={review && model.allDelivered ? 'quiet' : 'primary'}
-            size="lg"
-            className="w-full"
-            icon={<Gift className="size-4" />}
-            disabled={!p.ready && !delivered}
-            onClick={p.onAward}
-          >
-            {review ? 'Revisar premios' : 'Entregar premios'}
+        {v.award && (
+          <Button variant={v.award.quiet ? 'quiet' : 'primary'} size="lg" className="w-full" icon={<Gift className="size-4" />} disabled={v.award.disabled} onClick={p.onAward}>
+            {v.award.label}
           </Button>
         )}
-        {p.canPick && !p.closed && (
+        {v.change && (
           <Button variant="quiet" className="h-11 min-w-0 flex-1" icon={<Pencil className="size-4" />} onClick={p.onPick}>
             Cambiar premios
           </Button>
         )}
-        {p.canDeliver && delivered && open && (
+        {v.close && (
           <Button variant="quiet" className="h-11 min-w-0 flex-1" icon={<Lock className="size-4" />} loading={p.closing} onClick={p.onClosePrizes}>
             Cerrar premios
           </Button>
         )}
       </div>
-      {!p.ready && !delivered && p.canDeliver && p.waitText && <p className="text-xs text-muted">{p.waitText}.</p>}
+      {v.wait && <p className="text-xs text-muted">{v.wait}</p>}
     </div>
   );
 }

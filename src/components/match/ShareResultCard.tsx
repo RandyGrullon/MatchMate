@@ -5,13 +5,13 @@ import { usePlayers } from '../../lib/data/players';
 import { LeagueContext } from '../../lib/league';
 import type { Side } from '../../sports/types';
 import { useFeedback } from '../feedback';
-import { MATCH_SHAREABLE, leagueShareTarget, matchPostText, matchSharePick } from '../posts/shareGame';
+import { MATCH_SHAREABLE, leagueShareTarget, matchPostText, matchPreviewParts, matchSharePick } from '../posts/shareGame';
 import { PublishButton } from '../posts/ShareToSocial';
 import { ShareButton } from '../share/ShareButton';
 import type { ShareResultSide } from '../share/cards';
 import { resultShare } from '../share/match';
 import { Button, Card, cx } from '../ui';
-import { flipScoreText, matchShareText, sideName, whatsappShareUrl } from './format';
+import { matchShareText, whatsappShareUrl } from './format';
 
 /**
  * Tarjeta para compartir el resultado: como imagen (con la marca y el color del deporte, lista para WhatsApp)
@@ -119,16 +119,13 @@ export function ShareResultCard({
 
 /** El partido en la hoja para publicarlo: los dos lados (primero el del jugador) y el marcador desde su lado. */
 function MatchPreview({ match: m, side }: { match: Match; side: Side }) {
-  const other: Side = side === 1 ? 2 : 1;
-  const name = (s: Side) => sideName(m.sides.find((x) => x.side === s) ?? { label: '' });
-  const raw = typeof m.score?.text === 'string' ? m.score.text.trim() : '';
-  const score = m.status === 'walkover' ? 'W.O.' : side === 1 ? raw : flipScoreText(raw);
+  const { mine, other, score } = matchPreviewParts(m, side);
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3">
       <p className="min-w-0 flex-1 truncate text-sm">
-        <span className="font-semibold">{name(side)}</span>
+        <span className="font-semibold">{mine}</span>
         <span className="text-muted"> vs </span>
-        <span className="font-semibold">{name(other)}</span>
+        <span className="font-semibold">{other}</span>
       </p>
       {score && <span className="shrink-0 text-xl leading-tight font-bold tabular-nums">{score}</span>}
     </div>

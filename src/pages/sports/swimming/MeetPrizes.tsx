@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { swimComp, swimProvider } from '../../../prizes/sports';
+import { MEET_WAIT_TEXT } from '../../../components/prizes/screens';
 import { TournamentPrizes } from '../../../components/prizes/TournamentPrizes';
 import { placedMeet } from './logic';
 import type { MeetData } from './MeetPage';
@@ -16,5 +17,5 @@ export function MeetPrizes({ data }: { data: MeetData }) {
   const placed = useMemo(() => (comp ? placedMeet(events, entries, meet.points) : []), [comp, events, entries, meet.points]);
   const podium = useMemo(() => swimProvider(placed, { swimmer: name, club: (id) => clubs.get(id)?.name ?? '(club borrado)' }), [placed, name, clubs]);
   if (!comp) return null;
-  return <TournamentPrizes comp={comp} ready={!!meet.finalizedAt} waitText="Se entregan cuando se finalice el encuentro" podium={podium} />;
+  return <TournamentPrizes comp={comp} ready={!!meet.finalizedAt} waitText={MEET_WAIT_TEXT} podium={podium} />;
 }

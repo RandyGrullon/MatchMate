@@ -65,6 +65,7 @@ export function SquadWall({ squad, viewer }: { squad: SquadPage; viewer: SquadVi
       {member && <SquadComposer squad={{ id: squad.id, name: squad.name }} placeholder="¿Qué cuenta el equipo?" />}
       <PostList
         list={posts}
+        hideSquad
         empty={
           <Quiet
             icon={<Newspaper size={24} color={c.muted} />}

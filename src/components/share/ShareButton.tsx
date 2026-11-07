@@ -1,30 +1,16 @@
 import { useContext, useState } from 'react';
 import { Share2 } from 'lucide-react';
 import { LeagueContext } from '../../lib/league';
-import { leagueSport, sportMeta } from '../../sports/registry';
+import { leagueSport } from '../../sports/registry';
 import { Button } from '../ui';
 import { shareFileName } from './actions';
 import type { CardFrame, ShareCard } from './cards';
-import { sportColor } from './palette';
+import { shareFrame } from './frame';
 import { ShareImageModal } from './ShareImageModal';
 
-/** «27 sep 2026» en la zona de la liga. */
-export function shareDate(date: Date, tz?: string): string {
-  try {
-    return new Intl.DateTimeFormat('es-DO', { day: 'numeric', month: 'short', year: 'numeric', ...(tz ? { timeZone: tz } : {}) })
-      .format(date)
-      .replace(/\./g, '')
-      .replace(/\bde\b\s*/g, '');
-  } catch {
-    return date.toISOString().slice(0, 10);
-  }
-}
-
-/** Deporte, color y fecha de la imagen (de la liga en la que se está, o del deporte que se pase). */
-export function shareFrame(sport: string | null | undefined, link: string | undefined, tz?: string, now: Date = new Date()): CardFrame {
-  const meta = sportMeta(sport);
-  return { sportLabel: meta?.short ?? 'MatchMate', color: sportColor(sport), date: shareDate(now, tz), link };
-}
+/** «27 sep 2026» y el marco de la imagen (deporte, color, fecha): los mismos de la app, sin pantalla. */
+export { shareDate } from './frame';
+export { shareFrame };
 
 interface Open {
   card: ShareCard;

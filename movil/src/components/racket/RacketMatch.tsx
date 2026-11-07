@@ -2,10 +2,10 @@
  * Un partido de raqueta (MatchDetail.tsx de la web, con su misma lógica): el título («Ronda 1 · Cancha 2»), el estado y
  * la hora, el marcador grande, confirmar o reclamar (el rival) y UN botón: «Anotar en la cancha» (con «Solo el
  * resultado» debajo). El admin decide un reclamo en su tarjeta; corregir, W.O., aplazar y lo demás del admin, por ahora
- * en la web. Compartir (texto para WhatsApp) e historial.
+ * en la web. Compartir el resultado (imagen, texto para WhatsApp y «Publicar en Social») e historial.
  */
 import { useState } from 'react';
-import { Share, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Gavel, Globe, History, Keyboard, Play, Share2 } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
@@ -16,7 +16,7 @@ import { saveErrorMessage } from '@mm/lib/errorText';
 import { useLeagueCtx } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
 import { useNow } from '@mm/lib/useNow';
-import { matchShareText, roundLabel, statusInfo, whenText } from '@mm/components/match/format';
+import { roundLabel, statusInfo, whenText } from '@mm/components/match/format';
 import { pointsResultParser, racketResultParser, type ParsedResult } from '@mm/components/match/parsers';
 import { engineRules } from '@mm/pages/sports/racket/court/adapters';
 import { parsePoints } from '@mm/pages/sports/racket/logic/night';
@@ -27,6 +27,7 @@ import { useMySide } from '@mm/pages/sports/racket/match/side';
 import { courtWords, useRacket } from '@mm/pages/sports/racket/sport';
 import { MatchStatus } from '../match/MatchCard';
 import { ConfirmResult, ResultSheet, Scoreboard } from '../match/ResultParts';
+import { ShareResultSheet } from '../match/ShareResult';
 import { toast } from '../feedback';
 import { PointsCourt, SetsCourt } from './RacketCourt';
 import { Button, Card, Divider, Empty, ListRow, LoadError, RowIcon, Sheet, Txt } from '../ui';
@@ -49,6 +50,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
   const now = useNow().getTime();
   const [entry, setEntry] = useState<null | 'finish' | 'resolve'>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (q.error) return <LoadError error={q.error} />;
@@ -158,8 +160,8 @@ export function RacketMatch({ matchId }: { matchId: string }) {
               </RowIcon>
             }
             title="Compartir el resultado"
-            subtitle="Texto para WhatsApp"
-            onPress={() => void Share.share({ message: matchShareText({ match: m, title: league.name, roundWord: points ? 'Ronda' : 'Jornada', url, now }) }).catch(() => undefined)}
+            subtitle="Imagen o texto para WhatsApp"
+            onPress={() => setSharing(true)}
           />
         )}
         {history.length > 0 && (
@@ -193,6 +195,7 @@ export function RacketMatch({ matchId }: { matchId: string }) {
           </>
         )}
       </Card>
+      {sharing && <ShareResultSheet onClose={() => setSharing(false)} match={m} title={league.name} subtitle={heading} roundWord={points ? 'Ronda' : 'Jornada'} url={url} mySide={mySide} />}
       <Sheet open={historyOpen} onClose={() => setHistoryOpen(false)} title="Historial" subtitle={heading}>
         {history.map((h, i) => (
           <View key={i} style={{ gap: 2, paddingVertical: 8, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: c.line }}>

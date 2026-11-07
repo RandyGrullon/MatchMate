@@ -6,13 +6,11 @@ import type { BowlingEvent, Entry, Player } from '../../lib/types';
 import { bowlingComp } from '../../prizes/catalog';
 import { bowlingPodium } from '../../prizes/providers';
 import { bowlingReady } from '../../prizes/ready';
+import { bowlingNameOf, bowlingWarnings } from '../prizes/screens';
 import { TournamentPrizes } from '../prizes/TournamentPrizes';
 
-/** «Hay 3 juegos por verificar: pueden cambiar el podio.» (null si no hay). */
-export function pendingWarning(pending: number): string | null {
-  if (pending <= 0) return null;
-  return `Hay ${pending} ${pending === 1 ? 'juego' : 'juegos'} por verificar: ${pending === 1 ? 'puede' : 'pueden'} cambiar el podio.`;
-}
+// La lógica vive en src/components/prizes/screens.ts (la comparte la app); el reporte la sigue leyendo de aquí.
+export { pendingWarning } from '../prizes/screens';
 
 /**
  * Los premios de un torneo del boliche (docs/premios-torneo.md §5.1 y §6.4): dos podios, «Equipos (scratch)» e
@@ -25,12 +23,8 @@ export function EventPrizes({ event, entries, players, now }: { event: BowlingEv
   const comp = useMemo(() => bowlingComp(lid, event), [lid, event]);
   const readiness = bowlingReady(event, entries, today);
   const standings = useMemo(() => bowlingStandings(event, entries), [event, entries]);
-  const podium = useMemo(() => {
-    const names = new Map(players.map((p) => [p.id, p.name] as const));
-    return bowlingPodium(event, entries, (id) => names.get(id) ?? '(jugador borrado)', { ready: readiness.ready, standings });
-  }, [event, entries, players, readiness.ready, standings]);
-  const warning = pendingWarning(standings.pending);
-  const warnings = useMemo(() => (warning ? [warning] : []), [warning]);
+  const podium = useMemo(() => bowlingPodium(event, entries, bowlingNameOf(players), { ready: readiness.ready, standings }), [event, entries, players, readiness.ready, standings]);
+  const warnings = useMemo(() => bowlingWarnings(standings.pending), [standings.pending]);
   if (event.type !== 'torneo') return null;
   return <TournamentPrizes comp={comp} ready={readiness.ready} waitText={readiness.waitText} podium={podium} warnings={warnings} />;
 }

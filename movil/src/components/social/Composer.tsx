@@ -1,18 +1,20 @@
 /**
  * Publicar (como Composer.tsx de la web): la tarjeta «¿Qué jugaste hoy?» abre la hoja con el texto, una foto (de la
  * galería o la cámara), dónde se publica (tu perfil o una de tus ligas, o la liga fija en su muro) y quién la ve.
- * Lo escrito se queda si cierras la hoja.
+ * Lo escrito se queda si cierras la hoja. Con un juego (compartir un partido o un juego): «Publicar en Social», el
+ * juego debajo del texto, su liga fija y un texto sugerido (ShareToSocial.tsx).
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Camera, Globe, ImagePlus, Lock, Users, X } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '@mm/lib/data';
 import { usePublicProfile } from '@mm/lib/data/follows';
-import { POST_TEXT_MAX, createPost, postProblem, socialErrorText, VISIBILITY_LABEL, type Post, type PostVisibility } from '@mm/lib/data/posts';
+import { POST_TEXT_MAX, postProblem, socialErrorText, VISIBILITY_LABEL, type Post, type PostVisibility, type SharedGame } from '@mm/lib/data/posts';
 import type { CompressedImage } from '@mm/lib/image';
 import { leagueSport } from '@mm/sports/registry';
+import { GAME_GONE, draftPlace, isGameGone, sendComposer } from '@mm/components/posts/composerSend';
 import { COUNTER_FROM, audienceHint, audienceOptions, defaultAudience, type ComposerTarget } from '@mm/components/posts/postFormat';
 import { Avatar } from './Avatar';
 import { toast } from '../feedback';
@@ -22,7 +24,7 @@ import { useColors } from '@/theme/theme';
 
 const AUDIENCE_ICON = { public: Globe, followers: Users, league: Lock } as const;
 
-/** Lo que se escribía, por lugar (el feed o el muro de una liga). */
+/** Lo que se escribía, por lugar (el feed, el muro de una liga o el juego que se comparte). */
 const drafts = new Map<string, string>();
 
 /** «¿Qué jugaste hoy?»: abre la hoja para publicar. `league`: el muro de esa liga (se publica ahí). */
@@ -82,22 +84,34 @@ export function ComposerCard({ league, placeholder, onPosted }: { league?: Compo
   );
 }
 
-function ComposerSheet({
+/**
+ * La hoja para publicar. Con `game` (compartir un partido o un juego): «Publicar en Social», el juego debajo del texto
+ * (`attachment`), la liga del juego fija (`fixedLeague`; sin liga en un juego suelto: va al perfil) y el texto sugerido
+ * (`suggestedText`) si no hay borrador; con juego no hace falta texto ni foto.
+ */
+export function ComposerSheet({
   uid,
   fixedLeague,
-  initialPhoto,
+  initialPhoto = null,
+  game = null,
+  attachment,
+  suggestedText,
   onClose,
   onPosted,
 }: {
   uid: string;
   fixedLeague: ComposerTarget | null;
-  initialPhoto: CompressedImage | null;
+  initialPhoto?: CompressedImage | null;
+  game?: SharedGame | null;
+  attachment?: ReactNode;
+  suggestedText?: string;
   onClose: () => void;
   onPosted?: (post: Post) => void;
 }) {
   const c = useColors();
   const memberships = useMyMemberships(uid);
-  const byIds = useLeaguesByIds(fixedLeague ? [] : memberships.data.map((m) => m.leagueId));
+  // Un juego va a su liga (o al perfil): sin «Publicar en».
+  const byIds = useLeaguesByIds(fixedLeague || game ? [] : memberships.data.map((m) => m.leagueId));
   const leagues = useMemo<ComposerTarget[]>(
     () =>
       byIds.data
@@ -106,8 +120,8 @@ function ComposerSheet({
         .sort((a, b) => a.name.localeCompare(b.name, 'es')),
     [byIds.data],
   );
-  const place = fixedLeague?.id ?? 'feed';
-  const [text, setTextState] = useState(() => drafts.get(place) ?? '');
+  const place = draftPlace(fixedLeague, null, game) ?? 'feed';
+  const [text, setTextState] = useState(() => drafts.get(place) || suggestedText || '');
   const [photo, setPhoto] = useState<CompressedImage | null>(initialPhoto);
   const [targetId, setTargetId] = useState<string | null>(fixedLeague?.id ?? null);
   const target = fixedLeague ?? leagues.find((l) => l.id === targetId) ?? null;
@@ -125,7 +139,7 @@ function ComposerSheet({
     else drafts.delete(place);
   };
 
-  const problem = postProblem({ text, photo, leagueId: target?.id ?? null, visibility: audience });
+  const problem = postProblem({ text, photo, leagueId: target?.id ?? null, visibility: audience, game });
   const shownProblem = problem && (text.trim() || photo) ? problem : null;
 
   async function pick(source: PhotoSource) {
@@ -145,13 +159,13 @@ function ComposerSheet({
     setBusy(true);
     setError(null);
     try {
-      const post = await createPost({ text, photo, leagueId: target?.id ?? null, visibility: audience });
+      const post = await sendComposer({ text, photo, squad: null, target, audience, game });
       drafts.delete(place);
       toast('Publicado');
       onPosted?.(post);
       onClose();
     } catch (e) {
-      setError(socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
+      setError(game && isGameGone(e) ? GAME_GONE : socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
     } finally {
       setBusy(false);
     }
@@ -161,7 +175,8 @@ function ComposerSheet({
     <Sheet
       open
       onClose={onClose}
-      title={fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
+      title={game ? 'Publicar en Social' : fixedLeague ? 'Publicar en la liga' : 'Nueva publicación'}
+      subtitle={fixedLeague?.name}
       footer={
         <Button variant="primary" size="xl" full loading={busy} disabled={!!problem} onPress={publish}>
           Publicar
@@ -182,6 +197,11 @@ function ComposerSheet({
         <Txt variant="small" tone={text.length >= POST_TEXT_MAX ? 'warn' : 'muted'} style={{ alignSelf: 'flex-end' }}>
           {text.length}/{POST_TEXT_MAX}
         </Txt>
+      )}
+      {game && attachment && (
+        <View accessibilityLabel="El juego que compartes" accessible={false}>
+          {attachment}
+        </View>
       )}
       {photo ? (
         <View>
@@ -205,7 +225,7 @@ function ComposerSheet({
           <Button accessibilityLabel="Tomar una foto" icon={<Camera size={18} color={c.fg} />} disabled={picking} onPress={() => void pick('camera')} />
         </View>
       )}
-      {!fixedLeague && leagues.length > 0 && (
+      {!fixedLeague && !game && leagues.length > 0 && (
         <>
           <Txt variant="bodyStrong">Publicar en</Txt>
           <ChoiceRow title="Mi perfil" selected={!targetId} onPress={() => setTargetId(null)} />

@@ -5,12 +5,9 @@ import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { nightProvider, racketNightComp } from '../../../../prizes/sports';
 import type { StandingRow } from '../../../../sports/types';
+import { NIGHT_WAIT_TEXT, nightReady, nightWarnings } from '../../../../components/prizes/screens';
 import { TournamentPrizes } from '../../../../components/prizes/TournamentPrizes';
 import { useRacket } from '../sport';
-
-/** Mientras la noche no termina, la tabla todavía se mueve. */
-const OPEN_WARNING = ['Todavía no termina: la tabla puede cambiar.'];
-const NO_WARNINGS: string[] = [];
 
 /**
  * «Premios del torneo» de una noche de americano o mexicano o del round robin social del pickleball (docs/premios-
@@ -25,6 +22,6 @@ export function NightPrizes({ event, table, finished, nameOf }: { event: RacketE
   const comp = useMemo(() => racketNightComp(lid, event, sport), [lid, event, sport]);
   const podium = useMemo(() => nightProvider(table, nameOf), [table, nameOf]);
   if (!comp) return null;
-  const ready = event.date <= todayIn(now, league.tz);
-  return <TournamentPrizes comp={comp} ready={ready} waitText="Se entregan desde el día del evento" podium={podium} warnings={finished ? NO_WARNINGS : OPEN_WARNING} />;
+  const ready = nightReady(event.date, todayIn(now, league.tz));
+  return <TournamentPrizes comp={comp} ready={ready} waitText={NIGHT_WAIT_TEXT} podium={podium} warnings={nightWarnings(finished)} />;
 }

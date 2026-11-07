@@ -275,7 +275,12 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Perfil (`/u/<id>`): Seguir, «Te sigue», biografía, contadores, publicaciones y juegos; seguidores y seguidos
   (`/u/<id>/seguidores`); reportar la cuenta, bloquear y desbloquear; sus insignias (§9). 🌐 Estadísticas.
 - ✅ Buscar (`/buscar`): personas y ligas (Todo · Personas · Ligas), seguir desde la lista; sin cuenta, ligas públicas.
-- 🟡 Un juego compartido sale resumido (sin la tarjeta del juego) y los juegos de «Juegos» todavía sin me gusta.
+- ✅ La publicación con un juego compartido lleva la tarjeta del juego (`movil/src/components/social/GameCard.tsx`, la
+  de la web), y los juegos (Social › Juegos y el perfil) tienen me gusta, «Compartir en Social», «Reportar juego» y
+  «Ver» (el detalle de un juego de boliche, en la web). Compartir un partido de raqueta o de equipos: la imagen (sin el
+  texto en Android), WhatsApp, texto o «Publicar en Social» (`movil/src/components/match/ShareResult.tsx`). Los avisos
+  sociales en la campana. La demo trae publicaciones con juego, me gusta y avisos sociales (`demoSocial.ts`).
+  - ⏳ «Publicar en Social» en el evento de boliche y de golf (`PublishButton` ya está en `ShareToSocial.tsx`).
 - ✅ Equipos (`/equipos`, `/equipos/<equipo>` y `/equipos/unirse/<código>`, `movil/src/components/squads/`, la lógica de
   `src/components/squads/logic.ts` y `src/pages/squads/squadForm.ts`): mis equipos, los que sigo, buscar, unirme con
   código, crear (deporte, datos y logo), y en cada equipo sus publicaciones (publicar en el equipo), juegos, torneos,
@@ -285,7 +290,6 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   entrar» (en el inicio de la liga y en Organizar). `/equipos/unirse/` abre la app. Diferencias: compartir el link con
   la hoja del teléfono, el logo en JPEG y el color del equipo solo en la cabecera. La demo trae «Equipo de Ejemplo»,
   «Fútbol de Ejemplo» y el código `EQUI2345` (`movil/src/platform/demoSquads.ts`).
-- ⏳ Compartir un partido desde la app, avisos de lo social (la campana).
 
 ## 8. Organizar y crear
 
@@ -335,7 +339,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   ganadas, tres en el aviso, los premios de octubre y una hazaña por confirmar (`movil/src/platform/demoBadges.ts`).
   - 🌐 El creador de insignias («Insignias de la liga», nueva, dar) y compartir la imagen de una insignia (en la web
     se arma con canvas).
-- ⏳ Premios del torneo; reportes en PDF y Excel (compartir con expo-sharing).
+- ✅ Premios del torneo (`movil/src/components/prizes/`, la lógica de `src/prizes/*` y
+  `src/components/prizes/{gate,view,screens}.ts`, la misma de la web): la tarjeta «Premios del torneo» (la insignia de
+  cada lugar, «Por ahora: …», quién ganó, «El podio cambió»), «Elegir premios» (la cinta, «Usar Campeón, Subcampeón y
+  Tercer lugar», crear uno), «Entregar premios» / «Revisar premios» (marcar jugadores, antes → ahora, avisar a los
+  ganadores) y «Cerrar premios», en el torneo del boliche, la ronda o el torneo de golf, la noche y el torneo de raqueta
+  («Se lleva: …» de cada categoría) y el encuentro de natación. La demo trae la Copa de Ejemplo y la ronda cerrada de
+  «Golf de Ejemplo», cada una con un premio dado y otro por dar (`movil/src/platform/demoPrizes.ts`).
+  - 🌐 Los premios del relámpago y de los playoffs de equipos (sus pantallas siguen en la web), «Diseñar otra» (el
+    creador) y el detalle de una insignia al tocarla.
+- ⏳ Reportes en PDF y Excel (compartir con expo-sharing).
 
 ## 10. Superadmin
 

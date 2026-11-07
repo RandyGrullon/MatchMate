@@ -4,14 +4,12 @@ import { Insignia, badgeLabel } from '../../badges/visual';
 import { saveLeagueBadge, type LeagueBadge } from '../../lib/data/leagueBadges';
 import { anyDelivered, PRIZE_PERIOD_MAX, PRIZE_PLACES, prizeErrorText, setTournamentPrizes, slotKeyOf, type PrizePlace, type TournamentPrize } from '../../lib/data/prizes';
 import { useLeagueCtx } from '../../lib/league';
-import { bowlingRuleText, defaultPeriod, PLACE_LABEL, type PrizeCategoryDef, type PrizeComp } from '../../prizes/catalog';
+import { defaultPeriod, PLACE_LABEL, type PrizeCategoryDef, type PrizeComp } from '../../prizes/catalog';
 import {
   deliveredKeys,
   designsForPlace,
   initialRows,
   PLACE_TEMPLATE,
-  setupPayload,
-  setupProblem,
   setupSections,
   TEMPLATE_LABEL,
   templateDesign,
@@ -25,7 +23,7 @@ import { BadgeEditor } from '../badges/maker/BadgeEditor';
 import { draftPayload, makerErrorText, periodChoices, templateDraft } from '../badges/maker/design';
 import { designLook } from '../badges/maker/look';
 import { Counter, FieldError } from '../badges/maker/parts';
-import { badgeTextError, cleanBadgeText, textLength } from '../badges/text';
+import { archivedHint, designReadyText, periodCheck, periodCount, periodHint, pickerTitle, REMOVE_PRIZES_CONFIRM, ruleLine, savedPrizesText, saveStep, slotFieldId, toggleRow } from './view';
 
 const FORM_ID = 'premios-elegir';
 
@@ -51,7 +49,7 @@ export function PrizePicker({ open, onClose, comp, prize, designs }: PrizePicker
     <Sheet
       open={open}
       onClose={onClose}
-      title={prize ? 'Cambiar premios' : 'Elegir premios'}
+      title={pickerTitle(prize)}
       subtitle={comp.name}
       footer={
         // Un solo botón (la X de arriba cierra sin guardar).
@@ -83,8 +81,7 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
   const periodLocked = anyDelivered(prize);
   const choices = useMemo(() => periodChoices(league, Date.now()), [league]);
 
-  const cleanPeriod = cleanBadgeText(period).toUpperCase();
-  const periodError = textLength(cleanPeriod) > PRIZE_PERIOD_MAX ? `La cinta lleva hasta ${PRIZE_PERIOD_MAX} letras.` : badgeTextError(period);
+  const { clean: cleanPeriod, error: periodError } = periodCheck(period);
 
   /** El diseño de plantilla del podio que ya hay, o uno nuevo sin cinta. */
   async function templateId(key: PodiumTemplate, pool: readonly LeagueBadge[]): Promise<LeagueBadge> {
@@ -103,7 +100,7 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
       const b = await templateId(template, []);
       setRows((r) => ({ ...r, [key]: { on: true, badgeId: b.id } }));
       setChoosing(null);
-      toast(`«${b.name}» está lista`);
+      toast(designReadyText(b.name));
     } catch (e) {
       console.error(e);
       setError(makerErrorText(e, { action: 'guardar' }));
@@ -136,31 +133,19 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
-    const problem = periodError ?? setupProblem(sections, rows);
-    if (problem) {
-      setError(problem);
+    const step = saveStep(sections, rows, prize, periodError);
+    if (step.kind === 'error') {
+      setError(step.text);
       return;
     }
-    const slots = setupPayload(sections, rows, prize);
-    if (!slots.length) {
-      if (!prize) {
-        setError('Prende al menos un lugar y elige su insignia.');
-        return;
-      }
-      const ok = await confirm({
-        title: '¿Quitar los premios del torneo?',
-        message: 'Ningún lugar se lleva insignia. Los puedes volver a elegir cuando quieras.',
-        confirmText: 'Quitar premios',
-        danger: true,
-      });
-      if (!ok) return;
-    }
+    if (step.kind === 'confirm' && !(await confirm({ ...REMOVE_PRIZES_CONFIRM }))) return;
+    const { slots } = step;
     setError(null);
     setSaving(true);
     onBusy(true);
     try {
       const saved = await setTournamentPrizes({ lid, scope: comp.scope, refId: comp.refId, period: periodLocked ? null : cleanPeriod, slots });
-      toast(saved ? 'Premios guardados' : 'Quitaste los premios del torneo');
+      toast(savedPrizesText(saved));
       onDone();
     } catch (err) {
       console.error(err);
@@ -171,7 +156,6 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
     }
   }
 
-  const rule = comp.kind === 'bowling' && comp.bowling ? bowlingRuleText(comp.bowling) : null;
 
   return (
     <>
@@ -188,11 +172,9 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
           choosing={choosing}
           creating={creating}
           error={error}
-          ruleText={rule ? [rule.rule, rule.note].filter(Boolean).join(' ') : null}
+          ruleText={ruleLine(comp)}
           onPeriod={setPeriod}
-          onToggle={(key, on) =>
-            setRows((r) => ({ ...r, [key]: { on, badgeId: r[key]?.badgeId ?? (on ? (templateDesign(all, PLACE_TEMPLATE[placeOfKey(key)])?.id ?? null) : null) } }))
-          }
+          onToggle={(key, on) => setRows((r) => toggleRow(r, key, on, all))}
           onChoosing={(key) => setChoosing((c) => (c === key ? null : key))}
           onChoose={(key, id) => {
             setRows((r) => ({ ...r, [key]: { on: true, badgeId: id } }));
@@ -216,8 +198,6 @@ function PickerForm({ comp, prize, designs, onDone, onBusy }: { comp: PrizeComp;
     </>
   );
 }
-
-const placeOfKey = (key: string): PrizePlace => (Number(key.split('|')[2]) || 1) as PrizePlace;
 
 export interface PickerBodyProps {
   sections: readonly PrizeCategoryDef[];
@@ -248,7 +228,7 @@ export interface PickerBodyProps {
 /** El contenido de «Elegir premios» sin estado (las pruebas lo dibujan con renderToString). */
 export function PickerBody(p: PickerBodyProps) {
   const byId = new Map(p.designs.map((d) => [d.id, d] as const));
-  const periodHint = p.periodLocked ? 'Ya se entregaron premios: la cinta no cambia.' : 'La cinta de abajo de las insignias: el mes del torneo. Hasta 10 letras.';
+  const hint = periodHint(p.periodLocked);
   return (
     <>
       {p.ruleText && <p className="rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">{p.ruleText}</p>}
@@ -257,7 +237,7 @@ export function PickerBody(p: PickerBodyProps) {
           <label htmlFor="premios-cinta" className="text-xs font-medium text-muted">
             Cinta de las insignias
           </label>
-          <Counter value={textLength(cleanBadgeText(p.period))} max={PRIZE_PERIOD_MAX} />
+          <Counter value={periodCount(p.period)} max={PRIZE_PERIOD_MAX} />
         </div>
         <Input
           id="premios-cinta"
@@ -269,7 +249,7 @@ export function PickerBody(p: PickerBodyProps) {
           onChange={(e) => p.onPeriod(e.target.value)}
         />
         <p id="premios-cinta-ayuda" className="text-xs text-muted">
-          {periodHint}
+          {hint}
         </p>
         <FieldError id="premios-cinta-error" text={p.periodError} />
       </div>
@@ -286,7 +266,7 @@ export function PickerBody(p: PickerBodyProps) {
             const row = p.rows[key] ?? { on: false, badgeId: null };
             const design = row.badgeId ? (byId.get(row.badgeId) ?? null) : null;
             const locked = p.delivered.has(key);
-            const id = `premio-${key.replace(/[^A-Za-z0-9]/g, '-')}`;
+            const id = slotFieldId(key);
             return (
               <div key={key} className={cx('flex flex-col gap-2 rounded-2xl p-4', row.on ? 'bg-surface-2' : 'bg-surface-2/50')}>
                 <div className="flex items-center gap-3">
@@ -316,7 +296,7 @@ export function PickerBody(p: PickerBodyProps) {
                     {design ? <Insignia badge={designLook(design, p.sport)} size={40} /> : <span className="size-10 shrink-0 rounded-full border border-dashed border-line" aria-hidden="true" />}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{design ? design.name : 'Elegir insignia'}</span>
-                      {design && design.status !== 'activa' && <span className="block text-xs text-warn">Archivada: elige otra o actívala</span>}
+                      {design && archivedHint(design) && <span className="block text-xs text-warn">{archivedHint(design)}</span>}
                     </span>
                     {!locked && <ChevronDown className={cx('size-4 shrink-0 text-muted transition', p.choosing === key && 'rotate-180')} aria-hidden="true" />}
                   </button>

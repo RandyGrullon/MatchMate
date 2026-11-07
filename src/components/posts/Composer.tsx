@@ -5,7 +5,6 @@ import { usePublicProfile } from '../../lib/data/follows';
 import {
   POST_TEXT_MAX,
   VISIBILITY_LABEL,
-  createPost,
   postProblem,
   socialErrorText,
   type Post,
@@ -19,54 +18,25 @@ import { BusyIcon } from '../busy';
 import { useFeedback } from '../feedback';
 import { useMyLeagues } from '../home/useHomeData';
 import { Button, Card, Segmented, Select, Sheet, cx } from '../ui';
+import { GAME_GONE, draftPlace, isGameGone, sendComposer, type ComposerSquad } from './composerSend';
 import { COUNTER_FROM, audienceHint, audienceOptions, defaultAudience, firstLine, type ComposerTarget } from './postFormat';
 import { readDraft, saveDraft, useAutoGrow } from './useAutoGrow';
+import { SQUAD_AUDIENCE_HINT } from '../squads/logic';
 
 /** La liga donde se publica (muro de la liga). */
 export type ComposerLeague = ComposerTarget;
 
-/** El equipo donde se publica (su muro: siempre para todos, sale a quien sigue el equipo). */
-export interface ComposerSquad {
-  id: string;
-  name: string;
-}
+// Lo que hace «Publicar» (sin React: también lo usa la app del teléfono) está en composerSend.ts.
+export { GAME_GONE, sendComposer, type ComposerSquad };
 
 const AUDIENCE_ICON: Record<PostVisibility, typeof Globe> = { public: Globe, followers: Users, league: Lock };
 
 /** Debajo de «¿Quién la ve?» en el muro de un equipo. */
-export const SQUAD_AUDIENCE_HINT = 'La ve cualquiera y sale a quien sigue el equipo.';
+/** El público de una publicación de equipo (el mismo texto de src/components/squads/logic.ts). */
+export { SQUAD_AUDIENCE_HINT };
 
 /** Dónde se guarda lo que se escribía (por cuenta y por lugar: el feed, el muro de una liga o el de un equipo). */
 export const draftKey = (uid: string | null | undefined, leagueId: string | null | undefined) => (uid ? `mm:publicar:${uid}:${leagueId ?? 'feed'}` : null);
-
-/** El lugar del borrador: el juego que se comparte (`juego:<tipo>:<id>`), el equipo (`equipo:<id>`), la liga o el feed. */
-const draftPlace = (league: { id: string } | null | undefined, squad: { id: string } | null | undefined, game?: SharedGame | null) =>
-  game ? `juego:${game.kind}:${game.id}` : squad ? `equipo:${squad.id}` : league?.id;
-
-/** Al compartir un juego que ya no se puede (se borró, ya no lo ves o cambió): lo que dice la hoja. */
-export const GAME_GONE = 'Ese juego ya no se puede compartir.';
-
-const gameGone = (e: unknown) => {
-  const code = e && typeof e === 'object' ? (e as { code?: unknown }).code : undefined;
-  const kind = e && typeof e === 'object' ? (e as { kind?: unknown }).kind : undefined;
-  return code === 'no_existe' || code === 'invalido' || kind === 'not_found';
-};
-
-/**
- * Lo que hace «Publicar» (sin React, así se prueba): en el muro de un equipo, siempre para todos; si no, en la liga
- * elegida (o la del juego) o en el perfil, con el juego que se comparte si lleva.
- */
-export function sendComposer(o: {
-  text: string;
-  photo: CompressedImage | null;
-  squad: ComposerSquad | null;
-  target: ComposerTarget | null;
-  audience: PostVisibility;
-  game?: SharedGame | null;
-}): Promise<Post> {
-  if (o.squad) return createPost({ text: o.text, photo: o.photo, squadId: o.squad.id, leagueId: null, visibility: 'public' });
-  return createPost({ text: o.text, photo: o.photo, leagueId: o.target?.id ?? null, visibility: o.audience, ...(o.game ? { game: o.game } : {}) });
-}
 
 /** Elige una foto y la deja lista para subir (comprimida). */
 function usePhotoInput(onPicked: (img: CompressedImage) => void, onError: (text: string) => void) {
@@ -291,7 +261,7 @@ export function ComposerForm({
       onClose();
     } catch (e) {
       console.error(e);
-      setError(game && gameGone(e) ? GAME_GONE : socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
+      setError(game && isGameGone(e) ? GAME_GONE : socialErrorText(e, 'No se pudo publicar. Inténtalo otra vez.'));
     } finally {
       inFlight.current = false;
       setSending(false);

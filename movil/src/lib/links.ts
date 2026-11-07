@@ -53,6 +53,8 @@ export function appRoute(href: string): string | null {
   if (evTeams && /[?&]tab=equipos(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/equipos`;
   // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
+  // Un juego de boliche (el «Ver» de Social, el aviso «le gustó tu juego»): su detalle está en la web.
+  if (/^\/l\/[^/]+\/juegos$/.test(path) && /[?&]juego=/.test(query)) return null;
   // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
   if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}${query}`;

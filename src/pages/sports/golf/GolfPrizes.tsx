@@ -3,6 +3,7 @@ import { useEvents } from '../../../lib/data';
 import { useGolfTournament, type GolfCardDoc, type GolfRoundFull } from '../../../lib/data/golf';
 import { useLeagueCtx } from '../../../lib/league';
 import { golfComp, golfProvider, type GolfPrizeSource } from '../../../prizes/sports';
+import { golfCompName, golfLastDate, golfReady, golfWaitText } from '../../../components/prizes/screens';
 import { TournamentPrizes } from '../../../components/prizes/TournamentPrizes';
 
 /**
@@ -37,25 +38,14 @@ export function GolfPrizes({
   // El día de la última ronda del torneo (la cinta por defecto es su mes).
   const events = useEvents(tid ? lid : undefined);
   const rounds = tournament.data.rounds;
-  const lastDate = useMemo(() => {
-    if (!tid) return date;
-    const ids = new Set(rounds.map((r) => r.eventId));
-    return events.data.filter((e) => ids.has(e.id)).reduce((d, e) => (e.date > d ? e.date : d), date);
-  }, [tid, rounds, events.data, date]);
+  const lastDate = useMemo(() => golfLastDate(tid, rounds, events.data, date), [tid, rounds, events.data, date]);
   const comp = useMemo(
-    () => golfComp(lid, { eventId, tournamentId: tid, name: tid ? (tournamentName ?? '') : name, date: lastDate }),
+    () => golfComp(lid, { eventId, tournamentId: tid, name: golfCompName(tid, name, tournamentName), date: lastDate }),
     [lid, eventId, tid, tournamentName, name, lastDate],
   );
   const src: GolfPrizeSource = useMemo(() => (tid ? tournament.data : { rounds: [round], cards }), [tid, tournament.data, round, cards]);
   const podium = useMemo(() => golfProvider(src, nameOf), [src, nameOf]);
   // La ronda en pantalla va con lo último (recién cerrada, por ejemplo).
-  const ready = tid ? rounds.length > 0 && rounds.every((r) => (r.eventId === round.eventId ? round.closed : r.closed)) : round.closed;
-  return (
-    <TournamentPrizes
-      comp={comp}
-      ready={ready}
-      waitText={tid ? 'Se entregan cuando se cierren todas las rondas del torneo' : 'Se entregan cuando se cierre la ronda'}
-      podium={podium}
-    />
-  );
+  const ready = golfReady(tid, rounds, round);
+  return <TournamentPrizes comp={comp} ready={ready} waitText={golfWaitText(!!tid)} podium={podium} />;
 }

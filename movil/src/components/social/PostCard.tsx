@@ -1,7 +1,9 @@
 /**
  * Una publicación (como PostCard de la web, src/components/posts/PostCard.tsx): quién la escribió (foto, nombre,
- * @usuario y hace cuánto), la liga con el color de su deporte, a quién le sale si no es para todos, el texto con sus
- * links, el juego compartido (resumido) y la foto con su hueco reservado. Abajo: me gusta, comentarios y compartir;
+ * @usuario y hace cuánto), la liga con el color de su deporte, el equipo en su color si es del muro de un equipo (salvo
+ * `hideSquad`, en ese muro), a quién le sale si no es para todos, el texto con sus
+ * links, el partido o juego compartido (su tarjeta, GameEmbed: tocarlo lo abre; si quien mira no lo puede ver, «Juego no
+ * disponible») y la foto con su hueco reservado. Abajo: me gusta, comentarios y compartir;
  * «⋯»: reportar, bloquear y borrar. Tocar el texto abre la publicación con sus comentarios.
  */
 import { useState } from 'react';
@@ -10,18 +12,21 @@ import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import { CircleHelp, Heart, Lock, MessageCircle, Share2, Trophy, Users } from 'lucide-react-native';
+import { CircleHelp, Heart, Lock, MessageCircle, Share2, Users } from 'lucide-react-native';
 import { deletePost, optimisticPostLikes, setPostLike, socialErrorText, type Post } from '@mm/lib/data/posts';
-import { gameSummary } from '@mm/lib/data/profileGames';
+import { toIsoDate } from '@mm/lib/format';
 import { relativeTime } from '@mm/lib/notifications';
 import { POST_BUCKET, usePublicImage } from '@mm/lib/publicImages';
 import { useNow } from '@mm/lib/useNow';
 import { sportMeta } from '@mm/sports/registry';
+import { validColor } from '@mm/components/squads/logic';
 import { firstLine, isLongText, linkify, photoRatio, postShareUrl, visibilityHint } from '@mm/components/posts/postFormat';
 import { atUsername, compactCount, likeLabel } from '@mm/components/social/socialFormat';
 import { Avatar } from './Avatar';
 import { ContentMenu } from './ContentMenu';
+import { GameEmbed, GameUnavailable } from './GameCard';
 import { toast } from '../feedback';
+import { openSquad } from '../squads/bits';
 import { Txt } from '../ui';
 import { openLink, ownPath } from '@/lib/links';
 import { useColors } from '@/theme/theme';
@@ -83,6 +88,29 @@ export function LeagueChip({ league }: { league: NonNullable<Post['league']> }) 
   );
 }
 
+/** El equipo de la publicación, en su color (o el de su deporte): lleva a su página. */
+export function SquadChip({ squad }: { squad: NonNullable<Post['squad']> }) {
+  const c = useColors();
+  const color = validColor(squad.color) ?? sportMeta(squad.sport)?.color ?? c.accent;
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Ir a ${squad.name}`}
+      onPress={() => openSquad(squad.id)}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', maxWidth: '90%', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: `${color}22` }}
+    >
+      {!!squad.tag && (
+        <Txt variant="small" style={{ color, fontWeight: '700', letterSpacing: 0.7 }}>
+          {squad.tag}
+        </Txt>
+      )}
+      <Txt variant="small" numberOfLines={1} style={{ color, fontWeight: '600', flexShrink: 1 }}>
+        {squad.name}
+      </Txt>
+    </Pressable>
+  );
+}
+
 function LikeAction({ post }: { post: Pick<Post, 'id' | 'likes' | 'likedByMe'> }) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
@@ -118,7 +146,22 @@ function LikeAction({ post }: { post: Pick<Post, 'id' | 'likes' | 'likedByMe'> }
 
 const actionStyle = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, minHeight: 44, minWidth: 44, paddingHorizontal: 10, justifyContent: 'center' as const };
 
-export function PostCard({ post, hideLeague, detail, onComment, onGone }: { post: Post; hideLeague?: boolean; detail?: boolean; onComment?: () => void; onGone?: () => void }) {
+export function PostCard({
+  post,
+  hideLeague,
+  hideSquad,
+  detail,
+  onComment,
+  onGone,
+}: {
+  post: Post;
+  hideLeague?: boolean;
+  /** En el muro del equipo no se repite el equipo. */
+  hideSquad?: boolean;
+  detail?: boolean;
+  onComment?: () => void;
+  onGone?: () => void;
+}) {
   const c = useColors();
   const now = useNow();
   const author = post.author;
@@ -129,8 +172,6 @@ export function PostCard({ post, hideLeague, detail, onComment, onGone }: { post
   const at = Date.parse(post.at);
   const when = Number.isFinite(at) ? relativeTime(at, now.getTime()) : '';
   const open = () => router.push(postRoute(post.id));
-  const meta = post.game ? sportMeta(post.game.sport) : null;
-  const GameIcon = meta?.icon ?? Trophy;
 
   async function share() {
     try {
@@ -191,6 +232,11 @@ export function PostCard({ post, hideLeague, detail, onComment, onGone }: { post
           <LeagueChip league={post.league} />
         </View>
       )}
+      {post.squad && !hideSquad && (
+        <View style={{ paddingHorizontal: 16 }}>
+          <SquadChip squad={post.squad} />
+        </View>
+      )}
 
       {!!post.text && (
         <Pressable disabled={detail} onPress={open} style={{ paddingHorizontal: 16 }}>
@@ -204,18 +250,13 @@ export function PostCard({ post, hideLeague, detail, onComment, onGone }: { post
       )}
 
       {post.game ? (
-        <View style={{ marginHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 12, backgroundColor: c.surface2 }}>
-          <GameIcon size={20} color={meta?.color ?? c.accent} />
-          <Txt variant="meta" style={{ flex: 1 }} numberOfLines={2}>
-            {gameSummary(post.game)}
-          </Txt>
+        <View style={{ paddingHorizontal: 16 }}>
+          <GameEmbed game={post.game} today={toIsoDate(now)} showUser={post.game.userId !== author.id} />
         </View>
       ) : (
         !!post.hasGame && (
-          <View style={{ marginHorizontal: 16, borderRadius: 16, padding: 12, backgroundColor: c.surface2 }}>
-            <Txt variant="meta" tone="muted">
-              Juego no disponible
-            </Txt>
+          <View style={{ paddingHorizontal: 16 }}>
+            <GameUnavailable />
           </View>
         )
       )}
