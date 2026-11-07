@@ -7,7 +7,7 @@ import { inSport } from '../../lib/sportContext';
 import { useIsPro } from '../../lib/useMode';
 import { useNow } from '../../lib/useNow';
 import { sportMeta } from '../../sports/registry';
-import { agendaCardNote, hasAgenda } from '../agenda/logic';
+import { agendaCardNote, agendaHref, hasAgenda } from '../agenda/logic';
 import { BusyIcon } from '../busy';
 import { filterSports, joinable, publicEmptyText } from '../eventos/logic';
 import { publicLeagueLine, searchLeagues } from '../home/logic';
@@ -133,7 +133,7 @@ export function OpenLeagues({ signedIn }: { signedIn: boolean }) {
             }
             title="¿Dónde juego esta semana?"
             subtitle={agendaCardNote(sport)}
-            to={sport ? `/agenda?deporte=${encodeURIComponent(sport)}` : '/agenda'}
+            to={agendaHref(sport)}
           />
         </Card>
       )}

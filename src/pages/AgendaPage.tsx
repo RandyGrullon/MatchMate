@@ -5,21 +5,28 @@ import { displayName, useAuth } from '../lib/auth';
 import { dayLabel } from '../lib/calendar';
 import { joinAgendaItem, useAgenda, type AgendaItem } from '../lib/data/agenda';
 import { useMyMemberships } from '../lib/data/members';
-import { parseDate, toIsoDate } from '../lib/format';
+import { toIsoDate } from '../lib/format';
 import { useNow } from '../lib/useNow';
-import { isSportId, sportMeta, sportsOf } from '../sports/registry';
+import { sportMeta, sportsOf } from '../sports/registry';
 import { SportIcon } from './sports/SportBits';
 import {
+  AGENDA_ALL,
+  agendaEmpty,
+  agendaFilters,
+  agendaHint,
   agendaJoinStep,
-  agendaSports,
+  agendaLine,
+  agendaReturn,
   agendaTitle,
-  filterAgenda,
-  groupByDay,
+  agendaView,
   JOIN_PARAM,
+  joinedLabel,
   joinedMessage,
   loginNext,
   mineLabel,
-  spotsText,
+  myLeagueIds,
+  showDayFilter,
+  type AgendaView,
 } from '../components/agenda/logic';
 import { BusyIcon } from '../components/busy';
 import { useAction, useFeedback } from '../components/feedback';
@@ -33,33 +40,10 @@ import { ScreenTitle, ScreenTop } from '../components/screens/ScreenBits';
 import { AppShell } from '../components/Shell';
 import { Card, DateBlock, ListRow, ListSkeleton, LoadError, Segmented, cx } from '../components/ui';
 
-const ALL = 'todos';
+const ALL = AGENDA_ALL;
 
-/** «hasta el 3 oct, 6:00 p. m.» */
-const untilLabel = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('es-DO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-};
-
-/** Las dos partes del Calendario: tus ligas, o lo abierto en las ligas públicas («¿Dónde juego esta semana?»). */
-export type AgendaView = 'mias' | 'abiertas';
-
-/** `?ver=mias` abre tus ligas; si no, lo abierto (los links de «¿Dónde juego esta semana?» y de Ligas llevan aquí). */
-export const agendaView = (raw: string | null, canMine: boolean): AgendaView => (raw === 'mias' && canMine ? 'mias' : 'abiertas');
-
-const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-
-/** Debajo del nombre: «Sábado · 7:00 pm · Liga de los martes · Bolera Sambil · Quedan 3 lugares · hasta el 3 oct». */
-export function agendaLine(
-  item: Pick<AgendaItem, 'date' | 'timeLabel' | 'leagueName' | 'venue' | 'join' | 'cap' | 'taken' | 'spotsLeft' | 'waitlist' | 'until'>,
-  today: string,
-): string {
-  const day = item.date === today ? 'Hoy' : WEEKDAYS[parseDate(item.date).getDay()];
-  const until = item.until ? untilLabel(item.until) : '';
-  return [day, item.timeLabel, item.leagueName, item.venue?.trim(), spotsText(item), until && `hasta el ${until}`]
-    .filter(Boolean)
-    .join(' · ');
-}
+// La lógica de la pantalla está en components/agenda/logic.ts (la comparte la app del teléfono); se re-exporta aquí.
+export { agendaLine, agendaView, type AgendaView };
 
 /**
  * El Calendario (`/agenda`, rediseño «Calma y foco»: un solo calendario en vez de tres). «‹ Ligas», el título y, con
@@ -87,23 +71,12 @@ export default function AgendaPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [joined, setJoined] = useState<Record<string, string>>({});
   const memberships = useMyMemberships(auth.user?.uid);
-  const myLeagues = useMemo(
-    () => (memberships.loading && !memberships.data.length ? null : new Set(memberships.data.map((m) => m.leagueId))),
-    [memberships.loading, memberships.data],
-  );
+  const myLeagues = useMemo(() => myLeagueIds(memberships.loading, memberships.data), [memberships.loading, memberships.data]);
 
   const items = agenda.data.items;
   const rawSport = params.get('deporte');
-  const sport = rawSport && isSportId(rawSport) ? rawSport : null;
-  const sports = useMemo(() => {
-    const list = agendaSports(items);
-    return sport && !list.includes(sport) ? [...list, sport] : list;
-  }, [items, sport]);
-  const bySport = useMemo(() => filterAgenda(items, sport, null), [items, sport]);
-  const days = useMemo(() => [...new Set(bySport.map((i) => i.date))], [bySport]);
   const rawDay = params.get('dia');
-  const day = rawDay && days.includes(rawDay) ? rawDay : null;
-  const shown = useMemo(() => groupByDay(filterAgenda(bySport, null, day)), [bySport, day]);
+  const { sport, sports, days, day, shown: shownItems } = useMemo(() => agendaFilters(items, rawSport, rawDay), [items, rawSport, rawDay]);
 
   const setParam = useCallback(
     (key: string, value: string | null) =>
@@ -126,7 +99,7 @@ export default function AgendaPage() {
       const r = await run(() => joinAgendaItem(item, { uid: auth.user!.uid, name: displayName(auth) }));
       setBusy(null);
       if (r) {
-        setJoined((j) => ({ ...j, [item.eventId]: r.kind === 'wait' ? 'En espera' : mineLabel(item) }));
+        setJoined((j) => ({ ...j, [item.eventId]: joinedLabel(item, r) }));
         toast(joinedMessage(item, r));
       }
     },
@@ -159,7 +132,7 @@ export default function AgendaPage() {
             name: item.leagueName,
             sport: item.sport,
             kind: item.leagueKind === 'torneo' ? 'torneo' : 'liga',
-            next: `/agenda?${JOIN_PARAM}=${encodeURIComponent(item.eventId)}`,
+            next: agendaReturn('', item.eventId),
           });
           return;
         default:
@@ -191,8 +164,8 @@ export default function AgendaPage() {
   const my = useMyLeagues();
   const canMine = !!auth.user && my.all.length > 0;
   const view = agendaView(params.get('ver'), canMine);
-  const showDays = days.length > 1 && (pro || !!day);
-  const shownItems = shown.flatMap((g) => g.items);
+  const showDays = showDayFilter(days.length, pro, day);
+  const empty = agendaEmpty(items.length > 0);
 
   const open = (
     <div className="flex flex-col gap-3.5">
@@ -210,10 +183,8 @@ export default function AgendaPage() {
           <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
             <CalendarSearch className="size-7" />
           </span>
-          <h2 className="mt-4 text-card-title">{items.length ? 'Nada con ese filtro' : 'Nada abierto por ahora'}</h2>
-          <p className="mt-2 max-w-sm text-body text-muted">
-            {items.length ? 'Prueba con otro deporte u otro día.' : 'Cuando una liga pública abra una fecha con lugar, sale aquí.'}
-          </p>
+          <h2 className="mt-4 text-card-title">{empty.title}</h2>
+          <p className="mt-2 max-w-sm text-body text-muted">{empty.text}</p>
         </Card>
       ) : (
         <Card className="overflow-hidden">
@@ -239,7 +210,7 @@ export default function AgendaPage() {
         <ScreenTop label="Ligas" fallback="/ligas" />
         <ScreenTitle
           title="Calendario"
-          hint={view === 'mias' ? 'Tus ligas, semana por semana' : 'Ligas públicas con lugar en los próximos días'}
+          hint={agendaHint(view)}
           pro={pro}
         />
         {canMine && (

@@ -10,6 +10,7 @@ import { LeagueCard } from '@/components/LeagueCard';
 import { EsportsLeaguesRow } from '@/components/esports/EsportsRow';
 import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
 import { SquadsLeaguesSection } from '@/components/squads/SquadEntries';
+import { AgendaLinkRow } from '@/components/agenda/HomeSheets';
 import { useColors } from '@/theme/theme';
 
 /** Ligas: las tuyas, Dónde jugar y las públicas para unirte (la pantalla Eventos y «Ligas abiertas» de la web). */
@@ -81,6 +82,8 @@ export default function LigasScreen() {
           style={{ flex: 1, paddingLeft: 44 }}
         />
       </View>
+      {/* El Calendario de las ligas públicas (como OpenLeagues de la web). */}
+      <AgendaLinkRow />
       {open.loading && !open.data.length ? (
         <Loading label="Buscando ligas" />
       ) : others.length ? (

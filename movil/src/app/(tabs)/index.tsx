@@ -13,6 +13,9 @@ import { Button, Card, Empty, Input, ListRow, Loading, RowIcon, Screen, SectionH
 import { EsportsHomeRow } from '@/components/esports/EsportsRow';
 import { ScreenNotice } from '@/components/esports/bits';
 import { useIdMoveNotice } from '@/components/esports/EsportsIndex';
+import { AgendaLinkRow, AnotarLink, CalendarLink, CalendarSheet, WhereSheet } from '@/components/agenda/HomeSheets';
+import { useAnotar } from '@/components/agenda/useAnotar';
+import { sportsOf } from '@mm/sports/registry';
 import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -41,6 +44,8 @@ function Landing() {
           Ya tengo cuenta
         </Button>
       </View>
+      {/* El Calendario de las ligas públicas (sirve sin cuenta). */}
+      <AgendaLinkRow />
       <SectionHeader title="Qué hace por ti" />
       <Card padded={false}>
         <ListRow chevron={false} title="La tabla se hace sola" subtitle="Con cada resultado que se anota" />
@@ -131,6 +136,10 @@ function JoinCard() {
 function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof useMyLeagues>['leagues']; uid: string; loading: boolean }) {
   const act = useActivity(leagues, uid);
   const notices = useNotifications();
+  // Las hojas de Hoy: el Calendario («Lo que viene») y «¿Dónde jugaste?» («Anotar un juego»).
+  const [sheet, setSheet] = useState<'calendario' | 'donde' | null>(null);
+  const anotar = useAnotar({ feeds: act.feeds, leagues: act.leagues, today: act.today, uid, skip: act.games[0]?.event.id });
+  const anotarLink = <AnotarLink link={anotar.link} onWhere={() => setSheet('donde')} />;
   const nextEvent = act.next?.kind === 'event' ? act.next.event : null;
   const nextMatch = act.next?.kind === 'match' ? act.next.match : null;
   const late = act.games.filter((g) => g.late);
@@ -146,9 +155,9 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
       </>
     );
   } else if (nextMatch) today = <NextMatchCard next={nextMatch} />;
-  else if (nextEvent) today = <NextUpCard item={nextEvent} today={act.today} />;
+  else if (nextEvent) today = <NextUpCard item={nextEvent} today={act.today} anotar={anotarLink} />;
   else if (loading || notices.loading) today = <Loading label="Cargando lo de hoy" />;
-  else today = <IdleCard />;
+  else today = <IdleCard anotar={anotarLink} />;
   if (!live && late.length) {
     today = (
       <>
@@ -165,7 +174,17 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
   return (
     <>
       <View style={{ gap: 14 }}>{today}</View>
-      <UpNext items={upcoming} today={act.today} showLeague={leagues.length > 1} />
+      <UpNext items={upcoming} today={act.today} showLeague={leagues.length > 1} action={<CalendarLink onPress={() => setSheet('calendario')} />} />
+      <CalendarSheet
+        open={sheet === 'calendario'}
+        onClose={() => setSheet(null)}
+        feeds={act.feeds}
+        leagues={act.leagues}
+        matches={act.mine}
+        today={act.today}
+        showSport={sportsOf(leagues).length > 1}
+      />
+      <WhereSheet open={sheet === 'donde'} onClose={() => setSheet(null)} recent={anotar.recent} today={act.today} />
     </>
   );
 }

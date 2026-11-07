@@ -9,7 +9,7 @@ import { scorePath, type RecentEvent } from '../../lib/useNextGame';
 import { agendaCardNote } from '../agenda/logic';
 import { useMode, useSwitchMode } from '../mode';
 import { Button, DateBlock, ListRow, RowIcon, Sheet, cx } from '../ui';
-import { todayTitle } from './logic';
+import { whereTitle } from './where';
 import { WeekAgenda } from './WeekAgenda';
 
 /**
@@ -69,7 +69,7 @@ export function WhereSheet({ open, onClose, recent, today }: { open: boolean; on
           <ListRow
             key={`${r.lid}:${r.event.id}`}
             leading={<DateBlock date={r.event.date} />}
-            title={r.event.date === today ? todayTitle(r.event, today) : r.event.name?.trim() || (r.event.type === 'torneo' ? 'Torneo' : 'Práctica de ayer')}
+            title={whereTitle(r, today)}
             subtitle={r.leagueName}
             to={scorePath(r.lid, r.event.id)}
           />

@@ -24,6 +24,7 @@ import { forgetDemoReports, reportsRpc } from './demoReports';
 import { demoSquadsSelect, forgetDemoSquads, squadsRpc } from './demoSquads';
 import { badgesRpc, demoBadgesSelect, forgetDemoBadges } from './demoBadges';
 import { approvalsRpc, demoApprovalFile, demoApprovalsInvoke, demoApprovalsSelect, forgetDemoApprovals } from './demoApprovals';
+import { agendaRpc, demoAgendaSelect, forgetDemoAgenda } from './demoAgenda';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -47,6 +48,8 @@ const demoLayer = (t: string, f: readonly DemoFilter[] = []) => demoPlayersSelec
 const settingsLayer = (t: string, f: readonly DemoFilter[] = []) => demoSettingsSelect(t, f, (x) => demoLayer(x)) ?? demoLayer(t, f);
 /** Encima de todo, las insignias (demoBadges.ts): las ganadas, el progreso y lo de las insignias en cada liga. */
 const badgesLayer = (t: string, f: readonly DemoFilter[] = []) => demoBadgesSelect(DEMO_USER, t, f, (x) => settingsLayer(x)) ?? settingsLayer(t, f);
+/** Arriba de todo, la Agenda (demoAgenda.ts): las ligas públicas a las que la cuenta entró con «Me apunto» y sus «Voy». */
+const agendaLayer = (t: string, f: readonly DemoFilter[] = []) => demoAgendaSelect(DEMO_USER, t, f, (x) => badgesLayer(x)) ?? badgesLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -80,6 +83,7 @@ export function setDemo(on: boolean) {
       forgetDemoSquads();
       forgetDemoBadges();
       forgetDemoApprovals();
+      forgetDemoAgenda();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -441,7 +445,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = badgesLayer(q.table, q.filters);
+      const league = agendaLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -468,6 +472,9 @@ export function createDemoBackend(): Backend {
       if (fromScorers !== undefined) return structuredClone(fromScorers) as T;
       const fromReports = reportsRpc(DEMO_USER, fn, args);
       if (fromReports !== undefined) return structuredClone(fromReports) as T;
+      // La Agenda (demoAgenda.ts): las ligas públicas y apuntarse en ellas.
+      const fromAgenda = agendaRpc(DEMO_USER, fn, args);
+      if (fromAgenda !== undefined) return structuredClone(fromAgenda) as T;
       // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto y bloqueos.
       const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : null));
       if (fromAccount !== undefined) return structuredClone(fromAccount) as T;

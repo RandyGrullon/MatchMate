@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { CalendarSearch, ChevronRight } from 'lucide-react';
-import { agendaCardNote, hasAgenda } from '../agenda/logic';
+import { agendaCardNote, agendaHref, hasAgenda } from '../agenda/logic';
 
 /**
  * Entrada a «¿Dónde juego esta semana?» (`/agenda`) desde el Home y el Home de un deporte (con ese deporte ya
@@ -10,7 +10,7 @@ export function AgendaLinkCard({ sport = null }: { sport?: string | null }) {
   if (sport && !hasAgenda(sport)) return null;
   return (
     <Link
-      to={sport ? `/agenda?deporte=${encodeURIComponent(sport)}` : '/agenda'}
+      to={agendaHref(sport)}
       className="flex min-h-14 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 transition hover:bg-surface-2"
     >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent" aria-hidden="true">

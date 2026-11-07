@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowRight, CalendarClock } from 'lucide-react-native';
@@ -232,7 +232,7 @@ function RsvpAction({ item }: { item: CalendarItem }) {
 }
 
 /** Lo próximo cuando hoy no hay juego (NextUpCard de la web): «Hoy juegas» o «Tu próxima práctica», con «Voy». */
-export function NextUpCard({ item, today }: { item: CalendarItem; today: string }) {
+export function NextUpCard({ item, today, anotar }: { item: CalendarItem; today: string; anotar?: ReactNode }) {
   const c = useColors();
   const isToday = item.date === today;
   const kind = item.type === 'torneo' ? 'torneo' : item.type === 'practica' || item.sport === 'bowling' ? 'práctica' : 'evento';
@@ -266,12 +266,14 @@ export function NextUpCard({ item, today }: { item: CalendarItem; today: string 
         </View>
       </Pressable>
       {canRsvp(item) && <RsvpAction item={item} />}
+      {/* «Anotar un juego» o «Seguir mi juego N» (abajo, como la web). */}
+      {anotar}
     </Card>
   );
 }
 
 /** Hoy no hay nada (IdleCard de la web). */
-export function IdleCard() {
+export function IdleCard({ anotar }: { anotar?: ReactNode } = {}) {
   return (
     <Card style={{ gap: 6 }}>
       <Txt variant="meta" tone="muted" style={{ fontWeight: '600' }}>
@@ -281,17 +283,18 @@ export function IdleCard() {
       <Txt variant="meta" tone="muted">
         Cuando tu liga ponga la próxima fecha, sale aquí.
       </Txt>
+      {anotar && <View style={{ marginTop: 6 }}>{anotar}</View>}
     </Card>
   );
 }
 
 /** «Lo que viene» (UpNext de la web): las próximas fechas, con «Voy» en las prácticas del boliche. */
-export function UpNext({ items, today, showLeague }: { items: readonly CalendarItem[]; today: string; showLeague: boolean }) {
+export function UpNext({ items, today, showLeague, action }: { items: readonly CalendarItem[]; today: string; showLeague: boolean; action?: ReactNode }) {
   const c = useColors();
   const shown = items.slice(0, UP_NEXT_SHOWN);
   return (
     <View style={{ gap: 10 }}>
-      <SectionHeader title="Lo que viene" />
+      <SectionHeader title="Lo que viene" action={action} />
       {shown.length === 0 ? (
         <Txt variant="meta" tone="muted" style={{ marginHorizontal: 4 }}>
           Nada más en los próximos 30 días.

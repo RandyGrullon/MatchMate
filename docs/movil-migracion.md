@@ -47,7 +47,11 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Lo de hoy, como la web: la práctica o el torneo de boliche en juego con su botón (anotar, seguir, enviar; la del
   horario se abre al tocar), los partidos en vivo, tu próximo partido o lo próximo con «Voy», «Nada programado» y «Lo
   que viene» (`movil/src/components/home/Activity.tsx`; los datos son `useActivity` de `src/components/home/activity.ts`,
-  el mismo de la web). Con datos de prueba: `/dev/hoy`. 🌐 El calendario completo y «¿Dónde jugaste?».
+  el mismo de la web). Con datos de prueba: `/dev/hoy`.
+- ✅ El Calendario (la hoja de «Lo que viene»), «Anotar un juego» con «¿Dónde jugaste?» y «Seguir mi juego N»
+  (`movil/src/components/agenda/HomeSheets.tsx`, la lógica de `src/components/home/where.ts`, la misma de la web).
+  - ⏳ Las filas de «¿Dónde jugaste?» abren el evento con `?anotar=1`; el evento de la app todavía no abre la hoja de
+    anotar con ese parámetro. ⏳ En «Enviar mis juegos», el selector del evento («Otro día (elegir fecha)»).
 - ✅ Campana de avisos en Hoy (con el número de lo nuevo) y Avisos (`/avisos`): los mismos avisos de la web (el
   proveedor `src/components/notifications/provider.tsx` es el mismo en las dos; la vista de la app sale de
   `src/lib/visibility(.native).ts`), por Hoy, Esta semana y Antes, filtros por tipo y por deporte, «Marcar todo como
@@ -294,7 +298,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   Las pantallas propias de cada deporte salen de `src/sports/adminTabs.ts` (también las usa la web). En el inicio de la
   liga, «Organizas esta liga» con lo que espera (`useLeagueToDo`, el de la web). `/l/<liga>/admin` sin pestaña abre
   Organizar de esa liga.
-- 🌐 Agenda.
+- ✅ Agenda (`/agenda`, `movil/src/components/agenda/`, la lógica de `src/components/agenda/logic.ts` y `week.ts`): «Tus
+  ligas» semana por semana (con «Voy») y «Abiertas» (las ligas públicas con lugar, por deporte, con «Me apunto», «¿Quién
+  eres?» y al volver de entrar, `?apuntar=`). Se llega desde Ligas, el Calendario de Hoy y la portada sin cuenta. La demo
+  trae ligas públicas de boliche, golf y pádel (`movil/src/platform/demoAgenda.ts`).
 
 ## 8b. Empresas (docs/empresas.md)
 

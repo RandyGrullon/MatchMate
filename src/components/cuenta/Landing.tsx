@@ -8,7 +8,7 @@ import { useNow } from '../../lib/useNow';
 import { SPORTS } from '../../sports/registry';
 import { openSports, useSportStatus } from '../../sports/status';
 import type { SportId } from '../../sports/types';
-import { agendaCardNote } from '../agenda/logic';
+import { agendaCardNote, agendaHref } from '../agenda/logic';
 import { BusyIcon } from '../busy';
 import { useJoin } from '../home/useHomeData';
 import { LeagueTile } from '../ligas/LigasRows';
@@ -134,7 +134,7 @@ export function Landing() {
             // En 360 px no cabe en una línea: pasa a dos en vez de cortarse con «…».
             title={<span className="whitespace-normal">¿Dónde juego esta semana?</span>}
             subtitle={agendaCardNote(null)}
-            to="/agenda"
+            to={agendaHref()}
           />
         </Card>
       </section>

@@ -1,42 +1,23 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { ChevronLeft, ChevronRight, Repeat } from 'lucide-react';
-import { upcomingCalendar, weekStart, type CalendarItem, type CalendarMatch } from '../../lib/calendar';
+import type { CalendarItem, CalendarMatch } from '../../lib/calendar';
 import { setRsvp, type LeagueFeed } from '../../lib/data';
-import { parseDate, toIsoDate } from '../../lib/format';
-import { WEEKDAY_SHORT, WEEKDAYS } from '../../lib/schedule';
+import { parseDate } from '../../lib/format';
+import { WEEKDAY_SHORT } from '../../lib/schedule';
 import type { League } from '../../lib/types';
 import { SportBadge } from '../../pages/sports/SportBits';
+import { canRsvpRow, clampWeek, dayCellLabel, dayHeading, dotKind, MAX_WEEKS, rowSubtitle, weekEmptyText, weekRange, weekTitle, weekView } from '../agenda/week';
 import { useAction } from '../feedback';
 import { SportMark } from '../SportMark';
 import { Badge, Card, cx } from '../ui';
 import { RsvpButton } from './RsvpButton';
 
-/** Semanas hacia adelante que se pueden ver. */
-const MAX_WEEKS = 8;
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
-
-const addDays = (iso: string, n: number) => {
-  const d = parseDate(iso);
-  d.setDate(d.getDate() + n);
-  return toIsoDate(d);
-};
-const short = (iso: string) => {
-  const d = parseDate(iso);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-};
-
-/** «1 partido», «2 eventos» (si hay de los dos, «3 cosas»). */
-function countLabel(items: readonly CalendarItem[]): string {
-  const n = items.length;
-  const matches = items.filter((i) => i.kind === 'match').length;
-  if (matches === n) return `${n} ${n === 1 ? 'partido' : 'partidos'}`;
-  if (matches === 0) return `${n} ${n === 1 ? 'evento' : 'eventos'}`;
-  return `${n} cosas`;
-}
+// La semana (días, fechas y textos) sale de agenda/week.ts: la misma de la app del teléfono.
 
 /** Color del puntito de cada día: torneo, partido o lo demás. */
-const dotTone = (it: CalendarItem) => (it.kind === 'match' ? 'bg-ok' : it.type === 'torneo' ? 'bg-warn' : 'bg-accent');
+const DOT = { match: 'bg-ok', torneo: 'bg-warn', otro: 'bg-accent' } as const;
+const dotTone = (it: CalendarItem) => DOT[dotKind(it)];
 
 /**
  * La semana (lunes a domingo) de mis ligas: las de un deporte en su Home o las de todos en el Home general. Los
@@ -61,14 +42,10 @@ export function WeekAgenda({
   const run = useAction();
   if (!feeds.length && !matches.length) return null;
 
-  const from = addDays(weekStart(today), 7 * week);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
-  const items = upcomingCalendar([...feeds], [...leagues], from, 7, matches).filter((i) => i.date >= today);
-  const shown = day ? items.filter((i) => i.date === day) : items;
-  const byDay = days.map((d) => ({ date: d, items: shown.filter((i) => i.date === d) })).filter((g) => g.items.length);
+  const { from, days, items, byDay } = weekView(feeds, leagues, matches, today, week, day);
 
   function go(delta: number) {
-    setWeek((w) => Math.min(MAX_WEEKS - 1, Math.max(0, w + delta)));
+    setWeek((w) => clampWeek(w + delta));
     setDay(null);
   }
 
@@ -76,12 +53,12 @@ export function WeekAgenda({
   return (
     <section className="flex flex-col gap-2" aria-label="Esta semana" data-tour="proximos">
       <div className="-my-1.5 flex items-center gap-1">
-        <h2 className="flex-1 text-sm font-semibold text-muted">{week === 0 ? 'Esta semana' : 'Próximas semanas'}</h2>
+        <h2 className="flex-1 text-sm font-semibold text-muted">{weekTitle(week)}</h2>
         <button type="button" onClick={() => go(-1)} disabled={week === 0} aria-label="Semana anterior" className={nav}>
           <ChevronLeft className="size-4" />
         </button>
         <span className="min-w-28 text-center text-xs font-medium tabular-nums">
-          {week === 0 ? `${short(from)} – ${short(addDays(from, 6))}` : week === 1 ? 'La semana que viene' : `${short(from)} – ${short(addDays(from, 6))}`}
+          {weekRange(from, week)}
         </span>
         <button type="button" onClick={() => go(1)} disabled={week === MAX_WEEKS - 1} aria-label="Semana siguiente" className={nav}>
           <ChevronRight className="size-4" />
@@ -101,7 +78,7 @@ export function WeekAgenda({
                 disabled={past || !mine.length}
                 onClick={() => setDay(selected ? null : d)}
                 aria-pressed={selected}
-                aria-label={`${WEEKDAYS[i]} ${short(d)}${mine.length ? `: ${countLabel(mine)}` : ''}`}
+                aria-label={dayCellLabel(d, i, mine)}
                 className={cx(
                   'flex min-h-14 flex-col items-center justify-center gap-0.5 py-2 transition',
                   selected ? 'bg-accent text-accent-fg' : d === today ? 'bg-accent-soft' : '',
@@ -122,13 +99,13 @@ export function WeekAgenda({
         </div>
 
         {byDay.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted">{week === 0 ? 'Nada más esta semana.' : 'Nada esta semana.'}</p>
+          <p className="px-4 py-4 text-sm text-muted">{weekEmptyText(week)}</p>
         ) : (
           <div className="divide-y divide-line">
             {byDay.map((g) => (
               <div key={g.date} className="flex flex-col pb-1">
                 <p className="px-4 pt-2.5 text-xs font-semibold text-muted first-letter:uppercase">
-                  {g.date === today ? 'Hoy' : g.date === addDays(today, 1) ? 'Mañana' : `${WEEKDAYS[(parseDate(g.date).getDay() + 6) % 7]} ${short(g.date)}`}
+                  {dayHeading(g.date, today)}
                 </p>
                 {g.items.map((it) => (
                   <AgendaRow
@@ -154,8 +131,8 @@ export function WeekAgenda({
 export function AgendaRow({ item, showSport, onGoing }: { item: CalendarItem; showSport?: boolean; onGoing?: (going: boolean) => Promise<unknown> }) {
   const match = item.kind === 'match';
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
-  const canRsvp = !!onGoing && item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
-  const sub = match ? [item.leagueName, item.detail].filter(Boolean).join(' · ') : item.leagueName;
+  const canRsvp = !!onGoing && canRsvpRow(item);
+  const sub = rowSubtitle(item);
   return (
     <div className="flex min-h-14 items-center gap-3 px-4 py-2">
       <Link to={item.href} className="flex min-w-0 flex-1 items-center gap-3">

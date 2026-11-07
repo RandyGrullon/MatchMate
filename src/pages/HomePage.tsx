@@ -20,6 +20,7 @@ import { LiveSectionPro, ToDoSection, WeekStrip, toDoOf } from '../components/ho
 import { useRsvp } from '../components/home/RsvpButton';
 import { SportTint } from '../components/home/SportTint';
 import { IdleCard, NextUpCard, QuietLink, TodayCard } from '../components/home/TodayCard';
+import { anotarLinkOf } from '../components/home/where';
 import { UpNext, canRsvp } from '../components/home/UpNext';
 import { useActivity, useMyLeagues, type Activity } from '../components/home/useHomeData';
 import { LiveNowStreams } from '../components/live/LiveNowStreams';
@@ -253,11 +254,14 @@ function anotarLink({
   today: string;
   onWhere: () => void;
 }): ReactNode {
-  if (resume)
-    return (
-      <QuietLink to={scorePath(resume.lid, resume.eventId)} icon={PencilLine} accent>
-        {`Seguir mi juego ${resume.game}${resume.recent.event.date === today ? '' : ' de ayer'}`}
-      </QuietLink>
-    );
-  return recent.length ? <QuietLink onClick={onWhere}>Anotar un juego</QuietLink> : null;
+  // Qué link y con qué texto: components/home/where.ts (la misma lógica de la app del teléfono).
+  const link = anotarLinkOf(resume, recent, today);
+  if (!link) return null;
+  return link.kind === 'resume' ? (
+    <QuietLink to={scorePath(link.lid, link.eventId)} icon={PencilLine} accent>
+      {link.label}
+    </QuietLink>
+  ) : (
+    <QuietLink onClick={onWhere}>{link.label}</QuietLink>
+  );
 }

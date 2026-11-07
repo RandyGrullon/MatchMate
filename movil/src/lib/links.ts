@@ -66,6 +66,8 @@ export function appRoute(href: string): string | null {
   if (/^\/esports\/[^/]+$/.test(path)) return path;
   // Juegos sueltos (?juego= abre uno, ?nuevo=1 uno nuevo) y Mis bolas (?bola=, ?nueva=1, ?catalogo=, ?buscar=).
   if (path === '/juegos-sueltos' || path === '/bolas') return path + query;
+  // El Calendario (con su ?ver=mias, ?deporte=, ?dia= y ?apuntar=).
+  if (path === '/agenda') return path + query;
   // Dónde jugar (con su ?deporte=) y la ficha de un espacio.
   if (path === '/canchas') return path + query;
   if (/^\/canchas\/[^/]+$/.test(path)) return path;

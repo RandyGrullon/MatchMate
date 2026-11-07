@@ -1,42 +1,23 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Repeat, Trophy } from 'lucide-react';
-import { upcomingCalendar, weekStart, type CalendarItem, type CalendarMatch } from '../lib/calendar';
+import type { CalendarItem, CalendarMatch } from '../lib/calendar';
 import { setRsvp } from '../lib/data';
 import { parseDate, toIsoDate } from '../lib/format';
-import { WEEKDAY_SHORT, WEEKDAYS } from '../lib/schedule';
+import { WEEKDAY_SHORT } from '../lib/schedule';
 import { useNow } from '../lib/useNow';
 import { SportIcon } from '../pages/sports/SportBits';
+import { addDays, canRsvpRow, clampWeek, dayCellLabel, dayHeading, dotKind, MAX_WEEKS, shortDate as short, weekEmptyText, weekView } from './agenda/week';
 import { BusyIcon, useBusy } from './busy';
 import { useAction } from './feedback';
 import { useNotifications } from './Notifications';
 import { Badge, Card, cx } from './ui';
 
-/** Semanas hacia adelante que se pueden ver. */
-const MAX_WEEKS = 8;
-
-const addDays = (iso: string, n: number) => {
-  const d = parseDate(iso);
-  d.setDate(d.getDate() + n);
-  return toIsoDate(d);
-};
-const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
-const short = (iso: string) => {
-  const d = parseDate(iso);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-};
-
-/** «1 partido», «2 eventos» (si hay de los dos, «3 cosas»). */
-function countLabel(items: readonly CalendarItem[]): string {
-  const n = items.length;
-  const matches = items.filter((i) => i.kind === 'match').length;
-  if (matches === n) return `${n} ${n === 1 ? 'partido' : 'partidos'}`;
-  if (matches === 0) return `${n} ${n === 1 ? 'evento' : 'eventos'}`;
-  return `${n} cosas`;
-}
+// La semana (días, fechas y textos) sale de agenda/week.ts: la misma de WeekAgenda y de la app del teléfono.
 
 /** Color del puntito de cada día: torneo, partido o lo demás. */
-const dotTone = (it: CalendarItem) => (it.kind === 'match' ? 'bg-ok' : it.type === 'torneo' ? 'bg-warn' : 'bg-accent');
+const DOT = { match: 'bg-ok', torneo: 'bg-warn', otro: 'bg-accent' } as const;
+const dotTone = (it: CalendarItem) => DOT[dotKind(it)];
 
 /**
  * Home › Próximos: calendario semanal (lunes a domingo) de todas tus ligas, de cualquier deporte: los eventos,
@@ -52,14 +33,10 @@ export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatc
   const run = useAction();
   if (!feeds.length) return null;
 
-  const from = addDays(weekStart(today), 7 * week);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
-  const items = upcomingCalendar(feeds, leagues, from, 7, matches).filter((i) => i.date >= today);
-  const shown = day ? items.filter((i) => i.date === day) : items;
-  const byDay = days.map((d) => ({ date: d, items: shown.filter((i) => i.date === d) })).filter((g) => g.items.length);
+  const { from, days, items, byDay } = weekView(feeds, leagues, matches, today, week, day);
 
   function go(delta: number) {
-    setWeek((w) => Math.min(MAX_WEEKS - 1, Math.max(0, w + delta)));
+    setWeek((w) => clampWeek(w + delta));
     setDay(null);
   }
 
@@ -91,7 +68,7 @@ export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatc
                 disabled={past || !mine.length}
                 onClick={() => setDay(selected ? null : d)}
                 aria-pressed={selected}
-                aria-label={`${WEEKDAYS[i]} ${short(d)}${mine.length ? `: ${countLabel(mine)}` : ''}`}
+                aria-label={dayCellLabel(d, i, mine)}
                 className={cx(
                   'flex flex-col items-center gap-0.5 py-2 transition',
                   selected ? 'bg-accent text-accent-fg' : d === today ? 'bg-accent-soft' : '',
@@ -112,13 +89,13 @@ export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatc
         </div>
 
         {byDay.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted">{week === 0 ? 'Nada más esta semana.' : 'Nada esta semana.'}</p>
+          <p className="px-4 py-4 text-sm text-muted">{weekEmptyText(week)}</p>
         ) : (
           <div className="divide-y divide-line">
             {byDay.map((g) => (
               <div key={g.date} className="flex flex-col">
                 <p className="px-4 pt-2.5 text-xs font-semibold text-muted first-letter:uppercase">
-                  {g.date === today ? 'Hoy' : g.date === addDays(today, 1) ? 'Mañana' : `${WEEKDAYS[(parseDate(g.date).getDay() + 6) % 7]} ${short(g.date)}`}
+                  {dayHeading(g.date, today)}
                 </p>
                 {g.items.map((it) =>
                   it.kind === 'match' ? (
@@ -138,7 +115,7 @@ export function WeekCalendar({ matches = [] }: { matches?: readonly CalendarMatc
 
 function Row({ item, onGoing }: { item: CalendarItem; onGoing: (going: boolean) => Promise<unknown> }) {
   // El «voy» es de las prácticas del boliche (los otros deportes confirman en sus propias pantallas).
-  const canRsvp = item.sport === 'bowling' && item.type === 'practica' && !!item.eventId && !!item.playerId;
+  const canRsvp = canRsvpRow(item);
   // Cada fila espera lo suyo: las demás se pueden tocar mientras tanto.
   const { isBusy, run } = useBusy();
   return (

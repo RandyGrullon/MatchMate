@@ -1,10 +1,10 @@
 import type { AgendaItem, AgendaJoined } from '../../lib/data/agenda';
-import { eventLabel } from '../../lib/format';
-import { SPORT_IDS, sportMeta } from '../../sports/registry';
+import { eventLabel, parseDate } from '../../lib/format';
+import { isSportId, SPORT_IDS, sportMeta } from '../../sports/registry';
 
 /**
  * «¿Dónde juego esta semana?»: lo que la pantalla decide sin tocar la base (filtros, grupos por día y los textos de
- * cada tarjeta).
+ * cada tarjeta). Sin React ni DOM: lo usan la web (src/pages/AgendaPage.tsx) y la app del teléfono (movil/).
  */
 
 /** Deportes con algo para apuntarse en la agenda: boliche («Voy»), golf (rondas) y raqueta (noches y torneos). */
@@ -103,9 +103,87 @@ export function joinedMessage(i: Pick<AgendaItem, 'type' | 'name' | 'date' | 'sp
 /** Parámetro con el evento a apuntar al volver de entrar a la cuenta. */
 export const JOIN_PARAM = 'apuntar';
 
-/** Adónde volver después de entrar: la agenda con los filtros y el evento que se quería. */
-export function loginNext(search: string, eventId: string): string {
+/** La agenda a la que se vuelve después de entrar: con los filtros (`search`, el ?… de ahora) y el evento que se quería. */
+export function agendaReturn(search: string, eventId: string): string {
   const p = new URLSearchParams(search);
   p.set(JOIN_PARAM, eventId);
-  return `/login?next=${encodeURIComponent(`/agenda?${p.toString()}`)}`;
+  return `/agenda?${p.toString()}`;
 }
+
+/** Adónde volver después de entrar: la agenda con los filtros y el evento que se quería. */
+export function loginNext(search: string, eventId: string): string {
+  return `/login?next=${encodeURIComponent(agendaReturn(search, eventId))}`;
+}
+
+/** A dónde lleva «¿Dónde juego esta semana?»: la agenda, con ese deporte ya filtrado si viene de uno. */
+export const agendaHref = (sport?: string | null): string => (sport ? `/agenda?deporte=${encodeURIComponent(sport)}` : '/agenda');
+
+// ---------- La pantalla del Calendario (`/agenda`) ----------
+
+/** «Todos» en los filtros por deporte y por día. */
+export const AGENDA_ALL = 'todos';
+
+/** Las dos partes del Calendario: tus ligas, o lo abierto en las ligas públicas («¿Dónde juego esta semana?»). */
+export type AgendaView = 'mias' | 'abiertas';
+
+/** `?ver=mias` abre tus ligas; si no, lo abierto (los links de «¿Dónde juego esta semana?» y de Ligas llevan aquí). */
+export const agendaView = (raw: string | null | undefined, canMine: boolean): AgendaView => (raw === 'mias' && canMine ? 'mias' : 'abiertas');
+
+/** La línea debajo del título «Calendario». */
+export const agendaHint = (view: AgendaView): string => (view === 'mias' ? 'Tus ligas, semana por semana' : 'Ligas públicas con lugar en los próximos días');
+
+/** «hasta el 3 oct, 6:00 p. m.» */
+export const untilLabel = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('es-DO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+};
+
+const WEEKDAYS_FROM_SUNDAY = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+/** Debajo del nombre: «Sábado · 7:00 pm · Liga de los martes · Bolera Sambil · Quedan 3 lugares · hasta el 3 oct». */
+export function agendaLine(
+  item: Pick<AgendaItem, 'date' | 'timeLabel' | 'leagueName' | 'venue' | 'join' | 'cap' | 'taken' | 'spotsLeft' | 'waitlist' | 'until'>,
+  today: string,
+): string {
+  const day = item.date === today ? 'Hoy' : WEEKDAYS_FROM_SUNDAY[parseDate(item.date).getDay()];
+  const until = item.until ? untilLabel(item.until) : '';
+  return [day, item.timeLabel, item.leagueName, item.venue?.trim(), spotsText(item), until && `hasta el ${until}`]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Lo que se ve en «Abiertas» con los filtros de la dirección (`?deporte=` y `?dia=`): el deporte (uno que no existe no
+ * filtra), los deportes de los chips (el pedido sale aunque no tenga nada), los días que tiene ese deporte, el día (uno
+ * que no está no filtra) y las fechas que quedan, por día.
+ */
+export function agendaFilters<T extends Pick<AgendaItem, 'sport' | 'date'>>(
+  items: readonly T[],
+  rawSport: string | null | undefined,
+  rawDay: string | null | undefined,
+): { sport: string | null; sports: string[]; days: string[]; day: string | null; groups: { date: string; items: T[] }[]; shown: T[] } {
+  const sport = rawSport && isSportId(rawSport) ? rawSport : null;
+  const list = agendaSports(items);
+  const sports = sport && !list.includes(sport) ? [...list, sport] : list;
+  const bySport = filterAgenda(items, sport, null);
+  const days = [...new Set(bySport.map((i) => i.date))];
+  const day = rawDay && days.includes(rawDay) ? rawDay : null;
+  const groups = groupByDay(filterAgenda(bySport, null, day));
+  return { sport, sports, days, day, groups, shown: groups.flatMap((g) => g.items) };
+}
+
+/** ¿Salen los chips por día? Con más de un día, en Pro o si ya viene uno elegido en la dirección. */
+export const showDayFilter = (days: number, pro: boolean, day: string | null): boolean => days > 1 && (pro || !!day);
+
+/** «Abiertas» sin nada que mostrar: con algo abierto, es el filtro; sin nada, todavía no hay. */
+export const agendaEmpty = (hasItems: boolean): { title: string; text: string } =>
+  hasItems
+    ? { title: 'Nada con ese filtro', text: 'Prueba con otro deporte u otro día.' }
+    : { title: 'Nada abierto por ahora', text: 'Cuando una liga pública abra una fecha con lugar, sale aquí.' };
+
+/** Las ligas de la cuenta para «Me apunto» (null mientras se leen por primera vez: entonces se apunta directo). */
+export const myLeagueIds = (loading: boolean, memberships: readonly { leagueId: string }[]): Set<string> | null =>
+  loading && !memberships.length ? null : new Set(memberships.map((m) => m.leagueId));
+
+/** Lo que dice la fila después de apuntarse: «En espera» o cómo quedó («Vas», «Inscrito», «Apuntado»). */
+export const joinedLabel = (i: Pick<AgendaItem, 'join'>, r: AgendaJoined): string => (r.kind === 'wait' ? 'En espera' : mineLabel(i));
