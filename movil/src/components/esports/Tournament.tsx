@@ -3,15 +3,17 @@
  * tournamentData.ts): el juego, la fase, el inicio, el formato y el cupo; UNA acción principal (anotar o confirmar mi
  * serie, hacer check-in, inscribirme); mi inscripción; el aviso de la pantalla (lo que le falta a tu ID, «Tu inscripción
  * está por aprobar», cuándo abre el check-in) y las vistas del formato: Cuadro, Grupos, Playoffs, Tabla, Partidos,
- * Partidas, Equipos (o Jugadores) e Info. Tocar una serie abre el partido. Lo del organizador (revisar inscripciones,
- * armar el cuadro, anotar partidas de battle royale, editar o cerrar el torneo), en la web.
+ * Partidas, Equipos (o Jugadores) e Info. Tocar una serie abre el partido. Quien organiza (en el teléfono no hay Pro: los
+ * admins de la liga), lo de la web: revisar inscripciones, sembrar, armar el cuadro o empezar, pasar a playoffs, los
+ * agentes libres, anotar partidas de battle royale, editar, rehacer el cuadro, los anotadores, el logo, cerrar, cancelar
+ * o volver a abrir (las hojas de admin/*.tsx, con la lógica de admin/logic.ts).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CheckCircle2, Crosshair, GitFork, Globe, ListOrdered, MoreHorizontal, Share2, Swords, Trophy, Users } from 'lucide-react-native';
+import { Ban, CheckCircle2, ClipboardPen, Crosshair, Flag, GitFork, ImageIcon, ListOrdered, MoreHorizontal, Play, RotateCcw, Settings2, Share2, Swords, Trophy, UserPlus, Users } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { checkIn, esportsErrorText, syncBracket, type EsportsEntry, type EsportsTournament } from '@mm/lib/data/esports';
+import { checkIn, deleteStage, esportsErrorText, setTournamentStatus, syncBracket, type BrGame, type EsportsEntry, type EsportsTournament } from '@mm/lib/data/esports';
 import { useMyGameIds } from '@mm/lib/data/esportsIds';
 import type { Match } from '@mm/lib/data/matches';
 import type { Notice } from '@mm/lib/notices';
@@ -30,13 +32,16 @@ import {
   checkinOpensAt,
   competitors,
   countLine,
+  freeAgents,
   groupTablesOf,
   idNotice,
   infoInTeams,
+  lastStage,
   memberProblem,
   myActionMatches,
   myEntryOf,
   needsSync,
+  organizerAction,
   pendingEntries,
   phaseOf,
   pickView,
@@ -48,6 +53,7 @@ import {
   sideOfTeams,
   stageDone,
   stageMatches,
+  stageUntouched,
   stagesCreated,
   standingsColumns,
   tableOf,
@@ -57,12 +63,13 @@ import {
   type Primary,
   type View as TournamentViewKey,
 } from '@mm/pages/sports/esports/logic';
+import { REDO_ASK, REDO_OK, STATUS_CHANGE, organizerMenu, type TournamentMenuKey } from '@mm/pages/sports/esports/admin/logic';
 import { useEntryNames, useMyTeams, useTournament, type TournamentData } from '@mm/pages/sports/esports/tournamentData';
-import { openOnWeb } from '@/lib/web';
+import { ScorersSheet } from '../scorers/ScorersSheet';
 import { DateBlock } from '../DateBlock';
 import { MatchCard } from '../match/MatchCard';
 import { StandingsTable } from '../match/StandingsTable';
-import { toast } from '../feedback';
+import { confirmAsync, toast } from '../feedback';
 import { BackBar, Button, Card, Empty, ListRow, LoadError, Loading, Segmented, SectionHeader, Sheet, Txt } from '../ui';
 import { BrGamesList, BrLeaderboard } from './Br';
 import { EsportsBracket } from './Bracket';
@@ -70,8 +77,27 @@ import { EntriesView, TournamentInfo } from './Entries';
 import { EntryStatusChip, GameMark, PhaseChip, ScreenNotice } from './bits';
 import { FinePrint, MenuRow } from './inputs';
 import { RegisterSheet } from './RegisterSheet';
+import { BrGameSheet } from './BrGameSheet';
+import { EditTournamentSheet } from './EditTournamentSheet';
+import { FreeAgentsSheet, SeedSheet, StageSheet } from './StageSheets';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
+
+type SheetKey = 'menu' | 'register' | 'seed' | 'stage' | 'playoffs' | 'agents' | 'br' | 'edit' | 'scorers';
+
+/** El ícono de cada opción del organizador en «•••» (las opciones salen de organizerMenu, admin/logic.ts). */
+const MENU_ICON: Record<TournamentMenuKey, typeof Settings2> = {
+  editar: Settings2,
+  sembrar: ListOrdered,
+  agentes: UserPlus,
+  cuadro: GitFork,
+  rehacer: RotateCcw,
+  anotadores: ClipboardPen,
+  logo: ImageIcon,
+  cerrar: Flag,
+  reabrir: Play,
+  cancelar: Ban,
+};
 
 /** El partido de la liga (`/l/<liga>/partido/<id>`, el `?partido=` de la web). */
 export const esportsMatchRoute = (lid: string, matchId: string) => ({ pathname: '/l/[lid]/partido/[matchId]' as const, params: { lid, matchId } });
@@ -96,9 +122,12 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
   const params = useLocalSearchParams<{ ver?: string }>();
   const uid = useAuth().user?.uid ?? null;
   const now = useNow().getTime();
-  const [sheet, setSheet] = useState<null | 'menu' | 'register'>(null);
+  const [sheet, setSheet] = useState<SheetKey | null>(null);
+  const [editingBr, setEditingBr] = useState<BrGame | null>(null);
   const [wanted, setWanted] = useState<string | null>(params.ver ?? null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<null | 'checkin' | 'estado' | 'rehacer'>(null);
+  // En el teléfono no hay Pro: lo del organizador es de los admins de la liga.
+  const organizer = isAdmin;
   const myTeams = useMyTeams(d.entries);
   const nameOf = useEntryNames(d.entries);
   const myIds = useMyGameIds(uid);
@@ -119,10 +148,10 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
   const approved = competitors(d.entries);
   const myEntry = myEntryOf(d.entries, uid);
   const created = stagesCreated(d.links);
+  const hasStage = created.size > 0;
   const { toConfirm, toScore } = myActionMatches(d.matches, myTeams.act, now);
   const individual = isIndividualMode(t.mode);
-  // En el teléfono no hay Pro: lo del organizador (revisar, armar el cuadro, anotar partidas) queda en la web.
-  const primary = primaryAction({
+  const input = {
     format: t.format,
     entryType: t.entryType,
     mode: t.mode,
@@ -134,13 +163,15 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
     uid,
     toConfirm,
     toScore,
-    organizer: false,
+    organizer,
     pending: pendingEntries(d.entries).length,
     approved: approved.length,
-    hasStage: created.size > 0,
+    hasStage,
     groupsDone: stageDone(stageMatches('groups', d.matches, d.links), now),
     hasPlayoffs: created.has('playoffs'),
-  });
+  };
+  const primary = primaryAction(input);
+  const orgAction = primary && organizer && (primary.kind === 'register' || primary.kind === 'signin') ? organizerAction(input) : null;
   const path = tournamentPathFor(lid, t.eventId, league.kind);
 
   // ---- Avisos (uno por pantalla) ----
@@ -165,16 +196,50 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
   const openMatch = (id: string) => router.push(esportsMatchRoute(lid, id));
   async function doCheckIn() {
     if (!myEntry) return;
-    setBusy(true);
+    setBusy('checkin');
     try {
       await checkIn(myEntry.id);
       toast('Check-in hecho');
     } catch (e) {
       toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
+  async function setStatus(status: keyof typeof STATUS_CHANGE) {
+    const { ask, ok } = STATUS_CHANGE[status];
+    setSheet(null);
+    if (ask && !(await confirmAsync(ask))) return;
+    setBusy('estado');
+    try {
+      await setTournamentStatus(t.eventId, status);
+      toast(ok);
+    } catch (e) {
+      toast(esportsErrorText(e, t.game, 'torneo'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+  const redo = lastStage(created);
+  const redoable = !!redo && stageUntouched(stageMatches(redo, d.matches, d.links));
+  async function doRedo() {
+    setSheet(null);
+    if (!redo) return;
+    if (!(await confirmAsync(REDO_ASK))) return;
+    setBusy('rehacer');
+    try {
+      await deleteStage(lid, t.eventId, redo);
+      toast(REDO_OK);
+    } catch (e) {
+      toast(esportsErrorText(e, t.game, 'cuadro'), 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+  const openBr = (g: BrGame | null) => {
+    setEditingBr(g);
+    setSheet('br');
+  };
   const runPrimary = (p: Primary) => {
     switch (p.kind) {
       case 'confirm':
@@ -186,11 +251,45 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
         return setSheet('register');
       case 'signin':
         return router.push('/login');
-      default:
-        // Lo del organizador (no sale en el teléfono): la web.
-        return void openOnWeb(path);
+      case 'review':
+        return setWanted('equipos');
+      case 'stage':
+        return setSheet('stage');
+      case 'playoffs':
+        return setSheet('playoffs');
+      case 'start':
+        return void setStatus('live');
+      case 'brGame':
+        return openBr(null);
     }
   };
+  const runMenu = (key: TournamentMenuKey) => {
+    switch (key) {
+      case 'editar':
+        return setSheet('edit');
+      case 'sembrar':
+        return setSheet('seed');
+      case 'agentes':
+        return setSheet('agents');
+      case 'cuadro':
+        return setSheet('stage');
+      case 'rehacer':
+        return void doRedo();
+      case 'anotadores':
+        return setSheet('scorers');
+      case 'logo':
+        // El logo es el de la liga (Organizar › Ajustes de la liga, como `?tab=liga` en la web).
+        setSheet(null);
+        return router.push({ pathname: '/l/[lid]/ajustes', params: { lid } });
+      case 'cerrar':
+        return void setStatus('finished');
+      case 'reabrir':
+        return void setStatus('registration');
+      case 'cancelar':
+        return void setStatus('cancelled');
+    }
+  };
+  const menuItems = organizer ? organizerMenu(t, { hasStage, approved: approved.length, freeAgents: freeAgents(d.entries).length, individual, redoable }) : [];
   async function share() {
     setSheet(null);
     const url = `${shareOrigin(null)}${path}`;
@@ -249,9 +348,16 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
       {embedded && <ScreenNotice notices={notices} />}
 
       {primary && (
-        <Button variant="primary" size="xl" full icon={primaryIcon(primary, c.accentFg)} loading={busy} onPress={() => runPrimary(primary)}>
-          {primary.label}
-        </Button>
+        <View style={{ gap: 10 }}>
+          <Button variant="primary" size="xl" full icon={primaryIcon(primary, c.accentFg)} loading={busy === 'checkin' || busy === 'estado'} onPress={() => runPrimary(primary)}>
+            {primary.label}
+          </Button>
+          {orgAction && (
+            <Button variant="soft" size="lg" full onPress={() => runPrimary(orgAction)}>
+              {orgAction.label}
+            </Button>
+          )}
+        </View>
       )}
 
       {myEntry && (
@@ -268,14 +374,60 @@ function Tournament({ t, d, embedded }: { t: EsportsTournament; d: TournamentDat
 
       {views.length > 1 && <Segmented<TournamentViewKey> label="Qué ver" options={views.map((v) => ({ key: v.key, label: v.label }))} value={view} onChange={setWanted} />}
 
-      <ViewBody view={view} t={t} d={d} myTeams={myTeams.all} myEntry={myEntry} nameOf={nameOf} now={now} onOpen={openMatch} canScoreBr={!!member?.scorer} path={path} />
+      <ViewBody
+        view={view}
+        t={t}
+        d={d}
+        organizer={organizer}
+        myTeams={myTeams.all}
+        myEntry={myEntry}
+        nameOf={nameOf}
+        now={now}
+        onOpen={openMatch}
+        onAgents={() => setSheet('agents')}
+        onBrEdit={openBr}
+        onBrNew={() => openBr(null)}
+        canScoreBr={organizer || !!member?.scorer}
+      />
 
       {!embedded && <ScreenNotice notices={notices} />}
 
       <Sheet open={sheet === 'menu'} onClose={() => setSheet(null)} title={t.name}>
         <MenuRow icon={<Share2 size={20} color={c.fg2} />} label="Compartir el torneo" onPress={() => void share()} />
+        {menuItems.map((it) => {
+          const I = MENU_ICON[it.key];
+          return (
+            <MenuRow
+              key={it.key}
+              icon={<I size={20} color={it.danger ? c.danger : c.fg2} />}
+              label={it.label}
+              hint={it.hint}
+              danger={it.danger}
+              disabled={it.key === 'rehacer' && busy === 'rehacer'}
+              onPress={() => runMenu(it.key)}
+            />
+          );
+        })}
       </Sheet>
       <RegisterSheet open={sheet === 'register'} onClose={() => setSheet(null)} t={t} entry={myEntry} />
+      {organizer && (
+        <>
+          <SeedSheet open={sheet === 'seed'} onClose={() => setSheet(null)} t={t} entries={d.entries} />
+          <StageSheet open={sheet === 'stage' || sheet === 'playoffs'} onClose={() => setSheet(null)} mode={sheet === 'playoffs' ? 'playoffs' : 'create'} t={t} entries={d.entries} matches={d.matches} links={d.links} />
+          <FreeAgentsSheet open={sheet === 'agents'} onClose={() => setSheet(null)} t={t} entries={d.entries} />
+          <EditTournamentSheet open={sheet === 'edit'} onClose={() => setSheet(null)} t={t} tz={league.tz} approved={approved.length} formatEditable={t.status === 'registration' && !hasStage} />
+          {t.format === 'br' && (
+            <ScorersSheet
+              league={league}
+              open={sheet === 'scorers'}
+              onClose={() => setSheet(null)}
+              target={{ scope: 'evento', refId: t.eventId, title: t.name }}
+              participants={approved.flatMap((e) => e.members.map((m) => m.playerId ?? '')).filter(Boolean)}
+            />
+          )}
+        </>
+      )}
+      {t.format === 'br' && (organizer || !!member?.scorer) && <BrGameSheet open={sheet === 'br'} onClose={() => setSheet(null)} t={t} entries={d.entries} games={d.br} editing={editingBr} />}
     </View>
   );
 }
@@ -284,6 +436,13 @@ function primaryIcon(p: Primary, color: string): ReactNode {
   switch (p.kind) {
     case 'checkin':
       return <CheckCircle2 size={20} color={color} />;
+    case 'stage':
+    case 'playoffs':
+      return <GitFork size={20} color={color} />;
+    case 'start':
+      return <Play size={20} color={color} />;
+    case 'brGame':
+      return <Crosshair size={20} color={color} />;
     case 'score':
     case 'confirm':
       return <Swords size={20} color={color} />;
@@ -297,24 +456,30 @@ function ViewBody({
   view,
   t,
   d,
+  organizer,
   myTeams,
   myEntry,
   nameOf,
   now,
   onOpen,
+  onAgents,
+  onBrEdit,
+  onBrNew,
   canScoreBr,
-  path,
 }: {
   view: TournamentViewKey;
   t: EsportsTournament;
   d: TournamentData;
+  organizer: boolean;
   myTeams: ReadonlySet<string>;
   myEntry: EsportsEntry | null;
   nameOf: (id: string | null | undefined) => string;
   now: number;
   onOpen: (matchId: string) => void;
+  onAgents: () => void;
+  onBrEdit: (g: BrGame) => void;
+  onBrNew: () => void;
   canScoreBr: boolean;
-  path: string;
 }) {
   const c = useColors();
   const { league } = useLeagueCtx();
@@ -403,19 +568,18 @@ function ViewBody({
     case 'partidas':
       return (
         <View style={{ gap: 16 }}>
-          {canScoreBr && t.status !== 'finished' && t.status !== 'cancelled' && (
-            // Anotar una partida (la hoja del organizador y del anotador) es de la web.
-            <Button variant="soft" size="lg" full icon={<Globe size={20} color={c.accent} />} onPress={() => void openOnWeb(`${path}?ver=partidas`)}>
+          {canScoreBr && t.status !== 'finished' && t.status !== 'cancelled' && !organizer && (
+            <Button variant="soft" size="lg" full icon={<Crosshair size={20} color={c.accent} />} onPress={onBrNew}>
               Anotar partida
             </Button>
           )}
-          <BrGamesList games={d.br} settings={t.settings} nameOf={nameOf} />
+          <BrGamesList games={d.br} settings={t.settings} nameOf={nameOf} onEdit={canScoreBr ? onBrEdit : undefined} />
         </View>
       );
     case 'equipos':
       return (
         <View style={{ gap: 30 }}>
-          <EntriesView t={t} entries={d.entries} myEntryId={myEntry?.id ?? null} />
+          <EntriesView t={t} entries={d.entries} organizer={organizer} myEntryId={myEntry?.id ?? null} onFreeAgents={onAgents} />
           {infoInTeams(t.format) && <TournamentInfo t={t} />}
         </View>
       );

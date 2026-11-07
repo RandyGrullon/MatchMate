@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Lock, Medal, Megaphone, Timer } from 'lucide-react-native';
+import { FileDown, Lock, Medal, Megaphone, Timer } from 'lucide-react-native';
 import { useSwimEntries, useSwimEvents, useSwimMeets } from '@mm/lib/data/swimming';
 import { toIsoDate } from '@mm/lib/format';
 import { useNow } from '@mm/lib/useNow';
@@ -16,14 +16,18 @@ import { EntriesPanel } from './SwimEntries';
 import { HeatSheetPanel, ProgramPanel, ResultsPanel, ScoresPanel } from './SwimPanels';
 import { TimingPanel } from './SwimTiming';
 import { MeetPrizes } from '@/components/prizes/SportPrizes';
+import { ReportSheet } from '@/components/tournamentReport/ReportSheet';
+import { SwimReportCard, swimReportSource } from '@/components/tournamentReport/SportReports';
+import { REPORT_MENU_HINT } from '@mm/components/tournamentReport/view';
 
 /**
  * Un encuentro de natación (MeetPage de la web, Lite): «‹ Club Acuático» y «•••» arriba, el título grande y una línea
  * con en qué va, el día, la hora y la piscina; el anuncio, si hay. Las partes son las de la web (meetTabs): Pruebas
  * (inscribirse) · Series · Resultados y, para quien cronometra, «Cronometrar» en «•••» abre las de Pro (Programa,
  * Inscritos, Series, Cronometrar, Resultados y Puntos), como un link de Pro en la web. Los puntos por club van en
- * «•••». Lo del admin (cambiar, finalizar, borrar, cronometristas, armar el programa y las series), el reporte, la
- * transmisión en vivo, en la web; los premios del encuentro, abajo. `?ver=` abre una parte (como en la web).
+ * «•••», con el reporte (PDF o Excel). Lo del admin (cambiar, finalizar, borrar, cronometristas, armar el programa y
+ * las series) y la transmisión en vivo, en la web; el reporte del admin al finalizar y los premios del encuentro, abajo.
+ * `?ver=` abre una parte (como en la web).
  */
 export function SwimEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
@@ -37,6 +41,8 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
   const [picked, setPicked] = useState<MeetTabKey | null>(null);
   const [menu, setMenu] = useState(false);
   const [pointsOpen, setPointsOpen] = useState(false);
+  // «Reporte del encuentro» de «•••» (PDF o Excel), para todos.
+  const [reporting, setReporting] = useState(false);
   const clubById = useMemo(() => clubMap(clubs.data), [clubs.data]);
 
   const meet = meets.data.find((m) => m.id === eventId) ?? null;
@@ -60,6 +66,16 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
 
   const closeMenu = () => setMenu(false);
   const menuItems: MenuItem[] = [
+    {
+      key: 'reporte',
+      icon: FileDown,
+      label: 'Reporte del encuentro',
+      hint: REPORT_MENU_HINT,
+      onPress: () => {
+        closeMenu();
+        setReporting(true);
+      },
+    },
     ...(!pro && scores(meet)
       ? [
           {
@@ -149,10 +165,12 @@ export function SwimEventBody({ eventId, embedded = false }: { eventId: string; 
         {tab === 'puntos' && <ScoresPanel data={data} />}
       </View>
 
-      {/* Los premios del encuentro, debajo de sus partes (como en la web). */}
+      {/* El reporte a la mano del admin al finalizar (para todos está en «•••») y los premios, debajo de sus partes. */}
+      <SwimReportCard data={data} loading={entries.loading || players.loading} />
       <MeetPrizes data={data} />
 
       <MenuSheet open={menu} onClose={closeMenu} title={meetTitle(meet)} items={menuItems} />
+      <ReportSheet open={reporting} onClose={() => setReporting(false)} {...swimReportSource(league, data)} />
       <Sheet open={pointsOpen} onClose={() => setPointsOpen(false)} title="Puntos por club" subtitle={meetTitle(meet)}>
         {pointsOpen && <ScoresPanel data={data} />}
       </Sheet>

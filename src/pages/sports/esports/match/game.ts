@@ -133,3 +133,12 @@ export function finishToast(out: FinishResult | undefined): { text: string; tone
   if (out.reason === 'stale') return { text: 'Otro teléfono anotó primero: revisa el resultado.', tone: 'error' };
   return { text: out.status === 'confirmed' ? 'Resultado guardado' : 'Resultado enviado: falta que el rival lo confirme', tone: 'ok' };
 }
+
+/** Cómo se anota la serie: el capitán o el admin (`finish`), el admin corrige (`correct`) o decide un reclamo (`resolve`). */
+export type EditMode = 'finish' | 'correct' | 'resolve';
+
+/** El título de la edición de la serie. */
+export const editorTitle = (mode: EditMode) => (mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo');
+
+/** El botón: lo que anota el admin queda guardado (confirmado); lo del capitán se envía al rival. */
+export const editorLabel = (mode: EditMode, admin: boolean) => (mode === 'finish' ? (admin ? 'Guardar resultado' : 'Enviar resultado') : 'Guardar el marcador');

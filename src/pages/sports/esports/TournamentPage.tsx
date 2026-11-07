@@ -17,6 +17,7 @@ import {
   Trophy,
   UserPlus,
   Users,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../../lib/auth';
 import {
@@ -107,12 +108,27 @@ import {
   type View,
 } from './logic';
 import { MatchSheet } from './match/MatchSheet';
+import { REDO_ASK, REDO_OK, STATUS_CHANGE, organizerMenu, type TournamentMenuKey } from './admin/logic';
 import { useEntryNames, useMyTeams, useTournament, type TournamentData } from './parts';
 import { RegisterSheet } from './register/RegisterSheet';
 import { shareOrigin } from '../../../lib/origin';
 import { myIdLink } from '../../esports/logic';
 
 type SheetKey = 'menu' | 'register' | 'seed' | 'stage' | 'playoffs' | 'agents' | 'br' | 'edit' | 'scorers';
+
+/** El ícono de cada opción del organizador en «•••» (las opciones salen de organizerMenu, admin/logic.ts). */
+const MENU_ICON: Record<TournamentMenuKey, LucideIcon> = {
+  editar: Settings2,
+  sembrar: ListOrdered,
+  agentes: UserPlus,
+  cuadro: GitFork,
+  rehacer: RotateCcw,
+  anotadores: ClipboardPen,
+  logo: ImageIcon,
+  cerrar: Flag,
+  reabrir: Play,
+  cancelar: Ban,
+};
 
 /**
  * La página del torneo de esports (§12.8). `embedded`: es el inicio de un torneo suelto (`/l/:lid`, debajo del nombre de
@@ -276,7 +292,8 @@ function Tournament({
         toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
       }
     });
-  const setStatus = async (status: EsportsTournament['status'], ask: { title: string; message: string; confirmText: string; danger?: boolean } | null, ok: string) => {
+  const setStatus = async (status: keyof typeof STATUS_CHANGE) => {
+    const { ask, ok } = STATUS_CHANGE[status];
     setSheet(null);
     if (ask && !(await confirm(ask))) return;
     await busy.run('estado', async () => {
@@ -293,11 +310,11 @@ function Tournament({
   const doRedo = async () => {
     setSheet(null);
     if (!redo) return;
-    if (!(await confirm({ title: '¿Rehacer el cuadro?', message: 'Se borran sus series (todavía sin resultados) y lo armas de nuevo.', confirmText: 'Rehacer', danger: true }))) return;
+    if (!(await confirm(REDO_ASK))) return;
     await busy.run('rehacer', async () => {
       try {
         await deleteStage(lid, t.eventId, redo);
-        toast('Listo: arma el cuadro otra vez');
+        toast(REDO_OK);
       } catch (e) {
         toast(esportsErrorText(e, t.game, 'cuadro'), 'error');
       }
@@ -321,7 +338,7 @@ function Tournament({
       case 'playoffs':
         return setSheet('playoffs');
       case 'start':
-        return void setStatus('live', { title: '¿Empezar el torneo?', message: 'Se cierra la inscripción y ya puedes anotar las partidas.', confirmText: 'Empezar' }, 'El torneo empezó');
+        return void setStatus('live');
       case 'brGame':
         return openBr(null);
     }
@@ -335,38 +352,37 @@ function Tournament({
     if (await shareLink(`${shareOrigin()}${path}`, t.name)) toast('Link copiado');
   };
 
+  const runMenu = (key: TournamentMenuKey) => {
+    switch (key) {
+      case 'editar':
+        return setSheet('edit');
+      case 'sembrar':
+        return setSheet('seed');
+      case 'agentes':
+        return setSheet('agents');
+      case 'cuadro':
+        return setSheet('stage');
+      case 'rehacer':
+        return void doRedo();
+      case 'anotadores':
+        return setSheet('scorers');
+      case 'logo':
+        return navigate(`${base}/admin?tab=liga`);
+      case 'cerrar':
+        return void setStatus('finished');
+      case 'reabrir':
+        return void setStatus('registration');
+      case 'cancelar':
+        return void setStatus('cancelled');
+    }
+  };
   const menu: MenuItem[] = [
     { key: 'compartir', icon: Share2, label: 'Compartir el torneo', onClick: () => void share() },
     ...(proItem ? [proItem] : []),
     ...(organizer
-      ? [
-          { key: 'editar', icon: Settings2, label: 'Editar torneo', hint: hasStage ? 'Nombre, fechas, cupo y reglas' : 'También el formato', onClick: () => setSheet('edit') },
-          ...(t.status === 'registration' && !hasStage && t.format !== 'br' && approved.length > 1
-            ? [{ key: 'sembrar', icon: ListOrdered, label: 'Sembrar', hint: 'A mano, al azar o por rango', onClick: () => setSheet('seed') }]
-            : []),
-          ...(t.entryType === 'open' && !individual && freeAgents(d.entries).length > 0
-            ? [{ key: 'agentes', icon: UserPlus, label: 'Agentes libres', hint: 'Sumar o balancear por rango', onClick: () => setSheet('agents') }]
-            : []),
-          ...(t.status === 'registration' && !hasStage && t.format !== 'br' ? [{ key: 'cuadro', icon: GitFork, label: 'Armar el cuadro', onClick: () => setSheet('stage') }] : []),
-          ...(redoable ? [{ key: 'rehacer', icon: RotateCcw, label: 'Rehacer el cuadro', hint: 'Solo sin resultados', onClick: () => void doRedo(), busy: busy.isBusy('rehacer') }] : []),
-          ...(t.format === 'br' ? [{ key: 'anotadores', icon: ClipboardPen, label: 'Anotadores', hint: 'Quién anota las partidas', onClick: () => setSheet('scorers') }] : []),
-          { key: 'logo', icon: ImageIcon, label: 'Logo', hint: 'El del torneo', onClick: () => navigate(`${base}/admin?tab=liga`) },
-          ...(t.status === 'live'
-            ? [{ key: 'cerrar', icon: Flag, label: 'Cerrar torneo', hint: 'Queda terminado', onClick: () => void setStatus('finished', { title: '¿Cerrar el torneo?', message: 'Queda como terminado.', confirmText: 'Cerrar' }, 'Torneo cerrado') }]
-            : []),
-          ...(t.status === 'cancelled' ? [{ key: 'reabrir', icon: Play, label: 'Volver a abrir', hint: 'Vuelve a la inscripción', onClick: () => void setStatus('registration', null, 'Torneo abierto otra vez') }] : []),
-          ...(t.status === 'registration' || t.status === 'live'
-            ? [
-                {
-                  key: 'cancelar',
-                  icon: Ban,
-                  label: 'Cancelar torneo',
-                  danger: true,
-                  onClick: () => void setStatus('cancelled', { title: '¿Cancelar el torneo?', message: 'Les llega a los inscritos. Lo puedes volver a abrir.', confirmText: 'Cancelar torneo', danger: true }, 'Torneo cancelado'),
-                },
-              ]
-            : []),
-        ]
+      ? organizerMenu(t, { hasStage, approved: approved.length, freeAgents: freeAgents(d.entries).length, individual, redoable }).map(
+          (it): MenuItem => ({ ...it, icon: MENU_ICON[it.key], onClick: () => runMenu(it.key), ...(it.key === 'rehacer' ? { busy: busy.isBusy('rehacer') } : {}) }),
+        )
       : []),
   ];
 

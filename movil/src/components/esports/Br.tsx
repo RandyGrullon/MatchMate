@@ -1,19 +1,20 @@
 /**
  * Battle royale (br/BrLeaderboard y br/BrGamesList de la web, con su misma lógica): la tabla acumulada (puesto, nombre,
  * victorias, kills, partidas y puntos, con la «i» donde el puesto lo decidió un desempate) y las partidas por jornada
- * (al tocar una, sus puestos y kills con los puntos de cada uno y las capturas). Anotar o editar una partida, en la web.
+ * (al tocar una, sus puestos y kills con los puntos de cada uno y las capturas). Quien organiza o anota la edita desde
+ * ahí («Editar la partida», `onEdit`).
  */
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Camera, Crosshair } from 'lucide-react-native';
+import { Camera, Crosshair, Pencil } from 'lucide-react-native';
 import type { BrGame } from '@mm/lib/data/esports';
 import { useLeagueCtx } from '@mm/lib/league';
 import { usePhoto } from '@mm/lib/photos';
 import { BR_TIEBREAK_TEXT, brPointsOf, type BrRow, type TournamentSettings } from '@mm/sports/esports';
 import { BR_GAME_STATUS, brByRound, brGameLine, brGameRows } from '@mm/pages/sports/esports/logic';
 import { FinePrint } from './inputs';
-import { Card, Empty, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '../ui';
+import { Button, Card, Empty, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '../ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -75,7 +76,7 @@ export function BrLeaderboard({ rows, nameOf, highlight }: { rows: readonly BrRo
   );
 }
 
-export function BrGamesList({ games, settings, nameOf }: { games: readonly BrGame[]; settings: TournamentSettings; nameOf: (entryId: string) => string }) {
+export function BrGamesList({ games, settings, nameOf, onEdit }: { games: readonly BrGame[]; settings: TournamentSettings; nameOf: (entryId: string) => string; onEdit?: (g: BrGame) => void }) {
   const c = useColors();
   const [open, setOpen] = useState<BrGame | null>(null);
   if (!games.length) {
@@ -104,7 +105,28 @@ export function BrGamesList({ games, settings, nameOf }: { games: readonly BrGam
           </Card>
         </View>
       ))}
-      <Sheet open={!!open} onClose={() => setOpen(null)} title={open ? `Jornada ${open.round} · Partida ${open.gameNo}` : ''} subtitle={open ? [BR_GAME_STATUS[open.status], open.map].filter(Boolean).join(' · ') : undefined}>
+      <Sheet
+        open={!!open}
+        onClose={() => setOpen(null)}
+        title={open ? `Jornada ${open.round} · Partida ${open.gameNo}` : ''}
+        subtitle={open ? [BR_GAME_STATUS[open.status], open.map].filter(Boolean).join(' · ') : undefined}
+        footer={
+          open && onEdit ? (
+            <Button
+              size="lg"
+              full
+              icon={<Pencil size={16} color={c.fg} />}
+              onPress={() => {
+                const g = open;
+                setOpen(null);
+                onEdit(g);
+              }}
+            >
+              Editar la partida
+            </Button>
+          ) : undefined
+        }
+      >
         {open && <GameDetail game={open} settings={settings} nameOf={nameOf} />}
       </Sheet>
     </View>

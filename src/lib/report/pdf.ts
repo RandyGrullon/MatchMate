@@ -483,11 +483,21 @@ export function drawReport(doc: jsPDF, autoTable: AutoTable, report: TournamentR
   return { individualFrom };
 }
 
-/** El PDF del reporte (carga jsPDF y jspdf-autotable aquí, solo al hacerlo). */
-export async function reportPdf(report: TournamentReport, opts: PdfOptions): Promise<Blob> {
+/** El documento ya dibujado (carga jsPDF y jspdf-autotable aquí, solo al hacerlo). */
+async function reportDoc(report: TournamentReport, opts: PdfOptions): Promise<jsPDF> {
   const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
   drawReport(doc, autoTable as AutoTable, report, opts);
-  const blob = doc.output('blob');
+  return doc;
+}
+
+/** El PDF del reporte. */
+export async function reportPdf(report: TournamentReport, opts: PdfOptions): Promise<Blob> {
+  const blob = (await reportDoc(report, opts)).output('blob');
   return blob.type ? blob : new Blob([blob], { type: PDF_TYPE });
+}
+
+/** El mismo PDF en bytes (la app del teléfono lo guarda en un archivo: React Native no arma un Blob con bytes). */
+export async function reportPdfBytes(report: TournamentReport, opts: PdfOptions): Promise<Uint8Array> {
+  return new Uint8Array((await reportDoc(report, opts)).output('arraybuffer'));
 }

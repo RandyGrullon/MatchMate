@@ -33,6 +33,7 @@ import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { matchRoute } from './RacketHome';
 import { CategoryPrize, NightPrizes, TourneyPrizes } from '@/components/prizes/SportPrizes';
+import { NightReport, TourneyReport } from '@/components/tournamentReport/SportReports';
 
 const Spinner = ({ label }: { label: string }) => (
   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -288,7 +289,8 @@ function NightView({ event }: { event: RacketEvent }) {
         </>
       )}
       {tab === 'rondas' && (rounds.length ? rounds.slice().reverse().map((r) => <RoundCard key={r.round} round={r} />) : <Empty title="Todavía no hay rondas" />)}
-      {/* Los premios de la noche, al final (se eligen y se entregan; no son de todos los días). */}
+      {/* El reporte de la noche (PDF o Excel) y sus premios, al final (se eligen y se entregan; no son de todos los días). */}
+      <NightReport event={event} title={title} cfg={cfg} rounds={rounds} table={table} finished={finished} names={names} loading={q.loading && !matches.length} />
       <NightPrizes event={event} table={table} finished={finished} nameOf={names.nameOf} />
     </View>
   );
@@ -447,7 +449,8 @@ function TourneyView({ event }: { event: RacketEvent }) {
           {shown === 'partidos' && (catMatches.length ? <MatchList matches={catMatches} /> : <Empty title="Sin partidos todavía" />)}
         </>
       )}
-      {/* Los premios del torneo, al final. */}
+      {/* El reporte del torneo (PDF o Excel) y los premios, al final. */}
+      <TourneyReport event={event} title={title} cfg={cfg} matches={matches} names={names} loading={q.loading && !matches.length} />
       <TourneyPrizes event={event} cfg={cfg} matches={matches} names={names} now={now} />
     </View>
   );

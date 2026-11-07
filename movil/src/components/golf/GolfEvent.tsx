@@ -23,6 +23,7 @@ import { GolfBoard } from './GolfBoard';
 import { GolfCourt } from './GolfCourt';
 import { GolfPlayers } from './GolfPlayers';
 import { GolfPrizes } from '@/components/prizes/SportPrizes';
+import { GolfReport } from '@/components/tournamentReport/SportReports';
 
 type TabKey = 'tarjeta' | 'leaderboard' | 'jugadores';
 const TAB_LABEL: Record<TabKey, string> = { tarjeta: 'Tarjeta', leaderboard: 'Leaderboard', jugadores: 'Jugadores' };
@@ -30,7 +31,8 @@ const TAB_LABEL: Record<TabKey, string> = { tarjeta: 'Tarjeta', leaderboard: 'Le
 /**
  * Una ronda de golf (GolfEvent de la web, Lite): el título y una línea con el día, la hora, el campo y el formato (y «En
  * juego» o «Cerrada»), y las partes de la ronda: Tarjeta (la del grupo, en el campo) · Leaderboard · Jugadores. Al
- * terminar, «Revisa y firma tu tarjeta». Campo y formato, grupos, cerrar la ronda y el reporte, en la web.
+ * terminar, «Revisa y firma tu tarjeta». Abajo, el reporte (PDF o Excel). Campo y formato, grupos y cerrar la ronda, en
+ * la web.
  */
 export function GolfEventBody({ eventId, embedded = false }: { eventId: string; embedded?: boolean }) {
   const c = useColors();
@@ -147,7 +149,8 @@ export function GolfEventBody({ eventId, embedded = false }: { eventId: string; 
           ) : (
             <GolfPlayers round={round} cards={cards} players={players.data} onSign={setSigning} />
           )}
-          {/* Los premios del torneo, debajo de las partes de la ronda (como en la web). */}
+          {/* El reporte (la tarjeta para el admin al terminar; para todos, la fila) y los premios, debajo de las partes. */}
+          <GolfReport eventId={eventId} name={ev.name} date={ev.date} title={title} round={round} cards={cards} nameOf={nameOf} loading={players.loading} />
           <GolfPrizes eventId={eventId} name={ev.name} date={ev.date} round={round} cards={golf.data.cards} tournamentName={tournament?.name} nameOf={nameOf} />
           <Sheet
             open={!!reviewed}

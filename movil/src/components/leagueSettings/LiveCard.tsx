@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Switch, View } from 'react-native';
+import { router } from 'expo-router';
 import { ChevronRight, Radio } from 'lucide-react-native';
 import { setLeagueLive } from '@mm/lib/data/streams';
 import { useLeagueCtx } from '@mm/lib/league';
 import { liveExplain, liveToggleText } from '@mm/components/league/settings';
 import { runAction } from '@/components/swimming/parts';
 import { Card, Divider, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
 /**
  * «Transmisiones en vivo» en los ajustes (LiveSettingsCard de la web, `leagues.live_enabled`): los admins la prenden o
- * la apagan. Lo elegido se ve al momento; si falla, vuelve. Prendida, «Ir a En vivo» (todavía en la web).
+ * la apagan. Lo elegido se ve al momento; si falla, vuelve. Prendida, «Ir a En vivo» (`/l/<liga>/vivo`).
  */
 export function LiveCard() {
   const c = useColors();
@@ -70,7 +70,7 @@ export function LiveCard() {
           <Divider />
           <Pressable
             accessibilityRole="link"
-            onPress={() => void openOnWeb(`/l/${lid}/vivo`)}
+            onPress={() => router.push({ pathname: '/l/[lid]/vivo', params: { lid } } as never)}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 16, backgroundColor: pressed ? c.surface2 : 'transparent' })}
           >
             <Txt variant="bodyStrong" tone="accent" style={{ flex: 1 }}>

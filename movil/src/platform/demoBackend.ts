@@ -29,6 +29,8 @@ import { forgetDemoSocial, socialRpc } from './demoSocial';
 import { demoPrizesSelect, forgetDemoPrizes, prizesRpc } from './demoPrizes';
 import { yoRpc } from './demoYo';
 import { demoMakerSelect, forgetDemoMaker, makerRpc } from './demoMaker';
+import { forgetDemoLive, liveRpc } from './demoLive';
+import { forgetDemoInvites, invitesRpc } from './demoInvites';
 
 type DemoFilter = { col: string; op: string; value: unknown };
 /**
@@ -95,6 +97,8 @@ export function setDemo(on: boolean) {
       forgetDemoSocial();
       forgetDemoPrizes();
       forgetDemoMaker();
+      forgetDemoLive();
+      forgetDemoInvites();
     }
   } catch {
     // sin sessionStorage no hay demostración
@@ -514,6 +518,11 @@ export function createDemoBackend(): Backend {
       // Aprobar juegos (demoApprovals.ts): la lectura de la foto y aprobar o rechazar sus envíos.
       const fromApprovals = approvalsRpc(DEMO_USER, fn, args, (t) => demoLeagueSelect(DEMO_USER, t) ?? []);
       if (fromApprovals !== undefined) return structuredClone(fromApprovals) as T;
+      // En vivo (demoLive.ts: leen los ajustes por live_enabled) e «Invitar personas» (demoInvites.ts).
+      const fromLive = liveRpc(DEMO_USER, fn, args, (t) => settingsLayer(t) ?? []);
+      if (fromLive !== undefined) return structuredClone(fromLive) as T;
+      const fromInvites = invitesRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);
+      if (fromInvites !== undefined) return structuredClone(fromInvites) as T;
       // Yo (demoYo.ts): «Dónde juego», Mis publicaciones y Mis juegos de la cuenta de prueba (leen todas las capas y Social).
       const fromYo = yoRpc(DEMO_USER, fn, args, (t) => prizesLayer(t) ?? []);
       if (fromYo !== undefined) return structuredClone(fromYo) as T;

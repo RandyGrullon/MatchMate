@@ -1,12 +1,24 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Scale, UserPlus } from 'lucide-react';
 import { assignFreeAgent, esportsErrorText, formTeams, type EsportsEntry, type EsportsTournament } from '../../../../lib/data/esports';
-import { balanceTeams, modeSize, type BalancedTeam } from '../../../../sports/esports';
+import { modeSize, type BalancedTeam } from '../../../../sports/esports';
 import { RankChip } from '../../../../components/esports/bits';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { Button, Card, ListRow, Sheet } from '../../../../components/ui';
-import { competitors, freeAgents, memberOrdinal, memberRank, rosterCount, teamRoom } from '../logic';
+import { freeAgents, memberRank, memberRoleText, teamRoom } from '../logic';
+import {
+  agentUserOf,
+  assignRoleFor,
+  balanceAgents,
+  formedTeamName,
+  formedTeamsCount,
+  leftoverText,
+  notEnoughAgentsText,
+  roomLine,
+  teamsCreatedText,
+  teamsWithRoom as teamsWithRoomOf,
+} from './logic';
 import { Initials } from '../parts';
 
 /**
@@ -30,27 +42,19 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
   const [view, setView] = useState<View>({ kind: 'list' });
   const agents = freeAgents(entries);
   const size = modeSize(t.mode);
-  const userOf = (e: EsportsEntry) => e.members[0]?.userId ?? e.captainId ?? e.id;
-  const byUser = useMemo(() => new Map(agents.map((a) => [userOf(a), a])), [agents]);
-  const balanced = useMemo(
-    () =>
-      balanceTeams(
-        agents.map((a) => ({ userId: userOf(a), ordinal: memberOrdinal(t.game, t.mode, a.members[0]?.ranks) })),
-        { teamSize: size, subs: t.settings.subs, seed: t.eventId },
-      ),
-    [agents, t, size],
-  );
-  const taken = entries.filter((e) => /^Equipo \d+$/.test(e.name)).length;
-  const teamsWithRoom = competitors(entries).filter((e) => e.kind === 'team' && teamRoom(e, t.mode, t.settings.subs) > 0);
+  const byUser = useMemo(() => new Map(agents.map((a) => [agentUserOf(a), a])), [agents]);
+  const balanced = useMemo(() => balanceAgents(agents, t), [agents, t]);
+  const taken = formedTeamsCount(entries);
+  const teamsWithRoom = teamsWithRoomOf(entries, t);
 
   const create = () =>
     busy.run('crear', async () => {
       try {
         await formTeams(
           t.eventId,
-          balanced.teams.map((team: BalancedTeam, i) => ({ name: `Equipo ${taken + i + 1}`, members: team.members.map((m) => ({ userId: m.userId, role: m.role })) })),
+          balanced.teams.map((team: BalancedTeam, i) => ({ name: formedTeamName(taken, i), members: team.members.map((m) => ({ userId: m.userId, role: m.role })) })),
         );
-        toast(`${balanced.teams.length} ${balanced.teams.length === 1 ? 'equipo creado' : 'equipos creados'}`);
+        toast(teamsCreatedText(balanced.teams.length));
         onDone();
       } catch (e) {
         toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
@@ -58,9 +62,8 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
     });
   const assign = (agent: EsportsEntry, team: EsportsEntry) =>
     busy.run(team.id, async () => {
-      const { starters } = rosterCount(team.members);
       try {
-        await assignFreeAgent(agent.id, team.id, starters < size ? 'member' : 'sub');
+        await assignFreeAgent(agent.id, team.id, assignRoleFor(team, t.mode));
         toast(`${agent.name} quedó en ${team.name}`);
         setView({ kind: 'list' });
       } catch (e) {
@@ -75,12 +78,12 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
       <div className="flex flex-col gap-4 pb-1">
         <BackLine onBack={() => setView({ kind: 'list' })} />
         {balanced.teams.length === 0 ? (
-          <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{`Hacen falta al menos ${size} agentes para armar un equipo.`}</p>
+          <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{notEnoughAgentsText(size)}</p>
         ) : (
           balanced.teams.map((team, i) => (
             <Card key={i} className="overflow-hidden">
               <div className="flex items-baseline justify-between gap-3 px-5 pt-3.5 pb-1">
-                <p className="text-[15px] font-[650]">{`Equipo ${taken + i + 1}`}</p>
+                <p className="text-[15px] font-[650]">{formedTeamName(taken, i)}</p>
                 <p className="text-[13px] text-muted">{team.strength == null ? 'Sin rango' : `Fuerza ${team.strength}`}</p>
               </div>
               {team.members.map((m) => {
@@ -92,7 +95,7 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
                     leading={<Initials name={a?.name ?? '?'} className="size-9" />}
                     title={a?.name ?? m.userId}
                     subtitle={<RankChip game={t.game} rank={memberRank(t.game, t.mode, a?.members[0]?.ranks)} source={a?.members[0]?.rankSource} />}
-                    trailing={<span className="text-[12px] font-semibold text-muted">{m.role === 'captain' ? 'Capitán' : m.role === 'sub' ? 'Suplente' : 'Titular'}</span>}
+                    trailing={<span className="text-[12px] font-semibold text-muted">{memberRoleText(m.role)}</span>}
                   />
                 );
               })}
@@ -100,7 +103,7 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
           ))
         )}
         {balanced.leftover.length > 0 && (
-          <p className="mx-1 text-[13.5px] text-muted">{`Sin equipo: ${balanced.leftover.map((u) => byUser.get(u)?.name ?? u).join(', ')}.`}</p>
+          <p className="mx-1 text-[13.5px] text-muted">{leftoverText(balanced.leftover.map((u) => byUser.get(u)?.name ?? u))}</p>
         )}
         <Button variant="primary" size="lg" className="w-full" disabled={!balanced.teams.length} loading={busy.isBusy('crear')} onClick={() => void create()}>
           Crear estos equipos
@@ -123,7 +126,7 @@ function Body({ t, entries, onDone }: { t: EsportsTournament; entries: readonly 
                 <ListRow
                   key={team.id}
                   title={team.name}
-                  subtitle={`${team.members.length} en la plantilla · ${room} ${room === 1 ? 'lugar' : 'lugares'}`}
+                  subtitle={roomLine(team, room)}
                   onClick={() => void assign(agent, team)}
                   trailing={busy.isBusy(team.id) ? <span className="text-[13px] text-muted">Sumando…</span> : undefined}
                 />

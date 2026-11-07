@@ -7,6 +7,7 @@ import { useFeedback } from '../../../../components/feedback';
 import { EventMenu, type MenuItem } from '../../../../components/event/EventHeader';
 import { Button, Card, Field, Input, ListRow, SectionHeader, Sheet, Textarea } from '../../../../components/ui';
 import { entryLine, pendingEntries } from '../logic';
+import { cleanEntryTag, cleanSeedInput, entryAdminItems, entryNameOk, entryTitle, seedFromInput, type EntryMenuKey } from './logic';
 import { Initials } from '../parts';
 
 /** La línea de un inscrito (en logic.ts: la usa también la app del teléfono). */
@@ -40,7 +41,7 @@ export function PendingEntries({ t, entries, className }: { t: EsportsTournament
             key={e.id}
             dense
             leading={<Initials name={e.name} />}
-            title={e.tag ? `${e.name} [${e.tag}]` : e.name}
+            title={entryTitle(e)}
             subtitle={[e.kind === 'free_agent' ? 'Agente libre' : null, entryLine(e)].filter(Boolean).join(' · ')}
             trailing={
               <span className="flex items-center gap-1.5">
@@ -146,13 +147,13 @@ function EntryMenu({ t, entry, open, onClose, onPick }: { t: EsportsTournament; 
         toast(esportsErrorText(e, t.game, 'inscripcion'), 'error');
       }
     });
-  const items: MenuItem[] = [
-    ...(entry.status === 'approved' && entry.kind !== 'free_agent' ? [{ key: 'seed', icon: Hash, label: 'Cambiar siembra', hint: entry.seed ? `Ahora: ${entry.seed}` : 'Sin siembra', onClick: () => onPick('seed') }] : []),
-    ...(entry.status === 'approved' && t.checkinMinutes
-      ? [{ key: 'checkin', icon: CheckCircle2, label: entry.checkedInAt ? 'Quitar check-in' : 'Marcar check-in', onClick: () => void toggleCheckin(), busy: busy.isBusy('checkin') }]
-      : []),
-    { key: 'name', icon: Pencil, label: 'Editar nombre', hint: entry.tag ? `${entry.name} [${entry.tag}]` : entry.name, onClick: () => onPick('name') },
-  ];
+  const icons: Record<EntryMenuKey, MenuItem['icon']> = { seed: Hash, checkin: CheckCircle2, name: Pencil };
+  const items: MenuItem[] = entryAdminItems(t, entry).map((it) => ({
+    ...it,
+    icon: icons[it.key],
+    onClick: it.key === 'checkin' ? () => void toggleCheckin() : () => onPick(it.key as Panel),
+    ...(it.key === 'checkin' ? { busy: busy.isBusy('checkin') } : {}),
+  }));
   return <EventMenu open={open} onClose={onClose} title={entry.name} items={items} />;
 }
 
@@ -160,8 +161,7 @@ function SeedEdit({ t, entry, open, onClose }: { t: EsportsTournament; entry: Es
   const { toast } = useFeedback();
   const busy = useBusy<'guardar'>();
   const [seed, setSeed] = useState(entry.seed ? String(entry.seed) : '');
-  const n = seed.trim() ? Number(seed) : null;
-  const ok = n === null || (Number.isInteger(n) && n >= 1 && n <= 128);
+  const { n, ok } = seedFromInput(seed);
   const save = () =>
     busy.run('guardar', async () => {
       try {
@@ -185,7 +185,7 @@ function SeedEdit({ t, entry, open, onClose }: { t: EsportsTournament; entry: Es
       }
     >
       <Field label="Siembra (1 es el mejor; vacío = sin siembra)">
-        <Input inputMode="numeric" value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, '').slice(0, 3))} className="h-11" />
+        <Input inputMode="numeric" value={seed} onChange={(e) => setSeed(cleanSeedInput(e.target.value))} className="h-11" />
       </Field>
     </Sheet>
   );
@@ -196,7 +196,7 @@ function NameEdit({ t, entry, open, onClose }: { t: EsportsTournament; entry: Es
   const busy = useBusy<'guardar'>();
   const [name, setName] = useState(entry.name);
   const [tag, setTag] = useState(entry.tag);
-  const ok = name.trim().length >= 1 && name.trim().length <= 40 && /^[A-Z0-9]{0,5}$/.test(tag);
+  const ok = entryNameOk(name, tag);
   const save = () =>
     busy.run('guardar', async () => {
       try {
@@ -223,7 +223,7 @@ function NameEdit({ t, entry, open, onClose }: { t: EsportsTournament; entry: Es
           <Input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} className="h-11" />
         </Field>
         <Field label="Tag (hasta 5, mayúsculas)">
-          <Input value={tag} maxLength={5} onChange={(e) => setTag(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} className="h-11" />
+          <Input value={tag} maxLength={5} onChange={(e) => setTag(cleanEntryTag(e.target.value))} className="h-11" />
         </Field>
       </div>
     </Sheet>

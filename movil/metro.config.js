@@ -25,8 +25,13 @@ config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')];
 const inShared = (file) => file.startsWith(sharedRoot + path.sep) || file === sharedRoot;
 const isBare = (name) => !name.startsWith('.') && !path.isAbsolute(name) && !name.startsWith('@mm/') && !name.startsWith('@movil/');
 const ALIASES = { 'lucide-react': 'lucide-react-native' };
+// jsPDF (el PDF del reporte del torneo) trae html2canvas, dompurify y canvg para doc.html() y los SVG, que no se usan:
+// van al mismo archivo vacío que en la web (vite.config.ts), y no entran a la app.
+const UNUSED = path.join(sharedRoot, 'lib', 'report', 'unused.ts');
+const UNUSED_DEPS = new Set(['html2canvas', 'dompurify', 'canvg']);
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (UNUSED_DEPS.has(moduleName)) return { type: 'sourceFile', filePath: UNUSED };
   let name = ALIASES[moduleName] ?? moduleName;
   let ctx = context;
   if (name.startsWith('@mm/')) name = path.join(sharedRoot, name.slice(4));

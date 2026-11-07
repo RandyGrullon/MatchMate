@@ -2,7 +2,8 @@
  * Esports (`/esports`, EsportsHomePage de la web): «‹ Ligas», el título y una línea, el aviso de la pantalla (un ID tuyo
  * que pasó a otra cuenta gana; si no tienes ningún ID, «Pon tu ID de juego»), «Mis torneos», «Mis equipos», los 15
  * juegos en tres secciones y «Mi ID de juego» al final. Es un índice: no tiene botón principal. `?crear=torneo` o
- * `?crear=liga` pregunta «¿De qué juego?» y lleva a crearlo (en la web). Sin cuenta se ve todo menos lo tuyo.
+ * `?crear=liga` pregunta «¿De qué juego?» y lleva a crear el torneo (`/esports/<juego>/nuevo-torneo`) o a la página del
+ * juego con la hoja de la liga (`?crear=liga`). Sin cuenta se ve todo menos lo tuyo.
  */
 import { useMemo, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -15,7 +16,6 @@ import type { Notice } from '@mm/lib/notices';
 import { useNow } from '@mm/lib/useNow';
 import { GAMES, GAME_IDS, type GameId } from '@mm/sports/esports';
 import { entryPhase, esportsNotice, gameSections, idMoveNoticeOf, liveEntries, myEntrySubtitle, myIdsSubtitle, myTeamSubtitle, teamTitle } from '@mm/pages/esports/logic';
-import { openOnWeb } from '@/lib/web';
 import { BackBar, Button, Card, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '../ui';
 import { GameMark, PhaseChip, ScreenNotice, TeamLogo } from './bits';
 import { RichRow, RowText } from './inputs';
@@ -236,8 +236,8 @@ function EsportsHome({ uid }: { uid: string | null }) {
         subtitle={crear === 'liga' ? 'La liga es de un solo juego' : 'El torneo es de un solo juego'}
         onPick={(g) => {
           router.setParams({ crear: undefined });
-          // Crear el torneo o la liga de esports es de la web (el asistente del organizador).
-          void openOnWeb(crear === 'liga' ? `/esports/${g}?crear=liga` : `/esports/${g}/nuevo-torneo`);
+          if (crear === 'liga') router.push({ pathname: '/esports/[game]', params: { game: g, crear: 'liga' } });
+          else router.push({ pathname: '/esports/[game]/nuevo-torneo', params: { game: g } } as never);
         }}
       >
         {!uid ? (

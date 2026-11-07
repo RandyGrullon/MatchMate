@@ -17,7 +17,7 @@ import { SignInCard } from '../../components/screens/ScreenBits';
 import { AppShell } from '../../components/Shell';
 import { Loading, MODAL_OPENED, cx, keyboardInset } from '../../components/ui';
 import { DEFAULT_TZ, todayIn } from '../sports/racket/logic/time';
-import { CREATE_STEP, STEPS, emptyForm, stepErrors, summary, tournamentInput, withMode, type StepKey, type TournamentForm } from './create/logic';
+import { CREATE_STEP, LEAVE_ASK, STEPS, createdPath as createdPathOf, emptyForm, showStepErrors, stepErrors, summary, tournamentInput, wizardButton, withMode, type StepKey, type TournamentForm } from './create/logic';
 import { EntryStep, FormatStep, GameStep, InviteStep, NameStep } from './create/steps';
 
 /** El tamaño del teclado del teléfono (0 sin teclado): el pie con el botón queda encima de él. */
@@ -105,13 +105,13 @@ function Wizard({ game }: { game: GameId }) {
   const set = <K extends keyof TournamentForm>(k: K, v: TournamentForm[K]) => setForm((f) => ({ ...f, [k]: v }));
   const goTo = (to: string) => navigate(to, { replace: true });
   /** El torneo creado: un torneo suelto es su liga; dentro de una liga de esports, su página. */
-  const createdPath = (c: { leagueId: string; eventId: string }) => (leagueId ? `/l/${c.leagueId}/e/${c.eventId}` : `/l/${c.leagueId}`);
+  const createdPath = (c: { leagueId: string; eventId: string }) => createdPathOf(c, !!leagueId);
 
   async function close() {
     if (busy.isBusy('crear')) return;
     if (created) return goTo(createdPath(created));
     if (form.name.trim() || index > 0) {
-      const ok = await confirm({ title: '¿Salir sin crear el torneo?', message: 'Lo que llenaste se pierde.', confirmText: 'Salir' });
+      const ok = await confirm({ ...LEAVE_ASK });
       if (!ok) return;
     }
     if (leagueId) goTo(`/l/${leagueId}`);
@@ -139,9 +139,9 @@ function Wizard({ game }: { game: GameId }) {
     setIndex((i) => Math.min(i + 1, STEPS.length - 1));
   }
 
-  const label = step === 'invitar' ? 'Ir al torneo' : step === CREATE_STEP ? 'Crear torneo' : 'Siguiente';
+  const label = wizardButton(step);
   // Lo del cupo y del formato se ve al momento; el nombre y la fecha, al intentar seguir (empiezan vacíos).
-  const showErrors = errors.length > 0 && (step === 'inscripcion' || step === 'formato' || tried.has(step));
+  const showErrors = showStepErrors(step, errors, tried);
   const venueHint = sportMeta('esports')?.venueHint ?? 'Online, cibercafé o centro gamer';
 
   return (

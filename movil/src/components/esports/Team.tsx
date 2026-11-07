@@ -3,7 +3,7 @@
  * misma lógica: src/pages/esports/logic.ts) y entrar a uno con su link (`/esports/unirse/<código>`, JoinTeamPage). El
  * equipo: el logo, el nombre, el tag, el juego y la descripción; el capitán tiene «Invitar» (el código, el QR y el link;
  * `?invitar=1` la abre). Los miembros con su ID y su rango (el capitán: hacerlo suplente o titular, pasarle la capitanía
- * o sacarlo), los torneos del equipo y «•••»: el capitán edita o borra el equipo; un miembro sale. El logo, en la web.
+ * o sacarlo), los torneos del equipo y «•••»: el capitán edita (con el logo) o borra el equipo; un miembro sale.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Share, StyleSheet, View } from 'react-native';
@@ -17,12 +17,14 @@ import {
   joinTeam,
   leaveTeam,
   previewTeamCode,
+  removeTeamLogo,
   removeTeamMember,
   renewTeamCode,
   setTeamMemberRole,
   teamJoinUrl,
   teamShareText,
   updateTeam,
+  uploadTeamLogo,
   useEsportsTeam,
   useEsportsTournament,
   useMyEsportsTeams,
@@ -34,6 +36,7 @@ import {
   type TeamPreview,
 } from '@mm/lib/data/esports';
 import { useGameIdsFor, useMyGameIds, type GameIdRecord } from '@mm/lib/data/esportsIds';
+import { logoErrorText } from '@mm/lib/logos';
 import { shareOrigin } from '@mm/lib/origin';
 import { GAMES, formatLine, type GameId } from '@mm/sports/esports';
 import {
@@ -64,6 +67,7 @@ import { confirmAsync, toast } from '../feedback';
 import { BackBar, Badge, Button, Card, Empty, Field, Input, LoadError, Loading, SectionHeader, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
 import { EntryStatusChip, GameMark, IdChip, RankChip, TeamLogo } from './bits';
+import { TeamLogoField, type PickedLogo } from './TeamLogoField';
 import { SignInCard } from './EsportsIndex';
 import { MenuRow, RichRow, RowText } from './inputs';
 import { useColors } from '@/theme/theme';
@@ -530,7 +534,7 @@ function InviteBody({ team }: { team: EsportsTeam }) {
   );
 }
 
-/** «Editar equipo» (el capitán): nombre, tag y descripción; guarda solo lo que cambió. El logo, en la web. */
+/** «Editar equipo» (el capitán): nombre, tag, descripción y logo. Guarda solo lo que cambió (`updateTeam`) y el logo aparte. */
 function EditTeamSheet({ open, onClose, team }: { open: boolean; onClose: () => void; team: EsportsTeam }) {
   return (
     <Sheet open={open} onClose={onClose} title="Editar equipo" subtitle={team.name}>
@@ -542,24 +546,37 @@ function EditTeamSheet({ open, onClose, team }: { open: boolean; onClose: () => 
 function EditTeamBody({ team, onDone }: { team: EsportsTeam; onDone: () => void }) {
   const c = useColors();
   const [form, setForm] = useState<TeamForm>({ name: team.name, tag: team.tag, description: team.description ?? '' });
+  const [logo, setLogo] = useState<PickedLogo | null>(null);
+  const [logoRemoved, setLogoRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
   const errors = teamFormErrors(form);
   const patch = teamPatch(team, form);
+  const logoChange = !!logo || (logoRemoved && !!team.logoPath);
   const ok = Object.keys(errors).length === 0;
   async function save() {
     if (!ok || busy) return;
-    if (!patch) return onDone();
+    if (!patch && !logoChange) return onDone();
     setBusy(true);
     try {
-      await updateTeam(team.id, patch);
-      toast('Equipo guardado');
-      onDone();
+      if (patch) await updateTeam(team.id, patch);
     } catch (e) {
       console.error(e);
       toast(esportsErrorText(e, team.game, 'equipo'), 'error');
-    } finally {
       setBusy(false);
+      return;
     }
+    try {
+      if (logo) await uploadTeamLogo(team.id, logo.logo);
+      else if (logoRemoved && team.logoPath) await removeTeamLogo(team.id);
+    } catch (e) {
+      console.warn('[logo del equipo]', e);
+      toast(logoErrorText(e), 'error');
+      setBusy(false);
+      return;
+    }
+    toast('Equipo guardado');
+    setBusy(false);
+    onDone();
   }
   return (
     <View style={{ gap: 16 }}>
@@ -572,6 +589,7 @@ function EditTeamBody({ team, onDone }: { team: EsportsTeam; onDone: () => void 
       <Field label="Descripción (opcional)" hint={errors.description} error={!!errors.description}>
         <Input multiline maxLength={200} value={form.description} onChangeText={(description) => setForm((f) => ({ ...f, description }))} style={{ height: 80, paddingTop: 14, textAlignVertical: 'top' }} />
       </Field>
+      <TeamLogoField value={logo} onChange={setLogo} name={form.name || team.name} tag={form.tag || team.tag} current={team.logoPath} removed={logoRemoved} onRemove={setLogoRemoved} />
       <Button variant="primary" size="xl" full loading={busy} disabled={!ok} icon={<Save size={20} color={c.accentFg} />} onPress={save}>
         Guardar
       </Button>

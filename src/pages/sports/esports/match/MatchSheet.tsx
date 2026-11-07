@@ -5,7 +5,6 @@ import {
   adminCorrectResult,
   finishMatch,
   hasResult,
-  isOpen,
   rescheduleMatch,
   resolveDispute,
   setWalkover,
@@ -42,9 +41,8 @@ import { ProofStrip } from '../br/BrGamesList';
 import { canAddGame, canScoreSeries, entryBySideTeam, resultSummary, rulesFromMatch, sideOfTeams } from '../logic';
 import { Initials, useMyTeams } from '../parts';
 import { GameRow } from './GameRow';
-import { cleanGame, emptyGame, finishToast, gameWord, scoringHint, seriesLines } from './game';
-
-type EditMode = 'finish' | 'correct' | 'resolve';
+import { cleanGame, editorLabel, editorTitle, emptyGame, finishToast, gameWord, scoringHint, seriesLines, type EditMode } from './game';
+import { CORRECTED_NOTE, KEEP_PROPOSED_NOTE, VOID_ASK, seriesAdminMenu, walkoverOptions, type SeriesMenuKey } from '../admin/logic';
 
 /**
  * La hoja del partido de una serie de esports (§12.8), abierta con `?partido=<id>`: «‹ Torneo» arriba (con «•••» para
@@ -114,7 +112,7 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
   const keepProposed = () =>
     busy.run('dejar', async () => {
       try {
-        await resolveDispute(lid, m.id, { note: 'Queda el resultado propuesto' });
+        await resolveDispute(lid, m.id, { note: KEEP_PROPOSED_NOTE });
         toast('Reclamo resuelto: queda el propuesto');
       } catch (e) {
         toast(esportsErrorText(e, rules.game), 'error');
@@ -122,7 +120,7 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
     });
   const doVoid = async () => {
     setSheet(null);
-    if (!(await confirm({ title: '¿Anular esta serie?', message: 'No cuenta para la tabla ni para el cuadro.', confirmText: 'Anular', danger: true }))) return;
+    if (!(await confirm(VOID_ASK))) return;
     await busy.run('anular', async () => {
       try {
         await voidMatch(lid, m.id);
@@ -137,16 +135,11 @@ export function MatchSheet({ matchId, onBack, backLabel, shellBar }: { matchId: 
     setSheet(null);
     setEdit('correct');
   };
+  const icons: Record<SeriesMenuKey, MenuItem['icon']> = { corregir: Pencil, wo: UserX, hora: CalendarClock, anular: XCircle };
+  const pick: Record<SeriesMenuKey, () => void> = { corregir: correct, wo: () => setSheet('wo'), hora: () => setSheet('hora'), anular: () => void doVoid() };
   const menu: MenuItem[] = [
     ...(live.item ? [live.item] : []),
-    ...(organizer
-      ? [
-          ...(hasResult(m) ? [{ key: 'corregir', icon: Pencil, label: 'Corregir resultado', hint: 'Queda confirmado', onClick: correct }] : []),
-          ...(isOpen(m) && known ? [{ key: 'wo', icon: UserX, label: 'W.O.', hint: 'Quién no vino', onClick: () => setSheet('wo') }] : []),
-          ...(isOpen(m) || m.status === 'postponed' ? [{ key: 'hora', icon: CalendarClock, label: 'Cambiar hora', onClick: () => setSheet('hora') }] : []),
-          ...(m.status !== 'void' ? [{ key: 'anular', icon: XCircle, label: 'Anular la serie', onClick: () => void doVoid(), danger: true, busy: busy.isBusy('anular') }] : []),
-        ]
-      : []),
+    ...(organizer ? seriesAdminMenu(m, { known }).map((it) => ({ ...it, icon: icons[it.key], onClick: pick[it.key], ...(it.key === 'anular' ? { busy: busy.isBusy('anular') } : {}) })) : []),
   ];
 
   return (
@@ -349,10 +342,10 @@ function SeriesEditor({
       const winner = seriesWinner(rules, clean) ?? null;
       try {
         if (mode === 'correct') {
-          await adminCorrectResult(lid, m.id, { score, winner, note: 'Corregido por el organizador' });
+          await adminCorrectResult(lid, m.id, { score, winner, note: CORRECTED_NOTE });
           toast('Resultado corregido');
         } else if (mode === 'resolve') {
-          await resolveDispute(lid, m.id, { score, winner, note: 'Corregido por el organizador' });
+          await resolveDispute(lid, m.id, { score, winner, note: CORRECTED_NOTE });
           toast('Reclamo resuelto con el marcador nuevo');
         } else {
           const said = finishToast(await finishMatch(lid, m.id, { score, winner }));
@@ -364,8 +357,8 @@ function SeriesEditor({
       }
     });
 
-  const label = mode === 'finish' ? (admin ? 'Guardar resultado' : 'Enviar resultado') : 'Guardar el marcador';
-  const title = mode === 'finish' ? 'Anotar resultado' : mode === 'correct' ? 'Corregir resultado' : 'Decidir el reclamo';
+  const label = editorLabel(mode, admin);
+  const title = editorTitle(mode);
 
   return (
     <section aria-labelledby="esp-anotar" className={cx('flex flex-col gap-3', className)}>
@@ -477,11 +470,7 @@ function WalkoverSheet({ open, onClose, match: m, rules, names }: { open: boolea
         toast(esportsErrorText(e, rules.game), 'error');
       }
     });
-  const options: { key: 0 | 1 | 2; label: string }[] = [
-    { key: 1, label: `No vino ${names[0]}` },
-    { key: 2, label: `No vino ${names[1]}` },
-    { key: 0, label: 'No vino ninguno' },
-  ];
+  const options = walkoverOptions(names);
   return (
     <Sheet
       open={open}

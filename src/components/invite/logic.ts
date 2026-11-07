@@ -163,3 +163,17 @@ export function inviteLink(opts: { lid: string; isAdmin: boolean; code: string |
 
 /** El texto que acompaña al link (WhatsApp y el menú del teléfono). */
 export const inviteShareText = (leagueName: string) => `Únete a ${leagueName.trim() || 'mi liga'} en MatchMate`;
+
+/** La línea de arriba de los botones del link (ShareRow). */
+export const SHARE_LINK_HINT = 'O manda el link por WhatsApp o donde quieras.';
+
+/** Sin link de invitación todavía (el admin): lo que se dice y el botón que lo crea. */
+export const NO_LINK_TEXT = 'Todavía no hay link de invitación. Créalo para mandarlo por WhatsApp o donde quieras.';
+export const CREATE_LINK_LABEL = 'Crear link de invitación';
+
+/** Los avisos al crear el link desde la hoja. */
+export const LINK_READY_TEXT = 'Link de invitación listo';
+export const LINK_ERROR_TEXT = 'No se pudo crear el link. Prueba otra vez.';
+
+/** El aviso cuando ya se eligieron las que se pueden invitar de una vez. */
+export const inviteMaxText = (max: number) => `Puedes invitar hasta ${max} personas a la vez.`;

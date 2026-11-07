@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, BarChart3, Shuffle } from 'lucide-react';
 import { esportsErrorText, setSeeds, type EsportsEntry, type EsportsTournament } from '../../../../lib/data/esports';
-import { entryStrength, modeSize, seedEntries } from '../../../../sports/esports';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { Button, Card, Sheet } from '../../../../components/ui';
-import { competitors, seedEntryList, seedsFor } from '../logic';
+import { competitors, seedsFor } from '../logic';
+import { moveSeed, randomSeedOrder, rankSeedOrder, seedStrength, strengthText } from './logic';
 
 /**
  * La siembra (§5.5): los aprobados en orden con flechas para subir o bajar, o de una vez «Al azar» (con la semilla del
@@ -26,25 +26,17 @@ function SeedBody({ t, entries, onDone }: { t: EsportsTournament; entries: reado
   const byId = new Map(list.map((e) => [e.id, e]));
   const [order, setOrder] = useState<string[]>(() => seedsFor(entries, t));
   const [shuffles, setShuffles] = useState(0);
-  const size = modeSize(t.mode);
   const strength = (id: string) => {
     const e = byId.get(id);
-    return e ? entryStrength(seedEntryList([e], t.game, t.mode)[0].ordinals, size) : null;
+    return e ? seedStrength(e, t) : null;
   };
-  const move = (i: number, d: -1 | 1) =>
-    setOrder((o) => {
-      const j = i + d;
-      if (j < 0 || j >= o.length) return o;
-      const next = [...o];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  const move = (i: number, d: -1 | 1) => setOrder((o) => moveSeed(o, i, d));
   const random = () => {
     const n = shuffles + 1;
     setShuffles(n);
-    setOrder(seedEntries(seedEntryList(list, t.game, t.mode), 'random', { seed: n === 1 ? t.eventId : `${t.eventId}:${n}`, teamSize: size }));
+    setOrder(randomSeedOrder(list, t, n));
   };
-  const byRank = () => setOrder(seedEntries(seedEntryList(list, t.game, t.mode), 'rank', { seed: t.eventId, teamSize: size }));
+  const byRank = () => setOrder(rankSeedOrder(list, t));
   const save = () =>
     busy.run('guardar', async () => {
       try {
@@ -76,7 +68,7 @@ function SeedBody({ t, entries, onDone }: { t: EsportsTournament; entries: reado
                 <span className="w-6 shrink-0 text-center text-[15px] font-bold text-muted tabular-nums">{i + 1}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-semibold">{e?.name ?? '—'}</span>
-                  <span className="block text-[12.5px] text-muted">{s == null ? 'Sin rango' : `Fuerza ${Math.round(s)}`}</span>
+                  <span className="block text-[12.5px] text-muted">{strengthText(s)}</span>
                 </span>
                 <button
                   type="button"

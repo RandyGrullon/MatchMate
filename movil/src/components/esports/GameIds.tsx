@@ -539,7 +539,10 @@ function GameIdSheet({
     });
   }
 
-  // Entrar con la cuenta del juego (un formulario que solo sirve en el navegador): la misma hoja en la web.
+  // Entrar con la cuenta del juego abre la misma hoja en la web (con expo-web-browser): esports-auth solo deja pasar el
+  // paso «go» con un formulario POST desde la página de la app (revisa la cabecera Origin y deja una cookie con el
+  // `state` que la vuelta del proveedor pide), y al final vuelve a la web (APP_URL), no al teléfono. Sin cambiar la Edge
+  // Function, una pestaña del teléfono (openAuthSessionAsync) no puede hacer ese POST ni recibir la vuelta.
   const connect = () => void openOnWeb(linkBack);
 
   const idCard = (display: string, extra?: ReactNode) => (

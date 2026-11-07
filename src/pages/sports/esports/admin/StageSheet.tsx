@@ -5,6 +5,20 @@ import { createStage, decideEntry, esportsErrorText, type EsportsEntry, type Esp
 import { useLeagueCtx } from '../../../../lib/league';
 import { useNow } from '../../../../lib/useNow';
 import { FORMAT_LABEL, minEntries, resolvePlan, type StagePlan } from '../../../../sports/esports';
+import {
+  LEAVE_OUT_LABEL,
+  NO_CHECKIN_NOTE,
+  checkinMissing,
+  createStageLabel,
+  missingHint,
+  notEnoughText,
+  planErrorText,
+  planPreview,
+  playoffsIntro,
+  stageCreatedText,
+  stageIntro,
+  tryPlan,
+} from './logic';
 import { groupLetter } from '../../../../sports/formats';
 import { StandingsTable } from '../../../../components/match';
 import { useBusy } from '../../../../components/busy';
@@ -12,7 +26,7 @@ import { useFeedback } from '../../../../components/feedback';
 import { Button, Card, Sheet } from '../../../../components/ui';
 import { ToggleRow } from '../../racket/bits';
 import { EsportsBracket } from '../bracket/EsportsBracket';
-import { competitors, entryBySideTeam, groupTablesOf, planFor, planFromStage, playoffsPlanFor, seedsFor, standingsColumns } from '../logic';
+import { entryBySideTeam, groupTablesOf, planFor, planFromStage, playoffsPlanFor, seedsFor, standingsColumns } from '../logic';
 import { useEntryNames } from '../parts';
 
 /**
@@ -44,22 +58,12 @@ export function StageSheet({
   );
 }
 
-/** El plan con la siembra (o el error del motor en palabras: con estos inscritos no se puede). */
-function tryPlan(fn: () => StagePlan | null): { plan: StagePlan | null; error: string | null } {
-  try {
-    return { plan: fn(), error: null };
-  } catch (e) {
-    return { plan: null, error: e instanceof Error ? e.message : 'No se pudo armar con estos inscritos.' };
-  }
-}
-
 function CreateBody({ t, entries, onDone }: { t: EsportsTournament; entries: readonly EsportsEntry[]; onDone: () => void }) {
   const { lid } = useLeagueCtx();
   const { toast } = useFeedback();
   const busy = useBusy<'crear'>();
   const nameOf = useEntryNames(entries as EsportsEntry[]);
-  const approved = competitors(entries);
-  const missing = t.checkinMinutes ? approved.filter((e) => !e.checkedInAt) : [];
+  const missing = checkinMissing(t, entries);
   const [leaveOut, setLeaveOut] = useState(false);
   const pool = leaveOut ? entries.filter((e) => !missing.includes(e)) : entries;
   const seeds = useMemo(() => seedsFor(pool as EsportsEntry[], t), [pool, t]);
@@ -72,9 +76,9 @@ function CreateBody({ t, entries, onDone }: { t: EsportsTournament; entries: rea
     busy.run('crear', async () => {
       if (!plan) return;
       try {
-        for (const e of leaveOut ? missing : []) await decideEntry(e.id, false, 'No hizo check-in');
+        for (const e of leaveOut ? missing : []) await decideEntry(e.id, false, NO_CHECKIN_NOTE);
         await createStage(lid, t.eventId, plan);
-        toast(t.format === 'groups_playoffs' ? 'Grupos creados: el torneo empezó' : 'Cuadro creado: el torneo empezó');
+        toast(stageCreatedText(t.format));
         onDone();
       } catch (e) {
         toast(esportsErrorText(e, t.game, 'cuadro'), 'error');
@@ -83,24 +87,24 @@ function CreateBody({ t, entries, onDone }: { t: EsportsTournament; entries: rea
 
   return (
     <div className="flex flex-col gap-4 pb-1">
-      <p className="mx-1 text-[15px] text-fg-2">{`${FORMAT_LABEL[t.format]} · ${seeds.length} ${seeds.length === 1 ? 'inscrito' : 'inscritos'}, por siembra.`}</p>
+      <p className="mx-1 text-[15px] text-fg-2">{stageIntro(t.format, seeds.length)}</p>
       {missing.length > 0 && (
         <ToggleRow
           checked={leaveOut}
           onChange={setLeaveOut}
-          label="Dejar fuera a los que no hicieron check-in"
-          hint={`${missing.length} sin check-in: ${missing.map((e) => e.name).join(', ')}`}
+          label={LEAVE_OUT_LABEL}
+          hint={missingHint(missing)}
         />
       )}
       {!enough ? (
-        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{`Hacen falta al menos ${min} para ${FORMAT_LABEL[t.format].toLowerCase()}.`}</p>
+        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{notEnoughText(t.format)}</p>
       ) : error || !plan ? (
-        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{`${error ?? 'No se pudo armar.'} Cambia los ajustes en «Editar torneo».`}</p>
+        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{planErrorText(error)}</p>
       ) : (
         <Preview plan={plan} nameOf={nameOf} seedOf={seedOf} />
       )}
       <Button variant="primary" size="lg" className="w-full" icon={<GitFork className="size-5" />} disabled={!enough || !plan} loading={busy.isBusy('crear')} onClick={() => void create()}>
-        {t.format === 'groups_playoffs' ? 'Crear los grupos' : t.format === 'round_robin' ? 'Crear los partidos' : 'Crear el cuadro'}
+        {createStageLabel(t.format)}
       </Button>
     </div>
   );
@@ -108,25 +112,18 @@ function CreateBody({ t, entries, onDone }: { t: EsportsTournament; entries: rea
 
 /** La vista previa: el cuadro (simple o doble), los grupos o cuántas series y jornadas tiene la liga. */
 export function Preview({ plan, nameOf, seedOf }: { plan: StagePlan; nameOf: (id: string) => string; seedOf?: (id: string) => number | null }) {
-  if (plan.kind === 'bracket' || plan.kind === 'playoffs') {
+  const preview = planPreview(plan);
+  if (preview.kind === 'bracket') {
     return <EsportsBracket matches={resolvePlan(plan, {})} nameOf={nameOf} seedOf={seedOf} />;
   }
-  const rounds = new Set(plan.matches.map((m) => `${m.group ?? 0}:${m.round}`));
-  if (plan.kind === 'league') {
-    const jornadas = new Set(plan.matches.map((m) => m.round)).size;
-    return <p className="rounded-2xl bg-accent-soft px-4 py-3.5 text-[15px] text-fg-2">{`${plan.matches.length} series en ${jornadas} ${jornadas === 1 ? 'jornada' : 'jornadas'}.`}</p>;
-  }
-  const groups = new Map<number, string[]>();
-  for (const m of plan.matches) {
-    const list = groups.get(m.group ?? 0) ?? [];
-    for (const s of m.sides) if (s.kind === 'entry' && !list.includes(s.entryId)) list.push(s.entryId);
-    groups.set(m.group ?? 0, list);
+  if (preview.kind === 'league') {
+    return <p className="rounded-2xl bg-accent-soft px-4 py-3.5 text-[15px] text-fg-2">{preview.text}</p>;
   }
   return (
     <div className="flex flex-col gap-3">
-      <p className="mx-1 text-[13.5px] text-muted">{`${plan.matches.length} series en ${rounds.size} jornadas de grupo.`}</p>
+      <p className="mx-1 text-[13.5px] text-muted">{preview.text}</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        {[...groups].map(([g, ids]) => (
+        {preview.groups.map(({ group: g, ids }) => (
           <Card key={g} className="px-4 py-3">
             <p className="text-[13px] font-bold tracking-[0.06em] text-muted uppercase">{`Grupo ${groupLetter(g)}`}</p>
             <ol className="mt-1.5 flex flex-col gap-1">
@@ -167,7 +164,7 @@ function PlayoffsBody({ t, entries, matches, links, onDone }: { t: EsportsTourna
     });
   return (
     <div className="flex flex-col gap-4 pb-1">
-      <p className="mx-1 text-[15px] text-fg-2">{`Pasan ${t.settings.perGroup} de cada grupo, cruzados (1.º A contra 2.º B…).`}</p>
+      <p className="mx-1 text-[15px] text-fg-2">{playoffsIntro(t.settings.perGroup)}</p>
       {tables.map((g, i) => (
         <div key={i} className="flex flex-col gap-2">
           <p className="mx-1 text-[13px] font-bold tracking-[0.06em] text-muted uppercase">{`Grupo ${groupLetter(i)}`}</p>

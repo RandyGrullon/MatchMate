@@ -12,7 +12,7 @@ import { confirmAsync, toast } from '@/components/feedback';
 import { LogoSpinner } from '@/components/Logo';
 import { runAction } from '@/components/swimming/parts';
 import { Button, Card, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
+import { InviteSheet } from '@/components/invite/InviteSheet';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -20,8 +20,8 @@ type Busy = 'cambiar' | 'compartir' | 'codigo';
 
 /**
  * La invitación en los ajustes (InviteCard de la web, solo el dueño y los admins): «Invitar personas» (la hoja de
- * invitar con las cuentas de la app, todavía en la web), el código, compartir el link, copiar el código, el QR y
- * cambiar el código (el anterior deja de servir).
+ * invitar con las cuentas de la app, InviteSheet), el código, compartir el link, copiar el código, el QR y cambiar el
+ * código (el anterior deja de servir).
  */
 export function InviteCard({ league }: { league: League }) {
   const c = useColors();
@@ -29,6 +29,7 @@ export function InviteCard({ league }: { league: League }) {
   const [code, setCode] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState<Busy | null>(null);
   const [showQr, setShowQr] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -76,9 +77,10 @@ export function InviteCard({ league }: { league: League }) {
         </View>
       </View>
 
-      <Button full icon={<UserPlus size={18} color={c.fg} />} onPress={() => void openOnWeb(`/l/${league.id}/admin?tab=liga`)}>
+      <Button full icon={<UserPlus size={18} color={c.fg} />} onPress={() => setInviting(true)}>
         Invitar personas
       </Button>
+      <InviteSheet league={league} lid={league.id} isAdmin member open={inviting} onClose={() => setInviting(false)} onCode={setCode} />
 
       {code === undefined ? (
         <View style={{ paddingVertical: 12, alignItems: 'center' }}>

@@ -2,7 +2,7 @@ import type { SheetData } from 'write-excel-file/browser';
 import type { Match } from '../../../lib/data/matches';
 import { excelHead as head, safeFileName, sheetName, type ExcelSheet } from '../../../lib/report/sheets';
 import type { StandingRow } from '../../../sports/types';
-import { statusInfo } from '../../../components/match';
+import { statusInfo } from '../../../components/match/format';
 import type { NightRound } from './logic/night';
 import { fmtPoints } from './logic/night';
 import { localParts, timeLabel } from './logic/time';

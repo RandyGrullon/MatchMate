@@ -1,16 +1,17 @@
 /**
  * La página de un juego (`/esports/<juego>`, GameHubPage de la web, Lite): «‹ Esports», el monograma grande, el nombre y
  * «5 contra 5 · Riot ID»; «Torneos abiertos | Equipos»; «Crear equipo» si todavía no tienes equipo de ese juego (y al
- * final «¿Organizas? Crear torneo», que abre la web); «Torneos | Equipos» (los duelos solo tienen torneos). Los torneos
- * en «Inscripción abierta», «En curso» y «Terminados»; los equipos con un buscador y los tuyos primero. `?crear=equipo`
- * abre «Crear equipo» (`&volver=` a dónde ir después). Crear torneos y ligas, en la web.
+ * final «¿Organizas? Crear torneo», el asistente de `/esports/<juego>/nuevo-torneo`); «Torneos | Equipos» (los duelos
+ * solo tienen torneos). Los torneos en «Inscripción abierta», «En curso» y «Terminados»; los equipos con un buscador y
+ * los tuyos primero. `?crear=equipo` abre «Crear equipo» (`&volver=` a dónde ir después; con su logo) y `?crear=liga`,
+ * «Crear liga».
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, router, useLocalSearchParams, type Href } from 'expo-router';
 import { IdCard, Lock, Plus, Search, Trophy, Users } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { createTeam, esportsErrorText, useEsportsHub, useMyEsportsTeams, type HubTournament } from '@mm/lib/data/esports';
+import { createTeam, esportsErrorText, uploadTeamLogo, useEsportsHub, useMyEsportsTeams, type HubTournament } from '@mm/lib/data/esports';
 import { useMyGameIds } from '@mm/lib/data/esportsIds';
 import { useNow } from '@mm/lib/useNow';
 import { GAMES, isGameId, modeLabel, type GameId } from '@mm/sports/esports';
@@ -35,12 +36,13 @@ import {
   tournamentSubtitle,
   type TeamForm,
 } from '@mm/pages/esports/logic';
-import { openOnWeb } from '@/lib/web';
 import { DateBlock } from '../DateBlock';
 import { toast } from '../feedback';
 import { BackBar, Button, Card, Empty, Field, Input, LoadError, Loading, Segmented, SectionHeader, Sheet, Txt } from '../ui';
 import { GameMark, PhaseChip, TeamLogo } from './bits';
+import { CreateLeagueSheet } from './CreateLeagueSheet';
 import { ScreenTitle, SignInCard } from './EsportsIndex';
+import { TeamLogoField, type PickedLogo } from './TeamLogoField';
 import { RichRow, RowText } from './inputs';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -92,20 +94,13 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
   const mine = useMemo(() => myTeams.data.filter((t) => t.game === game), [myTeams.data, game]);
   const sections = useMemo(() => hubSections(hub.data.tournaments), [hub.data.tournaments]);
   const lists = useMemo(() => teamLists(mine, hub.data.teams, query), [mine, hub.data.teams, query]);
-  // En el teléfono no hay Pro: la acción de Lite («Crear equipo») y «¿Organizas? Crear torneo» (en la web).
+  // En el teléfono no hay Pro: la acción de Lite («Crear equipo») y «¿Organizas? Crear torneo».
   const actions = gameHubActions({ pro: false, kind: meta.kind, hasTeam: mine.length > 0 });
-  const newTournament = `/esports/${game}/nuevo-torneo`;
+  const newTournament = () => router.push({ pathname: '/esports/[game]/nuevo-torneo', params: { game } } as never);
   const teamCount = Math.max(hub.data.teams.length, mine.length);
   const liveCount = hub.data.tournaments.filter((t) => t.status === 'live').length;
   const go = (href: string) => router.push(href as Href);
   const closeCreate = () => router.setParams({ crear: undefined, volver: undefined });
-
-  // «Crear liga» (`?crear=liga`) es del organizador: se abre en la web y se quita el parámetro.
-  useEffect(() => {
-    if (crear !== 'liga') return;
-    router.setParams({ crear: undefined, volver: undefined });
-    void openOnWeb(`/esports/${game}?crear=liga`);
-  }, [crear, game]);
 
   let body: ReactNode;
   if (view === 'torneos') {
@@ -118,7 +113,7 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
           title={`Todavía no hay torneos de ${meta.name}`}
           text="Arma el primero: eliges el formato y los equipos se inscriben."
           action={
-            <Button variant="soft" icon={<Plus size={16} color={c.accent} />} onPress={() => void openOnWeb(newTournament)}>
+            <Button variant="soft" icon={<Plus size={16} color={c.accent} />} onPress={newTournament}>
               Crear torneo
             </Button>
           }
@@ -222,7 +217,7 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
 
       {/* Sin torneos, el cartel ya trae «Crear torneo»: no se repite abajo. */}
       {actions.organizeLink && !(view === 'torneos' && !hub.loading && !sections.length) && (
-        <Pressable accessibilityRole="button" onPress={() => void openOnWeb(newTournament)} style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
+        <Pressable accessibilityRole="button" onPress={newTournament} style={{ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
           <Txt variant="meta" tone="muted" style={{ fontFamily: font.semibold }}>
             {'¿Organizas? '}
             <Txt variant="meta" tone="accent" style={{ fontFamily: font.semibold }}>
@@ -241,6 +236,7 @@ function Hub({ game, uid }: { game: GameId; uid: string | null }) {
         idsLoading={!!uid && ids.loading && !ids.data.length}
         back={back}
       />
+      <CreateLeagueSheet open={crear === 'liga'} onClose={closeCreate} game={game} signedIn={!!uid} />
     </View>
   );
 }
@@ -269,7 +265,8 @@ function TournamentRow({ t, now }: { t: HubTournament; now: number }) {
 /**
  * Crear un equipo de esports (CreateTeamSheet de la web): nombre, tag (mayúsculas, 2–5; sale solo del nombre hasta que
  * escribes el tuyo) y descripción (opcional). Sin su ID de ese juego, «Primero pon tu ID de {juego}» con «Poner mi ID»
- * (vuelve aquí). Al crear: a la página del equipo con la hoja de invitar abierta, o de vuelta a `back`. El logo, en la web.
+ * (vuelve aquí), y el logo (opcional; se sube después de crear). Al crear: a la página del equipo con la hoja de
+ * invitar abierta, o de vuelta a `back`.
  */
 function CreateTeamSheet({
   open,
@@ -300,6 +297,7 @@ function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose }: { 
   const meta = GAMES[game];
   const [form, setForm] = useState<TeamForm>({ name: '', tag: '', description: '' });
   const [tagEdited, setTagEdited] = useState(false);
+  const [logo, setLogo] = useState<PickedLogo | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -342,6 +340,14 @@ function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose }: { 
     setBusy(true);
     try {
       const r = await createTeam({ game, name: form.name.trim(), tag: form.tag, description: form.description.trim() });
+      if (logo) {
+        try {
+          await uploadTeamLogo(r.teamId, logo.logo);
+        } catch (e) {
+          console.warn('[logo del equipo]', e);
+          toast('El equipo quedó creado, pero el logo no se pudo subir. Pruébalo en «Editar equipo».', 'error');
+        }
+      }
       toast(`Listo: ${form.name.trim()} quedó creado`);
       onClose();
       // Con `?volver=` (inscribir el equipo en un torneo): vuelve ahí; si no, al equipo con «Invitar» abierto.
@@ -395,6 +401,7 @@ function CreateTeamBody({ game, signedIn, hasId, idsLoading, back, onClose }: { 
           style={{ height: 80, paddingTop: 14, textAlignVertical: 'top' }}
         />
       </Field>
+      <TeamLogoField value={logo} onChange={setLogo} name={form.name || 'Equipo'} tag={form.tag} />
       <Button variant="primary" size="xl" full loading={busy} icon={<Users size={20} color={c.accentFg} />} onPress={create}>
         Crear equipo
       </Button>

@@ -4,6 +4,7 @@ import type { TournamentReport } from '../../lib/report/model';
 import type { PrizeComp } from '../../prizes/catalog';
 import { useBusy } from '../busy';
 import { Button, Card, cx } from '../ui';
+import { REPORT_CARD_TEXT, REPORT_TITLE } from './view';
 
 /**
  * «Reporte del torneo»: el PDF (para WhatsApp o imprimir) o el Excel del torneo con todo, en cualquier pantalla de
@@ -54,8 +55,8 @@ export function ReportButton({ report, comp, look = 'icon', disabled, className 
             <FileDown className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-body font-semibold">Reporte del torneo</p>
-            <p className="text-sm text-muted">PDF para WhatsApp o imprimir, o Excel.</p>
+            <p className="text-body font-semibold">{REPORT_TITLE}</p>
+            <p className="text-sm text-muted">{REPORT_CARD_TEXT}</p>
           </div>
           <Button variant="soft" className="h-11 shrink-0 rounded-full!" disabled={disabled} loading={loading.isBusy()} onClick={() => void start()}>
             Descargar
@@ -73,8 +74,8 @@ export function ReportButton({ report, comp, look = 'icon', disabled, className 
         disabled={disabled}
         loading={loading.isBusy()}
         onClick={() => void start()}
-        aria-label="Reporte del torneo"
-        title="Reporte del torneo"
+        aria-label={REPORT_TITLE}
+        title={REPORT_TITLE}
         icon={<FileDown className="size-5" />}
       />
       {sheet}

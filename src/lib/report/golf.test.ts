@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GolfCardDoc, GolfRoundFull } from '../data/golf';
 import { DEMO_COURSE, DEMO_PARS } from '../../sports/golf/demo';
 import { LEAGUE } from './fixtures';
-import { golfReport, type GolfReportInput } from './golf';
+import { golfReport, golfReportDates, type GolfReportInput } from './golf';
 import { excelLines, pdfPages, podiumsBrief, view } from './testing';
 
 const GOLF = { ...LEAGUE, sport: 'golf', venue: 'Club de Golf del Norte' };
@@ -196,5 +196,17 @@ describe('reporte del golf: la ronda de un torneo reporta el torneo entero', () 
 
   it('cerrada la última ronda (la de la pantalla), el torneo terminó', () => {
     expect(report({ ...r2, closed: true }).final).toBe(true);
+  });
+});
+
+describe('golfReportDates (los días del reporte)', () => {
+  it('una ronda suelta: su día; en un torneo, los de sus rondas', () => {
+    expect(golfReportDates(null, [], [], '2026-10-12')).toEqual(['2026-10-12']);
+    const events = [
+      { id: 'E1', date: '2026-10-10' },
+      { id: 'E2', date: '2026-10-11' },
+      { id: 'OTRO', date: '2026-10-20' },
+    ];
+    expect(golfReportDates('T1', [{ eventId: 'E1' }, { eventId: 'E2' }], events, '2026-10-11')).toEqual(['2026-10-10', '2026-10-11']);
   });
 });

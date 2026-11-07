@@ -58,13 +58,16 @@ export function appRoute(href: string): string | null {
   const tab = /^\/l\/([^/]+)\/(ranking|juegos)$/.exec(path);
   if (tab) return `/l/${tab[1]}/${tab[2] === 'ranking' ? 'tabla' : 'partidos'}${query}`;
   if (/^\/l\/[^/]+\/(muro|perfil|temporadas)$/.test(path)) return path;
+  // En vivo de la liga (con su ?s=<transmisión>).
+  if (/^\/l\/[^/]+\/vivo$/.test(path)) return path + query;
   if (/^\/p\/[^/]+$/.test(path)) return path;
-  // Esports: el índice (con su ?crear=), Mi ID de juego, un equipo, unirse a un equipo y la página de un juego. Crear
-  // un torneo (`/esports/<juego>/nuevo-torneo`) sigue en la web.
+  // Esports: el índice (con su ?crear=), Mi ID de juego, un equipo, unirse a un equipo, crear un torneo
+  // (`/esports/<juego>/nuevo-torneo`, con su ?liga=) y la página de un juego (con su ?crear=liga).
   if (path === '/esports' || path === '/d/esports') return '/esports' + query;
   if (path === '/esports/mi-id') return path + query;
   if (/^\/esports\/(equipo|unirse)\/[^/]+$/.test(path)) return path;
-  if (/^\/esports\/[^/]+$/.test(path)) return path;
+  if (/^\/esports\/[^/]+\/nuevo-torneo$/.test(path)) return path + query;
+  if (/^\/esports\/[^/]+$/.test(path)) return path + query;
   // Juegos sueltos (?juego= abre uno, ?nuevo=1 uno nuevo) y Mis bolas (?bola=, ?nueva=1, ?catalogo=, ?buscar=).
   if (path === '/juegos-sueltos' || path === '/bolas') return path + query;
   // El Calendario (con su ?ver=mias, ?deporte=, ?dia= y ?apuntar=).

@@ -2,31 +2,18 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ClipboardPaste, Eye, Radio, Share2 } from 'lucide-react';
 import { STREAM_TITLE_MAX, startStream, streamErrorText, streamProblem, streamShareUrl, type LiveStream } from '../../lib/data/streams';
-import { PLATFORM_LABEL, embedUrl, streamPlatform } from '../../lib/streams';
 import { useBusy } from '../busy';
 import { useFeedback } from '../feedback';
 import { shareLink } from '../share';
 import { Button, Field, Input, Sheet } from '../ui';
-import { PlatformMark, liveHref, streamTitle } from './LiveParts';
+import { PlatformMark } from './LiveParts';
+import { START_SHARE_ERROR, linkHint, liveHref, ownStreamTitle, startedText, streamShareText } from './logic';
 
 /** ¿Este navegador deja leer el portapapeles (el botón «Pegar»)? */
 const canReadClipboard = () => typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function';
 
-/**
- * Lo que dice debajo del link mientras se escribe o se pega: la plataforma que se reconoce (y si se ve dentro de la
- * app o se abre afuera), el problema si no se puede usar, o qué links sirven. `checked`: ya tocó «Empezar» (sin link,
- * se le pide).
- */
-export function linkHint(url: string, checked: boolean): { tone: 'ok' | 'error' | 'muted'; text: string; platform: ReturnType<typeof streamPlatform> } {
-  const platform = streamPlatform(url);
-  if (platform) {
-    const inside = embedUrl(url, 'matchmate.app') !== null;
-    return { tone: 'ok', platform, text: inside ? `${PLATFORM_LABEL[platform]} · Se ve dentro de MatchMate` : `${PLATFORM_LABEL[platform]} · Se abre en ${PLATFORM_LABEL[platform]}` };
-  }
-  const problem = url.trim() || checked ? streamProblem({ url, title: null }) : null;
-  if (problem) return { tone: 'error', platform: null, text: problem };
-  return { tone: 'muted', platform: null, text: 'De YouTube, Twitch, Facebook, Kick, Instagram o TikTok.' };
-}
+// Lo que dice debajo del link vive en logic.ts (lo usa también la app del teléfono).
+export { linkHint } from './logic';
 
 /** El formulario (sin estado, para probarlo solo): el link con «Pegar», lo que se reconoce, el título y el error. */
 export function StartStreamForm({
@@ -165,9 +152,7 @@ function StartStreamDialog({
       }
       setError(null);
       try {
-        // El título de entrada (el del partido o el evento) ya lo pone la base como `label`: solo se manda si lo cambió.
-        const own = title.trim() && title.trim() !== (defaultTitle ?? '').trim() ? title.trim() : null;
-        setStarted(await startStream({ leagueId: lid, url, title: own, matchId: matchId ?? null, eventId: eventId ?? null }));
+        setStarted(await startStream({ leagueId: lid, url, title: ownStreamTitle(title, defaultTitle), matchId: matchId ?? null, eventId: eventId ?? null }));
       } catch (e) {
         console.error(e);
         setError(streamErrorText(e));
@@ -177,9 +162,9 @@ function StartStreamDialog({
   const share = (s: LiveStream) =>
     busy.run('compartir', async () => {
       try {
-        if (await shareLink(streamShareUrl(lid), `🔴 En vivo: ${streamTitle(s)}`)) toast('Link copiado');
+        if (await shareLink(streamShareUrl(lid), streamShareText(s))) toast('Link copiado');
       } catch {
-        toast('No se pudo compartir. Copia el link desde la página En vivo.', 'error');
+        toast(START_SHARE_ERROR, 'error');
       }
     });
 
@@ -214,9 +199,7 @@ function StartStreamDialog({
             <Radio className="size-8" />
           </span>
           <h3 className="mt-4 text-card-title-pro">Ya estás en vivo</h3>
-          <p className="mt-1.5 max-w-sm text-meta text-muted">
-            «{streamTitle(started)}» sale arriba en la liga y avisamos a los miembros y seguidores. Comparte el link para que lo vean más.
-          </p>
+          <p className="mt-1.5 max-w-sm text-meta text-muted">{startedText(started)}</p>
         </div>
       </Sheet>
     );

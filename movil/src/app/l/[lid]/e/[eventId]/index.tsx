@@ -16,6 +16,7 @@ import { Standings } from '@/components/bowling/Standings';
 import { TourneyAnnouncement } from '@/components/bowling/TourneyAnnouncement';
 import { EventTeamsRow } from '@/components/event/EventTeamsRow';
 import { EventPrizes } from '@/components/prizes/SportPrizes';
+import { BowlingReport } from '@/components/tournamentReport/SportReports';
 import { GolfEventBody } from '@/components/golf/GolfEvent';
 import { SwimEventBody } from '@/components/swimming/SwimEvent';
 import { EsportsEventBody } from '@/components/esports/EsportsLeague';
@@ -254,6 +255,8 @@ function BowlingEventScreen() {
       {/* Los premios que eligió la liga (equipos por scratch, individual con handicap): se ven desde que se crea el torneo. */}
       {ev.type === 'torneo' && (
         <LeagueScope lid={lid}>
+          {/* El reporte del torneo (PDF o Excel): la tarjeta para quien organiza al terminar; para todos, la fila. */}
+          <BowlingReport event={ev} entries={entries.data} players={players.data} loading={entries.loading || players.loading} />
           <EventPrizes event={ev} entries={entries.data} players={players.data} />
         </LeagueScope>
       )}

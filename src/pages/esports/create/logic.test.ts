@@ -122,3 +122,28 @@ describe('crear torneo de esports: el formulario', () => {
     expect(summary(emptyForm('rocket_league', TODAY))).toContain('· Crossplay');
   });
 });
+
+describe('lo que muestran los pasos (web y teléfono)', () => {
+  it('los ajustes del formato que salen', async () => {
+    const { formatFieldsShown } = await import('./logic');
+    const single = formatFieldsShown({ game: 'valorant', format: 'single_elim', settings: defaultSettings('valorant', '5v5', 'single_elim') });
+    expect(single).toMatchObject({ bestOfGroups: null, bestOfPlayoffs: 'Mejor de (rondas)', bestOfFinal: true, thirdPlace: true, bracketReset: false, seeding: true, br: false });
+    const rr = formatFieldsShown({ game: 'ea_fc', format: 'round_robin', settings: defaultSettings('ea_fc', '1v1', 'round_robin') });
+    expect(rr).toMatchObject({ bestOfGroups: 'Mejor de (cada serie)', bestOfPlayoffs: null, bestOfFinal: false, draws: true, doubleRoundRobin: true });
+    const br = formatFieldsShown({ game: 'free_fire', format: 'br', settings: defaultSettings('free_fire', 'squad', 'br') });
+    expect(br).toMatchObject({ br: true, seeding: false, bestOfPlayoffs: null });
+  });
+  it('los textos de la entrada, el check-in, quién lo ve, el botón y a dónde va lo creado', async () => {
+    const { checkinHint, createdPath, singleEntryText, visibilityHint, wizardButton, showStepErrors } = await import('./logic');
+    expect(singleEntryText('1v1', 'open')).toBe('. En 1 contra 1 cada quien se inscribe solo.');
+    expect(singleEntryText('solo', 'open')).toBe('. Cada quien se inscribe por su cuenta.');
+    expect(checkinHint(30)).toBe('Los inscritos confirman que van desde 30 min antes del inicio.');
+    expect(visibilityHint('private')).toBe('Solo entra quien tenga el código o el link.');
+    expect(wizardButton('nombre')).toBe('Crear torneo');
+    expect(wizardButton('invitar')).toBe('Ir al torneo');
+    expect(createdPath({ leagueId: 'L1', eventId: 'E1' }, true)).toBe('/l/L1/e/E1');
+    expect(createdPath({ leagueId: 'L1', eventId: 'E1' }, false)).toBe('/l/L1');
+    expect(showStepErrors('nombre', ['x'], new Set())).toBe(false);
+    expect(showStepErrors('formato', ['x'], new Set())).toBe(true);
+  });
+});

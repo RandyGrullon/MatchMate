@@ -61,19 +61,31 @@ async function leagueData(lid: string) {
   return out;
 }
 
-function download(data: object, name: string) {
-  const blob = new Blob([JSON.stringify({ app: 'MatchMate', version: 2, exportedAt: new Date().toISOString(), ...data }, null, 2)], {
-    type: 'application/json',
-  });
+/** El respaldo armado: el nombre del archivo y su texto (el JSON). La web lo descarga; la app del teléfono lo comparte. */
+export interface BackupFile {
+  name: string;
+  text: string;
+}
+
+/** «matchmate-liga-norte-2026-10-12.json» y el JSON con la marca de la app, la versión y cuándo se hizo. */
+export function backupFile(data: object, name: string, now: Date = new Date()): BackupFile {
+  return {
+    name: `matchmate-${name}-${toIsoDate(now)}.json`,
+    text: JSON.stringify({ app: 'MatchMate', version: 2, exportedAt: now.toISOString(), ...data }, null, 2),
+  };
+}
+
+function download(file: BackupFile) {
+  const blob = new Blob([file.text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `matchmate-${name}-${toIsoDate(new Date())}.json`;
+  a.download = file.name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const slug = (s: string) =>
+export const slug = (s: string) =>
   s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -81,12 +93,21 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'liga';
 
-/** Admin de la liga: descarga todos sus datos en un JSON. */
-export async function downloadLeagueBackup(league: { id: string; name: string }) {
+/** Admin de la liga: todos sus datos en un JSON (sin descargarlo) y cuánto lleva. */
+export async function leagueBackup(league: { id: string; name: string }, now: Date = new Date()) {
   const [row] = await select<Record<string, unknown>>({ table: 'leagues', filters: [{ col: 'id', op: 'eq', value: league.id }] });
   const data = await leagueData(league.id);
-  download({ league: row ?? { ...league }, ...data }, slug(league.name));
-  return { players: data.players.length, events: data.events.length, entries: data.entries.length };
+  return {
+    file: backupFile({ league: row ?? { ...league }, ...data }, slug(league.name), now),
+    counts: { players: data.players.length, events: data.events.length, entries: data.entries.length },
+  };
+}
+
+/** Admin de la liga: descarga todos sus datos en un JSON. */
+export async function downloadLeagueBackup(league: { id: string; name: string }) {
+  const { file, counts } = await leagueBackup(league);
+  download(file);
+  return counts;
 }
 
 /** Superadmin: todas las ligas y las cuentas. */
@@ -95,6 +116,6 @@ export async function downloadFullBackup() {
   const all = [];
   for (const l of leagues) all.push({ ...l, ...(await leagueData(l.id)) });
   const users = await select<Record<string, unknown>>({ table: 'profiles' });
-  download({ leagues: all, users }, 'completo');
+  download(backupFile({ leagues: all, users }, 'completo'));
   return { leagues: leagues.length, users: users.length };
 }

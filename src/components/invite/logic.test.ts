@@ -5,7 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PersonHit } from '../../lib/data/people';
 import {
+  CREATE_LINK_LABEL,
   PERSON_STATE_TEXT,
+  SHARE_LINK_HINT,
+  inviteMaxText,
   canInviteTo,
   codeInviteUrl,
   handleOf,
@@ -193,5 +196,13 @@ describe('el link para compartir', () => {
   it('el texto que va con el link', () => {
     expect(inviteShareText('Liga de los martes')).toBe('Únete a Liga de los martes en MatchMate');
     expect(inviteShareText('  ')).toBe('Únete a mi liga en MatchMate');
+  });
+});
+
+describe('textos del link y del tope', () => {
+  it('lo que dice la hoja', () => {
+    expect(inviteMaxText(50)).toBe('Puedes invitar hasta 50 personas a la vez.');
+    expect(SHARE_LINK_HINT).toBe('O manda el link por WhatsApp o donde quieras.');
+    expect(CREATE_LINK_LABEL).toBe('Crear link de invitación');
   });
 });

@@ -1,4 +1,4 @@
-import { pendingWarning } from '../../components/event/EventPrizes';
+import { pendingWarning } from '../../components/prizes/screens';
 import { bowlingComp, bowlingTitle } from '../../prizes/catalog';
 import { bowlingPodium } from '../../prizes/providers';
 import { bowlingFinished } from '../../prizes/ready';

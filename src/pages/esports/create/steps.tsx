@@ -30,7 +30,29 @@ import { wizardField, wizardLabel, wizardLegend } from '../../../components/crea
 import { Segmented, Skeleton, cx } from '../../../components/ui';
 import { ToggleRow } from '../../sports/racket/bits';
 import { ChoiceChips, ScoreStepper } from '../../sports/esports/parts';
-import { CHECKIN_OPTIONS, ENTRY_BLURB, FORMAT_BLURB, cleanPoints, clampMax, idRequirement, platformPick, rankRequirement, subsMaxOf, withFormat, type TournamentForm } from './logic';
+import {
+  CHECKIN_OPTIONS,
+  ENTRY_BLURB,
+  FORMAT_BLURB,
+  PLAYOFFS_OPTIONS,
+  SEEDING_OPTIONS,
+  bestOfItems,
+  brGamePoints,
+  brSettingsOf,
+  checkinHint,
+  cleanPoints,
+  clampMax,
+  formatFieldsShown,
+  idRequirement,
+  platformPick,
+  rankRequirement,
+  singleEntryText,
+  subsMaxOf,
+  visibilityHint,
+  withFormat,
+  type FormatValue,
+  type TournamentForm,
+} from './logic';
 import { shareOrigin } from '../../../lib/origin';
 
 type SetField = <K extends keyof TournamentForm>(k: K, v: TournamentForm[K]) => void;
@@ -95,7 +117,7 @@ function ChoiceCard({ on, title, text, onClick, disabled }: { on: boolean; title
 
 /** Mejor de: Segmented con 2 o 3 opciones; con 4 (1, 3, 5, 7), fichas. */
 function BestOfPick({ label, value, options, onChange }: { label: string; value: BestOf; options: readonly BestOf[]; onChange: (b: BestOf) => void }) {
-  const items = options.map((b) => ({ key: String(b), label: b === 1 ? 'Bo1' : `Bo${b}` }));
+  const items = bestOfItems(options);
   return (
     <div className="mt-4">
       <p className={wizardLegend}>{label}</p>
@@ -170,7 +192,7 @@ export function EntryStep({ form, set, pro, titleRef }: { form: TournamentForm; 
         {types.length === 1 ? (
           <p className="rounded-2xl bg-accent-soft px-4 py-3.5 text-[15px] text-fg-2">
             <b className="font-semibold text-accent">{ENTRY_LABEL[types[0]]}</b>
-            {form.mode === '1v1' ? '. En 1 contra 1 cada quien se inscribe solo.' : isIndividualMode(form.mode) ? '. Cada quien se inscribe por su cuenta.' : `: ${ENTRY_BLURB[types[0]]}`}
+            {singleEntryText(form.mode, types[0])}
           </p>
         ) : (
           <div className="flex flex-col gap-2.5">
@@ -201,7 +223,7 @@ export function EntryStep({ form, set, pro, titleRef }: { form: TournamentForm; 
         <fieldset className="mt-6">
           <legend className={wizardLegend}>Check-in</legend>
           <ChoiceChips label="Check-in" items={CHECKIN_OPTIONS.map((o) => ({ key: String(o.value), label: o.label }))} value={String(form.checkin)} onChange={(k) => set('checkin', Number(k))} />
-          {form.checkin > 0 && <p className="mx-1 mt-2 text-[13.5px] text-muted">{`Los inscritos confirman que van desde ${form.checkin} min antes del inicio.`}</p>}
+          {form.checkin > 0 && <p className="mx-1 mt-2 text-[13.5px] text-muted">{checkinHint(form.checkin)}</p>}
         </fieldset>
         <div className="mt-6 flex flex-col gap-2.5">
           <ToggleRow checked={s.autoApprove} onChange={(v) => setS({ autoApprove: v })} label="Aprobar solo" hint="Quien cumple queda inscrito sin que lo revises." />
@@ -230,15 +252,8 @@ export function RequirementToggles({ game, settings: s, onChange }: { game: Game
 
 // ---------- Paso 3: Formato ----------
 
-/** Lo que se edita del formato (en el asistente y en «Editar torneo» antes de empezar). */
-export interface FormatValue {
-  game: GameId;
-  mode: Mode;
-  format: Format;
-  entryType: EntryType;
-  maxEntries: number;
-  settings: TournamentSettings;
-}
+/** Lo que se edita del formato (en el asistente y en «Editar torneo» antes de empezar): en logic.ts. */
+export type { FormatValue };
 
 /**
  * El formato y sus ajustes (§12.7 paso 3): tarjetas de formato con una línea; según el formato, el mejor de por fase,
@@ -254,52 +269,31 @@ export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; 
   const setS = (patch: Partial<TournamentSettings>) => onChange({ ...v, settings: { ...s, ...patch } });
   const pickFormat = (f: Format) => onChange(withFormat(v, f));
   const bo = meta.bestOf;
-  const draws = v.game === 'ea_fc' && (v.format === 'groups_playoffs' || v.format === 'round_robin');
-  const playoffsDouble = v.format === 'double_elim' || (v.format === 'groups_playoffs' && s.playoffs === 'double');
-  const playoffsSingle = v.format === 'single_elim' || (v.format === 'groups_playoffs' && s.playoffs === 'single');
+  const shown = formatFieldsShown(v);
   const settings = (
     <>
-      {v.format !== 'br' && bo.length > 1 && (
-        <>
-          {(v.format === 'groups_playoffs' || v.format === 'round_robin') && (
-            <BestOfPick label={v.format === 'round_robin' ? 'Mejor de (cada serie)' : 'Mejor de en grupos'} value={s.bestOf.groups} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, groups: b } })} />
-          )}
-          {v.format !== 'round_robin' && (
-            <>
-              <BestOfPick label={v.format === 'groups_playoffs' ? 'Mejor de en playoffs' : 'Mejor de (rondas)'} value={s.bestOf.playoffs} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, playoffs: b } })} />
-              <BestOfPick label="Mejor de en la final" value={s.bestOf.final} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, final: b } })} />
-            </>
-          )}
-        </>
-      )}
-      {v.format === 'groups_playoffs' && (
+      {shown.bestOfGroups && <BestOfPick label={shown.bestOfGroups} value={s.bestOf.groups} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, groups: b } })} />}
+      {shown.bestOfPlayoffs && <BestOfPick label={shown.bestOfPlayoffs} value={s.bestOf.playoffs} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, playoffs: b } })} />}
+      {shown.bestOfFinal && <BestOfPick label="Mejor de en la final" value={s.bestOf.final} options={bo} onChange={(b) => setS({ bestOf: { ...s.bestOf, final: b } })} />}
+      {shown.groups && (
         <>
           <NumberRow label="Grupos" value={s.groups} min={1} max={8} onChange={(n) => setS({ groups: n })} />
           <NumberRow label="Pasan por grupo" value={s.perGroup} min={1} max={4} onChange={(n) => setS({ perGroup: n })} />
           <div className="mt-4">
             <p className={wizardLegend}>Playoffs</p>
-            <Segmented
-              full
-              label="Playoffs"
-              options={[
-                { key: 'single', label: 'Eliminación simple' },
-                { key: 'double', label: 'Doble' },
-              ]}
-              value={s.playoffs}
-              onChange={(k) => setS({ playoffs: k as 'single' | 'double' })}
-            />
+            <Segmented full label="Playoffs" options={[...PLAYOFFS_OPTIONS]} value={s.playoffs} onChange={(k) => setS({ playoffs: k as 'single' | 'double' })} />
           </div>
         </>
       )}
       <div className="mt-4 flex flex-col gap-2.5 empty:hidden">
-        {playoffsSingle && <ToggleRow checked={s.thirdPlace} onChange={(x) => setS({ thirdPlace: x })} label="Partido por el 3.er lugar" />}
-        {playoffsDouble && (
+        {shown.thirdPlace && <ToggleRow checked={s.thirdPlace} onChange={(x) => setS({ thirdPlace: x })} label="Partido por el 3.er lugar" />}
+        {shown.bracketReset && (
           <ToggleRow checked={s.bracketReset} onChange={(x) => setS({ bracketReset: x })} label="Reinicio de la gran final" hint="Si gana el que viene de perdedores, se juega otra serie." />
         )}
-        {(v.format === 'groups_playoffs' || v.format === 'round_robin') && <ToggleRow checked={s.doubleRoundRobin} onChange={(x) => setS({ doubleRoundRobin: x })} label="Ida y vuelta" />}
-        {draws && <ToggleRow checked={s.draws} onChange={(x) => setS({ draws: x })} label="Empates en grupos" hint="Al mejor de 1 se puede empatar (como en el fútbol)." />}
+        {shown.doubleRoundRobin && <ToggleRow checked={s.doubleRoundRobin} onChange={(x) => setS({ doubleRoundRobin: x })} label="Ida y vuelta" />}
+        {shown.draws && <ToggleRow checked={s.draws} onChange={(x) => setS({ draws: x })} label="Empates en grupos" hint="Al mejor de 1 se puede empatar (como en el fútbol)." />}
       </div>
-      {meta.roundsToWin && meta.roundsToWin.options.length > 1 && (
+      {shown.roundsToWin && meta.roundsToWin && (
         <div className="mt-4">
           <p className={wizardLegend}>Rondas para ganar un juego</p>
           <Segmented
@@ -311,22 +305,12 @@ export function FormatFields({ value: v, onChange, pro }: { value: FormatValue; 
           />
         </div>
       )}
-      {meta.stocks && <NumberRow label="Vidas por jugador" value={s.stocks ?? meta.stocks.default} min={meta.stocks.min} max={meta.stocks.max} onChange={(n) => setS({ stocks: n })} />}
-      {v.format === 'br' && <BrFields game={v.game} settings={s} onChange={setS} />}
-      {v.format !== 'br' && (
+      {shown.stocks && meta.stocks && <NumberRow label="Vidas por jugador" value={s.stocks ?? meta.stocks.default} min={meta.stocks.min} max={meta.stocks.max} onChange={(n) => setS({ stocks: n })} />}
+      {shown.br && <BrFields game={v.game} settings={s} onChange={setS} />}
+      {shown.seeding && (
         <div className="mt-4">
           <p className={wizardLegend}>Siembra</p>
-          <Segmented<SeedingMethod>
-            full
-            label="Siembra"
-            options={[
-              { key: 'random', label: 'Al azar' },
-              { key: 'rank', label: 'Por rango' },
-              { key: 'manual', label: 'A mano' },
-            ]}
-            value={s.seeding}
-            onChange={(k) => setS({ seeding: k })}
-          />
+          <Segmented<SeedingMethod> full label="Siembra" options={[...SEEDING_OPTIONS]} value={s.seeding} onChange={(k) => setS({ seeding: k })} />
         </div>
       )}
     </>
@@ -379,7 +363,7 @@ function PlatformField({ game, value, onChange }: { game: GameId; value: string;
 /** Battle royale: jornadas, partidas por jornada y la tabla de puntos por puesto y por kill (editable). */
 function BrFields({ game, settings: s, onChange }: { game: GameId; settings: TournamentSettings; onChange: (p: Partial<TournamentSettings>) => void }) {
   const meta = GAMES[game];
-  const br = s.br ?? { placementPoints: [...(meta.br?.placementPoints ?? [])], killPoints: meta.br?.killPoints ?? 1, rounds: 1, gamesPerRound: 4 };
+  const br = brSettingsOf(game, s);
   const set = (patch: Partial<typeof br>) => onChange({ br: { ...br, ...patch } });
   const points = br.placementPoints;
   const setPoint = (i: number, n: number) => set({ placementPoints: cleanPoints(points.map((p, j) => (j === i ? n : p))) });
@@ -424,7 +408,7 @@ function BrFields({ game, settings: s, onChange }: { game: GameId; settings: Tou
           </button>
           <button
             type="button"
-            onClick={() => set({ placementPoints: [...(meta.br?.placementPoints ?? [])], killPoints: meta.br?.killPoints ?? 1 })}
+            onClick={() => set(brGamePoints(game))}
             className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full bg-surface-2 px-4 py-2 text-left text-[15px] font-semibold text-fg-2"
           >
             <RotateCcw aria-hidden="true" className="size-4" />
@@ -488,7 +472,7 @@ export function NameStep({ form, set, venueHint, titleRef }: { form: TournamentF
           value={form.visibility}
           onChange={(k) => set('visibility', k as 'public' | 'private')}
         />
-        <p className="mx-1 mt-2 text-[13.5px] text-muted">{form.visibility === 'public' ? 'Sale en la página del juego y cualquiera se puede inscribir.' : 'Solo entra quien tenga el código o el link.'}</p>
+        <p className="mx-1 mt-2 text-[13.5px] text-muted">{visibilityHint(form.visibility)}</p>
       </fieldset>
       <label htmlFor="tz-sede" className={wizardLabel}>
         Sede (opcional)

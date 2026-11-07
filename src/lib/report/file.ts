@@ -20,3 +20,9 @@ export async function reportFile(format: ReportFormat, report: TournamentReport,
   const { reportExcel } = await import('./excel');
   return new File([await reportExcel(report, { generated: opts.generated })], name, { type: XLSX_TYPE });
 }
+
+/** El tipo de cada formato (el de pdf.ts, sin cargarlo). */
+export const REPORT_TYPE: Record<ReportFormat, string> = { pdf: 'application/pdf', excel: XLSX_TYPE };
+
+// El archivo como bytes, para la app del teléfono, es `reportBytes` de ./bytes.ts (no aquí: así la web sigue cargando
+// pdf.ts y excel.ts solo al hacer el archivo).

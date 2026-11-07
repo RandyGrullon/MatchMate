@@ -11,15 +11,19 @@ import { shareDate } from '../share/ShareButton';
 import { Button, Sheet, Spinner } from '../ui';
 import type { ReportButtonProps } from './ReportButton';
 import { buildReport, offerReport, prizesHidden, shareReport } from './flow';
+import {
+  PRIZES_LOADING_TEXT,
+  REPORT_CHOOSE_TEXT,
+  REPORT_OPTIONS,
+  REPORT_TITLE,
+  downloadedText,
+  readyText,
+  reportErrorText,
+  workingText,
+  type ReportPhase,
+} from './view';
 
-/** En qué va la hoja: eligiendo, haciendo el archivo, listo (compartir o ya descargado) o con error. */
-export type ReportPhase =
-  | { kind: 'choose' }
-  | { kind: 'working'; format: ReportFormat }
-  | { kind: 'ready'; format: ReportFormat; fileName: string; canShare: boolean }
-  | { kind: 'error'; format: ReportFormat };
-
-const FORMAT_NAME: Record<ReportFormat, string> = { pdf: 'PDF', excel: 'Excel' };
+export type { ReportPhase } from './view';
 
 /**
  * La hoja «Reporte del torneo»: elegir PDF o Excel, hacerlo (el reporte del deporte con los premios que se leen aquí) y
@@ -69,7 +73,7 @@ export default function ReportSheet({
       ready.current = built;
       // Sin menú para archivos (computadora, o el Excel en Android): se descarga de una vez.
       const { canShare } = offerReport(built.file);
-      if (!canShare) toast(`${FORMAT_NAME[format]} descargado`);
+      if (!canShare) toast(downloadedText(format));
       setPhase({ kind: 'ready', format, fileName: built.file.name, canShare });
     } catch (e) {
       console.error('[reporte]', e);
@@ -178,47 +182,41 @@ export function ReportSheetView(p: {
     ) : undefined;
 
   return (
-    <Sheet open={p.open} onClose={p.onClose} title="Reporte del torneo" subtitle={p.subtitle} footer={footer}>
+    <Sheet open={p.open} onClose={p.onClose} title={REPORT_TITLE} subtitle={p.subtitle} footer={footer}>
       {phase.kind === 'choose' ? (
         <div className="flex flex-col gap-3">
-          <p className="text-meta text-muted">Campeones, premios y resultados en la primera página; el individual después.</p>
-          <Option
-            icon={<FileText className="size-5" />}
-            title="PDF"
-            text="Para mandar por WhatsApp o imprimir."
-            disabled={p.prizesLoading}
-            onClick={() => p.onPick('pdf')}
-          />
-          <Option
-            icon={<FileSpreadsheet className="size-5" />}
-            title="Excel"
-            text="Hojas «General» e «Individual», y el detalle."
-            disabled={p.prizesLoading}
-            onClick={() => p.onPick('excel')}
-          />
+          <p className="text-meta text-muted">{REPORT_CHOOSE_TEXT}</p>
+          {REPORT_OPTIONS.map((o) => (
+            <Option
+              key={o.format}
+              icon={o.format === 'pdf' ? <FileText className="size-5" /> : <FileSpreadsheet className="size-5" />}
+              title={o.title}
+              text={o.text}
+              disabled={p.prizesLoading}
+              onClick={() => p.onPick(o.format)}
+            />
+          ))}
           {p.prizesLoading && (
             <p className="flex items-center gap-2 text-xs text-muted" role="status">
-              <Spinner className="size-4" /> Leyendo los premios…
+              <Spinner className="size-4" /> {PRIZES_LOADING_TEXT}
             </p>
           )}
         </div>
       ) : phase.kind === 'working' ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center" role="status">
           <Spinner className="size-6" />
-          <p className="text-sm text-muted">Haciendo el {FORMAT_NAME[phase.format]}…</p>
+          <p className="text-sm text-muted">{workingText(phase.format)}</p>
         </div>
       ) : phase.kind === 'ready' ? (
         <div className="flex flex-col items-center gap-2 rounded-3xl bg-surface-2 px-4 py-7 text-center">
           {phase.format === 'pdf' ? <FileText className="size-9 text-accent" /> : <FileSpreadsheet className="size-9 text-accent" />}
           <p className="text-sm font-medium break-all">{phase.fileName}</p>
-          <p className="text-xs text-muted">
-            {phase.canShare ? 'Toca «Compartir» y elige WhatsApp (o donde quieras).' : 'Se descargó: búscalo en tus descargas.'}
-          </p>
+          <p className="text-xs text-muted">{readyText(phase.canShare)}</p>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2 rounded-3xl bg-surface-2 px-4 py-8 text-center">
           <AlertTriangle className="size-6 text-warn" />
-          <p className="text-sm">No se pudo hacer el {FORMAT_NAME[phase.format]}. Prueba otra vez.</p>
+          <p className="text-sm">{reportErrorText(phase.format)}</p>
         </div>
       )}
     </Sheet>

@@ -31,7 +31,6 @@ import { InvitePanel } from '@/components/invite/InvitePanel';
 import { confirmAsync, toast } from '@/components/feedback';
 import { saveErrorMessage } from '@mm/lib/errorText';
 import { Button, ChoiceRow, ErrorNote, Field, Input, Segmented, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
 const FREQUENCIES: { key: Frequency; label: string }[] = [
@@ -43,7 +42,7 @@ const FREQUENCIES: { key: Frequency; label: string }[] = [
 /**
  * Crear una liga o un torneo sin liga (el asistente de la web, src/components/create/CreateWizard.tsx, con su misma
  * lógica: create/logic.ts): Nombre · Día y lugar · Temporada · Invitar (el torneo, sin temporada). Al crear queda en
- * Invitar con el QR y el código. El logo y los esports, por ahora en la web.
+ * Invitar con el QR y el código. Los esports van a su asistente (`/esports?crear=`). El logo, por ahora en la web.
  */
 export default function CreateScreen() {
   const params = useLocalSearchParams<{ kind?: string; sport?: string }>();
@@ -165,7 +164,7 @@ export default function CreateScreen() {
                     key={id}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
-                    onPress={() => (id === 'esports' ? void openOnWeb(torneo ? '/esports?crear=torneo' : '/esports?crear=liga') : setPicked(id))}
+                    onPress={() => (id === 'esports' ? router.push(torneo ? '/esports?crear=torneo' : '/esports?crear=liga') : setPicked(id))}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, borderRadius: 22, paddingHorizontal: 14, borderWidth: 1.5, borderColor: on ? c.accent : c.line, backgroundColor: on ? c.accentSoft : c.surface }}
                   >
                     {Icon && <Icon size={18} color={on ? c.accent : (m?.color ?? c.fg)} />}

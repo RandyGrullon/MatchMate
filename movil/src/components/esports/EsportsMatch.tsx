@@ -1,47 +1,80 @@
 /**
- * Una serie de esports (match/MatchSheet.tsx + GameRow.tsx de la web, Lite, con su misma lógica: match/game.ts y
- * logic.ts): la fase y la hora, los dos lados con su siembra y la serie («Al mejor de 3», «2-1» y el detalle mapa por
- * mapa), confirmar o reclamar (el capitán rival) y **anotar** mapa por mapa o juego por juego con la regla del juego (el
- * capitán de un lado, el admin o un anotador, mientras la serie siga abierta): el error del motor en vivo, hasta 3
- * capturas y «Enviar resultado» (o «Guardar resultado» si es admin) con el resumen («Gana Tigres 2-1»). Corregir, W.O.,
- * cambiar la hora, anular, decidir un reclamo y transmitir en vivo, en la web.
+ * Una serie de esports (match/MatchSheet.tsx + GameRow.tsx de la web, con su misma lógica: match/game.ts, logic.ts y
+ * admin/logic.ts): la fase y la hora, «Ver en vivo» si se transmite, los dos lados con su siembra y la serie («Al mejor
+ * de 3», «2-1» y el detalle mapa por mapa), confirmar o reclamar (el capitán rival) y **anotar** mapa por mapa o juego
+ * por juego con la regla del juego (el capitán de un lado, el admin o un anotador, mientras la serie siga abierta): el
+ * error del motor en vivo, hasta 3 capturas y «Enviar resultado» (o «Guardar resultado» si es admin) con el resumen
+ * («Gana Tigres 2-1»). Quien organiza: en «•••», corregir, W.O., cambiar la hora y anular, y decidir un reclamo («Dejar
+ * el propuesto» o «Corregir»). Los admins y anotadores (con la liga en vivo activada): «Transmitir en vivo».
+ * En el teléfono no hay Pro: lo del organizador sale para los admins de la liga.
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router, type Href } from 'expo-router';
 import { Image } from 'expo-image';
-import { Camera, ImagePlus, Plus, Trash2, Trophy, X } from 'lucide-react-native';
+import { CalendarClock, Camera, Gavel, ImagePlus, MoreHorizontal, Pencil, Plus, Radio, Trash2, Trophy, Undo2, UserX, X, XCircle } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { addMatchProofImage, esportsErrorText, useEntries, type EsportsEntry } from '@mm/lib/data/esports';
-import { finishMatch, hasResult, useMatch, type Match } from '@mm/lib/data/matches';
+import { adminCorrectResult, finishMatch, hasResult, rescheduleMatch, resolveDispute, setWalkover, useMatch, voidMatch, type Match } from '@mm/lib/data/matches';
+import { streamFor, useLeagueStreams } from '@mm/lib/data/streams';
 import { useLeagueCtx } from '@mm/lib/league';
 import { usePhoto } from '@mm/lib/photos';
 import { useNow } from '@mm/lib/useNow';
 import { sideName, statusInfo, whenText } from '@mm/components/match/format';
-import { GAMES, buildSeriesScore, parseSeriesScore, seriesWinner, validateGame, validateSeries, type GameRecord, type SeriesRules } from '@mm/sports/esports';
+import { canStartStream, liveHref } from '@mm/components/live/logic';
+import { GAMES, buildSeriesScore, parseSeriesScore, seriesWinner, validateGame, validateSeries, walkoverScore, type GameRecord, type SeriesRules } from '@mm/sports/esports';
 import { canAddGame, canScoreSeries, entryBySideTeam, resultSummary, rulesFromMatch, sideOfTeams } from '@mm/pages/sports/esports/logic';
-import { cleanGame, emptyGame, finishToast, fightChoices, gameWord, isCloseGame, penaltyState, scoringHint, seriesLines, stockChoices, swapFor, tidyGame } from '@mm/pages/sports/esports/match/game';
+import { CORRECTED_NOTE, KEEP_PROPOSED_NOTE, VOID_ASK, seriesAdminMenu, walkoverOptions, type SeriesMenuKey } from '@mm/pages/sports/esports/admin/logic';
+import {
+  cleanGame,
+  editorLabel,
+  editorTitle,
+  emptyGame,
+  finishToast,
+  fightChoices,
+  gameWord,
+  isCloseGame,
+  penaltyState,
+  scoringHint,
+  seriesLines,
+  stockChoices,
+  swapFor,
+  tidyGame,
+  type EditMode,
+} from '@mm/pages/sports/esports/match/game';
+import { localParts, zonedIso } from '@mm/pages/sports/racket/logic/time';
 import { useMyTeams } from '@mm/pages/sports/esports/tournamentData';
 import { pickPhoto, type PhotoSource } from '@/lib/pickImage';
+import { StartStreamSheet } from '../live/StartStreamSheet';
+import { DateStepper } from '../DateStepper';
 import { ConfirmResult } from '../match/ResultParts';
 import { MatchStatus } from '../match/MatchCard';
-import { toast } from '../feedback';
+import { confirmAsync, toast } from '../feedback';
 import { ProofStrip } from './Br';
 import { Initials, TeamLogo } from './bits';
-import { ChoiceChips, ScoreStepper, SideStepRow, ToggleRow, WinnerPick } from './inputs';
+import { Legend, TimeStepper } from './fields';
+import { ChoiceChips, MenuRow, ScoreStepper, SideStepRow, ToggleRow, WinnerPick } from './inputs';
 import { Button, Card, ChoiceRow, Empty, LoadError, Sheet, Txt } from '../ui';
 import { LogoSpinner } from '../Logo';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
+type SheetKey = null | 'menu' | 'wo' | 'hora' | 'live';
+
 export function EsportsMatch({ matchId }: { matchId: string }) {
   const c = useColors();
-  const { lid, isAdmin, member, league } = useLeagueCtx();
+  const ctx = useLeagueCtx();
+  const { lid, isAdmin, member, league } = ctx;
   const q = useMatch(lid, matchId);
   const m = q.data;
   const entries = useEntries(m?.eventId ?? undefined);
   const myTeams = useMyTeams(entries.data);
   const now = useNow().getTime();
   const entryOf = useMemo(() => entryBySideTeam(entries.data), [entries.data]);
+  const streams = useLeagueStreams(lid).data ?? [];
+  const [edit, setEdit] = useState<EditMode | null>(null);
+  const [sheet, setSheet] = useState<SheetKey>(null);
+  const [busy, setBusy] = useState<null | 'dejar' | 'anular'>(null);
 
   if (q.error) return <LoadError error={q.error} />;
   if (q.loading && !m) {
@@ -55,6 +88,8 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
   const rules = rulesFromMatch(m.rules, m.format);
   if (!rules) return <Empty title="No se pudo leer la serie" text="Actualiza la app e intenta de nuevo." />;
 
+  // En el teléfono no hay Pro: lo del organizador (corregir, W.O., la hora, anular, el reclamo) es de los admins.
+  const organizer = isAdmin;
   const mySide = sideOfTeams(m, myTeams.act);
   const known = m.sides.every((s) => !!s.teamId);
   const canScore = canScoreSeries(m, { isAdmin, scorer: !!member?.scorer, mySide });
@@ -62,6 +97,9 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
   const heading = m.stage || 'Serie';
   const when = whenText(m.scheduledAt, league.tz, true);
   const status = statusInfo(m, now);
+  const mode: EditMode | null = edit ?? (canScore ? 'finish' : null);
+  const stream = streamFor(streams, { matchId: m.id });
+  const liveTitle = `${names[0]} vs. ${names[1]}`;
   const entryFor = (n: 1 | 2) => {
     const team = m.sides[n - 1].teamId;
     const id = team ? entryOf.get(team) : undefined;
@@ -69,25 +107,104 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
   };
   const proof = parseSeriesScore(m.score)?.proof ?? [];
 
+  async function keepProposed() {
+    setBusy('dejar');
+    try {
+      await resolveDispute(lid, m!.id, { note: KEEP_PROPOSED_NOTE });
+      toast('Reclamo resuelto: queda el propuesto');
+    } catch (e) {
+      toast(esportsErrorText(e, rules!.game), 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function doVoid() {
+    setSheet(null);
+    if (!(await confirmAsync(VOID_ASK))) return;
+    setBusy('anular');
+    try {
+      await voidMatch(lid, m!.id);
+      toast('Serie anulada');
+    } catch (e) {
+      toast(esportsErrorText(e, rules!.game), 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+  const pick: Record<SeriesMenuKey, () => void> = {
+    corregir: () => {
+      setSheet(null);
+      setEdit('correct');
+    },
+    wo: () => setSheet('wo'),
+    hora: () => setSheet('hora'),
+    anular: () => void doVoid(),
+  };
+  const icons: Record<SeriesMenuKey, typeof Pencil> = { corregir: Pencil, wo: UserX, hora: CalendarClock, anular: XCircle };
+  const adminItems = organizer ? seriesAdminMenu(m, { known }) : [];
+  const canLive = canStartStream(ctx) && !stream;
+  const hasMenu = canLive || adminItems.length > 0;
+
   return (
     <View style={{ gap: 18 }}>
       <View style={{ gap: 6 }}>
-        <Txt variant="title">{heading}</Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Txt variant="title" style={{ flex: 1 }}>
+            {heading}
+          </Txt>
+          {hasMenu && (
+            <Pressable accessibilityRole="button" accessibilityLabel="Más opciones" hitSlop={6} onPress={() => setSheet('menu')} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <MoreHorizontal size={22} color={c.fg} />
+            </Pressable>
+          )}
+        </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           <MatchStatus label={status.label} tone={status.tone} live={status.live} />
           <Txt variant="meta" tone="muted">
             {`· ${[`Al mejor de ${rules.bestOf}`, when].filter(Boolean).join(' · ')}`}
           </Txt>
         </View>
+        {/* Si la serie se está transmitiendo: «Ver en vivo». */}
+        {stream && (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Ver en vivo"
+            onPress={() => router.push(liveHref(lid, stream.id) as Href)}
+            style={({ pressed }) => ({ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, borderRadius: 18, paddingHorizontal: 14, marginTop: 6, backgroundColor: c.danger, transform: [{ scale: pressed ? 0.97 : 1 }] })}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.onDanger }} />
+            <Txt style={{ fontSize: 14, fontFamily: font.bold, color: c.onDanger }}>Ver en vivo</Txt>
+          </Pressable>
+        )}
       </View>
 
       <SeriesBoard match={m} rules={rules} names={names} mySide={mySide} entryFor={entryFor} />
 
       <ConfirmResult lid={lid} match={m} mySide={mySide} isAdmin={isAdmin} now={now} />
 
-      {canScore && <SeriesEditor key={`${m.id}:finish`} match={m} rules={rules} names={names} admin={isAdmin} />}
+      {organizer && m.status === 'disputed' && edit !== 'resolve' && (
+        <Card style={{ paddingTop: 16, paddingBottom: 18, gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Gavel size={16} color={c.danger} />
+            <Txt tone="danger" style={{ fontSize: 14, fontFamily: font.bold }}>
+              En disputa
+            </Txt>
+          </View>
+          <Txt>{m.disputeNote ? `«${m.disputeNote}»` : 'El rival dice que el resultado no es así.'}</Txt>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+            <Button size="lg" style={{ flex: 1 }} icon={<Undo2 size={16} color={c.fg} />} loading={busy === 'dejar'} onPress={keepProposed}>
+              Dejar el propuesto
+            </Button>
+            <Button variant="soft" size="lg" style={{ flex: 1 }} onPress={() => setEdit('resolve')}>
+              Corregir
+            </Button>
+          </View>
+        </Card>
+      )}
 
-      {!canScore && !hasResult(m) && !known && m.status !== 'void' && (
+      {mode && <SeriesEditor key={`${m.id}:${mode}`} match={m} rules={rules} names={names} mode={mode} admin={isAdmin} onCancel={edit ? () => setEdit(null) : undefined} onDone={() => setEdit(null)} />}
+
+      {!mode && !hasResult(m) && !known && m.status !== 'void' && (
         <View style={{ borderRadius: 16, backgroundColor: c.surface2, paddingHorizontal: 16, paddingVertical: 14 }}>
           <Txt variant="meta" tone="muted">
             Esta serie se juega cuando se sepan los dos lados.
@@ -96,7 +213,101 @@ export function EsportsMatch({ matchId }: { matchId: string }) {
       )}
 
       {proof.length > 0 && <ProofStrip ids={proof} />}
+
+      <Sheet open={sheet === 'menu'} onClose={() => setSheet(null)} title={heading}>
+        {canLive && <MenuRow icon={<Radio size={20} color={c.fg2} />} label="Transmitir en vivo" hint="Pon el link de YouTube, Twitch, Facebook…" onPress={() => setSheet('live')} />}
+        {adminItems.map((it) => {
+          const I = icons[it.key];
+          return <MenuRow key={it.key} icon={<I size={20} color={it.danger ? c.danger : c.fg2} />} label={it.label} hint={it.hint} danger={it.danger} disabled={it.key === 'anular' && busy === 'anular'} onPress={pick[it.key]} />;
+        })}
+      </Sheet>
+      <StartStreamSheet lid={lid} matchId={m.id} defaultTitle={liveTitle} open={sheet === 'live'} onClose={() => setSheet(null)} />
+      <WalkoverSheet open={sheet === 'wo'} onClose={() => setSheet(null)} match={m} rules={rules} names={names} />
+      <RescheduleSheet key={`hora:${sheet === 'hora'}`} open={sheet === 'hora'} onClose={() => setSheet(null)} match={m} tz={league.tz} game={rules.game} now={now} />
     </View>
+  );
+}
+
+/** W.O.: quién no vino (o ninguno). El marcador lo arma el motor (`walkoverScore`). */
+function WalkoverSheet({ open, onClose, match: m, rules, names }: { open: boolean; onClose: () => void; match: Match; rules: SeriesRules; names: readonly [string, string] }) {
+  const { lid } = useLeagueCtx();
+  const [absent, setAbsent] = useState<0 | 1 | 2 | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    if (absent === null) return;
+    setBusy(true);
+    try {
+      await setWalkover(lid, m.id, absent, { score: walkoverScore(rules, absent) });
+      toast('W.O. guardado');
+      onClose();
+    } catch (e) {
+      toast(esportsErrorText(e, rules.game), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="W.O."
+      subtitle="Gana el que se presentó"
+      footer={
+        <Button variant="primary" size="lg" full disabled={absent === null} loading={busy} onPress={save}>
+          Guardar W.O.
+        </Button>
+      }
+    >
+      <View accessibilityRole="radiogroup" accessibilityLabel="Quién no vino" style={{ gap: 8 }}>
+        {walkoverOptions(names).map((o) => (
+          <ChoiceRow key={o.key} title={o.label} selected={absent === o.key} onPress={() => setAbsent(o.key)} />
+        ))}
+      </View>
+    </Sheet>
+  );
+}
+
+/** Cambiar la hora de la serie (en la zona de la liga). */
+function RescheduleSheet({ open, onClose, match: m, tz, game, now }: { open: boolean; onClose: () => void; match: Match; tz?: string; game: SeriesRules['game']; now: number }) {
+  const { lid } = useLeagueCtx();
+  const [start] = useState(() => localParts(m.scheduledAt, tz) ?? localParts(new Date(now).toISOString(), tz)!);
+  const [date, setDate] = useState(start.date);
+  const [time, setTime] = useState(start.time);
+  const [busy, setBusy] = useState(false);
+  const iso = zonedIso(date, time, tz);
+  async function save() {
+    if (!iso) return;
+    setBusy(true);
+    try {
+      await rescheduleMatch(lid, m.id, iso);
+      toast('Hora cambiada');
+      onClose();
+    } catch (e) {
+      toast(esportsErrorText(e, game), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Cambiar hora"
+      footer={
+        <Button variant="primary" size="lg" full disabled={!iso} loading={busy} onPress={save}>
+          Guardar
+        </Button>
+      }
+    >
+      <View style={{ gap: 8 }}>
+        <Legend>Día</Legend>
+        <DateStepper value={date} onChange={setDate} />
+      </View>
+      <View style={{ gap: 8 }}>
+        <Legend>Hora</Legend>
+        <TimeStepper value={time} onChange={setTime} label="Hora" />
+      </View>
+    </Sheet>
   );
 }
 
@@ -166,14 +377,35 @@ function SeriesBoard({
   );
 }
 
-/** Anotar la serie (el capitán, el admin o el anotador): un bloque por mapa o juego, las capturas y el botón con el resumen. */
-function SeriesEditor({ match: m, rules, names, admin }: { match: Match; rules: SeriesRules; names: [string, string]; admin: boolean }) {
+/**
+ * Anotar la serie: un bloque por mapa o juego (se agregan de a uno hasta que alguien gana), las capturas y el botón con
+ * el resumen. `finish`: lo anota el capitán (falta que confirme el rival) o el admin/anotador (queda confirmado);
+ * `correct`: el admin corrige; `resolve`: el admin decide un reclamo con otro marcador.
+ */
+function SeriesEditor({
+  match: m,
+  rules,
+  names,
+  mode,
+  admin,
+  onCancel,
+  onDone,
+}: {
+  match: Match;
+  rules: SeriesRules;
+  names: [string, string];
+  mode: EditMode;
+  admin: boolean;
+  onCancel?: () => void;
+  onDone: () => void;
+}) {
   const c = useColors();
   const { lid } = useLeagueCtx();
   const uid = useAuth().user?.uid ?? null;
-  const [games, setGames] = useState<GameRecord[]>(() => [emptyGame(rules)]);
-  const [touched, setTouched] = useState<Set<number>>(() => new Set());
-  const [proof, setProof] = useState<string[]>([]);
+  const [prev] = useState(() => (mode === 'finish' ? null : parseSeriesScore(m.score)));
+  const [games, setGames] = useState<GameRecord[]>(() => (prev?.games.length ? prev.games.map((g) => ({ ...g })) : [emptyGame(rules)]));
+  const [touched, setTouched] = useState<Set<number>>(() => new Set(prev?.games.map((_, i) => i) ?? []));
+  const [proof, setProof] = useState<string[]>(() => [...(prev?.proof ?? [])]);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState<null | 'enviar' | 'foto'>(null);
   const word = gameWord(rules);
@@ -212,10 +444,21 @@ function SeriesEditor({ match: m, rules, names, admin }: { match: Match; rules: 
   async function submit() {
     setTried(true);
     if (validateSeries(rules, clean, { final: true }).length) return;
+    const score = buildSeriesScore(rules, clean, proof);
+    const winner = seriesWinner(rules, clean) ?? null;
     setBusy('enviar');
     try {
-      const said = finishToast(await finishMatch(lid, m.id, { score: buildSeriesScore(rules, clean, proof), winner: seriesWinner(rules, clean) ?? null }));
-      toast(said.text, said.tone);
+      if (mode === 'correct') {
+        await adminCorrectResult(lid, m.id, { score, winner, note: CORRECTED_NOTE });
+        toast('Resultado corregido');
+      } else if (mode === 'resolve') {
+        await resolveDispute(lid, m.id, { score, winner, note: CORRECTED_NOTE });
+        toast('Reclamo resuelto con el marcador nuevo');
+      } else {
+        const said = finishToast(await finishMatch(lid, m.id, { score, winner }));
+        toast(said.text, said.tone);
+      }
+      onDone();
     } catch (e) {
       toast(esportsErrorText(e, rules.game), 'error');
     } finally {
@@ -225,10 +468,20 @@ function SeriesEditor({ match: m, rules, names, admin }: { match: Match; rules: 
 
   return (
     <View style={{ gap: 12 }}>
-      <Txt variant="section" accessibilityRole="header" style={{ marginHorizontal: 4 }}>
-        Anotar resultado
-      </Txt>
-      {!admin && !!uid && (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 4 }}>
+        <Txt variant="section" accessibilityRole="header" style={{ flex: 1 }}>
+          {editorTitle(mode)}
+        </Txt>
+        {onCancel && (
+          <Pressable accessibilityRole="button" onPress={onCancel} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
+            <X size={16} color={c.accent} />
+            <Txt variant="meta" tone="accent" style={{ fontFamily: font.semibold }}>
+              Cancelar
+            </Txt>
+          </Pressable>
+        )}
+      </View>
+      {mode === 'finish' && !admin && !!uid && (
         <Txt tone="muted" style={{ fontSize: 13.5, marginHorizontal: 4, marginTop: -4 }}>
           {scoringHint(rules)}
         </Txt>
@@ -296,7 +549,7 @@ function SeriesEditor({ match: m, rules, names, admin }: { match: Match; rules: 
         {summary.text}
       </Txt>
       <Button variant="primary" size="xl" full loading={busy === 'enviar'} disabled={busy === 'foto'} onPress={submit}>
-        {admin ? 'Guardar resultado' : 'Enviar resultado'}
+        {editorLabel(mode, admin)}
       </Button>
     </View>
   );

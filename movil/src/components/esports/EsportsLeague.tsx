@@ -2,18 +2,20 @@
  * Las pantallas de la liga de esports (src/pages/sports/esports/screens.tsx de la web, Lite): el inicio (un torneo
  * suelto es la página de su torneo; una liga, sus torneos en «Inscripción abierta», «En curso» y «Terminados»), un
  * torneo, «Partidos» (todas las series), «Tabla» (grupos, todos contra todos o battle royale) y «Lo mío» (mis
- * inscripciones y mis series). Las pestañas de la web: Torneo · Partidos · Tabla · Lo mío. «Crear torneo», en la web.
+ * inscripciones y mis series). Las pestañas de la web: Torneo · Partidos · Tabla · Lo mío. Quien organiza la liga (en el
+ * teléfono no hay Pro: sus admins) tiene «Crear torneo» (el asistente con `?liga=`).
  */
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
-import { Crosshair, ListOrdered, Swords, Trophy, Users } from 'lucide-react-native';
+import { Crosshair, ListOrdered, Plus, Swords, Trophy, Users } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeagueTournaments, useMyEsportsEntries, type EsportsTournament } from '@mm/lib/data/esports';
 import { useMatches, type Match } from '@mm/lib/data/matches';
+import { useLeagueRules } from '@mm/lib/data/teamSports';
 import { useLeagueCtx } from '@mm/lib/league';
 import { useNow } from '@mm/lib/useNow';
-import { platformLabel, formatLine, tiebreakText } from '@mm/sports/esports';
+import { isGameId, platformLabel, formatLine, tiebreakText } from '@mm/sports/esports';
 import { groupLetter } from '@mm/sports/formats/groups';
 import { localParts } from '@mm/pages/sports/racket/logic/time';
 import {
@@ -72,11 +74,29 @@ export function EsportsEventBody({ eventId }: { eventId: string }) {
 
 function LeagueTournaments({ list }: { list: readonly EsportsTournament[] }) {
   const c = useColors();
+  const { lid, isAdmin } = useLeagueCtx();
+  const rules = useLeagueRules(lid);
+  // En el teléfono no hay Pro: «Crear torneo» es de los admins de la liga.
+  const organizer = isAdmin;
+  const game = isGameId(rules.data.game) ? rules.data.game : (list[0]?.game ?? null);
   const live = list.filter((t) => t.status !== 'cancelled');
   const open = live.filter((t) => t.status === 'registration');
   const playing = live.filter((t) => t.status === 'live');
   const done = live.filter((t) => t.status === 'finished').reverse();
-  if (!live.length) return <Empty icon={<Trophy size={28} color={c.accent} />} title="Todavía no hay torneos" text="Cuando el organizador cree uno, sale aquí." />;
+  const createButton = (full: boolean) =>
+    organizer && game ? (
+      <Button variant="primary" size="xl" full={full} icon={<Plus size={20} color={c.accentFg} />} onPress={() => router.push({ pathname: '/esports/[game]/nuevo-torneo', params: { game, liga: lid } } as never)}>
+        Crear torneo
+      </Button>
+    ) : null;
+  const create = createButton(true);
+  if (!live.length) {
+    return create ? (
+      <Empty icon={<Trophy size={28} color={c.accent} />} title="Todavía no hay torneos" action={createButton(false)} />
+    ) : (
+      <Empty icon={<Trophy size={28} color={c.accent} />} title="Todavía no hay torneos" text="Cuando el organizador cree uno, sale aquí." />
+    );
+  }
   const section = (title: string, ts: EsportsTournament[]) =>
     ts.length > 0 && (
       <View style={{ gap: 10 }}>
@@ -92,6 +112,7 @@ function LeagueTournaments({ list }: { list: readonly EsportsTournament[] }) {
     );
   return (
     <View style={{ gap: 30 }}>
+      {create}
       {section('Inscripción abierta', open)}
       {section('En curso', playing)}
       {section('Terminados', done)}

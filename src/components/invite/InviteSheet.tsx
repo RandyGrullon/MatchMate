@@ -12,8 +12,14 @@ import { whatsappShareUrl } from '../match/format';
 import { copyText } from '../share/actions';
 import { Button, Empty, Input, LoadError, Sheet, Skeleton, cx } from '../ui';
 import {
+  CREATE_LINK_LABEL,
+  LINK_ERROR_TEXT,
+  LINK_READY_TEXT,
+  NO_LINK_TEXT,
+  SHARE_LINK_HINT,
   canInviteTo,
   handleOf,
+  inviteMaxText,
   inviteLink,
   inviteShareText,
   inviteTitle,
@@ -106,7 +112,7 @@ function InviteSheetOpen({
     // Mientras se envía, lo elegido no cambia (al terminar salen los que quedaron invitados).
     if (sending) return;
     const next = toggleSelected(selected, hit);
-    if (next === selected && !personState(hit)) toast(`Puedes invitar hasta ${INVITE_MAX} personas a la vez.`, 'error');
+    if (next === selected && !personState(hit)) toast(inviteMaxText(INVITE_MAX), 'error');
     setSelected(next);
   }
 
@@ -133,10 +139,10 @@ function InviteSheetOpen({
       const next = await renewInviteCode(league);
       setCode(next);
       onCode?.(next);
-      toast('Link de invitación listo');
+      toast(LINK_READY_TEXT);
     } catch (e) {
       console.warn('[invitar] código', e);
-      toast('No se pudo crear el link. Prueba otra vez.', 'error');
+      toast(LINK_ERROR_TEXT, 'error');
     } finally {
       setCreating(false);
     }
@@ -401,8 +407,8 @@ export function ShareRow({
   onCreate,
   creating = false,
   text: shareText,
-  hint = 'O manda el link por WhatsApp o donde quieras.',
-  createLabel = 'Crear link de invitación',
+  hint = SHARE_LINK_HINT,
+  createLabel = CREATE_LINK_LABEL,
 }: {
   link: InviteLink;
   leagueName: string;
@@ -425,7 +431,7 @@ export function ShareRow({
   if (link.kind === 'none') {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-center text-xs text-muted">Todavía no hay link de invitación. Créalo para mandarlo por WhatsApp o donde quieras.</p>
+        <p className="text-center text-xs text-muted">{NO_LINK_TEXT}</p>
         <Button className="h-11 w-full" icon={<Ticket className="size-4" />} loading={creating} onClick={onCreate}>
           {createLabel}
         </Button>

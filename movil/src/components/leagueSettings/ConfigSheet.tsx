@@ -23,15 +23,15 @@ import {
 import { confirmAsync, toast } from '@/components/feedback';
 import { runAction } from '@/components/swimming/parts';
 import { Button, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
+import { shareLeagueBackup } from '@/platform/reportFile';
 import { useColors } from '@/theme/theme';
 
 const ICONS: Record<ConfigKey, ComponentType<{ size?: number; color?: string }>> = { backup: DatabaseBackup, photos: ImageMinus, delete: Trash2 };
 
 /**
  * La configuración de la liga (LeagueConfigModal de la web): el respaldo (descargar los datos), las fotos viejas (boliche:
- * borrar las de hace más de un año) y borrar la liga o el torneo (dueño o superadmin). El respaldo es un archivo que
- * baja el navegador: en el teléfono se abre la web para bajarlo.
+ * borrar las de hace más de un año) y borrar la liga o el torneo (dueño o superadmin). El respaldo es el mismo JSON de la
+ * web: en el teléfono se comparte (Archivos, correo, Drive…).
  */
 export function ConfigSheet({ onClose }: { onClose: () => void }) {
   const { lid, league, isOwner } = useLeagueCtx();
@@ -41,10 +41,10 @@ export function ConfigSheet({ onClose }: { onClose: () => void }) {
   const rows = configRows({ kind: league.kind, bowling, canDelete: isOwner || isSuper });
 
   async function backup() {
-    if (Platform.OS !== 'web') return void openOnWeb(`/l/${lid}/admin?tab=liga`);
     setBusy('backup');
     try {
-      toast(backupDoneText(await downloadLeagueBackup(league)));
+      // En el teléfono, el mismo archivo con la hoja de compartir; en la vista previa web, se descarga como en la web.
+      toast(backupDoneText(Platform.OS === 'web' ? await downloadLeagueBackup(league) : await shareLeagueBackup(league)));
     } catch (e) {
       console.error(e);
       toast(BACKUP_ERROR_TEXT, 'error');

@@ -54,6 +54,16 @@ const roundCell = (s: RoundScore | null, comp: GolfCompetition): ReportCell => {
   return (comp.basis === 'net' ? s.net : s.gross) ?? null;
 };
 
+/**
+ * Los días del reporte: en un torneo, los de sus rondas (los eventos de la liga que son rondas suyas); una ronda suelta,
+ * el suyo (GolfEvent de la web y de la app).
+ */
+export function golfReportDates(tournamentId: string | null, rounds: readonly { eventId: string }[], events: readonly { id: string; date: string }[], date: string): string[] {
+  if (!tournamentId) return [date];
+  const ids = new Set(rounds.map((r) => r.eventId));
+  return events.filter((e) => ids.has(e.id)).map((e) => e.date);
+}
+
 export function golfReport(input: GolfReportInput): TournamentReport {
   const { lid, league, round, nameOf } = input;
   const tid = round.tournamentId;

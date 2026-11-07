@@ -1,48 +1,17 @@
 import { Link } from 'react-router';
-import type { LeagueCtx } from '../../lib/league';
 import { useLeagueStreams, streamFor, type LiveStream } from '../../lib/data/streams';
 import { PLATFORM_LABEL, type StreamPlatform } from '../../lib/streams';
-import { leagueSport } from '../../sports/registry';
 import { cx } from '../ui';
+import { liveHref } from './logic';
+
+// Lo puro (quién transmite, el título y la línea, el link) vive en logic.ts (lo usa también la app del teléfono).
+export { canStartStream, isStreamOfficial, liveHref, streamLine, streamTitle } from './logic';
 
 /**
  * Piezas de las transmisiones en vivo (docs/equipos-y-en-vivo.md §2) que comparten la franja «EN VIVO» de la liga, la
  * página En vivo (`/l/:lid/vivo`), los partidos y eventos y Hoy: quién puede transmitir, el título de una transmisión,
  * su link en la app, el punto rojo, la marca de cada plataforma y la píldora «Ver en vivo».
  */
-
-/**
- * ¿Puede transmitir en esta liga (la gemela del permiso de start_stream)? Los admins y los anotadores; en el boliche,
- * solo los admins. Que la liga las tenga activadas es aparte (`canStartStream`).
- */
-export function isStreamOfficial(ctx: Pick<LeagueCtx, 'isAdmin' | 'member' | 'league'>): boolean {
-  if (ctx.isAdmin) return true;
-  return ctx.member?.scorer === true && leagueSport(ctx.league) !== 'bowling';
-}
-
-/** Puede empezar una transmisión ahora: es de los que transmiten y la liga tiene activadas las transmisiones. */
-export const canStartStream = (ctx: Pick<LeagueCtx, 'isAdmin' | 'member' | 'league'>): boolean =>
-  ctx.league.liveEnabled === true && isStreamOfficial(ctx);
-
-/** El link de la transmisión dentro de la app (la página En vivo de la liga, con esa transmisión elegida). */
-export const liveHref = (lid: string, streamId?: string | null) => `/l/${lid}/vivo${streamId ? `?s=${encodeURIComponent(streamId)}` : ''}`;
-
-/** Lo que se lee de una transmisión: su título, si no «Tigres vs Leones» (o el evento), si no «Transmisión de la liga». */
-export const streamTitle = (s: Pick<LiveStream, 'title' | 'label'>): string => s.title?.trim() || s.label?.trim() || 'Transmisión de la liga';
-
-/** Para comparar títulos sin que cuenten mayúsculas, puntos ni espacios («Tigres vs. Leones» = «tigres vs leones»). */
-const same = (a: string, b: string) => {
-  const norm = (x: string) => x.toLowerCase().replace(/[.\s]+/g, ' ').trim();
-  return norm(a) === norm(b);
-};
-
-/** La línea de abajo: el partido (si el título es otro) y la plataforma. */
-export function streamLine(s: Pick<LiveStream, 'title' | 'label' | 'platform'>, extra?: string | null): string {
-  const label = s.label?.trim();
-  const title = s.title?.trim();
-  const showLabel = !!label && !!title && !same(label, title);
-  return [extra, showLabel ? label : null, PLATFORM_LABEL[s.platform]].filter(Boolean).join(' · ');
-}
 
 /** El punto rojo que late de «EN VIVO». */
 export function LiveDot({ className }: { className?: string }) {

@@ -7,6 +7,7 @@ import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { Button, Card, Field, Input, Select, Sheet, Skeleton, cx } from '../../../../components/ui';
 import { competitors, nextBrSlot, placementError } from '../logic';
+import { BR_CLASH_TEXT, BR_DELETE_ASK, brClash, brInitialRows, brSheetTitle, brSlotRanges } from './logic';
 import { ScoreStepper } from '../parts';
 
 /**
@@ -30,7 +31,7 @@ export function BrGameSheet({
   editing?: BrGame | null;
 }) {
   return (
-    <Sheet open={open} onClose={onClose} title={editing ? `Partida ${editing.gameNo} · Jornada ${editing.round}` : 'Anotar partida'} subtitle={t.name}>
+    <Sheet open={open} onClose={onClose} title={brSheetTitle(editing)} subtitle={t.name}>
       {open && <Body key={editing?.id ?? 'nueva'} t={t} entries={entries} games={games} editing={editing ?? null} onDone={onClose} />}
     </Sheet>
   );
@@ -48,21 +49,13 @@ function Body({ t, entries, games, editing, onDone }: { t: EsportsTournament; en
   const [gameNo, setGameNo] = useState(slot.gameNo);
   const [map, setMap] = useState(editing?.map ?? '');
   const [proof, setProof] = useState<string[]>(() => [...(editing?.proof ?? [])]);
-  const [rows, setRows] = useState<Record<string, { placement: number | null; kills: number }>>(() =>
-    Object.fromEntries(
-      list.map((e) => {
-        const r = editing?.results.find((x) => x.entryId === e.id);
-        return [e.id, { placement: r?.placement ?? null, kills: r?.kills ?? 0 }];
-      }),
-    ),
-  );
+  const [rows, setRows] = useState<Record<string, { placement: number | null; kills: number }>>(() => brInitialRows(list, editing));
   const [tried, setTried] = useState(false);
   const results = list.map((e) => ({ entryId: e.id, placement: rows[e.id]?.placement ?? null, kills: rows[e.id]?.kills ?? 0 }));
   const error = placementError(results, total);
   const taken = new Map(results.filter((r) => r.placement != null).map((r) => [r.placement!, r.entryId]));
-  const clash = !editing && games.some((g) => g.round === round && g.gameNo === gameNo);
-  const rounds = Math.max(t.settings.br?.rounds ?? 1, round);
-  const perRound = Math.max(t.settings.br?.gamesPerRound ?? 4, gameNo);
+  const clash = brClash(games, round, gameNo, !!editing);
+  const { rounds, perRound } = brSlotRanges(t, round, gameNo);
   const set = (id: string, patch: Partial<{ placement: number | null; kills: number }>) => setRows((r) => ({ ...r, [id]: { ...r[id], ...patch } }));
 
   const save = (status?: 'void') =>
@@ -79,7 +72,7 @@ function Body({ t, entries, games, editing, onDone }: { t: EsportsTournament; en
     });
   const remove = async () => {
     if (!editing) return;
-    if (!(await confirm({ title: '¿Borrar esta partida?', message: 'Se borran sus puestos y kills. No se puede deshacer.', confirmText: 'Borrar', danger: true }))) return;
+    if (!(await confirm(BR_DELETE_ASK))) return;
     await busy.run('borrar', async () => {
       try {
         await deleteBrGame(t.eventId, editing.id);
@@ -122,7 +115,7 @@ function Body({ t, entries, games, editing, onDone }: { t: EsportsTournament; en
           </Select>
         </Field>
       </div>
-      {clash && <p className="-mt-2 text-[13.5px] font-medium text-danger">Esa partida ya está anotada: ábrela en «Partidas» para editarla.</p>}
+      {clash && <p className="-mt-2 text-[13.5px] font-medium text-danger">{BR_CLASH_TEXT}</p>}
       <Field label="Mapa (opcional)">
         <Input value={map} maxLength={24} onChange={(e) => setMap(e.target.value)} placeholder="Bermuda, Erangel…" className="h-11" />
       </Field>

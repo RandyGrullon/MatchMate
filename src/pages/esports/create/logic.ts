@@ -281,6 +281,98 @@ export function tournamentInput(f: TournamentForm, tz: string): TournamentInput 
   };
 }
 
+// ---------- Lo que muestran los pasos (la web: steps.tsx; el teléfono: movil/src/components/esports) ----------
+
+/** Lo que se edita del formato (en el asistente y en «Editar torneo» antes de empezar). */
+export interface FormatValue {
+  game: GameId;
+  mode: Mode;
+  format: Format;
+  entryType: EntryType;
+  maxEntries: number;
+  settings: TournamentSettings;
+}
+
+/** Con una sola entrada posible, lo que va después de su nombre («Libre. En 1 contra 1 cada quien se inscribe solo.»). */
+export function singleEntryText(mode: Mode, entry: EntryType): string {
+  if (mode === '1v1') return '. En 1 contra 1 cada quien se inscribe solo.';
+  if (isIndividualMode(mode)) return '. Cada quien se inscribe por su cuenta.';
+  return `: ${ENTRY_BLURB[entry]}`;
+}
+
+/** La línea debajo del check-in elegido. */
+export const checkinHint = (minutes: number) => `Los inscritos confirman que van desde ${minutes} min antes del inicio.`;
+
+/** La línea debajo de «¿Quién lo ve?». */
+export const visibilityHint = (v: TournamentForm['visibility']) => (v === 'public' ? 'Sale en la página del juego y cualquiera se puede inscribir.' : 'Solo entra quien tenga el código o el link.');
+
+/** Las fichas de «Mejor de» (Bo1, Bo3…). */
+export const bestOfItems = (options: readonly BestOf[]) => options.map((b) => ({ key: String(b), label: b === 1 ? 'Bo1' : `Bo${b}` }));
+
+export const PLAYOFFS_OPTIONS: readonly { key: 'single' | 'double'; label: string }[] = [
+  { key: 'single', label: 'Eliminación simple' },
+  { key: 'double', label: 'Doble' },
+];
+
+export const SEEDING_OPTIONS: readonly { key: TournamentSettings['seeding']; label: string }[] = [
+  { key: 'random', label: 'Al azar' },
+  { key: 'rank', label: 'Por rango' },
+  { key: 'manual', label: 'A mano' },
+];
+
+/**
+ * Qué ajustes del formato salen (§12.7 paso 3): los «Mejor de» por fase (con su texto), grupos y playoffs, 3.er lugar,
+ * reinicio de la gran final, ida y vuelta, empates (EA SPORTS FC en grupos o liga), rondas para ganar (SF6/TEKKEN),
+ * vidas (Smash), lo de battle royale y la siembra.
+ */
+export function formatFieldsShown(v: Pick<FormatValue, 'game' | 'format' | 'settings'>) {
+  const meta = GAMES[v.game];
+  const s = v.settings;
+  const bo = meta.bestOf.length > 1 && v.format !== 'br';
+  const inGroups = v.format === 'groups_playoffs' || v.format === 'round_robin';
+  return {
+    /** «Mejor de (cada serie)» o «Mejor de en grupos». */
+    bestOfGroups: bo && inGroups ? (v.format === 'round_robin' ? 'Mejor de (cada serie)' : 'Mejor de en grupos') : null,
+    /** «Mejor de en playoffs» o «Mejor de (rondas)». */
+    bestOfPlayoffs: bo && v.format !== 'round_robin' ? (v.format === 'groups_playoffs' ? 'Mejor de en playoffs' : 'Mejor de (rondas)') : null,
+    bestOfFinal: bo && v.format !== 'round_robin',
+    groups: v.format === 'groups_playoffs',
+    thirdPlace: v.format === 'single_elim' || (v.format === 'groups_playoffs' && s.playoffs === 'single'),
+    bracketReset: v.format === 'double_elim' || (v.format === 'groups_playoffs' && s.playoffs === 'double'),
+    doubleRoundRobin: inGroups,
+    draws: v.game === 'ea_fc' && inGroups,
+    roundsToWin: !!meta.roundsToWin && meta.roundsToWin.options.length > 1,
+    stocks: !!meta.stocks,
+    br: v.format === 'br',
+    seeding: v.format !== 'br',
+  };
+}
+
+/** Lo de battle royale de los ajustes (o lo del juego, si todavía no hay). */
+export function brSettingsOf(game: GameId, s: Pick<TournamentSettings, 'br'>): NonNullable<TournamentSettings['br']> {
+  const meta = GAMES[game];
+  return s.br ?? { placementPoints: [...(meta.br?.placementPoints ?? [])], killPoints: meta.br?.killPoints ?? 1, rounds: 1, gamesPerRound: 4 };
+}
+
+/** «Volver a los de {juego}»: la tabla de puntos del juego. */
+export function brGamePoints(game: GameId): Pick<NonNullable<TournamentSettings['br']>, 'placementPoints' | 'killPoints'> {
+  const meta = GAMES[game];
+  return { placementPoints: [...(meta.br?.placementPoints ?? [])], killPoints: meta.br?.killPoints ?? 1 };
+}
+
+/** A dónde va el torneo creado: un torneo suelto es su liga; dentro de una liga de esports, su página. */
+export const createdPath = (c: { leagueId: string; eventId: string }, inLeague: boolean) => (inLeague ? `/l/${c.leagueId}/e/${c.eventId}` : `/l/${c.leagueId}`);
+
+/** El botón de abajo del asistente. */
+export const wizardButton = (step: StepKey) => (step === 'invitar' ? 'Ir al torneo' : step === CREATE_STEP ? 'Crear torneo' : 'Siguiente');
+
+/** Lo del cupo y del formato se ve al momento; el nombre y la fecha, al intentar seguir (empiezan vacíos). */
+export const showStepErrors = (step: StepKey, errors: readonly string[], tried: ReadonlySet<StepKey>) =>
+  errors.length > 0 && (step === 'inscripcion' || step === 'formato' || tried.has(step));
+
+/** «¿Salir sin crear el torneo?» (si ya llenó algo). */
+export const LEAVE_ASK = { title: '¿Salir sin crear el torneo?', message: 'Lo que llenaste se pierde.', confirmText: 'Salir' } as const;
+
 /** El resumen del paso de formato: «Doble eliminación · Al mejor de 3 y 5 en la final · Solo equipos · PlayStation». */
 export function summary(f: Pick<TournamentForm, 'game' | 'format' | 'entryType' | 'settings'>): string {
   const platform = tournamentPlatform(f.game, f.settings.platform);

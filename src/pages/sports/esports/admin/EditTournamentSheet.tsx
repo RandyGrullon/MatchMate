@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { esportsErrorText, updateTournament, type EsportsTournament } from '../../../../lib/data/esports';
-import { maxEntries, minEntries, validateSettings } from '../../../../sports/esports';
 import { useBusy } from '../../../../components/busy';
 import { useFeedback } from '../../../../components/feedback';
 import { useIsPro } from '../../../../components/mode';
 import { CreateStyles } from '../../../../components/create/styles';
 import { Button, Field, Input, Sheet, Textarea } from '../../../../components/ui';
-import { CHECKIN_OPTIONS, idRequirement, rankRequirement, withRequirements } from '../../../esports/create/logic';
-import { FormatFields, RequirementToggles, type FormatValue } from '../../../esports/create/steps';
-import { localParts, zonedIso } from '../../racket/logic/time';
+import { CHECKIN_OPTIONS, idRequirement, rankRequirement, type FormatValue } from '../../../esports/create/logic';
+import { FormatFields, RequirementToggles } from '../../../esports/create/steps';
+import { FORMAT_LOCKED_TEXT, editInitial, editRange, editTournamentErrors, editTournamentPatch } from './logic';
 import { ChoiceChips, ScoreStepper } from '../parts';
 
 /**
@@ -28,51 +27,25 @@ function Body({ t, tz, approved, formatEditable, onDone }: { t: EsportsTournamen
   const { toast } = useFeedback();
   const pro = useIsPro();
   const busy = useBusy<'guardar'>();
-  const start = localParts(t.startsAt, tz) ?? { date: '', time: '' };
-  const close = localParts(t.registrationClosesAt, tz) ?? start;
-  const [name, setName] = useState(t.name);
-  const [date, setDate] = useState(start.date);
-  const [time, setTime] = useState(start.time);
-  const [closeDate, setCloseDate] = useState(close.date);
-  const [closeTime, setCloseTime] = useState(close.time);
-  const [checkin, setCheckin] = useState(t.checkinMinutes ?? 0);
-  const [prize, setPrize] = useState(t.prizeText);
-  const [announcement, setAnnouncement] = useState(t.announcement);
-  const [format, setFormat] = useState<FormatValue>({
-    game: t.game,
-    mode: t.mode,
-    format: t.format,
-    entryType: t.entryType,
-    maxEntries: t.maxEntries,
-    settings: withRequirements(t.game, t.settings),
-  });
+  const [initial] = useState(() => editInitial(t, tz));
+  const [name, setName] = useState(initial.name);
+  const [date, setDate] = useState(initial.date);
+  const [time, setTime] = useState(initial.time);
+  const [closeDate, setCloseDate] = useState(initial.closeDate);
+  const [closeTime, setCloseTime] = useState(initial.closeTime);
+  const [checkin, setCheckin] = useState(initial.checkin);
+  const [prize, setPrize] = useState(initial.prize);
+  const [announcement, setAnnouncement] = useState(initial.announcement);
+  const [format, setFormat] = useState<FormatValue>(initial.format);
   const requirements = !!idRequirement(t.game) || !!rankRequirement(t.game);
-  const lo = Math.max(minEntries(format.format), approved);
-  const hi = maxEntries(t.game, t.mode, format.format);
-  const startsAt = zonedIso(date, time, tz);
-  const closesAt = zonedIso(closeDate, closeTime, tz);
-  const errors: string[] = [];
-  if (name.trim().length < 2) errors.push('Ponle un nombre al torneo.');
-  if (!startsAt) errors.push('Pon el día y la hora del inicio.');
-  if (startsAt && closesAt && Date.parse(closesAt) > Date.parse(startsAt)) errors.push('La inscripción tiene que cerrar antes del inicio.');
-  if (format.maxEntries < lo || format.maxEntries > hi) errors.push(`El cupo va de ${lo} a ${hi}.`);
-  if (formatEditable) errors.push(...validateSettings(t.game, t.mode, format.format, format.entryType, format.maxEntries, format.settings));
+  const { lo, hi } = editRange(t, format.format, approved);
+  const values = { name, date, time, closeDate, closeTime, checkin, prize, announcement, format };
+  const errors = editTournamentErrors(t, values, { tz, approved, formatEditable });
 
   const save = () =>
     busy.run('guardar', async () => {
       if (errors.length) return;
-      const patch: Parameters<typeof updateTournament>[1] = {};
-      if (name.trim() !== t.name) patch.name = name.trim();
-      if (startsAt && startsAt !== new Date(t.startsAt).toISOString()) patch.startsAt = startsAt;
-      if (closesAt && closesAt !== new Date(t.registrationClosesAt).toISOString()) patch.registrationClosesAt = closesAt;
-      if ((t.checkinMinutes ?? 0) !== checkin) patch.checkinMinutes = checkin > 0 ? checkin : null;
-      if (format.maxEntries !== t.maxEntries) patch.maxEntries = format.maxEntries;
-      if (prize.trim() !== t.prizeText) patch.prizeText = prize;
-      if (announcement.trim() !== t.announcement) patch.announcement = announcement;
-      if (formatEditable) {
-        if (format.format !== t.format) patch.format = format.format;
-        if (JSON.stringify(format.settings) !== JSON.stringify(t.settings) || patch.format) patch.settings = format.settings;
-      }
+      const patch = editTournamentPatch(t, values, { tz, formatEditable });
       if (!Object.keys(patch).length) return onDone();
       try {
         await updateTournament(t.eventId, patch);
@@ -127,7 +100,7 @@ function Body({ t, tz, approved, formatEditable, onDone }: { t: EsportsTournamen
           )}
         </>
       ) : (
-        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">El formato ya no se cambia: el torneo empezó.</p>
+        <p className="rounded-2xl bg-surface-2 px-4 py-3.5 text-sm text-muted">{FORMAT_LOCKED_TEXT}</p>
       )}
       {errors.length > 0 && (
         <ul role="alert" className="flex flex-col gap-1 text-[13.5px] font-medium text-danger">

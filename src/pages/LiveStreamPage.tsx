@@ -8,6 +8,7 @@ import { relativeTime } from '../lib/notifications';
 import { useBusy } from '../components/busy';
 import { useFeedback } from '../components/feedback';
 import { LiveTag, PlatformMark, canStartStream, liveHref, streamLine, streamTitle } from '../components/live/LiveParts';
+import { activateLiveText, endStreamConfirm, noLiveText, notEmbeddableText, pickStream, streamShareText } from '../components/live/logic';
 import { StartStreamSheet } from '../components/live/StartStreamSheet';
 import { useIsPro } from '../components/mode';
 import { ScreenTitle } from '../components/screens/ScreenBits';
@@ -33,11 +34,8 @@ export default function LiveStreamPage() {
   const streams = useLeagueStreams(lid);
   const [starting, setStarting] = useState(false);
   const can = canStartStream(ctx);
-  const torneo = league.kind === 'torneo';
 
-  const wanted = params.get('s');
-  const current = streams.data.find((s) => s.id === wanted) ?? streams.data[0] ?? null;
-  const others = streams.data.filter((s) => s.id !== current?.id);
+  const { current, others } = pickStream(streams.data, params.get('s'));
 
   const startButton = can && (
     <Button variant={current ? 'quiet' : 'primary'} size={pro ? 'lg' : 'xl'} className="w-full" icon={<Radio className="size-5" />} onClick={() => setStarting(true)}>
@@ -57,18 +55,14 @@ export default function LiveStreamPage() {
           <Radio className="size-7" />
         </span>
         <h2 className="mt-4 text-section">No hay nada en vivo ahora</h2>
-        <p className="mt-1.5 max-w-sm text-meta text-muted">
-          {league.liveEnabled
-            ? `Cuando ${torneo ? 'el torneo' : 'la liga'} transmita un partido, se ve aquí.`
-            : `${torneo ? 'Este torneo' : 'Esta liga'} no tiene activadas las transmisiones en vivo.`}
-        </p>
+        <p className="mt-1.5 max-w-sm text-meta text-muted">{noLiveText(league)}</p>
         {startButton && <div className="mt-5 w-full">{startButton}</div>}
         {!league.liveEnabled && isAdmin && (
           <Link
             to={`${base}/admin?tab=liga`}
             className="mt-4 inline-flex min-h-11 items-center rounded-xl px-3 text-meta font-[650] text-accent focus-visible:outline-2 focus-visible:outline-accent"
           >
-            {`Actívalas en Ajustes ${torneo ? 'del torneo' : 'de la liga'}`}
+            {activateLiveText(league)}
           </Link>
         )}
       </Card>
@@ -130,18 +124,13 @@ function StreamView({ stream: s }: { stream: LiveStream }) {
   const share = () =>
     busy.run('compartir', async () => {
       try {
-        if (await shareLink(streamShareUrl(s.leagueId), `🔴 En vivo: ${title}`)) toast('Link copiado');
+        if (await shareLink(streamShareUrl(s.leagueId), streamShareText(s))) toast('Link copiado');
       } catch {
         toast('No se pudo compartir.', 'error');
       }
     });
   const end = async () => {
-    const yes = await confirm({
-      title: '¿Terminar la transmisión?',
-      message: `Deja de salir en la liga y en Hoy. El video sigue en ${platform}.`,
-      confirmText: 'Terminar',
-      danger: true,
-    });
+    const yes = await confirm(endStreamConfirm(s.platform));
     if (!yes) return;
     await busy.run('terminar', async () => {
       try {
@@ -172,7 +161,7 @@ function StreamView({ stream: s }: { stream: LiveStream }) {
       ) : (
         <Card className="flex flex-col items-center px-5 pt-7 pb-6 text-center">
           <PlatformMark platform={s.platform} className="size-12" />
-          <p className="mt-3 max-w-sm text-meta text-muted">{`${platform} no deja ver la transmisión dentro de otra app: se abre allá.`}</p>
+          <p className="mt-3 max-w-sm text-meta text-muted">{notEmbeddableText(s.platform)}</p>
           <a
             href={s.url}
             target="_blank"

@@ -2,11 +2,12 @@
  * «Equipos» (o «Jugadores») e «Info» del torneo de esports (EntriesView.tsx de la web, Lite): los inscritos aprobados
  * con su siembra, su plantilla y el check-in; al tocar uno, su plantilla con ID y rango; en «Libre», los agentes libres
  * aparte. «Info»: el aviso o las reglas, el juego, la plataforma, el formato, las fechas, la sede, el premio, el
- * contacto y «Compartir el torneo». Aprobar, rechazar y el menú de cada inscrito (lo del organizador), en la web.
+ * contacto y «Compartir el torneo». Quien organiza: los pendientes con «Aprobar» y «Rechazar» arriba, «Repartir» en
+ * los agentes libres y, en la plantilla, «Opciones del organizador» (siembra, check-in y nombre).
  */
 import { useState, type ReactNode } from 'react';
-import { Linking, Share, StyleSheet, View } from 'react-native';
-import { CalendarClock, ClipboardCheck, Gamepad2, ListChecks, MapPin, MessageCircle, MonitorSmartphone, Share2, Trophy, Users } from 'lucide-react-native';
+import { Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import { CalendarClock, ClipboardCheck, Gamepad2, ListChecks, MapPin, MessageCircle, MonitorSmartphone, Settings2, Share2, Trophy, Users } from 'lucide-react-native';
 import type { EsportsEntry, EsportsTournament } from '@mm/lib/data/esports';
 import { useLeagueCtx, whatsappUrl } from '@mm/lib/league';
 import { shareOrigin } from '@mm/lib/origin';
@@ -14,14 +15,28 @@ import { whenText } from '@mm/components/match/format';
 import { BR_TIEBREAK_TEXT, GAMES, formatLine, platformInfoText, tiebreakText } from '@mm/sports/esports';
 import { competitors, countLine, entryLine, formatDetails, freeAgents, memberRank, memberRoleText, tournamentPathFor } from '@mm/pages/sports/esports/logic';
 import { EntryStatusChip, Initials, RankChip, TeamLogo } from './bits';
+import { EntryAdminSheet, PendingEntries } from './EntriesAdmin';
 import { toast } from '../feedback';
 import { Button, Card, Empty, ListRow, SectionHeader, Sheet, Txt } from '../ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
-export function EntriesView({ t, entries, myEntryId }: { t: EsportsTournament; entries: readonly EsportsEntry[]; myEntryId: string | null }) {
+export function EntriesView({
+  t,
+  entries,
+  organizer = false,
+  myEntryId,
+  onFreeAgents,
+}: {
+  t: EsportsTournament;
+  entries: readonly EsportsEntry[];
+  organizer?: boolean;
+  myEntryId: string | null;
+  onFreeAgents?: () => void;
+}) {
   const c = useColors();
   const [open, setOpen] = useState<EsportsEntry | null>(null);
+  const [admin, setAdmin] = useState<EsportsEntry | null>(null);
   const list = competitors(entries);
   const agents = freeAgents(entries);
   const showCheckin = !!t.checkinMinutes;
@@ -38,6 +53,7 @@ export function EntriesView({ t, entries, myEntryId }: { t: EsportsTournament; e
   );
   return (
     <View style={{ gap: 26 }}>
+      {organizer && <PendingEntries t={t} entries={entries} />}
       <View style={{ gap: 10 }}>
         <SectionHeader title={`Inscritos (${countLine(list.length, t.maxEntries)})`} />
         {list.length ? (
@@ -52,13 +68,45 @@ export function EntriesView({ t, entries, myEntryId }: { t: EsportsTournament; e
       </View>
       {t.entryType === 'open' && agents.length > 0 && (
         <View style={{ gap: 10 }}>
-          <SectionHeader title={`Agentes libres (${agents.length})`} />
+          <SectionHeader
+            title={`Agentes libres (${agents.length})`}
+            action={
+              organizer && onFreeAgents ? (
+                <Pressable accessibilityRole="button" onPress={onFreeAgents} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <Txt variant="meta" tone="accent" style={{ fontFamily: font.semibold }}>
+                    Repartir
+                  </Txt>
+                </Pressable>
+              ) : undefined
+            }
+          />
           <Card padded={false}>{agents.map(row)}</Card>
         </View>
       )}
-      <Sheet open={!!open} onClose={() => setOpen(null)} title={open ? (open.tag ? `${open.name} [${open.tag}]` : open.name) : ''} subtitle={open ? entryLine(open) : undefined}>
+      <Sheet
+        open={!!open}
+        onClose={() => setOpen(null)}
+        title={open ? (open.tag ? `${open.name} [${open.tag}]` : open.name) : ''}
+        subtitle={open ? entryLine(open) : undefined}
+        footer={
+          organizer && open ? (
+            <Button
+              size="lg"
+              full
+              icon={<Settings2 size={20} color={c.fg} />}
+              onPress={() => {
+                setAdmin(open);
+                setOpen(null);
+              }}
+            >
+              Opciones del organizador
+            </Button>
+          ) : undefined
+        }
+      >
         {open && <Roster t={t} entry={open} />}
       </Sheet>
+      <EntryAdminSheet key={admin?.id ?? 'ninguno'} t={t} entry={admin} onClose={() => setAdmin(null)} />
     </View>
   );
 }

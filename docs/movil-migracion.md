@@ -102,8 +102,13 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   «Temporada de Ejemplo 2» en curso (`movil/src/platform/demoSeasons.ts`).
 - ✅ Ajustes de la liga (`/l/<liga>/ajustes`, `movil/src/components/leagueSettings/`, la lógica de
   `src/components/league/settings.ts`): los datos (y cambiarlos), el logo, las transmisiones en vivo, la invitación con
-  su código y QR, y «Respaldo y borrar la liga» (fotos viejas, borrar). 🌐 «Invitar personas», «Ir a En vivo» y
-  descargar el respaldo en el teléfono. El logo sale en JPEG.
+  su código y QR, «Invitar personas» (buscar, las que sigues, enviar la invitación; `movil/src/components/invite/`), las
+  transmisiones con «Ir a En vivo» y «Respaldo y borrar la liga» (el mismo respaldo de la web, compartido con la hoja del
+  teléfono; fotos viejas, borrar). El logo sale en JPEG.
+- ✅ En vivo (`/l/<liga>/vivo`, `movil/src/components/live/`, LiveStreamPage de la web con `src/components/live/logic.ts`):
+  la transmisión (YouTube dentro de la app con react-native-webview; las otras, «Ver en …»), compartir, terminar,
+  «También en vivo» y «Transmitir en vivo» (pegar el link). La demo: `movil/src/platform/demoLive.ts`.
+  - 🌐 «Transmitir en vivo» desde el «•••» de un partido o un evento.
 - ✅ Buzón (`/l/<liga>/buzon`, `movil/src/components/suggestions/`, `src/components/suggestions.ts`): las notas de los
   jugadores, marcarlas y borrarlas; y del lado del jugador, «Escribir» (anónimo o con tu nombre) como última fila de la
   liga o en su tarjeta.
@@ -249,7 +254,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   nadado y los nadadores de tu club si lo entrenas.
 - 🌐 Natación: crear y cambiar encuentros, Admin › Clubes y Nadadores, registrar un nadador, cronometristas,
   finalizar o volver a abrir, borrar, armar el programa y las series (mover carriles y publicar), inscribir a
-  cualquiera, el reporte (PDF o Excel), transmitir y «Ver en vivo», premios del encuentro, compartir las imágenes, el
+  cualquiera, transmitir y «Ver en vivo», premios del encuentro, compartir las imágenes, el
   modo piscina, la tabla completa de Pro y las temporadas cerradas.
 - Para probar natación sin cuenta: la demostración trae «Natación de Ejemplo» (`movil/src/platform/demoSwim.ts`: el
   festival de hoy con la hoja de series, dos encuentros finalizados y uno próximo).
@@ -267,9 +272,13 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   salirme), unirse a un equipo con el código (`/esports/unirse/<código>`, también desde un link) y la página de cada
   juego (torneos abiertos y equipos). La fila «Esports» en Hoy y «Torneos de esports» en Ligas (`esportsPresence.ts`,
   la misma lógica de la web).
-- 🌐 Esports: crear torneo o liga, lo del organizador (revisar inscripciones, sembrar, armar el cuadro, playoffs,
-  agentes libres, editar, cerrar o cancelar, anotadores), anotar una partida de battle royale, corregir una serie,
-  W.O., cambiar la hora, anular o decidir un reclamo, transmitir, «Conectar con Epic/Steam/Riot» y el logo del equipo.
+- ✅ Esports, lo del organizador (`movil/src/components/esports/`, la lógica de `src/pages/sports/esports/admin/logic.ts`
+  y `src/pages/esports/create/logic.ts`, la misma de la web; para los admins, en el teléfono no hay Pro): crear torneo
+  (`/esports/<juego>/nuevo-torneo`, `?liga=`) o liga (`?crear=liga`, también desde «Crear»), revisar inscripciones
+  (aprobar o rechazar con nota), sembrar, armar el cuadro, pasar a playoffs, agentes libres (balancear o sumar),
+  editar, rehacer el cuadro, cerrar, cancelar o volver a abrir, anotadores, anotar o editar una partida de battle
+  royale, corregir una serie, W.O., cambiar la hora, anular, decidir un reclamo, transmitir en vivo y el logo del equipo.
+- 🌐 Esports: «Conectar con Epic/Steam/Riot» (esports-auth necesita el formulario POST desde la web y vuelve a la web).
 - ✅ Esports: las pantallas de `/esports` van en el violeta de los esports (`SportColors` de
   `movil/src/theme/theme.tsx`, el EsportsTint de la web) y el aviso «Tu ID pasó a otra cuenta» sale también en Hoy (la
   demo trae uno).
@@ -304,7 +313,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 ## 8. Organizar y crear
 
 - ✅ Crear liga o torneo (`/crear`, el asistente de la web con su misma lógica: Nombre · Día y lugar · Temporada ·
-  Invitar). 🌐 El logo al crear y los esports (llevan a la web).
+  Invitar); los esports van a su asistente. 🌐 El logo al crear.
 - ✅ Organizar (`/organizar`, `?liga=` elige la liga; `movil/src/app/organizar.tsx` y
   `movil/src/components/organizer/Organize.tsx`, con los datos de `src/components/organizer/hubData.ts`, los mismos de
   la web): la ficha de la liga con «Lo que organizas» (cada liga con lo que espera y su número), «Por hacer» (solo lo
@@ -363,7 +372,12 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   («Se lleva: …» de cada categoría) y el encuentro de natación. La demo trae la Copa de Ejemplo y la ronda cerrada de
   «Golf de Ejemplo», cada una con un premio dado y otro por dar (`movil/src/platform/demoPrizes.ts`).
   - 🌐 Los premios del relámpago y de los playoffs de equipos (sus pantallas siguen en la web).
-- ⏳ Reportes en PDF y Excel (compartir con expo-sharing).
+- ✅ Reportes del torneo en PDF y Excel (`movil/src/components/tournamentReport/` y `movil/src/platform/reportFile.ts`,
+  los mismos archivos de la web: `src/lib/report/` con jsPDF y write-excel-file), compartidos con la hoja del teléfono:
+  «Reporte del torneo» en el boliche, la ronda o el torneo de golf, la noche y el torneo de raqueta, y «Reporte del
+  encuentro» en natación; la tarjeta del admin donde la pone la web.
+  - 🌐 Los reportes de playoffs, del relámpago y del round robin de pickleball (sus pantallas siguen en la web) y el
+    Excel de la liga y de la práctica (Pro y «•••» de la web).
 
 ## 10. Superadmin
 

@@ -16,6 +16,7 @@ import { BackendError, type BackendErrorKind } from '@mm/lib/backend/types';
 import { uuidv7 } from '@mm/lib/db/ids';
 import { foldName, nameMatches } from '@mm/components/scorers/logic';
 import { DEMO_LEAGUE } from './demoLeague';
+import { demoLeagueInvited } from './demoInvites';
 
 type Row = Record<string, unknown>;
 type Filter = { col: string; op: string; value: unknown };
@@ -330,7 +331,8 @@ export function scorersRpc(uid: string, fn: string, a: Record<string, unknown>, 
         ...p,
         avatar: null,
         inLeague: !!memberOf(DEMO_LEAGUE, p.id),
-        invited: s.invites.some((i) => (i.user as Row).id === p.id),
+        // Invitado como anotador aquí, o a la liga desde «Invitar personas» (demoInvites.ts).
+        invited: s.invites.some((i) => (i.user as Row).id === p.id) || demoLeagueInvited(DEMO_LEAGUE).includes(p.id),
       }));
     }
   }

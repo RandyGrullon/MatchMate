@@ -30,16 +30,21 @@ export function reportWithPrizes(base: TournamentReport, p: ReportPrizes): Tourn
   return withPrizes(base, prizesFrom(cardModel(p.comp, p.prize, p.designs), (id) => names.get(id) ?? 'Jugador'));
 }
 
-/** El archivo del reporte: el del deporte (null = no hay nada que reportar: error) con los premios. */
+/** El reporte del deporte (null = no hay nada que reportar: error) con los premios (la app del teléfono hace su archivo). */
+export async function fullReport(report: () => TournamentReport | null | Promise<TournamentReport | null>, prizes: ReportPrizes): Promise<TournamentReport> {
+  const base = await report();
+  if (!base) throw new Error('Sin reporte');
+  return reportWithPrizes(base, prizes);
+}
+
+/** El archivo del reporte: el del deporte con los premios. */
 export async function buildReport(
   format: ReportFormat,
   report: () => TournamentReport | null | Promise<TournamentReport | null>,
   prizes: ReportPrizes,
   opts: { generated: string; makeFile?: typeof reportFile },
 ): Promise<{ file: File; title: string }> {
-  const base = await report();
-  if (!base) throw new Error('Sin reporte');
-  const full = reportWithPrizes(base, prizes);
+  const full = await fullReport(report, prizes);
   const file = await (opts.makeFile ?? reportFile)(format, full, { generated: opts.generated });
   return { file, title: full.title };
 }
