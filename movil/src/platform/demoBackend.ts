@@ -35,6 +35,7 @@ import { forgetDemoInvites, invitesRpc } from './demoInvites';
 import { bowlingRpc, demoBowlingSelect, forgetDemoBowling } from './demoBowling';
 import { demoRacketSelect, forgetDemoRacket, racketRpc } from './demoRacket';
 import { demoGolfSelect, forgetDemoGolf, golfRpc } from './demoGolf';
+import { demoGameSocialSelect, forgetDemoGameSocial, gameSocialRpc } from './demoGameSocial';
 import { demoTeamSportsSelect, forgetDemoTeamSports, teamSportsRpc } from './demoTeamSports';
 import { demoEventProInvoke, demoEventProSelect, eventProRpc, forgetDemoEventPro } from './demoEventPro';
 
@@ -76,6 +77,8 @@ const prizesLayer = (t: string, f: readonly DemoFilter[] = []) => demoPrizesSele
 const makerLayer = (t: string, f: readonly DemoFilter[] = []) => demoMakerSelect(DEMO_USER, t, f, (x) => prizesLayer(x)) ?? prizesLayer(t, f);
 /** Arriba de todo, lo del organizador de golf (demoGolf.ts): campos, rondas, torneos, tarjetas e inscritos. */
 const golfLayer = (t: string, f: readonly DemoFilter[] = []) => demoGolfSelect(t, f, (x) => makerLayer(x)) ?? makerLayer(t, f);
+// Arriba de todo: los me gusta, felicitaciones y comentarios de los juegos de boliche (demoGameSocial.ts).
+const gameSocialLayer = (t: string, f: readonly DemoFilter[] = []) => demoGameSocialSelect(t, f, (x) => golfLayer(x)) ?? golfLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -118,6 +121,7 @@ export function setDemo(on: boolean) {
       forgetDemoBowling();
       forgetDemoRacket();
       forgetDemoGolf();
+      forgetDemoGameSocial();
       forgetDemoTeamSports();
       forgetDemoEventPro();
     }
@@ -481,7 +485,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = golfLayer(q.table, q.filters);
+      const league = gameSocialLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -494,6 +498,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Me gusta, felicitar y comentar un juego de boliche (demoGameSocial.ts).
+      const fromGameSocial = gameSocialRpc(DEMO_USER, fn, args, (t) => gameSocialLayer(t) ?? []);
+      if (fromGameSocial !== undefined) return structuredClone(fromGameSocial) as T;
       // El organizador de golf (demoGolf.ts): campos, rondas y torneos, inscribir, grupos y la tarjeta.
       const fromGolf = golfRpc(DEMO_USER, fn, args, (t) => makerLayer(t) ?? []);
       if (fromGolf !== undefined) return structuredClone(fromGolf) as T;
@@ -521,8 +528,9 @@ export function createDemoBackend(): Backend {
       // La Agenda (demoAgenda.ts): las ligas públicas y apuntarse en ellas.
       const fromAgenda = agendaRpc(DEMO_USER, fn, args);
       if (fromAgenda !== undefined) return structuredClone(fromAgenda) as T;
-      // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto y bloqueos.
-      const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : null));
+      // Configuración de la cuenta de prueba (demoAccount.ts): nombre, usuario, biografía, foto, bloqueos y lo que detiene
+      // «Borrar mi cuenta» (las ligas y los miembros con todas las capas).
+      const fromAccount = accountRpc(DEMO_USER, fn, args, (t) => (t === 'profiles' ? [profileRow()] : (gameSocialLayer(t) ?? null)));
       if (fromAccount !== undefined) return structuredClone(fromAccount) as T;
       // Lo de Pro del evento de boliche (demoEventPro.ts): los inscritos, sus promedios y los juegos verificados con foto.
       const fromEventPro = eventProRpc(DEMO_USER, fn, args, (t) => demoLayer(t) ?? []);

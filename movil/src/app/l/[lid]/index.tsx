@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CalendarDays, ChevronLeft, ClipboardList, UsersRound, Trophy, Clock, Globe, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { BarChart3, CalendarDays, ChevronLeft, ClipboardList, UsersRound, Trophy, Clock, List, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEvents, useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
 import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
+import { pastLine } from '@mm/components/league/home/logic';
 import { adminScreenTitle, organizeUrl } from '@mm/components/organizer/hubLogic';
 import { useLeagueToDo } from '@mm/components/league/home/useLeagueData';
 import { racketAdminTab } from '@mm/sports/adminTabs';
@@ -38,7 +39,6 @@ import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
 import { SwimHome } from '@/components/swimming/SwimHome';
 import { EsportsHome } from '@/components/esports/EsportsLeague';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 
 /**
@@ -62,9 +62,9 @@ export default function LeagueScreen() {
   }, [sport]);
 
   const today = toIsoDate(new Date());
-  const { upcoming, past } = useMemo(() => {
+  const upcoming = useMemo(() => {
     const sorted = [...events.data].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    return { upcoming: sorted.filter((e) => e.date >= today).slice(0, 8), past: sorted.filter((e) => e.date < today).reverse().slice(0, 8) };
+    return sorted.filter((e) => e.date >= today).slice(0, 8);
   }, [events.data, today]);
 
   if (league.loading && !league.data) return <Loading label="Cargando la liga" />;
@@ -265,7 +265,7 @@ export default function LeagueScreen() {
 
       {isBowling ? (
         <>
-          {/* La tabla por temporada y «Mis números» (la página de tu jugador). */}
+          {/* La tabla por temporada, «Resultados anteriores» y «Mis números» (las filas de LeagueHomePage de la web). */}
           <Card padded={false}>
             <ListRow
               icon={
@@ -276,17 +276,29 @@ export default function LeagueScreen() {
               title="Tabla"
               onPress={() => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } })}
             />
-            {!!membership.data?.playerId && (
+            <Divider inset={68} />
+            <ListRow
+              icon={
+                <RowIcon>
+                  <List size={20} color={c.accent} />
+                </RowIcon>
+              }
+              title="Resultados anteriores"
+              subtitle={pastLine(events.data, today)}
+              onPress={() => router.push({ pathname: '/l/[lid]/partidos', params: { lid: l.id } })}
+            />
+            {/* «Mis números» (para cualquier miembro: sin jugador todavía, `/perfil` se lo prepara, como la web). */}
+            {!!membership.data && (
               <>
                 <Divider inset={68} />
                 <ListRow
                   icon={
                     <RowIcon>
-                      <UserRound size={20} color={c.accent} />
+                      <BarChart3 size={20} color={c.accent} />
                     </RowIcon>
                   }
                   title="Mis números"
-                  onPress={() => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid: l.id, playerId: membership.data!.playerId! } })}
+                  onPress={() => router.push({ pathname: '/l/[lid]/perfil', params: { lid: l.id } })}
                 />
               </>
             )}
@@ -311,19 +323,6 @@ export default function LeagueScreen() {
             </Card>
           ) : (
             <Empty title="No hay fechas próximas" text="Cuando el admin programe una práctica o un torneo, sale aquí." />
-          )}
-          {past.length > 0 && (
-            <>
-              <SectionHeader title="Resultados anteriores" />
-              <Card padded={false}>
-                {past.map((e, i) => (
-                  <View key={e.id}>
-                    {i > 0 && <Divider inset={16} />}
-                    <ListRow title={eventTitle(e, sport ?? 'bowling')} subtitle={formatDateLong(e.date)} onPress={() => openEvent(e.id)} />
-                  </View>
-                ))}
-              </Card>
-            </>
           )}
         </>
       ) : sport === 'golf' ? (
@@ -408,9 +407,6 @@ export default function LeagueScreen() {
         <LeagueHomeNotice />
       </LeagueScope>
 
-      <Button full icon={<Globe size={18} color={c.fg} />} onPress={() => openOnWeb(`/l/${l.id}`)}>
-        {membership.data ? 'Tabla, jugadores y más en la web' : 'Ver la liga en la web'}
-      </Button>
     </Screen>
   );
 }

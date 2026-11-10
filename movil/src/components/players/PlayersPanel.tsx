@@ -19,7 +19,6 @@ import { filterPlayers, handicapValue, membersWithoutPlayer, noStats, playerLine
 import { toast } from '@/components/feedback';
 import { Avatar } from '@/components/social/Avatar';
 import { Button, Card, Divider, Empty, Input, LoadError, Loading, SectionHeader, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { font, size } from '@/theme/tokens';
 import { AddPlayerSheet } from './AddPlayerSheet';
@@ -130,13 +129,9 @@ export function PlayersPanel({ variant = 'full', addWhere }: { variant?: 'full' 
     }
   }
 
-  // La página de un jugador de la app: boliche, golf, natación, raqueta y los deportes de equipo; la de esports, en la web.
+  // «Ver su página» (/l/<liga>/j/<jugador>), como la web: en esports, que no tiene página de jugador, vuelve a la liga.
   function openPage(p: Player) {
     setEditingId(null);
-    if (sport === 'esports') {
-      setTimeout(() => void openOnWeb(`/l/${lid}/j/${p.id}`), SHEET_CLOSE_MS);
-      return;
-    }
     setTimeout(() => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid, playerId: p.id } }), SHEET_CLOSE_MS);
   }
 

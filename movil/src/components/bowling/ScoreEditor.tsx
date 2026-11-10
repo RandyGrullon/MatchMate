@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Check, Minus, Plus, Undo2, X } from 'lucide-react-native';
 import { bitCount, maxPossibleScore, maxPossibleWithHole, replaceRoll, scoreGame, standingMask, standingNow } from '@mm/lib/bowling';
-import { ballDetail, ballForGame, draftBallsAfter, pickableBalls } from '@mm/lib/balls';
+import { ballForGame, draftBallsAfter } from '@mm/lib/balls';
 import { loadDraft, saveDraft } from '@mm/lib/draft';
 import { isValidScore } from '@mm/lib/stats';
 import { useBallChoice } from '@mm/components/balls/choice';
@@ -13,6 +13,7 @@ import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 import { toast } from '../feedback';
 import { Button, Input, Screen, Segmented, Txt } from '../ui';
+import { GameBallSelect } from '@/components/balls/GameBall';
 import { FramesSheet } from './FramesSheet';
 import { Keypad } from './Keypad';
 import { PinDeck } from './PinDeck';
@@ -243,7 +244,7 @@ export function ScoreEntry({
         </View>
 
         {top}
-        {ball && <BallRow balls={ball.balls} value={picked} initial={ball.start} onPick={setPickedBall} game={ball.game} />}
+        {ball && <GameBallSelect key={ball.game} balls={ball.balls} value={picked} initial={ball.start} onPick={setPickedBall} game={ball.game} />}
 
         <Segmented<ScoreMode>
           label="Forma de anotar"
@@ -411,55 +412,3 @@ function PinKey({ big, small, label, enabled, accent, onPress }: { big: string; 
   );
 }
 
-/**
- * La bola del juego (GameBallSelect de la web): «Sin bola» y las de la cuenta que no están retiradas (y la que ya tenía),
- * en una fila que se desliza de lado. Agregar una bola nueva todavía se hace en la web («Mis bolas»).
- */
-function BallRow({
-  balls,
-  value,
-  initial,
-  onPick,
-  game,
-}: {
-  balls: ReturnType<typeof useBallChoice>['balls'];
-  value: string | null;
-  initial: string | null;
-  onPick: (id: string | null) => void;
-  game: number;
-}) {
-  const c = useColors();
-  const options = pickableBalls(balls, value, initial);
-  if (!options.length && !value) return null;
-  const chip = (id: string | null, title: string, detail: string | null) => {
-    const on = value === id;
-    return (
-      <Pressable
-        key={id ?? 'sin'}
-        accessibilityRole="radio"
-        accessibilityState={{ checked: on }}
-        accessibilityLabel={detail ? `${title}, ${detail}` : title}
-        onPress={() => onPick(id)}
-        style={{ borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: on ? c.accent : c.surface2, maxWidth: 200 }}
-      >
-        <Txt numberOfLines={1} style={{ fontFamily: font.semibold, fontSize: 14, color: on ? c.accentFg : c.fg }}>
-          {title}
-        </Txt>
-        {!!detail && (
-          <Txt numberOfLines={1} style={{ fontSize: 12, color: on ? c.accentFg : c.muted }}>
-            {detail}
-          </Txt>
-        )}
-      </Pressable>
-    );
-  };
-  return (
-    <View style={{ gap: 6 }}>
-      <Txt variant="meta" tone="muted">{`Bola del juego ${game + 1}`}</Txt>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityRole="radiogroup" contentContainerStyle={{ gap: 8 }}>
-        {chip(null, 'Sin bola', null)}
-        {options.map((b) => chip(b.id, b.name, ballDetail(b)))}
-      </ScrollView>
-    </View>
-  );
-}

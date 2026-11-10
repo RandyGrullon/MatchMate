@@ -58,6 +58,7 @@ export function EventSheet({
   subs = NO_SUBS,
   live = NO_LIVE,
   readOnly = false,
+  onOpen,
 }: {
   event: BowlingEvent;
   entries: Entry[];
@@ -66,6 +67,8 @@ export function EventSheet({
   live?: readonly LiveScore[];
   /** Solo mirar (quien no organiza ni anota este evento). */
   readOnly?: boolean;
+  /** Tocar el nombre de quien ya tiene juegos abre su juego (el detalle), como `onOpen` de GamesTab en la web. */
+  onOpen?: (entry: Entry) => void;
 }) {
   const c = useColors();
   const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
@@ -236,13 +239,19 @@ export function EventSheet({
                   const line = isTorneo && r.entry ? g.lines.find((l) => l.entry.id === r.entry!.id) : undefined;
                   return (
                     <View key={r.playerId} style={[styles.gridRow, { minHeight: 50, backgroundColor: me ? c.accentSoft : 'transparent' }, i > 0 && !me ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null]}>
-                      <View style={nameW ? { width: nameW } : { flex: 1.7, minWidth: 0 }}>
+                      <Pressable
+                        accessibilityRole={onOpen && r.entry ? 'button' : undefined}
+                        accessibilityLabel={onOpen && r.entry ? `Ver el juego de ${name}` : undefined}
+                        disabled={!onOpen || !r.entry}
+                        onPress={onOpen && r.entry ? () => onOpen(r.entry!) : undefined}
+                        style={({ pressed }) => [nameW ? { width: nameW } : { flex: 1.7, minWidth: 0 }, { opacity: pressed ? 0.7 : 1 }]}
+                      >
                         <Txt numberOfLines={1} style={{ fontSize: 15, fontFamily: font.semibold }}>
                           {shortName(name)}
                         </Txt>
                         {me && <Txt style={{ fontSize: 12, fontFamily: font.semibold, color: c.accent }}>Tú</Txt>}
                         {!!line && <Txt style={{ fontSize: 12, color: c.muted, fontVariant: ['tabular-nums'] }}>{`hcp ${line.hcp}`}</Txt>}
-                      </View>
+                      </Pressable>
                       {Array.from({ length: shown }, (_, k) => {
                         const cell = r.cells[k] ?? EMPTY_CELL;
                         const can = (!!r.entry && !readOnly) || (me && !!cell.partial);

@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Camera, CheckCircle2, ChevronRight, Image } from 'lucide-react';
-import { frameStats } from '../../lib/bowling';
 import { useLeagueCtx } from '../../lib/league';
-import { entryLine, eventPosition } from '../../lib/stats';
-import { IMPORTED, NO_PHOTO, type BowlingEvent, type Entry } from '../../lib/types';
+import type { BowlingEvent, Entry } from '../../lib/types';
 import type { GameMark } from '../../lib/bowlingSeason';
 import { FramesGrid } from '../frames/FramesGrid';
 import { PhotoModal } from '../PhotoModal';
 import { Badge, Button, Modal, Position, cx } from '../ui';
 import { GameMarkBadges } from './GameMarks';
+// La lógica (el puesto, los pinos, strikes y spares, si cada juego cuenta y su foto) está en gameDetail.ts: la usa la app.
+import { ONLY_TOTAL_TEXT, gameDetail } from './gameDetail';
 
 /** Juegos de un jugador en un evento: pinos, cuadros tiro por tiro, strikes/spares y la foto. */
 export function GameDetailModal({
@@ -38,18 +38,8 @@ export function GameDetailModal({
   const [photoId, setPhotoId] = useState<{ id: string; game: number } | null>(null);
   if (!entry) return null;
 
-  const line = entryLine(entry, event, true);
-  const pos = eventPosition(event, entries, entry.id);
-  const photos = entry.photos ?? [];
-  const allFrames = Object.values(entry.frames ?? {});
-  const totals = allFrames.reduce(
-    (acc, f) => {
-      const s = frameStats(f.rolls);
-      return { strikes: acc.strikes + s.strikes, spares: acc.spares + s.spares, opens: acc.opens + s.opens };
-    },
-    { strikes: 0, spares: 0, opens: 0 },
-  );
-  const isTorneo = event.type === 'torneo';
+  const detail = gameDetail(event, entries, entry);
+  const { line, pos, totals, isTorneo } = detail;
 
   return (
     <>
@@ -69,12 +59,12 @@ export function GameDetailModal({
       >
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-2 text-center">
-            <Summary label={isTorneo ? 'Posición' : 'Puesto'} value={pos ? <Position pos={pos.pos} /> : '—'} sub={pos ? `de ${pos.of}` : undefined} />
-            <Summary label={isTorneo && line.hcp ? 'Total c/hcp' : 'Pinos'} value={isTorneo && line.hcp ? line.total : line.scratch} />
+            <Summary label={detail.placeLabel} value={pos ? <Position pos={pos.pos} /> : '—'} sub={pos ? `de ${pos.of}` : undefined} />
+            <Summary label={detail.pinsLabel} value={detail.pins} />
             <Summary label="Promedio" value={line.avg || '—'} />
           </div>
 
-          {allFrames.length > 0 && (
+          {totals && (
             <div className="flex flex-wrap gap-2">
               <Badge tone="accent">{totals.strikes} strikes</Badge>
               <Badge tone="accent">{totals.spares} spares</Badge>
@@ -82,11 +72,7 @@ export function GameDetailModal({
             </div>
           )}
 
-          {line.scores.map((s, i) => {
-            const frames = entry.frames?.[i];
-            const p = photos[i] ?? null;
-            const verified = s != null && p != null;
-            const realPhoto = p && p !== NO_PHOTO && p !== IMPORTED;
+          {detail.games.map(({ score: s, verified, frames, photo: realPhoto }, i) => {
             return (
               <section key={i} className="flex flex-col gap-2 rounded-xl border border-line p-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -109,10 +95,10 @@ export function GameDetailModal({
                 {frames ? (
                   <FramesGrid rolls={frames.rolls} masks={frames.masks} compact />
                 ) : (
-                  s != null && <p className="text-xs text-muted">Anotado solo el total (sin cuadros).</p>
+                  s != null && <p className="text-xs text-muted">{ONLY_TOTAL_TEXT}</p>
                 )}
                 {realPhoto && (
-                  <Button size="sm" className="self-start" icon={<Image className="size-4" />} onClick={() => setPhotoId({ id: p, game: i })}>
+                  <Button size="sm" className="self-start" icon={<Image className="size-4" />} onClick={() => setPhotoId({ id: realPhoto, game: i })}>
                     Ver foto
                   </Button>
                 )}

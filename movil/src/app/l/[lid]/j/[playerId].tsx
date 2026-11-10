@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { CalendarCheck, CheckCircle2, Clock, Flame, Hash, Layers, Sigma, Target, Trophy, XCircle } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useEntriesOfEvents, useEvents, useLeague, usePlayer, usePlayerEntries, usePlayerSubmissions } from '@mm/lib/data';
@@ -34,7 +34,10 @@ import { font } from '@/theme/tokens';
  * tuyo), la tendencia y el análisis por cuadros (TrendSection y FrameStatsPanel de la web, en los dos modos), los torneos
  * con su lugar, las prácticas y los números por temporada.
  */
-/** Un jugador de la liga: el nadador en natación; el del boliche, aquí abajo. */
+/**
+ * Un jugador de la liga: el de cada deporte (natación, golf, equipos, raqueta); el del boliche, aquí abajo. Un deporte
+ * sin página de jugador (esports) vuelve al inicio de la liga, como la web (slotComponent de src/sports/screens.tsx).
+ */
 export default function PlayerScreen() {
   const { lid, playerId } = useLocalSearchParams<{ lid: string; playerId: string }>();
   const league = useLeague(lid);
@@ -85,6 +88,7 @@ export default function PlayerScreen() {
       </Screen>
     );
   }
+  if (league.data && leagueSport(league.data) !== 'bowling') return <Redirect href={{ pathname: '/l/[lid]', params: { lid } }} />;
   return <BowlingPlayerScreen />;
 }
 

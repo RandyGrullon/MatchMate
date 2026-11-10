@@ -1,6 +1,6 @@
 import { memo, useCallback, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
-import { Check, ChevronDown, Plus } from 'lucide-react-native';
+import { Pressable, ScrollView, View } from 'react-native';
+import { Check, ChevronDown, ChevronUp, Plus } from 'lucide-react-native';
 import { BALL_MAX, ballDetail, ballLabel, gameBallTitle, pickableBalls, type Ball } from '@mm/lib/balls';
 import { toIsoDate } from '@mm/lib/format';
 import { useNow } from '@mm/lib/useNow';
@@ -187,6 +187,106 @@ export function AllGamesBall({ balls, value, onPick }: { balls: readonly Ball[];
       <Txt tone="muted" style={{ fontSize: 12 }}>
         Toca la bola de un juego para cambiar solo esa.
       </Txt>
+    </View>
+  );
+}
+
+/** El nombre de una bola en la fila (con «· retirada» si lo está), como ballName de la web. */
+const tileName = (b: Ball) => `${ballLabel(b)}${b.retired ? ' · retirada' : ''}`;
+
+/** Una casilla de la fila (64 de ancho: caben el dedo y la bola con su nombre), BallTile y AddTile de la web. */
+function BallTile({ ball, checked, add, onPress }: { ball: Ball | null; checked?: boolean; add?: boolean; onPress: () => void }) {
+  const c = useColors();
+  const name = add ? 'Agregar bola' : ball ? tileName(ball) : 'Sin bola';
+  return (
+    <Pressable
+      accessibilityRole={add ? 'button' : 'radio'}
+      accessibilityState={add ? undefined : { checked: !!checked }}
+      accessibilityLabel={name}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 64,
+        alignItems: 'center',
+        gap: 4,
+        borderRadius: 12,
+        padding: 4,
+        paddingTop: 6,
+        backgroundColor: checked ? c.accentSoft : pressed ? c.surface2 : 'transparent',
+        borderWidth: 2,
+        borderColor: checked ? c.accent : 'transparent',
+      })}
+    >
+      <BallMark ball={add ? null : ball} size={40} add={add} />
+      <Txt numberOfLines={1} tone={add ? 'muted' : 'fg'} style={{ width: '100%', textAlign: 'center', fontSize: 11, fontFamily: font.medium }}>
+        {add ? 'Agregar' : (ball?.name ?? 'Sin bola')}
+      </Txt>
+    </Pressable>
+  );
+}
+
+/**
+ * La bola de un juego en el editor de pinos (GameBallSelect de la web): el botón «Bola: <nombre> <peso> lb ▾» abre debajo
+ * la fila que se desliza de lado, con «Sin bola», las que no están retiradas (y la que ya tenía) y «Agregar» al final
+ * (abre la hoja de una bola nueva y, al guardarla, queda elegida). Elegir cierra la fila.
+ */
+export function GameBallSelect({
+  balls,
+  value,
+  initial,
+  onPick,
+  game,
+}: {
+  balls: readonly Ball[];
+  value: string | null;
+  initial: string | null;
+  onPick: (id: string | null) => void;
+  /** El juego (desde 0), para el nombre de la fila («Bola del juego 3»). */
+  game?: number;
+}) {
+  const c = useColors();
+  const today = toIsoDate(useNow());
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  // La retirada que tenía el juego sigue en la fila aunque toque otra (hasta guardar todavía es la suya: se puede volver).
+  const options = pickableBalls(balls, value, initial);
+  const current = value ? (balls.find((b) => b.id === value) ?? null) : null;
+  // La cuenta no tiene ninguna para elegir: el círculo punteado lleva un + («Agregar» está en la fila).
+  const none = !current && !pickableBalls(balls).length;
+  const pick = (id: string | null) => {
+    onPick(id);
+    setOpen(false);
+  };
+  const Chevron = open ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`Bola: ${current ? `${current.name} ${current.weight} lb` : 'Sin bola'}`}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', maxWidth: '100%', transform: [{ scale: pressed ? 0.97 : 1 }] })}
+      >
+        <View style={{ height: 38, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 19, backgroundColor: c.surface2, paddingLeft: 6, paddingRight: 12, maxWidth: '100%' }}>
+          {current ? <BallArt ball={current} size={28} /> : <BallMark ball={null} size={24} add={none} />}
+          <Txt style={{ fontSize: 15, fontFamily: font.medium, color: c.muted }}>Bola:</Txt>
+          <Txt numberOfLines={1} style={{ flexShrink: 1, fontSize: 15, fontFamily: font.semibold }}>
+            {current ? `${current.name} ${current.weight} lb` : 'Sin bola'}
+          </Txt>
+          <Chevron size={16} color={c.muted} />
+        </View>
+      </Pressable>
+      {open && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ alignSelf: 'stretch' }} contentContainerStyle={{ gap: 4, paddingVertical: 4 }}>
+          <View accessibilityRole="radiogroup" accessibilityLabel={game != null ? gameBallTitle(game) : 'Bola de este juego'} style={{ flexDirection: 'row', gap: 4 }}>
+            <BallTile ball={null} checked={!current} onPress={() => pick(null)} />
+            {options.map((b) => (
+              <BallTile key={b.id} ball={b} checked={value === b.id} onPress={() => pick(b.id)} />
+            ))}
+          </View>
+          {balls.length < BALL_MAX && <BallTile ball={null} add onPress={() => setAdding(true)} />}
+        </ScrollView>
+      )}
+      {adding && <BallSheet ball={null} today={today} onSaved={pick} onClose={() => setAdding(false)} />}
     </View>
   );
 }

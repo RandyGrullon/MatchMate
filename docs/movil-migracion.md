@@ -23,7 +23,9 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Puertas de la cuenta, como la web: «¿Tienes 18 años o más?» (AdultGate) y aceptar los Términos vigentes
   (LegalGate), sobre toda la app (`movil/src/components/account/Gates.tsx`).
 - ✅ Borrar la cuenta desde la app (regla 5.1.1(v) de Apple): Yo › Borrar mi cuenta (`movil/src/app/cuenta/borrar.tsx`,
-  la misma Edge Function y las mismas trabas que la web: ligas a tu nombre, último superadmin).
+  DeleteAccountDialog de la web: la misma Edge Function, los mismos textos y las mismas trabas). Las ligas a tu nombre se
+  pasan a otro miembro o se borran ahí mismo; si eres el único superadmin, «Ir a Cuentas en la consola» (la consola es
+  de la web). La demo contesta la revisión y «Pasar la liga» (`demoAccount.ts`).
 - ✅ Descargar mis datos (el mismo JSON de la web, con la hoja de compartir del teléfono).
 - ✅ Notificaciones: activar en este teléfono y qué te avisamos (las cuatro categorías de la web), en Yo.
 - ✅ Yo (`movil/src/app/(tabs)/yo.tsx` y `movil/src/components/yo/`, ProfilePage de la web en Lite, con la lógica de
@@ -53,7 +55,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 
 ## 2. Hoy y Ligas
 
-- ✅ Portada sin cuenta; Hoy con tus ligas; «Únete a tu liga» con el código.
+- ✅ Portada sin cuenta; Hoy con tus ligas; «Únete a tu liga» con el código y, sin ligas, «Crear mi liga» (si la cuenta
+  puede crear ligas) y «Buscar ligas abiertas».
+- ✅ El inicio de un deporte (`/d/<deporte>`, de Acerca de, los avisos y los links viejos): como la web, la app se queda
+  en ese deporte y va a Hoy (esports, a su índice).
 - ✅ `/unirse/<código>`: a qué liga lleva, «¿Quién eres?» si el admin ya anotó jugadores sin cuenta (queda pendiente de
   que lo apruebe) y «Unirme a la liga» o «Unirme como …».
 - ✅ Escanear el QR (`movil/src/app/escanear.tsx`, expo-camera; «o escanea el QR» en Hoy): la misma lógica de la web
@@ -79,7 +84,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (`movil/src/components/league/WhoAreYou.tsx`) y Aceptar / Rechazar; la de anotador lleva al torneo. Las de equipos
   llevan al equipo (`/equipos/<equipo>`).
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
-- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5); ✅ muro (`/l/<liga>/muro`), invitar
+- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5), con las
+  filas «Tabla», «Resultados anteriores» y «Mis números». Del inicio de boliche de la web (LeagueHomePage) falta la
+  forma del rediseño: la Tabla con los 3 de arriba y «Ver toda», «Voy» en las próximas fechas y la hoja «Jugadores».
+  ✅ muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
   seguir una liga pública. La tabla de cada deporte está en sus secciones (3 a 6).
 - ✅ Avisos de la liga (`movil/src/components/league/Announce.tsx`, los mismos de la web): el aviso del admin de los
@@ -98,7 +106,8 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
     decididos». El segmentado Jugadores · Miembros · Reclamos cambia de pantalla; donde el deporte lleva a su gente en
     su pestaña (natación: Nadadores; raqueta: Parejas y niveles) no sale «Jugadores» y debajo de Miembros van
     «<su gente> y sus cuentas». La demo trae cinco cuentas más y dos reclamos (`movil/src/platform/demoMembers.ts`).
-  - ✅ «Ver su página» de cada jugador, en todos los deportes de liga (la de esports, en la web).
+  - ✅ «Ver su página» de cada jugador, en todos los deportes de liga (esports no tiene página de jugador: vuelve a la
+    liga, como la web).
 - ✅ Temporadas (`/l/<liga>/temporadas`, `movil/src/components/season/Seasons.tsx`, SeasonsPage de la web): cada
   temporada con sus fechas, el campeón y los demás premios, el campeón del playoff y la tabla final guardada; la en
   curso lleva a su tabla («?temporada=» abre esa temporada en la Tabla del boliche). «Campeones» abajo en el inicio de
@@ -139,7 +148,22 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 ## 3. Boliche (deporte activo)
 
 - ✅ Evento (`/l/<liga>/e/<evento>`): «Tus juegos» (en la tabla, en el teléfono, enviado, a medias, por anotar), la
-  serie, el botón que sigue (`nextGame` de `src/lib/useNextGame.ts`) y la práctica cerrada.
+  serie, el botón que sigue (`nextGame` de `src/lib/useNextGame.ts`) y la práctica cerrada. Sin jugador en la liga no
+  sale «Tus juegos» (como la web).
+- ✅ «Mis números» (`/l/<liga>/perfil`, `movil/src/components/bowling/BowlingMine.tsx`, LeagueProfilePage de la web): con
+  jugador, su página; sin cuenta, entrar o crear la cuenta; sin ser miembro, «Únete a …» (o, en una privada, «Estás
+  viendo como superadmin»); quien entró solo para anotar, «Estás aquí para anotar» con «También juego» y «Salir»; un
+  miembro sin jugador, se le prepara solo («Preparar mi jugador» de Hoy lleva aquí).
+- ✅ «Resultados anteriores» (`/l/<liga>/partidos` en boliche, `movil/src/components/bowling/GamesFeed.tsx`, GamesFeedPage
+  de la web con su lógica en `src/pages/gamesFeed.ts`): las fechas jugadas con los juegos de cada uno, «Mejor juego» y
+  «Mejor serie», los me gusta y comentarios, «Ver fechas más viejas»; `?juego=…&evento=…` (el «Ver» de Social y los avisos)
+  abre ese juego aunque sea viejo.
+- ✅ El detalle de un juego (`movil/src/components/bowling/GameDetail.tsx` y `GameSocial.tsx`, GameDetailModal y PostSocial
+  de la web): el puesto, los pinos y el promedio, strikes/spares/abiertos, cada juego con sus cuadros o «Anotado solo el
+  total», «Ver foto», me gusta, felicitar, comentar (con las respuestas rápidas) y «Ver su perfil». Se abre desde
+  «Resultados anteriores», la tabla del evento («Cómo van todos», «Resultados», «Clasificación»), un juego de «Tus
+  juegos» que ya cuenta y un nombre de la Planilla de Pro. La demo trae me gusta y comentarios (`demoGameSocial.ts`).
+  Los cuadros van en la hoja de 2 filas de la app (la web, en una fila de 10).
 - ✅ Anotar un juego (`movil/src/components/bowling/ScoreEditor.tsx`): pines, teclado (solo las teclas que valen), total con
   0–300, la hoja de 10 cuadros, «Llevas» y «Máx. posible», deshacer, cada tiro guardado en el teléfono y «Seguimos
   donde lo dejaste» (`src/components/frames/editorLogic.ts` y `draftMemory.ts`, los mismos de la web). Al guardar va a
@@ -148,8 +172,9 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   vuelve al teléfono con el aviso. Sin foto: pregunta si la liga la pide.
 - ✅ Pines (tocar los pinos que cayeron, con Fallo, Strike o Spare y Anotar), corregir un tiro tocándolo en la hoja
   (dejarlo presionado lo borra; «Listo», «Deshacer» o «Dejar en −») y la bola de cada juego arriba del editor (la
-  misma lógica de la web: `editorLogic.ts`, `replaceRoll`, `src/components/balls/choice.ts`). Agregar una bola nueva
-  todavía es en la web. Se prueba sin cuenta en `/dev/anotar`.
+  misma lógica de la web: `editorLogic.ts`, `replaceRoll`, `src/components/balls/choice.ts`): «Bola: …» abre la fila
+  con «Sin bola», tus bolas y «Agregar» (GameBallSelect de la web; la nueva queda elegida). Se prueba sin cuenta en
+  `/dev/anotar`.
 - ✅ Enviar mis juegos con la foto del marcador (cámara o galería) y la lectura con IA en segundo plano (`scanJobs`,
   como la web: se puede enviar sin esperar; si la foto dice otra cosa, avisa y deja «Usar lo de la foto»), con la bola
   de cada juego (`movil/src/app/l/[lid]/e/[eventId]/enviar.tsx`).
@@ -373,7 +398,7 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
 - ✅ Buscar (`/buscar`): personas y ligas (Todo · Personas · Ligas), seguir desde la lista; sin cuenta, ligas públicas.
 - ✅ La publicación con un juego compartido lleva la tarjeta del juego (`movil/src/components/social/GameCard.tsx`, la
   de la web), y los juegos (Social › Juegos y el perfil) tienen me gusta, «Compartir en Social», «Reportar juego» y
-  «Ver» (el detalle de un juego de boliche, en la web). Compartir un partido de raqueta o de equipos: la imagen (sin el
+  «Ver» (el detalle de un juego de boliche, en «Resultados anteriores»). Compartir un partido de raqueta o de equipos: la imagen (sin el
   texto en Android), WhatsApp, texto o «Publicar en Social» (`movil/src/components/match/ShareResult.tsx`). Los avisos
   sociales en la campana. La demo trae publicaciones con juego, me gusta y avisos sociales (`demoSocial.ts`).
   - «Publicar en Social» en el evento de boliche y en la ronda de golf (en su «•••»).

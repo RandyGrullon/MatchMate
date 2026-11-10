@@ -137,6 +137,9 @@ export function installSportAccent(): () => void {
 /** Home de un deporte. */
 export const sportHomePath = (sport: string) => `/d/${sport}`;
 
+/** A dónde lleva `/d/:sport` después de dejar la app en ese deporte: Hoy, salvo esports, que va a su índice. */
+export const sportHomeTarget = (sport: SportId | null): string => (sport === 'esports' ? '/esports' : '/');
+
 /** El deporte de la ruta `/d/:sport` (null en cualquier otra). */
 export function sportFromPath(pathname: string): SportId | null {
   const m = /^\/d\/([^/?#]+)/.exec(pathname);

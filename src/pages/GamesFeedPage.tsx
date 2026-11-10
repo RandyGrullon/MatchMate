@@ -3,11 +3,10 @@ import { Link, useSearchParams } from 'react-router';
 import { ChevronRight, Heart, MessageCircle, MessageCircleHeart } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useCommentsOfEvents, useEntriesOfEvents, useEvents, usePlayers, useReactionsOfEvents } from '../lib/data';
-import { eventLabel, parseDate, toIsoDate, typeLabel } from '../lib/format';
+import { eventLabel, toIsoDate } from '../lib/format';
 import { useLeagueCtx } from '../lib/league';
 import { liveInfo } from '../lib/live';
-import { entryLine, type Line } from '../lib/stats';
-import type { BowlingEvent, Entry, GameComment, Player, Reaction } from '../lib/types';
+import type { BowlingEvent, GameComment, Reaction } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { GameDetailModal } from '../components/event/GameDetailModal';
 import { LiveDot } from '../components/home/TodayCard';
@@ -16,27 +15,25 @@ import { ScreenTitle } from '../components/screens/ScreenBits';
 import { PostSocial } from '../components/social/Social';
 import { UserLink } from '../components/social/UserLink';
 import { Button, Card, DateBlock, ListRow, ListSkeleton, LoadError, Skeleton, cx } from '../components/ui';
+import {
+  FEED_PAGE as PAGE,
+  FEED_TEXT,
+  eventLine,
+  feedEventIds,
+  feedEventUrl,
+  feedPeople,
+  feedPosts as postsOf,
+  openEventIdOf,
+  playedEvents,
+  postCountsLabel,
+  postLabel,
+  scoresLine,
+  todayLine,
+  type FeedPost as Post,
+} from './gamesFeed';
 
-/** Eventos pasados que se muestran de a poco. */
-const PAGE = 4;
-
-/** Un juego del evento para el muro: la línea del jugador y sus distinciones. */
-interface Post {
-  entry: Entry;
-  line: Line;
-  name: string;
-  /** Cuenta del jugador (su perfil `/u/:id`); null si no tiene cuenta. */
-  uid: string | null;
-  badges: string[];
-}
-
-const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-
-/** Debajo del nombre del evento: «Martes · práctica · 6 jugaron». */
-export function eventLine(event: Pick<BowlingEvent, 'date' | 'type'>, players: number): string {
-  const day = WEEKDAYS[parseDate(event.date).getDay()];
-  return [day, typeLabel(event.type).toLowerCase(), players > 0 && `${players} ${players === 1 ? 'jugó' : 'jugaron'}`].filter(Boolean).join(' · ');
-}
+// La lógica (qué fechas, quiénes jugaron y sus distinciones, los textos) está en gamesFeed.ts: la usa también la app.
+export { eventLine, scoresLine };
 
 /**
  * Resultados anteriores de la liga (`/l/:lid/juegos`, rediseño «Calma y foco»): «‹ Liga de los martes», el título y una
@@ -44,7 +41,7 @@ export function eventLine(event: Pick<BowlingEvent, 'date' | 'type'>, players: n
  * aquí). Debajo, cada fecha jugada con su bloque (OCT / 6) y una lista de quienes jugaron, de la mejor serie a la peor:
  * sus juegos en una línea, la serie grande, «Mejor juego» o «Mejor serie», y cuántos me gusta y comentarios tiene.
  * Tocar a alguien abre su juego para dar me gusta, felicitar o comentar; tocar sus iniciales, su perfil. Quien faltó ve
- * cómo le fue a los demás. `?juego=evento_jugador` (un aviso) abre ese juego aunque sea viejo.
+ * cómo le fue a los demás. `?juego=…&evento=…` (un aviso) abre ese juego aunque sea viejo.
  */
 export default function GamesFeedPage() {
   const { lid, league, base, myPlayerId } = useLeagueCtx();
@@ -57,26 +54,19 @@ export default function GamesFeedPage() {
   const players = usePlayers(lid);
   const [shown, setShown] = useState(PAGE);
 
-  const played = useMemo(() => [...events.data].filter((e) => e.date <= today).sort((a, b) => b.date.localeCompare(a.date)), [events.data, today]);
-  const todays = played.filter((e) => e.date === today);
-  const past = played.filter((e) => e.date < today);
+  const { played, todays, past } = useMemo(() => playedEvents(events.data, today), [events.data, today]);
   const visiblePast = past.slice(0, shown);
 
-  // Juego abierto desde un aviso (?juego=evento_jugador): su evento se carga aunque sea viejo.
+  // Juego abierto desde un aviso (?juego=…&evento=…): su evento se carga aunque sea viejo.
   const open = params.get('juego');
-  const openEventId = open ? open.slice(0, open.indexOf('_')) : null;
-  const ids = useMemo(() => {
-    const list = [...todays, ...visiblePast].map((e) => e.id);
-    if (openEventId && !list.includes(openEventId)) list.push(openEventId);
-    return list;
-  }, [todays, visiblePast, openEventId]);
+  const openEventId = openEventIdOf(open, params.get('evento'));
+  const ids = useMemo(() => feedEventIds([...todays, ...visiblePast], openEventId), [todays, visiblePast, openEventId]);
 
   const entries = useEntriesOfEvents(lid, ids);
   const reactions = useReactionsOfEvents(lid, ids);
   const comments = useCommentsOfEvents(lid, ids);
-  const nameOf = useMemo(() => new Map(players.data.map((p: Player) => [p.id, p.name])), [players.data]);
   // Los menores nunca tienen cuenta ni perfil público.
-  const uidOf = useMemo(() => new Map(players.data.flatMap((p: Player) => (p.uid && !p.isMinor ? [[p.id, p.uid] as const] : []))), [players.data]);
+  const { nameOf, uidOf } = useMemo(() => feedPeople(players.data), [players.data]);
 
   const loadError = events.error ?? players.error ?? entries.error;
   if (loadError) return <LoadError error={loadError} />;
@@ -97,11 +87,11 @@ export default function GamesFeedPage() {
     );
 
   const loading = events.loading || players.loading || (entries.loading && !entries.data.length);
-  const urlOf = (ev: BowlingEvent) => (league.kind === 'torneo' ? base : `${base}/e/${ev.id}`);
+  const urlOf = (ev: BowlingEvent) => feedEventUrl(league, base, ev);
 
   return (
     <div className="flex flex-col px-2">
-      <ScreenTitle title="Resultados anteriores" hint="Toca a alguien para felicitarlo o comentar" pro={pro} />
+      <ScreenTitle title={FEED_TEXT.title} hint={FEED_TEXT.hint} pro={pro} />
 
       <div className={cx('mt-5 flex flex-col', pro ? 'gap-6' : 'gap-[26px]')}>
         {loading ? (
@@ -111,8 +101,8 @@ export default function GamesFeedPage() {
             <span aria-hidden="true" className="grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
               <MessageCircleHeart className="size-7" />
             </span>
-            <h2 className="mt-4 text-card-title">Todavía no hay juegos</h2>
-            <p className="mt-2 max-w-sm text-body text-muted">Cuando se juegue una práctica o un torneo, sale aquí.</p>
+            <h2 className="mt-4 text-card-title">{FEED_TEXT.emptyTitle}</h2>
+            <p className="mt-2 max-w-sm text-body text-muted">{FEED_TEXT.emptyText}</p>
           </Card>
         ) : (
           <>
@@ -120,8 +110,7 @@ export default function GamesFeedPage() {
             {todays.length > 0 && (
               <Card soft className="overflow-hidden">
                 {todays.map((ev) => {
-                  const info = liveInfo(ev, league, now);
-                  const playing = byEvent(ev.id).length;
+                  const line = todayLine(liveInfo(ev, league, now), byEvent(ev.id).length);
                   return (
                     <ListRow
                       key={ev.id}
@@ -130,14 +119,12 @@ export default function GamesFeedPage() {
                       leading={<DateBlock date={ev.date} raised />}
                       title={eventLabel(ev)}
                       subtitle={
-                        info.live ? (
+                        line.live ? (
                           <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
-                            <LiveDot /> En juego{playing > 0 ? ` · ${playing} jugando` : ''}
+                            <LiveDot /> {line.text}
                           </span>
-                        ) : info.startLabel ? (
-                          `Hoy a las ${info.startLabel}`
                         ) : (
-                          'Hoy'
+                          line.text
                         )
                       }
                     />
@@ -161,7 +148,7 @@ export default function GamesFeedPage() {
             ))}
             {past.length > visiblePast.length && (
               <Button variant="quiet" size={pro ? 'lg' : 'xl'} className="w-full" onClick={() => setShown((n) => n + PAGE)}>
-                Ver fechas más viejas
+                {FEED_TEXT.more}
               </Button>
             )}
           </>
@@ -186,24 +173,6 @@ export default function GamesFeedPage() {
       )}
     </div>
   );
-}
-
-/** Juegos de cada jugador del evento, de la mejor serie a la peor, con sus distinciones. */
-function postsOf(event: BowlingEvent, entries: Entry[], nameOf: Map<string, string>, uidOf: Map<string, string>, live: boolean): Post[] {
-  // En juego se ven también los juegos sin verificar (en vivo); en los pasados, solo los que cuentan.
-  const lines = entries.map((entry) => ({ entry, line: entryLine(entry, event, live) })).filter((p) => p.line.games > 0);
-  const many = lines.length > 1;
-  const best = Math.max(0, ...lines.map((p) => p.line.high));
-  const bestSeries = Math.max(0, ...lines.map((p) => p.line.scratch));
-  return lines
-    .map(({ entry, line }) => {
-      const badges: string[] = [];
-      if (line.high === 300) badges.push('¡Juego perfecto!');
-      else if (many && line.high === best) badges.push('Mejor juego');
-      if (many && line.games > 1 && line.scratch === bestSeries) badges.push('Mejor serie');
-      return { entry, line, name: nameOf.get(entry.playerId) ?? '(jugador borrado)', uid: uidOf.get(entry.playerId) ?? null, badges };
-    })
-    .sort((a, b) => b.line.scratch - a.line.scratch || b.line.high - a.line.high);
 }
 
 /** Una fecha jugada: su bloque (OCT / 6), el nombre (lleva al evento) y la lista de quienes jugaron. */
@@ -246,7 +215,7 @@ function EventGroup({
       {posts.length === 0 && loading ? (
         <Skeleton className="h-24 w-full rounded-3xl" />
       ) : posts.length === 0 ? (
-        <p className="mx-1 text-meta text-muted">Nadie anotó juegos en esta fecha.</p>
+        <p className="mx-1 text-meta text-muted">{FEED_TEXT.noGames}</p>
       ) : (
         <Card className="overflow-hidden">
           {posts.map((p) => (
@@ -257,9 +226,6 @@ function EventGroup({
     </section>
   );
 }
-
-/** «176 · 195 · 203 · 192»: los juegos que cuentan, en una línea. */
-export const scoresLine = (scores: readonly (number | null)[]): string => scores.filter((s): s is number => s != null).join(' · ');
 
 /**
  * Quien jugó: sus iniciales (llevan a su perfil si tiene cuenta), su nombre, sus juegos en una línea con «Mejor juego» o
@@ -286,7 +252,7 @@ function PostRow({
     <ListRow
       dense={dense}
       onClick={onOpen}
-      ariaLabel={`Ver el juego de ${name}: ${line.games > 1 ? `serie ${line.scratch}` : `${line.scratch} pinos`}`}
+      ariaLabel={postLabel(post)}
       // Las iniciales van encima de la fila (z-[1]): llevan a su perfil, no abren el juego.
       leading={
         <span className="relative z-[1] shrink-0">
@@ -303,7 +269,7 @@ function PostRow({
             </span>
           ))}
           {(likes > 0 || said > 0) && (
-            <span aria-label={[likes > 0 && `${likes} reacciones`, said > 0 && `${said} comentarios`].filter(Boolean).join(', ')} className="inline-flex items-center gap-2 text-faint">
+            <span aria-label={postCountsLabel(likes, said)} className="inline-flex items-center gap-2 text-faint">
               {likes > 0 && (
                 <span className="inline-flex items-center gap-0.5">
                   <Heart aria-hidden="true" className="size-3.5" />

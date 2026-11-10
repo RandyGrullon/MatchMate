@@ -8,23 +8,8 @@ import { bowlingTitle } from '@mm/prizes/catalog';
 import { Card, Empty, Segmented, Txt } from '@/components/ui';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
-
-/** El puesto: oro, plata y bronce en los 3 primeros (Position de la web). */
-function Position({ pos }: { pos: number }) {
-  const c = useColors();
-  const color = pos === 1 ? c.gold : pos === 2 ? c.silver : pos === 3 ? c.bronze : null;
-  return color ? (
-    <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-      <Txt style={{ fontSize: 12, fontFamily: font.bold, color: c.bg }}>{String(pos)}</Txt>
-    </View>
-  ) : (
-    <View style={{ width: 24, alignItems: 'center' }}>
-      <Txt tone="muted" style={{ fontSize: 14, fontFamily: font.medium }}>
-        {String(pos)}
-      </Txt>
-    </View>
-  );
-}
+import { EventGameDetail } from './GameDetail';
+import { Position } from './Position';
 
 /** Un número de arriba («Mejor juego», «Jugadores»), Stat de la web. */
 function Stat({ icon, label, value, sub }: { icon: ReactNode; label: string; value: number; sub?: string }) {
@@ -73,7 +58,8 @@ function Header({ title, mode, onMode, hasHcp, unofficial }: { title: string; mo
  * La clasificación de un torneo de boliche (o los resultados de una práctica): StandingsTab de la web en solo mirar,
  * como se ve en el teléfono (el puesto, el nombre con sus juegos debajo y el total). En un torneo, primero los
  * equipos (sus jugadores debajo) y después lo individual; cada tabla parte de la regla del torneo y se puede alternar
- * entre «Con handicap» y «Scratch» para mirar. Tocar un jugador abre su página. `readOnly = false` (la pestaña de Pro de
+ * entre «Con handicap» y «Scratch» para mirar. Tocar un jugador abre el detalle de sus juegos (con me gusta y comentarios:
+ * GameDetail.tsx, como la web en todos los modos); tocar su nombre, su página. `readOnly = false` (la pestaña de Pro de
  * quien organiza): con juegos sin foto, «Vista previa» los cuenta para mirar.
  */
 export function Standings({
@@ -97,6 +83,8 @@ export function Standings({
   const [indMode, setIndMode] = useState<RankBy>(individualRule(event));
   const [teamMode, setTeamMode] = useState<RankBy>(teamRule(event));
   const [preview, setPreview] = useState(false);
+  // El juego abierto (el detalle va aquí mismo: esta tabla también sale dentro de una hoja, «•••» › Resultados).
+  const [detail, setDetail] = useState<Entry | null>(null);
   const byId = new Map(players.map((p) => [p.id, p]));
   const nameOf = (l: Line) => byId.get(l.entry.playerId)?.name ?? '(jugador borrado)';
 
@@ -188,12 +176,19 @@ export function Standings({
                 key={l.entry.id}
                 accessibilityRole="button"
                 accessibilityLabel={`${pos}. ${nameOf(l)}${mine ? ' (tú)' : ''}: ${isTorneo ? (useHcp ? l.total : l.scratch) : l.avg}`}
-                onPress={() => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid, playerId: l.entry.playerId } })}
+                onPress={() => setDetail(l.entry)}
                 style={[styles.row, { backgroundColor: mine ? c.accentSoft : 'transparent' }, i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null]}
               >
                 <Position pos={pos} />
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Txt variant="bodyStrong" numberOfLines={1}>
+                  {/* El nombre lleva a su página (no abre el juego). */}
+                  <Txt
+                    variant="bodyStrong"
+                    numberOfLines={1}
+                    accessibilityRole="link"
+                    onPress={() => router.push({ pathname: '/l/[lid]/j/[playerId]', params: { lid, playerId: l.entry.playerId } })}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
                     {nameOf(l)}
                   </Txt>
                   <Txt tone="muted" numberOfLines={1} style={{ fontSize: 12 }}>
@@ -206,6 +201,7 @@ export function Standings({
           })}
         </Card>
       </View>
+      {detail && <EventGameDetail lid={lid} event={event} entries={entries} players={players} entry={detail} me={me} onClose={() => setDetail(null)} />}
     </View>
   );
 }

@@ -6,6 +6,10 @@
  * de prueba; pone el nombre y el @usuario cambiados encima de la fila de `profiles`. La contraseña contesta como la base
  * sin guardar nada (demoUpdatePassword). Se guarda en sessionStorage y se borra al salir de la demostración
  * (forgetDemoAccount). Todos los datos son ficticios.
+ *
+ * «Borrar mi cuenta» (src/pages/legal/account.ts y DeleteAccountDialog): prepare_delete_account con las ligas a nombre
+ * de la cuenta de prueba (las que no ha pasado ni borrado) y sus miembros, y transfer_ownership (pasar la liga) la saca
+ * de esa lista. Borrar la cuenta de verdad no se puede en la demostración.
  */
 import { mapAuthError } from '@mm/lib/backend/errors';
 import { BackendError, type BackendErrorKind } from '@mm/lib/backend/types';
@@ -47,9 +51,11 @@ interface State {
   blocked: BlockedPerson[];
   /** Cómo ve la app (profiles.ui_mode: 'lite' | 'pro'; undefined = no lo ha elegido). */
   uiMode?: 'lite' | 'pro' | null;
+  /** Las ligas que ya pasó a otro miembro (transfer_ownership). */
+  passed: string[];
 }
 
-const empty = (): State => ({ name: null, username: null, bio: null, avatar: null, blocked: SEED_BLOCKED.map((p) => ({ ...p })) });
+const empty = (): State => ({ name: null, username: null, bio: null, avatar: null, blocked: SEED_BLOCKED.map((p) => ({ ...p })), passed: [] });
 
 function load(): State {
   try {
@@ -92,6 +98,33 @@ export function demoAccountSelect(table: string, filters: readonly Filter[] = []
     .filter((r) => matches(r, filters));
 }
 
+/** Lo que contesta prepare_delete_account para la cuenta de prueba: sus ligas (las que siguen a su nombre) con los otros
+ * miembros (los admins primero, hasta 200) y lo que se borra. */
+function deletePlan(uid: string, s: State, read: Read) {
+  const members = read('memberships') ?? [];
+  const owned = (read('leagues') ?? [])
+    .filter((l) => l.owner_id === uid && !s.passed.includes(String(l.id)))
+    .map((l) => {
+      const others = members.filter((m) => m.league_id === l.id && m.user_id !== uid);
+      const admins = [...others.filter((m) => m.role === 'admin'), ...others.filter((m) => m.role !== 'admin')];
+      return {
+        id: l.id,
+        name: l.name,
+        sport: l.sport,
+        kind: l.kind,
+        memberCount: others.length,
+        members: admins.slice(0, 200).map((m) => ({ userId: m.user_id, name: m.display_name, role: m.role === 'admin' ? 'admin' : 'member' })),
+      };
+    });
+  const mine = members.filter((m) => m.user_id === uid);
+  return {
+    canDelete: owned.length === 0,
+    blockers: owned.length ? ['owned_leagues'] : [],
+    ownedLeagues: owned,
+    summary: { leagues: mine.length, players: mine.filter((m) => m.player_id).length, comments: 0, reactions: 0, devices: 0 },
+  };
+}
+
 /** Cómo está un @usuario para la cuenta de prueba (username_status de la base). */
 function statusOf(v: string, current: string): UsernameStatus {
   if (usernameProblem(v)) return 'invalid';
@@ -102,11 +135,11 @@ function statusOf(v: string, current: string): UsernameStatus {
 }
 
 /**
- * Las RPC de Configuración para la cuenta de prueba. `read`: las filas fijas de una tabla (la de `profiles` para el
- * nombre y el @usuario de la base). undefined si la función no es de aquí (sigue demoBackend como siempre).
+ * Las RPC de Configuración para la cuenta de prueba. `read`: las filas de una tabla (la de `profiles` para el nombre y
+ * el @usuario de la base; `leagues` y `memberships`, con todas las capas, para «Borrar mi cuenta»). undefined si la función no es de aquí (sigue demoBackend como siempre).
  */
 export function accountRpc(uid: string, fn: string, a: Record<string, unknown>, read: Read): unknown {
-  const FNS = ['rename_profile', 'ensure_profile', 'username_status', 'set_username', 'set_bio', 'set_avatar', 'public_profile', 'my_blocked_users', 'block_user', 'unblock_user', 'set_ui_mode'];
+  const FNS = ['rename_profile', 'ensure_profile', 'username_status', 'set_username', 'set_bio', 'set_avatar', 'public_profile', 'my_blocked_users', 'block_user', 'unblock_user', 'set_ui_mode', 'prepare_delete_account', 'transfer_ownership'];
   if (!FNS.includes(fn)) return undefined;
   // Solo el perfil de la cuenta de prueba (el de otras cuentas, como siempre).
   if (fn === 'public_profile' && a.p_user !== uid) return undefined;
@@ -165,6 +198,13 @@ export function accountRpc(uid: string, fn: string, a: Record<string, unknown>, 
     case 'unblock_user':
       s.blocked = s.blocked.filter((p) => p.id !== a.p_user);
       return done({ blocked: false });
+    case 'prepare_delete_account':
+      return deletePlan(uid, s, read);
+    case 'transfer_ownership': {
+      const id = String(a.p_league);
+      if (!s.passed.includes(id)) s.passed = [...s.passed, id];
+      return done(null);
+    }
     default: {
       // public_profile de la cuenta de prueba.
       const me: PublicProfile = {

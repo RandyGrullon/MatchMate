@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { boardLine, type BoardRow } from '@mm/components/event/board';
 import type { Player } from '@mm/lib/types';
 import { Card, SectionHeader, Txt } from '@/components/ui';
@@ -8,9 +8,24 @@ import { font } from '@/theme/tokens';
 /**
  * «Cómo van todos» (EventBoard de la web): cada jugador con su puesto, sus juegos («212 · 245 · 201»; lo que falta por
  * aprobar en gris y «jugando el 3» si es el tuyo a medias) y el total, que solo suma lo aprobado. Ya pasado, «Resultados».
- * Las filas salen de boardRows (src/components/event/board.ts), las mismas de la web.
+ * Las filas salen de boardRows (src/components/event/board.ts), las mismas de la web. `onOpen`: tocar a alguien que ya
+ * tiene juegos abre su juego (el detalle), como la web.
  */
-export function EventBoard({ rows, players, me, live, past }: { rows: readonly BoardRow[]; players: readonly Player[]; me: string | null; live: boolean; past: boolean }) {
+export function EventBoard({
+  rows,
+  players,
+  me,
+  live,
+  past,
+  onOpen,
+}: {
+  rows: readonly BoardRow[];
+  players: readonly Player[];
+  me: string | null;
+  live: boolean;
+  past: boolean;
+  onOpen?: (row: BoardRow) => void;
+}) {
   const c = useColors();
   if (!rows.length) return null;
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? 'Jugador';
@@ -35,12 +50,20 @@ export function EventBoard({ rows, players, me, live, past }: { rows: readonly B
           const name = nameOf(r.playerId);
           const mine = r.playerId === me;
           const line = boardLine(r.cells);
+          const open = onOpen && r.entry ? () => onOpen(r) : undefined;
           return (
-            <View
+            <Pressable
               key={r.playerId}
               accessible
+              accessibilityRole={open ? 'button' : undefined}
               accessibilityLabel={`${r.pos}. ${name}${mine ? ' (tú)' : ''}: ${r.total}`}
-              style={[styles.row, { backgroundColor: mine ? c.accentSoft : 'transparent' }, i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null]}
+              disabled={!open}
+              onPress={open}
+              style={({ pressed }) => [
+                styles.row,
+                { backgroundColor: mine ? c.accentSoft : pressed ? c.surface2 : 'transparent' },
+                i ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.line } : null,
+              ]}
             >
               <Txt style={{ width: 22, textAlign: 'center', fontFamily: font.bold, color: mine ? c.accent : c.muted }}>{r.pos}</Txt>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -57,7 +80,7 @@ export function EventBoard({ rows, players, me, live, past }: { rows: readonly B
                 </Txt>
               </View>
               <Txt style={{ fontFamily: font.bold, fontSize: 20, fontVariant: ['tabular-nums'] }}>{r.total}</Txt>
-            </View>
+            </Pressable>
           );
         })}
       </Card>

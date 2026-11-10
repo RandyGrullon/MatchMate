@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
+import { router } from 'expo-router';
 import { Waves } from 'lucide-react-native';
 import { useLeagueCtx } from '@mm/lib/league';
 import { leagueSport } from '@mm/sports/registry';
@@ -23,7 +24,6 @@ import {
 import { toast } from '@/components/feedback';
 import { runAction } from '@/components/swimming/parts';
 import { Button, Field, Input, Segmented, Sheet, Txt } from '@/components/ui';
-import { openOnWeb } from '@/lib/web';
 import { useColors } from '@/theme/theme';
 import { ConsentCheck, GuardianFields, MinorCheck, SportStatFields } from './fields';
 
@@ -115,7 +115,7 @@ export function AddPlayerSheet({ onClose, existingNames }: { onClose: () => void
             icon={<Waves size={20} color={c.accentFg} />}
             onPress={() => {
               onClose();
-              void openOnWeb(`/l/${lid}/admin?tab=nadadores`);
+              router.push({ pathname: '/l/[lid]/nadadores', params: { lid } });
             }}
           >
             Ir a Nadadores

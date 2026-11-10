@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
-import { Bell, Plus, QrCode, Search, Ticket } from 'lucide-react-native';
+import { Bell, QrCode, Search, Ticket, Users } from 'lucide-react-native';
 import { displayName, useAuth } from '@mm/lib/auth';
 import { queryClient } from '@mm/lib/data/client';
 import { ModeTag } from '@/components/mode/Mode';
@@ -25,7 +25,7 @@ import { useIdMoveNotice } from '@/components/esports/EsportsIndex';
 import { AgendaLinkRow, AnotarLink, CalendarLink, CalendarSheet, WhereSheet } from '@/components/agenda/HomeSheets';
 import { useAnotar } from '@/components/agenda/useAnotar';
 import { sportsOf } from '@mm/sports/registry';
-import { openOnWeb } from '@/lib/web';
+import { useSportStatus } from '@mm/sports/status';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
@@ -222,6 +222,7 @@ function TodaySection({ leagues, uid, loading }: { leagues: ReturnType<typeof us
 export default function HoyScreen() {
   const auth = useAuth();
   const uid = auth.user?.uid;
+  const { creatable } = useSportStatus(auth.isSuper);
   const mine = useMyLeagues();
   const leagues = { data: mine.all, loading: mine.loading, error: mine.error };
   const memberships = mine.memberships;
@@ -279,16 +280,19 @@ export default function HoyScreen() {
           <HomeNotice uid={uid ?? null} extra={[suggestion]} />
           <JoinCard />
           <Card padded={false}>
-            <ListRow
-              icon={
-                <RowIcon>
-                  <Plus size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title="Crear mi liga"
-              subtitle="Tú organizas; toma 1 minuto"
-              onPress={() => openOnWeb('/?crear=liga')}
-            />
+            {/* «Crear mi liga» solo si la cuenta ya puede crear ligas de algún deporte (JoinLeagueCard de la web). */}
+            {creatable.length > 0 && (
+              <ListRow
+                icon={
+                  <RowIcon>
+                    <Users size={20} color={c.accent} />
+                  </RowIcon>
+                }
+                title="Crear mi liga"
+                subtitle="Tú organizas; toma 1 minuto"
+                onPress={() => router.push({ pathname: '/crear', params: { kind: 'liga' } })}
+              />
+            )}
             <ListRow
               icon={
                 <RowIcon>

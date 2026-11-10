@@ -1,10 +1,9 @@
 import { useLayoutEffect } from 'react';
 import { Navigate, useParams } from 'react-router';
-import { parseActiveSport, setActiveSport } from '../lib/sportContext';
-import type { SportId } from '../sports/types';
+import { parseActiveSport, setActiveSport, sportHomeTarget } from '../lib/sportContext';
 
-/** A dónde lleva `/d/:sport` después de dejar la app en ese deporte: Hoy, salvo esports, que va a su índice. */
-export const sportHomeTarget = (sport: SportId | null): string => (sport === 'esports' ? '/esports' : '/');
+// A dónde lleva `/d/:sport` (en src/lib/sportContext.ts, para que la app del teléfono lo use igual).
+export { sportHomeTarget };
 
 /**
  * `/d/:sport` (rediseño «Calma y foco»: hay un solo inicio). Ya no es una pantalla aparte: la app se queda en ese deporte

@@ -31,6 +31,7 @@ export function EventProTabs({
   live,
   canScore,
   loading,
+  onOpen,
 }: {
   tabs: readonly { key: EventTab; label: string }[];
   tab: EventTab;
@@ -44,6 +45,8 @@ export function EventProTabs({
   canScore: boolean;
   /** Todavía llegan los inscritos o los jugadores. */
   loading: boolean;
+  /** Tocar un nombre de la Planilla abre su juego (el detalle). */
+  onOpen?: (entry: Entry) => void;
 }) {
   const c = useColors();
   const { lid, league, isAdmin, myPlayerId } = useLeagueCtx();
@@ -81,7 +84,7 @@ export function EventProTabs({
       ) : tab === 'juegos' ? (
         <View style={{ gap: 12 }}>
           {isAdmin && <ApprovalCard league={league} event={event} subs={subs.filter((s) => s.status === 'pendiente')} entries={entries} players={players} />}
-          <EventSheet event={event} entries={entries} players={players} subs={subs} live={live} readOnly={!canScore} />
+          <EventSheet event={event} entries={entries} players={players} subs={subs} live={live} readOnly={!canScore} onOpen={onOpen} />
         </View>
       ) : (
         <Standings lid={lid} event={event} entries={entries} players={players} me={myPlayerId} readOnly={!isAdmin} />

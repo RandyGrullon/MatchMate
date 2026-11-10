@@ -7,6 +7,7 @@
  */
 import { router } from 'expo-router';
 import { APP_ORIGIN } from '@mm/lib/origin';
+import { parseActiveSport, setActiveSport, sportHomeTarget } from '@mm/lib/sportContext';
 import { openOnWeb } from './web';
 
 const TABS = ['/', '/ligas', '/social', '/yo', '/empresa', '/login', '/buscar'];
@@ -43,6 +44,14 @@ export function appRoute(href: string): string | null {
     return section ? `${path}?seccion=${encodeURIComponent(section)}` : path;
   }
   if (path === '/acerca' || path === '/contacto') return path;
+  // El inicio de un deporte (`/d/<deporte>`, SportHomePage de la web): la app se queda en ese deporte (el filtro de
+  // Ligas y el color) y va a Hoy; esports, a su índice.
+  const sportHome = /^\/d\/([^/]+)$/.exec(path);
+  if (sportHome) {
+    const sport = parseActiveSport(decodeURIComponent(sportHome[1]));
+    if (sport) setActiveSport(sport);
+    return sportHomeTarget(sport);
+  }
   if (/^\/unirse\/[^/]+$/.test(path)) return path + query;
   // Equipos: el índice (con su ?crear= y ?deporte=), unirse con el código y un equipo (?tab=, ?jugador=, ?invitar=).
   if (path === '/equipos') return path + query;
@@ -65,9 +74,8 @@ export function appRoute(href: string): string | null {
   if (evTeams && /[?&]tab=pistas(&|$)/.test(query)) return `/l/${evTeams[1]}/e/${evTeams[2]}/pistas`;
   // Un evento, con su ?ver= o ?tab= (natación: «Cronometrar»; golf: la tarjeta o el leaderboard).
   if (/^\/l\/[^/]+\/e\/[^/]+$/.test(path)) return path + query;
-  // Un juego de boliche (el «Ver» de Social, el aviso «le gustó tu juego»): su detalle está en la web.
-  if (/^\/l\/[^/]+\/juegos$/.test(path) && /[?&]juego=/.test(query)) return null;
-  // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=).
+  // La tabla y los partidos de la liga (las pestañas de la web; esports: la tabla de un torneo con ?torneo=). En
+  // boliche, «Resultados anteriores» (con su ?juego=…&evento=…: el «Ver» de Social y los avisos abren ese juego).
   // La mesa anotadora de un partido de equipos (`/l/<liga>/juegos?partido=…&mesa=1`).
   const tbl = /^\/l\/([^/]+)\/juegos$/.exec(path);
   const tblMatch = /[?&]partido=([^&]+)/.exec(query)?.[1];
@@ -83,7 +91,7 @@ export function appRoute(href: string): string | null {
   if (/^\/p\/[^/]+$/.test(path)) return path;
   // Esports: el índice (con su ?crear=), Mi ID de juego, un equipo, unirse a un equipo, crear un torneo
   // (`/esports/<juego>/nuevo-torneo`, con su ?liga=) y la página de un juego (con su ?crear=liga).
-  if (path === '/esports' || path === '/d/esports') return '/esports' + query;
+  if (path === '/esports') return '/esports' + query;
   if (path === '/esports/mi-id') return path + query;
   if (/^\/esports\/(equipo|unirse)\/[^/]+$/.test(path)) return path;
   if (/^\/esports\/[^/]+\/nuevo-torneo$/.test(path)) return path + query;
