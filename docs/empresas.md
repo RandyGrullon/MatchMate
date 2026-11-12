@@ -85,6 +85,9 @@ MatchMate a la empresa (la promoción); la app nunca ve ni guarda datos de tarje
 - **Modo local:** sin Azul. `azul-pay` corre en la app (src/lib/backend/local.ts) con una clave de prueba y *Pagar con
   Azul* abre un simulador (`/dev/azul`, src/pages/dev/AzulSimulatorPage.tsx) que aprueba, declina o cancela firmado
   igual que Azul.
+- **La app del teléfono:** la Página de Pagos se abre dentro de la app (WebView con el mismo POST) y la vuelta a
+  `/empresa/pago` no se carga: la confirma la pantalla de la app con la misma `verify` (docs/movil-migracion.md ›
+  Empresas). Su demostración (`/dev/empresa`) usa la misma lógica, firma y simulador que el modo local.
 - **Pruebas:** `tests/sql/pagos-azul.test.ts` (la base), `src/lib/azulPayFunction.test.ts` (la firma contra la de
   Node, el formulario, la vuelta y la función), `src/lib/azulLocal.test.ts` (el simulador) y
   `src/lib/data/business.test.ts`.
@@ -133,11 +136,11 @@ Todo queda en la auditoría (`target_type = 'business'`).
 ## Pendiente
 
 - Cobrar en la app la inscripción de los torneos y separar la comisión (Azul ya cobra las promociones).
-- La app del teléfono: pagar con Azul (abrir la Página de Pagos en el navegador y volver por enlace).
 - Los Términos y la Política de privacidad tienen que decir que las empresas publican datos y fotos públicas de sus
   espacios y que la app cobra por destacar (con Azul: qué se guarda del pago, sin datos de tarjeta). Cambiar la versión obliga a aceptar de nuevo (src/lib/legal.ts).
-- La app del teléfono (`movil/`) ya tiene Mi empresa, sus espacios con fotos, Dónde jugar, la ficha y el cambio de
-  modo (docs/movil-migracion.md › Empresas), con la misma lógica (`src/lib/data/business.ts`,
+- La app del teléfono (`movil/`) ya tiene Mi empresa, sus espacios con fotos, Dónde jugar, la ficha, el cambio de
+  modo y pagar con Azul (docs/movil-migracion.md › Empresas), con la misma lógica (`src/lib/data/business.ts`,
   `src/pages/business/logic.ts` y `src/lib/venues/`). Falta probarla en un teléfono de verdad y contra Supabase con
-  la migración aplicada (la vista previa se probó con la demostración de `/dev/empresa`). La consola sigue en la web.
+  las migraciones aplicadas, y el pago contra la Página de Pagos de pruebas de Azul (la vista previa se probó con la
+  demostración de `/dev/empresa`). La consola sigue en la web.
 - Personal de la empresa (más de una cuenta por empresa) y reservas de canchas por hora.

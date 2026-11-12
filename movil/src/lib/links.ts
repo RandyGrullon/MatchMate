@@ -103,6 +103,8 @@ export function appRoute(href: string): string | null {
   // Dónde jugar (con su ?deporte=) y la ficha de un espacio.
   if (path === '/canchas') return path + query;
   if (/^\/canchas\/[^/]+$/.test(path)) return path;
+  // La vuelta de Azul (la respuesta firmada va entera en `q`, como la manda movil/src/lib/azul.ts).
+  if (path === '/empresa/pago') return query ? `${path}?q=${encodeURIComponent(query.slice(1))}` : path;
   // El perfil (con su ?tab=: Publicaciones, Juegos o Insignias, y ?insignia= abre una).
   // Yo (`/perfil`) y sus partes (`?tab=juegos|publicaciones|insignias`; `&insignia=` abre una y `&quieta=1` sin
   // animarla) y «Por liga y temporada» (`?tab=estadisticas`): la pestaña Yo y `/yo/<parte>`.

@@ -17,9 +17,12 @@ const deleteAccountCore = path.resolve(projectRoot, '../supabase/functions/delet
 // Leer la foto del marcador con la IA (src/lib/scan-result.ts): sus tipos y su revisión viven con la Edge Function
 // scan-bowling (_shared/scan-core.ts, TypeScript puro, sin imports).
 const scanCore = path.resolve(projectRoot, '../supabase/functions/_shared');
+// Pagar con Azul en la demostración y su simulador (src/lib/azulLocal.ts, movil/src/app/dev/azul.tsx): la firma y la
+// lógica de la Edge Function azul-pay (core.ts, TypeScript puro, sin imports).
+const azulPayCore = path.resolve(projectRoot, '../supabase/functions/azul-pay');
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [...(config.watchFolders ?? []), sharedRoot, deleteAccountCore, scanCore];
+config.watchFolders = [...(config.watchFolders ?? []), sharedRoot, deleteAccountCore, scanCore, azulPayCore];
 config.resolver.nodeModulesPaths = [path.resolve(projectRoot, 'node_modules')];
 
 const inShared = (file) => file.startsWith(sharedRoot + path.sep) || file === sharedRoot;

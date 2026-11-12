@@ -451,6 +451,18 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   Dónde jugar; las fotos (varias de la galería o la cámara, `showcasePhoto` de `movil/src/lib/pickImage.ts` con
   `SHOWCASE_FIT` de la web: 1600 px y 450 kB), portada y quitar; pedir destacarlo; enlazar un torneo que organizas;
   «Ver cómo la ven los jugadores» y borrarlo.
+- ✅ Pagar con Azul (docs/empresas.md › Pagos con Azul): con precios puestos, «Destacar» del espacio trae los días, el
+  monto con ITBIS y «Pagar con Azul» (`Promotion` en `movil/src/components/business/VenueParts.tsx`, los textos de
+  VenueSheet). Azul solo acepta un POST desde el navegador y una pestaña del navegador del sistema no puede abrirse
+  así: la Página de Pagos se abre dentro de la app (`/empresa/azul`, WebView con el formulario firmado por
+  `azul-pay`), con su dirección arriba. La vuelta (`ApprovedUrl`, `DeclinedUrl` o `CancelUrl`, `/empresa/pago` de la
+  web) no se carga: su query, entero en `q` (está firmado), va a `/empresa/pago` de la app (PaymentReturnPage: aprobado
+  con hasta cuándo, declinado, cancelado, no se pudo confirmar). Lo puro en `movil/src/lib/azulForm.ts`, lo demás en
+  `azul.ts`. `azul-pay` deja pasar al teléfono (sin `Origin`). En la vista previa web se paga como en la web
+  (`sendToAzul`). La demostración (`/dev/empresa` › Poner precios de prueba) corre `azul-pay` con su lógica y su firma
+  (`core.ts`, Metro la ve en `metro.config.js`) y la clave de prueba del modo local, y abre el simulador `/dev/azul`.
+  Probado en la vista previa con la demostración: cancelar, declinar, aprobar, sumar días, repetir la vuelta y una
+  firma cambiada. Sin probar con la Página de Pagos real ni en un teléfono.
 - ✅ Dónde jugar (`/canchas`, desde Ligas): por deporte (`?deporte=`), ciudad y nombre, las destacadas primero; la
   ficha (`/canchas/<id>`): fotos, deporte y lo que tiene, precio, WhatsApp (`whatsappLink`), llamar, el mapa, horario,
   la empresa, los torneos y, para la dueña, «Cambiar en mi panel».
@@ -459,7 +471,9 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   Mi empresa). Las pestañas que no tocan se esconden con `tabBarButton: () => null` (con `href: null` expo-router 58
   ya no deja abrir la pantalla).
 - ✅ Links: `/canchas` y `/canchas/<id>` (`links.ts`), `/canchas/` abre la app (`APP_LINK_PATHS` y `app.json`).
-- 🌐 La consola del superadmin (aprobar, comisión, promociones) se queda en la web.
+- ✅ Links: `/empresa/pago` va a la pantalla de la app con su query en `q` (`links.ts`); no está en `app.json` (la
+  vuelta de un pago empezado en la web se queda en la web).
+- 🌐 La consola del superadmin (aprobar, comisión, promociones, precios y pagos con Azul) se queda en la web.
 
 ## 9. Insignias, premios, reportes
 

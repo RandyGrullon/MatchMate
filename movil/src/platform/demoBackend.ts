@@ -8,7 +8,9 @@
  * src/lib/data/business.ts). Lo demás (ligas, social…) llega vacío. Todos los datos son ficticios.
  */
 import { BackendError, type AuthEvent, type Backend, type Session } from '@mm/lib/backend/types';
-import type { Business, BusinessStatus, OwnVenue, Venue, VenueDetail, VenuePhoto } from '@mm/lib/data/business';
+import type { Business, BusinessStatus, OwnVenue, PaymentStatus, PromotionPrice, Venue, VenueDetail, VenuePhoto } from '@mm/lib/data/business';
+import { LOCAL_AZUL_URL, localAzulConfig } from '@mm/lib/azulLocal';
+import { PAY_STATUS, startPayment, verifyPayment, type PayFailure } from '../../../supabase/functions/azul-pay/core';
 import { uuidv7 } from '@mm/lib/db/ids';
 import { CURRENT_LEGAL } from '@mm/lib/legal';
 import { ballRpc, forgetDemoBalls } from './demoBalls';
@@ -244,11 +246,23 @@ function seed() {
   return { businesses, venues };
 }
 
+/** Un pago con Azul de la demostración (la tabla payments de 20261105000200_pagos_azul.sql). */
+interface DemoPayment {
+  orderNumber: number;
+  promotionId: string;
+  venueId: string;
+  amount: number;
+  status: PaymentStatus;
+}
+
 interface Saved {
   businesses: [string, Core][];
   venues: Stored[];
   files: [string, string][];
   mode: 'player' | 'business' | null;
+  /** Los precios de destacar (los pone /dev/empresa, como el superadmin) y los pagos con Azul. */
+  prices?: PromotionPrice[];
+  payments?: DemoPayment[];
 }
 
 function load(): Saved | null {
@@ -267,9 +281,11 @@ export function createDemoBackend(): Backend {
   const venues = saved ? saved.venues : fresh!.venues;
   const files = new Map<string, string>(saved?.files ?? []);
   let mode: 'player' | 'business' | null = saved?.mode ?? null;
+  let prices: PromotionPrice[] = saved?.prices ?? [];
+  const payments: DemoPayment[] = saved?.payments ?? [];
   const save = () => {
     try {
-      sessionStorage.setItem(DATA, JSON.stringify({ businesses: [...businesses], venues, files: [...files], mode } satisfies Saved));
+      sessionStorage.setItem(DATA, JSON.stringify({ businesses: [...businesses], venues, files: [...files], mode, prices, payments } satisfies Saved));
     } catch {
       // lleno (muchas fotos): sigue en memoria
     }
@@ -423,6 +439,37 @@ export function createDemoBackend(): Backend {
       v.promotion = { ...v.promotion!, status: 'cancelled' };
       return true;
     },
+    // Pagar con Azul (20261105000200_pagos_azul.sql): los precios, empezar (la base pone el precio y deja la promoción
+    // pedida y el pago pendiente) y volver con «Cancelar». Terminarlo lo hace azul-pay (abajo, en invoke).
+    promotion_prices: () => [...prices].sort((x, y) => x.days - y.days),
+    admin_set_promotion_price: (a) => {
+      const days = Number(a.p_days);
+      prices = prices.filter((x) => x.days !== days);
+      if (typeof a.p_amount === 'number' && a.p_amount > 0) prices.push({ days, amount: a.p_amount });
+      return [...prices].sort((x, y) => x.days - y.days);
+    },
+    begin_promotion_payment: (a) => {
+      const v = venues.find((x) => x.id === a.p_venue && x.businessId === mine()?.id);
+      if (!v || mine()?.status !== 'approved') fail('no_permitido', 'permission', 'no_permitido');
+      const days = Number(a.p_days);
+      const price = prices.find((x) => x.days === days) ?? fail('invalido', 'validation', 'invalido');
+      const venue = v!;
+      venue.promotion =
+        venue.promotion?.status === 'requested'
+          ? { ...venue.promotion, days }
+          : { id: uuidv7(), status: 'requested', days, startsAt: null, endsAt: null, note: 'Pago con Azul', createdAt: iso() };
+      // Lo que quedó pendiente de antes para esa promoción ya no sirve.
+      for (const x of payments) if (x.promotionId === venue.promotion.id && x.status === 'pending') x.status = 'cancelled';
+      const orderNumber = 1001 + payments.length;
+      payments.push({ orderNumber, promotionId: venue.promotion.id, venueId: venue.id, amount: price.amount, status: 'pending' });
+      return { orderNumber, amount: price.amount, days, venueName: venue.name };
+    },
+    cancel_payment: (a) => {
+      const x = payments.find((p) => p.orderNumber === Number(a.p_order) && p.status === 'pending');
+      if (!x) return false;
+      x.status = 'cancelled';
+      return true;
+    },
     set_league_venue: (a) => {
       if (a.p_venue) myVenue(a.p_venue).leagues += 1;
       return true;
@@ -468,6 +515,87 @@ export function createDemoBackend(): Backend {
   });
 
   const notInDemo = () => fail('En la demostración no se puede.', 'unknown');
+
+  /**
+   * finish_payment (la respuesta de Azul ya revisada): aprobado activa la promoción desde ahora por sus días o, si el
+   * espacio ya está destacado, desde que termine lo que va. Repetirla no cambia nada.
+   */
+  const finishPayment = (order: number, status: 'approved' | 'declined' | 'error', amount: number) => {
+    const x = payments.find((p) => p.orderNumber === order);
+    if (!x) return null;
+    // El monto que volvió tiene que ser el que se cobró.
+    if (Math.round(amount * 100) !== Math.round(x.amount * 100)) fail('invalido', 'validation', 'invalido');
+    const v = venues.find((y) => y.id === x.venueId);
+    if (x.status === 'pending' || (x.status !== 'approved' && status === 'approved')) {
+      x.status = status;
+      const p = v?.promotion;
+      if (status === 'approved' && v && p && p.id === x.promotionId && p.status !== 'active') {
+        const start = Math.max(Date.now(), v.featuredUntil ? Date.parse(v.featuredUntil) : 0);
+        const endsAt = new Date(start + p.days * DAY).toISOString();
+        v.promotion = { ...p, status: 'active', startsAt: new Date(start).toISOString(), endsAt };
+        v.featuredUntil = endsAt;
+      }
+    }
+    const p = v?.promotion?.id === x.promotionId ? v.promotion : null;
+    return { status: x.status, venueId: x.venueId, endsAt: p?.endsAt ?? null, days: p?.days ?? null, amount: x.amount };
+  };
+
+  /**
+   * La Edge Function azul-pay con la lógica y la firma de verdad (supabase/functions/azul-pay/core.ts) y la clave de
+   * prueba del modo local de la web (src/lib/azulLocal.ts): «Pagar con Azul» abre el simulador de la app (/dev/azul) y
+   * su respuesta vuelve a la ruta de la app (/empresa/pago), sin cobrar nada.
+   */
+  const azulPay = async (body: unknown) => {
+    const config = localAzulConfig('');
+    const b = (body && typeof body === 'object' ? body : {}) as { action?: unknown; venueId?: unknown; days?: unknown; params?: unknown };
+    const failure = (f: PayFailure) => {
+      const status = PAY_STATUS[f.code];
+      const kind = status === 401 ? 'auth' : status === 403 ? 'permission' : status === 404 ? 'not_found' : status === 429 ? 'rate_limited' : status === 400 ? 'validation' : 'unknown';
+      return new BackendError(f.message, kind, f.code);
+    };
+    const dbError = (e: unknown) => ({ data: null, error: { message: e instanceof BackendError ? (e.code ?? e.message) : String(e) } });
+    if (b.action === 'start' && typeof b.venueId === 'string' && typeof b.days === 'number') {
+      const started = await startPayment(
+        {
+          begin: async (_token, venueId, days) => {
+            try {
+              const data = rpcs.begin_promotion_payment({ p_venue: venueId, p_days: days });
+              save();
+              return { data, error: null };
+            } catch (e) {
+              return dbError(e);
+            }
+          },
+        },
+        config,
+        'demo',
+        b.venueId,
+        b.days,
+      );
+      if ('code' in started) throw failure(started);
+      return { url: LOCAL_AZUL_URL, fields: started.fields, orderNumber: started.order.orderNumber, amount: started.order.amount };
+    }
+    if (b.action === 'verify' && b.params && typeof b.params === 'object') {
+      const done = await verifyPayment(
+        {
+          finish: async (order, status, amount) => {
+            try {
+              const data = finishPayment(order, status as 'approved' | 'declined' | 'error', amount);
+              save();
+              return { data, error: null };
+            } catch (e) {
+              return dbError(e);
+            }
+          },
+        },
+        config,
+        b.params as Record<string, string>,
+      );
+      if ('code' in done) throw failure(done);
+      return done.result;
+    }
+    throw new BackendError('Petición inválida.', 'validation', 'invalido');
+  };
 
   return {
     mode: 'supabase',
@@ -610,8 +738,12 @@ export function createDemoBackend(): Backend {
         save();
       },
     },
-    // Solo la lectura de la foto del marcador con IA (demoApprovals.ts), con su espera.
+    // La lectura de la foto del marcador con IA (demoApprovals.ts), con su espera, y pagar con Azul (azulPay, arriba).
     invoke: async <T,>(fn: string, body: unknown) => {
+      if (fn === 'azul-pay') {
+        await new Promise((r) => setTimeout(r, 400));
+        return structuredClone(await azulPay(body)) as T;
+      }
       const scan = demoApprovalsInvoke(fn, body) ?? demoEventProInvoke(fn, body, (t) => demoLayer(t) ?? []);
       if (scan === undefined) return notInDemo();
       await new Promise((r) => setTimeout(r, 900));

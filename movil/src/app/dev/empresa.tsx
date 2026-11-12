@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import { useAuth } from '@mm/lib/auth';
 import { invalidate, rpc } from '@mm/lib/data/client';
-import { businessTags, useMyBusiness, type BusinessStatus } from '@mm/lib/data/business';
+import { adminSetPromotionPrice, businessTags, useMyBusiness, usePromotionPrices, type BusinessStatus } from '@mm/lib/data/business';
 import { toast } from '@/components/feedback';
 import { Button, Card, Loading, Screen, SectionHeader, Txt } from '@/components/ui';
 import { demoOn, setDemo } from '@/platform/demoBackend';
@@ -24,6 +24,13 @@ export default function DevEmpresa() {
   }
   return demoOn() ? <DemoPanel /> : <DemoOff />;
 }
+
+/** Días y RD$ (ITBIS incluido) de prueba para destacar un espacio. */
+const DEMO_PRICES = [
+  [7, 1500],
+  [15, 2800],
+  [30, 5000],
+] as const;
 
 function go(path: string) {
   // Al recargar, getBackend elige el de la demostración (o el de siempre).
@@ -58,8 +65,20 @@ function DemoPanel() {
 
 function DemoBusiness() {
   const business = useMyBusiness();
+  const prices = usePromotionPrices();
   const [busy, setBusy] = useState(false);
   const b = business.data;
+
+  /** Los precios de destacar (consola › Empresas › Cobrar con Azul en la web), de prueba. */
+  async function setPrices(on: boolean) {
+    setBusy(true);
+    try {
+      for (const [days, amount] of DEMO_PRICES) await adminSetPromotionPrice(days, on ? amount : null);
+      toast(on ? 'Precios puestos' : 'Precios quitados');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function review(status: BusinessStatus, note: string | null = null) {
     if (!b) return;
@@ -85,6 +104,16 @@ function DemoBusiness() {
         </Button>
         <Button full disabled={!b || busy} onPress={() => void review('rejected', 'Falta una foto de la entrada (prueba).')}>
           Rechazarla con motivo
+        </Button>
+      </Card>
+      <Card style={{ gap: 10 }}>
+        <Txt tone="fg2">
+          {prices.data.length
+            ? `Cobrar con Azul: ${prices.data.map((p) => `${p.days} días RD$${p.amount}`).join(' · ')}`
+            : 'Cobrar con Azul: sin precios (la empresa pide destacar y se cobra aparte).'}
+        </Txt>
+        <Button full disabled={busy} onPress={() => void setPrices(!prices.data.length)}>
+          {prices.data.length ? 'Quitar los precios' : 'Poner precios de prueba'}
         </Button>
       </Card>
       <Button full onPress={() => router.navigate('/empresa')}>

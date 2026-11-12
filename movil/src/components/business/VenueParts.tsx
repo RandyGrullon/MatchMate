@@ -1,12 +1,12 @@
 /**
  * Las partes del editor de un espacio (movil/src/app/espacio/[venueId].tsx), como VenueSheet.tsx de la web: lo que pide
- * el deporte (src/lib/venues/fields.ts), las fotos (hasta 8; la primera es la portada), destacarlo y los torneos que
- * se juegan ahí.
+ * el deporte (src/lib/venues/fields.ts), las fotos (hasta 8; la primera es la portada), destacarlo (pedirlo o pagarlo
+ * con Azul) y los torneos que se juegan ahí.
  */
 import { useMemo, useState } from 'react';
 import { Pressable, Switch, View } from 'react-native';
 import { router } from 'expo-router';
-import { Camera, ImagePlus, Sparkles, Star, Trash2, Trophy } from 'lucide-react-native';
+import { Camera, CreditCard, ImagePlus, Sparkles, Star, Trash2, Trophy } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '@mm/lib/data';
 import {
@@ -16,10 +16,13 @@ import {
   cancelPromotion,
   deleteVenuePhoto,
   isFeatured,
+  paymentErrorText,
   requestPromotion,
   setLeagueVenue,
   setVenueCover,
+  startPromotionPayment,
   uploadVenuePhoto,
+  usePromotionPrices,
   type Business,
   type OwnVenue,
   type VenuePhoto,
@@ -32,6 +35,7 @@ import { TextArea } from './BusinessFields';
 import { VenuePhotoImg } from '../venues/VenueBits';
 import { confirmAsync, toast } from '../feedback';
 import { Button, Card, ChoiceRow, Field, Input, Segmented, Txt } from '../ui';
+import { openAzul } from '@/lib/azul';
 import { pickPhotoAssets, showcasePhoto, type PhotoSource } from '@/lib/pickImage';
 import { useColors } from '@/theme/theme';
 import { font, radius } from '@/theme/tokens';
@@ -205,22 +209,72 @@ export function Photos({ venue, onChange }: { venue: OwnVenue; onChange: (photos
   );
 }
 
-/** Destacar el espacio (sale primero en «Dónde jugar»): pedirlo, ver cómo va o hasta cuándo sale. */
+const money = (n: number) => `RD$${n.toLocaleString('es-DO', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Destacar el espacio (sale primero en «Dónde jugar»). Con precios puestos por el superadmin, se paga con Azul y se
+ * activa sola (si ya está destacado, se suma al final; movil/src/lib/azul.ts). Sin precios: pedirlo, ver cómo va o
+ * hasta cuándo sale.
+ */
 export function Promotion({ business, venue, onChange }: { business: Business; venue: OwnVenue; onChange: (v: OwnVenue) => void }) {
   const c = useColors();
+  const prices = usePromotionPrices();
   const [days, setDays] = useState<string>(String(PROMOTION_DAYS[0]));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const p = venue.promotion;
+  const featured = isFeatured(venue);
 
   let body;
-  if (business.status !== 'approved') {
+  if (business.status === 'approved' && prices.data.length) {
+    const chosen = prices.data.find((x) => String(x.days) === days) ?? prices.data[0];
+    body = (
+      <>
+        {featured ? (
+          <Txt variant="meta">
+            Sale primero en «Dónde jugar» hasta el {formatDateLong(toIsoDate(new Date(venue.featuredUntil!)))}. Si pagas más días, se suman al final.
+          </Txt>
+        ) : (
+          <Txt variant="meta" tone="muted">
+            Sale primero cuando los jugadores buscan dónde jugar {sportMeta(venue.sport)?.lower ?? ''}.
+          </Txt>
+        )}
+        <Segmented label="Por cuántos días" value={String(chosen.days)} onChange={setDays} options={prices.data.map((x) => ({ key: String(x.days), label: `${x.days} días` }))} />
+        <Txt>
+          <Txt variant="bodyStrong">{money(chosen.amount)}</Txt>{' '}
+          <Txt variant="meta" tone="muted">
+            ITBIS incluido
+          </Txt>
+        </Txt>
+        <Button
+          variant="primary"
+          icon={<CreditCard size={20} color={c.accentFg} />}
+          loading={busy}
+          onPress={async () => {
+            setBusy(true);
+            try {
+              openAzul(await startPromotionPayment(venue.id, chosen.days));
+            } catch (e) {
+              toast(paymentErrorText(e), 'error');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Pagar con Azul
+        </Button>
+        <Txt variant="meta" tone="muted">
+          Pagas con tarjeta en la página segura de Azul y se activa al volver.
+        </Txt>
+      </>
+    );
+  } else if (business.status !== 'approved') {
     body = (
       <Txt variant="meta" tone="muted">
         Cuando aprobemos tu empresa, puedes pedir que tus espacios salgan primero.
       </Txt>
     );
-  } else if (isFeatured(venue)) {
+  } else if (featured) {
     body = <Txt variant="meta">Sale primero en «Dónde jugar» hasta el {formatDateLong(toIsoDate(new Date(venue.featuredUntil!)))}.</Txt>;
   } else if (p?.status === 'requested') {
     body = (
