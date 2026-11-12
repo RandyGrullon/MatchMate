@@ -16,6 +16,7 @@ import { installNotifications, refreshNotifyState } from '@/platform/notificatio
 import { hydrateStorage } from '@/platform/storage';
 import { AccountGates } from '@/components/account/Gates';
 import { BadgeUnlockHost } from '@/components/badges/BadgeUnlockHost';
+import { HomeWidgetFeeder } from '@/components/home/HomeWidgetFeeder';
 import { ModeSheetHost, ModeToastHost } from '@/components/mode/Mode';
 import { ToastHost } from '@/components/feedback';
 import { openLink } from '@/lib/links';
@@ -91,6 +92,8 @@ function Navigator() {
       <ModeToastHost />
       <ModeSheetHost />
       <ToastHost />
+      {/* El widget del iPhone: lo de Hoy en la pantalla de inicio (solo con expo-widgets en un build de la app). */}
+      <HomeWidgetFeeder />
     </NoticesProvider>
   );
 }

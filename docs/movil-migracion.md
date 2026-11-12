@@ -529,3 +529,16 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   `/.well-known/` salen de `movil/scripts/enlaces-universales.mjs` cuando estén el Team ID y las huellas.
 - ✅ Compartir (la hoja del teléfono: publicaciones, invitaciones; expo-sharing para archivos), fotos y cámara
   (expo-image-picker), vibración (expo-haptics) y escanear un QR (expo-camera, `movil/src/app/escanear.tsx`).
+- ✅ Widget del iPhone (solo del teléfono, la web no tiene): `MatchMateHoy` en `app.json` (expo-widgets, app group
+  `group.com.grullonb.matchmate`), en la pantalla de inicio (pequeño, mediano y grande) y en la bloqueada
+  (rectangular y en línea). Muestra lo de Hoy de todas tus ligas con los textos de Hoy (en juego ahora, en vivo, tu
+  próximo partido, tu próxima fecha o «Nada programado») y, en el mediano y el grande, «Lo que viene» con el bloque de
+  fecha; tocar cualquier parte abre esa pantalla en la app (`matchmate://…` por `appRoute`). El layout es
+  `movil/src/widgets/hoyWidget.tsx` (SwiftUI de @expo/ui, sin imports en tiempo de ejecución; la función va en
+  minúscula para que el React Compiler no la toque). El contenido lo arma `src/components/home/homeWidget.ts` (puro,
+  con su prueba): lo de ahora y una entrada por cada medianoche de la semana, para que «Hoy» y «Mañana» sigan bien sin
+  abrir la app. Lo manda `movil/src/components/home/HomeWidgetFeeder.tsx` (en `_layout.tsx`) al cambiar algo, cada
+  15 minutos y al salir de la app; sin cuenta manda la portada, así no queda nada de la cuenta anterior. Android no:
+  en expo-widgets 58 tocar un widget de Android no abre la app. Probado: los textos (vitest), el layout armado con
+  `node_modules/expo-widgets/scripts/build-layout-registry.mjs` y dibujado en node en cada tamaño. Sin ver en un
+  iPhone: necesita un build nuevo de EAS (no sale en Expo Go ni en la vista previa web).

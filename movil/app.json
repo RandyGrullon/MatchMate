@@ -140,6 +140,24 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.grullonb.matchmate",
+          "widgets": [
+            {
+              "name": "MatchMateHoy",
+              "displayName": "MatchMate",
+              "description": "Lo de hoy en tus ligas y lo que viene.",
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium", "systemLarge", "accessoryRectangular", "accessoryInline"],
+                "initialLayout": "src/widgets/hoyWidget.tsx"
+              },
+              "android": null
+            }
+          ]
+        }
       ]
     ],
     "experiments": {
