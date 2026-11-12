@@ -36,6 +36,7 @@ import { bowlingRpc, demoBowlingSelect, forgetDemoBowling } from './demoBowling'
 import { demoRacketSelect, forgetDemoRacket, racketRpc } from './demoRacket';
 import { demoGolfSelect, forgetDemoGolf, golfRpc } from './demoGolf';
 import { demoGameSocialSelect, forgetDemoGameSocial, gameSocialRpc } from './demoGameSocial';
+import { claimsRpc, demoClaimsSelect, forgetDemoClaims } from './demoClaims';
 import { demoTeamSportsSelect, forgetDemoTeamSports, teamSportsRpc } from './demoTeamSports';
 import { demoEventProInvoke, demoEventProSelect, eventProRpc, forgetDemoEventPro } from './demoEventPro';
 
@@ -79,6 +80,8 @@ const makerLayer = (t: string, f: readonly DemoFilter[] = []) => demoMakerSelect
 const golfLayer = (t: string, f: readonly DemoFilter[] = []) => demoGolfSelect(t, f, (x) => makerLayer(x)) ?? makerLayer(t, f);
 // Arriba de todo: los me gusta, felicitaciones y comentarios de los juegos de boliche (demoGameSocial.ts).
 const gameSocialLayer = (t: string, f: readonly DemoFilter[] = []) => demoGameSocialSelect(t, f, (x) => golfLayer(x)) ?? golfLayer(t, f);
+// Arriba de todo (ve las membresías de la Agenda): los pedidos de jugador de la cuenta de prueba (demoClaims.ts).
+const claimsLayer = (t: string, f: readonly DemoFilter[] = []) => demoClaimsSelect(DEMO_USER, t, f, (x) => gameSocialLayer(x)) ?? gameSocialLayer(t, f);
 
 const FLAG = 'mm-demo';
 const DATA = 'mm-demo-data';
@@ -122,6 +125,7 @@ export function setDemo(on: boolean) {
       forgetDemoRacket();
       forgetDemoGolf();
       forgetDemoGameSocial();
+      forgetDemoClaims();
       forgetDemoTeamSports();
       forgetDemoEventPro();
     }
@@ -485,7 +489,7 @@ export function createDemoBackend(): Backend {
       // La cuenta de prueba (Configuración: nombre, usuario, biografía y foto cambiados, demoAccount.ts).
       if (q.table === 'profiles') return (demoAccountSelect('profiles', q.filters, () => [profileRow()]) ?? []) as T[];
       // Las ligas ficticias, por capas (demoLayer): la liga, las temporadas, los equipos y los jugadores.
-      const league = gameSocialLayer(q.table, q.filters);
+      const league = claimsLayer(q.table, q.filters);
       if (league) return league as T[];
       if (q.table === 'legal_acceptances') {
         return [
@@ -498,6 +502,9 @@ export function createDemoBackend(): Backend {
     rpc: async <T,>(fn: string, args: Record<string, unknown> = {}) => {
       // Como la red: un momento (así se ven las cargas).
       await new Promise((r) => setTimeout(r, 120));
+      // Pedir ser un jugador sin cuenta y cancelar el pedido (demoClaims.ts), antes que la Agenda.
+      const fromClaims = claimsRpc(DEMO_USER, fn, args, (t) => claimsLayer(t) ?? []);
+      if (fromClaims !== undefined) return structuredClone(fromClaims) as T;
       // Me gusta, felicitar y comentar un juego de boliche (demoGameSocial.ts).
       const fromGameSocial = gameSocialRpc(DEMO_USER, fn, args, (t) => gameSocialLayer(t) ?? []);
       if (fromGameSocial !== undefined) return structuredClone(fromGameSocial) as T;

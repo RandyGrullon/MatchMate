@@ -26,7 +26,7 @@ import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
 
 /** El link de la derecha del título de una sección («Organizar», «Ver toda», «Calendario»). */
-function SectionLink({ children, onPress }: { children: string; onPress: () => void }) {
+export function SectionLink({ children, onPress }: { children: string; onPress: () => void }) {
   return (
     <Txt variant="meta" tone="accent" accessibilityRole="button" suppressHighlighting style={{ fontFamily: font.semibold, paddingVertical: 12, paddingLeft: 12 }} onPress={onPress}>
       {children}
@@ -337,7 +337,7 @@ function ApproveRow({ lid, pending, league, sport }: { lid: string; pending: rea
 // ---------- En vivo ----------
 
 /** Cómo van todos en el evento y el nombre de cada uno (useLiveTable de la web: la misma tabla de la Planilla). */
-function useLiveTable(game: Pick<LiveGame, 'feed' | 'event'>) {
+export function useLiveTable(game: Pick<LiveGame, 'feed' | 'event'>) {
   const lid = game.feed.lid;
   const event = isPlannedEvent(game.event) ? undefined : game.event;
   const entries = useEventEntries(lid, event?.id);

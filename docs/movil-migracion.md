@@ -84,10 +84,19 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   (`movil/src/components/league/WhoAreYou.tsx`) y Aceptar / Rechazar; la de anotador lleva al torneo. Las de equipos
   llevan al equipo (`/equipos/<equipo>`).
 - ✅ Ligas: las tuyas y las abiertas, con búsqueda; «Crear liga» y «Crear torneo».
-- 🟡 La liga: nombre, deporte, lugar, horario, temporada y fechas (boliche; raqueta y equipos: secciones 4 y 5), con las
-  filas «Tabla», «Resultados anteriores» y «Mis números». Del inicio de boliche de la web (LeagueHomePage) falta la
-  forma del rediseño: la Tabla con los 3 de arriba y «Ver toda», «Voy» en las próximas fechas y la hoja «Jugadores».
-  ✅ muro (`/l/<liga>/muro`), invitar
+- ✅ El inicio de la liga, en todos los deportes: arriba el logo (o el ícono del deporte), el nombre completo y cuándo y
+  dónde juegan (LeagueIdent de la web); los avisos de la liga; «Mi reclamo» o «¿Ya jugabas en esta liga? Busca tu
+  nombre» para los miembros (`movil/src/components/claims/ClaimBanner.tsx`, ClaimBanner de la web: pedir un jugador sin
+  cuenta, cancelar el pedido, el rechazo con la nota del admin; demo en «Liga Abierta de Ejemplo», `demoClaims.ts`); y
+  lo que está «EN VIVO» con «Ver» (`movil/src/components/live/LiveBanner.tsx`). En los otros deportes, dónde, cuándo y
+  la temporada van al final (LeagueInfoCard).
+- ✅ La liga de boliche en una sola pantalla (`movil/src/components/league/BowlingLeagueHome.tsx`, LeagueHomePage de la
+  web): quien solo mira una pública, «Estás viendo … · Unirme»; «En juego ahora · N jugando» con lo tuyo en una línea y
+  UN botón (la lógica de Hoy); la Tabla con los 3 de arriba y «Ver toda»; «Próximas fechas» con «Voy» y «Calendario»
+  (la semana de la liga; en Pro, quien organiza crea ahí una práctica o un torneo); los equipos fijos; y las filas
+  Jugadores (la hoja con todos y, en Pro, «Editar jugadores»), Resultados anteriores y Mis números, con el buzón.
+  🟡 Un torneo de boliche sin liga todavía muestra su tabla y sus fechas (la web abre el torneo mismo).
+- ✅ Muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
   seguir una liga pública. La tabla de cada deporte está en sus secciones (3 a 6).
 - ✅ Avisos de la liga (`movil/src/components/league/Announce.tsx`, los mismos de la web): el aviso del admin de los

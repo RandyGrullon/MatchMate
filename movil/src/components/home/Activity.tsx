@@ -43,32 +43,15 @@ function openNext(lid: string, eventId: string, next: NextGame) {
 }
 
 /**
- * La práctica o el torneo de boliche que se juega hoy (TodayCard de la web): «En juego ahora» (o a qué hora empieza),
- * el título, liga · bolera y UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1», «Enviar mis juegos»). La
- * práctica del horario sin evento se abre al tocar (openPractice). La de anoche: «Cierra hoy».
+ * Lo que hace el botón del juego de hoy (NextGameAction de la web; el de Hoy y el de «En juego ahora» de la liga): la
+ * práctica del horario sin evento se abre primero (openPractice); quien anota los de todos va a la planilla; si no, el
+ * editor del juego que toca o el evento.
  */
-export function TodayGameCard({ game, today, pro = false }: { game: LiveGame; today: string; pro?: boolean }) {
-  const c = useColors();
-  const { feed, league, event, info, late } = game;
-  const planned = isPlannedEvent(event);
-  const day = game.today ?? today;
-  const mine = useNextGame(game, today);
+export function useNextAction(game: LiveGame, today: string): { busy: boolean; act: (next: NextGame) => Promise<void> } {
+  const { feed, event } = game;
   const [busy, setBusy] = useState(false);
-  const lane = useMyLane(feed.lid, planned || late ? null : event.id, feed.playerId);
-  const title = late ? lateTitle(mine?.next) : todayTitle(event, day);
-  const when = late ? LATE_WHEN : info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : 'En juego ahora';
-  const start = late ? null : (info.startLabel ?? (event.startTime ? formatTime(event.startTime.slice(0, 5)) || null : null));
-  // «Liga · bolera · 7:30 pm · Pista 7» (sin hora ni pista, lo que haya).
-  const meta = [league.kind !== 'torneo' ? league.name : null, league.venue?.trim() || null, !info.startsSoon ? start : null, lane != null ? `Pista ${lane}` : null]
-    .filter(Boolean)
-    .join(' · ');
-
-  // La de anoche ya no tiene nada que hacer: no ocupa Hoy.
-  if (late && mine && !mine.loading && mine.next.kind === 'ver') return null;
-
-  // `next`: lo que hace el botón (el principal o, en Pro, «Planilla»).
   async function act(next: NextGame) {
-    if (planned && (next.kind === 'anotar' || next.kind === 'planilla')) {
+    if (isPlannedEvent(event) && (next.kind === 'anotar' || next.kind === 'planilla')) {
       setBusy(true);
       try {
         const id = await openPractice(feed.lid, event.date);
@@ -85,6 +68,32 @@ export function TodayGameCard({ game, today, pro = false }: { game: LiveGame; to
     if (next.kind === 'planilla' || next.kind === 'preparar') openLink(next.to);
     else openNext(feed.lid, event.id, next);
   }
+  return { busy, act };
+}
+
+/**
+ * La práctica o el torneo de boliche que se juega hoy (TodayCard de la web): «En juego ahora» (o a qué hora empieza),
+ * el título, liga · bolera y UN botón (useNextGame: «Seguir mi juego 3», «Anotar juego 1», «Enviar mis juegos»). La
+ * práctica del horario sin evento se abre al tocar (openPractice). La de anoche: «Cierra hoy».
+ */
+export function TodayGameCard({ game, today, pro = false }: { game: LiveGame; today: string; pro?: boolean }) {
+  const c = useColors();
+  const { feed, league, event, info, late } = game;
+  const planned = isPlannedEvent(event);
+  const day = game.today ?? today;
+  const mine = useNextGame(game, today);
+  const { busy, act } = useNextAction(game, today);
+  const lane = useMyLane(feed.lid, planned || late ? null : event.id, feed.playerId);
+  const title = late ? lateTitle(mine?.next) : todayTitle(event, day);
+  const when = late ? LATE_WHEN : info.startsSoon && info.startLabel ? `Empieza a las ${info.startLabel}` : 'En juego ahora';
+  const start = late ? null : (info.startLabel ?? (event.startTime ? formatTime(event.startTime.slice(0, 5)) || null : null));
+  // «Liga · bolera · 7:30 pm · Pista 7» (sin hora ni pista, lo que haya).
+  const meta = [league.kind !== 'torneo' ? league.name : null, league.venue?.trim() || null, !info.startsSoon ? start : null, lane != null ? `Pista ${lane}` : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  // La de anoche ya no tiene nada que hacer: no ocupa Hoy.
+  if (late && mine && !mine.loading && mine.next.kind === 'ver') return null;
 
   // Pro: la tarjeta más densa (J1 J2 J3 Serie, «Seguir juego 3» y «Planilla» al lado), en ProSections.tsx.
   if (pro) return <TodayCardPro game={game} title={title} lane={lane} mine={mine} busy={busy} onAct={(next) => void act(next)} />;
@@ -340,7 +349,7 @@ export function UpNext({ items, today, showLeague, action }: { items: readonly C
 }
 
 /** «Voy» en línea (RsvpButton de la web): en acento suave; ya confirmado, «Vas ✓» en gris. */
-function SmallRsvp({ item }: { item: CalendarItem }) {
+export function SmallRsvp({ item }: { item: CalendarItem }) {
   const c = useColors();
   const [busy, setBusy] = useState(false);
   return (

@@ -6,6 +6,7 @@ import { useLeagueCtx } from '../../lib/league';
 import type { Player } from '../../lib/types';
 import { useFeedback } from '../feedback';
 import { Badge, Button, Modal, Textarea, cx } from '../ui';
+import { CLAIM_CANCELLED_TEXT, claimRequestCopy, claimRequestDoneText } from './banner';
 
 type ClaimablePlayer = Pick<Player, 'id' | 'name'> & Partial<Pick<Player, 'uid' | 'isMinor'>>;
 
@@ -32,13 +33,14 @@ export function ClaimRequestModal({
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const copy = claimRequestCopy(player.name, isAdmin);
 
   async function send() {
     setBusy(true);
     setError(null);
     try {
       await requestClaim(lid, player.id, note);
-      toast(isAdmin ? `Listo: ahora eres ${player.name}.` : `Pediste ser ${player.name}. Queda pendiente de aprobación del admin.`);
+      toast(claimRequestDoneText(player.name, isAdmin));
       setNote('');
       onDone?.();
       onClose();
@@ -54,33 +56,29 @@ export function ClaimRequestModal({
     <Modal
       open={open}
       onClose={() => !busy && onClose()}
-      title={`¿Eres ${player.name}?`}
+      title={copy.title}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
             Cancelar
           </Button>
           <Button variant="primary" loading={busy} icon={<UserCheck className="size-4" />} onClick={() => void send()}>
-            Sí, soy yo
+            {copy.confirmText}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3 text-sm">
-        <p>
-          {isAdmin
-            ? `Como eres admin, quedas como ${player.name} al momento, con todo lo que jugó.`
-            : `El admin de la liga tiene que aprobarlo. Cuando lo apruebe, tu cuenta queda con ${player.name} y todo lo que jugó. Mientras, juegas con tu cuenta.`}
-        </p>
+        <p>{copy.message}</p>
         {!isAdmin && (
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Nota para el admin (opcional)</span>
+            <span className="text-xs text-muted">{copy.noteLabel}</span>
             <Textarea
               value={note}
               maxLength={CLAIM_NOTE_MAX}
               rows={2}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Soy yo, jugaba los martes"
+              placeholder={copy.notePlaceholder}
             />
           </label>
         )}
@@ -112,7 +110,7 @@ export function ClaimPlayerButton({ player, className }: { player: ClaimablePlay
       setBusy(true);
       try {
         await cancelClaim(lid, mine.id);
-        toast('Cancelaste el pedido.');
+        toast(CLAIM_CANCELLED_TEXT);
       } catch (e) {
         toast(claimErrorText(e), 'error');
       } finally {

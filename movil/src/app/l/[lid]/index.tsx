@@ -39,11 +39,15 @@ import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
 import { SwimHome } from '@/components/swimming/SwimHome';
 import { EsportsHome } from '@/components/esports/EsportsLeague';
+import { BowlingLeagueHome, LeagueIdent } from '@/components/league/BowlingLeagueHome';
+import { LiveBanner } from '@/components/live/LiveBanner';
+import { ClaimBanner } from '@/components/claims/ClaimBanner';
 import { useColors } from '@/theme/theme';
 
 /**
- * La liga: nombre y deporte, dónde y cuándo, y las fechas (prácticas y torneos del boliche). Entrar a una liga pone
- * la app en su deporte (su color), como la web. Lo demás de la liga (tabla, jugadores, admin) por ahora en la web.
+ * El inicio de una liga (LeagueShell y LeagueHomePage de la web): el logo, el nombre y cuándo y dónde juegan; los avisos y
+ * lo que está en vivo; Muro, invitar y seguir; para quien organiza, Organizar; y lo de cada deporte (el boliche, en una
+ * sola pantalla: BowlingLeagueHome). Entrar a una liga pone la app en su deporte (su color), como la web.
  */
 export default function LeagueScreen() {
   const { lid } = useLocalSearchParams<{ lid: string }>();
@@ -80,7 +84,6 @@ export default function LeagueScreen() {
     );
   }
   const l = league.data;
-  const Icon = meta?.icon;
   const isBowling = sport === 'bowling';
   const family = sportFamily(l);
   const openEvent = (eventId: string) => router.push({ pathname: '/l/[lid]/e/[eventId]', params: { lid: l.id, eventId } });
@@ -93,71 +96,20 @@ export default function LeagueScreen() {
           Ligas
         </Txt>
       </Pressable>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
-          {Icon && <Icon size={28} color={c.accent} />}
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt variant="cardTitle" numberOfLines={2}>
-            {l.name}
-          </Txt>
-          <Txt variant="meta" tone="muted">
-            {[meta?.label, l.kind === 'torneo' ? 'Torneo' : 'Liga', l.visibility === 'public' ? 'pública' : 'privada'].filter(Boolean).join(' · ')}
-          </Txt>
-        </View>
-      </View>
+      {/* El logo (o el ícono del deporte), el nombre completo y cuándo y dónde juegan (LeagueIdent de la web). */}
+      <LeagueScope lid={l.id}>
+        <LeagueIdent />
+      </LeagueScope>
 
-      {/* El aviso del admin de los últimos 2 días (lluvia, apagón…), arriba como en la web. */}
+      {/* El aviso del admin de los últimos 2 días (lluvia, apagón…), arriba como en la web, y lo que está «EN VIVO». */}
       <LeagueScope lid={l.id}>
         <LeagueNotices />
+        {/* Para los miembros: «Mi reclamo» o «¿Ya jugabas en esta liga? Busca tu nombre» (LeagueHomeTop de la web). */}
+        {!!membership.data && <ClaimBanner key={`reclamo-${l.id}`} />}
+        <LiveBanner lid={l.id} />
         {/* Pro, quien organiza y si hoy hay algo: «Hoy · … · Suspender» (SuspendTodayCard de la web). */}
         <SuspendTodayCard />
       </LeagueScope>
-
-      <Card padded={false}>
-        {!!l.venue && (
-          <ListRow
-            chevron={false}
-            icon={
-              <RowIcon>
-                <MapPin size={20} color={c.accent} />
-              </RowIcon>
-            }
-            title={l.venue}
-            subtitle={meta?.venue ?? null}
-          />
-        )}
-        {!!l.schedule && (
-          <>
-            <Divider inset={68} />
-            <ListRow
-              chevron={false}
-              icon={
-                <RowIcon>
-                  <Clock size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title={l.schedule}
-              subtitle="Horario"
-            />
-          </>
-        )}
-        {!!l.seasonStart && (
-          <>
-            <Divider inset={68} />
-            <ListRow
-              chevron={false}
-              icon={
-                <RowIcon>
-                  <CalendarDays size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title={`Temporada del ${formatDateLong(l.seasonStart)}${l.seasonEnd ? ` al ${formatDateLong(l.seasonEnd)}` : ''}`}
-            />
-          </>
-        )}
-      </Card>
-
       {(() => {
         const isAdmin = membership.data?.role === 'admin' || membership.data?.role === 'owner';
         const canInvite = canInviteTo(l, isAdmin, !!membership.data);
@@ -263,9 +215,13 @@ export default function LeagueScreen() {
         </>
       )}
 
-      {isBowling ? (
+      {isBowling && l.kind !== 'torneo' ? (
+        <LeagueScope lid={l.id}>
+          <BowlingLeagueHome />
+        </LeagueScope>
+      ) : isBowling ? (
         <>
-          {/* La tabla por temporada, «Resultados anteriores» y «Mis números» (las filas de LeagueHomePage de la web). */}
+          {/* Un torneo de boliche sin liga: la tabla, «Resultados anteriores» y «Mis números», y sus fechas. */}
           <Card padded={false}>
             <ListRow
               icon={
@@ -406,6 +362,53 @@ export default function LeagueScreen() {
       <LeagueScope lid={l.id}>
         <LeagueHomeNotice />
       </LeagueScope>
+
+      {/* Dónde, cuándo y la temporada, al final (LeagueInfoCard de la web; el boliche lo dice arriba). */}
+      {!isBowling && (
+        <Card padded={false}>
+          {!!l.venue && (
+            <ListRow
+              chevron={false}
+              icon={
+                <RowIcon>
+                  <MapPin size={20} color={c.accent} />
+                </RowIcon>
+              }
+              title={l.venue}
+              subtitle={meta?.venue ?? null}
+            />
+          )}
+          {!!l.schedule && (
+            <>
+              <Divider inset={68} />
+              <ListRow
+                chevron={false}
+                icon={
+                  <RowIcon>
+                    <Clock size={20} color={c.accent} />
+                  </RowIcon>
+                }
+                title={l.schedule}
+                subtitle="Horario"
+              />
+            </>
+          )}
+          {!!l.seasonStart && (
+            <>
+              <Divider inset={68} />
+              <ListRow
+                chevron={false}
+                icon={
+                  <RowIcon>
+                    <CalendarDays size={20} color={c.accent} />
+                  </RowIcon>
+                }
+                title={`Temporada del ${formatDateLong(l.seasonStart)}${l.seasonEnd ? ` al ${formatDateLong(l.seasonEnd)}` : ''}`}
+              />
+            </>
+          )}
+        </Card>
+      )}
 
     </Screen>
   );

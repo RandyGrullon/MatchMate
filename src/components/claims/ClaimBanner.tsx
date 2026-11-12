@@ -6,33 +6,23 @@ import { usePlayers } from '../../lib/data/players';
 import { useLeagueCtx } from '../../lib/league';
 import { leagueSport } from '../../sports/registry';
 import { useFeedback } from '../feedback';
-import { freePlayers, peopleWord } from '../league/logic';
+import { peopleWord } from '../league/logic';
 import { WhoAreYouList, type WhoChoice } from '../league/WhoAreYou';
 import { Button, Card, Modal } from '../ui';
+import {
+  CLAIM_CANCELLED_TEXT,
+  claimableFree,
+  loadDismissed,
+  pendingCopy,
+  pickConfirmText,
+  rejectedCopy,
+  saveDismissed,
+  searchCopy,
+  withDismissed,
+} from './banner';
 import { ClaimRequestModal } from './ClaimPlayerButton';
 import { usePlayerHistory, useRefreshWhilePending } from './data';
 import { bannerState } from './logic';
-
-const KEY = 'mm:reclamo-cerrado';
-
-/** Lo que la cuenta cerró en este teléfono ('<liga>:buscar', '<liga>:rechazo:<pedido>'). */
-function loadDismissed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const list = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveDismissed(s: Set<string>) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify([...s].slice(-100)));
-  } catch {
-    // almacenamiento no disponible
-  }
-}
 
 /**
  * En el inicio de la liga, para los miembros: «Mi reclamo» (pendiente, con «Cancelar pedido»; o rechazado, con la
@@ -53,7 +43,7 @@ export function ClaimBanner() {
   const [asking, setAsking] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const people = peopleWord(leagueSport(league));
-  const free = useMemo(() => freePlayers(players.data).filter((p) => p.id !== myPlayerId), [players.data, myPlayerId]);
+  const free = useMemo(() => claimableFree(players.data, myPlayerId), [players.data, myPlayerId]);
   const state = bannerState({
     claim: claim.data,
     ownHistory: own.data,
@@ -65,7 +55,7 @@ export function ClaimBanner() {
   if (!member || !uid) return null;
 
   const dismiss = (k: string) => {
-    const next = new Set(dismissed).add(`${lid}:${k}`);
+    const next = withDismissed(dismissed, lid, k);
     saveDismissed(next);
     setDismissed(next);
   };
@@ -88,7 +78,7 @@ export function ClaimBanner() {
                 else dismiss('buscar');
               }}
             >
-              {picked ? `Soy ${picked.name}` : 'No estoy en la lista'}
+              {pickConfirmText(picked)}
             </Button>
           </>
         }
@@ -104,23 +94,22 @@ export function ClaimBanner() {
       setBusy(true);
       try {
         await cancelClaim(lid, state.claim.id);
-        toast('Cancelaste el pedido.');
+        toast(CLAIM_CANCELLED_TEXT);
       } catch (e) {
         toast(claimErrorText(e), 'error');
       } finally {
         setBusy(false);
       }
     };
+    const copy = pendingCopy(state.claim);
     return (
       <Card className="flex flex-col gap-3 border-warn/40 p-4 sm:flex-row sm:items-center">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-warn-soft text-warn" aria-hidden="true">
           <Clock className="size-5" />
         </span>
         <div className="min-w-0 flex-1 text-sm">
-          <p className="font-semibold">Mi reclamo: pendiente de aprobación</p>
-          <p className="break-words text-muted">
-            Pediste ser {state.claim.playerName}. Cuando el admin lo apruebe, tu cuenta queda con sus juegos. Mientras, juegas con tu cuenta.
-          </p>
+          <p className="font-semibold">{copy.title}</p>
+          <p className="break-words text-muted">{copy.text}</p>
         </div>
         <Button size="sm" loading={busy} onClick={() => void cancel()} className="self-start sm:self-center">
           Cancelar pedido
@@ -131,16 +120,15 @@ export function ClaimBanner() {
 
   if (state.kind === 'rejected') {
     const c = state.claim;
+    const copy = rejectedCopy(c);
     return (
       <Card className="relative flex flex-col gap-3 p-4 pr-12 sm:flex-row sm:items-center">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger" aria-hidden="true">
           <UserX className="size-5" />
         </span>
         <div className="min-w-0 flex-1 text-sm">
-          <p className="font-semibold">Mi reclamo: no se aprobó</p>
-          <p className="break-words text-muted">
-            No quedaste como {c.playerName}.{c.decisionNote ? ` El admin dice: «${c.decisionNote}».` : ' Si es un error, habla con el admin.'}
-          </p>
+          <p className="font-semibold">{copy.title}</p>
+          <p className="break-words text-muted">{copy.text}</p>
         </div>
         {free.length > 0 && (
           <Button size="sm" icon={<Search className="size-4" />} onClick={() => setPicking(true)} className="self-start sm:self-center">
@@ -155,14 +143,15 @@ export function ClaimBanner() {
 
   if (state.kind !== 'search') return null;
 
+  const copy = searchCopy(people);
   return (
     <Card className="relative flex flex-col gap-3 p-4 pr-12 sm:flex-row sm:items-center">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent" aria-hidden="true">
         <Search className="size-5" />
       </span>
       <div className="min-w-0 flex-1 text-sm">
-        <p className="font-semibold">¿Ya jugabas en esta liga? Busca tu nombre</p>
-        <p className="text-muted">Si el admin ya te había anotado, pide ese {people[0]} y tus resultados quedan con tu cuenta.</p>
+        <p className="font-semibold">{copy.title}</p>
+        <p className="text-muted">{copy.text}</p>
       </div>
       <Button size="sm" variant="primary" icon={<Search className="size-4" />} onClick={() => setPicking(true)} className="self-start sm:self-center">
         Buscar mi nombre
