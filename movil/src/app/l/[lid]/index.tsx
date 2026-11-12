@@ -1,17 +1,16 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { BarChart3, CalendarDays, ChevronLeft, ClipboardList, UsersRound, Trophy, Clock, List, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, ClipboardList, UsersRound, Trophy, Clock, ListOrdered, MapPin, Medal, Megaphone, Newspaper, Swords, Target, Timer, UserPlus, UserRound } from 'lucide-react-native';
 import { useAuth } from '@mm/lib/auth';
-import { useEvents, useLeague, useMembership } from '@mm/lib/data';
+import { useLeague, useMembership } from '@mm/lib/data';
 import { useLeagueSocial } from '@mm/lib/data/leagueSocial';
 import { canInviteTo, inviteTitle } from '@mm/components/invite/logic';
-import { pastLine } from '@mm/components/league/home/logic';
 import { adminScreenTitle, organizeUrl } from '@mm/components/organizer/hubLogic';
 import { useLeagueToDo } from '@mm/components/league/home/useLeagueData';
 import { racketAdminTab } from '@mm/sports/adminTabs';
 import type { RacketSport } from '@mm/sports/racket';
-import { eventTitle, formatDateLong, toIsoDate } from '@mm/lib/format';
+import { formatDateLong } from '@mm/lib/format';
 import { setActiveSport } from '@mm/lib/sportContext';
 import { leagueSport, sportMeta } from '@mm/sports/registry';
 import { Button, Card, Divider, Empty, ListRow, Loading, RowIcon, Screen, SectionHeader, Txt } from '@/components/ui';
@@ -21,7 +20,6 @@ import { SportLinks } from '@/components/league/SportLinks';
 import { LeagueNotices } from '@/components/league/Announce';
 import { PlayersRow } from '@/components/players/PlayersRow';
 import { TeamsRow } from '@/components/bowlingTeams/TeamsRow';
-import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { ChampionsSection } from '@/components/season/Seasons';
 import { LeagueBadgeAwards } from '@/components/badges/LeagueBadges';
 import { LeagueMadeBadges } from '@/components/badges/maker/LeagueMadeBadges';
@@ -39,7 +37,7 @@ import { TeamHome } from '@/components/team/TeamScreens';
 import { GolfHome } from '@/components/golf/GolfHome';
 import { SwimHome } from '@/components/swimming/SwimHome';
 import { EsportsHome } from '@/components/esports/EsportsLeague';
-import { BowlingLeagueHome, LeagueIdent } from '@/components/league/BowlingLeagueHome';
+import { BowlingLeagueHome, BowlingTournamentHome, LeagueIdent } from '@/components/league/BowlingLeagueHome';
 import { LiveBanner } from '@/components/live/LiveBanner';
 import { ClaimBanner } from '@/components/claims/ClaimBanner';
 import { useColors } from '@/theme/theme';
@@ -55,7 +53,6 @@ export default function LeagueScreen() {
   const auth = useAuth();
   const league = useLeague(lid);
   const membership = useMembership(lid, auth.user?.uid);
-  const events = useEvents(lid);
   const social = useLeagueSocial(auth.user ? lid : null);
   const pro = useIsPro();
   const sport = league.data ? leagueSport(league.data) : null;
@@ -65,11 +62,6 @@ export default function LeagueScreen() {
     if (sport) setActiveSport(sport);
   }, [sport]);
 
-  const today = toIsoDate(new Date());
-  const upcoming = useMemo(() => {
-    const sorted = [...events.data].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    return sorted.filter((e) => e.date >= today).slice(0, 8);
-  }, [events.data, today]);
 
   if (league.loading && !league.data) return <Loading label="Cargando la liga" />;
   if (!league.data) {
@@ -86,7 +78,6 @@ export default function LeagueScreen() {
   const l = league.data;
   const isBowling = sport === 'bowling';
   const family = sportFamily(l);
-  const openEvent = (eventId: string) => router.push({ pathname: '/l/[lid]/e/[eventId]', params: { lid: l.id, eventId } });
 
   return (
     <Screen>
@@ -97,9 +88,12 @@ export default function LeagueScreen() {
         </Txt>
       </Pressable>
       {/* El logo (o el ícono del deporte), el nombre completo y cuándo y dónde juegan (LeagueIdent de la web). */}
-      <LeagueScope lid={l.id}>
-        <LeagueIdent />
-      </LeagueScope>
+      {/* Un torneo de boliche sin liga no lo lleva: arriba va el título del torneo (TournamentHome de la web). */}
+      {!(isBowling && l.kind === 'torneo') && (
+        <LeagueScope lid={l.id}>
+          <LeagueIdent />
+        </LeagueScope>
+      )}
 
       {/* El aviso del admin de los últimos 2 días (lluvia, apagón…), arriba como en la web, y lo que está «EN VIVO». */}
       <LeagueScope lid={l.id}>
@@ -220,67 +214,10 @@ export default function LeagueScreen() {
           <BowlingLeagueHome />
         </LeagueScope>
       ) : isBowling ? (
-        <>
-          {/* Un torneo de boliche sin liga: la tabla, «Resultados anteriores» y «Mis números», y sus fechas. */}
-          <Card padded={false}>
-            <ListRow
-              icon={
-                <RowIcon>
-                  <ListOrdered size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title="Tabla"
-              onPress={() => router.push({ pathname: '/l/[lid]/tabla', params: { lid: l.id } })}
-            />
-            <Divider inset={68} />
-            <ListRow
-              icon={
-                <RowIcon>
-                  <List size={20} color={c.accent} />
-                </RowIcon>
-              }
-              title="Resultados anteriores"
-              subtitle={pastLine(events.data, today)}
-              onPress={() => router.push({ pathname: '/l/[lid]/partidos', params: { lid: l.id } })}
-            />
-            {/* «Mis números» (para cualquier miembro: sin jugador todavía, `/perfil` se lo prepara, como la web). */}
-            {!!membership.data && (
-              <>
-                <Divider inset={68} />
-                <ListRow
-                  icon={
-                    <RowIcon>
-                      <BarChart3 size={20} color={c.accent} />
-                    </RowIcon>
-                  }
-                  title="Mis números"
-                  onPress={() => router.push({ pathname: '/l/[lid]/perfil', params: { lid: l.id } })}
-                />
-              </>
-            )}
-            {/* El buzón de sugerencias: la última fila (no sale a quien organiza ni a quien no es miembro). */}
-            <LeagueScope lid={l.id}>
-              <SuggestionBox row divider />
-            </LeagueScope>
-          </Card>
-          {/* Los equipos fijos de la liga (solo si tiene). */}
-          <LeagueScope lid={l.id}>
-            <LeagueTeamsSection />
-          </LeagueScope>
-          <SectionHeader title="Próximas fechas" />
-          {upcoming.length ? (
-            <Card padded={false}>
-              {upcoming.map((e, i) => (
-                <View key={e.id}>
-                  {i > 0 && <Divider inset={16} />}
-                  <ListRow title={eventTitle(e, sport ?? 'bowling')} subtitle={formatDateLong(e.date)} onPress={() => openEvent(e.id)} />
-                </View>
-              ))}
-            </Card>
-          ) : (
-            <Empty title="No hay fechas próximas" text="Cuando el admin programe una práctica o un torneo, sale aquí." />
-          )}
-        </>
+        // Un torneo de boliche sin liga: el torneo mismo (TournamentHome de la web).
+        <LeagueScope lid={l.id}>
+          <BowlingTournamentHome />
+        </LeagueScope>
       ) : sport === 'golf' ? (
         <LeagueScope lid={l.id}>
           <SportLinks
@@ -361,6 +298,8 @@ export default function LeagueScreen() {
       {/* El aviso de Lite para quien organiza: lo pendiente y «Organizas esta liga · … · Probar Pro». */}
       <LeagueScope lid={l.id}>
         <LeagueHomeNotice />
+        {/* Un torneo de boliche sin liga: el buzón al final, como la web (en la liga va en sus filas). */}
+        {isBowling && l.kind === 'torneo' && <SuggestionBox />}
       </LeagueScope>
 
       {/* Dónde, cuándo y la temporada, al final (LeagueInfoCard de la web; el boliche lo dice arriba). */}

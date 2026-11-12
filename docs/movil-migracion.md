@@ -95,7 +95,10 @@ de la app («Abrir en la web», `movil/src/lib/web.ts`), así se puede usar ente
   UN botón (la lógica de Hoy); la Tabla con los 3 de arriba y «Ver toda»; «Próximas fechas» con «Voy» y «Calendario»
   (la semana de la liga; en Pro, quien organiza crea ahí una práctica o un torneo); los equipos fijos; y las filas
   Jugadores (la hoja con todos y, en Pro, «Editar jugadores»), Resultados anteriores y Mis números, con el buzón.
-  🟡 Un torneo de boliche sin liga todavía muestra su tabla y sus fechas (la web abre el torneo mismo).
+- ✅ Un torneo de boliche sin liga: su inicio es el torneo mismo (TournamentHome de la web: el evento de boliche,
+  `movil/src/components/bowling/BowlingEvent.tsx` con `embedded`, sin «‹ liga» y con su «•••»), con los avisos y lo
+  que está en vivo arriba y las insignias, campeones y el buzón abajo. La demo trae «Torneo Suelto de Ejemplo»
+  (`movil/src/platform/demoTourney.ts`).
 - ✅ Muro (`/l/<liga>/muro`), invitar
   (`/l/<liga>/invitar`: QR, código, compartir el link y copiar; un miembro de una liga pública comparte su link) y
   seguir una liga pública. La tabla de cada deporte está en sus secciones (3 a 6).

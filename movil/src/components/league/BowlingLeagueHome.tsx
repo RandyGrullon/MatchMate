@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { BarChart3, CalendarPlus, Check, ChevronRight, FileSpreadsheet, List, PencilLine, Send, Trophy, UserCog, UserPlus, UserRound, Users, type LucideIcon } from 'lucide-react-native';
 import { upcomingCalendar, type CalendarItem } from '@mm/lib/calendar';
-import { usePlayers } from '@mm/lib/data';
+import { useEvents, usePlayers } from '@mm/lib/data';
 import { toIsoDate } from '@mm/lib/format';
 import { useLeagueCtx } from '@mm/lib/league';
 import { isPlannedEvent, liveGames, type LiveGame } from '@mm/lib/live';
@@ -18,6 +18,7 @@ import { useSeasonTable } from '@mm/components/league/home/seasonTable';
 import { useLeagueFeed } from '@mm/components/league/home/useLeagueData';
 import { useJoinFlow } from '@/components/agenda/joinFlow';
 import { WeekAgenda } from '@/components/agenda/WeekAgenda';
+import { BowlingEventScreen } from '@/components/bowling/BowlingEvent';
 import { closeThen } from '@/components/bowling/GameDetail';
 import { LeagueTeamsSection } from '@/components/bowling/LeagueTeams';
 import { DateBlock } from '@/components/DateBlock';
@@ -27,7 +28,7 @@ import { SectionLink, useLiveTable } from '@/components/home/ProSections';
 import { LeagueMark } from '@/components/leagueSettings/LeagueMark';
 import { initials } from '@/components/social/Avatar';
 import { SuggestionBox } from '@/components/suggestions/SuggestionBox';
-import { Button, Card, Divider, ListRow, Loading, RowIcon, SectionHeader, Sheet, Txt } from '@/components/ui';
+import { Button, Card, Divider, Empty, ListRow, LoadError, Loading, RowIcon, SectionHeader, Sheet, Txt } from '@/components/ui';
 import { openLink } from '@/lib/links';
 import { useColors } from '@/theme/theme';
 import { font } from '@/theme/tokens';
@@ -509,4 +510,20 @@ function CalendarSheet({
       {open && <WeekAgenda feeds={[feed]} leagues={[league]} matches={[]} today={today} />}
     </Sheet>
   );
+}
+
+// ---------- Un torneo sin liga ----------
+
+/**
+ * El inicio de un torneo de boliche sin liga (TournamentHome de la web): el torneo mismo (su evento, BowlingEventScreen
+ * sin su propia pantalla ni «‹ liga»). Lo de arriba y lo de abajo de cualquier inicio lo pone la pantalla de la liga.
+ */
+export function BowlingTournamentHome() {
+  const { lid } = useLeagueCtx();
+  const events = useEvents(lid);
+  if (events.error && !events.data.length) return <LoadError error={events.error} />;
+  if (events.loading && !events.data.length) return <Loading label="Cargando el torneo" />;
+  const ev = events.data.find((e) => e.type === 'torneo') ?? events.data[0];
+  if (!ev) return <Empty title="Este torneo no tiene evento" text="Un admin puede borrarlo y crearlo otra vez." />;
+  return <BowlingEventScreen lid={lid} eventId={ev.id} embedded />;
 }
