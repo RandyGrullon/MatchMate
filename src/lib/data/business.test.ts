@@ -1,7 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BackendError, setBackendForTests } from '../backend';
+import { PAY_MESSAGES } from '../../../supabase/functions/azul-pay/core';
 import { createFakeBackend, type FakeBackend } from '../db/fakeBackend';
-import { businessErrorText, isFeatured, priceText, uploadVenuePhoto, whatsappLink } from './business';
+import {
+  businessErrorText,
+  isFeatured,
+  paymentErrorText,
+  paymentReturn,
+  priceText,
+  sendToAzul,
+  startPromotionPayment,
+  uploadVenuePhoto,
+  verifyPromotionPayment,
+  whatsappLink,
+} from './business';
 import { setDataUser } from './client';
 
 const ME = '01900000-0000-7000-8000-0000000000aa';
@@ -85,5 +97,74 @@ describe('textos', () => {
     expect(businessErrorText(new BackendError('x', 'validation', 'invalido'))).toMatch(/Revisa lo que llenaste/);
     expect(businessErrorText(new BackendError('x', 'network'))).toMatch(/Sin conexión/);
     expect(businessErrorText(new Error('rara'), 'Otra cosa')).toBe('Otra cosa');
+  });
+});
+
+describe('pagar con Azul', () => {
+  it('start y verify van a la Edge Function azul-pay', async () => {
+    const calls: [string, unknown][] = [];
+    Object.assign(fake, {
+      invoke: async (fn: string, body: unknown) => {
+        calls.push([fn, body]);
+        return (body as { action: string }).action === 'start'
+          ? { url: 'https://pruebas.azul.com.do/PaymentPage/', fields: { OrderNumber: '7' }, orderNumber: 7, amount: 1500 }
+          : { status: 'approved', orderNumber: 7, venueId: VENUE, endsAt: '2026-11-12T00:00:00Z', days: 7, amount: 1500 };
+      },
+    });
+    expect(await startPromotionPayment(VENUE, 7)).toMatchObject({ orderNumber: 7, fields: { OrderNumber: '7' } });
+    expect(await verifyPromotionPayment({ OrderNumber: '7', AuthHash: 'abc' })).toMatchObject({ status: 'approved', venueId: VENUE });
+    expect(calls).toEqual([
+      ['azul-pay', { action: 'start', venueId: VENUE, days: 7 }],
+      ['azul-pay', { action: 'verify', params: { OrderNumber: '7', AuthHash: 'abc' } }],
+    ]);
+  });
+
+  it('el formulario: POST a Azul con un campo escondido por dato; GET al simulador local', () => {
+    const made: { tag: string; props: Record<string, unknown>; children: unknown[]; submitted: boolean }[] = [];
+    const doc = {
+      createElement: (tag: string) => {
+        const el = { tag, props: {} as Record<string, unknown>, children: [] as unknown[], submitted: false, style: {} };
+        made.push(el);
+        return new Proxy(el, {
+          set: (t, k, v) => {
+            if (k === 'style') return true;
+            t.props[String(k)] = v;
+            return true;
+          },
+          get: (t, k) =>
+            k === 'appendChild' ? (c: unknown) => t.children.push(c) : k === 'submit' ? () => (t.submitted = true) : k === 'style' ? t.style : (t as never)[k],
+        });
+      },
+      body: { appendChild: () => undefined },
+    } as unknown as Document;
+    sendToAzul({ url: 'https://pruebas.azul.com.do/PaymentPage/', fields: { OrderNumber: '7', AuthHash: 'abc' } }, doc);
+    const form = made[0];
+    expect(form.props).toMatchObject({ method: 'post', action: 'https://pruebas.azul.com.do/PaymentPage/' });
+    expect(made.slice(1).map((m) => m.props)).toEqual([
+      { type: 'hidden', name: 'OrderNumber', value: '7' },
+      { type: 'hidden', name: 'AuthHash', value: 'abc' },
+    ]);
+    expect(form.submitted).toBe(true);
+    made.length = 0;
+    sendToAzul({ url: '/dev/azul', fields: {} }, doc);
+    expect(made[0].props.method).toBe('get');
+  });
+
+  it('la vuelta: respuesta firmada, «Cancelar» o nada', () => {
+    expect(paymentReturn('?OrderNumber=7&Amount=150000&AuthHash=abc')).toEqual({ kind: 'response', params: { OrderNumber: '7', Amount: '150000', AuthHash: 'abc' } });
+    expect(paymentReturn('?cancelado=7')).toEqual({ kind: 'cancelled', orderNumber: 7 });
+    expect(paymentReturn('?cancelado=x')).toBeNull();
+    expect(paymentReturn('?OrderNumber=7')).toBeNull();
+    expect(paymentReturn('')).toBeNull();
+  });
+
+  it('los errores de pagar: el mensaje de azul-pay tal cual (es el de su core)', () => {
+    for (const code of ['config', 'firma', 'rate_limited'] as const) {
+      expect(paymentErrorText(new BackendError(PAY_MESSAGES[code], 'unknown', code))).toBe(PAY_MESSAGES[code]);
+    }
+    expect(paymentErrorText(new BackendError('La función azul-pay no está disponible', 'not_found'))).toBe(PAY_MESSAGES.config);
+    // Un código crudo de la base no se muestra.
+    expect(paymentErrorText(new BackendError('invalido', 'validation', 'invalido'))).toMatch(/Revisa lo que llenaste/);
+    expect(paymentErrorText(new BackendError('x', 'network'))).toMatch(/Sin conexión/);
   });
 });

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { ExternalLink, ImagePlus, Sparkles, Star, Trash2, Trophy } from 'lucide-react';
+import { CreditCard, ExternalLink, ImagePlus, Sparkles, Star, Trash2, Trophy } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useLeaguesByIds, useMyMemberships } from '../../lib/data';
 import {
@@ -12,7 +12,11 @@ import {
   deleteVenue,
   deleteVenuePhoto,
   isFeatured,
+  paymentErrorText,
   requestPromotion,
+  sendToAzul,
+  startPromotionPayment,
+  usePromotionPrices,
   saveVenue,
   setLeagueVenue,
   setVenueCover,
@@ -273,9 +277,15 @@ function Photos({ venue, onChange }: { venue: OwnVenue; onChange: (photos: Venue
   );
 }
 
-/** Destacar el espacio (sale primero en «Dónde jugar»): pedirlo, ver cómo va o hasta cuándo sale. */
+const money = (n: number) => `RD$${n.toLocaleString('es-DO', { maximumFractionDigits: 2 })}`;
+
+/**
+ * Destacar el espacio (sale primero en «Dónde jugar»). Con precios puestos por el superadmin, se paga con Azul y se
+ * activa sola (si ya está destacado, se suma al final). Sin precios: pedirlo, ver cómo va o hasta cuándo sale.
+ */
 function Promotion({ business, venue, onChange }: { business: Business; venue: OwnVenue; onChange: (v: OwnVenue) => void }) {
   const { toast } = useFeedback();
+  const prices = usePromotionPrices();
   const [days, setDays] = useState<string>(String(PROMOTION_DAYS[0]));
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -283,7 +293,48 @@ function Promotion({ business, venue, onChange }: { business: Business; venue: O
   const featured = isFeatured(venue);
 
   let body;
-  if (business.status !== 'approved') {
+  if (business.status === 'approved' && prices.data.length) {
+    const chosen = prices.data.find((x) => String(x.days) === days) ?? prices.data[0];
+    body = (
+      <>
+        {featured ? (
+          <p className="text-meta">
+            Sale primero en «Dónde jugar» hasta el {formatDateLong(toIsoDate(new Date(venue.featuredUntil!)))}. Si pagas más días, se suman al final.
+          </p>
+        ) : (
+          <p className="text-meta text-muted">Sale primero cuando los jugadores buscan dónde jugar {sportMeta(venue.sport)?.lower ?? ''}.</p>
+        )}
+        <Segmented
+          label="Por cuántos días"
+          full
+          value={String(chosen.days)}
+          onChange={setDays}
+          options={prices.data.map((x) => ({ key: String(x.days), label: `${x.days} días` }))}
+        />
+        <p className="text-body">
+          <strong>{money(chosen.amount)}</strong> <span className="text-meta text-muted">ITBIS incluido</span>
+        </p>
+        <Button
+          variant="primary"
+          icon={<CreditCard className="size-5" />}
+          loading={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              // El navegador se va a Azul: el botón queda ocupado hasta que cambie la página.
+              sendToAzul(await startPromotionPayment(venue.id, chosen.days));
+            } catch (e) {
+              toast(paymentErrorText(e), 'error');
+              setBusy(false);
+            }
+          }}
+        >
+          Pagar con Azul
+        </Button>
+        <p className="text-meta text-muted">Pagas con tarjeta en la página segura de Azul y se activa al volver.</p>
+      </>
+    );
+  } else if (business.status !== 'approved') {
     body = <p className="text-meta text-muted">Cuando aprobemos tu empresa, puedes pedir que tus espacios salgan primero.</p>;
   } else if (featured) {
     body = <p className="text-meta">Sale primero en «Dónde jugar» hasta el {formatDateLong(toIsoDate(new Date(venue.featuredUntil!)))}.</p>;

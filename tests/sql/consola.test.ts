@@ -104,6 +104,9 @@ const adminCalls = (): [string, Record<string, unknown>][] => [
   ['admin_decide_promotion', { p_promotion: biz.promotion, p_approve: true, p_amount: 1500 }],
   ['admin_grant_promotion', { p_venue: biz.venue, p_days: 3, p_amount: 0 }],
   ['admin_end_promotion', { p_promotion: biz.promotion }],
+  // Pagos con Azul (20261105000200_pagos_azul.sql): el precio por días y la lista de pagos.
+  ['admin_set_promotion_price', { p_days: 7, p_amount: 1500 }],
+  ['admin_payments', {}],
 ];
 
 describe('permisos', () => {

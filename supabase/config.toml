@@ -516,6 +516,13 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# azul-pay (docs/empresas.md › Pagos con Azul): pagar para destacar un espacio. 'start' valida el JWT por dentro
+# (auth.getClaims) y pide el precio a la base como la cuenta; 'verify' (la vuelta de Azul) llega sin JWT: la protege
+# la firma HMAC de Azul. Secretos: AZUL_MERCHANT_ID, AZUL_MERCHANT_NAME, AZUL_AUTH_KEY, AZUL_ENV (y opcionales).
+[functions.azul-pay]
+enabled = true
+verify_jwt = false
+
 # MatchMate: apagado. Levanta 2 contenedores más (logflare y vector) y en Windows pide exponer Docker en el
 # puerto 2375; la app no lo usa. Encenderlo solo para ver los logs en Studio.
 [analytics]

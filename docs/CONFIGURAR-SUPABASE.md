@@ -259,6 +259,36 @@ los segundos aparece la lectura; en *Edge Functions › scan-bowling › Logs* s
    otra cuenta; en *Edge Functions › delete-account › Logs* sale «cuenta borrada». Si dice «El borrado de cuentas
    no está configurado», falta publicar la función o la clave secreta del proyecto.
 
+## Paso 9c. Cobrar con Azul las promociones de las empresas (opcional)
+
+**Quién: tú** (los datos los da Azul; Claude nunca los ve ni los escribe). Sin esto, las empresas piden destacar un
+espacio y el superadmin lo activa a mano con lo que cobró aparte (docs/empresas.md).
+
+- [ ] **Afiliar el comercio con Azul** (comercio electrónico, Página de Pagos). Azul da, para pruebas y para
+  producción: *MerchantId*, el nombre del comercio y la *AuthKey*. Pide que autoricen el dominio de vuelta:
+  `https://matchmate.grullonb.com` (y el de staging). Soporte: solucionesecommmerce@AZUL.com.do.
+- [ ] En **cada** proyecto (*Edge Functions › Secrets*), los de `supabase/functions/.env.example` › Azul:
+  `AZUL_MERCHANT_ID`, `AZUL_MERCHANT_NAME`, `AZUL_AUTH_KEY` y `AZUL_ENV` (`pruebas` en staging; `produccion` solo
+  con los datos de producción). Opcionales: `AZUL_ITBIS_PCT` (18 por defecto; 0 si está exento) y, en staging,
+  `APP_ORIGIN`. `SCAN_ALLOWED_ORIGINS` ya está (paso 9).
+- [ ] Publicar la función: `npx -y supabase@2 functions deploy azul-pay --project-ref REF` (*Verify JWT* apagado:
+  `supabase/config.toml` ya lo dice).
+- [ ] Poner los precios: consola › Empresas › *Cobrar con Azul* (p. ej. 7, 15 y 30 días, ITBIS incluido). Vacío = no
+  se ofrece; sin ninguno, las empresas siguen pidiendo y tú cobras aparte.
+
+**Comprobar** (en staging, con los datos de **pruebas** de Azul y una tarjeta de prueba que da Azul; nunca una
+tarjeta de verdad):
+1. Con una empresa aprobada: *Mi empresa* › el espacio › *Pagar con Azul* abre la Página de Pagos de Azul con el
+   monto.
+2. Paga con la tarjeta de prueba: vuelve a `/empresa/pago` con «¡Pago aprobado!» y el espacio sale destacado.
+3. Consola › Empresas › *Pagos*: el pago «Aprobado» con su autorización. En *Edge Functions › azul-pay › Logs* no
+   hay «firma de la respuesta no coincide».
+4. Prueba también *Cancelar* en Azul (vuelve con «Cancelaste el pago») y una tarjeta declinada.
+
+**Si alguien no vuelve de Azul** (cerró el navegador), el pago queda «Sin terminar»: búscalo por el número de orden
+en el portal de Azul y, si se cobró, actívalo desde la consola (la promoción pedida está en la empresa). En el modo
+local (`pnpm dev --mode pglite`) se prueba todo sin Azul: «Pagar con Azul» abre un simulador (`/dev/azul`).
+
 ## Paso 9b. Esports: buscar IDs de juego y «Conectar con…» (opcional)
 
 **Quién: tú.** Las funciones `esports-verify` y `esports-auth` ya están en el repo (`supabase/functions`; la
